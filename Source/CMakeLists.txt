@@ -1,0 +1,3 @@
+add_subdirectory(ShaderCookerStandalone)
+add_subdirectory(Shaders)
+add_subdirectory(Game)
