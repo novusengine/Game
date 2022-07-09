@@ -20,6 +20,10 @@ GameRenderer::GameRenderer()
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
 	_renderer = new Renderer::RendererVK();
+
+    std::string shaderSourcePath = SHADER_SOURCE_DIR;
+    _renderer->SetShaderSourceDirectory(shaderSourcePath);
+
     InitImgui();
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
