@@ -1,0 +1,3 @@
+[submodule "Submodules/Engine"]
+	path = Submodules/Engine
+	url = https://github.com/novuscore/Engine.git
