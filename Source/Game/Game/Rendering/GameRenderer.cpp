@@ -1,6 +1,10 @@
 #include "GameRenderer.h"
 #include "UIRenderer.h"
+#include "Debug/DebugRenderer.h"
+#include "Terrain/TerrainRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
+#include <Input/InputManager.h>
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderSettings.h>
 #include <Renderer/RenderGraph.h>
@@ -14,10 +18,102 @@
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
+#include <windows.h> // Get rid of this when we have our input manager :(
+
+void KeyCallback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 modifiers)
+{
+    ServiceLocator::GetGameRenderer()->GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
+}
+
+void CharCallback(GLFWwindow* window, u32 unicodeKey)
+{
+    ServiceLocator::GetGameRenderer()->GetInputManager()->CharInputHandler(unicodeKey);
+}
+
+void MouseCallback(GLFWwindow* window, i32 button, i32 action, i32 modifiers)
+{
+    ServiceLocator::GetGameRenderer()->GetInputManager()->MouseInputHandler(button, action, modifiers);
+}
+
+void CursorPositionCallback(GLFWwindow* window, f64 x, f64 y)
+{
+    ServiceLocator::GetGameRenderer()->GetInputManager()->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
+}
+
+void ScrollCallback(GLFWwindow* window, f64 x, f64 y)
+{
+    ServiceLocator::GetGameRenderer()->GetInputManager()->MouseScrollHandler(static_cast<f32>(x), static_cast<f32>(y));
+}
+
+void WindowIconifyCallback(GLFWwindow* window, int iconified)
+{
+    Window* userWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+    userWindow->SetIsMinimized(iconified == 1);
+}
+
 GameRenderer::GameRenderer()
 {
 	_window = new Window();
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
+
+    _inputManager = new InputManager();
+    KeybindGroup* keybindGroup = _inputManager->CreateKeybindGroup("Camera", 10);
+    keybindGroup->SetActive(true);
+
+    glfwSetKeyCallback(_window->GetWindow(), KeyCallback);
+    glfwSetCharCallback(_window->GetWindow(), CharCallback);
+    glfwSetMouseButtonCallback(_window->GetWindow(), MouseCallback);
+    glfwSetCursorPosCallback(_window->GetWindow(), CursorPositionCallback);
+    glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
+    glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
+
+    keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("Backward", GLFW_KEY_S, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_E, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("Downwards", GLFW_KEY_Q, KeybindAction::Press, KeybindModifier::Any, nullptr);
+    keybindGroup->AddKeyboardCallback("ToggleMouseCapture", GLFW_KEY_ESCAPE, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
+    {
+        _captureMouse = !_captureMouse;
+        if (_captureMouse)
+        {
+            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            DebugHandler::Print("Mouse captured!");
+        }
+        else
+        {
+            ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            DebugHandler::Print("Mouse released!");
+        }
+
+        return true;
+    });
+    keybindGroup->AddKeyboardCallback("Right Mouseclick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
+    {
+        if (!_captureMouse)
+        {
+            _captureMouse = true;
+
+            _prevMousePosition = vec2(_inputManager->GetMousePositionX(), _inputManager->GetMousePositionY());
+            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
+            DebugHandler::Print("Mouse captured because of mouseclick!");
+        }
+        return true;
+    });
+    keybindGroup->AddMousePositionCallback([this](f32 xPos, f32 yPos)
+    {
+        if (_captureMouse)
+        {
+            CapturedMouseMoved(vec2(xPos, yPos));
+        }
+
+        return _captureMouse;
+    });
 
 	_renderer = new Renderer::RendererVK();
 
@@ -28,7 +124,13 @@ GameRenderer::GameRenderer()
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
 
+    _debugRenderer = new DebugRenderer(_renderer);
+    _terrainRenderer = new TerrainRenderer(_renderer);
     _uiRenderer = new UIRenderer(_renderer);
+
+    // Set camera position
+    _resources.cameraComponent.position = vec3(0, 10, -10);
+    _resources.cameraComponent.pitch = 30.0f;
 
     CreatePermanentResources();
 }
@@ -45,8 +147,89 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 
 void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
+    // Update camera
+    {
+        KeybindGroup* keybindGroup = _inputManager->GetKeybindGroupByHash("Camera"_h);
+
+        // Input
+        if (keybindGroup->IsKeybindPressed("Forward"_h))
+        {
+            _resources.cameraComponent.position += _resources.cameraComponent.forward * _cameraSpeed * deltaTime;
+        }
+        if (keybindGroup->IsKeybindPressed("Backward"_h))
+        {
+            _resources.cameraComponent.position += -_resources.cameraComponent.forward * _cameraSpeed * deltaTime;
+        }
+        if (keybindGroup->IsKeybindPressed("Left"_h))
+        {
+            _resources.cameraComponent.position += -_resources.cameraComponent.right * _cameraSpeed * deltaTime;
+        }
+        if (keybindGroup->IsKeybindPressed("Right"_h))
+        {
+            _resources.cameraComponent.position += _resources.cameraComponent.right * _cameraSpeed * deltaTime;
+        }
+        if (keybindGroup->IsKeybindPressed("Upwards"_h))
+        {
+            _resources.cameraComponent.position += vec3(0.0f, 1.0f, 0.0f) * _cameraSpeed * deltaTime;
+        }
+        if (keybindGroup->IsKeybindPressed("Downwards"_h))
+        {
+            _resources.cameraComponent.position += vec3(0.0f, -1.0f, 0.0f) * _cameraSpeed * deltaTime;
+        }
+
+        // Compute matrices
+        SafeVectorScopedWriteLock camerasLock(_resources.cameras);
+        std::vector<Camera>& cameras = camerasLock.Get();
+        Camera& camera = cameras[_resources.cameraComponent.cameraIndex];
+        
+        // TODO: Figure the order of this one out
+        quat rotQuat = quat(vec3(glm::radians(_resources.cameraComponent.pitch), glm::radians(_resources.cameraComponent.yaw), glm::radians(_resources.cameraComponent.roll)));
+        mat4x4 rotationMatrix = glm::mat4_cast(rotQuat);
+
+        mat4x4 cameraMatrix = glm::translate(mat4x4(1.0f), _resources.cameraComponent.position) * rotationMatrix;
+        camera.worldToView = glm::inverse(cameraMatrix);
+
+        f32 aspectRatioWH = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
+
+        camera.viewToClip = glm::perspective(glm::radians(75.0f), aspectRatioWH, 1000.0f, 0.5f);
+        camera.worldToClip = camera.viewToClip * camera.worldToView;
+
+        // Update camera vectors
+        _resources.cameraComponent.forward = rotationMatrix[2];
+        _resources.cameraComponent.right = rotationMatrix[0];
+        _resources.cameraComponent.up = rotationMatrix[1];
+
+        _resources.cameras.SetDirtyElement(_resources.cameraComponent.cameraIndex);
+
+        // Print position
+        if (ImGui::Begin("Camera"))
+        {
+            ImGui::Text("Pos: (%.2f, %.2f, %.2f)", _resources.cameraComponent.position.x, _resources.cameraComponent.position.y, _resources.cameraComponent.position.z);
+            
+            ImGui::Separator();
+            
+            ImGui::Text("Pitch: %.2f", _resources.cameraComponent.pitch);
+            ImGui::Text("Yaw: %.2f", _resources.cameraComponent.yaw);
+            ImGui::Text("Roll: %.2f", _resources.cameraComponent.roll);
+
+            vec3 eulerAngles = glm::eulerAngles(rotQuat);
+            ImGui::Text("Euler: (%.2f, %.2f, %.2f)", eulerAngles.x, eulerAngles.y, eulerAngles.z);
+
+            ImGui::Separator();
+
+            ImGui::Text("Forward: (%.2f, %.2f, %.2f)", _resources.cameraComponent.forward.x, _resources.cameraComponent.forward.y, _resources.cameraComponent.forward.z);
+            ImGui::Text("Right: (%.2f, %.2f, %.2f)", _resources.cameraComponent.right.x, _resources.cameraComponent.right.y, _resources.cameraComponent.right.z);
+            ImGui::Text("Up: (%.2f, %.2f, %.2f)", _resources.cameraComponent.up.x, _resources.cameraComponent.up.y, _resources.cameraComponent.up.z);
+        }
+        ImGui::End();
+    }
+
     // Reset the memory in the frameAllocator
     _frameAllocator->Reset();
+
+    //_terrainRenderer->Update(deltaTime);
+    _debugRenderer->Update(deltaTime);
+    _uiRenderer->Update(deltaTime);
 }
 
 void GameRenderer::Render()
@@ -54,6 +237,11 @@ void GameRenderer::Render()
     // If the window is minimized we want to pause rendering
     if (_window->IsMinimized())
         return;
+
+    if (_resources.cameras.SyncToGPU(_renderer))
+    {
+        _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
+    }
 
     // Create rendergraph
     Renderer::RenderGraphDesc renderGraphDesc;
@@ -68,10 +256,7 @@ void GameRenderer::Render()
     {
         struct StartFramePassData
         {
-            Renderer::RenderPassMutableResource visibilityBuffer;
-            Renderer::RenderPassMutableResource sceneColor;
             Renderer::RenderPassMutableResource finalColor;
-            Renderer::RenderPassMutableResource transparencyWeights;
             Renderer::RenderPassMutableResource depth;
         };
 
@@ -79,6 +264,7 @@ void GameRenderer::Render()
             [=](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
                 data.finalColor = builder.Write(_resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
+                data.depth = builder.Write(_resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
@@ -93,7 +279,11 @@ void GameRenderer::Render()
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
             });
     }
+    //_terrainRenderer->AddTriangularizationPass(&renderGraph, _resources, _frameIndex);
 
+    //_terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
+    _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, _resources.finalColor);
 
     renderGraph.AddSignalSemaphore(_resources.sceneRenderedSemaphore); // Signal that we are ready to present
@@ -137,6 +327,17 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
 
+    // Main depth rendertarget
+    Renderer::DepthImageDesc mainDepthDesc;
+    mainDepthDesc.debugName = "MainDepth";
+    mainDepthDesc.dimensions = vec2(1.0f, 1.0f);
+    mainDepthDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    mainDepthDesc.format = Renderer::DepthImageFormat::D32_FLOAT;
+    mainDepthDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    mainDepthDesc.depthClearValue = 0.0f;
+
+    _resources.depth = _renderer->CreateDepthImage(mainDepthDesc);
+
     // Frame allocator, this is a fast allocator for data that is only needed this frame
     {
         const size_t FRAME_ALLOCATOR_SIZE = 16 * 1024 * 1024; // 16 MB
@@ -150,6 +351,10 @@ void GameRenderer::CreatePermanentResources()
     {
         _resources.frameSyncSemaphores.Get(i) = _renderer->CreateNSemaphore();
     }
+
+    _resources.cameras.SetDebugName("Cameras");
+    _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    _resources.cameras.PushBack(Camera());
 }
 
 void GameRenderer::InitImgui()
@@ -228,4 +433,26 @@ void GameRenderer::InitImgui()
     ImGui_ImplGlfw_InitForVulkan(_window->GetWindow(), true);
 
     _renderer->InitImgui();
+}
+
+void GameRenderer::CapturedMouseMoved(vec2 pos)
+{
+    if (_captureMouseHasMoved)
+    {
+        vec2 deltaPosition = _prevMousePosition - pos;
+
+        
+        _resources.cameraComponent.yaw += -deltaPosition.x * _mouseSensitivity;
+
+        if (_resources.cameraComponent.yaw > 360)
+            _resources.cameraComponent.yaw -= 360;
+        else if (_resources.cameraComponent.yaw < 0)
+            _resources.cameraComponent.yaw += 360;
+
+        _resources.cameraComponent.pitch = Math::Clamp(_resources.cameraComponent.pitch - (deltaPosition.y * _mouseSensitivity), -89.0f, 89.0f);
+    }
+    else
+        _captureMouseHasMoved = true;
+
+    _prevMousePosition = pos;
 }

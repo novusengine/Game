@@ -24,7 +24,7 @@ struct VertexOutput
 VertexOutput main(VertexInput input)
 {
     VertexOutput output;
-    output.position = mul(_viewData.viewProjectionMatrix, mul(_modelData.modelMatrix, input.position));
+    output.position = mul(_cameras[0].worldToClip, mul(_modelData.modelMatrix, input.position));
     output.uv = input.uv;
     return output;
 }

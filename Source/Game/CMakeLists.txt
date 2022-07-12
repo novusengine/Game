@@ -8,6 +8,7 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC SHADER_SOURCE_DIR="${SHADER_SO
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(${PROJECT_NAME} PUBLIC
 	base::base
+    input::input
     renderer::renderer
 )
 

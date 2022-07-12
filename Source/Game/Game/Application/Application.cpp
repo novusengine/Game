@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "Game/Rendering/GameRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
 #include <Base/Util/Timer.h>
@@ -100,6 +101,7 @@ void Application::Run()
 bool Application::Init()
 {
 	_gameRenderer = new GameRenderer();
+	ServiceLocator::SetGameRenderer(_gameRenderer);
 
 	return true;
 }

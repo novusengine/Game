@@ -36,7 +36,7 @@ VSOutput main(VSInput input)
 	Vertex3D vertex = _vertices[input.vertexID];
 
 	VSOutput output;
-	output.pos = mul(float4(vertex.pos, 1.0f), _viewData.viewProjectionMatrix);
+	output.pos = mul(float4(vertex.pos, 1.0f), _cameras[0].worldToClip);
 	output.color = GetVertexColor(vertex.color);
 	return output;
 }

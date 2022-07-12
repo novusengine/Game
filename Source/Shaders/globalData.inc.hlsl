@@ -1,8 +1,8 @@
 #ifndef GLOBALDATA_INCLUDED
 #define GLOBALDATA_INCLUDED
 
-#include "Include/ViewData.inc.hlsl"
+#include "Include/Camera.inc.hlsl"
 
-[[vk::binding(0, GLOBAL)]] ConstantBuffer<ViewData> _viewData;
+[[vk::binding(0, GLOBAL)]] StructuredBuffer<Camera> _cameras;
 
 #endif // GLOBALDATA_INCLUDED
