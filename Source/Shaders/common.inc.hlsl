@@ -9,7 +9,7 @@
 
 float2 OctWrap(float2 v)
 {
-    return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
+    return (1.0 - abs(v.yx)) * (select(v.xy >= 0.0, 1.0, -1.0));
 }
 
 float2 OctNormalEncode(float3 n)
@@ -27,7 +27,7 @@ float3 OctNormalDecode(float2 f)
     // https://twitter.com/Stubbesaurus/status/937994790553227264
     float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
     float t = saturate(-n.z);
-    n.xy += n.xy >= 0.0 ? -t : t;
+    n.xy += select(n.xy >= 0.0, -t, t);
     return normalize(n);
 }
 

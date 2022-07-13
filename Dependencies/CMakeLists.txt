@@ -1,5 +1,7 @@
 project(game-dependencies VERSION 1.0.0)
 
+add_subdirectory(meshoptimizer)
+
 ## game-dependencies
 
 add_library(${PROJECT_NAME} INTERFACE)

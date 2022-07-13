@@ -11,8 +11,9 @@ namespace Renderer
 struct GLFWwindow;
 class Window;
 class InputManager;
-class DebugRenderer;
 class TerrainRenderer;
+class ModelRenderer;
+class DebugRenderer;
 class UIRenderer;
 
 class GameRenderer
@@ -26,6 +27,7 @@ public:
 	void Render();
 
 	InputManager* GetInputManager() { return _inputManager; }
+	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
 
 private:
 	void CreatePermanentResources();
@@ -53,6 +55,7 @@ private:
 
 	// Sub Renderers
 	TerrainRenderer* _terrainRenderer = nullptr;
+	ModelRenderer* _modelRenderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;
 };

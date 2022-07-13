@@ -2,6 +2,7 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
+#include "Model/ModelRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
@@ -124,8 +125,9 @@ GameRenderer::GameRenderer()
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
 
-    _debugRenderer = new DebugRenderer(_renderer);
     _terrainRenderer = new TerrainRenderer(_renderer);
+    _modelRenderer = new ModelRenderer(_renderer);
+    _debugRenderer = new DebugRenderer(_renderer);
     _uiRenderer = new UIRenderer(_renderer);
 
     // Set camera position
@@ -228,6 +230,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _frameAllocator->Reset();
 
     //_terrainRenderer->Update(deltaTime);
+    _modelRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
 }
@@ -274,7 +277,9 @@ void GameRenderer::Render()
                 commandList.MarkFrameStart(_frameIndex);
 
                 // Set viewport
-                vec2 renderSize = _renderer->GetRenderSize();
+                //vec2 renderSize = _renderer->GetRenderSize();
+                vec2 renderSize = _renderer->GetImageDimension(_resources.finalColor);
+
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
             });
@@ -282,6 +287,9 @@ void GameRenderer::Render()
     //_terrainRenderer->AddTriangularizationPass(&renderGraph, _resources, _frameIndex);
 
     //_terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, _resources.finalColor);
