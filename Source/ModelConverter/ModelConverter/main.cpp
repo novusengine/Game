@@ -51,9 +51,9 @@ i32 main()
 				meshletIndices.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
 
 				// Handle Vertices
+				u32 numVerticesBefore = static_cast<u32>(model.vertices.size());
+				u32 numVerticesToAdd = static_cast<u32>(meshletVertices.size());
 				{
-					u32 numVerticesBefore = static_cast<u32>(model.vertices.size());
-					u32 numVerticesToAdd = static_cast<u32>(meshletVertices.size());
 					model.vertices.resize(numVerticesBefore + numVerticesToAdd);
 
 					for (u32 i = 0; i < numVerticesToAdd; i++)
@@ -73,7 +73,7 @@ i32 main()
 
 					for (u32 i = 0; i < numIndicesToAdd; i++)
 					{
-						model.indices[numIndicesBefore + i] = meshletIndices[i];
+						model.indices[numIndicesBefore + i] = numVerticesBefore + meshletIndices[i];
 					}
 				}
 

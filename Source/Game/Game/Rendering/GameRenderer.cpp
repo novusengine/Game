@@ -323,6 +323,11 @@ void GameRenderer::Render()
     _frameIndex = !_frameIndex;
 }
 
+void GameRenderer::ReloadShaders(bool forceRecompileAll)
+{
+    _renderer->ReloadShaders(forceRecompileAll);
+}
+
 void GameRenderer::CreatePermanentResources()
 {
     Renderer::ImageDesc sceneColorDesc;

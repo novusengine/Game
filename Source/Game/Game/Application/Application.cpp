@@ -72,12 +72,44 @@ void Application::Run()
 				break;
 
 			{
-				if (ImGui::Begin("Engine Info"))
+
+				if (ImGui::BeginMainMenuBar())
 				{
-					ImGui::Text("Fps : %.1f ", 1.f / deltaTime);
-					ImGui::Text("Ms  : %.2f", deltaTime * 1000);
+					ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
+
+					if (ImGui::BeginMenu("Debug"))
+					{
+						// Reload shaders button
+						if (ImGui::Button("Reload Shaders"))
+						{
+							_gameRenderer->ReloadShaders(false);
+						}
+						if (ImGui::Button("Reload Shaders (FORCE)"))
+						{
+							_gameRenderer->ReloadShaders(true);
+						}
+
+						ImGui::EndMenu();
+					}
+
+					{
+						char textBuffer[64];
+						StringUtils::FormatString(textBuffer, 64, "Fps : %.1f", 1.f / deltaTime);
+						ImVec2 fpsTextSize = ImGui::CalcTextSize(textBuffer);
+
+						StringUtils::FormatString(textBuffer, 64, "Ms  : %.2f", deltaTime * 1000);
+						ImVec2 msTextSize = ImGui::CalcTextSize(textBuffer);
+
+						f32 textPadding = 10.0f;
+						f32 textOffset = (contentRegionAvailable.x - fpsTextSize.x - msTextSize.x) - textPadding;
+
+						ImGui::SameLine(textOffset);
+						ImGui::Text("Ms  : %.2f", deltaTime * 1000);
+						ImGui::Text("Fps : %.1f", 1.f / deltaTime);
+					}
+
+					ImGui::EndMainMenuBar();
 				}
-				ImGui::End();
 			}
 
 			if (!Render(deltaTime))

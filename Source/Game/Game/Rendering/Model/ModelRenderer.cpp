@@ -12,8 +12,14 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer) : _renderer(renderer)
 
 void ModelRenderer::CreatePermanentResources()
 {
-	_vertices.SetDebugName("ModelVertices");
-	_vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+	_vertexPositions.SetDebugName("ModelVertexPositions");
+	_vertexPositions.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+	_vertexNormals.SetDebugName("ModelVertexNormals");
+	_vertexNormals.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+	_vertexUVs.SetDebugName("ModelVertexUVs");
+	_vertexUVs.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
 	_indices.SetDebugName("ModelIndices");
 	_indices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
@@ -42,14 +48,32 @@ void ModelRenderer::CreatePermanentResources()
 
 void ModelRenderer::AddModel(const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer)
 {
-	_vertices.WriteLock([&](std::vector<ModelRenderer::Vertex>& vertices)
+	// Vertex Data
 	{
-		size_t verticesBeforeAdd = vertices.size();
+		SafeVectorScopedWriteLock vertexPositionsLock(_vertexPositions);
+		SafeVectorScopedWriteLock vertexNormalsLock(_vertexNormals);
+		SafeVectorScopedWriteLock vertexUVsLock(_vertexUVs);
+
+		std::vector<vec4>& vertexPositions = vertexPositionsLock.Get();
+		std::vector<vec4>& vertexNormals = vertexNormalsLock.Get();
+		std::vector<vec2>& vertexUVs = vertexUVsLock.Get();
+
+		size_t verticesBeforeAdd = vertexPositions.size();
 		size_t verticesToAdd = modelToLoad.vertices.numElements;
 
-		vertices.resize(verticesBeforeAdd + verticesToAdd);
-		memcpy(&vertices[verticesBeforeAdd], &buffer->GetDataPointer()[modelToLoad.vertices.bufferOffset], verticesToAdd * sizeof(ModelRenderer::Vertex));
-	});
+		vertexPositions.resize(verticesBeforeAdd + verticesToAdd);
+		vertexNormals.resize(verticesBeforeAdd + verticesToAdd);
+		vertexUVs.resize(verticesBeforeAdd + verticesToAdd);
+
+		for (u32 i = 0; i < verticesToAdd; i++)
+		{
+			const Model::Vertex* vertex = reinterpret_cast<Model::Vertex*>(&buffer->GetDataPointer()[modelToLoad.vertices.bufferOffset] + (i * sizeof(Model::Vertex)));
+
+			vertexPositions[verticesBeforeAdd + i] = vec4(vertex->position, 1.0f);
+			vertexNormals[verticesBeforeAdd + i] = vec4(vertex->normal, 1.0f);
+			vertexUVs[verticesBeforeAdd + i] = vertex->uv;
+		}
+	}
 
 	_indices.WriteLock([&](std::vector<u32>& indices)
 	{
@@ -92,9 +116,6 @@ void ModelRenderer::AddModel(const Model::Header& modelToLoad, std::shared_ptr<B
 
 			meshletsAdded += meshChunkPointer->numElements;
 		}
-
-
-		//memcpy(&meshlets[meshletsBeforeAdd], &buffer->GetDataPointer()[meshChunkPointer->bufferOffset], meshletsToAdd * sizeof(ModelRenderer::Meshlet));
 	});
 
 	_instanceData.WriteLock([&](std::vector<InstanceData>& instanceDatas)
@@ -120,9 +141,19 @@ void ModelRenderer::SyncBuffers()
 		_cullDescriptorSet.Bind("_culledIndices", _culledIndexBuffer);
 	}
 
-	if (_vertices.SyncToGPU(_renderer))
+	if (_vertexPositions.SyncToGPU(_renderer))
 	{
-		_drawDescriptorSet.Bind("_vertices", _vertices.GetBuffer());
+		_drawDescriptorSet.Bind("_vertexPositions", _vertexPositions.GetBuffer());
+	}
+
+	if (_vertexNormals.SyncToGPU(_renderer))
+	{
+		_drawDescriptorSet.Bind("_vertexNormals", _vertexNormals.GetBuffer());
+	}
+
+	if (_vertexUVs.SyncToGPU(_renderer))
+	{
+		_drawDescriptorSet.Bind("_vertexUVs", _vertexUVs.GetBuffer());
 	}
 
 	if (_meshlets.SyncToGPU(_renderer))

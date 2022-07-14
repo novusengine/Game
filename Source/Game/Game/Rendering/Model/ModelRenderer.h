@@ -31,18 +31,10 @@ public:
     struct InstanceData
     {
     public:
-        u32 meshletOffset;
-        u32 meshletCount;
-        u32 indexOffset;
-        u32 padding;
-    };
-
-    struct Vertex
-    {
-    public:
-        vec3 position;
-        vec3 normal;
-        vec2 uv;
+        u32 meshletOffset = 0;
+        u32 meshletCount = 0;
+        u32 indexOffset = 0;
+        u32 padding = 0;
     };
 
     struct Meshlet
@@ -75,7 +67,9 @@ private:
     Renderer::DescriptorSet _cullDescriptorSet;
     Renderer::DescriptorSet _drawDescriptorSet;
 
-    Renderer::GPUVector<Vertex> _vertices;
+    Renderer::GPUVector<vec4> _vertexPositions;
+    Renderer::GPUVector<vec4> _vertexNormals;
+    Renderer::GPUVector<vec2> _vertexUVs;
     Renderer::GPUVector<u32> _indices;
     Renderer::GPUVector<Meshlet> _meshlets;
     Renderer::GPUVector<InstanceData> _instanceData;

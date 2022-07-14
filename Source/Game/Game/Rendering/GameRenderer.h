@@ -26,6 +26,8 @@ public:
 	void UpdateRenderers(f32 deltaTime);
 	void Render();
 
+	void ReloadShaders(bool forceRecompileAll);
+
 	InputManager* GetInputManager() { return _inputManager; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
 

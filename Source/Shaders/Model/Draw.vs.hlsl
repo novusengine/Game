@@ -1,13 +1,8 @@
 #include "globalData.inc.hlsl"
 
-struct Vertex
-{
-    float3 position;
-    float3 normal;
-    float2 uv;
-};
-
-[[vk::binding(0, PER_DRAW)]] StructuredBuffer<Vertex> _vertices;
+[[vk::binding(0, PER_DRAW)]] StructuredBuffer<float4> _vertexPositions;
+[[vk::binding(1, PER_DRAW)]] StructuredBuffer<float4> _vertexNormals;
+[[vk::binding(2, PER_DRAW)]] StructuredBuffer<float2> _vertexUVs;
 
 struct VSInput
 {
@@ -23,12 +18,10 @@ struct VSOutput
 
 VSOutput main(VSInput input)
 {
-    Vertex vertex = _vertices[input.vertexID];
-    
     VSOutput output;
-    output.position = mul(float4(vertex.position, 1.0f), _cameras[0].worldToClip);
-    output.normal = vertex.normal;
-    output.uv = vertex.uv;
+    output.position = mul(float4(_vertexPositions[input.vertexID].xyz, 1.0f), _cameras[0].worldToClip);
+    output.normal = _vertexNormals[input.vertexID].xyz;
+    output.uv = _vertexUVs[input.vertexID];
     
     return output;
 }
