@@ -193,7 +193,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
 
         f32 aspectRatioWH = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
 
-        camera.viewToClip = glm::perspective(glm::radians(75.0f), aspectRatioWH, 1000.0f, 0.5f);
+        camera.viewToClip = glm::perspective(glm::radians(75.0f), aspectRatioWH, 1000.0f, 0.01f);
         camera.worldToClip = camera.viewToClip * camera.worldToView;
 
         // Update camera vectors

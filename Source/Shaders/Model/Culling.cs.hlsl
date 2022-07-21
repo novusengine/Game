@@ -1,22 +1,11 @@
+#include "Model/Shared.inc.hlsl"
+
 struct Constants
 {
-    uint numModels;
+    uint numMeshletsTotal;
+    uint numMeshletsPerThread;
 };
 [[vk::push_constant]] Constants _constants;
-
-struct Meshlet
-{
-    uint indexStart;
-    uint indexCount;
-};
-
-struct InstanceData
-{
-    uint meshletOffset;
-    uint meshletCount;
-    uint indexOffset;
-    uint padding;
-};
 
 [[vk::binding(0, PER_DRAW)]] StructuredBuffer<uint> _indices;
 [[vk::binding(1, PER_DRAW)]] StructuredBuffer<Meshlet> _meshlets;
@@ -30,23 +19,22 @@ struct CSInput
     int3 dispatchThreadID : SV_DispatchThreadID;
 };
 
-[numthreads(32, 1, 1)]
+[numthreads(64, 1, 1)]
 void main(CSInput input)
 {
-    if (input.dispatchThreadID.x >= _constants.numModels)
+    uint baseMeshletOffset = input.dispatchThreadID.x * _constants.numMeshletsPerThread;
+    if (baseMeshletOffset >= _constants.numMeshletsTotal)
         return;
-
-    InstanceData instanceData = _instanceDatas[input.dispatchThreadID.x];
     
-    // Do Per Instance Culling Here
-    { }
-    
-    for (uint i = 0; i < instanceData.meshletCount; i++)
+    uint meshletOffsetRangeEnd = min(baseMeshletOffset + _constants.numMeshletsPerThread, _constants.numMeshletsTotal - 1);
+    for (uint i = baseMeshletOffset; i < meshletOffsetRangeEnd; i++)
     {
-        Meshlet meshlet = _meshlets[instanceData.meshletOffset + i];
+        Meshlet meshlet = _meshlets[i];
+        InstanceData instanceData = _instanceDatas[meshlet.instanceDataID];
         
         // Do Per Meshlet Culling Here
-        { }
+        {
+        }
         
         uint offset;
         _arguments.InterlockedAdd(0, meshlet.indexCount, offset);
@@ -55,7 +43,8 @@ void main(CSInput input)
         {
             uint meshletGlobalIndex = instanceData.indexOffset + meshlet.indexStart + j;
             
-            _culledIndices[offset + j] = _indices[meshletGlobalIndex];
+            uint packedData = i | (uint(j) << 24);
+            _culledIndices[offset + j] = packedData;
         }
     }
 }

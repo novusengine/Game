@@ -42,12 +42,14 @@ public:
     public:
         u32 indexStart = 0;
         u32 indexCount = 0;
+        u32 instanceDataID = 0;
+        u32 padding = 0;
     };
 
 public:
     ModelRenderer(Renderer::Renderer* renderer);
 
-    void AddModel(const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer);
+    void AddModel(const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer, vec3 position, quat rotation, vec3 scale);
 
     void Update(f32 deltaTime);
 
@@ -73,4 +75,5 @@ private:
     Renderer::GPUVector<u32> _indices;
     Renderer::GPUVector<Meshlet> _meshlets;
     Renderer::GPUVector<InstanceData> _instanceData;
+    Renderer::GPUVector<mat4x4> _instanceMatrices;
 };

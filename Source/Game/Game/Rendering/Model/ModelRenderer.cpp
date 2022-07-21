@@ -30,10 +30,13 @@ void ModelRenderer::CreatePermanentResources()
 	_instanceData.SetDebugName("ModelInstanceData");
 	_instanceData.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
+	_instanceMatrices.SetDebugName("ModelInstanceMatrices");
+	_instanceMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
 	{
 		Renderer::BufferDesc bufferDesc;
 		bufferDesc.name = "IndirectArgumentBuffer";
-		bufferDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER;
+		bufferDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER;
 		bufferDesc.size = sizeof(DrawCall);
 
 		_indirectArgumentBuffer = _renderer->CreateBuffer(_culledIndexBuffer, bufferDesc);
@@ -46,83 +49,102 @@ void ModelRenderer::CreatePermanentResources()
 	}
 }
 
-void ModelRenderer::AddModel(const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer)
+void ModelRenderer::AddModel(const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer, vec3 position, quat rotation, vec3 scale)
 {
-	// Vertex Data
-	{
-		SafeVectorScopedWriteLock vertexPositionsLock(_vertexPositions);
-		SafeVectorScopedWriteLock vertexNormalsLock(_vertexNormals);
-		SafeVectorScopedWriteLock vertexUVsLock(_vertexUVs);
-
-		std::vector<vec4>& vertexPositions = vertexPositionsLock.Get();
-		std::vector<vec4>& vertexNormals = vertexNormalsLock.Get();
-		std::vector<vec2>& vertexUVs = vertexUVsLock.Get();
-
-		size_t verticesBeforeAdd = vertexPositions.size();
-		size_t verticesToAdd = modelToLoad.vertices.numElements;
-
-		vertexPositions.resize(verticesBeforeAdd + verticesToAdd);
-		vertexNormals.resize(verticesBeforeAdd + verticesToAdd);
-		vertexUVs.resize(verticesBeforeAdd + verticesToAdd);
-
-		for (u32 i = 0; i < verticesToAdd; i++)
-		{
-			const Model::Vertex* vertex = reinterpret_cast<Model::Vertex*>(&buffer->GetDataPointer()[modelToLoad.vertices.bufferOffset] + (i * sizeof(Model::Vertex)));
-
-			vertexPositions[verticesBeforeAdd + i] = vec4(vertex->position, 1.0f);
-			vertexNormals[verticesBeforeAdd + i] = vec4(vertex->normal, 1.0f);
-			vertexUVs[verticesBeforeAdd + i] = vertex->uv;
-		}
-	}
-
-	_indices.WriteLock([&](std::vector<u32>& indices)
-	{
-		size_t indicesBeforeAdd = indices.size();
-		size_t indicesToAdd = modelToLoad.indices.numElements;
-
-		indices.resize(indicesBeforeAdd + indicesToAdd);
-		memcpy(&indices[indicesBeforeAdd], &buffer->GetDataPointer()[modelToLoad.indices.bufferOffset], indicesToAdd * sizeof(u32));
-	});
-
-	size_t meshletsBeforeAdd = 0;
-	size_t meshletsToAdd = 0;
-
-	_meshlets.WriteLock([&](std::vector<ModelRenderer::Meshlet>& meshlets)
-	{
-		meshletsBeforeAdd = meshlets.size();
-		meshletsToAdd = 0;
-
-		for (u32 i = 0; i < modelToLoad.meshes.numElements; i++)
-		{
-			ChunkPointer* meshChunkPointer = reinterpret_cast<ChunkPointer*>(&buffer->GetDataPointer()[sizeof(Model::Header) + (i * sizeof(ChunkPointer))]);
-			meshletsToAdd += meshChunkPointer->numElements;
-		}
-
-		meshlets.resize(meshletsBeforeAdd + meshletsToAdd);
-
-		u32 meshletsAdded = 0;
-		for (u32 i = 0; i < modelToLoad.meshes.numElements; i++)
-		{
-			ChunkPointer* meshChunkPointer = reinterpret_cast<ChunkPointer*>(&buffer->GetDataPointer()[sizeof(Model::Header) + (i * sizeof(ChunkPointer))]);
-			
-			for (u32 j = 0; j < meshChunkPointer->numElements; j++)
-			{
-				Model::Meshlet* modelMeshlet = reinterpret_cast<Model::Meshlet*>(&buffer->GetDataPointer()[meshChunkPointer->bufferOffset + (i * sizeof(Model::Meshlet))]);
-				Meshlet& meshlet = meshlets[meshletsBeforeAdd + meshletsAdded + j];
-
-				meshlet.indexStart = modelMeshlet->indexStart;
-				meshlet.indexCount = modelMeshlet->indexCount;
-			}
-
-			meshletsAdded += meshChunkPointer->numElements;
-		}
-	});
-
 	_instanceData.WriteLock([&](std::vector<InstanceData>& instanceDatas)
 	{
+		size_t instanceDataID = instanceDatas.size();
+
+		// Vertex Data
+		{
+			SafeVectorScopedWriteLock vertexPositionsLock(_vertexPositions);
+			SafeVectorScopedWriteLock vertexNormalsLock(_vertexNormals);
+			SafeVectorScopedWriteLock vertexUVsLock(_vertexUVs);
+
+			std::vector<vec4>& vertexPositions = vertexPositionsLock.Get();
+			std::vector<vec4>& vertexNormals = vertexNormalsLock.Get();
+			std::vector<vec2>& vertexUVs = vertexUVsLock.Get();
+
+			size_t verticesBeforeAdd = vertexPositions.size();
+			size_t verticesToAdd = modelToLoad.vertices.numElements;
+
+			vertexPositions.resize(verticesBeforeAdd + verticesToAdd);
+			vertexNormals.resize(verticesBeforeAdd + verticesToAdd);
+			vertexUVs.resize(verticesBeforeAdd + verticesToAdd);
+
+			for (u32 i = 0; i < verticesToAdd; i++)
+			{
+				const Model::Vertex* vertex = reinterpret_cast<Model::Vertex*>(&buffer->GetDataPointer()[modelToLoad.vertices.bufferOffset] + (i * sizeof(Model::Vertex)));
+
+				vertexPositions[verticesBeforeAdd + i] = vec4(vertex->position, 1.0f);
+				vertexNormals[verticesBeforeAdd + i] = vec4(vertex->normal, 1.0f);
+				vertexUVs[verticesBeforeAdd + i] = vertex->uv;
+			}
+		}
+
+		_indices.WriteLock([&](std::vector<u32>& indices)
+		{
+			for (u32 x = 0; x < 1; x++)
+			{
+				size_t indicesBeforeAdd = indices.size();
+				size_t indicesToAdd = modelToLoad.indices.numElements;
+
+				indices.resize(indicesBeforeAdd + indicesToAdd);
+				memcpy(&indices[indicesBeforeAdd], &buffer->GetDataPointer()[modelToLoad.indices.bufferOffset], indicesToAdd * sizeof(u32));
+			}
+		});
+
+		size_t meshletsBeforeAdd = 0;
+		size_t meshletsToAdd = 0;
+
+		_meshlets.WriteLock([&](std::vector<ModelRenderer::Meshlet>& meshlets)
+		{
+			meshletsBeforeAdd = meshlets.size();
+			meshletsToAdd = 0;
+
+			for (u32 i = 0; i < modelToLoad.meshes.numElements; i++)
+			{
+				ChunkPointer* meshChunkPointer = reinterpret_cast<ChunkPointer*>(&buffer->GetDataPointer()[sizeof(Model::Header) + (i * sizeof(ChunkPointer))]);
+				meshletsToAdd += meshChunkPointer->numElements;
+			}
+
+			meshlets.resize(meshletsBeforeAdd + meshletsToAdd);
+
+			u32 meshletsAdded = 0;
+			for (u32 i = 0; i < modelToLoad.meshes.numElements; i++)
+			{
+				ChunkPointer* meshChunkPointer = reinterpret_cast<ChunkPointer*>(&buffer->GetDataPointer()[sizeof(Model::Header) + (i * sizeof(ChunkPointer))]);
+
+				for (u32 j = 0; j < meshChunkPointer->numElements; j++)
+				{
+					Model::Meshlet* modelMeshlet = reinterpret_cast<Model::Meshlet*>(&buffer->GetDataPointer()[meshChunkPointer->bufferOffset + (j * sizeof(Model::Meshlet))]);
+					Meshlet& meshlet = meshlets[meshletsBeforeAdd + meshletsAdded + j];
+
+					meshlet.indexStart = modelMeshlet->indexStart;
+					meshlet.indexCount = modelMeshlet->indexCount;
+					meshlet.instanceDataID = instanceDataID;
+				}
+
+				meshletsAdded += meshChunkPointer->numElements;
+			}
+		});
+
 		InstanceData& instanceData = instanceDatas.emplace_back();
 		instanceData.meshletOffset = meshletsBeforeAdd;
 		instanceData.meshletCount = meshletsToAdd;
+		instanceData.indexOffset = 0;
+		instanceData.padding = 0;
+
+		_instanceMatrices.WriteLock([&](std::vector<mat4x4>& instanceMatrices)
+		{
+			mat4x4& matrix = instanceMatrices.emplace_back();
+
+			mat4x4 rotationMatrix = glm::toMat4(rotation);
+			mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
+			matrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+		});
+
+		DebugHandler::PrintSuccess("ModelRenderer : Added Model (Vertices : %u, Indices : %u, Meshes : %u, Meshlets : %u)", modelToLoad.vertices.numElements, modelToLoad.indices.numElements, modelToLoad.meshes.numElements, meshletsToAdd);
 	});
 }
 
@@ -137,6 +159,7 @@ void ModelRenderer::SyncBuffers()
 
 		_culledIndexBuffer = _renderer->CreateBuffer(_culledIndexBuffer, bufferDesc);
 
+		_drawDescriptorSet.Bind("_indices", _indices.GetBuffer());
 		_cullDescriptorSet.Bind("_indices", _indices.GetBuffer());
 		_cullDescriptorSet.Bind("_culledIndices", _culledIndexBuffer);
 	}
@@ -158,12 +181,20 @@ void ModelRenderer::SyncBuffers()
 
 	if (_meshlets.SyncToGPU(_renderer))
 	{
+		_drawDescriptorSet.Bind("_meshlets", _meshlets.GetBuffer());
 		_cullDescriptorSet.Bind("_meshlets", _meshlets.GetBuffer());
 	}
 
 	if (_instanceData.SyncToGPU(_renderer))
 	{
+		_drawDescriptorSet.Bind("_instanceDatas", _instanceData.GetBuffer());
 		_cullDescriptorSet.Bind("_instanceDatas", _instanceData.GetBuffer());
+	}
+
+	if (_instanceMatrices.SyncToGPU(_renderer))
+	{
+		_drawDescriptorSet.Bind("_instanceMatrices", _instanceMatrices.GetBuffer());
+		_cullDescriptorSet.Bind("_instanceMatrices", _instanceMatrices.GetBuffer());
 	}
 }
 
@@ -174,8 +205,8 @@ void ModelRenderer::Update(f32 deltaTime)
 
 void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-	size_t numInstances = _instanceData.Size();
-	if (numInstances == 0)
+	size_t numMeshlets = _meshlets.Size();
+	if (numMeshlets == 0)
 		return;
 
 	struct Data { };
@@ -198,6 +229,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 			pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
 			commandList.FillBuffer(_indirectArgumentBuffer, 0, 4, 0);
+			//commandList.FillBuffer(_indirectArgumentBuffer, 0, 4, _indices.Size());
 			commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _indirectArgumentBuffer);
 
 			Renderer::ComputePipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
@@ -207,14 +239,17 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 				struct Constants
 				{
-					u32 numInstances;
+					u32 numMeshletsTotal;
+					u32 numMeshletsPerThread;
 				};
 
 				Constants* constants = graphResources.FrameNew<Constants>();
-				constants->numInstances = numInstances;
+				constants->numMeshletsTotal = numMeshlets;
+				constants->numMeshletsPerThread = 32;
 				commandList.PushConstant(constants, 0, sizeof(Constants));
 
-				u32 dispatchCount = Renderer::GetDispatchCount(numInstances, 32);
+				u32 meshletWorkDispatchs = Renderer::GetDispatchCount(constants->numMeshletsTotal, constants->numMeshletsPerThread);
+				u32 dispatchCount = Renderer::GetDispatchCount(meshletWorkDispatchs, 64);
 				commandList.Dispatch(dispatchCount, 1, 1);
 			}
 			commandList.EndPipeline(activePipeline);
@@ -223,8 +258,8 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-	size_t numInstances = _instanceData.Size();
-	if (numInstances == 0)
+	size_t numMeshlets = _meshlets.Size();
+	if (numMeshlets == 0)
 		return;
 
 	struct Data
@@ -267,6 +302,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
 			Renderer::PixelShaderDesc pixelShaderDesc;
 			pixelShaderDesc.path = "Model/Draw.ps.hlsl";
+			pixelShaderDesc.AddPermutationField("WIREFRAME", "0");
 			pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
 			Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
@@ -286,5 +322,30 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 				commandList.DrawIndexedIndirect(_indirectArgumentBuffer, 0, 1);
 			}
 			commandList.EndPipeline(activePipeline);
+
+			// Wireframe
+			{
+				pipelineDesc.states.rasterizerState.fillMode = Renderer::FillMode::WIREFRAME;
+
+				Renderer::PixelShaderDesc pixelShaderDesc;
+				pixelShaderDesc.path = "Model/Draw.ps.hlsl";
+				pixelShaderDesc.AddPermutationField("WIREFRAME", "1");
+				pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+				Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
+
+				commandList.BeginPipeline(activePipeline);
+				{
+					commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+					commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_DRAW, &_drawDescriptorSet, frameIndex);
+
+					commandList.SetIndexBuffer(_culledIndexBuffer, Renderer::IndexFormat::UInt32);
+					commandList.DrawIndexedIndirect(_indirectArgumentBuffer, 0, 1);
+
+					//commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt32);
+					//commandList.DrawIndexed(_indices.Size(), 1, 0, 0, 0);
+				}
+				commandList.EndPipeline(activePipeline);
+			}
 		});
 }

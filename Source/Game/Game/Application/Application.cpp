@@ -11,6 +11,13 @@
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
 
+#include "Game/Rendering/Model/ModelRenderer.h"
+#include <Base/Memory/FileReader.h>
+#include <Base/Memory/Bytebuffer.h>
+#include <FileFormat/Models/Model.h>
+#include <filesystem>
+namespace fs = std::filesystem;
+
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application() 
 {
@@ -93,7 +100,7 @@ void Application::Run()
 					}
 
 					{
-						char textBuffer[64];
+						static char textBuffer[64];
 						StringUtils::FormatString(textBuffer, 64, "Fps : %.1f", 1.f / deltaTime);
 						ImVec2 fpsTextSize = ImGui::CalcTextSize(textBuffer);
 
@@ -134,6 +141,27 @@ bool Application::Init()
 {
 	_gameRenderer = new GameRenderer();
 	ServiceLocator::SetGameRenderer(_gameRenderer);
+
+	/*
+		std::string modelPath = "Models/Dragon_High.model";
+		fs::path absoluteModelPath = fs::absolute(modelPath);
+	
+		std::string modelPathStr = absoluteModelPath.string();
+		std::string modelFileNameStr = absoluteModelPath.filename().string();
+	
+		FileReader reader(modelPathStr, modelFileNameStr);
+		if (reader.Open())
+		{
+			size_t bufferSize = reader.Length();
+	
+			std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+			reader.Read(buffer.get(), bufferSize);
+	
+			Model::Header* header = reinterpret_cast<Model::Header*>(buffer->GetDataPointer());
+	
+			_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(0.0f, 0.0f, 0.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+		}
+	*/
 
 	return true;
 }
