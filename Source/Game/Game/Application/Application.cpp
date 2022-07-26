@@ -3,7 +3,9 @@
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/Timer.h>
+#include <Base/Util/JsonUtils.h>
 #include <Base/Util/DebugHandler.h>
 
 #include <imgui/backends/imgui_impl_vulkan.h>
@@ -17,6 +19,9 @@
 #include <FileFormat/Models/Model.h>
 #include <filesystem>
 namespace fs = std::filesystem;
+
+AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
 
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application() 
@@ -122,12 +127,16 @@ void Application::Run()
 			if (!Render(deltaTime))
 				break;
 
-			constexpr f32 targetFramerate = 240.0f;
-			constexpr f32 targetDelta = 1.0f / targetFramerate;
-
-			for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
+			bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
+			if (limitFrameRate)
 			{
-				std::this_thread::yield();
+				f32 targetFramerate = Math::Max(static_cast<f32>(CVAR_FramerateLimitTarget.Get()), 10.0f);
+				f32 targetDelta = 1.0f / targetFramerate;
+
+				for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
+				{
+					std::this_thread::yield();
+				}
 			}
 
 			FrameMark;
@@ -142,26 +151,45 @@ bool Application::Init()
 	_gameRenderer = new GameRenderer();
 	ServiceLocator::SetGameRenderer(_gameRenderer);
 
-	/*
-		std::string modelPath = "Models/Dragon_High.model";
-		fs::path absoluteModelPath = fs::absolute(modelPath);
-	
-		std::string modelPathStr = absoluteModelPath.string();
-		std::string modelFileNameStr = absoluteModelPath.filename().string();
-	
-		FileReader reader(modelPathStr, modelFileNameStr);
-		if (reader.Open())
+	// Setup CVar Config
+	{
+		std::filesystem::create_directories("Data/configs");
+
+		nlohmann::ordered_json fallback;
+
+		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/configs/CVar.json"))
 		{
-			size_t bufferSize = reader.Length();
-	
-			std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
-			reader.Read(buffer.get(), bufferSize);
-	
-			Model::Header* header = reinterpret_cast<Model::Header*>(buffer->GetDataPointer());
-	
-			_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(0.0f, 0.0f, 0.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+			JsonUtils::LoadJsonIntoCVars(_cvarJson);
+			JsonUtils::LoadCVarsIntoJson(_cvarJson);
+			JsonUtils::SaveToPath(_cvarJson, "Data/configs/CVar.json");
 		}
-	*/
+	}
+	
+	//std::string modelPath = "Models/BeetleWarrior_Low.model";
+	//fs::path absoluteModelPath = fs::absolute(modelPath);
+	//
+	//std::string modelPathStr = absoluteModelPath.string();
+	//std::string modelFileNameStr = absoluteModelPath.filename().string();
+	//
+	//FileReader reader(modelPathStr, modelFileNameStr);
+	//if (reader.Open())
+	//{
+	//	size_t bufferSize = reader.Length();
+	//
+	//	std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+	//	reader.Read(buffer.get(), bufferSize);
+	//
+	//	Model::Header* header = reinterpret_cast<Model::Header*>(buffer->GetDataPointer());
+	//
+	//	for (u32 x = 0; x < 10; x++)
+	//	{
+	//		for (u32 y = 0; y < 10; y++)
+	//		{
+	//			_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(x * 25.0f, 0.0f, y * 25.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+	//		}
+	//	}
+	//	//_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(15.0f, 0.0f, 0.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+	//}
 
 	return true;
 }
@@ -210,6 +238,14 @@ bool Application::Tick(f32 deltaTime)
 	}
 
 	_gameRenderer->UpdateRenderers(deltaTime);
+
+	if (CVarSystem::Get()->IsDirty())
+	{
+		JsonUtils::LoadCVarsIntoJson(_cvarJson);
+		JsonUtils::SaveToPath(_cvarJson, "Data/configs/CVar.json");
+
+		CVarSystem::Get()->ClearDirty();
+	}
 
 	return true;
 }

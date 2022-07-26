@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 i32 main()
 {
-	std::string modelName = "Dragon_High.obj";
+	std::string modelName = "BeetleWarrior_Low.obj";
 
 	fs::path currentPath = fs::current_path();
 	fs::path modelPath = currentPath / "Models/" / modelName;

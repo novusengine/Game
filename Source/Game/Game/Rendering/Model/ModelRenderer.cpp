@@ -1,9 +1,12 @@
 #include "ModelRenderer.h"
 #include "Game/Rendering/RenderResources.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/Bytebuffer.h>
 
 #include <Renderer/RenderGraph.h>
+
+AutoCVar_Int CVAR_ModelRendererWireFrameMode("modelRenderer.wireFrameMode", "enable wireframe for models", 0, CVarFlags::EditCheckbox);
 
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer) : _renderer(renderer)
 {
@@ -323,27 +326,25 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 			}
 			commandList.EndPipeline(activePipeline);
 
-			// Wireframe
+			bool enableWireFrameMode = CVAR_ModelRendererWireFrameMode.Get() == 1;
+			if (enableWireFrameMode)
 			{
 				pipelineDesc.states.rasterizerState.fillMode = Renderer::FillMode::WIREFRAME;
-
+			
 				Renderer::PixelShaderDesc pixelShaderDesc;
 				pixelShaderDesc.path = "Model/Draw.ps.hlsl";
 				pixelShaderDesc.AddPermutationField("WIREFRAME", "1");
 				pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
+			
 				Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
-
+			
 				commandList.BeginPipeline(activePipeline);
 				{
 					commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
 					commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_DRAW, &_drawDescriptorSet, frameIndex);
-
+			
 					commandList.SetIndexBuffer(_culledIndexBuffer, Renderer::IndexFormat::UInt32);
 					commandList.DrawIndexedIndirect(_indirectArgumentBuffer, 0, 1);
-
-					//commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt32);
-					//commandList.DrawIndexed(_indices.Size(), 1, 0, 0, 0);
 				}
 				commandList.EndPipeline(activePipeline);
 			}

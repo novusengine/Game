@@ -3,6 +3,8 @@
 
 #include <Base/Container/ConcurrentQueue.h>
 
+#include <json/json.hpp>
+
 class GameRenderer;
 class Application
 {
@@ -28,6 +30,7 @@ private:
 	bool _isRunning = false;
 
 	GameRenderer* _gameRenderer = nullptr;
+	nlohmann::json _cvarJson;
 
 	moodycamel::ConcurrentQueue<MessageInbound> _messagesInbound;
 	moodycamel::ConcurrentQueue<MessageOutbound> _messagesOutbound;
