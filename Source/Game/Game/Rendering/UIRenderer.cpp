@@ -11,7 +11,7 @@
 #include <Renderer/Descriptors/SamplerDesc.h>
 
 #include <tracy/Tracy.hpp>
-#include <tracy/TracyVulkan.hpp>
+//#include <tracy/TracyVulkan.hpp>
 
 UIRenderer::UIRenderer(Renderer::Renderer* renderer) : _renderer(renderer)
 {

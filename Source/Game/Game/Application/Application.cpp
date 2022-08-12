@@ -148,9 +148,6 @@ void Application::Run()
 
 bool Application::Init()
 {
-	_gameRenderer = new GameRenderer();
-	ServiceLocator::SetGameRenderer(_gameRenderer);
-
 	// Setup CVar Config
 	{
 		std::filesystem::create_directories("Data/configs");
@@ -164,6 +161,8 @@ bool Application::Init()
 			JsonUtils::SaveToPath(_cvarJson, "Data/configs/CVar.json");
 		}
 	}
+
+	_gameRenderer = new GameRenderer();
 	
 	//std::string modelPath = "Models/BeetleWarrior_Low.model";
 	//fs::path absoluteModelPath = fs::absolute(modelPath);

@@ -1,17 +1,203 @@
 #include "TerrainUtils.h"
 
-void Chunk::Meshify(f32 target)
+#include <Base/Util/Timer.h>
+
+#include <meshoptimizer.h>
+
+Chunk::Chunk(const ivec3& chunk3DIndex)
+    : _chunk3DIndex(chunk3DIndex)
 {
+    
+}
+
+void Chunk::Meshify(f32 target, SafeVector<vec4>& safeVertexPositions, SafeVector<vec4>& safeVertexNormals, SafeVector<u32>& safeIndices, SafeVector<Meshlet>& safeMeshlets, SafeVector<uvec2>& safeVertexMaterials, SafeVector<ChunkData>& safeChunkDatas, size_t numMaterials)
+{
+    ZoneScoped;
+
+    Timer timer;
+
+    std::vector<vec4> unindexedVertexPositions;
+    unindexedVertexPositions.reserve(TerrainUtils::TERRAIN_CHUNK_NUM_TOTAL_VOXELS * 3 * 5);
+
+    std::vector<uvec2> unindexedVertexMaterials;
+    unindexedVertexMaterials.reserve(TerrainUtils::TERRAIN_CHUNK_NUM_TOTAL_VOXELS * 3 * 5);
+
 	for (i32 x = 0; x < TerrainUtils::TERRAIN_CHUNK_NUM_VOXELS_X; x++)
 	{
 		for (i32 y = 0; y < TerrainUtils::TERRAIN_CHUNK_NUM_VOXELS_Y; y++)
 		{
 			for (i32 z = 0; z < TerrainUtils::TERRAIN_CHUNK_NUM_VOXELS_Z; z++)
 			{
-				MarchingCubes(x, y, z, target);
+				MarchingCubes(x, y, z, target, unindexedVertexPositions, unindexedVertexMaterials, numMaterials);
 			}
 		}
 	}
+
+    f32 time = timer.GetDeltaTime();
+    DebugHandler::Print("Marching cubes: %fs", time);
+    timer.Tick();
+
+    if (unindexedVertexPositions.size() == 0)
+    {
+        DebugHandler::PrintFatal("Generated chunk mesh had no vertices");
+    }
+
+    // First we generate an indexbuffer from the vertices
+    meshopt_Stream streams[] = {
+        { unindexedVertexPositions.data(), sizeof(vec4), sizeof(vec4) },
+        { unindexedVertexMaterials.data(), sizeof(uvec2), sizeof(uvec2) }
+    };
+
+    size_t streamCount = sizeof(streams) / sizeof(streams[0]);
+    size_t totalVertices = unindexedVertexPositions.size();
+    std::vector<u32> remap(totalVertices); // Allocate temporary memory for the remap table
+    size_t uniqueVertices = meshopt_generateVertexRemapMulti(remap.data(), NULL, totalVertices, totalVertices, streams, streamCount);
+
+    std::vector<u32> generatedIndices(totalVertices);
+    meshopt_remapIndexBuffer<u32>(generatedIndices.data(), NULL, totalVertices, &remap[0]);
+
+    meshopt_remapVertexBuffer(unindexedVertexPositions.data(), streams[0].data, totalVertices, sizeof(vec4), &remap[0]);
+    unindexedVertexPositions.resize(uniqueVertices);
+    meshopt_remapVertexBuffer(unindexedVertexMaterials.data(), streams[1].data, totalVertices, sizeof(uvec2), &remap[0]);
+    unindexedVertexMaterials.resize(uniqueVertices);
+
+    // Reorder triangles to maximize the locality of reused vertex references
+    meshopt_optimizeVertexCache(generatedIndices.data(), generatedIndices.data(), totalVertices, uniqueVertices);
+
+    // Reorder triangles to minimize overdraw from all directions
+    meshopt_optimizeOverdraw(generatedIndices.data(), generatedIndices.data(), totalVertices, &unindexedVertexPositions[0].x, uniqueVertices, sizeof(vec4), 1.05f);
+
+    // Generate smooth normals
+    std::vector<vec3> normals(uniqueVertices);
+
+    for (u32 i = 0; i < uniqueVertices; i++)
+    {
+        normals[i] = vec3(0.0f, 0.0f, 0.0f);
+    }
+
+    u32 numTriangles = static_cast<u32>(generatedIndices.size()) / 3;
+    for (u32 i = 0; i < numTriangles; i++)
+    {
+        u32 triangleOffset = i * 3;
+
+        u32 a = generatedIndices[triangleOffset + 0];
+        u32 b = generatedIndices[triangleOffset + 1];
+        u32 c = generatedIndices[triangleOffset + 2];
+
+        if (a == b || a == c || b == c)
+            continue;
+
+        vec3 posA = unindexedVertexPositions[a];
+        vec3 posB = unindexedVertexPositions[b];
+        vec3 posC = unindexedVertexPositions[c];
+
+        vec3 normal = glm::normalize(glm::cross( posC - posA, posB - posA));
+
+        normals[a] += normal;
+        normals[b] += normal;
+        normals[c] += normal;
+    }
+
+    for (u32 i = 0; i < uniqueVertices; i++)
+    {
+        normals[i] = glm::normalize(normals[i]);
+    }
+
+    // Generate meshlets
+    const size_t maxVertices = 64;
+    const size_t maxTriangles = 124;
+    const float coneWeight = 0.5f;
+
+    size_t maxMeshlets = meshopt_buildMeshletsBound(generatedIndices.size(), maxVertices, maxTriangles);
+    std::vector<meshopt_Meshlet> newMeshlets(maxMeshlets);
+    std::vector<u32> meshletVertices(maxMeshlets * maxVertices);
+    std::vector<u8> meshletIndices(maxMeshlets * maxTriangles * 3);
+
+    size_t meshletCount = meshopt_buildMeshlets(newMeshlets.data(), meshletVertices.data(), meshletIndices.data(), generatedIndices.data(),
+        generatedIndices.size(), &unindexedVertexPositions[0].x, unindexedVertexPositions.size(), sizeof(vec4), maxVertices, maxTriangles, coneWeight);
+
+    if (meshletCount > 0)
+    {
+        newMeshlets.resize(meshletCount);
+
+        const meshopt_Meshlet& last = newMeshlets.back();
+        meshletVertices.resize(last.vertex_offset + last.vertex_count);
+        meshletIndices.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
+
+        // Handle vertices
+        size_t numVerticesBeforeAdd = 0;
+        size_t numVerticesToAdd = 0;
+        {
+            SafeVectorScopedWriteLock vertexPositionsLock(safeVertexPositions);
+            std::vector<vec4>& vertexPositions = vertexPositionsLock.Get();
+
+            SafeVectorScopedWriteLock vertexMaterialsLock(safeVertexMaterials);
+            std::vector<uvec2>& vertexMaterials = vertexMaterialsLock.Get();
+
+            SafeVectorScopedWriteLock vertexNormalsLock(safeVertexNormals);
+            std::vector<vec4>& vertexNormals = vertexNormalsLock.Get();
+
+            numVerticesBeforeAdd = vertexPositions.size();
+            numVerticesToAdd = meshletVertices.size();
+
+            vertexPositions.resize(numVerticesBeforeAdd + numVerticesToAdd);
+            vertexMaterials.resize(numVerticesBeforeAdd + numVerticesToAdd);
+            vertexNormals.resize(numVerticesBeforeAdd + numVerticesToAdd);
+
+            for (u32 i = 0; i < numVerticesToAdd; i++)
+            {
+                u32 index = meshletVertices[i];
+
+                vertexPositions[numVerticesBeforeAdd + i] = unindexedVertexPositions[index];
+                vertexMaterials[numVerticesBeforeAdd + i] = unindexedVertexMaterials[index];
+                vertexNormals[numVerticesBeforeAdd + i] = vec4(normals[index], 1.0f);
+            }
+        }
+
+        // Handle meshlets
+        {
+            SafeVectorScopedWriteLock chunkDatasLock(safeChunkDatas);
+            std::vector<ChunkData>& chunkDatas = chunkDatasLock.Get();
+
+            SafeVectorScopedWriteLock meshletsLock(safeMeshlets);
+            std::vector<Meshlet>& meshlets = meshletsLock.Get();
+
+            SafeVectorScopedWriteLock indicesLock(safeIndices);
+            std::vector<u32>& indices = indicesLock.Get();
+
+            size_t numMeshletsBeforeAdd = meshlets.size();
+            meshlets.resize(numMeshletsBeforeAdd + meshletCount);
+
+            size_t numIndicesBeforeAdd = indices.size();
+            size_t numIndicesToAdd = meshletIndices.size();
+            indices.resize(numIndicesBeforeAdd + numIndicesToAdd);
+
+            ChunkData& chunkData = chunkDatas.emplace_back();
+            chunkData.meshletOffset = static_cast<u32>(numMeshletsBeforeAdd);
+            chunkData.meshletCount = static_cast<u32>(meshletCount);
+            chunkData.indexOffset = static_cast<u32>(numIndicesBeforeAdd);
+            chunkData.vertexOffset = static_cast<u32>(numVerticesBeforeAdd);
+
+            for (u32 i = 0; i < meshletCount; i++)
+            {
+                const meshopt_Meshlet& newMeshlet = newMeshlets[i];
+                Meshlet& meshlet = meshlets[numMeshletsBeforeAdd + i];
+
+                meshlet.indexStart = newMeshlet.triangle_offset;
+                meshlet.indexCount = newMeshlet.triangle_count * 3;
+
+                // Handle Indices
+                for (u32 j = 0; j < meshlet.indexCount; j++)
+                {
+                    u32 index = newMeshlet.vertex_offset + meshletIndices[newMeshlet.triangle_offset + j];
+                    indices[numIndicesBeforeAdd + meshlet.indexStart + j] = index;
+                }
+            }
+        }
+    }
+
+    time = timer.GetDeltaTime();
+    DebugHandler::Print("Meshoptimizer: %fs", time);
 }
 
 const i32 EDGE_FLAGS[256] =
@@ -331,24 +517,91 @@ static vec3 VERTEX_OFFSETS[8] =
 	vec3(0, 0, 1), vec3(1, 0, 1), vec3(1, 1, 1), vec3(0, 1, 1)
 };
 
-void Chunk::MarchingCubes(i32 x, i32 y, i32 z, f32 target)
+struct Material
 {
-	if (x >= WIDTH - 1 - BORDER)
+    u8 ID = 0;
+    u32 usageCount = 0;
+    vec3 pos[8];
+};
+
+u32 CalculatePackedBlending(const vec3& position, Material* usedMaterials, size_t numMaterialsToUse)
+{
+    f32 closestDistance = std::numeric_limits<f32>::infinity();
+    u8 closestMaterialIndex = 0;
+    for (size_t j = 0; j < numMaterialsToUse; j++)
+    {
+        for (u32 k = 0; k < usedMaterials[j].usageCount; k++)
+        {
+            vec3& materialPos = usedMaterials[j].pos[k];
+            f32 distance = glm::distance(materialPos, position);
+
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                closestMaterialIndex = static_cast<u8>(j);
+            }
+        }
+    }
+
+    u32 packedBlending = 0;
+    packedBlending |= 255 << (8 * closestMaterialIndex);
+    return packedBlending;
+}
+
+void Chunk::MarchingCubes(i32 x, i32 y, i32 z, f32 target, std::vector<vec4>& vertexPositions, std::vector<uvec2>& vertexMaterials, size_t numMaterials)
+{
+    ZoneScoped;
+
+    i32 minBorder = Math::Max(i32(BORDER) - 1, 0);
+
+	if (x < minBorder || x >= WIDTH - 1 - BORDER)
 		return;
-	if (y >= HEIGHT - 1 - BORDER)
+    if (y < minBorder || y >= HEIGHT - 1 - BORDER)
 		return;
-	if (z >= DEPTH - 1 - BORDER)
+    if (z < minBorder || z >= DEPTH - 1 - BORDER)
 		return;
 
-	vec3 pos = vec3(x, y, z);
-	vec3 normal = glm::normalize(GetNormal(x, y, z));
-	vec3 center = vec3(WIDTH, 0, DEPTH) / 2.0f;
+    vec3 terrainChunkSizeWithoutBorder = TerrainUtils::TERRAIN_CHUNK_SIZE - (vec3(TerrainUtils::TERRAIN_VOXEL_BORDER + 1) * TerrainUtils::TERRAIN_VOXEL_SIZE_X);
+
+	vec3 pos = vec3(x, y, z) + (vec3(_chunk3DIndex) * terrainChunkSizeWithoutBorder);
+	vec3 center = vec3(WIDTH, HEIGHT, DEPTH) / 2.0f;
 
 	f32 cube[8];
-	FillCube(x, y, z, cube);
+    u8 materials[8];
+	FillCube(x, y, z, cube, materials);
+
+    std::vector<Material> usedMaterials(numMaterials);
+    for (u32 i = 0; i < numMaterials; i++)
+    {
+        usedMaterials[i].ID = i;
+    }
+
+    for (u32 i = 0; i < 8; i++)
+    {
+        Material& usedMaterial = usedMaterials[materials[i]];
+        usedMaterial.pos[usedMaterial.usageCount] = pos + (VERTEX_OFFSETS[i]);
+        usedMaterial.usageCount++;
+    }
+
+    std::sort(usedMaterials.begin(), usedMaterials.end(), [](const Material& a, const Material& b) -> bool
+    {
+        return a.usageCount > b.usageCount;
+    });
+
+    size_t numMaterialsToUse = std::count_if(usedMaterials.begin(), usedMaterials.end(), [](const Material& a)
+    {
+        return a.usageCount > 0;
+    });
+    numMaterialsToUse = Math::Min(numMaterialsToUse, 4u);
+
+    u32 packedUsedMaterials = 0;
+    for (size_t i = 0; i < numMaterialsToUse; i++)
+    {
+        packedUsedMaterials |= (usedMaterials[i].ID) << (8 * i);
+    }
 
 	i32 flagIndex = 0;
-	vec3 edgeVertex[12];
+	vec3 edgeVertexPos[12];
 
 	// Find which vertices are inside of the surface and which are outside
 	for (u32 i = 0; i < 8; i++)
@@ -372,52 +625,55 @@ void Chunk::MarchingCubes(i32 x, i32 y, i32 z, f32 target)
 		// If there is an intersection on this edge
 		if ((edgeFlags & (1u << i)) != 0)
 		{
-			f32 offset = GetOffset(cube[EDGE_CONNECTIONS[i].x], cube[EDGE_CONNECTIONS[i].y], target);
+            u32 v0 = EDGE_CONNECTIONS[i].x;
+            u32 v1 = EDGE_CONNECTIONS[i].y;
+			f32 offset = GetOffset(cube[v0], cube[v1], target);
 
-			edgeVertex[i] = pos + (VERTEX_OFFSETS[EDGE_CONNECTIONS[i].x] + offset * EDGE_DIRECTIONS[i]);
+            edgeVertexPos[i] = pos + (VERTEX_OFFSETS[v0] + offset * EDGE_DIRECTIONS[i]);
 		}
 	}
 
 	vec3 size = vec3(WIDTH - 1, HEIGHT - 1, DEPTH - 1);
 
+    const i32* table = &TRIANGLE_CONNECTION_TABLE[0][0];
+
 	// Save the triangles that were found. There can be up to five per cube
 	for (u32 i = 0; i < 5; i++)
 	{
 		// If the connection table is not -1 then this is a triangle
-		if (*TRIANGLE_CONNECTION_TABLE[flagIndex * 16 + 3 * i] >= 0)
+		if (table[flagIndex * 16 + 3 * i] >= 0)
 		{
-            vec3 position = edgeVertex[*TRIANGLE_CONNECTION_TABLE[flagIndex * 16 + (3 * i + 0)]];
-            _vertices.PushBack(CreateVertex(position, center, size, normal));
+            {
+                u32 edgeID = table[flagIndex * 16 + (3 * i + 0)];
+                vec3 position = edgeVertexPos[edgeID];
+                vertexPositions.push_back(vec4(CreateVertex(position, center, size), 1.0f));
 
-            position = edgeVertex[*TRIANGLE_CONNECTION_TABLE[flagIndex * 16 + (3 * i + 1)]];
-            _vertices.PushBack(CreateVertex(position, center, size, normal));
+                u32 packedBlending = CalculatePackedBlending(position, usedMaterials.data(), numMaterialsToUse);
+                vertexMaterials.push_back(uvec2(packedUsedMaterials, packedBlending));
+            }
+            
+            {
+                u32 edgeID = table[flagIndex * 16 + (3 * i + 1)];
+                vec3 position = edgeVertexPos[edgeID];
+                vertexPositions.push_back(vec4(CreateVertex(position, center, size), 1.0f));
 
-            position = edgeVertex[*TRIANGLE_CONNECTION_TABLE[flagIndex * 16 + (3 * i + 2)]];
-            _vertices.PushBack(CreateVertex(position, center, size, normal));
-		}
+                u32 packedBlending = CalculatePackedBlending(position, usedMaterials.data(), numMaterialsToUse);
+                vertexMaterials.push_back(uvec2(packedUsedMaterials, packedBlending));
+            }
+
+            {
+                u32 edgeID = table[flagIndex * 16 + (3 * i + 2)];
+                vec3 position = edgeVertexPos[edgeID];
+                vertexPositions.push_back(vec4(CreateVertex(position, center, size), 1.0f));
+                
+                u32 packedBlending = CalculatePackedBlending(position, usedMaterials.data(), numMaterialsToUse);
+                vertexMaterials.push_back(uvec2(packedUsedMaterials, packedBlending));
+            }
+        }
 	}
 }
 
-vec3 Chunk::GetNormal(i32 x, i32 y, i32 z)
-{
-	vec3 normal;
-
-	int xNegID = (x-1) + (y * WIDTH) + (z * WIDTH * HEIGHT);
-	int xPosID = (x+1) + (y * WIDTH) + (z * WIDTH * HEIGHT);
-	normal.x = _voxels[xNegID] - _voxels[xPosID];
-
-	int yNegID = x + ((y-1) * WIDTH) + (z * WIDTH * HEIGHT);
-	int yPosID = x + ((y+1) * WIDTH) + (z * WIDTH * HEIGHT);
-	normal.y = _voxels[yNegID] - _voxels[yPosID];
-
-	int zNegID = x + (y * WIDTH) + ((z-1) * WIDTH * HEIGHT);
-	int zPosID = x + (y * WIDTH) + ((z+1) * WIDTH * HEIGHT);
-	normal.z = _voxels[zNegID] - _voxels[zPosID];
-
-	return normal;
-}
-
-void Chunk::FillCube(i32 x, i32 y, i32 z, f32* cube)
+void Chunk::FillCube(i32 x, i32 y, i32 z, f32* cube, u8* materials)
 {
 	cube[0] = _voxels[x + y * WIDTH + z * WIDTH * HEIGHT];
 	cube[1] = _voxels[(x + 1) + y * WIDTH + z * WIDTH * HEIGHT];
@@ -428,6 +684,16 @@ void Chunk::FillCube(i32 x, i32 y, i32 z, f32* cube)
 	cube[5] = _voxels[(x + 1) + y * WIDTH + (z + 1) * WIDTH * HEIGHT];
 	cube[6] = _voxels[(x + 1) + (y + 1) * WIDTH + (z + 1) * WIDTH * HEIGHT];
 	cube[7] = _voxels[x + (y + 1) * WIDTH + (z + 1) * WIDTH * HEIGHT];
+
+    materials[0] = _voxelMaterials[x + y * WIDTH + z * WIDTH * HEIGHT];
+    materials[1] = _voxelMaterials[(x + 1) + y * WIDTH + z * WIDTH * HEIGHT];
+    materials[2] = _voxelMaterials[(x + 1) + (y + 1) * WIDTH + z * WIDTH * HEIGHT];
+    materials[3] = _voxelMaterials[x + (y + 1) * WIDTH + z * WIDTH * HEIGHT];
+
+    materials[4] = _voxelMaterials[x + y * WIDTH + (z + 1) * WIDTH * HEIGHT];
+    materials[5] = _voxelMaterials[(x + 1) + y * WIDTH + (z + 1) * WIDTH * HEIGHT];
+    materials[6] = _voxelMaterials[(x + 1) + (y + 1) * WIDTH + (z + 1) * WIDTH * HEIGHT];
+    materials[7] = _voxelMaterials[x + (y + 1) * WIDTH + (z + 1) * WIDTH * HEIGHT];
 }
 
 f32 Chunk::GetOffset(f32 v1, f32 v2, f32 target)
@@ -436,11 +702,7 @@ f32 Chunk::GetOffset(f32 v1, f32 v2, f32 target)
 	return (delta == 0.0f) ? 0.5f : (target - v1) / delta;
 }
 
-Chunk::Vertex Chunk::CreateVertex(vec3 position, vec3 center, vec3 size, vec3 normal)
+vec3 Chunk::CreateVertex(vec3 position, vec3 center, vec3 size)
 {
-    Vertex vertex;
-    vertex.position = vec4(position - center, 1.0f);
-    vertex.normal = vec4(normal, 1.0f);
-
-    return vertex;
+    return (position - center);
 }

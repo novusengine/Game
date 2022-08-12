@@ -11,6 +11,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     fileformat::fileformat
     input::input
     renderer::renderer
+    meshoptimizer
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX)

@@ -19,8 +19,6 @@
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
-#include <windows.h> // Get rid of this when we have our input manager :(
-
 void KeyCallback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 modifiers)
 {
     ServiceLocator::GetGameRenderer()->GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
@@ -54,12 +52,17 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
 
 GameRenderer::GameRenderer()
 {
+    ServiceLocator::SetGameRenderer(this);
+
 	_window = new Window();
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
     _inputManager = new InputManager();
     KeybindGroup* keybindGroup = _inputManager->CreateKeybindGroup("Camera", 10);
     keybindGroup->SetActive(true);
+
+    KeybindGroup* debugKeybindGroup = _inputManager->CreateKeybindGroup("Debug", 15);
+    debugKeybindGroup->SetActive(true);
 
     glfwSetKeyCallback(_window->GetWindow(), KeyCallback);
     glfwSetCharCallback(_window->GetWindow(), CharCallback);
@@ -125,9 +128,9 @@ GameRenderer::GameRenderer()
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
 
-    _terrainRenderer = new TerrainRenderer(_renderer);
-    _modelRenderer = new ModelRenderer(_renderer);
+    //_modelRenderer = new ModelRenderer(_renderer);
     _debugRenderer = new DebugRenderer(_renderer);
+    _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
 
     // Set camera position
@@ -229,8 +232,8 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     // Reset the memory in the frameAllocator
     _frameAllocator->Reset();
 
-    //_terrainRenderer->Update(deltaTime);
-    _modelRenderer->Update(deltaTime);
+    _terrainRenderer->Update(deltaTime);
+    //_modelRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
 }
@@ -284,11 +287,11 @@ void GameRenderer::Render()
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
             });
     }
-    //_terrainRenderer->AddTriangularizationPass(&renderGraph, _resources, _frameIndex);
 
-    //_terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    //_modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    //_modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
@@ -336,7 +339,7 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
     sceneColorDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
     sceneColorDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
-    sceneColorDesc.clearColor = Color::Black;
+    sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f);
 
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
 
