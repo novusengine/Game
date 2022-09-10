@@ -1,20 +1,36 @@
 #ifndef MODEL_SHARED_INCLUDED
 #define MODEL_SHARED_INCLUDED
 
-struct Meshlet
+struct ModelData
 {
-    uint indexStart;
-    uint indexCount;
-    uint instanceDataID;
-    uint padding;
+    uint meshletOffset;
+    uint packedData; // 16 bits meshletCount, 16 bits textureID
+    uint indexOffset;
+    uint vertexOffset;
 };
 
 struct InstanceData
 {
-    uint meshletOffset;
-    uint meshletCount;
-    uint indexOffset;
+    uint modelDataID;
     uint padding;
+};
+
+struct SurvivedInstanceData
+{
+    uint instanceDataID;
+    uint numMeshletsBeforeInstance;
+};
+
+struct MeshletData
+{
+    uint indexStart;
+    uint indexCount;
+};
+
+struct MeshletInstance
+{
+    uint meshletDataID;
+    uint instanceDataID;
 };
 
 #define RED_SEED 3

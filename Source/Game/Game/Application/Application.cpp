@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
@@ -12,13 +13,6 @@
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
-
-#include "Game/Rendering/Model/ModelRenderer.h"
-#include <Base/Memory/FileReader.h>
-#include <Base/Memory/Bytebuffer.h>
-#include <FileFormat/Models/Model.h>
-#include <filesystem>
-namespace fs = std::filesystem;
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
@@ -153,7 +147,6 @@ bool Application::Init()
 		std::filesystem::create_directories("Data/configs");
 
 		nlohmann::ordered_json fallback;
-
 		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/configs/CVar.json"))
 		{
 			JsonUtils::LoadJsonIntoCVars(_cvarJson);
@@ -163,32 +156,7 @@ bool Application::Init()
 	}
 
 	_gameRenderer = new GameRenderer();
-	
-	//std::string modelPath = "Models/BeetleWarrior_Low.model";
-	//fs::path absoluteModelPath = fs::absolute(modelPath);
-	//
-	//std::string modelPathStr = absoluteModelPath.string();
-	//std::string modelFileNameStr = absoluteModelPath.filename().string();
-	//
-	//FileReader reader(modelPathStr, modelFileNameStr);
-	//if (reader.Open())
-	//{
-	//	size_t bufferSize = reader.Length();
-	//
-	//	std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
-	//	reader.Read(buffer.get(), bufferSize);
-	//
-	//	Model::Header* header = reinterpret_cast<Model::Header*>(buffer->GetDataPointer());
-	//
-	//	for (u32 x = 0; x < 10; x++)
-	//	{
-	//		for (u32 y = 0; y < 10; y++)
-	//		{
-	//			_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(x * 25.0f, 0.0f, y * 25.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-	//		}
-	//	}
-	//	//_gameRenderer->GetModelRenderer()->AddModel(*header, buffer, vec3(15.0f, 0.0f, 0.0f), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-	//}
+	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());
 
 	return true;
 }

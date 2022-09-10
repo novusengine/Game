@@ -11,6 +11,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     fileformat::fileformat
     input::input
     renderer::renderer
+    scripting::scripting
     meshoptimizer
 )
 

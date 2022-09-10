@@ -6,6 +6,7 @@
 #include <json/json.hpp>
 
 class GameRenderer;
+class ModelLoader;
 class Application
 {
 public:
@@ -30,6 +31,8 @@ private:
 	bool _isRunning = false;
 
 	GameRenderer* _gameRenderer = nullptr;
+	ModelLoader*  _modelLoader = nullptr;
+
 	nlohmann::json _cvarJson;
 
 	moodycamel::ConcurrentQueue<MessageInbound> _messagesInbound;

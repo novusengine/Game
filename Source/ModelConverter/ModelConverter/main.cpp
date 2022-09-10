@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 
 i32 main()
 {
-	std::string modelName = "BeetleWarrior_Low.obj";
+	std::string modelName = "cube.obj";
 
 	fs::path currentPath = fs::current_path();
 	fs::path modelPath = currentPath / "Models/" / modelName;
@@ -150,14 +150,13 @@ i32 main()
 
 						// Handle Indices
 						{
-							for (u32 i = 0; i < modelMeshlet.indexCount; i++)
+							for (u32 j = 0; j < modelMeshlet.indexCount; j++)
 							{
-								model.indices[modelMeshlet.indexStart + i] = numVerticesBefore + meshlet.vertex_offset + meshletIndices[i];
+								model.indices[modelMeshlet.indexStart + j] = numVerticesBefore + meshlet.vertex_offset + meshletIndices[meshlet.triangle_offset + j];
 							}
 						}
 					}
 				}
-
 			}
 		}
 
