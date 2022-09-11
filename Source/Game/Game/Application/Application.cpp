@@ -2,6 +2,8 @@
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Editor/EditorHandler.h"
+#include "Game/ECS/Scheduler.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
@@ -13,6 +15,8 @@
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
+#include <enkiTS/TaskScheduler.h>
+#include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
@@ -21,6 +25,9 @@ Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application() 
 {
 	delete _gameRenderer;
+	delete _editorHandler;
+	delete _ecsScheduler;
+	delete _taskScheduler;
 }
 
 void Application::Start()
@@ -79,7 +86,7 @@ void Application::Run()
 
 			{
 
-				if (ImGui::BeginMainMenuBar())
+				/*if (ImGui::BeginMainMenuBar())
 				{
 					ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
 
@@ -115,8 +122,10 @@ void Application::Run()
 					}
 
 					ImGui::EndMainMenuBar();
-				}
+				}*/
 			}
+
+			_editorHandler->DrawImGuiMenuBar(deltaTime);
 
 			if (!Render(deltaTime))
 				break;
@@ -155,8 +164,20 @@ bool Application::Init()
 		}
 	}
 
+	_taskScheduler = new enki::TaskScheduler();
+	_taskScheduler->Initialize();
+	ServiceLocator::SetTaskScheduler(_taskScheduler);
+
+	_registries.gameRegistry = new entt::registry();
+	ServiceLocator::SetEnttRegistries(&_registries);
+
 	_gameRenderer = new GameRenderer();
+	_editorHandler = new Editor::EditorHandler();
+	ServiceLocator::SetEditorHandler(_editorHandler);
 	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());
+
+	_ecsScheduler = new ECS::Scheduler();
+	_ecsScheduler->Init(*_registries.gameRegistry);
 
 	return true;
 }
@@ -174,6 +195,9 @@ bool Application::Tick(f32 deltaTime)
 		ImGui::NewFrame();
 		ImGuizmo::BeginFrame();
 	}
+
+	_editorHandler->BeginImGui();
+	_editorHandler->BeginEditor();
 
 	MessageInbound message;
 	while (_messagesInbound.try_dequeue(message))
@@ -203,6 +227,10 @@ bool Application::Tick(f32 deltaTime)
 			default: break;
 		}
 	}
+
+	_ecsScheduler->Update(*_registries.gameRegistry, deltaTime);
+
+	_editorHandler->Update(deltaTime);
 
 	_gameRenderer->UpdateRenderers(deltaTime);
 

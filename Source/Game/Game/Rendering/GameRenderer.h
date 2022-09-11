@@ -29,26 +29,23 @@ public:
 	void ReloadShaders(bool forceRecompileAll);
 
 	InputManager* GetInputManager() { return _inputManager; }
+	Renderer::Renderer* GetRenderer() { return _renderer; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
+	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
+
+	RenderResources& GetRenderResources() { return _resources; }
+
+	Window* GetWindow() { return _window; }
 
 private:
 	void CreatePermanentResources();
 
 	void InitImgui();
 
-	void CapturedMouseMoved(vec2 pos);
-
 private:
 	Renderer::Renderer* _renderer = nullptr;
 	Window* _window = nullptr;
 	InputManager* _inputManager = nullptr;
-
-	bool _captureMouse = false;
-	bool _captureMouseHasMoved = false;
-	f32 _mouseSensitivity = 0.05f;
-	f32 _cameraSpeed = 20.0f;
-
-	vec2 _prevMousePosition = vec2(0, 0);
 
 	Memory::StackAllocator* _frameAllocator;
 

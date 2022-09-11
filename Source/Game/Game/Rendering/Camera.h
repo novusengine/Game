@@ -20,21 +20,6 @@ public:
 	mat4x4 worldToClip;
 };
 
-struct CameraComponent // Name is stupid until we ECS
-{
-public:
-	// TODO: Camera mode like static, animated, freeflying, orbital etc
-	vec3 position = vec3(0, 0, 0);
-	f32 pitch = 0.0f;
-	f32 yaw = 0.0f;
-	f32 roll = 0.0f;
-	vec3 forward = vec3(0.0f, 0.0f, 1.0f);
-	vec3 right = vec3(1.0f, 0.0f, 0.0f);
-	vec3 up = vec3(0.0f, 1.0f, 0.0f);
-	
-	u32 cameraIndex = 0;
-};
-
 namespace CameraUtils
 {
 	vec3 ClipToScreen(const Camera& camera, const vec4& clip);

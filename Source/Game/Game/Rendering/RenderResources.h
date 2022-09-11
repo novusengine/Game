@@ -13,8 +13,6 @@ struct RenderResources
 {
 public:
     // Permanent resources
-    CameraComponent cameraComponent; // Name is stupid until we ECS
-
     Renderer::GPUVector<Camera> cameras;
 
     Renderer::ImageID finalColor;

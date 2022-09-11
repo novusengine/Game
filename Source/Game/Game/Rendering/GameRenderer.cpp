@@ -3,7 +3,9 @@
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Model/ModelRenderer.h"
+
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Editor/EditorHandler.h"
 
 #include <Input/InputManager.h>
 #include <Renderer/Renderer.h>
@@ -16,6 +18,7 @@
 #include <imgui/imgui.h>
 #include <imgui/imgui_notify.h>
 #include <imgui/implot.h>
+#include <imgui/imnodes.h>
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
@@ -58,8 +61,7 @@ GameRenderer::GameRenderer()
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
     _inputManager = new InputManager();
-    KeybindGroup* keybindGroup = _inputManager->CreateKeybindGroup("Camera", 10);
-    keybindGroup->SetActive(true);
+    ServiceLocator::SetInputManager(_inputManager);
 
     KeybindGroup* debugKeybindGroup = _inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);
@@ -70,54 +72,6 @@ GameRenderer::GameRenderer()
     glfwSetCursorPosCallback(_window->GetWindow(), CursorPositionCallback);
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
-
-    keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("Backward", GLFW_KEY_S, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_E, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("Downwards", GLFW_KEY_Q, KeybindAction::Press, KeybindModifier::Any, nullptr);
-    keybindGroup->AddKeyboardCallback("ToggleMouseCapture", GLFW_KEY_ESCAPE, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
-    {
-        _captureMouse = !_captureMouse;
-        if (_captureMouse)
-        {
-            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            DebugHandler::Print("Mouse captured!");
-        }
-        else
-        {
-            ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            DebugHandler::Print("Mouse released!");
-        }
-
-        return true;
-    });
-    keybindGroup->AddKeyboardCallback("Right Mouseclick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
-    {
-        if (!_captureMouse)
-        {
-            _captureMouse = true;
-
-            _prevMousePosition = vec2(_inputManager->GetMousePositionX(), _inputManager->GetMousePositionY());
-            glfwSetInputMode(_window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-            DebugHandler::Print("Mouse captured because of mouseclick!");
-        }
-        return true;
-    });
-    keybindGroup->AddMousePositionCallback([this](f32 xPos, f32 yPos)
-    {
-        if (_captureMouse)
-        {
-            CapturedMouseMoved(vec2(xPos, yPos));
-        }
-
-        return _captureMouse;
-    });
 
 	_renderer = new Renderer::RendererVK();
 
@@ -132,10 +86,6 @@ GameRenderer::GameRenderer()
     _debugRenderer = new DebugRenderer(_renderer);
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
-
-    // Set camera position
-    _resources.cameraComponent.position = vec3(0, 10, -10);
-    _resources.cameraComponent.pitch = 30.0f;
 
     CreatePermanentResources();
 }
@@ -152,83 +102,6 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 
 void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
-    // Update camera
-    {
-        KeybindGroup* keybindGroup = _inputManager->GetKeybindGroupByHash("Camera"_h);
-
-        // Input
-        if (keybindGroup->IsKeybindPressed("Forward"_h))
-        {
-            _resources.cameraComponent.position += _resources.cameraComponent.forward * _cameraSpeed * deltaTime;
-        }
-        if (keybindGroup->IsKeybindPressed("Backward"_h))
-        {
-            _resources.cameraComponent.position += -_resources.cameraComponent.forward * _cameraSpeed * deltaTime;
-        }
-        if (keybindGroup->IsKeybindPressed("Left"_h))
-        {
-            _resources.cameraComponent.position += -_resources.cameraComponent.right * _cameraSpeed * deltaTime;
-        }
-        if (keybindGroup->IsKeybindPressed("Right"_h))
-        {
-            _resources.cameraComponent.position += _resources.cameraComponent.right * _cameraSpeed * deltaTime;
-        }
-        if (keybindGroup->IsKeybindPressed("Upwards"_h))
-        {
-            _resources.cameraComponent.position += vec3(0.0f, 1.0f, 0.0f) * _cameraSpeed * deltaTime;
-        }
-        if (keybindGroup->IsKeybindPressed("Downwards"_h))
-        {
-            _resources.cameraComponent.position += vec3(0.0f, -1.0f, 0.0f) * _cameraSpeed * deltaTime;
-        }
-
-        // Compute matrices
-        SafeVectorScopedWriteLock camerasLock(_resources.cameras);
-        std::vector<Camera>& cameras = camerasLock.Get();
-        Camera& camera = cameras[_resources.cameraComponent.cameraIndex];
-        
-        // TODO: Figure the order of this one out
-        quat rotQuat = quat(vec3(glm::radians(_resources.cameraComponent.pitch), glm::radians(_resources.cameraComponent.yaw), glm::radians(_resources.cameraComponent.roll)));
-        mat4x4 rotationMatrix = glm::mat4_cast(rotQuat);
-
-        mat4x4 cameraMatrix = glm::translate(mat4x4(1.0f), _resources.cameraComponent.position) * rotationMatrix;
-        camera.worldToView = glm::inverse(cameraMatrix);
-
-        f32 aspectRatioWH = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
-
-        camera.viewToClip = glm::perspective(glm::radians(75.0f), aspectRatioWH, 1000.0f, 0.01f);
-        camera.worldToClip = camera.viewToClip * camera.worldToView;
-
-        // Update camera vectors
-        _resources.cameraComponent.forward = rotationMatrix[2];
-        _resources.cameraComponent.right = rotationMatrix[0];
-        _resources.cameraComponent.up = rotationMatrix[1];
-
-        _resources.cameras.SetDirtyElement(_resources.cameraComponent.cameraIndex);
-
-        // Print position
-        if (ImGui::Begin("Camera"))
-        {
-            ImGui::Text("Pos: (%.2f, %.2f, %.2f)", _resources.cameraComponent.position.x, _resources.cameraComponent.position.y, _resources.cameraComponent.position.z);
-            
-            ImGui::Separator();
-            
-            ImGui::Text("Pitch: %.2f", _resources.cameraComponent.pitch);
-            ImGui::Text("Yaw: %.2f", _resources.cameraComponent.yaw);
-            ImGui::Text("Roll: %.2f", _resources.cameraComponent.roll);
-
-            vec3 eulerAngles = glm::eulerAngles(rotQuat);
-            ImGui::Text("Euler: (%.2f, %.2f, %.2f)", eulerAngles.x, eulerAngles.y, eulerAngles.z);
-
-            ImGui::Separator();
-
-            ImGui::Text("Forward: (%.2f, %.2f, %.2f)", _resources.cameraComponent.forward.x, _resources.cameraComponent.forward.y, _resources.cameraComponent.forward.z);
-            ImGui::Text("Right: (%.2f, %.2f, %.2f)", _resources.cameraComponent.right.x, _resources.cameraComponent.right.y, _resources.cameraComponent.right.z);
-            ImGui::Text("Up: (%.2f, %.2f, %.2f)", _resources.cameraComponent.up.x, _resources.cameraComponent.up.y, _resources.cameraComponent.up.z);
-        }
-        ImGui::End();
-    }
-
     // Reset the memory in the frameAllocator
     _frameAllocator->Reset();
 
@@ -256,6 +129,10 @@ void GameRenderer::Render()
 
     _renderer->FlipFrame(_frameIndex);
 
+    Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
+    editorHandler->DrawImGui();
+    editorHandler->EndEditor();
+    editorHandler->EndImGui();
     ImGui::Render();
 
     // StartFrame Pass
@@ -376,6 +253,7 @@ void GameRenderer::CreatePermanentResources()
 void GameRenderer::InitImgui()
 {
     ImGui::CreateContext();
+    ImNodes::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
@@ -449,26 +327,4 @@ void GameRenderer::InitImgui()
     ImGui_ImplGlfw_InitForVulkan(_window->GetWindow(), true);
 
     _renderer->InitImgui();
-}
-
-void GameRenderer::CapturedMouseMoved(vec2 pos)
-{
-    if (_captureMouseHasMoved)
-    {
-        vec2 deltaPosition = _prevMousePosition - pos;
-
-        
-        _resources.cameraComponent.yaw += -deltaPosition.x * _mouseSensitivity;
-
-        if (_resources.cameraComponent.yaw > 360)
-            _resources.cameraComponent.yaw -= 360;
-        else if (_resources.cameraComponent.yaw < 0)
-            _resources.cameraComponent.yaw += 360;
-
-        _resources.cameraComponent.pitch = Math::Clamp(_resources.cameraComponent.pitch - (deltaPosition.y * _mouseSensitivity), -89.0f, 89.0f);
-    }
-    else
-        _captureMouseHasMoved = true;
-
-    _prevMousePosition = pos;
 }
