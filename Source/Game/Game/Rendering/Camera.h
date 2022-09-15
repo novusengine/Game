@@ -18,6 +18,11 @@ public:
 
 	mat4x4 worldToView;
 	mat4x4 worldToClip;
+
+	vec4 eyePosition;
+	vec4 eyeRotation;
+
+	vec4 nearFar;
 };
 
 namespace CameraUtils

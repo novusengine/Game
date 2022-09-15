@@ -34,7 +34,7 @@ namespace ECS::Systems
             if (camera.dirtyPerspective || camera.dirtyView)
             {
                 camera.worldToClip = camera.viewToClip * camera.worldToView;
-                camera.clipToView = glm::inverse(camera.worldToClip);
+                camera.clipToWorld = glm::inverse(camera.worldToView) * glm::inverse(camera.viewToClip);
 
                 // Update the GPU binding
                 SafeVectorScopedWriteLock gpuCamerasLock(renderResources.cameras);
@@ -49,6 +49,12 @@ namespace ECS::Systems
 
                 gpuCamera.worldToView = camera.worldToView;
                 gpuCamera.worldToClip = camera.worldToClip;
+
+                gpuCamera.eyePosition = vec4(transform.position, 0.0f);
+                gpuCamera.eyeRotation = vec4(0.0f, camera.pitch, camera.yaw, 0.0f);
+
+                gpuCamera.nearFar = vec4(camera.nearClip, camera.farClip, 0.0f, 0.0f);
+
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);
             }
 

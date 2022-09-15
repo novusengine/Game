@@ -3,6 +3,8 @@
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Model/ModelRenderer.h"
+#include "Skybox/SkyboxRenderer.h"
+#include "Editor/EditorRenderer.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Editor/EditorHandler.h"
@@ -82,9 +84,12 @@ GameRenderer::GameRenderer()
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
 
-    //_modelRenderer = new ModelRenderer(_renderer);
+    
     _debugRenderer = new DebugRenderer(_renderer);
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
+    //_modelRenderer = new ModelRenderer(_renderer);
+    _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
+    _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
 
     CreatePermanentResources();
@@ -107,7 +112,9 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
 
     _terrainRenderer->Update(deltaTime);
     //_modelRenderer->Update(deltaTime);
+    _skyboxRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
+    _editorRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
 }
 
@@ -169,9 +176,11 @@ void GameRenderer::Render()
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
     //_modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     //_modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
+    _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, _resources.finalColor);
 
     renderGraph.AddSignalSemaphore(_resources.sceneRenderedSemaphore); // Signal that we are ready to present

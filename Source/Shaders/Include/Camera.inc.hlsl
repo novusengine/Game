@@ -11,6 +11,11 @@ struct Camera
 
 	float4x4 worldToView;
 	float4x4 worldToClip;
+
+	float4 eyePosition;
+	float4 eyeRotation;
+
+	float4 nearFar;
 };
 
 #endif // CAMERA_INCLUDED

@@ -13,6 +13,8 @@ class Window;
 class InputManager;
 class TerrainRenderer;
 class ModelRenderer;
+class SkyboxRenderer;
+class EditorRenderer;
 class DebugRenderer;
 class UIRenderer;
 
@@ -55,6 +57,8 @@ private:
 	// Sub Renderers
 	TerrainRenderer* _terrainRenderer = nullptr;
 	ModelRenderer* _modelRenderer = nullptr;
+	SkyboxRenderer* _skyboxRenderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
+	EditorRenderer* _editorRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;
 };
