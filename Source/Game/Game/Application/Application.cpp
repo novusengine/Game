@@ -172,6 +172,7 @@ bool Application::Init()
 	ServiceLocator::SetEnttRegistries(&_registries);
 
 	_gameRenderer = new GameRenderer();
+	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
 	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());

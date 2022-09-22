@@ -2,5 +2,5 @@ set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Shaders)
 
 add_subdirectory(ShaderCookerStandalone)
 add_subdirectory(Shaders)
-add_subdirectory(ModelConverter)
+add_subdirectory(AssetConverter)
 add_subdirectory(Game)

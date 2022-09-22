@@ -1,6 +1,7 @@
 project(game-dependencies VERSION 1.0.0)
 
 add_subdirectory(meshoptimizer)
+add_subdirectory(Casc)
 
 ## game-dependencies
 
