@@ -1,9 +1,13 @@
 #include "DebugRenderer.h"
 #include "Game/Rendering/RenderResources.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Descriptors/ImageDesc.h>
+
+AutoCVar_Int CVAR_DebugRendererNumGPUVertices("debugRenderer.numGPUVertices", "number of GPU vertices to allocate for", 32000000);
 
 DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 {
@@ -18,14 +22,63 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 	_debugVertices3D.SetUsage(Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER);
 	_debugVertices3D.SyncToGPU(_renderer);
 	_draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
+
+	// Create indirect buffers for GPU-side debugging
+	u32 numGPUVertices = CVAR_DebugRendererNumGPUVertices.Get();
+	{
+		Renderer::BufferDesc desc;
+		desc.size = sizeof(DebugVertex2D) * numGPUVertices;
+		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+		_gpuDebugVertices2D = _renderer->CreateBuffer(_gpuDebugVertices2D, desc);
+		_draw2DIndirectDescriptorSet.Bind("_vertices", _gpuDebugVertices2D);
+		_debugDescriptorSet.Bind("_debugVertices2D", _gpuDebugVertices2D);
+	}
+
+	{
+		Renderer::BufferDesc desc;
+		desc.size = sizeof(DebugVertex3D) * numGPUVertices;
+		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+		_gpuDebugVertices3D = _renderer->CreateBuffer(_gpuDebugVertices3D, desc);
+		_draw3DIndirectDescriptorSet.Bind("_vertices", _gpuDebugVertices3D);
+		_debugDescriptorSet.Bind("_debugVertices3D", _gpuDebugVertices3D);
+	}
+
+	// Create indirect argument buffers for GPU-side debugging
+	{
+		Renderer::BufferDesc desc;
+		desc.size = sizeof(Renderer::IndirectDraw);
+		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER;
+
+		_gpuDebugVertices2DArgumentBuffer = _renderer->CreateAndFillBuffer(_gpuDebugVertices2DArgumentBuffer, desc, [](void* mappedMemory, size_t size)
+		{
+			Renderer::IndirectDraw* indirectDraw = static_cast<Renderer::IndirectDraw*>(mappedMemory);
+			indirectDraw->instanceCount = 1;
+		});
+		_debugDescriptorSet.Bind("_debugVertices2DCount", _gpuDebugVertices2DArgumentBuffer);
+	}
+
+	{
+		Renderer::BufferDesc desc;
+		desc.size = sizeof(Renderer::IndirectDraw);
+		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER;
+
+		_gpuDebugVertices3DArgumentBuffer = _renderer->CreateAndFillBuffer(_gpuDebugVertices3DArgumentBuffer, desc, [](void* mappedMemory, size_t size)
+		{
+			Renderer::IndirectDraw* indirectDraw = static_cast<Renderer::IndirectDraw*>(mappedMemory);
+			indirectDraw->instanceCount = 1;
+		});
+		_debugDescriptorSet.Bind("_debugVertices3DCount", _gpuDebugVertices3DArgumentBuffer);
+	}
 }
 
 void DebugRenderer::Update(f32 deltaTime)
 {
 	// Draw world axises
-	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), 0xff0000ff);
-	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), 0xff00ff00);
-	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), 0xffff0000);
+	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), 0xff0000ff);
+	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), 0xff00ff00);
+	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), 0xffff0000);
 
 	// Sync to GPU
 	if (_debugVertices2D.SyncToGPU(_renderer))
@@ -36,6 +89,28 @@ void DebugRenderer::Update(f32 deltaTime)
 	{
 		_draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
 	}
+}
+
+void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+	struct Data
+	{
+	};
+
+	renderGraph->AddPass<Data>("DebugRenderReset",
+	[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+		{
+			return true;// Return true from setup to enable this pass, return false to disable it
+		},
+		[=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		{
+			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRenderReset);
+
+			commandList.FillBuffer(_gpuDebugVertices2DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
+			commandList.FillBuffer(_gpuDebugVertices3DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _gpuDebugVertices2DArgumentBuffer);
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _gpuDebugVertices3DArgumentBuffer);
+		});
 }
 
 void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -76,18 +151,38 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 			pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
 
-			// Set pipeline
-			Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
-			commandList.BeginPipeline(pipeline);
+			Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
 
-			commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-			commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw2DDescriptorSet, frameIndex);
+			// CPU side debug rendering
+			{
+				commandList.BeginPipeline(pipeline);
 
-			// Draw
-			commandList.Draw(static_cast<u32>(_debugVertices2D.Size()), 1, 0, 0);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw2DDescriptorSet, frameIndex);
 
-			commandList.EndPipeline(pipeline);
+				// Draw
+				commandList.Draw(static_cast<u32>(_debugVertices2D.Size()), 1, 0, 0);
+
+				commandList.EndPipeline(pipeline);
+			}
 			_debugVertices2D.Clear(false);
+
+			commandList.ImageBarrier(resources.finalColor);
+
+			// GPU side debug rendering
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices2D);
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _gpuDebugVertices2DArgumentBuffer);
+			{
+				commandList.BeginPipeline(pipeline);
+
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw2DIndirectDescriptorSet, frameIndex);
+
+				// Draw
+				commandList.DrawIndirect(_gpuDebugVertices2DArgumentBuffer, 0, 1);
+
+				commandList.EndPipeline(pipeline);
+			}
 		});
 }
 
@@ -139,17 +234,39 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			pipelineDesc.depthStencil = data.depth;
 
 			// Set pipeline
-			Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
-			commandList.BeginPipeline(pipeline);
+			Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
 
-			commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-			commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw3DDescriptorSet, frameIndex);
+			// CPU side debug rendering
+			{
+				commandList.BeginPipeline(pipeline);
 
-			// Draw
-			commandList.Draw(static_cast<u32>(_debugVertices3D.Size()), 1, 0, 0);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw3DDescriptorSet, frameIndex);
 
-			commandList.EndPipeline(pipeline);
+				// Draw
+				commandList.Draw(static_cast<u32>(_debugVertices3D.Size()), 1, 0, 0);
+
+				commandList.EndPipeline(pipeline);
+			}
 			_debugVertices3D.Clear(false);
+
+			commandList.ImageBarrier(resources.finalColor);
+			
+			// GPU side debug rendering
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices3D);
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _gpuDebugVertices3D);
+			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _gpuDebugVertices3DArgumentBuffer);
+			{
+				commandList.BeginPipeline(pipeline);
+
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw3DIndirectDescriptorSet, frameIndex);
+
+				// Draw
+				commandList.DrawIndirect(_gpuDebugVertices3DArgumentBuffer, 0, 1);
+
+				commandList.EndPipeline(pipeline);
+			}
 		});
 }
 

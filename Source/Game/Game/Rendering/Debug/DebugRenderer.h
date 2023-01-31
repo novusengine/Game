@@ -20,6 +20,7 @@ public:
 
 	void Update(f32 deltaTime);
 
+	void AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void Add3DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
@@ -36,6 +37,8 @@ public:
 	void DrawMatrix(const mat4x4& matrix, f32 scale);
 
 	static vec3 UnProject(const vec3& point, const mat4x4& m);
+
+	Renderer::DescriptorSet& GetDebugDescriptorSet() { return _debugDescriptorSet; }
 
 private:
 
@@ -57,6 +60,14 @@ private:
 	Renderer::GPUVector<DebugVertex2D> _debugVertices2D;
 	Renderer::GPUVector<DebugVertex3D> _debugVertices3D;
 
+	Renderer::BufferID _gpuDebugVertices2D;
+	Renderer::BufferID _gpuDebugVertices2DArgumentBuffer;
+	Renderer::BufferID _gpuDebugVertices3D;
+	Renderer::BufferID _gpuDebugVertices3DArgumentBuffer;
+
 	Renderer::DescriptorSet _draw2DDescriptorSet;
+	Renderer::DescriptorSet _draw2DIndirectDescriptorSet;
 	Renderer::DescriptorSet _draw3DDescriptorSet;
+	Renderer::DescriptorSet _draw3DIndirectDescriptorSet;
+	Renderer::DescriptorSet _debugDescriptorSet;
 };

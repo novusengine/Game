@@ -2,9 +2,11 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
-#include "Model/ModelRenderer.h"
+#include "Terrain/TerrainLoader.h"
+#include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
+#include "CullUtils.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Editor/EditorHandler.h"
@@ -84,15 +86,21 @@ GameRenderer::GameRenderer()
 	_renderer->InitDebug();
 	_renderer->InitWindow(_window);
 
-    
     _debugRenderer = new DebugRenderer(_renderer);
+
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
+    _terrainLoader = new TerrainLoader(_terrainRenderer);
+    _terrainLoader->Test();
+
     //_modelRenderer = new ModelRenderer(_renderer);
+    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
 
     CreatePermanentResources();
+
+    DepthPyramidUtils::InitBuffers(_renderer);
 }
 
 GameRenderer::~GameRenderer()
@@ -110,9 +118,11 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     // Reset the memory in the frameAllocator
     _frameAllocator->Reset();
 
+    _skyboxRenderer->Update(deltaTime);
+    _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
     //_modelRenderer->Update(deltaTime);
-    _skyboxRenderer->Update(deltaTime);
+    _materialRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
@@ -146,6 +156,7 @@ void GameRenderer::Render()
     {
         struct StartFramePassData
         {
+            Renderer::RenderPassMutableResource visibilityBuffer;
             Renderer::RenderPassMutableResource finalColor;
             Renderer::RenderPassMutableResource depth;
         };
@@ -153,6 +164,7 @@ void GameRenderer::Render()
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
             [=](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
+                data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
                 data.finalColor = builder.Write(_resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
                 data.depth = builder.Write(_resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
                 
@@ -164,19 +176,49 @@ void GameRenderer::Render()
                 commandList.MarkFrameStart(_frameIndex);
 
                 // Set viewport
-                //vec2 renderSize = _renderer->GetRenderSize();
                 vec2 renderSize = _renderer->GetImageDimension(_resources.finalColor);
 
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
             });
     }
+    _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
 
+    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
+
+    // Occluder passes
+    _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
+
+    // Depth Pyramid Pass
+    struct PyramidPassData
+    {
+        Renderer::RenderPassResource depth;
+    };
+
+    renderGraph.AddPass<PyramidPassData>("PyramidPass",
+        [=](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            data.depth = builder.Read(_resources.depth, Renderer::RenderGraphBuilder::ShaderStage::PIXEL);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [=](PyramidPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
+
+            DepthPyramidUtils::BuildPyramid2(_renderer, graphResources, commandList, _resources, _frameIndex);
+        });
+
+    // Culling Pass
     _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+
+    // Geometry Pass
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    
     //_modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     //_modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
-    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
+
+    _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
 
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
@@ -219,6 +261,18 @@ void GameRenderer::ReloadShaders(bool forceRecompileAll)
 
 void GameRenderer::CreatePermanentResources()
 {
+    // Visibility Buffer rendertarget
+    Renderer::ImageDesc visibilityBufferDesc;
+    visibilityBufferDesc.debugName = "VisibilityBuffer";
+    visibilityBufferDesc.dimensions = vec2(1.0f, 1.0f);
+    visibilityBufferDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    visibilityBufferDesc.format = Renderer::ImageFormat::R32G32B32A32_UINT;
+    visibilityBufferDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    visibilityBufferDesc.clearUInts = uvec4(0, 0, 0, 0);
+
+    _resources.visibilityBuffer = _renderer->CreateImage(visibilityBufferDesc);
+
+    // Final color rendertarget
     Renderer::ImageDesc sceneColorDesc;
     sceneColorDesc.debugName = "FinalColor";
     sceneColorDesc.dimensions = vec2(1.0f, 1.0f);
@@ -228,6 +282,15 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f);
 
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
+
+    // depth pyramid ID rendertarget
+    Renderer::ImageDesc pyramidDesc;
+    pyramidDesc.debugName = "DepthPyramid";
+    pyramidDesc.dimensions = vec2(1.0f, 1.0f);
+    pyramidDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_PYRAMID_RENDERSIZE;
+    pyramidDesc.format = Renderer::ImageFormat::R32_FLOAT;
+    pyramidDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    _resources.depthPyramid = _renderer->CreateImage(pyramidDesc);
 
     // Main depth rendertarget
     Renderer::DepthImageDesc mainDepthDesc;

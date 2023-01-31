@@ -46,7 +46,6 @@ private:
 	bool _isRunning = false;
 
 	GameRenderer* _gameRenderer = nullptr;
-	ModelLoader*  _modelLoader = nullptr;
 
 	Editor::EditorHandler* _editorHandler = nullptr;
 

@@ -13,6 +13,6 @@ namespace ECS::Singletons
 		vec2 prevMousePosition;
 
 		f32 mouseSensitivity = 0.05f;
-		f32 cameraSpeed = 20.0f;
+		f32 cameraSpeed = 150.0f;
 	};
 }

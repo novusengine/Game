@@ -1,73 +1,62 @@
-permutation WIRE_FRAME = [0, 1];
-#include "Terrain/Shared.inc.hlsl"
+permutation EDITOR_PASS = [0, 1];
+permutation SHADOW_PASS = [0, 1];
+#define GEOMETRY_PASS 1
+
 #include "globalData.inc.hlsl"
+#include "Terrain/Shared.inc.hlsl"
 
-[[vk::binding(0, PER_DRAW)]] StructuredBuffer<float3> _vertexPositions;
-[[vk::binding(1, PER_DRAW)]] StructuredBuffer<float3> _vertexNormals;
-[[vk::binding(2, PER_DRAW)]] StructuredBuffer<uint2> _vertexMaterials;
+struct Constants
+{
+    uint cascadeIndex;
+};
 
-[[vk::binding(3, PER_DRAW)]] StructuredBuffer<uint> _indices;
-[[vk::binding(4, PER_DRAW)]] StructuredBuffer<ChunkData> _chunkDatas;
-[[vk::binding(5, PER_DRAW)]] StructuredBuffer<MeshletData> _meshletDatas;
-[[vk::binding(6, PER_DRAW)]] StructuredBuffer<SurvivedMeshletData> _survivedMeshletDatas;
-
+[[vk::push_constant]] Constants _constants;
 
 struct VSInput
 {
-	uint packedData : SV_VertexID;
+    uint vertexID : SV_VertexID;
+    uint instanceID : SV_InstanceID;
 };
 
 struct VSOutput
 {
-	float4 position : SV_POSITION;
-	float3 worldPos : TEXCOORD0;
-	float3 normal : TEXCOORD1;
-	uint packedMaterials : TEXCOORD2;
-	float4 blendValues : TEXCOORD3;
-	uint meshletDataID : TEXCOORD4;
+    float4 position : SV_Position;
+#if !EDITOR_PASS && !SHADOW_PASS
+    uint instanceID : TEXCOORD0;
+    float3 worldPosition : TEXCOORD1;
+#endif
 };
 
 VSOutput main(VSInput input)
 {
-	uint meshletChunkID = input.packedData & 0x7FFFFF;
-	uint localIndex = (input.packedData >> 23) & 0x1FF;
+    InstanceData instanceData = _instanceDatas[input.instanceID];
 
-	SurvivedMeshletData survivedMeshletData = _survivedMeshletDatas[meshletChunkID];
+    VSOutput output;
 
-	uint meshletDataID = survivedMeshletData.meshletDataID;
-	uint chunkDataID = survivedMeshletData.chunkDataID;
+    CellData cellData = LoadCellData(instanceData.globalCellID);
+    if (IsHoleVertex(input.vertexID, cellData.holes))
+    {
+        const float NaN = asfloat(0b01111111100000000000000000000000);
+        output.position = float4(NaN, NaN, NaN, NaN);
+        return output;
+    }
 
-	MeshletData meshletData = _meshletDatas[meshletDataID];
-	ChunkData chunkData = _chunkDatas[chunkDataID];
+    const uint cellID = instanceData.packedChunkCellID & 0xFFFF;
+    const uint chunkID = instanceData.packedChunkCellID >> 16;
 
-	uint globalIndex = chunkData.indexOffset + meshletData.indexStart + localIndex;
-	uint vertexID = chunkData.vertexOffset + _indices[globalIndex];
+    uint vertexBaseOffset = instanceData.globalCellID * NUM_VERTICES_PER_CELL;
+    TerrainVertex vertex = LoadTerrainVertex(chunkID, cellID, vertexBaseOffset, input.vertexID);
 
-	VSOutput output;
-
-	float3 vertexPosition = _vertexPositions[vertexID];
-	float3 vertexNormal = _vertexNormals[vertexID];
-
-	uint packedMaterials = _vertexMaterials[vertexID].x;
-	uint packedBlendValues = _vertexMaterials[vertexID].y;
-
-	float blendValueX = float((packedBlendValues >> 0) & 0xFF) / 255.0f;
-	float blendValueY = float((packedBlendValues >> 8) & 0xFF) / 255.0f;
-	float blendValueZ = float((packedBlendValues >> 16) & 0xFF) / 255.0f;
-	float blendValueW = float((packedBlendValues >> 24) & 0xFF) / 255.0f;
-
-	float4 blendValues = float4(blendValueX, blendValueY, blendValueZ, blendValueW);
-	
-#if WIRE_FRAME
-	vertexPosition += vertexNormal * 0.01f;
+#if SHADOW_PASS
+    output.position = float4(0, 0, 0, 1);// mul(float4(vertex.position, 1.0f), GetShadowViewProjectionMatrix(_constants.cascadeIndex));
+#else
+    output.position = mul(float4(vertex.position, 1.0f), _cameras[0].worldToClip);
 #endif
 
-	output.position = mul(float4(vertexPosition, 1.0f), _cameras[0].worldToClip);
-	output.worldPos = vertexPosition;
-	output.normal = normalize(vertexNormal);
-	output.packedMaterials = packedMaterials;
-	output.blendValues = blendValues;
-	output.meshletDataID = meshletDataID;
+#if !EDITOR_PASS && !SHADOW_PASS
+    output.instanceID = input.instanceID;
+    output.worldPosition = vertex.position;
+#endif
 
-	return output;
+    return output;
 }

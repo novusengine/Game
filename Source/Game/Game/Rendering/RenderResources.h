@@ -15,7 +15,10 @@ public:
     // Permanent resources
     Renderer::GPUVector<Camera> cameras;
 
+    Renderer::ImageID visibilityBuffer;
     Renderer::ImageID finalColor;
+
+    Renderer::ImageID depthPyramid;
     Renderer::DepthImageID depth;
 
     Renderer::DescriptorSet globalDescriptorSet;

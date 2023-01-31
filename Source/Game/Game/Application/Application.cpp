@@ -3,9 +3,9 @@
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Gameplay/GameConsole/GameConsole.h"
 #include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Scripting/LuaUtil.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Loaders/LoaderSystem.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
@@ -175,13 +175,27 @@ bool Application::Init()
 	ServiceLocator::SetEnttRegistries(&_registries);
 
 	_gameRenderer = new GameRenderer();
-	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
-	_modelLoader = new ModelLoader(_gameRenderer->GetModelRenderer());
 
 	_ecsScheduler = new ECS::Scheduler();
 	_ecsScheduler->Init(*_registries.gameRegistry);
+
+	LoaderSystem* loaderSystem = LoaderSystem::Get();
+	loaderSystem->Init();
+
+	bool failedToLoad = false;
+	for (Loader* loader : loaderSystem->GetLoaders())
+	{
+		failedToLoad |= !loader->Init();
+
+		if (failedToLoad)
+			break;
+	}
+
+	if (failedToLoad)
+		return false;
+
 
 	ServiceLocator::SetGameConsole(new GameConsole());
 

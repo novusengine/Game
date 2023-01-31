@@ -12,7 +12,9 @@ struct GLFWwindow;
 class Window;
 class InputManager;
 class TerrainRenderer;
+class TerrainLoader;
 class ModelRenderer;
+class MaterialRenderer;
 class SkyboxRenderer;
 class EditorRenderer;
 class DebugRenderer;
@@ -56,7 +58,10 @@ private:
 
 	// Sub Renderers
 	TerrainRenderer* _terrainRenderer = nullptr;
+	TerrainLoader* _terrainLoader = nullptr;
+
 	ModelRenderer* _modelRenderer = nullptr;
+	MaterialRenderer* _materialRenderer = nullptr;
 	SkyboxRenderer* _skyboxRenderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
 	EditorRenderer* _editorRenderer = nullptr;

@@ -16,6 +16,8 @@ struct Camera
 	float4 eyeRotation;
 
 	float4 nearFar;
+
+	float4 frustum[6];
 };
 
 #endif // CAMERA_INCLUDED

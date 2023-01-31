@@ -20,8 +20,7 @@ namespace ECS::Components
 		f32 fov = 75.0f;
 		f32 aspectRatio = 1.0f;
 		f32 nearClip = 0.01f;
-		f32 farClip = 1000.0f;
-
+		f32 farClip = 100000.0f;
 		
 		mat4x4 clipToView;
 		mat4x4 clipToWorld;

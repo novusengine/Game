@@ -140,4 +140,12 @@ float4 PackedUnormsToFloat4(uint packed)
     return f;
 }
 
+enum ObjectType : uint
+{
+    Skybox = 0, // We clear to this color so we won't be writing it
+    Terrain = 1,
+    MapObject = 2,
+    CModelOpaque = 3
+};
+
 #endif // COMMON_INCLUDED
