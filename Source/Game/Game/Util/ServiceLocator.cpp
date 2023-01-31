@@ -5,6 +5,7 @@ InputManager* ServiceLocator::_inputManager = nullptr;
 GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
 EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
+GameConsole* ServiceLocator::_gameConsole = nullptr;
 
 void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
@@ -34,4 +35,10 @@ void ServiceLocator::SetEnttRegistries(EnttRegistries* enttRegistries)
 {
     assert(_enttRegistries == nullptr);
     _enttRegistries = enttRegistries;
+}
+
+void ServiceLocator::SetGameConsole(GameConsole* gameConsole)
+{
+    assert(_gameConsole == nullptr);
+    _gameConsole = gameConsole;
 }

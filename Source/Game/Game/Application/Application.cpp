@@ -1,9 +1,11 @@
 #include "Application.h"
+#include "Game/ECS/Scheduler.h"
+#include "Game/Editor/EditorHandler.h"
+#include "Game/Gameplay/GameConsole/GameConsole.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Scripting/LuaUtil.h"
 #include "Game/Util/ServiceLocator.h"
-#include "Game/Editor/EditorHandler.h"
-#include "Game/ECS/Scheduler.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
@@ -46,9 +48,9 @@ void Application::Stop()
 	if (!_isRunning)
 		return;
 
-	DebugHandler::PrintSuccess("Application : Shutdown Initiated");
+	DebugHandler::Print("Application : Shutdown Initiated");
 	Cleanup();
-	DebugHandler::PrintSuccess("Application : Shutdown Complete");
+	DebugHandler::Print("Application : Shutdown Complete");
 
 	MessageOutbound message(MessageOutbound::Type::Exit);
 	_messagesOutbound.enqueue(message);
@@ -85,6 +87,7 @@ void Application::Run()
 				break;
 
 			{
+				ServiceLocator::GetGameConsole()->Render(deltaTime);
 
 				/*if (ImGui::BeginMainMenuBar())
 				{
@@ -180,6 +183,10 @@ bool Application::Init()
 	_ecsScheduler = new ECS::Scheduler();
 	_ecsScheduler->Init(*_registries.gameRegistry);
 
+	ServiceLocator::SetGameConsole(new GameConsole());
+
+	Scripting::LuaUtil::DoString("print(\"Hello World :o\")");
+
 	return true;
 }
 
@@ -209,7 +216,7 @@ bool Application::Tick(f32 deltaTime)
 		{
 			case MessageInbound::Type::Print:
 			{
-				DebugHandler::PrintSuccess(message.data);
+				DebugHandler::Print(message.data);
 				break;
 			}
 
@@ -218,7 +225,17 @@ bool Application::Tick(f32 deltaTime)
 				MessageOutbound pongMessage(MessageOutbound::Type::Pong);
 				_messagesOutbound.enqueue(pongMessage);
 
-				DebugHandler::PrintSuccess("Main Thread -> Application Thread : Ping");
+				DebugHandler::Print("Main Thread -> Application Thread : Ping");
+				break;
+			}
+
+			case MessageInbound::Type::DoString:
+			{
+				if (!Scripting::LuaUtil::DoString(message.data))
+				{
+					DebugHandler::PrintError("Failed to run Lua DoString");
+				}
+				
 				break;
 			}
 

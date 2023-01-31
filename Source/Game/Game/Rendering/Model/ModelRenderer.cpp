@@ -232,7 +232,7 @@ void ModelRenderer::CreateCheckerboardCube(Color color1, Color color2)
 
 			_modelData.WriteLock([&](std::vector<ModelData>& modelData)
 			{
-				modelDataID = modelData.size();
+				modelDataID = static_cast<u32>(modelData.size());
 				modelDataPtr = &modelData.emplace_back();
 			});
 
@@ -403,19 +403,19 @@ void ModelRenderer::CreateCheckerboardCube(Color color1, Color color2)
 				MeshletData& meshletData = meshletDatas.emplace_back();
 
 				meshletData.indexStart = 0;
-				meshletData.indexCount = indicesToAdd;
+				meshletData.indexCount = static_cast<u32>(indicesToAdd);
 				assert(meshletData.indexCount % 3 == 0);
 			});
 
-			modelDataPtr->meshletOffset = meshletDataBeforeAdd;
-			modelDataPtr->meshletCount = meshletDataToAdd;
-			modelDataPtr->textureID = arrayIndex;
-			modelDataPtr->indexOffset = indicesBeforeAdd;
-			modelDataPtr->vertexOffset = verticesBeforeAdd;
+			modelDataPtr->meshletOffset = static_cast<u32>(meshletDataBeforeAdd);
+			modelDataPtr->meshletCount = static_cast<u16>(meshletDataToAdd);
+			modelDataPtr->textureID = static_cast<u16>(arrayIndex);
+			modelDataPtr->indexOffset = static_cast<u32>(indicesBeforeAdd);
+			modelDataPtr->vertexOffset = static_cast<u32>(verticesBeforeAdd);
 
 			modelHashToModelID[virtualModelHash] = modelDataID;
 
-			DebugHandler::PrintSuccess("ModelRenderer : Added Model (Vertices : %u, Indices : %u, Meshes : %u, Meshlets : %u)", verticesToAdd, indicesToAdd, 1, meshletDataToAdd);
+			DebugHandler::Print("ModelRenderer : Added Model (Vertices : {0}, Indices : {1}, Meshes : {2}, Meshlets : {3})", verticesToAdd, indicesToAdd, 1, meshletDataToAdd);
 		}
 	});
 }
@@ -468,10 +468,10 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 				};
 
 				Constants* constants = graphResources.FrameNew<Constants>();
-				constants->numInstances = numInstances;
+				constants->numInstances = static_cast<u32>(numInstances);
 				commandList.PushConstant(constants, 0, sizeof(Constants));
 
-				u32 dispatchCount = Renderer::GetDispatchCount(numInstances, 64);
+				u32 dispatchCount = Renderer::GetDispatchCount(static_cast<u32>(numInstances), 64);
 				commandList.Dispatch(dispatchCount, 1, 1);
 
 				commandList.EndPipeline(activePipeline);
@@ -591,8 +591,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 		});
 }
 
-
-u32 ModelRenderer::AddModel(u32 modelHash, const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer)
+/*u32 ModelRenderer::AddModel(u32 modelHash, const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer)
 {
 	u32 modelDataID = std::numeric_limits<u32>().max();
 
@@ -698,14 +697,14 @@ u32 ModelRenderer::AddModel(u32 modelHash, const Model::Header& modelToLoad, std
 	});
 
 	return modelDataID;
-}
+}*/
 
 u32 ModelRenderer::AddInstance(u32 modelDataID, vec3 position, quat rotation, vec3 scale)
 {
 	u32 instanceID = std::numeric_limits<u32>().max();
 	_instanceData.WriteLock([&](std::vector<InstanceData>& instanceDatas)
 	{
-		instanceID = instanceDatas.size();
+		instanceID = static_cast<u32>(instanceDatas.size());
 
 		InstanceData& instanceData = instanceDatas.emplace_back();
 		instanceData.modelDataID = modelDataID;

@@ -9,6 +9,7 @@ public:
 		Invalid,
 		Print,
 		Ping,
+		DoString,
 		Exit
 	};
 

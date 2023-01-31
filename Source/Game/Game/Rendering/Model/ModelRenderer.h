@@ -2,8 +2,6 @@
 #include <Base/Types.h>
 #include <Base/Container/SafeUnorderedMap.h>
 
-#include <FileFormat/Models/Model.h>
-
 #include <Renderer/GPUVector.h>
 
 #include <atomic>
@@ -90,7 +88,7 @@ public:
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
-    u32 AddModel(u32 modelHash, const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer);
+    //u32 AddModel(u32 modelHash, const Model::Header& modelToLoad, std::shared_ptr<Bytebuffer>& buffer);
     u32 AddInstance(u32 modelDataID, vec3 position, quat rotation, vec3 scale);
 
     Renderer::GPUVector<InstanceData>& GetInstanceDatas() { return _instanceData; }

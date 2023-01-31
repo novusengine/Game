@@ -34,3 +34,23 @@ void ConsoleCommands::CommandExit(Application& app, std::vector<std::string>& su
 	MessageInbound message(MessageInbound::Type::Exit);
 	app.PassMessage(message);
 }
+
+void ConsoleCommands::CommandDoString(Application& app, std::vector<std::string>& subCommands)
+{
+	if (subCommands.size() == 0)
+		return;
+
+	MessageInbound message(MessageInbound::Type::DoString);
+
+	for (u32 i = 0; i < subCommands.size(); i++)
+	{
+		if (i > 0)
+		{
+			message.data += " ";
+		}
+
+		message.data += subCommands[i];
+	}
+
+	app.PassMessage(message);
+}

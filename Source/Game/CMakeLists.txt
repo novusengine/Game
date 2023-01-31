@@ -10,8 +10,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 	base::base
     fileformat::fileformat
     input::input
+    network::network
     renderer::renderer
-    scripting::scripting
+    Luau.Compiler
+    Luau.VM
     meshoptimizer
     enkiTS::enkiTS
 )

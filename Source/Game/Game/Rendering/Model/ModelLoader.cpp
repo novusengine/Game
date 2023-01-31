@@ -21,12 +21,12 @@ void ModelLoader::Update(f32 deltaTime)
 		{
 			while (_requests.try_dequeue(loadRequest))
 			{
-				ModelLoadStatus& loadStatus = modelHashToModelLoadStatus[loadRequest.modelHash];
-				std::vector<u32>& instances = modelHashToInstances[loadRequest.modelHash];
+				//ModelLoadStatus& loadStatus = modelHashToModelLoadStatus[loadRequest.modelHash];
+				//std::vector<u32>& instances = modelHashToInstances[loadRequest.modelHash];
 
 				// Try Load Model
 				{
-					std::string modelPath = loadRequest.path;
+					/*std::string modelPath = loadRequest.path;
 					fs::path absoluteModelPath = fs::absolute(modelPath);
 
 					std::string modelPathStr = absoluteModelPath.string();
@@ -83,7 +83,7 @@ void ModelLoader::Update(f32 deltaTime)
 					}
 
 					FreeHandle(loadStatus.activeHandle);
-					loadStatus.activeHandle = Handle::Invalid();
+					loadStatus.activeHandle = Handle::Invalid();*/
 				}
 			}
 		});

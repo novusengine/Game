@@ -14,7 +14,7 @@ i32 main(int argc, char* argv[])
 {
     if (argc != 3)
     {
-        DebugHandler::PrintError("Expected two parameters, got %i. Usage: <shader_source_dir> <shader_bin_dir>", argc);
+        DebugHandler::PrintError("Expected two parameters, got {0}. Usage: <shader_source_dir> <shader_bin_dir>", argc);
         return -1;
     }
 
@@ -32,11 +32,11 @@ i32 main(int argc, char* argv[])
     {
         if (shaderCache.Load(shaderCachePath))
         {
-            DebugHandler::Print("Loaded shadercache from: %s", shaderCachePath.string().c_str());
+            DebugHandler::Print("Loaded shadercache from: {0}", shaderCachePath.string().c_str());
         }
         else
         {
-            DebugHandler::Print("Creating shadercache at: %s", shaderCachePath.string().c_str());
+            DebugHandler::Print("Creating shadercache at: {0}", shaderCachePath.string().c_str());
         }
     }
     else
@@ -98,6 +98,6 @@ i32 main(int argc, char* argv[])
 
     u32 numCompiledShaders = compiler.GetNumCompiledShaders();
     u32 numSkippedShaders = numNonIncludeShaders - numCompiledShaders;
-    DebugHandler::Print("Compiled %u shaders (%u up to date) in %fs", numCompiledShaders, numSkippedShaders, duration);
+    DebugHandler::Print("Compiled {0} shaders ({1} up to date) in {2}s", numCompiledShaders, numSkippedShaders, duration.count());
     return 0;
 }

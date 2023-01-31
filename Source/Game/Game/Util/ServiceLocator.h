@@ -7,12 +7,14 @@ namespace Editor
 }
 class InputManager;
 class GameRenderer;
-struct EnttRegistries;
 
 namespace enki
 {
     class TaskScheduler;
 }
+
+struct EnttRegistries;
+class GameConsole;
 
 class ServiceLocator
 {
@@ -52,6 +54,13 @@ public:
     }
     static void SetEnttRegistries(EnttRegistries* enttRegistries);
 
+    static GameConsole* GetGameConsole()
+    {
+        assert(_gameConsole != nullptr);
+        return _gameConsole;
+    }
+    static void SetGameConsole(GameConsole* gameConsole);
+
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
@@ -59,4 +68,5 @@ private:
     static GameRenderer* _gameRenderer;
     static enki::TaskScheduler* _taskScheduler;
     static EnttRegistries* _enttRegistries;
+    static GameConsole* _gameConsole;
 };

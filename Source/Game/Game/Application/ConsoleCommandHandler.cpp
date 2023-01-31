@@ -8,6 +8,8 @@ ConsoleCommandHandler::ConsoleCommandHandler()
 {
 	RegisterCommand("print"_h, &ConsoleCommands::CommandPrint);
 	RegisterCommand("ping"_h, &ConsoleCommands::CommandPing);
+	RegisterCommand("lua"_h, &ConsoleCommands::CommandDoString);
+	RegisterCommand("eval"_h, &ConsoleCommands::CommandDoString);
 
 	RegisterCommand("exit"_h, &ConsoleCommands::CommandExit);
 	RegisterCommand("quit"_h, &ConsoleCommands::CommandExit);

@@ -28,13 +28,13 @@ i32 main()
             {
                 case MessageOutbound::Type::Print:
                 {
-                    DebugHandler::PrintSuccess(message.data);
+                    DebugHandler::Print(message.data);
                     break;
                 }
 
                 case MessageOutbound::Type::Pong:
                 {
-                    DebugHandler::PrintSuccess("Application Thread -> Main Thread : Pong");
+                    DebugHandler::Print("Application Thread -> Main Thread : Pong");
                     break;
                 }
 

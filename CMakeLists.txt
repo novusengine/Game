@@ -17,5 +17,10 @@ set(ROOT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 include(CMake/Configuration.cmake)
 include(CMake/VSFilterUtils.cmake)
 
+# Add Submodules
+# add_subdirectory(Submodules/Engine)
+
 add_subdirectory(Dependencies)
+
+include(CMake/TreatWarningsAsError.cmake)
 add_subdirectory(Source)

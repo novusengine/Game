@@ -13,6 +13,7 @@ public:
 	using CallbackFn = std::function<void(Application&, std::vector<std::string>&)>;
 	
 	ConsoleCommandHandler();
+
 	void HandleCommand(Application& app, std::string& command);
 	void RegisterCommand(u32 commandHash, CallbackFn callback);
 
