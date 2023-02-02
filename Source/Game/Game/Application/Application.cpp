@@ -1,17 +1,20 @@
 #include "Application.h"
-#include "Game/ECS/Scheduler.h"
-#include "Game/Editor/EditorHandler.h"
-#include "Game/Gameplay/GameConsole/GameConsole.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Scripting/LuaUtil.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Loaders/LoaderSystem.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/Timer.h>
 #include <Base/Util/JsonUtils.h>
 #include <Base/Util/DebugHandler.h>
+#include <Base/Util/CPUInfo.h>
+
+#include <Game/ECS/Scheduler.h>
+#include <Game/ECS/Singletons/EngineStats.h>
+#include <Game/Editor/EditorHandler.h>
+#include <Game/Gameplay/GameConsole/GameConsole.h>
+#include <Game/Rendering/GameRenderer.h>
+#include <Game/Scripting/LuaUtil.h>
+#include <Game/Util/ServiceLocator.h>
+#include <Game/Loaders/LoaderSystem.h>
 
 #include <imgui/backends/imgui_impl_vulkan.h>
 #include <imgui/backends/imgui_impl_glfw.h>
@@ -78,60 +81,37 @@ void Application::Run()
 	if (Init())
 	{
 		Timer timer;
+		Timer updateTimer;
+		Timer renderTimer;
+
+		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+		
+		ECS::Singletons::EngineStats& engineStats = registry->ctx().at<ECS::Singletons::EngineStats>();
+		ECS::Singletons::EngineStats::Frame timings;		
 		while (true)
 		{
 			f32 deltaTime = timer.GetDeltaTime();
 			timer.Tick();
 
+			timings.deltaTime = deltaTime;
+
+			updateTimer.Reset();
+
 			if (!Tick(deltaTime))
 				break;
 
-			{
-				ServiceLocator::GetGameConsole()->Render(deltaTime);
+			timings.simulationFrameTime = updateTimer.GetLifeTime();
+			renderTimer.Reset();
 
-				/*if (ImGui::BeginMainMenuBar())
-				{
-					ImVec2 contentRegionAvailable = ImGui::GetContentRegionAvail();
-
-					if (ImGui::BeginMenu("Debug"))
-					{
-						// Reload shaders button
-						if (ImGui::Button("Reload Shaders"))
-						{
-							_gameRenderer->ReloadShaders(false);
-						}
-						if (ImGui::Button("Reload Shaders (FORCE)"))
-						{
-							_gameRenderer->ReloadShaders(true);
-						}
-
-						ImGui::EndMenu();
-					}
-
-					{
-						static char textBuffer[64];
-						StringUtils::FormatString(textBuffer, 64, "Fps : %.1f", 1.f / deltaTime);
-						ImVec2 fpsTextSize = ImGui::CalcTextSize(textBuffer);
-
-						StringUtils::FormatString(textBuffer, 64, "Ms  : %.2f", deltaTime * 1000);
-						ImVec2 msTextSize = ImGui::CalcTextSize(textBuffer);
-
-						f32 textPadding = 10.0f;
-						f32 textOffset = (contentRegionAvailable.x - fpsTextSize.x - msTextSize.x) - textPadding;
-
-						ImGui::SameLine(textOffset);
-						ImGui::Text("Ms  : %.2f", deltaTime * 1000);
-						ImGui::Text("Fps : %.1f", 1.f / deltaTime);
-					}
-
-					ImGui::EndMainMenuBar();
-				}*/
-			}
+			ServiceLocator::GetGameConsole()->Render(deltaTime);
 
 			_editorHandler->DrawImGuiMenuBar(deltaTime);
 
 			if (!Render(deltaTime))
 				break;
+
+			timings.renderFrameTime = renderTimer.GetLifeTime();
+			engineStats.AddTimings(timings.deltaTime, timings.simulationFrameTime, timings.renderFrameTime);
 
 			bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
 			if (limitFrameRate)
@@ -198,6 +178,10 @@ bool Application::Init()
 
 
 	ServiceLocator::SetGameConsole(new GameConsole());
+
+	// Print CPU info
+	CPUInfo cpuInfo = CPUInfo::Get();
+	cpuInfo.Print();
 
 	Scripting::LuaUtil::DoString("print(\"Hello World :o\")");
 

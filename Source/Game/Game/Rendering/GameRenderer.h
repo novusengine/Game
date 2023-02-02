@@ -40,6 +40,7 @@ public:
 	RenderResources& GetRenderResources() { return _resources; }
 
 	Window* GetWindow() { return _window; }
+	const std::string& GetGPUName();
 
 private:
 	void CreatePermanentResources();

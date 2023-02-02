@@ -1,16 +1,15 @@
 #include "Scheduler.h"
 
-#include "Game/ECS/Singletons/ActiveCamera.h"
-
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Components/Transform.h"
-
-#include "Game/ECS/Systems/NetworkConnection.h"
-#include "Game/ECS/Systems/FreeflyingCamera.h"
-#include "Game/ECS/Systems/CalculateCameraMatrices.h"
-#include "Game/ECS/Systems/UpdateScripts.h"
-
 #include <Renderer/RenderSettings.h>
+
+#include <Game/ECS/Singletons/ActiveCamera.h>
+#include <Game/ECS/Singletons/EngineStats.h>
+#include <Game/ECS/Components/Camera.h>
+#include <Game/ECS/Components/Transform.h>
+#include <Game/ECS/Systems/NetworkConnection.h>
+#include <Game/ECS/Systems/FreeflyingCamera.h>
+#include <Game/ECS/Systems/CalculateCameraMatrices.h>
+#include <Game/ECS/Systems/UpdateScripts.h>
 
 #include <entt/entt.hpp>
 
@@ -27,10 +26,11 @@ namespace ECS
 		Systems::FreeflyingCamera::Init(registry);
 		Systems::UpdateScripts::Init(registry);
 
+		entt::registry::context& ctx = registry.ctx();
+
 		// Temporarily create a camera here for debugging
 		{
-			entt::registry::context& ctx = registry.ctx();
-			Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
+			Singletons::ActiveCamera& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
 
 			entt::entity cameraEntity = registry.create();
 			activeCamera.entity = cameraEntity;
@@ -41,6 +41,8 @@ namespace ECS
 			camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
 			camera.pitch = 30.0f;
 		}
+
+		Singletons::EngineStats& engineStats = ctx.emplace<Singletons::EngineStats>();
 	}
 
 	void Scheduler::Update(entt::registry& registry, f32 deltaTime)

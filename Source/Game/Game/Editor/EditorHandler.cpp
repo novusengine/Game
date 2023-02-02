@@ -1,6 +1,7 @@
 #include "EditorHandler.h"
 #include "CVarEditor.h"
 #include "CameraInfo.h"
+#include "PerformanceDiagnostics.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -23,6 +24,7 @@ namespace Editor
 
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
+        _editors.push_back(new PerformanceDiagnostics());
         
         keybindGroup->SetActive(true);
 

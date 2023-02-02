@@ -259,6 +259,11 @@ void GameRenderer::ReloadShaders(bool forceRecompileAll)
     _renderer->ReloadShaders(forceRecompileAll);
 }
 
+const std::string& GameRenderer::GetGPUName()
+{
+    return _renderer->GetGPUName();
+}
+
 void GameRenderer::CreatePermanentResources()
 {
     // Visibility Buffer rendertarget

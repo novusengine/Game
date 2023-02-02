@@ -52,6 +52,38 @@ void TerrainRenderer::Update(f32 deltaTime)
     //if (!CVAR_TerrainRendererEnabled.Get())
     //    return;
 
+    const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
+
+    // Read back from culling counters
+    u32 numDrawCalls = Terrain::CHUNK_NUM_CELLS * _numChunksLoaded;
+
+    for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+    {
+        _numSurvivingDrawCalls[i] = numDrawCalls;
+    }
+
+    if (cullingEnabled)
+    {
+        u32* count = static_cast<u32*>(_renderer->MapBuffer(_occluderDrawCountReadBackBuffer));
+        if (count != nullptr)
+        {
+            _numOccluderDrawCalls = *count;
+        }
+        _renderer->UnmapBuffer(_occluderDrawCountReadBackBuffer);
+    }
+
+    {
+        u32* count = static_cast<u32*>(_renderer->MapBuffer(_drawCountReadBackBuffer));
+        if (count != nullptr)
+        {
+            for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+            {
+                _numSurvivingDrawCalls[i] = count[i];
+            }
+        }
+        _renderer->UnmapBuffer(_drawCountReadBackBuffer);
+    }
+
     SyncToGPU();
 }
 
@@ -763,8 +795,6 @@ void TerrainRenderer::SyncToGPU()
 {
     if (_vertices.SyncToGPU(_renderer))
     {
-        DebugHandler::Print("Terrain1: Vertices: %i, Indices: %i", _vertices.Size(), _cellIndices.Size());
-
         _geometryPassDescriptorSet.Bind("_packedTerrainVertices", _vertices.GetBuffer());
         _materialPassDescriptorSet.Bind("_packedTerrainVertices", _vertices.GetBuffer());
     }

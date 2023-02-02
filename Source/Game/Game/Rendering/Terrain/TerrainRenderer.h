@@ -3,6 +3,8 @@
 #include <Base/Platform.h>
 #include <Base/Math/Geometry.h>
 
+#include <FileFormat/Warcraft/Shared.h>
+
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/GPUVector.h>
 #include <Renderer/FrameResource.h>
@@ -38,6 +40,16 @@ public:
 	u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
 
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
+
+	// Drawcall stats
+	u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded; }
+	u32 GetNumOccluderDrawCalls() { return _numOccluderDrawCalls; }
+	u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
+
+	// Triangle stats
+	u32 GetNumTriangles() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded * Terrain::CELL_NUM_TRIANGLES; }
+	u32 GetNumOccluderTriangles() { return _numOccluderDrawCalls * Terrain::CELL_NUM_TRIANGLES; }
+	u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return _numSurvivingDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
 
 private:
 	void CreatePermanentResources();
@@ -129,4 +141,7 @@ private:
 	SafeVector<Geometry::AABoundingBox> _chunkBoundingBoxes;
 
 	std::atomic<u32> _numChunksLoaded = 0;
+
+	u32 _numOccluderDrawCalls = 0;
+	u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
 };
