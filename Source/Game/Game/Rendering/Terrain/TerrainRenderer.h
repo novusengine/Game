@@ -1,13 +1,12 @@
 #pragma once
 #include <Base/Types.h>
-#include <Base/Platform.h>
 #include <Base/Math/Geometry.h>
 
 #include <FileFormat/Warcraft/Shared.h>
 
 #include <Renderer/DescriptorSet.h>
-#include <Renderer/GPUVector.h>
 #include <Renderer/FrameResource.h>
+#include <Renderer/GPUVector.h>
 
 class DebugRenderer;
 struct RenderResources;
@@ -37,6 +36,7 @@ public:
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
+	void ReserveChunks(u32 numChunks);
 	u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
 
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
@@ -73,15 +73,15 @@ private:
 	PRAGMA_NO_PADDING_START
 	struct TerrainVertex
 	{
-		u8 normal[3];
-		u8 color[3];
-		f16 height;
+		u8 normal[3] = { 0, 0, 0 };
+		u8 color[3] = { 0, 0, 0 };
+		f16 height = f16(0);
 	};
 
 	struct InstanceData
 	{
-		u32 packedChunkCellID;
-		u32 globalCellID;
+		u32 packedChunkCellID = 0;
+		u32 globalCellID = 0;
 	};
 
 	struct CellData
@@ -137,8 +137,8 @@ private:
 	Renderer::DescriptorSet _geometryPassDescriptorSet;
 	Renderer::DescriptorSet _materialPassDescriptorSet;
 
-	SafeVector<Geometry::AABoundingBox> _cellBoundingBoxes;
-	SafeVector<Geometry::AABoundingBox> _chunkBoundingBoxes;
+	std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
+	std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;
 
 	std::atomic<u32> _numChunksLoaded = 0;
 

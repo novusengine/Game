@@ -272,50 +272,56 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void DebugRenderer::DrawLine2D(const glm::vec2& from, const glm::vec2& to, uint32_t color)
 {
-	_debugVertices2D.PushBack({ from, color });
-	_debugVertices2D.PushBack({ to, color });
+	auto& vertices = _debugVertices2D.Get();
+
+	vertices.push_back({ from, color });
+	vertices.push_back({ to, color });
 }
 
 void DebugRenderer::DrawLine3D(const glm::vec3& from, const glm::vec3& to, uint32_t color)
 {
-	_debugVertices3D.PushBack({ from, color });
-	_debugVertices3D.PushBack({ to, color });
+	auto& vertices = _debugVertices3D.Get();
+
+	vertices.push_back({ from, color });
+	vertices.push_back({ to, color });
 }
 
 void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, uint32_t color)
 {
+	auto& vertices = _debugVertices3D.Get();
+
 	vec3 v0 = center - extents;
 	vec3 v1 = center + extents;
 
 	// Bottom
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
 
 	// Top
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
 
 	// Vertical edges
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v0.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v0.x, v1.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v0.y, v1.z }, color });
-	_debugVertices3D.PushBack({ { v1.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
 }
 
 void DebugRenderer::DrawTriangle2D(const glm::vec2& v0, const glm::vec2& v1, const glm::vec2& v2, uint32_t color)
@@ -334,6 +340,8 @@ void DebugRenderer::DrawTriangle3D(const glm::vec3& v0, const glm::vec3& v1, con
 
 void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution, uint32_t color)
 {
+	auto& vertices = _debugVertices3D.Get();
+
 	constexpr f32 PI = glm::pi<f32>();
 	constexpr f32 TAU = PI * 2.0f;
 
@@ -341,7 +349,7 @@ void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution,
 	for (f32 currentAngle = 0.0f; currentAngle <= TAU; currentAngle += increment)
 	{
 		vec3 pos = vec3(radius * glm::cos(currentAngle) + center.x, radius * glm::sin(currentAngle) + center.y, center.z);
-		_debugVertices3D.PushBack({ { pos.x, pos.y, pos.z }, color });
+		vertices.push_back({ { pos.x, pos.y, pos.z }, color });
 	}
 }
 

@@ -2,238 +2,251 @@
 #include "TerrainRenderer.h"
 
 #include <Base/Memory/FileReader.h>
+#include <Base/Util/StringUtils.h>
 
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
+#include <execution>
 #include <filesystem>
+#include <vector>
+
 namespace fs = std::filesystem;
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer)
 	: _terrainRenderer(terrainRenderer)
-	, _requests()
-{
-	_freedHandles.reserve(64);
+	, _requests() 
+{ 
+	_scheduler.Initialize();
 }
 
 void TerrainLoader::Update(f32 deltaTime)
 {
 	LoadRequestInternal loadRequest;
 
-	SafeUnorderedMapScopedWriteLock<u32, TerrainLoadStatus> terrainHashToTerrainLoadStatusLock(_terrainHashToTerrainLoadStatus);
-	robin_hood::unordered_map<u32, TerrainLoadStatus>& terrainHashToTerrainLoadStatus = terrainHashToTerrainLoadStatusLock.Get();
-
-	//SafeUnorderedMapScopedWriteLock<u32, std::vector<u32>> terrainHashToInstancesLock(_terrainHashToInstances);
-	//robin_hood::unordered_map<u32, std::vector<u32>>& terrainHashToInstances = terrainHashToInstancesLock.Get();
-
 	while (_requests.try_dequeue(loadRequest))
 	{
-		TerrainLoadStatus& loadStatus = terrainHashToTerrainLoadStatus[loadRequest.terrainHash];
-		//std::vector<u32>& instances = terrainHashToInstances[loadRequest.terrainHash];
-
-		std::string chunkPath = loadRequest.path;
-		fs::path absoluteChunkPath = fs::absolute(chunkPath);
-
-		std::string chunkPathStr = absoluteChunkPath.string();
-		std::string chunkFileNameStr = absoluteChunkPath.filename().string();
-
-		FileReader reader(chunkPathStr, chunkFileNameStr);
-		if (reader.Open())
+		if (loadRequest.loadType == LoadType::Partial)
 		{
-			loadStatus.status = TerrainLoadStatus::Status::Completed;
-
-			size_t bufferSize = reader.Length();
-
-			std::shared_ptr<Bytebuffer> chunkBuffer = Bytebuffer::BorrowRuntime(bufferSize);
-			reader.Read(chunkBuffer.get(), bufferSize);
-
-			u32 chunkHash = StringUtils::fnv1a_32(chunkPath.c_str(), chunkPath.length());
-			Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
-
-			/*u32 chunkDataID =*/ _terrainRenderer->AddChunk(chunkHash, chunk, loadRequest.chunkGridPos);
-
+			LoadPartialMapRequest(loadRequest);
 		}
-
+		else if (loadRequest.loadType == LoadType::Full)
+		{
+			LoadFullMapRequest(loadRequest);
+		}
+		else
+		{
+			DebugHandler::PrintFatal("TerrainLoader : Encountered LoadRequest with invalid LoadType");
+		}
 	}
 }
 
-bool TerrainLoader::IsHandleActive(Handle handle)
+void TerrainLoader::AddInstance(const LoadDesc& loadDesc)
 {
-	Handle::type value = static_cast<Handle::type>(handle);
+	LoadRequestInternal loadRequest;
+	loadRequest.loadType = loadDesc.loadType;
+	loadRequest.mapName = loadDesc.mapName;
+	loadRequest.chunkGridStartPos = loadDesc.chunkGridStartPos;
+	loadRequest.chunkGridEndPos = loadDesc.chunkGridEndPos;
 
-	_handleMutex.lock_shared();
-	bool result = _activeHandles.contains(value);
-	_handleMutex.unlock_shared();
-
-	return result;
-}
-
-TerrainLoader::LoadHandle TerrainLoader::AddInstance(const LoadDesc& loadDesc)
-{
-	LoadHandle loadHandle = { };
-
-	u32 terrainDataID = 0; // Checkboard White/Blue Cube
-	u32 terrainHash = StringUtils::fnv1a_32(loadDesc.path.c_str(), loadDesc.path.length());
-
-	SafeUnorderedMapScopedWriteLock<u32, TerrainLoadStatus> terrainHashToTerrainLoadStatusLock(_terrainHashToTerrainLoadStatus);
-	robin_hood::unordered_map<u32, TerrainLoadStatus>& terrainHashToTerrainLoadStatus = terrainHashToTerrainLoadStatusLock.Get();
-
-	SafeUnorderedMapScopedWriteLock<u32, std::vector<u32>> terrainHashToInstancesLock(_terrainHashToInstances);
-	robin_hood::unordered_map<u32, std::vector<u32>>& terrainHashToInstances = terrainHashToInstancesLock.Get();
-
-	auto itr = terrainHashToTerrainLoadStatus.find(terrainHash);
-
-	TerrainLoadStatus::Status status = TerrainLoadStatus::Status::Failed;
-
-	if (itr == terrainHashToTerrainLoadStatus.end())
-	{
-		TerrainLoadStatus terrainLoadStatus;
-		terrainLoadStatus.status = TerrainLoadStatus::Status::InProgress;
-		status = terrainLoadStatus.status;
-
-		Handle::type handleValue = std::numeric_limits<Handle::type>().max();
-
-		// Get Handle
-		{
-			std::scoped_lock lock(_handleMutex);
-
-			if (_freedHandles.size() > 0)
-			{
-				handleValue = _freedHandles.back();
-				_freedHandles.pop_back();
-			}
-			else
-			{
-				handleValue = _maxHandleValue++;
-			}
-
-			_activeHandles.insert(handleValue);
-
-			terrainLoadStatus.activeHandle = Handle(handleValue);
-			loadHandle.handle = terrainLoadStatus.activeHandle;
-		}
-
-		terrainHashToTerrainLoadStatus[terrainHash] = terrainLoadStatus;
-
-		LoadRequestInternal loadRequest;
-		loadRequest.terrainHash = terrainHash;
-		loadRequest.path = loadDesc.path;
-		loadRequest.chunkGridPos = loadDesc.chunkGridPos;
-
-		_requests.enqueue(loadRequest);
-	}
-	else
-	{
-		TerrainLoadStatus& terrainLoadStatus = itr->second;
-		status = terrainLoadStatus.status;
-
-		if (terrainLoadStatus.status == TerrainLoadStatus::Status::InProgress)
-		{
-			loadHandle.handle = terrainLoadStatus.activeHandle;
-		}
-
-		terrainDataID = terrainLoadStatus.terrainDataID;
-	}
-
-
-	if (terrainDataID == 0)
-	{
-	}
-	u32 instanceID = 0;// _terrainRenderer->AddInstance(terrainDataID, loadDesc.chunkGridPos);
-	loadHandle.instanceID = instanceID;
-
-	if (status == TerrainLoadStatus::Status::InProgress)
-	{
-		terrainHashToInstances[terrainHash].push_back(instanceID);
-	}
-
-	return loadHandle;
+	_requests.enqueue(loadRequest);
 }
 
 void TerrainLoader::Test()
 {
-	/*
+	// Full Test
 	{
 		LoadDesc loadDesc;
-		loadDesc.chunkGridPos = ivec2(32, 32);
-		loadDesc.path = "Data/Terrain/Azeroth/Azeroth_32_32.nchunk";
-		AddInstance(loadDesc);
-	}
-	{
-		LoadDesc loadDesc;
-		loadDesc.chunkGridPos = ivec2(33, 32);
-		loadDesc.path = "Data/Terrain/Azeroth/Azeroth_33_32.nchunk";
-		AddInstance(loadDesc);
-	}*/
-
+		loadDesc.loadType = LoadType::Full;
+		loadDesc.mapName = "Azeroth";
 	
-	for (u32 x = 0; x < 64; x++)
+		AddInstance(loadDesc);
+	}
+
+	//  Partial Test
+	//{
+	//	LoadDesc loadDesc;
+	//	loadDesc.loadType = LoadType::Partial;
+	//	loadDesc.mapName = "Azeroth";
+	//	loadDesc.chunkGridStartPos = uvec2(0, 0);
+	//	loadDesc.chunkGridEndPos = uvec2(63, 63);
+	//
+	//	AddInstance(loadDesc);
+	//}
+}
+
+void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
+{
+	std::string mapName = request.mapName;
+	fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
+
+	assert(request.loadType == LoadType::Partial);
+	assert(request.mapName.size() > 0);
+	assert(request.chunkGridStartPos.x <= request.chunkGridEndPos.x);
+	assert(request.chunkGridStartPos.y <= request.chunkGridEndPos.y);
+
+	u32 gridWidth = (request.chunkGridEndPos.x - request.chunkGridStartPos.x) + 1;
+	u32 gridHeight = (request.chunkGridEndPos.y - request.chunkGridStartPos.y) + 1;
+
+	u32 startChunkNum = request.chunkGridStartPos.x + (request.chunkGridStartPos.y * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+	u32 chunksToLoad = gridHeight * gridWidth;
+
+	std::atomic<u32> numExistingChunks = 0;
+	enki::TaskSet countValidChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
 	{
-		for (u32 y = 0; y < 64; y++)
+		u32 localNumExistingChunks = 0;
+
+		std::string chunkLocalPathStr = "";
+		chunkLocalPathStr.reserve(128);
+
+		for (u32 i = range.start; i < range.end; i++)
 		{
-			LoadDesc loadDesc;
-			loadDesc.chunkGridPos = ivec2(x, y);
-			loadDesc.path = "Data/Map/Azeroth/Azeroth_" + std::to_string(x) + "_" + std::to_string(y) + ".chunk";
-			AddInstance(loadDesc);
+			u32 chunkX = request.chunkGridStartPos.x + (i % gridWidth);
+			u32 chunkY = request.chunkGridStartPos.y + (i / gridHeight);
+
+			chunkLocalPathStr.clear();
+			chunkLocalPathStr += mapName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk";
+
+			fs::path chunkLocalPath = chunkLocalPathStr;
+			fs::path chunkPath = absoluteMapPath / chunkLocalPath;
+
+			if (!fs::exists(chunkPath))
+				continue;
+
+			localNumExistingChunks++;
 		}
-	}
 
-	/*std::string mapPath = "Terrain/Northrend/Northrend";
+		numExistingChunks.fetch_add(localNumExistingChunks);
+	});
 
-	u32 numUnoptimizedVertices = 0;
-	u32 numOptimizedVertices = 0;
-
-	constexpr u32 numVerticesPerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_TOTAL_GRID_SIZE;
-
-	static vec3* vertices = new vec3[numVerticesPerChunk];
-
-	// Fill X and Z positions
-	for (u32 i = 0; i < numVerticesPerChunk; i++)
+	enki::TaskSet loadChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
 	{
+		std::string chunkLocalPathStr = "";
+		chunkLocalPathStr.reserve(128);
 
-
-		vertices[i].x = 
-	}
-
-	for (u32 x = 0; x < Terrain::CHUNK_NUM_PER_MAP_STRIDE; x++)
-	{
-		for (u32 y = 0; y < Terrain::CHUNK_NUM_PER_MAP_STRIDE; y++)
+		for (u32 i = range.start; i < range.end; i++)
 		{
-			std::string chunkPath = mapPath + "_" + std::to_string(x) + "_" + std::to_string(y) + ".nchunk";
+			u32 chunkX = request.chunkGridStartPos.x + (i % gridWidth);
+			u32 chunkY = request.chunkGridStartPos.y + (i / gridHeight);
 
-			fs::path absoluteChunkPath = fs::absolute(chunkPath);
+			chunkLocalPathStr.clear();
+			chunkLocalPathStr += mapName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk";
 
-			std::string chunkPathStr = absoluteChunkPath.string();
-			std::string chunkFileNameStr = absoluteChunkPath.filename().string();
+			fs::path chunkLocalPath = chunkLocalPathStr;
+			fs::path chunkPath = absoluteMapPath / chunkLocalPath;
+
+			if (!fs::exists(chunkPath))
+				continue;
+
+			std::string chunkPathStr = chunkPath.string();
+			std::string chunkFileNameStr = chunkPath.filename().string();
 
 			FileReader reader(chunkPathStr, chunkFileNameStr);
 			if (reader.Open())
 			{
-				numUnoptimizedVertices += numVerticesPerChunk;
-
 				size_t bufferSize = reader.Length();
 
 				std::shared_ptr<Bytebuffer> chunkBuffer = Bytebuffer::BorrowRuntime(bufferSize);
 				reader.Read(chunkBuffer.get(), bufferSize);
 
-				u32 chunkHash = StringUtils::fnv1a_32(chunkPath.c_str(), chunkPath.length());
+				u32 chunkHash = StringUtils::fnv1a_32(chunkPathStr.c_str(), chunkPathStr.size());
 				Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
+
+				u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
 			}
 		}
-	}*/
+	});
+
+	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
+	_scheduler.WaitforTask(&countValidChunksTask);
+
+	u32 numChunksToLoad = numExistingChunks.load();
+	_terrainRenderer->ReserveChunks(numChunksToLoad);
+
+	_scheduler.AddTaskSetToPipe(&loadChunksTask);
+	_scheduler.WaitforTask(&loadChunksTask);
 }
 
-void TerrainLoader::FreeHandle(Handle handle)
+void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 {
-	Handle::type value = static_cast<Handle::type>(handle);
+	assert(request.loadType == LoadType::Full);
+	assert(request.mapName.size() > 0);
 
-	_handleMutex.lock();
+	std::string mapName = request.mapName;
+	fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
 
-	if (_activeHandles.contains(value))
+	if (!fs::is_directory(absoluteMapPath))
 	{
-		_activeHandles.erase(value);
-		_freedHandles.push_back(value);
+		DebugHandler::PrintError("TerrainLoader : Failed to find '{0}' folder", absoluteMapPath.string());
+		return;
 	}
 
-	_handleMutex.unlock();
+	std::vector<fs::path> paths;
+	fs::directory_iterator dirpos{ absoluteMapPath };
+	std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
+
+	u32 numPaths = static_cast<u32>(paths.size());
+	std::atomic<u32> numExistingChunks = 0;
+
+	enki::TaskSet countValidChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
+	{
+		for (u32 i = range.start; i < range.end; i++)
+		{
+			const fs::path& path = paths[i];
+
+			if (path.extension() != ".chunk")
+				continue;
+
+			numExistingChunks++;
+		}
+	});
+
+	enki::TaskSet loadChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
+	{
+		for (u32 i = range.start; i < range.end; i++)
+		{
+			const fs::path& path = paths[i];
+
+			if (path.extension() != ".chunk")
+				continue;
+
+			std::string pathStr = path.string();
+
+			std::vector<std::string> splitStrings = StringUtils::SplitString(pathStr, '_');
+			u32 numSplitStrings = static_cast<u32>(splitStrings.size());
+
+			u32 chunkX = std::stoi(splitStrings[numSplitStrings - 2]);
+			u32 chunkY = std::stoi(splitStrings[numSplitStrings - 1].substr(0, 2));
+
+			std::string chunkPathStr = path.string();
+			std::string chunkFileNameStr = path.filename().string();
+
+			FileReader reader(chunkPathStr, chunkFileNameStr);
+			if (reader.Open())
+			{
+				size_t bufferSize = reader.Length();
+
+				std::shared_ptr<Bytebuffer> chunkBuffer = Bytebuffer::BorrowRuntime(bufferSize);
+				reader.Read(chunkBuffer.get(), bufferSize);
+
+				u32 chunkHash = StringUtils::fnv1a_32(chunkPathStr.c_str(), chunkPathStr.size());
+				Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
+
+				u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+			}
+		}
+	});
+
+	DebugHandler::Print("Started Preparing Chunk Loading");
+	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
+	_scheduler.WaitforTask(&countValidChunksTask);
+	DebugHandler::Print("Finished Preparing Chunk Loading");
+
+	u32 numChunksToLoad = numExistingChunks.load();
+	_terrainRenderer->ReserveChunks(numChunksToLoad);
+
+	DebugHandler::Print("Started Chunk Loading");
+	_scheduler.AddTaskSetToPipe(&loadChunksTask);
+	_scheduler.WaitforTask(&loadChunksTask);
+	DebugHandler::Print("Finished Chunk Loading");
 }

@@ -51,8 +51,7 @@ namespace ECS::Systems
                 camera.clipToWorld = glm::inverse(camera.worldToView) * glm::inverse(camera.viewToClip);
 
                 // Update the GPU binding
-                SafeVectorScopedWriteLock gpuCamerasLock(renderResources.cameras);
-                std::vector<Camera>& gpuCameras = gpuCamerasLock.Get();
+                std::vector<Camera>& gpuCameras = renderResources.cameras.Get();
                 Camera& gpuCamera = gpuCameras[camera.cameraBindSlot];
 
                 gpuCamera.clipToView = camera.clipToView;

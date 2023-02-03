@@ -443,53 +443,41 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         });
 }
 
+void TerrainRenderer::ReserveChunks(u32 numChunks)
+{
+    u32 totalNumCells = numChunks * Terrain::CHUNK_NUM_CELLS;
+    u32 totalNumVertices = totalNumCells * Terrain::CELL_TOTAL_GRID_SIZE;
+
+    _chunkDatas.Grow(numChunks);
+    _chunkBoundingBoxes.resize(_chunkBoundingBoxes.size() + numChunks);
+    _instanceDatas.Grow(totalNumCells);
+    _cellDatas.Grow(totalNumCells);
+    _cellHeightRanges.Grow(totalNumCells);
+    _cellBoundingBoxes.resize(_cellBoundingBoxes.size() + totalNumCells);
+
+    _vertices.Grow(totalNumVertices);
+}
+
 u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos)
 {
     u32 currentChunkIndex = _numChunksLoaded.fetch_add(1);
+    u32 currentChunkCellIndex = currentChunkIndex * Terrain::CHUNK_NUM_CELLS;
+    u32 currentChunkVertexIndex = currentChunkCellIndex * Terrain::CELL_TOTAL_GRID_SIZE;
 
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ctx.emplace<ECS::Singletons::TextureSingleton>();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
+    ECS::Singletons::TextureSingleton& textureSingleton = ctx.at<ECS::Singletons::TextureSingleton>();
 
-    // Lock and reserve _instanceDatas
-    SafeVectorScopedWriteLock instanceDatasLock(_instanceDatas);
-    std::vector<InstanceData>& instanceDatas = instanceDatasLock.Get();
+    ChunkData& chunkData = _chunkDatas.Get()[currentChunkIndex];
 
-    size_t numInstanceDatas = instanceDatas.size();
-    instanceDatas.reserve(numInstanceDatas + Terrain::CHUNK_NUM_CELLS);
-
-    // Lock and reserve _vertices
-    SafeVectorScopedWriteLock verticesLock(_vertices);
-    std::vector<TerrainVertex>& vertices = verticesLock.Get();
-
-    size_t numVertices = vertices.size();
-    constexpr u32 numVerticesPerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_TOTAL_GRID_SIZE;
-    vertices.reserve(numVertices + numVerticesPerChunk);
-
-    // Lock and reserve _cellDatas
-    SafeVectorScopedWriteLock cellDatasLock(_cellDatas);
-    std::vector<CellData>& cellDatas = cellDatasLock.Get();
-
-    size_t numCellDatas = cellDatas.size();
-    cellDatas.reserve(numCellDatas + Terrain::CHUNK_NUM_CELLS);
-
-    // Lock and reserve _chunkDatas
-    SafeVectorScopedWriteLock chunkDatasLock(_chunkDatas);
-    std::vector<ChunkData>& chunkDatas = chunkDatasLock.Get();
-
-    ChunkData& chunkData = chunkDatas.emplace_back();
-
-    // Lock and reserve _cellHeightRanges
-    SafeVectorScopedWriteLock cellHeightRangesLock(_cellHeightRanges);
-    std::vector<CellHeightRange>& cellHeightRanges = cellHeightRangesLock.Get();
-    cellHeightRanges.resize(cellHeightRanges.size() + Terrain::CHUNK_NUM_CELLS);
-
-    _cellBoundingBoxes.Grow(Terrain::CHUNK_NUM_CELLS);
-    _chunkBoundingBoxes.Grow(1);
+    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
+    std::vector<TerrainVertex>& vertices = _vertices.Get();
+    std::vector<CellData>& cellDatas = _cellDatas.Get();
+    std::vector<CellHeightRange>& cellHeightRanges = _cellHeightRanges.Get();
+    std::vector<Geometry::AABoundingBox>& cellBoundingBoxes = _cellBoundingBoxes;
+    std::vector<Geometry::AABoundingBox>& chunkBoundingBoxes = _chunkBoundingBoxes;
 
     u32 alphaMapStringID = chunk->chunkAlphaMapTextureHash;
     if (alphaMapStringID != std::numeric_limits<u32>().max())
@@ -500,19 +488,26 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         _renderer->LoadTextureIntoArray(chunkAlphaMapDesc, _alphaTextures, chunkData.alphaMapID);
     }
 
+    f32 chunkMinY(std::numeric_limits<f32>().max());
+    f32 chunkMaxY(std::numeric_limits<f32>().lowest());
+
+    vec2 chunkOrigin;
+    chunkOrigin.x = Terrain::MAP_HALF_SIZE - (chunkGridPos.x * Terrain::CHUNK_SIZE);
+    chunkOrigin.y = Terrain::MAP_HALF_SIZE - (chunkGridPos.y * Terrain::CHUNK_SIZE);
+    vec2 flippedChunkOrigin = chunkOrigin;
     u32 chunkGridIndex = chunkGridPos.x + (chunkGridPos.y * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
 
     for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
     {
-        u32 globalCellID = static_cast<u32>(instanceDatas.size());
+        const Map::Cell& cell = chunk->cells[cellID];
 
-        InstanceData& instanceData = instanceDatas.emplace_back();
+        u32 cellIndex = currentChunkCellIndex + cellID;
+
+        InstanceData& instanceData = instanceDatas[cellIndex];
         instanceData.packedChunkCellID = (chunkGridIndex << 16) | (cellID & 0xffff);
-        instanceData.globalCellID = globalCellID;
+        instanceData.globalCellID = cellIndex;
 
-        Map::Cell& cell = chunk->cells[cellID];
-
-        CellData& cellData = cellDatas.emplace_back();
+        CellData& cellData = cellDatas[cellIndex];
         cellData.hole = cell.hole;
 
         // Handle textures
@@ -550,7 +545,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         // Upload vertex data
         for (u32 j = 0; j < Terrain::CELL_TOTAL_GRID_SIZE; j++)
         {
-            TerrainVertex& vertex = vertices.emplace_back();
+            TerrainVertex& vertex = vertices[currentChunkVertexIndex + (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + j];
 
             vertex.normal[0] = cell.normalData[j][0];
             vertex.normal[1] = cell.normalData[j][1];
@@ -565,70 +560,45 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         {
             ZoneScopedN("Calculate Bounding Boxes");
 
-            vec2 chunkOrigin;
-            chunkOrigin.x = Terrain::MAP_HALF_SIZE - (chunkGridPos.x * Terrain::CHUNK_SIZE);
-            chunkOrigin.y = Terrain::MAP_HALF_SIZE - (chunkGridPos.y * Terrain::CHUNK_SIZE);
+            const Map::Cell& cell = chunk->cells[cellID];
+            const auto minmax = std::minmax_element(cell.heightData, cell.heightData + Terrain::CELL_TOTAL_GRID_SIZE);
 
-            // The reason for the flip in X and Y here is because in 2D X is Left and Right, Y is Forward and Backward.
-            // In our 3D coordinate space X is Forward and Backwards, Y is Left and Right.
-            vec2 flippedChunkOrigin = chunkOrigin;//vec2(chunkOrigin.y, chunkOrigin.x);
+            const u16 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const u16 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
 
-            SafeVectorScopedWriteLock cellBoundingBoxesLock(_cellBoundingBoxes);
-            std::vector<Geometry::AABoundingBox>& cellBoundingBoxes = cellBoundingBoxesLock.Get();
+            vec3 min;
+            vec3 max;
 
-            SafeVectorScopedWriteLock chunkBoundingBoxesLock(_chunkBoundingBoxes);
-            std::vector<Geometry::AABoundingBox>& chunkBoundingBoxes = chunkBoundingBoxesLock.Get();
+            min.x = flippedChunkOrigin.x - (cellY * Terrain::CELL_SIZE);
+            min.y = *minmax.first;
+            min.z = flippedChunkOrigin.y - (cellX * Terrain::CELL_SIZE);
 
-            {
-                const u64 chunkOffset = currentChunkIndex * Terrain::CHUNK_NUM_CELLS;
+            max.x = flippedChunkOrigin.x - ((cellY + 1) * Terrain::CELL_SIZE);
+            max.y = *minmax.second;
+            max.z = flippedChunkOrigin.y - ((cellX + 1) * Terrain::CELL_SIZE);
 
-                f32 chunkMinY(std::numeric_limits<f32>().max());
-                f32 chunkMaxY(std::numeric_limits<f32>().lowest());
+            Geometry::AABoundingBox& boundingBox = cellBoundingBoxes[cellIndex];
+            vec3 aabbMin = glm::min(min, max);
+            vec3 aabbMax = glm::max(min, max);
 
-                for (u32 cellIndex = 0; cellIndex < Terrain::CHUNK_NUM_CELLS; cellIndex++)
-                {
-                    const Map::Cell& cell = chunk->cells[cellIndex];
-                    const auto minmax = std::minmax_element(cell.heightData, cell.heightData + Terrain::CELL_TOTAL_GRID_SIZE);
+            boundingBox.center = (aabbMin + aabbMax) * 0.5f;
+            boundingBox.extents = aabbMax - boundingBox.center;
 
-                    const u16 cellX = cellIndex / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-                    const u16 cellY = cellIndex % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            CellHeightRange& heightRange = cellHeightRanges[cellIndex];
+            heightRange.min = f16(*minmax.first);
+            heightRange.max = f16(*minmax.second);
 
-                    vec3 min;
-                    vec3 max;
+            chunkMinY = glm::min(chunkMinY, aabbMin.y);
+            chunkMaxY = glm::max(chunkMaxY, aabbMax.y);
 
-                    min.x = flippedChunkOrigin.x - (cellY * Terrain::CELL_SIZE);
-                    min.y = *minmax.first;
-                    min.z = flippedChunkOrigin.y - (cellX * Terrain::CELL_SIZE);
-                    
+            f32 chunkCenterY = (chunkMinY + chunkMaxY) * 0.5f;
+            f32 chunkExtentsY = chunkMaxY - chunkCenterY;
 
-                    max.x = flippedChunkOrigin.x - ((cellY + 1) * Terrain::CELL_SIZE);
-                    max.y = *minmax.second;
-                    max.z = flippedChunkOrigin.y - ((cellX + 1) * Terrain::CELL_SIZE);
+            Geometry::AABoundingBox& chunkBoundingBox = chunkBoundingBoxes[currentChunkIndex];
 
-                    Geometry::AABoundingBox& boundingBox = cellBoundingBoxes[chunkOffset + cellIndex];
-                    vec3 aabbMin = glm::min(min, max);
-                    vec3 aabbMax = glm::max(min, max);
-
-                    boundingBox.center = (aabbMin + aabbMax) * 0.5f;
-                    boundingBox.extents = aabbMax - boundingBox.center;
-
-                    CellHeightRange& heightRange = cellHeightRanges[chunkOffset + cellIndex];
-                    heightRange.min = f16(*minmax.first);
-                    heightRange.max = f16(*minmax.second);
-
-                    chunkMinY = glm::min(chunkMinY, aabbMin.y);
-                    chunkMaxY = glm::max(chunkMaxY, aabbMax.y);
-                }
-
-                f32 chunkCenterY = (chunkMinY + chunkMaxY) * 0.5f;
-                f32 chunkExtentsY = chunkMaxY - chunkCenterY;
-
-                Geometry::AABoundingBox& chunkBoundingBox = chunkBoundingBoxes[currentChunkIndex];
-
-                vec2 pos = flippedChunkOrigin - Terrain::MAP_HALF_SIZE;
-                chunkBoundingBox.center = vec3(pos.x, chunkCenterY, pos.y);
-                chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
-            }
+            vec2 pos = flippedChunkOrigin - Terrain::MAP_HALF_SIZE;
+            chunkBoundingBox.center = vec3(pos.x, chunkCenterY, pos.y);
+            chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
         }
     }
 
@@ -733,8 +703,8 @@ void TerrainRenderer::CreatePermanentResources()
     }
 
     // Set up cell index buffer
-    _cellIndices.WriteLock([&](std::vector<u16>& indices)
     {
+        std::vector<u16>& indices = _cellIndices.Get();
         indices.reserve(Terrain::CELL_NUM_INDICES);
 
         for (u32 row = 0; row < Terrain::CELL_INNER_GRID_STRIDE; row++)
@@ -774,8 +744,8 @@ void TerrainRenderer::CreatePermanentResources()
                 indices.push_back(topRightVertex);
             }
         }
-        
-    });
+    }
+
     _cellIndices.SyncToGPU(_renderer);
 
     _vertices.SetDebugName("TerrainVertices");

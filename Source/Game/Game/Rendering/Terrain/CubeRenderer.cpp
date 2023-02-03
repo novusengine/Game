@@ -103,8 +103,9 @@ void CubeRenderer::CreatePermanentResources()
     _vertices.SetDebugName("TerrainVertices");
     _vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
-    _vertices.WriteLock([&](std::vector<Vertex>& vertices)
     {
+        std::vector<Vertex>& vertices = _vertices.Get();
+
         vertices.push_back({vec4(-1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 0.0f, 0.0f, 1.0f) });
         vertices.push_back({vec4(-1.0f, -1.0f, 1.0f, 1.0f), vec4(0.0f, 1.0f, 0.0f, 1.0f) });
         vertices.push_back({vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(0.0f, 0.0f, 1.0f, 1.0f) });
@@ -113,7 +114,7 @@ void CubeRenderer::CreatePermanentResources()
         vertices.push_back({vec4(-1.0f, -1.0f, -1.0f, 1.0f), vec4(0.0f, 1.0f, 1.0f, 1.0f) });
         vertices.push_back({vec4(1.0f, 1.0f, -1.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f) });
         vertices.push_back({vec4(1.0f, -1.0f, -1.0f, 1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f) });
-    });
+    }
 
     _vertices.SyncToGPU(_renderer);
     _geometryDescriptorSet.Bind("_vertices"_h, _vertices.GetBuffer());
@@ -122,8 +123,9 @@ void CubeRenderer::CreatePermanentResources()
     _indices.SetDebugName("TerrainIndices");
     _indices.SetUsage(Renderer::BufferUsage::INDEX_BUFFER);
 
-    _indices.WriteLock([&](std::vector<u16>& indices)
     {
+        std::vector<u16>& indices = _indices.Get();
+        
         indices.resize(36);
 
         indices[0] = 0;
@@ -167,6 +169,7 @@ void CubeRenderer::CreatePermanentResources()
         indices[33] = 1;
         indices[34] = 3;
         indices[35] = 7;
-    });
+    }
+
     _indices.SyncToGPU(_renderer);
 }

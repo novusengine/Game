@@ -30,7 +30,6 @@ public:
         entt::registry* registry = registries->gameRegistry;
 
         entt::registry::context& ctx = registry->ctx();
-        ctx.emplace<ECS::Singletons::TextureSingleton>();
         ECS::Singletons::TextureSingleton& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
 
         fs::path relativeParentPath = "Data/Texture";
