@@ -37,6 +37,8 @@ public:
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
 	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
 
+	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
+
 	RenderResources& GetRenderResources() { return _resources; }
 
 	Window* GetWindow() { return _window; }

@@ -103,6 +103,9 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
     if (!CVAR_TerrainRendererEnabled.Get())
         return;
 
+    if (_instanceDatas.Size() == 0)
+        return;
+
     const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
     if (!cullingEnabled)
         return;
@@ -233,6 +236,9 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (!CVAR_TerrainCullingEnabled.Get())
         return;
 
+    if (_instanceDatas.Size() == 0)
+        return;
+
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
 
     struct TerrainCullingPassData
@@ -338,6 +344,9 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
     if (!CVAR_TerrainRendererEnabled.Get())
         return;
 
+    if (_instanceDatas.Size() == 0)
+        return;
+
     const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
 
     struct Data
@@ -441,6 +450,20 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
             commandList.EndPipeline(pipeline);*/
         });
+}
+
+void TerrainRenderer::ClearChunks()
+{
+    _numChunksLoaded = 0;
+
+    _chunkDatas.Clear();
+    _chunkBoundingBoxes.clear();
+    _instanceDatas.Clear();
+    _cellDatas.Clear();
+    _cellHeightRanges.Clear();
+    _cellBoundingBoxes.clear();
+
+    _vertices.Clear();
 }
 
 void TerrainRenderer::ReserveChunks(u32 numChunks)

@@ -21,7 +21,7 @@ struct TexturePair
 class TextureLoader : Loader
 {
 public:
-    TextureLoader() : Loader("TextureLoader", 999) { }
+    TextureLoader() : Loader("TextureLoader", 10000) { }
 
     bool Init()
     {
@@ -75,13 +75,13 @@ public:
             auto itr = textureSingleton.textureHashToPath.find(texturePair.hash);
             if (itr != textureSingleton.textureHashToPath.end())
             {
-                DebugHandler::PrintError("Found duplicate texture hash (%u) for Path (%s)", texturePair.hash, texturePair.path.c_str()); // This error cannot be more specific when loading in parallel unless we copy more data.
+                DebugHandler::PrintError("Found duplicate texture hash ({0}) for Path ({1})", texturePair.hash, texturePair.path.c_str()); // This error cannot be more specific when loading in parallel unless we copy more data.
             }
 
             textureSingleton.textureHashToPath[texturePair.hash] = (relativeParentPath / texturePair.path).string();
         }
 
-        DebugHandler::Print("Loaded Texture %u entries", textureSingleton.textureHashToPath.size());
+        DebugHandler::Print("Loaded Texture {0} entries", textureSingleton.textureHashToPath.size());
         return true;
     }
 };

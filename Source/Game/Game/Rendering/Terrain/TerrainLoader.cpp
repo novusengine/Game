@@ -52,29 +52,6 @@ void TerrainLoader::AddInstance(const LoadDesc& loadDesc)
 	_requests.enqueue(loadRequest);
 }
 
-void TerrainLoader::Test()
-{
-	// Full Test
-	{
-		LoadDesc loadDesc;
-		loadDesc.loadType = LoadType::Full;
-		loadDesc.mapName = "Azeroth";
-	
-		AddInstance(loadDesc);
-	}
-
-	//  Partial Test
-	//{
-	//	LoadDesc loadDesc;
-	//	loadDesc.loadType = LoadType::Partial;
-	//	loadDesc.mapName = "Azeroth";
-	//	loadDesc.chunkGridStartPos = uvec2(0, 0);
-	//	loadDesc.chunkGridEndPos = uvec2(63, 63);
-	//
-	//	AddInstance(loadDesc);
-	//}
-}
-
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 {
 	std::string mapName = request.mapName;
@@ -139,9 +116,8 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 				continue;
 
 			std::string chunkPathStr = chunkPath.string();
-			std::string chunkFileNameStr = chunkPath.filename().string();
 
-			FileReader reader(chunkPathStr, chunkFileNameStr);
+			FileReader reader(chunkPathStr);
 			if (reader.Open())
 			{
 				size_t bufferSize = reader.Length();
@@ -157,14 +133,24 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 		}
 	});
 
+	DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
 	_scheduler.WaitforTask(&countValidChunksTask);
+	DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
 
 	u32 numChunksToLoad = numExistingChunks.load();
+	if (numChunksToLoad == 0)
+	{
+		DebugHandler::PrintError("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+		return;
+	}
+
 	_terrainRenderer->ReserveChunks(numChunksToLoad);
 
+	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&loadChunksTask);
 	_scheduler.WaitforTask(&loadChunksTask);
+	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }
 
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
@@ -219,9 +205,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 			u32 chunkY = std::stoi(splitStrings[numSplitStrings - 1].substr(0, 2));
 
 			std::string chunkPathStr = path.string();
-			std::string chunkFileNameStr = path.filename().string();
 
-			FileReader reader(chunkPathStr, chunkFileNameStr);
+			FileReader reader(chunkPathStr);
 			if (reader.Open())
 			{
 				size_t bufferSize = reader.Length();
@@ -237,16 +222,23 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 		}
 	});
 
-	DebugHandler::Print("Started Preparing Chunk Loading");
+	DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
 	_scheduler.WaitforTask(&countValidChunksTask);
-	DebugHandler::Print("Finished Preparing Chunk Loading");
+	DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
 
 	u32 numChunksToLoad = numExistingChunks.load();
+	if (numChunksToLoad == 0)
+	{
+		DebugHandler::PrintError("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+		return;
+	}
+
+	_terrainRenderer->ClearChunks();
 	_terrainRenderer->ReserveChunks(numChunksToLoad);
 
-	DebugHandler::Print("Started Chunk Loading");
+	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&loadChunksTask);
 	_scheduler.WaitforTask(&loadChunksTask);
-	DebugHandler::Print("Finished Chunk Loading");
+	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }

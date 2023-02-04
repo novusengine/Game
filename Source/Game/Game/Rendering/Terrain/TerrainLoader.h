@@ -40,8 +40,6 @@ public:
 
 	void AddInstance(const LoadDesc& loadDesc);
 
-	void Test();
-
 private:
 	void LoadPartialMapRequest(const LoadRequestInternal& request);
 	void LoadFullMapRequest(const LoadRequestInternal& request);

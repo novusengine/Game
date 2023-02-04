@@ -90,7 +90,6 @@ GameRenderer::GameRenderer()
 
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer);
-    _terrainLoader->Test();
 
     //_modelRenderer = new ModelRenderer(_renderer);
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer);
