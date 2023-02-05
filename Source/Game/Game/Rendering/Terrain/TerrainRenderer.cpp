@@ -462,8 +462,9 @@ void TerrainRenderer::ClearChunks()
     _cellDatas.Clear();
     _cellHeightRanges.Clear();
     _cellBoundingBoxes.clear();
-
     _vertices.Clear();
+
+    _renderer->UnloadTexturesInArray(_textures, 0);
 }
 
 void TerrainRenderer::ReserveChunks(u32 numChunks)
@@ -511,14 +512,16 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         _renderer->LoadTextureIntoArray(chunkAlphaMapDesc, _alphaTextures, chunkData.alphaMapID);
     }
 
-    f32 chunkMinY(std::numeric_limits<f32>().max());
-    f32 chunkMaxY(std::numeric_limits<f32>().lowest());
-
     vec2 chunkOrigin;
     chunkOrigin.x = Terrain::MAP_HALF_SIZE - (chunkGridPos.x * Terrain::CHUNK_SIZE);
     chunkOrigin.y = Terrain::MAP_HALF_SIZE - (chunkGridPos.y * Terrain::CHUNK_SIZE);
     vec2 flippedChunkOrigin = chunkOrigin;
     u32 chunkGridIndex = chunkGridPos.x + (chunkGridPos.y * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+
+    u32 maxDiffuseID = 0;
+
+    Renderer::TextureDesc textureDesc;
+    textureDesc.path.resize(512);
 
     for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
     {
@@ -543,10 +546,9 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             }
 
             const std::string& texturePath = textureSingleton.textureHashToPath[layer.textureID];
-            if (texturePath == "")
+            if (texturePath.size() == 0)
                 continue;
 
-            Renderer::TextureDesc textureDesc;
             textureDesc.path = texturePath;
 
             u32 diffuseID = 0;
@@ -557,34 +559,16 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
                 textureSingleton.textureHashToTextureID[layer.textureID] = static_cast<Renderer::TextureID::type>(textureID);
             }
 
-            if (diffuseID > 4096)
-            {
-                DebugHandler::PrintFatal("This is bad!");
-            }
-
             cellData.diffuseIDs[layerCount++] = diffuseID;
+            maxDiffuseID = glm::max(maxDiffuseID, diffuseID);
         }
 
-        // Upload vertex data
-        for (u32 j = 0; j < Terrain::CELL_TOTAL_GRID_SIZE; j++)
-        {
-            TerrainVertex& vertex = vertices[currentChunkVertexIndex + (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + j];
-
-            vertex.normal[0] = cell.normalData[j][0];
-            vertex.normal[1] = cell.normalData[j][1];
-            vertex.normal[2] = cell.normalData[j][2];
-            vertex.color[0] = cell.colorData[j][0];
-            vertex.color[1] = cell.colorData[j][1];
-            vertex.color[2] = cell.colorData[j][2];
-            vertex.height = cell.heightData[j];
-        }
+        // Copy Vertex Data
+        memcpy(&vertices[currentChunkVertexIndex + (cellID * Terrain::CELL_TOTAL_GRID_SIZE)], &cell.vertexData[0], sizeof(Map::Cell::VertexData) * Terrain::CELL_TOTAL_GRID_SIZE);
 
         // Calculate bounding boxes and upload height ranges
         {
             ZoneScopedN("Calculate Bounding Boxes");
-
-            const Map::Cell& cell = chunk->cells[cellID];
-            const auto minmax = std::minmax_element(cell.heightData, cell.heightData + Terrain::CELL_TOTAL_GRID_SIZE);
 
             const u16 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
             const u16 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
@@ -593,11 +577,11 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             vec3 max;
 
             min.x = flippedChunkOrigin.x - (cellY * Terrain::CELL_SIZE);
-            min.y = *minmax.first;
+            min.y = cell.cellMinHeight;
             min.z = flippedChunkOrigin.y - (cellX * Terrain::CELL_SIZE);
 
             max.x = flippedChunkOrigin.x - ((cellY + 1) * Terrain::CELL_SIZE);
-            max.y = *minmax.second;
+            max.y = cell.cellMaxHeight;
             max.z = flippedChunkOrigin.y - ((cellX + 1) * Terrain::CELL_SIZE);
 
             Geometry::AABoundingBox& boundingBox = cellBoundingBoxes[cellIndex];
@@ -608,21 +592,27 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             boundingBox.extents = aabbMax - boundingBox.center;
 
             CellHeightRange& heightRange = cellHeightRanges[cellIndex];
-            heightRange.min = f16(*minmax.first);
-            heightRange.max = f16(*minmax.second);
-
-            chunkMinY = glm::min(chunkMinY, aabbMin.y);
-            chunkMaxY = glm::max(chunkMaxY, aabbMax.y);
-
-            f32 chunkCenterY = (chunkMinY + chunkMaxY) * 0.5f;
-            f32 chunkExtentsY = chunkMaxY - chunkCenterY;
-
-            Geometry::AABoundingBox& chunkBoundingBox = chunkBoundingBoxes[currentChunkIndex];
-
-            vec2 pos = flippedChunkOrigin - Terrain::MAP_HALF_SIZE;
-            chunkBoundingBox.center = vec3(pos.x, chunkCenterY, pos.y);
-            chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
+            heightRange.min = cell.cellMinHeight;
+            heightRange.max = cell.cellMaxHeight;
         }
+    }
+
+    Geometry::AABoundingBox& chunkBoundingBox = chunkBoundingBoxes[currentChunkIndex];
+    {
+        f32 chunkMinY = chunk->heightHeader.gridMinHeight;
+        f32 chunkMaxY = chunk->heightHeader.gridMaxHeight;
+
+        f32 chunkCenterY = (chunkMinY + chunkMaxY) * 0.5f;
+        f32 chunkExtentsY = chunkMaxY - chunkCenterY;
+
+        vec2 pos = flippedChunkOrigin - Terrain::MAP_HALF_SIZE;
+        chunkBoundingBox.center = vec3(pos.x, chunkCenterY, pos.y);
+        chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
+    }
+
+    if (maxDiffuseID > 4096)
+    {
+        DebugHandler::PrintFatal("This is bad!");
     }
 
     return 0;
