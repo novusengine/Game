@@ -5,13 +5,18 @@
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 #include <FileFormat/Novus/ClientDB/Definitions.h>
 
+#include <robinhood/robinhood.h>
+
 namespace ECS::Singletons
 {
-	struct ClientDBSingleton
+	struct MapDB
 	{
-		ClientDBSingleton() {}
+		MapDB() {}
 
-		DB::Client::ClientDB<DB::Client::Definitions::Map> mapDB;
+		DB::Client::ClientDB<DB::Client::Definitions::Map> entries;
+
 		std::vector<std::string> mapNames;
+		std::vector<std::string> mapInternalNames;
+		robin_hood::unordered_map<u32, u32> mapNameHashToEntryID;
 	};
 }

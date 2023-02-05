@@ -1,7 +1,8 @@
 #include "MapEditor.h"
 
 #include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/ClientDBSingleton.h"
+#include "Game/ECS/Singletons/MapDB.h"
+#include "Game/ECS/Util/MapDBUtil.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Terrain/TerrainLoader.h"
 #include "Game/Util/ServiceLocator.h"
@@ -33,10 +34,10 @@ namespace Editor
 
             entt::registry::context& ctx = registry.ctx();
 
-            ECS::Singletons::ClientDBSingleton& clientDBSingleton = ctx.at<ECS::Singletons::ClientDBSingleton>();
-            const std::vector<std::string>& mapNames = clientDBSingleton.mapNames;
-            u32 numMaps = mapNames.size();
+            auto& mapDB = ctx.at<ECS::Singletons::MapDB>();
+            const std::vector<std::string>& mapNames = mapDB.mapNames;
 
+            u32 numMaps = static_cast<u32>(mapNames.size());
             if (numMaps > 0)
             {
                 static const std::string* currentMap = nullptr;
@@ -120,19 +121,9 @@ namespace Editor
 
                 if (ImGui::Button("Load"))
                 {
-                    u32 previewMapNameHash = StringUtils::fnv1a_32(preview->c_str(), preview->length());
-
-                    for (u32 i = 0; i < numMaps; i++)
+                    if (DB::Client::Definitions::Map* map = ECS::Util::MapDBUtil::GetMapFromName(*preview))
                     {
-                        const std::string& mapName = mapNames[i];
-
-                        u32 mapNameHash = StringUtils::fnv1a_32(mapName.c_str(), mapName.length());
-
-                        if (previewMapNameHash != mapNameHash)
-                            continue;
-
-                        DB::Client::Definitions::Map& map = clientDBSingleton.mapDB.data[i];
-                        const std::string& mapInternalName = clientDBSingleton.mapDB.stringTable.GetString(map.internalName);
+                        const std::string& mapInternalName = mapDB.entries.stringTable.GetString(map->internalName);
 
                         TerrainLoader* terrainLoader = ServiceLocator::GetGameRenderer()->GetTerrainLoader();
                         TerrainLoader::LoadDesc loadDesc;

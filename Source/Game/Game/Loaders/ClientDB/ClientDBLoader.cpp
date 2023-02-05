@@ -1,6 +1,6 @@
 #include "Game/Loaders/LoaderSystem.h"
 #include "Game/Util/ServiceLocator.h"
-#include "Game/ECS/Singletons/ClientDBSingleton.h"
+#include "Game/ECS/Singletons/MapDB.h"
 #include "Game/Application/EnttRegistries.h"
 
 #include <Base/Container/ConcurrentQueue.h>
@@ -30,9 +30,7 @@ public:
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         
         entt::registry* registry = registries->gameRegistry;
-        
         entt::registry::context& ctx = registry->ctx();
-        ECS::Singletons::ClientDBSingleton& clientDBSingleton = ctx.emplace<ECS::Singletons::ClientDBSingleton>();
         
         fs::path relativeParentPath = "Data/ClientDB";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
@@ -83,7 +81,7 @@ public:
                 {
                     reader.Read(buffer.get(), reader.Length());
 
-                    if (itr->second(clientDBSingleton, buffer, clientDBPair))
+                    if (itr->second(ctx, buffer, clientDBPair))
                     {
                         numClientDBs++;
                         continue;
@@ -99,35 +97,46 @@ public:
         return true;
     }
 
-    bool LoadMapDB(ECS::Singletons::ClientDBSingleton& clientDBSingleton, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
+    bool LoadMapDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
     {
-        auto& mapDB = clientDBSingleton.mapDB;
+        auto& mapDB = registryCtx.emplace<ECS::Singletons::MapDB>();
+
         // Clear, in case we already filled mapDB
-        mapDB.data.clear();
-        mapDB.stringTable.Clear();
+        mapDB.entries.data.clear();
+        mapDB.entries.stringTable.Clear();
      
-        if (!mapDB.Read(buffer))
+        if (!mapDB.entries.Read(buffer))
         {
             return false;
         }
 
-        clientDBSingleton.mapNames.reserve(mapDB.stringTable.GetNumStrings());
+        StringTable& stringTable = mapDB.entries.stringTable;
 
-        for (u32 i = 0; i < mapDB.data.size(); i++)
+        u32 numRecords = static_cast<u32>(mapDB.entries.data.size());
+        mapDB.mapNames.reserve(numRecords);
+        mapDB.mapInternalNames.reserve(numRecords);
+        mapDB.mapNameHashToEntryID.reserve(numRecords);
+
+        for (u32 i = 0; i < numRecords; i++)
         {
-            const DB::Client::Definitions::Map& map = mapDB.data[i];
+            const DB::Client::Definitions::Map& map = mapDB.entries.data[i];
             if (map.name == std::numeric_limits<u32>().max())
             {
                 continue;
             }
 
-            clientDBSingleton.mapNames.push_back(mapDB.stringTable.GetString(map.name));
+            const std::string& mapName = stringTable.GetString(map.name);
+            u32 mapNameHash = StringUtils::fnv1a_32(mapName.c_str(), mapName.length());
+
+            mapDB.mapNames.push_back(mapName);
+            mapDB.mapInternalNames.push_back(stringTable.GetString(map.internalName));
+            mapDB.mapNameHashToEntryID[mapNameHash] = i;
         }
 
         return true;
     }
 
-    robin_hood::unordered_map<u32, std::function<bool(ECS::Singletons::ClientDBSingleton&, std::shared_ptr<Bytebuffer>&, const ClientDBPair&)>> clientDBEntries =
+    robin_hood::unordered_map<u32, std::function<bool(entt::registry::context&, std::shared_ptr<Bytebuffer>&, const ClientDBPair&)>> clientDBEntries =
     {
         { "Map.cdb"_h, std::bind(&ClientDBLoader::LoadMapDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) }
     };
