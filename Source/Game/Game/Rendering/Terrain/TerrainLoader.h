@@ -4,6 +4,7 @@
 #include <Base/Container/SafeUnorderedMap.h>
 
 #include <enkiTS/TaskScheduler.h>
+#include <robinhood/robinhood.h>
 #include <type_safe/strong_typedef.hpp>
 
 class TerrainRenderer;
@@ -44,11 +45,14 @@ private:
 	void LoadPartialMapRequest(const LoadRequestInternal& request);
 	void LoadFullMapRequest(const LoadRequestInternal& request);
 
+	void PrepareForChunks(LoadType loadType, u32 numChunks);
+
 private:
 	enki::TaskScheduler _scheduler;
 	TerrainRenderer* _terrainRenderer = nullptr;
 
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 
-	SafeUnorderedMap<u32, std::vector<u32>> _terrainHashToInstances;
+	robin_hood::unordered_map<u32, u32> _chunkIDToLoadedID;
+	robin_hood::unordered_map<u32, u32> _chunkIDToBodyID;
 };

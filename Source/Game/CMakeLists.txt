@@ -14,11 +14,12 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     renderer::renderer
     Luau.Compiler
     Luau.VM
+    game::dependencies
     meshoptimizer
     enkiTS::enkiTS
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX)
+set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX UNITY_BUILD ON)
 create_vs_filters(${GAME_FILES})
 
 #set the visual studio working directory to the parent path of the client executable

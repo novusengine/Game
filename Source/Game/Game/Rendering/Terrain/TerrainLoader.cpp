@@ -1,5 +1,10 @@
 #include "TerrainLoader.h"
 #include "TerrainRenderer.h"
+#include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Singletons/JoltState.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/Memory/FileReader.h>
 #include <Base/Util/StringUtils.h>
@@ -7,6 +12,14 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
+#include <Jolt/Jolt.h>
+#include <Jolt/Geometry/Triangle.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+
+#include <entt/entt.hpp>
+
+#include <atomic>
 #include <execution>
 #include <filesystem>
 #include <vector>
@@ -15,8 +28,8 @@ namespace fs = std::filesystem;
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer)
 	: _terrainRenderer(terrainRenderer)
-	, _requests() 
-{ 
+	, _requests()
+{
 	_scheduler.Initialize();
 }
 
@@ -153,6 +166,49 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }
 
+vec2 GetChunkPosition(u32 chunkID)
+{
+	const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+	const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+
+	const vec2 chunkPos = Terrain::MAP_HALF_SIZE - (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
+	return chunkPos;
+}
+vec2 GetCellPosition(u32 chunkID, u32 cellID)
+{
+	const u32 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+	const u32 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+
+	const vec2 chunkPos = GetChunkPosition(chunkID);
+	const vec2 cellPos = vec2(cellX, cellY) * Terrain::CELL_SIZE;
+	const vec2 cellWorldPos = chunkPos + cellPos;
+	return cellWorldPos;
+}
+
+vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
+{
+	const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+	const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+
+	const u32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkX);
+	const u32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkY);
+
+	const u32 vX = vertexID % 17;
+	const u32 vY = vertexID / 17;
+
+	bool isOddRow = vX > 8;
+
+	vec2 vertexOffset;
+	vertexOffset.x = -(8.5f * isOddRow);
+	vertexOffset.y = (0.5f * isOddRow);
+
+	uvec2 globalVertex = uvec2(vX + cellX * 8, vY + cellY * 8);
+
+	vec2 finalPos = -Terrain::MAP_HALF_SIZE + (vec2(globalVertex) + vertexOffset) * Terrain::PATCH_SIZE;
+
+	return vec2(-finalPos.y, -finalPos.x);
+}
+
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 {
 	assert(request.loadType == LoadType::Full);
@@ -173,6 +229,10 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
 	u32 numPaths = static_cast<u32>(paths.size());
 	std::atomic<u32> numExistingChunks = 0;
+
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
+	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
 	enki::TaskSet countValidChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
 	{
@@ -203,6 +263,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
 			u32 chunkX = std::stoi(splitStrings[numSplitStrings - 2]);
 			u32 chunkY = std::stoi(splitStrings[numSplitStrings - 1].substr(0, 2));
+			u32 chunkID = chunkX + (chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
 
 			std::string chunkPathStr = path.string();
 
@@ -217,7 +278,98 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 				u32 chunkHash = StringUtils::fnv1a_32(chunkPathStr.c_str(), chunkPathStr.size());
 				Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
 
-				u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+				// Load into Jolt
+				{
+					constexpr u32 numVerticesPerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_TOTAL_GRID_SIZE;
+					constexpr u32 numTrianglePerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_TRIANGLES;
+
+					JPH::VertexList vertexList;
+					JPH::IndexedTriangleList triangleList;
+					vertexList.reserve(numVerticesPerChunk);
+					triangleList.reserve(numTrianglePerChunk);
+
+					u32 patchVertexIDs[5] = { 0 };
+					vec2 patchVertexOffsets[5] = { 
+						vec2(0, 0),
+						vec2(Terrain::PATCH_SIZE, 0),
+						vec2(Terrain::PATCH_HALF_SIZE, Terrain::PATCH_HALF_SIZE),
+						vec2(0, Terrain::PATCH_SIZE),
+						vec2(Terrain::PATCH_SIZE, Terrain::PATCH_SIZE)
+					};
+
+					uvec2 triangleComponentOffsets = uvec2(0, 0);
+
+					for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
+					{
+						const Map::Cell& cell = chunk->cells[cellID];
+
+						for (u32 i = 0; i < Terrain::CELL_TOTAL_GRID_SIZE; i++)
+						{
+							const Map::Cell::VertexData& vertexA = cell.vertexData[i];
+
+							vec2 pos = GetGlobalVertexPosition(chunkID, cellID, i);
+							vertexList.push_back({ pos.x, f32(vertexA.height), pos.y });
+						}
+
+						for (u32 i = 0; i < Terrain::CELL_NUM_TRIANGLES; i++)
+						{
+							u32 triangleID = i;
+							u32 patchID = triangleID / 4;
+							u32 patchRow = patchID / 8;
+							u32 patchColumn = patchID % 8;
+
+							u32 patchX = patchID % Terrain::CELL_NUM_PATCHES_PER_STRIDE;
+							u32 patchY = patchID / Terrain::CELL_NUM_PATCHES_PER_STRIDE;
+
+							vec2 patchPos = vec2(patchX * Terrain::PATCH_SIZE, patchY * Terrain::PATCH_SIZE);
+
+							// Top Left is calculated like this
+							patchVertexIDs[0] = patchColumn + (patchRow * Terrain::CELL_GRID_ROW_SIZE);
+
+							// Top Right is always +1 from Top Left
+							patchVertexIDs[1] = patchVertexIDs[0] + 1;
+
+							// Bottom Left is always NUM_VERTICES_PER_PATCH_ROW from the Top Left vertex
+							patchVertexIDs[2] = patchVertexIDs[0] + Terrain::CELL_GRID_ROW_SIZE;
+
+							// Bottom Right is always +1 from Bottom Left
+							patchVertexIDs[3] = patchVertexIDs[2] + 1;
+
+							// Center is always NUM_VERTICES_PER_OUTER_PATCH_ROW from Top Left
+							patchVertexIDs[4] = patchVertexIDs[0] + Terrain::CELL_OUTER_GRID_STRIDE;
+
+							u32 triangleWithinPatch = triangleID % 4; // 0 - top, 1 - left, 2 - bottom, 3 - right
+							triangleComponentOffsets = uvec2(triangleWithinPatch > 1, // Identify if we are within bottom or right triangle
+								triangleWithinPatch == 0 || triangleWithinPatch == 3); // Identify if we are within the top or right triangle
+
+							u32 vertexID1 = (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + patchVertexIDs[4];
+							u32 vertexID2 = (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + patchVertexIDs[triangleComponentOffsets.x * 2 + triangleComponentOffsets.y];
+							u32 vertexID3 = (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + patchVertexIDs[(!triangleComponentOffsets.y) * 2 + triangleComponentOffsets.x];
+							triangleList.push_back({ vertexID3, vertexID2, vertexID1 });
+						}
+					}
+
+					JPH::MeshShapeSettings shapeSetting(vertexList, triangleList);
+					JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
+					JPH::ShapeRefC shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
+
+					// Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
+					JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+
+					// Create the actual rigid body
+					JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+					body->SetFriction(0.8f);
+
+					JPH::BodyID bodyID = body->GetID();
+					bodyInterface.AddBody(bodyID, JPH::EActivation::DontActivate);
+					_chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
+				}
+
+				// Load into Terrain Renderer
+				{
+					u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+					_chunkIDToLoadedID[chunkID] = chunkDataID;
+				}
 			}
 		}
 	});
@@ -234,11 +386,43 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 		return;
 	}
 
-	_terrainRenderer->ClearChunks();
-	_terrainRenderer->ReserveChunks(numChunksToLoad);
+	PrepareForChunks(LoadType::Full, numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&loadChunksTask);
 	_scheduler.WaitforTask(&loadChunksTask);
+
+	joltState.physicsSystem.OptimizeBroadPhase();
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
+}
+
+void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
+{
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
+	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+	if (loadType == LoadType::Partial)
+	{
+
+	}
+	else if (loadType == LoadType::Full)
+	{
+		_terrainRenderer->ClearChunks();
+
+		for (auto& pair : _chunkIDToBodyID)
+		{
+			JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
+
+			bodyInterface.RemoveBody(id);
+			bodyInterface.DestroyBody(id);
+		}
+
+		_chunkIDToLoadedID.clear();
+		_chunkIDToBodyID.clear();
+
+		_terrainRenderer->ReserveChunks(numChunks);
+		_chunkIDToLoadedID.reserve(numChunks);
+		_chunkIDToBodyID.reserve(numChunks);
+	}
 }

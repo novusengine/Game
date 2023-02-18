@@ -28,6 +28,7 @@ public:
 	void DrawLine3D(const vec3& from, const vec3& to, uint32_t color);
 
 	void DrawAABB3D(const vec3& center, const vec3& extents, uint32_t color);
+	void DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, uint32_t color);
 	void DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, uint32_t color);
 	void DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, uint32_t color);
 

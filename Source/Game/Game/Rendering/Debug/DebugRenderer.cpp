@@ -324,6 +324,52 @@ void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, uint32_t
 	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
 }
 
+void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, uint32_t color)
+{
+	auto& vertices = _debugVertices3D.Get();
+	u32 vertexOffset = static_cast<u32>(vertices.size());
+
+	vec3 v0 = -extents;
+	vec3 v1 = +extents;
+
+	// Bottom
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+
+	// Top
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+
+	// Vertical edges
+	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
+	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
+	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
+
+	mat4x4 rotationMatrix = glm::mat4x4(rotation);
+	for (u32 i = 0; i < 24; i++)
+	{
+		DebugVertex3D& vertex = vertices[vertexOffset + i];
+		vertex.pos = center + vec3(rotationMatrix * vec4(vertex.pos, 1.0f));
+	}
+}
+
 void DebugRenderer::DrawTriangle2D(const glm::vec2& v0, const glm::vec2& v1, const glm::vec2& v2, uint32_t color)
 {
 	DrawLine2D(v0, v1, color);

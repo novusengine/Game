@@ -16,12 +16,12 @@
 #include <Game/Util/ServiceLocator.h>
 #include <Game/Loaders/LoaderSystem.h>
 
+#include <enkiTS/TaskScheduler.h>
+#include <entt/entt.hpp>
 #include <imgui/backends/imgui_impl_vulkan.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
-#include <enkiTS/TaskScheduler.h>
-#include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
@@ -136,14 +136,14 @@ bool Application::Init()
 {
 	// Setup CVar Config
 	{
-		std::filesystem::create_directories("Data/configs");
+		std::filesystem::create_directories("Data/config");
 
 		nlohmann::ordered_json fallback;
-		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/configs/CVar.json"))
+		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/config/CVar.json"))
 		{
 			JsonUtils::LoadJsonIntoCVars(_cvarJson);
 			JsonUtils::LoadCVarsIntoJson(_cvarJson);
-			JsonUtils::SaveToPath(_cvarJson, "Data/configs/CVar.json");
+			JsonUtils::SaveToPath(_cvarJson, "Data/config/CVar.json");
 		}
 	}
 
@@ -175,7 +175,6 @@ bool Application::Init()
 
 	if (failedToLoad)
 		return false;
-
 
 	ServiceLocator::SetGameConsole(new GameConsole());
 
@@ -253,7 +252,7 @@ bool Application::Tick(f32 deltaTime)
 	if (CVarSystem::Get()->IsDirty())
 	{
 		JsonUtils::LoadCVarsIntoJson(_cvarJson);
-		JsonUtils::SaveToPath(_cvarJson, "Data/configs/CVar.json");
+		JsonUtils::SaveToPath(_cvarJson, "Data/config/CVar.json");
 
 		CVarSystem::Get()->ClearDirty();
 	}

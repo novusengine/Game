@@ -36,6 +36,7 @@ public:
 	Renderer::Renderer* GetRenderer() { return _renderer; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
 	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
+	DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
 
 	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
 

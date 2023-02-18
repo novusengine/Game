@@ -21,7 +21,7 @@
 #include <imgui/imgui.h>
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_TerrainRendererEnabled("terrainRenderer.enabled", "enable terrainrendering", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainRendererEnabled("terrainRenderer.enabled", "enable terrainrendering", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_TerrainCullingEnabled("terrainRenderer.culling", "enable terrain culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_OcclusionCullingEnabled("terrainRenderer.occlusionculling", "enable terrain occlusion culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ForceDisableOccluders("terrainRenderer.forcedisableoccluders", "force disable occluders", 0, CVarFlags::EditCheckbox);
@@ -615,7 +615,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         DebugHandler::PrintFatal("This is bad!");
     }
 
-    return 0;
+    return currentChunkIndex;
 }
 
 void TerrainRenderer::CreatePermanentResources()

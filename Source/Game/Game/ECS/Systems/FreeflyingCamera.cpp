@@ -21,8 +21,20 @@ namespace ECS::Systems
 	void FreeflyingCamera::Init(entt::registry& registry)
 	{
         entt::registry::context& ctx = registry.ctx();
-        ctx.emplace<Singletons::ActiveCamera>();
+        Singletons::ActiveCamera& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
         Singletons::FreeflyingCameraSettings& settings = ctx.emplace<Singletons::FreeflyingCameraSettings>();
+
+        // Temporarily create a camera here for debugging
+        {
+            entt::entity cameraEntity = registry.create();
+            activeCamera.entity = cameraEntity;
+            Components::Transform& transform = registry.emplace<Components::Transform>(cameraEntity);
+            transform.position = vec3(0, 10, -10);
+
+            Components::Camera& camera = registry.emplace<Components::Camera>(cameraEntity);
+            camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
+            camera.pitch = 30.0f;
+        }
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
 		_keybindGroup = inputManager->CreateKeybindGroup("FreeFlyingCamera", 10);

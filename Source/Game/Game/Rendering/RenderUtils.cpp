@@ -511,11 +511,6 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     commandList.PopMarker();
 }
 
-inline u32 GetGroupCount(u32 threadCount, u32 localSize)
-{
-    return (threadCount + localSize - 1) / localSize;
-}
-
 void RenderUtils::CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DepthImageID source, Renderer::ImageID destination, u32 destinationMip)
 {
     Renderer::ComputePipelineDesc queryPipelineDesc;
