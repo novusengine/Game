@@ -77,7 +77,7 @@ GameRenderer::GameRenderer()
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
-	_renderer = new Renderer::RendererVK();
+	_renderer = new Renderer::RendererVK(_window);
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);

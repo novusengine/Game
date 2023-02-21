@@ -192,6 +192,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
             for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
             {
                 commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _culledInstanceBuffer[i]);
+                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToPixelShaderRead, _culledInstanceBuffer[i]);
                 commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _culledInstanceBuffer[i]);
             }
             commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _argumentBuffer);
