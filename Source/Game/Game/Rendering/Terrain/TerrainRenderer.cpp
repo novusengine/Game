@@ -646,6 +646,8 @@ void TerrainRenderer::CreatePermanentResources()
     _renderer->CreateDataTextureIntoArray(zeroColorTextureDesc, _textures, outArraySlot);
 
     zeroColorTextureDesc.layers = 2;
+
+    memset(zeroColorTextureDesc.data, 0, 4 * sizeof(u8));
     _renderer->CreateDataTextureIntoArray(zeroColorTextureDesc, _alphaTextures, outArraySlot);
 
     delete[] zeroColorTextureDesc.data;

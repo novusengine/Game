@@ -1,5 +1,13 @@
 #include "globalData.inc.hlsl"
 
+struct Constants
+{
+    float fadeStart;
+    float fadeEnd;
+};
+
+[[vk::push_constant]] Constants _constants;
+
 struct VertexOutput
 {
     float4 position : SV_POSITION;
@@ -47,8 +55,8 @@ PSOutput main(VertexOutput input) : SV_Target
 
     float3 worldPos = input.nearPoint + t * (input.farPoint - input.nearPoint);
 
-    const float fadeStart = 80.0f;
-    const float fadeEnd = 110.0f;
+    const float fadeStart = _constants.fadeStart;
+    const float fadeEnd = _constants.fadeEnd;
 
     float distX = distance(worldPos.x, _cameras[0].eyePosition.x);
     float fadingX = clamp((fadeEnd - distX) / (fadeEnd - fadeStart), 0.0f, 0.3f);

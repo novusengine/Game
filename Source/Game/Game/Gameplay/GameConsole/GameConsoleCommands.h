@@ -9,4 +9,6 @@ public:
 	static bool HandlePing(GameConsole* gameConsole, std::vector<std::string> subCommands);
 	static bool HandleDoString(GameConsole* gameConsole, std::vector<std::string> subCommands);
 	static bool HandleLogin(GameConsole* gameConsole, std::vector<std::string> subCommands);
+	static bool HandleReloadScripts(GameConsole* gameConsole, std::vector<std::string> subCommands);
+	static bool HandleSetCursor(GameConsole* gameConsole, std::vector<std::string> subCommands);
 };

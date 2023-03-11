@@ -11,6 +11,10 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("lua"_h, GameConsoleCommands::HandleDoString);
     RegisterCommand("eval"_h, GameConsoleCommands::HandleDoString);
     RegisterCommand("login"_h, GameConsoleCommands::HandleLogin);
+    RegisterCommand("r"_h, GameConsoleCommands::HandleReloadScripts);
+    RegisterCommand("reload"_h, GameConsoleCommands::HandleReloadScripts);
+    RegisterCommand("reloadscripts"_h, GameConsoleCommands::HandleReloadScripts);
+    RegisterCommand("setcursor"_h, GameConsoleCommands::HandleSetCursor);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

@@ -18,5 +18,6 @@ namespace ECS::Singletons
 		std::vector<std::string> mapNames;
 		std::vector<std::string> mapInternalNames;
 		robin_hood::unordered_map<u32, u32> mapNameHashToEntryID;
+		robin_hood::unordered_map<u32, u32> mapInternalNameHashToEntryID;
 	};
 }

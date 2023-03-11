@@ -6,6 +6,7 @@ GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
 EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
 GameConsole* ServiceLocator::_gameConsole = nullptr;
+Scripting::LuaManager* ServiceLocator::_luaManager = nullptr;
 
 void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
@@ -41,4 +42,10 @@ void ServiceLocator::SetGameConsole(GameConsole* gameConsole)
 {
     assert(_gameConsole == nullptr);
     _gameConsole = gameConsole;
+}
+
+void ServiceLocator::SetLuaManager(Scripting::LuaManager* luaManager)
+{
+    assert(_luaManager == nullptr);
+    _luaManager = luaManager;
 }

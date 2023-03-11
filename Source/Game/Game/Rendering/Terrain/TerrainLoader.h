@@ -40,6 +40,7 @@ public:
 	void Update(f32 deltaTime);
 
 	void AddInstance(const LoadDesc& loadDesc);
+	const std::string& GetCurrentMapInternalName() { return _currentMapInternalName; }
 
 private:
 	void LoadPartialMapRequest(const LoadRequestInternal& request);
@@ -49,7 +50,9 @@ private:
 
 private:
 	enki::TaskScheduler _scheduler;
+
 	TerrainRenderer* _terrainRenderer = nullptr;
+	std::string _currentMapInternalName = "None";
 
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 

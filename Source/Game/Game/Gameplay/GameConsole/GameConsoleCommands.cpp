@@ -2,7 +2,7 @@
 #include "GameConsole.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/NetworkState.h"
-#include "Game/Scripting/LuaUtil.h"
+#include "Game/Scripting/LuaManager.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Memory/Bytebuffer.h>
@@ -42,7 +42,7 @@ bool GameConsoleCommands::HandleDoString(GameConsole* gameConsole, std::vector<s
 		code += subCommands[i];
 	}
 
-	if (!Scripting::LuaUtil::DoString(code))
+	if (!ServiceLocator::GetLuaManager()->DoString(code))
 	{
 		gameConsole->PrintError("Failed to run Lua DoString");
 	}
@@ -70,4 +70,26 @@ bool GameConsoleCommands::HandleLogin(GameConsole* gameConsole, std::vector<std:
 	networkState.client->Send(buffer);
 
 	return true;
+}
+
+bool GameConsoleCommands::HandleReloadScripts(GameConsole* gameConsole, std::vector<std::string> subCommands)
+{
+	Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+	luaManager->SetDirty();
+
+	return false;
+}
+
+bool GameConsoleCommands::HandleSetCursor(GameConsole* gameConsole, std::vector<std::string> subCommands)
+{
+	if (subCommands.size() == 0)
+		return false;
+
+	std::string& cursorName = subCommands[0];
+	u32 hash = StringUtils::fnv1a_32(cursorName.c_str(), cursorName.size());
+
+	GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+	gameRenderer->SetCursor(hash);
+
+	return false;
 }

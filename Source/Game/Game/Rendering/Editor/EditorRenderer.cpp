@@ -10,6 +10,10 @@
 
 #include <entt/entt.hpp>
 
+AutoCVar_Int CVAR_WorldGridEnabled("editorRenderer.worldgrid.enabled", "enable world grid rendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Float CVAR_WorldGridFadeStart("editorRenderer.worldgrid.fadestart", "set the starting value from where the world grid will start fading", 80.0f);
+AutoCVar_Float CVAR_WorldGridFadeEnd("editorRenderer.worldgrid.fadeend", "set the starting value from where the world grid will stop fading", 110.0f);
+
 EditorRenderer::EditorRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
     //, _debugRenderer(debugRenderer)
@@ -29,6 +33,9 @@ void EditorRenderer::Update(f32 deltaTime)
 
 void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
+    if (!CVAR_WorldGridEnabled.Get())
+        return;
+
     struct Data
     {
         Renderer::RenderPassMutableResource finalColor;
@@ -86,6 +93,19 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             commandList.BeginPipeline(pipeline);
 
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+
+            struct Constants
+            {
+            public:
+                f32 fadeStart;
+                f32 fadeEnd;
+            };
+
+            Constants* constants = graphResources.FrameNew<Constants>();
+            constants->fadeStart = CVAR_WorldGridFadeStart.GetFloat();
+            constants->fadeEnd = CVAR_WorldGridFadeEnd.GetFloat();
+
+            commandList.PushConstant(constants, 0, sizeof(Constants));
 
             // NumVertices hardcoded as we use a fullscreen quad
             commandList.Draw(6, 1, 0, 0);

@@ -10,10 +10,15 @@ ConsoleCommandHandler::ConsoleCommandHandler()
 	RegisterCommand("ping"_h, &ConsoleCommands::CommandPing);
 	RegisterCommand("lua"_h, &ConsoleCommands::CommandDoString);
 	RegisterCommand("eval"_h, &ConsoleCommands::CommandDoString);
+	RegisterCommand("r"_h, &ConsoleCommands::CommandReloadScripts);
+	RegisterCommand("reload"_h, &ConsoleCommands::CommandReloadScripts);
+	RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);
 
 	RegisterCommand("exit"_h, &ConsoleCommands::CommandExit);
+	RegisterCommand("halt"_h, &ConsoleCommands::CommandExit);
 	RegisterCommand("quit"_h, &ConsoleCommands::CommandExit);
 	RegisterCommand("stop"_h, &ConsoleCommands::CommandExit);
+	RegisterCommand("termiante"_h, &ConsoleCommands::CommandExit);
 }
 
 void ConsoleCommandHandler::HandleCommand(Application& app, std::string& command)

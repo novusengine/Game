@@ -16,6 +16,11 @@ namespace enki
 struct EnttRegistries;
 class GameConsole;
 
+namespace Scripting
+{
+    class LuaManager;
+}
+
 class ServiceLocator
 {
 public:
@@ -61,6 +66,13 @@ public:
     }
     static void SetGameConsole(GameConsole* gameConsole);
 
+    static Scripting::LuaManager* GetLuaManager()
+    {
+        assert(_luaManager != nullptr);
+        return _luaManager;
+    }
+    static void SetLuaManager(Scripting::LuaManager* luaManager);
+
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
@@ -69,4 +81,5 @@ private:
     static enki::TaskScheduler* _taskScheduler;
     static EnttRegistries* _enttRegistries;
     static GameConsole* _gameConsole;
+    static Scripting::LuaManager* _luaManager;
 };

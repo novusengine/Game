@@ -6,6 +6,7 @@
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
 #include <Base/Util/StringUtils.h>
 
@@ -20,11 +21,13 @@
 #include <entt/entt.hpp>
 
 #include <atomic>
-#include <execution>
 #include <filesystem>
 #include <vector>
 
 namespace fs = std::filesystem;
+
+AutoCVar_Int CVAR_TerrainLoaderPhysicsEnabled("terrainLoader.physics.enabled", "enable loading the terrain into the physics engine", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainLoaderPhysicsOptimizeBP("terrainLoader.physics.optimizeBP", "enables optimizing the broadphase", 1, CVarFlags::EditCheckbox);
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer)
 	: _terrainRenderer(terrainRenderer)
@@ -214,9 +217,13 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 	assert(request.loadType == LoadType::Full);
 	assert(request.mapName.size() > 0);
 
-	std::string mapName = request.mapName;
-	fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
+	const std::string& mapName = request.mapName;
+	if (mapName == _currentMapInternalName)
+	{
+		return;
+	}
 
+	fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
 	if (!fs::is_directory(absoluteMapPath))
 	{
 		DebugHandler::PrintError("TerrainLoader : Failed to find '{0}' folder", absoluteMapPath.string());
@@ -231,6 +238,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 	std::atomic<u32> numExistingChunks = 0;
 
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+	bool physicsEnabled = CVAR_TerrainLoaderPhysicsEnabled.Get();
 	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
 	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
@@ -247,7 +256,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 		}
 	});
 
-	enki::TaskSet loadChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
+	enki::TaskSet loadChunksTask(numPaths, [&, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
 	{
 		for (u32 i = range.start; i < range.end; i++)
 		{
@@ -279,6 +288,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 				Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
 
 				// Load into Jolt
+				if (physicsEnabled)
 				{
 					constexpr u32 numVerticesPerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_TOTAL_GRID_SIZE;
 					constexpr u32 numTrianglePerChunk = Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_TRIANGLES;
@@ -386,13 +396,18 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 		return;
 	}
 
+	_currentMapInternalName = mapName;
 	PrepareForChunks(LoadType::Full, numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	_scheduler.AddTaskSetToPipe(&loadChunksTask);
 	_scheduler.WaitforTask(&loadChunksTask);
 
-	joltState.physicsSystem.OptimizeBroadPhase();
+	if (physicsEnabled && CVAR_TerrainLoaderPhysicsOptimizeBP.Get())
+	{
+		joltState.physicsSystem.OptimizeBroadPhase();
+	}
+
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }
 

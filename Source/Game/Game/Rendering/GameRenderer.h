@@ -4,11 +4,15 @@
 #include <Base/Types.h>
 #include <Base/Memory/StackAllocator.h>
 
+#include <robinhood/robinhood.h>
+
 namespace Renderer
 {
 	class Renderer;
 }
 struct GLFWwindow;
+struct GLFWimage;
+struct GLFWcursor;
 class Window;
 class InputManager;
 class TerrainRenderer;
@@ -32,6 +36,9 @@ public:
 
 	void ReloadShaders(bool forceRecompileAll);
 
+	bool AddCursor(u32 nameHash, const std::string& path);
+	bool SetCursor(u32 nameHash, u32 imguiMouseCursor = 0);
+
 	InputManager* GetInputManager() { return _inputManager; }
 	Renderer::Renderer* GetRenderer() { return _renderer; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
@@ -51,6 +58,12 @@ private:
 	void InitImgui();
 
 private:
+	struct Cursor
+	{
+		GLFWimage* image = nullptr;
+		GLFWcursor* cursor = nullptr;
+	};
+
 	Renderer::Renderer* _renderer = nullptr;
 	Window* _window = nullptr;
 	InputManager* _inputManager = nullptr;
@@ -70,4 +83,6 @@ private:
 	DebugRenderer* _debugRenderer = nullptr;
 	EditorRenderer* _editorRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;
+
+	robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;
 };

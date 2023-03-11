@@ -12,9 +12,12 @@
 #include <Game/Editor/EditorHandler.h>
 #include <Game/Gameplay/GameConsole/GameConsole.h>
 #include <Game/Rendering/GameRenderer.h>
-#include <Game/Scripting/LuaUtil.h>
+#include <Game/Scripting/LuaManager.h>
 #include <Game/Util/ServiceLocator.h>
 #include <Game/Loaders/LoaderSystem.h>
+
+#include <Game/Scripting/LuaManager.h>
+#include <Game/Scripting/Systems/LuaSystemBase.h>
 
 #include <enkiTS/TaskScheduler.h>
 #include <entt/entt.hpp>
@@ -25,9 +28,10 @@
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
+AutoCVar_Int CVAR_CpuReportDetailLevel("application.cpuReportDetailLevel", "Sets the detail level for CPU info printing on startup. (0 = No Output, 1 = CPU Name, 2 = CPU Name + Feature Support)", 1);
 
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
-Application::~Application() 
+Application::~Application()
 {
 	delete _gameRenderer;
 	delete _editorHandler;
@@ -136,16 +140,20 @@ bool Application::Init()
 {
 	// Setup CVar Config
 	{
-		std::filesystem::create_directories("Data/config");
+		std::filesystem::create_directories("Data/Config");
 
 		nlohmann::ordered_json fallback;
-		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/config/CVar.json"))
+		if (JsonUtils::LoadFromPathOrCreate(_cvarJson, fallback, "Data/Config/CVar.json"))
 		{
 			JsonUtils::LoadJsonIntoCVars(_cvarJson);
 			JsonUtils::LoadCVarsIntoJson(_cvarJson);
-			JsonUtils::SaveToPath(_cvarJson, "Data/config/CVar.json");
+			JsonUtils::SaveToPath(_cvarJson, "Data/Config/CVar.json");
 		}
 	}
+
+	// Print CPU info
+	CPUInfo cpuInfo = CPUInfo::Get();
+	cpuInfo.Print(CVAR_CpuReportDetailLevel.Get());
 
 	_taskScheduler = new enki::TaskScheduler();
 	_taskScheduler->Initialize();
@@ -178,11 +186,9 @@ bool Application::Init()
 
 	ServiceLocator::SetGameConsole(new GameConsole());
 
-	// Print CPU info
-	CPUInfo cpuInfo = CPUInfo::Get();
-	cpuInfo.Print();
-
-	Scripting::LuaUtil::DoString("print(\"Hello World :o\")");
+	_luaManager = new Scripting::LuaManager();
+	ServiceLocator::SetLuaManager(_luaManager);
+	_luaManager->Init();
 
 	return true;
 }
@@ -228,11 +234,17 @@ bool Application::Tick(f32 deltaTime)
 
 			case MessageInbound::Type::DoString:
 			{
-				if (!Scripting::LuaUtil::DoString(message.data))
+				if (!ServiceLocator::GetLuaManager()->DoString(message.data))
 				{
 					DebugHandler::PrintError("Failed to run Lua DoString");
 				}
 				
+				break;
+			}
+
+			case MessageInbound::Type::ReloadScripts:
+			{
+				ServiceLocator::GetLuaManager()->SetDirty();
 				break;
 			}
 
@@ -252,7 +264,7 @@ bool Application::Tick(f32 deltaTime)
 	if (CVarSystem::Get()->IsDirty())
 	{
 		JsonUtils::LoadCVarsIntoJson(_cvarJson);
-		JsonUtils::SaveToPath(_cvarJson, "Data/config/CVar.json");
+		JsonUtils::SaveToPath(_cvarJson, "Data/Config/CVar.json");
 
 		CVarSystem::Get()->ClearDirty();
 	}

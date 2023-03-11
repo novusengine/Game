@@ -95,6 +95,7 @@ namespace Editor
                 {
                     if (hasFilter)
                     {
+                        tempString.resize(currentMap->length());
                         std::transform(currentMap->begin(), currentMap->end(), tempString.begin(), [](char c) { return std::tolower((i32)c); });
 
                         if (tempString.find(currentFilter) != std::string::npos)

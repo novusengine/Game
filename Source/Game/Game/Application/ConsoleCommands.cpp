@@ -54,3 +54,9 @@ void ConsoleCommands::CommandDoString(Application& app, std::vector<std::string>
 
 	app.PassMessage(message);
 }
+
+void ConsoleCommands::CommandReloadScripts(Application& app, std::vector<std::string>& subCommands)
+{
+	MessageInbound message(MessageInbound::Type::ReloadScripts);
+	app.PassMessage(message);
+}

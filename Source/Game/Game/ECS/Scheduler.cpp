@@ -43,6 +43,8 @@ namespace ECS
 		Systems::DrawDebugMesh::Update(registry, deltaTime);
 		Systems::FreeflyingCamera::Update(registry, deltaTime);
 		Systems::CalculateCameraMatrices::Update(registry, deltaTime);
+
+		// Note: For now UpdateScripts should always be run last
 		Systems::UpdateScripts::Update(registry, deltaTime);
 	}
 }

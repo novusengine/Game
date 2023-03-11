@@ -26,6 +26,40 @@
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
+#include <Renderer/Renderers/Vulkan/Backend/stb_image.h>
+#include <gli/gli.hpp>
+
+enum GlfwClientApi
+{
+    GlfwClientApi_Unknown,
+    GlfwClientApi_OpenGL,
+    GlfwClientApi_Vulkan
+};
+struct ImGui_ImplGlfw_Data
+{
+    GLFWwindow* Window;
+    GlfwClientApi           ClientApi;
+    double                  Time;
+    GLFWwindow* MouseWindow;
+    GLFWcursor* MouseCursors[ImGuiMouseCursor_COUNT];
+    ImVec2                  LastValidMousePos;
+    GLFWwindow* KeyOwnerWindows[GLFW_KEY_LAST];
+    bool                    InstalledCallbacks;
+    bool                    WantUpdateMonitors;
+
+    // Chain GLFW callbacks: our callbacks will call the user's previously installed callbacks, if any.
+    GLFWwindowfocusfun      PrevUserCallbackWindowFocus;
+    GLFWcursorposfun        PrevUserCallbackCursorPos;
+    GLFWcursorenterfun      PrevUserCallbackCursorEnter;
+    GLFWmousebuttonfun      PrevUserCallbackMousebutton;
+    GLFWscrollfun           PrevUserCallbackScroll;
+    GLFWkeyfun              PrevUserCallbackKey;
+    GLFWcharfun             PrevUserCallbackChar;
+    GLFWmonitorfun          PrevUserCallbackMonitor;
+
+    ImGui_ImplGlfw_Data() { memset((void*)this, 0, sizeof(*this)); }
+};
+
 void KeyCallback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 modifiers)
 {
     ServiceLocator::GetGameRenderer()->GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
@@ -77,7 +111,7 @@ GameRenderer::GameRenderer()
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
-	_renderer = new Renderer::RendererVK();
+	_renderer = new Renderer::RendererVK(_window);
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
@@ -100,6 +134,8 @@ GameRenderer::GameRenderer()
     CreatePermanentResources();
 
     DepthPyramidUtils::InitBuffers(_renderer);
+
+    _nameHashToCursor.reserve(128);
 }
 
 GameRenderer::~GameRenderer()
@@ -256,6 +292,43 @@ void GameRenderer::Render()
 void GameRenderer::ReloadShaders(bool forceRecompileAll)
 {
     _renderer->ReloadShaders(forceRecompileAll);
+}
+
+bool GameRenderer::AddCursor(u32 nameHash, const std::string& path)
+{
+    if (_nameHashToCursor.contains(nameHash))
+        return false;
+
+    gli::texture texture = gli::load(path);
+
+    if (texture.empty())
+        return false;
+
+    Cursor cursor;
+    cursor.image = new GLFWimage();
+    cursor.image->width = texture.extent().x;
+    cursor.image->height = texture.extent().y;
+    cursor.image->pixels = (unsigned char*)texture.data();
+    cursor.cursor = glfwCreateCursor(cursor.image, 0, 0);
+
+    _nameHashToCursor[nameHash] = cursor;
+
+    return true;
+}
+
+bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
+{
+    if (!_nameHashToCursor.contains(nameHash))
+        return false;
+
+    const Cursor& cursor = _nameHashToCursor[nameHash];
+    if (cursor.cursor == nullptr)
+        return false;
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui_ImplGlfw_Data* glfwImguiData = reinterpret_cast<ImGui_ImplGlfw_Data*>(io.BackendPlatformUserData);
+    glfwImguiData->MouseCursors[imguiMouseCursor] = cursor.cursor;
+    return true;
 }
 
 const std::string& GameRenderer::GetGPUName()

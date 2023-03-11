@@ -10,6 +10,7 @@ public:
 		Print,
 		Ping,
 		DoString,
+		ReloadScripts,
 		Exit
 	};
 

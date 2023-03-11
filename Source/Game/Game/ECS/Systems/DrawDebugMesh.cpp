@@ -16,11 +16,11 @@ namespace ECS::Systems
 
 	void DrawDebugMesh::Update(entt::registry& registry, f32 deltaTime)
 	{
-		DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
-
 		auto view = registry.view<const Components::Transform, const Components::DebugRenderTransform>();
 		if (view.size_hint() == 0)
 			return;
+
+		DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
 
 		view.each([&](entt::entity entity, const Components::Transform& transform, const Components::DebugRenderTransform& debugMesh)
 		{

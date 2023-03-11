@@ -58,13 +58,11 @@ namespace ECS::Systems
             {
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                DebugHandler::Print("Mouse captured!");
             }
             else
             {
                 ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                DebugHandler::Print("Mouse released!");
             }
 
             return true;
@@ -83,7 +81,6 @@ namespace ECS::Systems
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-                DebugHandler::Print("Mouse captured because of mouseclick!");
             }
             return true;
         });
