@@ -1,6 +1,6 @@
 project(shaders VERSION 1.0.0 DESCRIPTION "Shaders are used in Game")
  
-set(SHADER_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR}/../Data/shaders CACHE PATH "Output Directory for shaders")
+set(SHADER_BIN_DIR ${CMAKE_BINARY_DIR}/Bin/Data/shaders/ CACHE PATH "Output Directory for shaders")
 set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Handle HLSL shaders
