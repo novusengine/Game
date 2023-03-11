@@ -96,7 +96,9 @@ namespace Scripting
 		u64 key = reinterpret_cast<u64>(state);
 
 		LuaStateCtx ctx(state);
-		for (i32 funcHandle : _eventToLuaStateFuncRefList[id][key])
+
+		std::vector<i32>& funcRefList = _eventToLuaStateFuncRefList[id][key];
+		for (i32 funcHandle : funcRefList)
 		{
 			ctx.PushLFunction(funcHandle, false);
 			ctx.PushNumber(id);

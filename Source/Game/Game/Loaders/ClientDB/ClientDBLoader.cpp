@@ -31,40 +31,36 @@ public:
         
         entt::registry* registry = registries->gameRegistry;
         entt::registry::context& ctx = registry->ctx();
-        
+
+        SetupSingletons(ctx);
+
+        static const fs::path fileExtension = ".cdb";
         fs::path relativeParentPath = "Data/ClientDB";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
+        fs::create_directories(absolutePath);
         
-        if (!fs::is_directory(absolutePath))
-        {
-            DebugHandler::PrintError("Failed to find 'Texture' folder");
-            return false;
-        }
-        
-        static const fs::path fileExtension = ".cdb";
-        
-        std::vector<std::filesystem::path> paths;
         moodycamel::ConcurrentQueue<ClientDBPair> clientDBPairs;
-        
+
+        std::vector<std::filesystem::path> paths;
         std::filesystem::recursive_directory_iterator dirpos{ absolutePath };
         std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
-        
+
         std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&clientDBPairs](const std::filesystem::path& path)
         {
             if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
                 return;
-        
+
             std::string fileName = path.filename().string();
 
             ClientDBPair clientDBPair;
             clientDBPair.path = path.string();
             clientDBPair.hash = StringUtils::fnv1a_32(fileName.c_str(), fileName.length());
-        
+
             clientDBPairs.enqueue(clientDBPair);
         });
 
         size_t numClientDBs = 0;
-        
+
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<8388608>();
 
         ClientDBPair clientDBPair;
@@ -92,14 +88,20 @@ public:
                 DebugHandler::PrintError("ClientDBLoader : Failed to load '{0}'", clientDBPair.path);
             }
         }
-        
+
         DebugHandler::Print("Loaded {0} Client Database Files", numClientDBs);
+
         return true;
+    }
+
+    void SetupSingletons(entt::registry::context& registryCtx)
+    {
+        registryCtx.emplace<ECS::Singletons::MapDB>();
     }
 
     bool LoadMapDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
     {
-        auto& mapDB = registryCtx.emplace<ECS::Singletons::MapDB>();
+        auto& mapDB = registryCtx.at<ECS::Singletons::MapDB>();
 
         // Clear, in case we already filled mapDB
         mapDB.entries.data.clear();

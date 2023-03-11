@@ -32,27 +32,22 @@ public:
         entt::registry::context& ctx = registry->ctx();
         ECS::Singletons::TextureSingleton& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
 
+        static const fs::path fileExtension = ".dds";
         fs::path relativeParentPath = "Data/Texture";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
+        fs::create_directories(absolutePath);
 
+        // Note : This is used because it is more performant than doing fs::relative by up to 3x on 140k textures
         std::string absolutePathStr = absolutePath.string();
         size_t subStrIndex = absolutePathStr.length() + 1; // + 1 here for folder seperator
 
-        if (!fs::is_directory(absolutePath))
-        {
-            DebugHandler::PrintError("Failed to find 'Texture' folder");
-            return false;
-        }
-
-        static const fs::path fileExtension = ".dds";
-
-        std::vector<std::filesystem::path> paths;
         moodycamel::ConcurrentQueue<TexturePair> texturePairs;
 
+        std::vector<std::filesystem::path> paths;
         std::filesystem::recursive_directory_iterator dirpos{ absolutePath };
         std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
 
-        std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&subStrIndex, /*&relativeParentPath,*/ &texturePairs](const std::filesystem::path& path)
+        std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&subStrIndex, &texturePairs](const std::filesystem::path& path)
         {
             if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
                 return;
@@ -82,6 +77,7 @@ public:
         }
 
         DebugHandler::Print("Loaded Texture {0} entries", textureSingleton.textureHashToPath.size());
+
         return true;
     }
 };
