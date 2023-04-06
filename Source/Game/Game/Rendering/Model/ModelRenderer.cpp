@@ -22,7 +22,7 @@
 #include <entt/entt.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
-AutoCVar_Int CVAR_ModelRendererEnabled("modelRenderer.enabled", "enable modelrendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelRendererEnabled("modelRenderer.enabled", "enable modelrendering", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelCullingEnabled("modelRenderer.culling", "enable model culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelOcclusionCullingEnabled("modelRenderer.occlusionculling", "enable model occlusion culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelForceDisableOccluders("modelRenderer.forcedisableoccluders", "force disable occluders", 0, CVarFlags::EditCheckbox);
