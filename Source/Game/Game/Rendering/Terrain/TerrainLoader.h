@@ -7,6 +7,8 @@
 #include <robinhood/robinhood.h>
 #include <type_safe/strong_typedef.hpp>
 
+class ModelLoader;
+
 class TerrainRenderer;
 class TerrainLoader
 {
@@ -35,7 +37,7 @@ private:
 	};
 
 public:
-	TerrainLoader(TerrainRenderer* terrainRenderer);
+	TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader);
 	
 	void Update(f32 deltaTime);
 
@@ -53,6 +55,8 @@ private:
 
 	TerrainRenderer* _terrainRenderer = nullptr;
 	std::string _currentMapInternalName = "None";
+
+	ModelLoader* _modelLoader = nullptr;
 
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 

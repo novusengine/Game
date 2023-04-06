@@ -4,6 +4,7 @@
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -29,8 +30,9 @@ namespace fs = std::filesystem;
 AutoCVar_Int CVAR_TerrainLoaderPhysicsEnabled("terrainLoader.physics.enabled", "enable loading the terrain into the physics engine", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_TerrainLoaderPhysicsOptimizeBP("terrainLoader.physics.optimizeBP", "enables optimizing the broadphase", 1, CVarFlags::EditCheckbox);
 
-TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer)
+TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader)
 	: _terrainRenderer(terrainRenderer)
+	, _modelLoader(modelLoader)
 	, _requests()
 {
 	_scheduler.Initialize();
@@ -145,6 +147,11 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 				Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
 
 				u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+
+				for (Terrain::Placement& placement : chunk->complexModelPlacements)
+				{
+					_modelLoader->LoadPlacement(placement);
+				}
 			}
 		}
 	});
@@ -375,10 +382,40 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					_chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
 				}
 
+				Map::Chunk testChunk;
+				Map::Chunk::Read(chunkBuffer, testChunk);
+
 				// Load into Terrain Renderer
 				{
 					u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
 					_chunkIDToLoadedID[chunkID] = chunkDataID;
+
+					size_t mapObjectOffset = sizeof(Map::Chunk) - (sizeof(std::vector<Terrain::Placement>) * 2);
+
+					u32 numMapObjectPlacements;
+					if (chunkBuffer->Get(numMapObjectPlacements, mapObjectOffset))
+					{
+						/*for (u32 j = 0; j < numElements; j++)
+						{
+							size_t offset = mapObjectOffset + sizeof(u32) + (j * sizeof(Terrain::Placement));
+							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
+
+							_modelLoader->LoadPlacement(*placement);
+						}*/
+					}
+					size_t cModelOffset = mapObjectOffset + sizeof(u32) + numMapObjectPlacements * sizeof(Terrain::Placement);
+
+					u32 numCModelPlacements;
+					if (chunkBuffer->Get(numCModelPlacements, cModelOffset))
+					{
+						for (u32 j = 0; j < numCModelPlacements; j++)
+						{
+							size_t offset = cModelOffset + sizeof(u32) + (j * sizeof(Terrain::Placement));
+							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
+
+							_modelLoader->LoadPlacement(*placement);
+						}
+					}
 				}
 			}
 		}

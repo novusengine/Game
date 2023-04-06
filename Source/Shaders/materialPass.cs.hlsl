@@ -122,6 +122,98 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	return saturate(color);
 }
 
+float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer)
+{
+	ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
+	ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
+	float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+
+	// Get the VertexIDs of the triangle we're in
+	Draw draw = _modelDraws[vBuffer.drawID];
+	uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
+
+	// Get Vertices
+	ModelVertex vertices[3];
+
+	[unroll]
+	for (uint i = 0; i < 3; i++)
+	{
+		vertices[i] = LoadModelVertex(vertexIDs[i]);
+
+		/* TODO: Animations
+		// Animate the vertex normal if we need to
+		if (instanceData.boneDeformOffset != 4294967295)
+		{
+			// Calculate bone transform matrix
+			float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
+			vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
+		}*/
+
+		// Convert normals to world normals
+		vertices[i].normal = mul(vertices[i].normal, (float3x3)instanceMatrix);
+	}
+
+	// Interpolate vertex attributes
+	FullBary2 pixelUV0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
+	FullBary2 pixelUV1 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.zw, vertices[1].uv01.zw, vertices[2].uv01.zw);
+
+	float3 pixelVertexPosition = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
+	float3 pixelWorldPosition = mul(float4(pixelVertexPosition, 1.0f), instanceMatrix).xyz;
+
+	float4 pixelViewPosition = mul(float4(pixelWorldPosition, 1.0f), _cameras[0].worldToView);
+	uint shadowCascadeIndex = 0;// GetShadowCascadeIndexFromDepth(pixelViewPosition.z, _constants.numCascades);
+#if DEBUG_ID == 4
+	return float4(IDToColor3(shadowCascadeIndex + 1), 1.0f);
+#endif
+	//ViewData shadowCascadeViewData = _shadowCascadeViewDatas[shadowCascadeIndex];
+
+	//float4 pixelShadowPosition = mul(float4(pixelWorldPosition, 1.0f), shadowCascadeViewData.viewProjectionMatrix);
+	float4 pixelShadowPosition = float4(0, 0, 0, 0);
+
+	float3 pixelNormal = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal);
+
+	// Shade
+	float4 color = float4(0, 0, 0, 0);
+	float3 specular = float3(0, 0, 0);
+	bool isUnlit = false;
+
+	for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+	{
+		ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
+
+		uint isProjectedTexture = textureUnit.data1 & 0x1;
+		uint materialFlags = (textureUnit.data1 >> 1) & 0x3FF;
+		uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
+
+		uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
+		uint vertexShaderId = materialType & 0xFF;
+		uint pixelShaderId = materialType >> 8;
+
+		if (materialType == 0x8000)
+			continue;
+
+		float4 texture0 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_sampler, pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
+		float4 texture1 = float4(0, 0, 0, 0);
+
+		if (vertexShaderId >= 2)
+		{
+			// ENV uses generated UVCoords based on camera pos + geometry normal in frame space
+			texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_sampler, pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
+		}
+
+		isUnlit |= (materialFlags & 0x1);
+
+		float4 shadedColor = ShadeModel(pixelShaderId, texture0, texture1, specular);
+		color = BlendModel(blendingMode, color, shadedColor);
+	}
+
+	// Apply lighting
+	//float ambientOcclusion = _ambientOcclusion.Load(float3(pixelPos, 0)).x;
+	//color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), pixelNormal, ambientOcclusion, !isUnlit, screenUV, pixelShadowPosition, _constants.shadowFilterSize, _constants.shadowPenumbraFilterSize, shadowCascadeIndex, _constants.enabledShadows) + specular;
+	//color = float4(pixelUV0.value, 0, 1);
+	return saturate(color);
+}
+
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -164,13 +256,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	{
 		color = ShadeTerrain(pixelPos, pixelUV, vBuffer);
 	}
-	else if (vBuffer.typeID == ObjectType::MapObject)
+	else if (vBuffer.typeID == ObjectType::ModelOpaque) // Transparent models are not rendered using visibility buffers
 	{
-		//color = ShadeMapObject(pixelPos, pixelUV, vBuffer);
-	}
-	else if (vBuffer.typeID == ObjectType::CModelOpaque) // Transparent cmodels are not rendered using visibility buffers
-	{
-		//color = ShadeCModel(pixelPos, pixelUV, vBuffer);
+		color = ShadeModel(pixelPos, pixelUV, vBuffer);
 	}
 	else
 	{

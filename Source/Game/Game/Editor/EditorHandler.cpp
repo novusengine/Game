@@ -3,6 +3,8 @@
 #include "CameraInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "MapEditor.h"
+#include "ActionStack.h"
+#include "Inspector.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -27,6 +29,12 @@ namespace Editor
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapEditor());
+
+        _actionStackEditor = new ActionStackEditor(64);
+        _editors.push_back(_actionStackEditor);
+
+        _inspector = new Inspector();
+        _editors.push_back(_inspector);
         
         keybindGroup->SetActive(true);
 

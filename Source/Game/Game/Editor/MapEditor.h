@@ -13,6 +13,7 @@ namespace Editor
 		virtual void DrawImGui() override;
 
 	private:
+		bool _hasLoadedMap = false;
 
 	private:
 	};

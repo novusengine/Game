@@ -12,12 +12,13 @@ namespace Renderer
 }
 
 class TerrainRenderer;
+class ModelRenderer;
 struct RenderResources;
 
 class MaterialRenderer
 {
 public:
-	MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer);
+	MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer);
 	~MaterialRenderer();
 
 	void Update(f32 deltaTime);
@@ -35,4 +36,5 @@ private:
 	Renderer::SamplerID _sampler;
 
 	TerrainRenderer* _terrainRenderer = nullptr;
+	ModelRenderer* _modelRenderer = nullptr;
 };

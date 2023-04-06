@@ -3,6 +3,7 @@
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Rendering/RenderResources.h"
 #include "Game/Rendering/Terrain/TerrainRenderer.h"
+#include "Game/Rendering/Model/ModelRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Application/EnttRegistries.h"
 
@@ -15,9 +16,10 @@
 
 AutoCVar_Int CVAR_VisibilityBufferDebugID("material.visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
 
-MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer)
+MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer)
     : _renderer(renderer)
     , _terrainRenderer(terrainRenderer)
+    , _modelRenderer(modelRenderer)
 {
     CreatePermanentResources();
 }
@@ -129,8 +131,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             //Renderer::DescriptorSet& mapObjectDescriptorSet = _mapObjectRenderer->GetMaterialPassDescriptorSet();
             //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MAPOBJECT, &mapObjectDescriptorSet, frameIndex);
 
-            //Renderer::DescriptorSet& cModelDescriptorSet = _cModelRenderer->GetMaterialPassDescriptorSet();
-            //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::CMODEL, &cModelDescriptorSet, frameIndex);
+            Renderer::DescriptorSet& cModelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, &cModelDescriptorSet, frameIndex);
 
             const uvec2& outputSize = _renderer->GetImageDimension(resources.finalColor, 0);
 

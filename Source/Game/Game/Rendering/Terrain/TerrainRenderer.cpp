@@ -112,21 +112,21 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
     const bool forceDisableOccluders = CVAR_ForceDisableOccluders.Get();
 
-    struct TerrainOccluderPassData
+    struct Data
     {
         Renderer::RenderPassMutableResource visibilityBuffer;
         Renderer::RenderPassMutableResource depth;
     };
 
-    renderGraph->AddPass<TerrainOccluderPassData>("Terrain Occluders",
-        [=, &resources](TerrainOccluderPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+    renderGraph->AddPass<Data>("Terrain Occluders",
+        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](TerrainOccluderPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainOccluders);
 
@@ -242,16 +242,16 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
 
-    struct TerrainCullingPassData
+    struct Data
     {
     };
 
-    renderGraph->AddPass<TerrainCullingPassData>("Terrain Culling",
-        [=, &resources](TerrainCullingPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+    renderGraph->AddPass<Data>("Terrain Culling",
+        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](TerrainCullingPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCulling);
 
@@ -331,7 +331,6 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &_cullingPassDescriptorSet, frameIndex);
 
-            
             commandList.Dispatch((cellCount + 31) / 32, 1, 1);
 
             commandList.EndPipeline(pipeline);
@@ -408,48 +407,6 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                 }
                 commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, _drawCountReadBackBuffer);
             }
-
-            /*Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            // Shaders
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "Terrain/Draw.vs.hlsl";
-            vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
-            vertexShaderDesc.AddPermutationField("SHADOW_PASS", "0");
-
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "Terrain/Draw.ps.hlsl";
-
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-            // Depth state
-            pipelineDesc.states.depthStencilState.depthEnable = true;
-            pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-            pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-            pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-            // Render targets
-            pipelineDesc.renderTargets[0] = data.visibilityBuffer;
-            pipelineDesc.depthStencil = data.depth;
-
-            // Set pipeline
-            Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
-            commandList.BeginPipeline(pipeline);
-
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &_geometryPassDescriptorSet, frameIndex);
-
-            commandList.SetIndexBuffer(_cellIndices.GetBuffer(), Renderer::IndexFormat::UInt16);
-
-            commandList.DrawIndexed(static_cast<u32>(_cellIndices.Size()), static_cast<u32>(_instanceDatas.Size()), 0, 0, 0);
-
-            commandList.EndPipeline(pipeline);*/
         });
 }
 
@@ -571,19 +528,19 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         {
             ZoneScopedN("Calculate Bounding Boxes");
 
-            const u16 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-            const u16 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const u16 cellX = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const u16 cellY = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
 
             vec3 min;
             vec3 max;
 
-            min.x = flippedChunkOrigin.x - (cellY * Terrain::CELL_SIZE);
+            min.x = flippedChunkOrigin.x - (cellX * Terrain::CELL_SIZE);
             min.y = cell.cellMinHeight;
-            min.z = flippedChunkOrigin.y - (cellX * Terrain::CELL_SIZE);
+            min.z = flippedChunkOrigin.y - (cellY * Terrain::CELL_SIZE);
 
-            max.x = flippedChunkOrigin.x - ((cellY + 1) * Terrain::CELL_SIZE);
+            max.x = flippedChunkOrigin.x - ((cellX + 1) * Terrain::CELL_SIZE);
             max.y = cell.cellMaxHeight;
-            max.z = flippedChunkOrigin.y - ((cellX + 1) * Terrain::CELL_SIZE);
+            max.z = flippedChunkOrigin.y - ((cellY + 1) * Terrain::CELL_SIZE);
 
             Geometry::AABoundingBox& boundingBox = cellBoundingBoxes[cellIndex];
             vec3 aabbMin = glm::min(min, max);

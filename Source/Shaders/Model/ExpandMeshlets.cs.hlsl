@@ -1,6 +1,6 @@
 #include "Model/Shared.inc.hlsl"
 
-struct PaddedDispatch
+/*struct PaddedDispatch
 {
     uint numSurvivedInstances;
     uint x;
@@ -18,7 +18,7 @@ struct PaddedDispatch
 [[vk::binding(6, PER_DRAW)]] RWStructuredBuffer<SurvivedInstanceData> _survivedInstanceDatas;
 [[vk::binding(7, PER_DRAW)]] RWStructuredBuffer<MeshletInstance> _meshletInstances;
 [[vk::binding(8, PER_DRAW)]] RWByteAddressBuffer _meshletInstanceCount;
-[[vk::binding(9, PER_DRAW)]] RWByteAddressBuffer _drawArguments;
+[[vk::binding(9, PER_DRAW)]] RWByteAddressBuffer _drawArguments;*/
 
 struct CSInput
 {
@@ -28,7 +28,7 @@ struct CSInput
 [numthreads(64, 1, 1)]
 void main(CSInput input)
 {
-    uint survivedInstanceID = input.dispatchThreadID.x;
+    /*uint survivedInstanceID = input.dispatchThreadID.x;
     uint numSurvivedInstances = _dispatchArguments[0].numSurvivedInstances;
     
     if (survivedInstanceID >= numSurvivedInstances)
@@ -68,5 +68,5 @@ void main(CSInput input)
             uint packedData = meshletInstanceID | (j << 23);
             _culledIndices[offset + j] = packedData;
         }
-    }
+    }*/
 }

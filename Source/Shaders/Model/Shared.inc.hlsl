@@ -1,58 +1,502 @@
 #ifndef MODEL_SHARED_INCLUDED
 #define MODEL_SHARED_INCLUDED
+#include "common.inc.hlsl"
 
-struct ModelData
+struct ModelInstanceData
 {
-    uint meshletOffset;
-    uint packedData; // 16 bits meshletCount, 16 bits textureID
-    uint indexOffset;
-    uint vertexOffset;
+    uint modelID;
+    uint boneDeformOffset;
+    uint boneInstanceDataOffset;
+    uint textureTransformDeformOffset;
+    uint textureTransformInstanceDataOffset;
+    uint modelVertexOffset;
+    uint animatedVertexOffset;
 };
 
-struct InstanceData
+struct PackedModelDrawCallData
 {
-    uint modelDataID;
-    uint padding;
+    uint instanceID;
+    uint textureUnitOffset;
+    uint packed1; // uint16_t numTextureUnits, uint16_t numUnlitTextureUnits
+}; // 12 bytes
+
+struct ModelDrawCallData
+{
+    uint instanceID;
+    uint textureUnitOffset;
+    uint numTextureUnits;
+    uint numUnlitTextureUnits;
 };
 
-struct SurvivedInstanceData
+[[vk::binding(0, MODEL)]] StructuredBuffer<PackedModelDrawCallData> _packedModelDrawCallDatas;
+ModelDrawCallData LoadModelDrawCallData(uint drawCallID)
 {
-    uint instanceDataID;
-    uint numMeshletsBeforeInstance;
-};
+    PackedModelDrawCallData packedDrawCallData = _packedModelDrawCallDatas[drawCallID];
 
-struct MeshletData
-{
-    uint indexStart;
-    uint indexCount;
-};
+    ModelDrawCallData drawCallData;
 
-struct MeshletInstance
-{
-    uint meshletDataID;
-    uint instanceDataID;
-};
+    drawCallData.instanceID = packedDrawCallData.instanceID;
+    drawCallData.textureUnitOffset = packedDrawCallData.textureUnitOffset;
 
-#define RED_SEED 3
-#define GREEN_SEED 5
-#define BLUE_SEED 7
+    drawCallData.numTextureUnits = packedDrawCallData.packed1 & 0xFFFF;
+    drawCallData.numUnlitTextureUnits = (packedDrawCallData.packed1 >> 16) && 0xFFFF;
 
-float IDToColor(uint ID, uint seed)
-{
-    return float(ID % seed) / float(seed);
+    return drawCallData;
 }
 
-float IDToColor(uint ID)
+struct PackedModelVertex
 {
-    return IDToColor(ID, RED_SEED);
-}
-float3 IDToColor3(uint ID)
-{
-    float3 color = float3(0, 0, 0);
-    color.x = IDToColor(ID, RED_SEED);
-    color.y = IDToColor(ID, GREEN_SEED);
-    color.z = IDToColor(ID, BLUE_SEED);
+    uint packed0; // half positionX, half positionY
+    uint packed1; // half positionZ, u8 octNormal[2]
+    uint packed2; // half uv0X, half uv0Y
+    uint packed3; // half uv1X, half uv1Y
+    uint packed4; // bone indices (0..4)
+    uint packed5; // bone weights (0..4)
+}; // 24 bytes
 
-    return color;
+struct ModelVertex
+{
+    float3 position;
+
+    float4 uv01;
+#if !GEOMETRY_PASS
+    float3 normal;
+#endif
+
+    uint4 boneIndices;
+    float4 boneWeights;
+};
+
+float3 UnpackModelPosition(PackedModelVertex packedVertex)
+{
+    float3 position;
+
+    position.x = f16tof32(packedVertex.packed0);
+    position.y = f16tof32(packedVertex.packed0 >> 16);
+    position.z = f16tof32(packedVertex.packed1);
+
+    return position;
 }
+
+float3 UnpackModelNormal(PackedModelVertex packedVertex)
+{
+    uint x = (packedVertex.packed1 >> 16) & 0xFF;
+    uint y = packedVertex.packed1 >> 24;
+
+    float2 octNormal = float2(x, y) / 255.0f;
+    return OctNormalDecode(octNormal);
+}
+
+float4 UnpackModelUVs(PackedModelVertex packedVertex)
+{
+    float4 uvs;
+
+    uvs.x = f16tof32(packedVertex.packed2);
+    uvs.y = f16tof32(packedVertex.packed2 >> 16);
+    uvs.z = f16tof32(packedVertex.packed3);
+    uvs.w = f16tof32(packedVertex.packed3 >> 16);
+
+    return uvs;
+}
+
+uint4 UnpackModelBoneIndices(PackedModelVertex packedVertex)
+{
+    uint4 boneIndices;
+
+    boneIndices.x = packedVertex.packed4 & 0xFF;
+    boneIndices.y = (packedVertex.packed4 >> 8) & 0xFF;
+    boneIndices.z = (packedVertex.packed4 >> 16) & 0xFF;
+    boneIndices.w = (packedVertex.packed4 >> 24) & 0xFF;
+
+    return boneIndices;
+}
+
+float4 UnpackModelBoneWeights(PackedModelVertex packedVertex)
+{
+    float4 boneWeights;
+
+    boneWeights.x = (float)(packedVertex.packed5 & 0xFF) / 255.f;
+    boneWeights.y = (float)((packedVertex.packed5 >> 8) & 0xFF) / 255.f;
+    boneWeights.z = (float)((packedVertex.packed5 >> 16) & 0xFF) / 255.f;
+    boneWeights.w = (float)((packedVertex.packed5 >> 24) & 0xFF) / 255.f;
+
+    return boneWeights;
+}
+
+[[vk::binding(1, MODEL)]] StructuredBuffer<PackedModelVertex> _packedModelVertices;
+ModelVertex LoadModelVertex(uint vertexID)
+{
+    PackedModelVertex packedVertex = _packedModelVertices[vertexID];
+
+    ModelVertex vertex;
+    vertex.position = float3(UnpackModelPosition(packedVertex).x, UnpackModelPosition(packedVertex).y, UnpackModelPosition(packedVertex).z);
+    vertex.uv01 = UnpackModelUVs(packedVertex);
+    //vertex.uv01 = float4((vertex.uv01.x * 0.5f), (vertex.uv01.y * 0.5f), vertex.uv01.z, vertex.uv01.w);
+    //vertex.uv01 = float4(vertex.uv01.x, 1.0f - vertex.uv01.y, vertex.uv01.z, vertex.uv01.w);
+
+#if !GEOMETRY_PASS
+    vertex.normal = UnpackModelNormal(packedVertex);
+#endif
+
+    vertex.boneIndices = UnpackModelBoneIndices(packedVertex);
+    vertex.boneWeights = UnpackModelBoneWeights(packedVertex);
+
+    return vertex;
+}
+
+[[vk::binding(2, MODEL)]] StructuredBuffer<ModelInstanceData> _modelInstanceDatas;
+[[vk::binding(3, MODEL)]] StructuredBuffer<float4x4> _modelInstanceMatrices;
+[[vk::binding(4, MODEL)]] StructuredBuffer<float4x4> _modelAnimationBoneDeformMatrices;
+
+struct PackedAnimatedVertexPosition
+{
+    uint packed0; // half2 position.xy
+    uint packed1; // half position.z, padding
+};
+[[vk::binding(5, MODEL)]] RWStructuredBuffer<PackedAnimatedVertexPosition> _animatedModelVertexPositions;
+
+void StoreAnimatedVertexPosition(uint animatedVertexID, float3 position)
+{
+    PackedAnimatedVertexPosition packedAnimatedVertexPosition;
+    packedAnimatedVertexPosition.packed0 = f32tof16(position.x);
+    packedAnimatedVertexPosition.packed0 |= f32tof16(position.y) << 16;
+    packedAnimatedVertexPosition.packed1 = f32tof16(position.z);
+
+    _animatedModelVertexPositions[animatedVertexID] = packedAnimatedVertexPosition;
+}
+
+float3 LoadAnimatedVertexPosition(uint animatedVertexID)
+{
+    PackedAnimatedVertexPosition packedAnimatedVertexPosition = _animatedModelVertexPositions[animatedVertexID];
+
+    float3 position;
+    position.x = f16tof32(packedAnimatedVertexPosition.packed0);
+    position.y = f16tof32(packedAnimatedVertexPosition.packed0 >> 16);
+    position.z = f16tof32(packedAnimatedVertexPosition.packed1);
+    return position;
+}
+
+float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVertex vertex)
+{
+    float4x4 boneTransformMatrix = float4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+
+    if (instanceData.boneDeformOffset != 4294967295)
+    {
+        boneTransformMatrix = float4x4(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+        [unroll]
+        for (int j = 0; j < 4; j++)
+        {
+            boneTransformMatrix += mul(vertex.boneWeights[j], _modelAnimationBoneDeformMatrices[instanceData.boneDeformOffset + vertex.boneIndices[j]]);
+        }
+    }
+
+    return boneTransformMatrix;
+}
+
+[[vk::binding(6, MODEL)]] StructuredBuffer<Draw> _modelDraws;
+[[vk::binding(7, MODEL)]] StructuredBuffer<uint> _modelIndices;
+
+struct ModelTextureUnit
+{
+    uint data1; // (Is Projected Texture (1 bit) + Material Flag (10 bit) + Material Blending Mode (3 bit) + Unused Padding (2 bits)) + Material Type (16 bit)
+    uint textureIDs[2];
+    uint packedTextureTransformIDs; // u16 textureTransformID[0], u16 textureTransformID[1]
+};
+
+[[vk::binding(8, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
+[[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[4096]; // We give this index 20 because it always needs to be last in this descriptor set
+
+enum ModelPixelShaderID
+{
+    Opaque = 0,
+    Mod = 1,
+    Opaque_Mod = 2,
+    Opaque_Mod2x = 3,
+    Opaque_Mod2xNA = 4,
+    Opaque_Opaque = 5,
+    Mod_Mod = 6,
+    Mod_Mod2x = 7,
+    Mod_Add = 8,
+    Mod_Mod2xNA = 9,
+    Mod_AddNA = 10,
+    Mod_Opaque = 11,
+    Opaque_Mod2xNA_Alpha = 12,
+    Opaque_AddAlpha = 13,
+    Opaque_AddAlpha_Alpha = 14,
+    Opaque_Mod2xNA_Alpha_Add = 15,
+    Mod_AddAlpha = 16,
+    Mod_AddAlpha_Alpha = 17,
+    Opaque_Alpha_Alpha = 18,
+    Opaque_Mod2xNA_Alpha_3s = 19,
+    Opaque_AddAlpha_Wgt = 20,
+    Mod_Add_Alpha = 21,
+    Opaque_ModNA_Alpha = 22,
+    Mod_AddAlpha_Wgt = 23,
+    Opaque_Mod_Add_Wgt = 24,
+    Opaque_Mod2xNA_Alpha_UnshAlpha = 25,
+    Mod_Dual_Crossfade = 26,
+    Opaque_Mod2xNA_Alpha_Alpha = 27,
+    Mod_Masked_Dual_Crossfade = 28,
+    Opaque_Alpha = 29,
+    Guild = 30,
+    Guild_NoBorder = 31,
+    Guild_Opaque = 32,
+    Mod_Depth = 33,
+    Illum = 34,
+    Mod_Mod_Mod_Const = 35,
+    UnknownShadeType = 36
+};
+
+float4 ShadeModel(uint pixelId, float4 texture1, float4 texture2, out float3 specular)
+{
+    float4 result = float4(0, 0, 0, 0);
+    float4 diffuseColor = float4(1, 1, 1, 1);
+    specular = float3(0, 0, 0);
+
+    if (pixelId == ModelPixelShaderID::Opaque)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = texture1.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture2.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod2x)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = diffuseColor.a * 2.0f * texture2.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod2xNA)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Opaque)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Mod)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture1.a * texture2.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Mod2x)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture1.a * texture2.a * 2.0f * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Add)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = (texture1.a + texture2.a) * diffuseColor.a;
+
+        specular = texture2.rgb;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Mod2xNA)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture1.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_AddNA)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = texture1.a * diffuseColor.a;
+
+        specular = texture2.rgb;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Opaque)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture1.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod2xNA_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * lerp(texture1.rgb * texture2.rgb, texture1.rgb, texture1.aaa);
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_AddAlpha)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_AddAlpha_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a * (1.0f - texture1.a);
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod2xNA_Alpha_Add)
+    {
+        result.rgb = diffuseColor.rgb * lerp(texture1.rgb * texture2.rgb, texture1.rgb, texture1.aaa);
+        result.a = diffuseColor.a;
+
+        //specular = texture3.rgb * texture3.a * 1.0f;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_AddAlpha)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = texture1.a * diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_AddAlpha_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = (texture1.a + texture2.a * (0.3f * texture2.r + 0.59f * texture2.g + 0.11f * texture2.b)) * diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a * (1.0f - texture1.a);
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Alpha_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * lerp(lerp(texture1.rgb, texture2.rgb, texture2.aaa), texture1.rgb, texture1.aaa);
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_AddAlpha_Wgt)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a * 1.0f;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Add_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = (texture1.a + texture2.a) * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_ModNA_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * lerp(texture1.rgb * texture2.rgb, texture1.rgb, texture1.aaa);
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_AddAlpha_Wgt)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = texture1.a * diffuseColor.a;
+
+        specular = texture2.rgb * texture2.a * 1.0f;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Mod_Add_Wgt)
+    {
+        result.rgb = diffuseColor.rgb * lerp(texture1.rgb, texture2.rgb, texture2.aaa);
+        result.a = diffuseColor.a;
+
+        specular = texture1.rgb * texture1.a * 1.0f;
+    }
+    else if (pixelId == ModelPixelShaderID::Opaque_Alpha)
+    {
+        result.rgb = diffuseColor.rgb * lerp(texture1.rgb, texture2.rgb, texture2.aaa);
+        result.a = diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Guild_NoBorder)
+    {
+        float4 parameter = float4(1.0f, 1.0f, 1.0f, 1.0f);
+        result.rgb = diffuseColor.rgb * texture1.rgb * lerp(parameter.rgb, texture2.rgb * parameter.rgb, texture2.aaa);
+        result.a = texture1.a * diffuseColor.a;
+    }
+    else if (pixelId == ModelPixelShaderID::Mod_Depth)
+    {
+        float4 parameter = float4(1.0f, 1.0f, 1.0f, 1.0f);
+
+        result.rgb = diffuseColor.rgb * texture1.rgb;
+        result.a = texture1.a * diffuseColor.a * parameter.r;
+    }
+    else if (pixelId == ModelPixelShaderID::Illum)
+    {
+        // Apparently Unused
+        result.rgb = float3(1.0f, 1.0f, 0.0f);
+        result.a = 1.0f;
+    }
+    else if (pixelId == ModelPixelShaderID::UnknownShadeType)
+    {
+        result.rgb = diffuseColor.rgb * texture1.rgb * texture2.rgb;
+        result.a = texture1.a * texture2.a * diffuseColor.a;
+    }
+    else
+    {
+        result = float4(1.0f, 0.0f, 1.0f, 1.0f);
+    }
+
+    // TODO (Implement the following PixelShaderIDs
+    /*
+        - ModelPixelShaderID::Opaque_Mod2xNA_Alpha_3s (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Opaque_Mod2xNA_Alpha_UnshAlpha (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Mod_Dual_Crossfade (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Opaque_Mod2xNA_Alpha_Alpha (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Mod_Masked_Dual_Crossfade (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Guild (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Guild_NoBorder (Requires Texture3, we currently do not pass it)
+        - ModelPixelShaderID::Combiners_Mod_Mod_Mod_Const (Requires Texture3, we currently do not pass it)
+    */
+
+    result.rgb = result.rgb;
+    return result;
+}
+
+float4 BlendModel(uint blendingMode, float4 previousColor, float4 color)
+{
+    float4 result = previousColor;
+
+    if (blendingMode == 0) // OPAQUE
+    {
+        result = float4(color.rgb, 1);
+    }
+    else if (blendingMode == 1) // ALPHA KEY
+    {
+        // I don't think discarding here is needed since we already discard alphakeyed pixels in the geometry pass
+        if (color.a >= 224.0f / 255.0f)
+        {
+            float3 blendedColor = color.rgb * color.a + previousColor.rgb * (1 - color.a);
+            result.rgb += blendedColor;
+            result.a = max(color.a, previousColor.a); // TODO: Check if this is actually needed
+        }
+        /*else
+        {
+            discard;
+        }*/
+    }
+    else if (blendingMode == 2) // ALPHA
+    {
+        float3 blendedColor = color.rgb * color.a + previousColor.rgb * (1 - color.a);
+        result.rgb += blendedColor;
+        result.a = max(color.a, previousColor.a); // TODO: Check if this is actually needed
+    }
+    else if (blendingMode == 3) // NO ALPHA ADD
+    {
+        // TODO
+        result.rgb += color.rgb;
+    }
+    else if (blendingMode == 4) // ADD
+    {
+        // TODO
+        result.rgb += color.rgb * color.a;
+        result.a = color.a;
+    }
+    else if (blendingMode == 5) // MOD
+    {
+        // TODO
+    }
+    else if (blendingMode == 6) // MOD2X
+    {
+        // TODO
+    }
+    else if (blendingMode == 7) // BLEND ADD
+    {
+        // TODO
+    }
+
+    return result;
+}
+
 #endif // MODEL_SHARED_INCLUDED

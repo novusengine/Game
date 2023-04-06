@@ -65,7 +65,7 @@ float2 GetChunkPosition(uint chunkID)
     const uint chunkY = chunkID % NUM_CHUNKS_PER_MAP_SIDE;
 
     const float2 chunkPos = -MAP_HALF_SIZE + (float2(chunkX, chunkY) * CHUNK_SIDE_SIZE);
-    return chunkPos;
+    return float2(chunkPos.x, chunkPos.y);
 }
 
 // We did not change this one yet
@@ -75,10 +75,11 @@ float2 GetCellPosition(uint chunkID, uint cellID)
     const uint cellY = cellID / NUM_CELLS_PER_CHUNK_SIDE;
 
     const float2 chunkPos = GetChunkPosition(chunkID);
-    const float2 cellPos = float2(cellX, cellY) * CELL_SIDE_SIZE;
-
+    const float2 cellPos = float2(cellX+1, cellY) * CELL_SIDE_SIZE;
+    
     float2 pos = chunkPos + cellPos;
-    return float2(-pos.y, -pos.x);
+
+    return float2(pos.x, -pos.y);
 }
 
 float2 GetGlobalVertexPosition(uint chunkID, uint cellID, uint vertexID)
@@ -102,7 +103,7 @@ float2 GetGlobalVertexPosition(uint chunkID, uint cellID, uint vertexID)
 
     float2 finalPos = -MAP_HALF_SIZE + (float2(globalVertex)+vertexOffset) * PATCH_SIDE_SIZE;
 
-    return float2(-finalPos.y, -finalPos.x);
+    return float2(finalPos.x, -finalPos.y);
 }
 
 AABB GetCellAABB(uint chunkID, uint cellID, float2 heightRange)

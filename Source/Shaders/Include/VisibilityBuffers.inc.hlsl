@@ -2,8 +2,7 @@
 #define VISIBILITYBUFFERS_INCLUDED
 
 #include "Terrain/Shared.inc.hlsl"
-//#include "mapObject.inc.hlsl"
-//#include "cModel.inc.hlsl"
+#include "Model/Shared.inc.hlsl"
 
 #if GEOMETRY_PASS
 uint4 PackVisibilityBuffer(uint typeID, uint drawID, uint triangleID, float2 barycentrics, float2 ddxBarycentrics, float2 ddyBarycentrics)
@@ -134,16 +133,11 @@ uint GetObjectID(uint typeID, uint drawID)
 
         return debugCellInstance.globalCellID;
     }
-    /*if (typeID == ObjectType::MapObject)
+    else if (typeID == ObjectType::ModelOpaque)
     {
-        InstanceLookupData lookupData = LoadInstanceLookupData(drawID);
-        return lookupData.instanceID;
-    }
-    else if (typeID == ObjectType::CModelOpaque)
-    {
-        CModelDrawCallData drawCallData = LoadCModelDrawCallData(drawID);
+        ModelDrawCallData drawCallData = LoadModelDrawCallData(drawID);
         return drawCallData.instanceID;
-    }*/
+    }
 
     return drawID;
 }

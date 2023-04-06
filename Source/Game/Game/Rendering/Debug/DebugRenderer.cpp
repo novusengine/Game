@@ -79,16 +79,6 @@ void DebugRenderer::Update(f32 deltaTime)
 	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), 0xff0000ff);
 	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), 0xff00ff00);
 	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), 0xffff0000);
-
-	// Sync to GPU
-	if (_debugVertices2D.SyncToGPU(_renderer))
-	{
-		_draw2DDescriptorSet.Bind("_vertices", _debugVertices2D.GetBuffer());
-	}
-	if (_debugVertices3D.SyncToGPU(_renderer))
-	{
-		_draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
-	}
 }
 
 void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -97,8 +87,8 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 	{
 	};
 
-	renderGraph->AddPass<Data>("DebugRenderReset",
-	[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+	renderGraph->AddPass<Data>("DebugRenderReset", 
+		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
@@ -115,6 +105,12 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 
 void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
+	// Sync to GPU
+	if (_debugVertices2D.SyncToGPU(_renderer))
+	{
+		_draw2DDescriptorSet.Bind("_vertices", _debugVertices2D.GetBuffer());
+	}
+
 	struct Data
 	{
 		Renderer::RenderPassMutableResource color;
@@ -188,6 +184,12 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
+	// Sync to GPU
+	if (_debugVertices3D.SyncToGPU(_renderer))
+	{
+		_draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
+	}
+
 	struct Data
 	{
 		Renderer::RenderPassMutableResource color;

@@ -90,7 +90,7 @@ i32 main(int argc, char* argv[])
     }
     else
     {
-        DebugHandler::PrintError("%u shaders failed to compile.", numFailedShaders);
+        DebugHandler::PrintError("{0} shaders failed to compile.", numFailedShaders);
     }
 
     std::chrono::system_clock::time_point endTime = std::chrono::system_clock::now();

@@ -1,55 +1,108 @@
+permutation EDITOR_PASS = [0, 1];
+permutation SHADOW_PASS = [0, 1];
+#define GEOMETRY_PASS 1
+
+#include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
 #include "Model/Shared.inc.hlsl"
 
-[[vk::binding(0, PER_DRAW)]] StructuredBuffer<float4> _vertexPositions;
-[[vk::binding(1, PER_DRAW)]] StructuredBuffer<float4> _vertexNormals;
-[[vk::binding(2, PER_DRAW)]] StructuredBuffer<float2> _vertexUVs;
+/* TODO: Shadows
+struct Constants
+{
+    uint cascadeIndex;
+};
 
-[[vk::binding(3, PER_DRAW)]] StructuredBuffer<uint> _indices;
-[[vk::binding(4, PER_DRAW)]] StructuredBuffer<ModelData> _modelDatas;
-[[vk::binding(5, PER_DRAW)]] StructuredBuffer<InstanceData> _instanceDatas;
-[[vk::binding(6, PER_DRAW)]] StructuredBuffer<MeshletData> _meshletDatas;
-[[vk::binding(7, PER_DRAW)]] StructuredBuffer<MeshletInstance> _meshletInstances;
-[[vk::binding(8, PER_DRAW)]] StructuredBuffer<float4x4> _instanceMatrices;
+[[vk::push_constant]] Constants _constants;*/
 
 struct VSInput
 {
-    uint packedData : SV_VertexID;
+    uint vertexID : SV_VertexID;
+    uint instanceID : SV_InstanceID;
 };
 
 struct VSOutput
 {
     float4 position : SV_Position;
-    float3 normal : TEXCOORD0;
-    float2 uv : TEXCOORD1;
-    uint meshletDataID : TEXCOORD2;
+#if (!EDITOR_PASS)
+    nointerpolation uint drawCallID : TEXCOORD0;
+    float4 uv01 : TEXCOORD1;
+#endif
+#if (!EDITOR_PASS) && (!SHADOW_PASS)
+    float3 modelPosition : TEXCOORD2;
+#endif
 };
 
 VSOutput main(VSInput input)
 {
-    uint meshletInstanceID = input.packedData & 0x7FFFFF;
-    uint localIndex = (input.packedData >> 23) & 0x1FF;
-    
-    MeshletInstance meshletInstance = _meshletInstances[meshletInstanceID];
-    
-    uint meshletDataID = meshletInstance.meshletDataID;
-    uint instanceDataID = meshletInstance.instanceDataID;
-    
-    MeshletData meshletData = _meshletDatas[meshletDataID];
-    InstanceData instanceData = _instanceDatas[instanceDataID];
-    float4x4 instanceMatrix = _instanceMatrices[instanceDataID];
-    ModelData modelData = _modelDatas[instanceData.modelDataID];
-    
-    uint globalIndex = modelData.indexOffset + meshletData.indexStart + localIndex;
-    uint vertexID = modelData.vertexOffset + _indices[globalIndex];
-    
+    uint drawCallID = input.instanceID;
+    ModelVertex vertex = LoadModelVertex(input.vertexID);
+
+    ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
+    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
+    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+
+    // Skin this vertex
+    //float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertex);
+
+    /* TODO: Animation
+    float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
+
+    // Save the skinned vertex position (in model-space) if this vertex was animated
+    /if (instanceData.boneDeformOffset != 4294967295)
+    {
+        uint localVertexID = input.vertexID - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
+        uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
+
+        StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
+    }*/
+
+    float4 position = float4(vertex.position, 1.0f);
+    position = mul(position, instanceMatrix);
+
+    // Pass data to pixelshader
     VSOutput output;
-    
-    float4 position = mul(float4(_vertexPositions[vertexID].xyz, 1.0f), instanceMatrix);
+#if SHADOW_PASS
+    output.position = float4(0, 0, 0, 1);// mul(position, GetShadowViewProjectionMatrix(_constants.cascadeIndex));
+#else
     output.position = mul(position, _cameras[0].worldToClip);
-    output.normal = _vertexNormals[vertexID].xyz;
-    output.uv = _vertexUVs[vertexID];
-    output.meshletDataID = instanceData.modelDataID;
-    
+#endif
+
+#if !EDITOR_PASS
+    output.drawCallID = drawCallID;
+
+    float4 UVs = vertex.uv01;
+    /* TODO: Texture animations
+    if (instanceData.textureTransformDeformOffset != 4294967295)
+    {
+        CModelDrawCallData drawCallData = LoadCModelDrawCallData(drawCallID);
+        uint numTextureUnits = drawCallData.numTextureUnits;
+
+        if (numTextureUnits > 0)
+        {
+            uint textureUnitIndex = drawCallData.textureUnitOffset;
+            CModelTextureUnit textureUnit = _cModelTextureUnits[textureUnitIndex];
+            uint textureTransformID1 = textureUnit.packedTextureTransformIDs & 0xFFFF;
+            uint textureTransformID2 = (textureUnit.packedTextureTransformIDs >> 16) & 0xFFFF;
+
+            if (textureTransformID1 != 65535)
+            {
+                const float4x4 textureTransform1Matrix = _cModelAnimationBoneDeformMatrices[instanceData.textureTransformDeformOffset + textureTransformID1];
+                UVs.xy = mul(float4(UVs.xy, 0.0f, 1.0f), textureTransform1Matrix).xy;
+            }
+
+            if (textureTransformID2 != 65535)
+            {
+                const float4x4 textureTransform2Matrix = _cModelAnimationBoneDeformMatrices[instanceData.textureTransformDeformOffset + textureTransformID2];
+                UVs.zw = mul(float4(UVs.zw, 0.0f, 1.0f), textureTransform2Matrix).xy;
+            }
+        }
+    }*/
+
+    output.uv01 = UVs;
+#endif
+#if (!EDITOR_PASS) && (!SHADOW_PASS)
+    output.modelPosition = position.xyz;
+#endif
+
     return output;
 }

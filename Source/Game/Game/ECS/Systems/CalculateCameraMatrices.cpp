@@ -13,6 +13,14 @@
 
 AutoCVar_Int CVAR_CameraLockCullingFrustum("camera.lockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
 
+// We are using Unitys Right Handed coordinate system
+// +X = right
+// +Y = up
+// +Z = forward
+const vec3 ECS::Components::Transform::WORLD_FORWARD = vec3(0.0f, 0.0f, 1.0f);
+const vec3 ECS::Components::Transform::WORLD_RIGHT = vec3(1.0f, 0.0f, 0.0f);
+const vec3 ECS::Components::Transform::WORLD_UP = vec3(0.0f, 1.0f, 0.0f);
+
 enum class FrustumPlane
 {
     Left,

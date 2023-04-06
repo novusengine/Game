@@ -124,6 +124,12 @@ namespace Editor
                 {
                     if (DB::Client::Definitions::Map* map = ECS::Util::MapDBUtil::GetMapFromName(*preview))
                     {
+                        if (_hasLoadedMap)
+                        {
+                            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                            modelLoader->Clear();
+                        }
+
                         const std::string& mapInternalName = mapDB.entries.stringTable.GetString(map->internalName);
 
                         TerrainLoader* terrainLoader = ServiceLocator::GetGameRenderer()->GetTerrainLoader();
@@ -132,6 +138,7 @@ namespace Editor
                         loadDesc.mapName = mapInternalName;
 
                         terrainLoader->AddInstance(loadDesc);
+                        _hasLoadedMap = true;
                     }
                 }
             }

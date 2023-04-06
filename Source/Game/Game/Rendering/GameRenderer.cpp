@@ -3,9 +3,12 @@
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
+#include "Model/ModelRenderer.h"
+#include "Model/ModelLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
+#include "PixelQuery.h"
 #include "CullUtils.h"
 
 #include "Game/Util/ServiceLocator.h"
@@ -122,14 +125,18 @@ GameRenderer::GameRenderer()
 
     _debugRenderer = new DebugRenderer(_renderer);
 
-    _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
-    _terrainLoader = new TerrainLoader(_terrainRenderer);
+    _modelRenderer = new ModelRenderer(_renderer, _debugRenderer);
+    _modelLoader = new ModelLoader(_modelRenderer);
+    _modelLoader->Init();
 
-    //_modelRenderer = new ModelRenderer(_renderer);
-    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer);
+    _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
+    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader);
+
+    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
+    _pixelQuery = new PixelQuery(_renderer);
 
     CreatePermanentResources();
 
@@ -156,9 +163,11 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _skyboxRenderer->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
-    //_modelRenderer->Update(deltaTime);
+    _modelLoader->Update(deltaTime);
+    _modelRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
+    _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
 }
@@ -250,10 +259,12 @@ void GameRenderer::Render()
     // Geometry Pass
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
     
-    //_modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
-    //_modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
+
+    _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);

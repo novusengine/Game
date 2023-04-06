@@ -6,6 +6,9 @@
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Scripting/Systems/LuaSystemBase.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/Terrain/TerrainLoader.h"
+#include "Game/Application/EnttRegistries.h"
 
 #include <entt/entt.hpp>
 #include <lualib.h>

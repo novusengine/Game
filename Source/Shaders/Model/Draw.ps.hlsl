@@ -1,40 +1,114 @@
-permutation WIREFRAME = [0, 1];
+permutation SHADOW_PASS = [0, 1];
+#define GEOMETRY_PASS 1
 
+#include "common.inc.hlsl"
+#include "globalData.inc.hlsl"
 #include "Model/Shared.inc.hlsl"
+#include "Include/VisibilityBuffers.inc.hlsl"
 
-[[vk::binding(4,  PER_DRAW)]] StructuredBuffer<ModelData> _modelDatas;
-[[vk::binding(19, PER_DRAW)]] SamplerState _sampler;
-[[vk::binding(20, PER_DRAW)]] Texture2D<float4> _textures[4096];
+[[vk::binding(10, MODEL)]] SamplerState _sampler;
 
-struct VSOutput
+struct PSInput
 {
-    float3 normal : TEXCOORD0;
-    float2 uv : TEXCOORD1;
-    nointerpolation uint meshletDataID : TEXCOORD2;
+    uint drawID : TEXCOORD0;
+    float4 uv01 : TEXCOORD1;
+
+#if !SHADOW_PASS
+    float3 modelPosition : TEXCOORD2;
+    uint triangleID : SV_PrimitiveID;
+#endif
 };
 
-float4 main(VSOutput input) : SV_Target0
+#if !SHADOW_PASS
+struct PSOutput
 {
-/*
-    const float3 sunDir = normalize(float3(0.0f, -1.0f, 0.0f));
-    float light = saturate(dot(input.normal, sunDir));
-    
-    float3 darkColor = float3(0.1f, 0.1f, 0.0f);
-    float3 brightColor = float3(0.5f, 0.5f, 0.0f);
-    float3 color = lerp(darkColor, brightColor, light);
-    return float4(color, 1.0f);
-*/
-    
-#if WIREFRAME
-    return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    uint4 visibilityBuffer : SV_Target0;
+};
 #else
-    ModelData modelData = _modelDatas[input.meshletDataID];
-    
-    uint textureID = (modelData.packedData >> 16) & 0xFFFF;
-    float4 texture1 = _textures[NonUniformResourceIndex(textureID)].Sample(_sampler, input.uv.xy);
-    
-    //float3 color = IDToColor3(input.meshletDataID);
-    float3 color = texture1.xyz;
-    return float4(color, 1.0f);
+#define PSOutput void
+#endif
+
+PSOutput main(PSInput input)
+{
+    ModelDrawCallData drawCallData = LoadModelDrawCallData(input.drawID);
+
+    for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+    {
+        ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
+
+        uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
+
+        if (blendingMode != 1) // ALPHA KEY
+            continue;
+
+        uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
+
+        if (materialType == 0x8000)
+            continue;
+
+        float4 texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_sampler, input.uv01.xy);
+        float4 texture2 = float4(1, 1, 1, 1);
+
+        uint vertexShaderId = materialType & 0xFF;
+        if (vertexShaderId > 2)
+        {
+            // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
+            texture2 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_sampler, input.uv01.zw);
+        }
+
+        // Experimental alphakey discard without shading, if this has issues check github history for cModel.ps.hlsl
+        float4 diffuseColor = float4(1, 1, 1, 1);
+        // TODO: per-instance diffuseColor
+
+        float minAlpha = min(texture1.a, min(texture2.a, diffuseColor.a));
+        if (minAlpha < 224.0f / 255.0f)
+        {
+            discard;
+        }
+    }
+
+#if !SHADOW_PASS
+    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
+    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+
+    // Get the VertexIDs of the triangle we're in
+    Draw draw = _modelDraws[input.drawID];
+    uint3 vertexIDs = GetVertexIDs(input.triangleID, draw, _modelIndices);
+
+    // Load the vertices
+    ModelVertex vertices[3];
+
+    [unroll]
+    for (uint i = 0; i < 3; i++)
+    {
+        vertices[i] = LoadModelVertex(vertexIDs[i]);
+
+        /* TODO: Animations
+        // Load the skinned vertex position (in model-space) if this vertex was animated
+        if (instanceData.boneDeformOffset != 4294967295)
+        {
+            uint localVertexID = vertexIDs[i] - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
+            uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
+
+            vertices[i].position = LoadAnimatedVertexPosition(animatedVertexID);
+        }*/
+
+        // TODO: Calculating this bone transform matrix is rather expensive, we should do this once in the vertex shader and save the result
+        //float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
+
+        //vertices[i].position = mul(float4(vertices[i].position, 1.0f), boneTransformMatrix).xyz;
+        vertices[i].position = mul(float4(vertices[i].position, 1.0f), instanceMatrix).xyz;
+    }
+
+    // Calculate Barycentrics
+    float2 barycentrics = NBLCalculateBarycentrics(input.modelPosition, float3x3(vertices[0].position.xyz, vertices[1].position.xyz, vertices[2].position.xyz));
+
+    float2 ddxBarycentrics = ddx(barycentrics);
+    float2 ddyBarycentrics = ddy(barycentrics);
+
+    PSOutput output;
+    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, input.drawID, input.triangleID, barycentrics, ddxBarycentrics, ddyBarycentrics);
+
+    return output;
 #endif
 }

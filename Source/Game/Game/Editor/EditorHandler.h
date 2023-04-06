@@ -26,12 +26,18 @@ namespace Editor
         void EndEditor();
         void EndImGui();
 
+        ActionStackEditor* GetActionStackEditor() { return _actionStackEditor; }
+        Inspector* GetInspector() { return _inspector; }
+
     private:
         void ResetLayout();
         
     private:
         bool _editorMode = false;
         std::vector<BaseEditor*> _editors;
+
+        ActionStackEditor* _actionStackEditor;
+        Inspector* _inspector;
 
         u32 _mainDockID;
     };

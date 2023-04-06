@@ -5,8 +5,11 @@
 #include "Handlers/GlobalHandler.h"
 #include "Systems/LuaSystemBase.h"
 #include "Systems/GenericSystem.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
+#include <Base/Memory/Bytebuffer.h>
+#include <Base/Memory/FileReader.h>
 
 #include <Luau/Compiler.h>
 #include <lualib.h>

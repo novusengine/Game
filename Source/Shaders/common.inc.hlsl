@@ -119,6 +119,30 @@ void WriteDrawToByteAdressBuffer(RWByteAddressBuffer byteAddressBuffer, uint dra
     byteAddressBuffer.Store(byteOffset + (4 * sizeof(uint)), draw.firstInstance);
 }
 
+uint3 GetVertexIDs(uint triangleID, Draw draw, StructuredBuffer<uint> indexBuffer)
+{
+    uint localIndexID = triangleID * 3;
+
+    uint globalIndexID = draw.firstIndex + localIndexID; // This always points to the index of the first vertex in the triangle
+
+    uint3 vertexIDs;
+    [unroll]
+    for (uint i = 0; i < 3; i++)
+    {
+        // Our index buffer is made up of uint16_t's, but hardware support for accessing them is kinda bad.
+        // So instead we're going to access them as uints, and then treat them as packed pairs of uint16_t's
+        uint indexToLoad = globalIndexID + i;
+        uint indexPairToLoad = (indexToLoad) / 2;
+
+        uint localVertexIDPair = indexBuffer[indexPairToLoad];
+
+        bool isOdd = indexToLoad % 2 == 1;
+        vertexIDs[i] = draw.vertexOffset + ((localVertexIDPair >> (16 * isOdd)) & 0xFFFF);
+    }
+
+    return vertexIDs;
+}
+
 // This assumes the float components are between 0 and 1, and it will be stored as a unorm
 uint Float4ToPackedUnorms(float4 f)
 {
@@ -144,8 +168,7 @@ enum ObjectType : uint
 {
     Skybox = 0, // We clear to this color so we won't be writing it
     Terrain = 1,
-    MapObject = 2,
-    CModelOpaque = 3
+    ModelOpaque = 2
 };
 
 #endif // COMMON_INCLUDED
