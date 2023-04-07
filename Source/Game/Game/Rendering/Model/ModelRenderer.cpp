@@ -1,4 +1,5 @@
 #include "ModelRenderer.h"
+#include "ModelRenderer.h"
 #include "Game/Rendering/RenderUtils.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/RenderResources.h"
@@ -7,7 +8,6 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/TextureSingleton.h"
 
-#include <Base/Util/Timer.h>
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/Map/MapChunk.h>
@@ -280,7 +280,6 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     if (!CVAR_ModelRendererEnabled.Get())
         return 0;
 
-
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
 
     entt::registry* registry = registries->gameRegistry;
@@ -298,7 +297,17 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.vertexOffset = _verticesIndex.fetch_add(modelManifest.numVertices);
 
         std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
-        vertices.insert(vertices.begin() + modelManifest.vertexOffset, model.vertices.begin(), model.vertices.end());
+
+        void* dst = &vertices[modelManifest.vertexOffset];
+        void* src = model.vertices.data();
+        size_t size = sizeof(Model::ComplexModel::Vertex) * model.vertices.size();
+
+        if (modelManifest.vertexOffset + model.vertices.size() > vertices.size())
+        {
+            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+        }
+
+        memcpy(dst, src, size);
     }
 
     // Add indices
@@ -307,7 +316,17 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.indexOffset = _indicesIndex.fetch_add(modelManifest.numIndices);
 
         std::vector<u16>& indices = _indices.Get();
-        indices.insert(indices.begin() + modelManifest.indexOffset, model.modelData.indices.begin(), model.modelData.indices.end());
+
+        void* dst = &indices[modelManifest.indexOffset];
+        void* src = model.modelData.indices.data();
+        size_t size = sizeof(u16) * model.modelData.indices.size();
+
+        if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+        {
+            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+        }
+
+        memcpy(dst, src, size);
     }
 
     // Add TextureUnits and DrawCalls
@@ -354,6 +373,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                     Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                     {
+                        std::scoped_lock lock(_textureLoadMutex);
+
                         Renderer::TextureDesc textureDesc;
                         textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
 

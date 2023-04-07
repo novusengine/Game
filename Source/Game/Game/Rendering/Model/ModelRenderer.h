@@ -140,6 +140,8 @@ private:
 	Renderer::Renderer* _renderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
 
+	std::mutex _textureLoadMutex;
+
 	std::vector<ModelManifest> _modelManifests;
 	std::atomic<u32> _modelManifestsIndex = 0;
 

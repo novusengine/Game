@@ -63,7 +63,10 @@ private:
 	robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
 	robin_hood::unordered_map<u32, u32> _nameHashToModelID;
 	robin_hood::unordered_map<u32, DiscoveredModel> _nameHashToDiscoveredModel;
+	robin_hood::unordered_map<u32, std::mutex*> _nameHashToLoadingMutex;
 
 	robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
+	std::mutex _instanceIDToModelIDMutex;
+
 	robin_hood::unordered_map<u32, u32> _modelIDToNameHash;
 };

@@ -15,6 +15,7 @@
 #include <entt/entt.hpp>
 
 #include <atomic>
+#include <mutex>
 #include <execution>
 #include <filesystem>
 #include <vector>
@@ -24,11 +25,21 @@ namespace fs = std::filesystem;
 static const fs::path dataPath = fs::path("Data/");
 static const fs::path complexModelPath = dataPath / "ComplexModel/";
 
+AutoCVar_Int CVAR_ModelLoaderNumThreads("modelLoader.numThreads", "number of threads used for model loading, 0 = number of hardware threads", 0, CVarFlags::None);
+
 ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 	: _modelRenderer(modelRenderer)
 	, _requests()
 {
-	_scheduler.Initialize();
+	i32 numThreads = CVAR_ModelLoaderNumThreads.Get();
+	if (numThreads == 0)
+	{
+		_scheduler.Initialize();
+	}
+	else
+	{
+		_scheduler.Initialize(numThreads);
+	}
 }
 
 void ModelLoader::Init()
@@ -117,8 +128,24 @@ void ModelLoader::Init()
 
 void ModelLoader::Clear()
 {
+	LoadRequestInternal dummyRequest;
+	while (_requests.try_dequeue(dummyRequest))
+	{
+		// Just empty the queue
+	}
+
 	_nameHashToLoadState.clear();
 	_nameHashToModelID.clear();
+
+	for (auto& it : _nameHashToLoadingMutex)
+	{
+		if (it.second != nullptr)
+		{
+			delete it.second;
+			it.second = nullptr;
+		}
+	}
+	_nameHashToLoadingMutex.clear();
 
 	_instanceIDToModelID.clear();
 	_modelIDToNameHash.clear();
@@ -161,6 +188,7 @@ void ModelLoader::Update(f32 deltaTime)
 		{
 			_nameHashToLoadState[nameHash] = LoadState::Received;
 			_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
+			_nameHashToLoadingMutex[nameHash] = new std::mutex();
 
 			reserveInfo.numModels++;
 			reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
@@ -172,36 +200,48 @@ void ModelLoader::Update(f32 deltaTime)
 	// Have ModelRenderer prepare all buffers for what we need to load
 	_modelRenderer->Reserve(reserveInfo);
 
-	for (u32 i = 0; i < numDequeued; i++) // To be parallelized
+	//for (u32 i = 0; i < numDequeued; i++) // To be parallelized
+	enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
 	{
-		LoadRequestInternal& request = _workingRequests[i];
-
-		if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
+		for (u32 i = range.start; i < range.end; i++)
 		{
-			continue;
-		}
+			LoadRequestInternal& request = _workingRequests[i];
 
-		LoadState loadState = _nameHashToLoadState[request.placement.nameHash];
-
-		if (loadState == LoadState::Failed)
-			continue;
-
-		if (loadState == LoadState::Received)
-		{
-			loadState = LoadState::Loading;
-			_nameHashToLoadState[request.placement.nameHash] = LoadState::Loading;
-
-			bool didLoad = LoadRequest(request);
-
-			loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-			_nameHashToLoadState[request.placement.nameHash] = loadState;
-
-			if (!didLoad)
+			if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
+			{
+				// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
 				continue;
-		}
+			}
 
-		AddInstance(request);
-	}
+			std::mutex* mutex = _nameHashToLoadingMutex[request.placement.nameHash];
+			std::scoped_lock lock(*mutex);
+
+			LoadState loadState = _nameHashToLoadState[request.placement.nameHash];
+
+			if (loadState == LoadState::Failed)
+				continue;
+
+			if (loadState == LoadState::Received)
+			{
+				loadState = LoadState::Loading;
+				_nameHashToLoadState[request.placement.nameHash] = LoadState::Loading;
+
+				bool didLoad = LoadRequest(request);
+
+				loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+				_nameHashToLoadState[request.placement.nameHash] = loadState;
+
+				if (!didLoad)
+					continue;
+			}
+
+			AddInstance(request);
+		}
+	});
+
+	// Execute the multithreaded job
+	_scheduler.AddTaskSetToPipe(&loadModelsTask);
+	_scheduler.WaitforTask(&loadModelsTask);
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -284,5 +324,6 @@ void ModelLoader::AddInstance(const LoadRequestInternal& request)
 	u32 modelID = _nameHashToModelID[request.placement.nameHash];
 	u32 instanceID = _modelRenderer->AddInstance(modelID, request.placement);
 
+	std::scoped_lock lock(_instanceIDToModelIDMutex);
 	_instanceIDToModelID[instanceID] = modelID;
 }
