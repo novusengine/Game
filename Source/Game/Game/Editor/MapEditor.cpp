@@ -5,6 +5,7 @@
 #include "Game/ECS/Util/MapDBUtil.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Terrain/TerrainLoader.h"
+#include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>

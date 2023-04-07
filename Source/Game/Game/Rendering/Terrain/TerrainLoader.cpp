@@ -306,7 +306,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					triangleList.reserve(numTrianglePerChunk);
 
 					u32 patchVertexIDs[5] = { 0 };
-					vec2 patchVertexOffsets[5] = { 
+					vec2 patchVertexOffsets[5] = {
 						vec2(0, 0),
 						vec2(Terrain::PATCH_SIZE, 0),
 						vec2(Terrain::PATCH_HALF_SIZE, Terrain::PATCH_HALF_SIZE),
@@ -381,9 +381,6 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					bodyInterface.AddBody(bodyID, JPH::EActivation::DontActivate);
 					_chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
 				}
-
-				Map::Chunk testChunk;
-				Map::Chunk::Read(chunkBuffer, testChunk);
 
 				// Load into Terrain Renderer
 				{

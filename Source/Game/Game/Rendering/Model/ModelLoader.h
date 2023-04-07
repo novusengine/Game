@@ -14,12 +14,13 @@ class ModelRenderer;
 class ModelLoader
 {
 public:
-	const u32 MAX_LOADS_PER_FRAME = 64;//1024;
+	static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
 	enum LoadState
 	{
 		Received,
 		Loading,
-		Loaded
+		Loaded,
+		Failed
 	};
 
 	struct DiscoveredModel
@@ -56,7 +57,7 @@ private:
 	enki::TaskScheduler _scheduler;
 	ModelRenderer* _modelRenderer = nullptr;
 
-	LoadRequestInternal* _workingRequests = nullptr;
+	LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 
 	robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;

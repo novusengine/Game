@@ -29,7 +29,6 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 	, _requests()
 {
 	_scheduler.Initialize();
-	_workingRequests = new LoadRequestInternal[MAX_LOADS_PER_FRAME];
 }
 
 void ModelLoader::Init()
@@ -38,60 +37,69 @@ void ModelLoader::Init()
 
 	static const fs::path fileExtension = ".complexmodel";
 
+	if (!fs::exists(complexModelPath))
+	{
+		fs::create_directories(complexModelPath);
+	}
+
 	// First recursively iterate the directory and find all paths
 	std::vector<fs::path> paths;
-	std::filesystem::recursive_directory_iterator dirpos{ complexModelPath };
+	std::filesystem::recursive_directory_iterator dirpos { complexModelPath };
 	std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
 
 	// Then create a multithreaded job to loop over the paths
 	moodycamel::ConcurrentQueue<DiscoveredModel> discoveredModels;
 	enki::TaskSet discoverModelsTask(static_cast<u32>(paths.size()), [&, paths](enki::TaskSetPartition range, u32 threadNum)
+	{
+		for (u32 i = range.start; i < range.end; i++)
 		{
-			for (u32 i = range.start; i < range.end; i++)
+			const fs::path& path = paths[i];
+
+			if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
+				continue;
+
+			fs::path relativePath = fs::relative(path, complexModelPath);
+
+			PRAGMA_MSVC_IGNORE_WARNING(4244);
+			std::string cModelPath = relativePath.string();
+			std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
+
+			FileReader cModelFile(path.string());
+			if (!cModelFile.Open())
 			{
-				const fs::path& path = paths[i];
-
-				if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
-					continue;
-
-				fs::path relativePath = fs::relative(path, complexModelPath);
-
-				PRAGMA_MSVC_IGNORE_WARNING(4244);
-				std::string cModelPath = relativePath./*make_preferred().*/string();
-				std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
-
-				FileReader cModelFile(path.string());
-				if (!cModelFile.Open())
-				{
-					DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
-					continue;
-				}
-
-				// Load the first HEADER_SIZE of the file into memory
-				size_t fileSize = cModelFile.Length();
-				constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-
-				if (fileSize < HEADER_SIZE)
-				{
-					DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
-					continue;
-				}
-
-				std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
-
-				cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
-				cModelFile.Close();
-
-				// Extract the ModelHeader from the file and store it as a DiscoveredModel
-				DiscoveredModel discoveredModel;
-				Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader);
-
-				discoveredModel.name = cModelPath;
-				discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
-
-				discoveredModels.enqueue(discoveredModel);
+				DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
+				continue;
 			}
-		});
+
+			// Load the first HEADER_SIZE of the file into memory
+			size_t fileSize = cModelFile.Length();
+			constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+
+			if (fileSize < HEADER_SIZE)
+			{
+				DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
+				continue;
+			}
+
+			std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
+
+			cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
+			cModelFile.Close();
+
+			// Extract the ModelHeader from the file and store it as a DiscoveredModel
+			DiscoveredModel discoveredModel;
+			if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
+			{
+				DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
+				continue;
+			}
+
+			discoveredModel.name = cModelPath;
+			discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
+
+			discoveredModels.enqueue(discoveredModel);
+		}
+	});
 
 	// Execute the multithreaded job
 	_scheduler.AddTaskSetToPipe(&discoverModelsTask);
@@ -121,19 +129,11 @@ void ModelLoader::Clear()
 void ModelLoader::Update(f32 deltaTime)
 {
 	// Count how many unique non-loaded request we have
-	u32 numDequeued = static_cast<u32>(_requests.try_dequeue_bulk(_workingRequests, MAX_LOADS_PER_FRAME));
-
+	u32 numDequeued = static_cast<u32>(_requests.try_dequeue_bulk(&_workingRequests[0], MAX_LOADS_PER_FRAME));
 	if (numDequeued == 0)
 		return;
 
-	DebugHandler::Print("Loading {0}", numDequeued);
-
-	u32 uniqueNonLoadedRequests = 0;
 	ModelRenderer::ReserveInfo reserveInfo;
-	reserveInfo.numInstances = numDequeued;
-
-	robin_hood::unordered_map<u32, u32> loadCount(numDequeued);
-	robin_hood::unordered_map<u32, u32> loadDrawcallCount(numDequeued);
 
 	for (u32 i = 0; i < numDequeued; i++)
 	{
@@ -148,71 +148,58 @@ void ModelLoader::Update(f32 deltaTime)
 
 		DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
 
-		reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches;
-		reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches;
+		bool isSupported = discoveredModel.modelHeader.numVertices > 0;
 
-		loadCount[nameHash]++;
-		loadDrawcallCount[nameHash] += discoveredModel.modelHeader.numOpaqueRenderBatches;
-
-		//DebugHandler::Print("ID: {0}, Namehash: {1}, DrawCalls: {2}", i, nameHash, discoveredModel.modelHeader.numOpaqueRenderBatches);
+		// Only increment Instance Count & Drawcall Count if the model have vertices
+		{
+			reserveInfo.numInstances += 1 * isSupported;
+			reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
+			reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+		}
 
 		if (!_nameHashToLoadState.contains(nameHash))
 		{
-			uniqueNonLoadedRequests++;
 			_nameHashToLoadState[nameHash] = LoadState::Received;
 			_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
 
 			reserveInfo.numModels++;
-			reserveInfo.numVertices += discoveredModel.modelHeader.numVertices;
-			reserveInfo.numIndices += discoveredModel.modelHeader.numIndices;
-			reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits;
+			reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
+			reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
+			reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
 		}
 	}
-
-	static int totalNumReserved = 0;
-	totalNumReserved += reserveInfo.numOpaqueDrawcalls;
-
-	//DebugHandler::Print("Total reserved: {0}", totalNumReserved);
 
 	// Have ModelRenderer prepare all buffers for what we need to load
 	_modelRenderer->Reserve(reserveInfo);
-
-	u32 numTotalDrawcalls = 0;
-	for (auto& it : loadCount)
-	{
-		DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[it.first];
-		//DebugHandler::Print("NameHash: {0}, Instances: {1}, DrawCallsPer: {2}, DrawCalls: {3}", it.first, loadCount[it.first], discoveredModel.modelHeader.numOpaqueRenderBatches, loadDrawcallCount[it.first]);
-		numTotalDrawcalls += loadDrawcallCount[it.first];
-
-		if (numTotalDrawcalls > reserveInfo.numOpaqueDrawcalls)
-		{
-			volatile int asd = 123;
-		}
-	}
-
 
 	for (u32 i = 0; i < numDequeued; i++) // To be parallelized
 	{
 		LoadRequestInternal& request = _workingRequests[i];
 
+		if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
+		{
+			continue;
+		}
+
 		LoadState loadState = _nameHashToLoadState[request.placement.nameHash];
+
+		if (loadState == LoadState::Failed)
+			continue;
 
 		if (loadState == LoadState::Received)
 		{
+			loadState = LoadState::Loading;
 			_nameHashToLoadState[request.placement.nameHash] = LoadState::Loading;
-			if (!LoadRequest(request))
+
+			bool didLoad = LoadRequest(request);
+
+			loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+			_nameHashToLoadState[request.placement.nameHash] = loadState;
+
+			if (!didLoad)
 				continue;
-
-			/*DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
-
-			DebugHandler::Print("ID: {0}, Instances: {1}, DrawCallsPer: {2}, DrawCalls: {3}", i, loadCount[request.placement.nameHash], discoveredModel.modelHeader.numOpaqueRenderBatches, loadDrawcallCount[request.placement.nameHash]);
-			numTotalDrawcalls += loadDrawcallCount[request.placement.nameHash];
-
-			if (numTotalDrawcalls > reserveInfo.numOpaqueDrawcalls)
-			{
-				volatile int asd = 123;
-			}*/
 		}
+
 		AddInstance(request);
 	}
 }

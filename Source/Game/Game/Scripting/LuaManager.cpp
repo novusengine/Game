@@ -173,7 +173,11 @@ namespace Scripting
 		const char* scriptDir = CVAR_ScriptDir.Get();
 		const char* scriptExtension = CVAR_ScriptExtension.Get();
 		fs::path scriptDirectory = fs::absolute(scriptDir);
-		fs::create_directories(scriptDirectory);
+
+		if (!fs::exists(scriptDirectory))
+		{
+			fs::create_directories(scriptDirectory);
+		}
 
 		const LuaTable& table = GetGlobalTable();
 
@@ -182,64 +186,60 @@ namespace Scripting
 		ctx.SetGlobal(table);
 		ctx.MakeReadOnly();
 
+		// TODO : Figure out if this catches hidden folders, and if so exclude them
+		// TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
 		std::vector<std::filesystem::path> paths;
-		if (paths.size() > 0)
+		std::filesystem::recursive_directory_iterator dirpos{ scriptDirectory };
+		std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
+
+		Luau::CompileOptions compileOptions;
 		{
-			// TODO : Figure out if this catches hidden folders, and if so exclude them
-			// TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
+			compileOptions.optimizationLevel = 1;
+			compileOptions.debugLevel = 2;
+			compileOptions.coverageLevel = 2;
+			compileOptions.vectorLib = "Vector3";
+			compileOptions.vectorCtor = "new";
+		}
+		Luau::ParseOptions parseOptions;
 
-			std::filesystem::recursive_directory_iterator dirpos{ scriptDirectory };
-			std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
+		_bytecodeList.clear();
+		_bytecodeList.reserve(paths.size());
 
-			Luau::CompileOptions compileOptions;
+		for (auto& path : paths)
+		{
+			if (fs::is_directory(path))
+				continue;
+
+			if (path.extension() != scriptExtension)
+				continue;
+
+			const std::string pathAsStr = path.string();
+			FileReader reader(pathAsStr);
+
+			if (!reader.Open())
+				continue;
+
+			u32 bufferSize = static_cast<u32>(reader.Length());
+			std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+			reader.Read(buffer.get(), bufferSize);
+
+			std::string luaCode;
+			if (!buffer->GetString(luaCode, bufferSize))
+				continue;
+
+			LuaBytecodeEntry bytecodeEntry
 			{
-				compileOptions.optimizationLevel = 1;
-				compileOptions.debugLevel = 2;
-				compileOptions.coverageLevel = 2;
-				compileOptions.vectorLib = "Vector3";
-				compileOptions.vectorCtor = "new";
-			}
-			Luau::ParseOptions parseOptions;
+				path.filename().string(),
+				path.parent_path().string(),
+				Luau::compile(luaCode, compileOptions, parseOptions)
+			};
 
-			_bytecodeList.clear();
-			_bytecodeList.reserve(paths.size());
+			_bytecodeList.push_back(bytecodeEntry);
 
-			for (auto& path : paths)
+			i32 result = ctx.LoadBytecode(pathAsStr, bytecodeEntry.bytecode, 0);
+			if (result != LUA_OK)
 			{
-				if (fs::is_directory(path))
-					continue;
-
-				if (path.extension() != scriptExtension)
-					continue;
-
-				const std::string pathAsStr = path.string();
-				FileReader reader(pathAsStr);
-
-				if (!reader.Open())
-					continue;
-
-				u32 bufferSize = static_cast<u32>(reader.Length());
-				std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
-				reader.Read(buffer.get(), bufferSize);
-
-				std::string luaCode;
-				if (!buffer->GetString(luaCode, bufferSize))
-					continue;
-
-				LuaBytecodeEntry bytecodeEntry
-				{
-					path.filename().string(),
-					path.parent_path().string(),
-					Luau::compile(luaCode, compileOptions, parseOptions)
-				};
-
-				_bytecodeList.push_back(bytecodeEntry);
-
-				i32 result = ctx.LoadBytecode(pathAsStr, bytecodeEntry.bytecode, 0);
-				if (result != LUA_OK)
-				{
-					ctx.ReportError();
-				}
+				ctx.ReportError();
 			}
 		}
 
