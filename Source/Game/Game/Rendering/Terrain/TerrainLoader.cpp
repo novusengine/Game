@@ -392,13 +392,13 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					u32 numMapObjectPlacements;
 					if (chunkBuffer->Get(numMapObjectPlacements, mapObjectOffset))
 					{
-						/*for (u32 j = 0; j < numElements; j++)
+						for (u32 j = 0; j < numMapObjectPlacements; j++)
 						{
 							size_t offset = mapObjectOffset + sizeof(u32) + (j * sizeof(Terrain::Placement));
 							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
 
 							_modelLoader->LoadPlacement(*placement);
-						}*/
+						}
 					}
 					size_t cModelOffset = mapObjectOffset + sizeof(u32) + numMapObjectPlacements * sizeof(Terrain::Placement);
 

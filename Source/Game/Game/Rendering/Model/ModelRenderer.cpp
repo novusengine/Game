@@ -401,7 +401,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             drawCall.indexCount = renderBatch.indexCount;
             drawCall.instanceCount = 1;
             drawCall.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
-            drawCall.vertexOffset = modelManifest.vertexOffset;
+            drawCall.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
             drawCall.firstInstance = 0; // Is set during AddInstance
 
             DrawCallData& drawCallData = drawCallDatas[curDrawCallOffset];
