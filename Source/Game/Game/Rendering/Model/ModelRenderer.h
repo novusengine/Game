@@ -1,4 +1,7 @@
 #pragma once
+#include "Game/Rendering/CulledRenderer.h"
+#include "Game/Rendering/CullingResources.h"
+
 #include <Base/Types.h>
 #include <Base/Math/Geometry.h>
 
@@ -19,11 +22,13 @@ namespace Renderer
 	class RenderGraphResources;
 }
 
+struct DrawParams;
+
 constexpr u32 MODEL_INVALID_TEXTURE_ID = 0; // This refers to the debug texture
 constexpr u32 MODEL_INVALID_TEXTURE_TRANSFORM_ID = std::numeric_limits<u16>().max();
 constexpr u8 MODEL_INVALID_TEXTURE_UNIT_INDEX = std::numeric_limits<u8>().max();
 
-class ModelRenderer
+class ModelRenderer : CulledRenderer
 {
 public:
 	struct ReserveInfo
@@ -58,6 +63,7 @@ public:
 	struct DrawCallData
 	{
 		u32 instanceID = 0;
+		u32 modelID = 0;
 		u32 textureUnitOffset = 0;
 		u16 numTextureUnits = 0;
 		u16 numUnlitTextureUnits = 0;
@@ -103,6 +109,8 @@ public:
 	std::vector<ModelManifest> GetModelManifests() { return _modelManifests; }
 	u32 GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque);
 
+	CullingResources<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
+
 	// Drawcall stats
 	u32 GetNumDrawCalls() { return 0; }
 	u32 GetNumOccluderDrawCalls() { return _numOccluderDrawCalls; }
@@ -118,23 +126,12 @@ private:
 
 	void SyncToGPU();
 
-	struct DrawParams
-	{
-		bool shadowPass = false;
-		u32 shadowCascade = 0;
-		Renderer::RenderPassMutableResource visibilityBuffer;
-		Renderer::RenderPassMutableResource depth;
-		Renderer::BufferID argumentBuffer;
-		Renderer::BufferID drawCountBuffer;
-		u32 drawCountIndex = 0;
-		u32 numMaxDrawCalls = 0;
-	};
-	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
+	virtual void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params) override;
 
 private:
 	PRAGMA_NO_PADDING_START
 		// Stuff here
-		PRAGMA_NO_PADDING_END
+	PRAGMA_NO_PADDING_END
 
 private:
 	Renderer::Renderer* _renderer = nullptr;
@@ -161,9 +158,7 @@ private:
 	Renderer::GPUVector<TextureUnit> _textureUnits;
 	std::atomic<u32> _textureUnitIndex = 0;
 
-	Renderer::GPUVector<Renderer::IndexedIndirectDraw> _opaqueDrawCalls;
-	Renderer::GPUVector<DrawCallData> _opaqueDrawCallDatas;
-	std::atomic<u32> _opaqueDrawCallsIndex = 0;
+	CullingResources<DrawCallData> _opaqueCullingResources;
 
 	Renderer::GPUVector<Renderer::IndexedIndirectDraw> _transparentDrawCalls;
 	Renderer::GPUVector<DrawCallData> _transparentDrawCallDatas;
@@ -176,16 +171,11 @@ private:
 	Renderer::BufferID _occluderDrawCountReadBackBuffer;
 	Renderer::BufferID _drawCountReadBackBuffer;
 
-	FrameResource<Renderer::BufferID, 2> _culledInstanceBitMaskBuffer;
-	Renderer::BufferID _culledInstanceBuffer[Renderer::Settings::MAX_VIEWS];
-
 	Renderer::TextureArrayID _textures;
 
 	Renderer::SamplerID _sampler;
 	Renderer::SamplerID _occlusionSampler;
 
-	Renderer::DescriptorSet _occluderFillPassDescriptorSet;
-	Renderer::DescriptorSet _opaqueCullingDescriptorSet;
 	Renderer::DescriptorSet _geometryPassDescriptorSet;
 	Renderer::DescriptorSet _materialPassDescriptorSet;
 

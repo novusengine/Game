@@ -221,7 +221,7 @@ namespace Editor
 
     void Inspector::DirtySelection()
     {
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        /*GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
 
         f32 radius;
@@ -229,7 +229,7 @@ namespace Editor
         {
             // TODO: Bounding box of models
             //modelRenderer->CalculateBoundingBox(_selectedComplexModelData.instanceID, _selectedComplexModelData.boundingBox.center, _selectedComplexModelData.boundingBox.extents, radius);
-        }
+        }*/
     }
 
     void Inspector::SelectTerrain(u32 chunkID, u32 cellID, bool selectChunk)

@@ -85,7 +85,7 @@ struct CullOutput
     RWByteAddressBuffer triangleCount;
 };
 
-void CullForView(DrawInput drawInput,
+void CullForCamera(DrawInput drawInput,
     Camera camera,
     BitmaskInput bitmaskInput,
     CullOutput cullOutput)
@@ -160,7 +160,7 @@ void main(CSInput input)
 
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;
-    sphere.w = distance(aabb.max, aabb.min);// / 2.0f;
+    sphere.w = distance(aabb.max, aabb.min);
 
     DrawInput drawInput;
     drawInput.csInput = input;
@@ -182,7 +182,7 @@ void main(CSInput input)
 
     // Main camera view
     {
-        CullForView(drawInput, _cameras[0], bitmaskInput, cullOutput);
+        CullForCamera(drawInput, _cameras[0], bitmaskInput, cullOutput);
     }
 
     // Shadow cascades

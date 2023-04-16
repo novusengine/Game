@@ -21,6 +21,6 @@ namespace Editor
 		void DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls, bool isCollapsed);
 
 	private:
-		bool _drawCallStatsOnlyForMainView = false;
+		bool _drawCallStatsOnlyForMainView = true;
 	};
 }

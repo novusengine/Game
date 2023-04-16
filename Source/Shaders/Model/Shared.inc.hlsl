@@ -16,6 +16,7 @@ struct ModelInstanceData
 struct PackedModelDrawCallData
 {
     uint instanceID;
+    uint modelID;
     uint textureUnitOffset;
     uint packed1; // uint16_t numTextureUnits, uint16_t numUnlitTextureUnits
 }; // 12 bytes
@@ -23,6 +24,7 @@ struct PackedModelDrawCallData
 struct ModelDrawCallData
 {
     uint instanceID;
+    uint modelID;
     uint textureUnitOffset;
     uint numTextureUnits;
     uint numUnlitTextureUnits;
@@ -36,6 +38,7 @@ ModelDrawCallData LoadModelDrawCallData(uint drawCallID)
     ModelDrawCallData drawCallData;
 
     drawCallData.instanceID = packedDrawCallData.instanceID;
+    drawCallData.modelID = packedDrawCallData.modelID;
     drawCallData.textureUnitOffset = packedDrawCallData.textureUnitOffset;
 
     drawCallData.numTextureUnits = packedDrawCallData.packed1 & 0xFFFF;

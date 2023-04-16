@@ -232,6 +232,7 @@ void GameRenderer::Render()
 
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
 
     // Depth Pyramid Pass
     struct PyramidPassData

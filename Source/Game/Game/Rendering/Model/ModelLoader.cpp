@@ -8,6 +8,7 @@
 
 #include <Base/Memory/FileReader.h>
 #include <Base/Util/StringUtils.h>
+#include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>

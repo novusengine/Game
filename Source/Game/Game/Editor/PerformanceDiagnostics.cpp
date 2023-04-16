@@ -165,6 +165,7 @@ namespace Editor
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
+        ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
         
         const std::string rightHeaderText = "Survived / Total (%%)";
 
@@ -175,27 +176,29 @@ namespace Editor
         }
 
         bool showView = showDrawcalls;
-        if (showDrawcalls)
+        if (!_drawCallStatsOnlyForMainView)
         {
-            showView = ImGui::CollapsingHeader(viewName.c_str());
-        }
+            if (showDrawcalls)
+            {
+                showView = ImGui::CollapsingHeader(viewName.c_str());
+            }
 
-        // If we are not collapsed, add a header that explains the values
-        if (showView)
-        {
-            ImGui::SameLine(textPos);
-            ImGui::Text(rightHeaderText.c_str());
-            ImGui::Separator();
+            // If we are not collapsed, add a header that explains the values
+            if (showView)
+            {
+                ImGui::SameLine(textPos);
+                ImGui::Text(rightHeaderText.c_str());
+                ImGui::Separator();
+            }
         }
-
+        
         u32 viewDrawCalls = 0;
         u32 viewDrawCallsSurvived = 0;
 
         bool viewSupportsOcclusionCulling = viewID == 0; // Only main view supports occlusion culling so far
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
-        bool viewRendersMapObjectsCulling = true;
-        bool viewRendersOpaqueCModelsCulling = true;
+        bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentCModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
 
@@ -229,6 +232,38 @@ namespace Editor
             };
         }
 
+        // Opaque Models
+        if (viewRendersOpaqueModelsCulling)
+        {
+            CullingResourcesBase& opaqueCullingResources = modelRenderer->GetOpaqueCullingResources();
+
+            u32 drawCalls = opaqueCullingResources.GetNumDrawCalls();
+            viewDrawCalls += drawCalls;
+
+            // Occluders
+            if (viewSupportsOcclusionCulling)
+            {
+                u32 drawCallsSurvived = opaqueCullingResources.GetNumSurvivingOccluderDrawCalls();
+
+                if (showView)
+                {
+                    DrawCullingStatsEntry("Model (O) Occluders", drawCalls, drawCallsSurvived, !showView);
+                }
+                viewDrawCallsSurvived += drawCallsSurvived;
+            }
+
+            // Geometry
+            {
+                u32 drawCallsSurvived = opaqueCullingResources.GetNumSurvivingDrawCalls(viewID);
+
+                if (showView)
+                {
+                    DrawCullingStatsEntry("Model (O) Geometry", drawCalls, drawCallsSurvived, !showView);
+                }
+                viewDrawCallsSurvived += drawCallsSurvived;
+            };
+        }
+
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
         if (showDrawcalls)
         {
@@ -243,6 +278,7 @@ namespace Editor
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
+        ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
 
         const std::string rightHeaderText = "Survived / Total (%%)";
 
@@ -253,17 +289,20 @@ namespace Editor
         }
 
         bool showView = showTriangles;
-        if (showTriangles)
+        if (!_drawCallStatsOnlyForMainView)
         {
-            showView = ImGui::CollapsingHeader(viewName.c_str());
-        }
+            if (showTriangles)
+            {
+                showView = ImGui::CollapsingHeader(viewName.c_str());
+            }
 
-        // If we are not collapsed, add a header that explains the values
-        if (showView)
-        {
-            ImGui::SameLine(textPos);
-            ImGui::Text(rightHeaderText.c_str());
-            ImGui::Separator();
+            // If we are not collapsed, add a header that explains the values
+            if (showView)
+            {
+                ImGui::SameLine(textPos);
+                ImGui::Text(rightHeaderText.c_str());
+                ImGui::Separator();
+            }
         }
 
         u32 viewTriangles = 0;
@@ -272,8 +311,7 @@ namespace Editor
         bool viewSupportsOcclusionCulling = viewID == 0; // Only main view supports occlusion culling so far
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
-        bool viewRendersMapObjectsCulling = true;
-        bool viewRendersOpaqueCModelsCulling = true;
+        bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentCModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports water culling so far
 
@@ -302,6 +340,38 @@ namespace Editor
                 if (showView)
                 {
                     DrawCullingStatsEntry("Terrain Geometry", triangles, trianglesSurvived, !showView);
+                }
+                viewTrianglesSurvived += trianglesSurvived;
+            }
+        }
+
+        // Opaque Models
+        if (viewRendersOpaqueModelsCulling)
+        {
+            CullingResourcesBase& opaqueCullingResources = modelRenderer->GetOpaqueCullingResources();
+
+            u32 triangles = opaqueCullingResources.GetNumTriangles();
+            viewTriangles += triangles;
+
+            // Occluders
+            if (viewSupportsOcclusionCulling)
+            {
+                u32 trianglesSurvived = opaqueCullingResources.GetNumSurvivingOccluderTriangles();
+
+                if (showView)
+                {
+                    DrawCullingStatsEntry("Model (O) Occluders", triangles, trianglesSurvived, !showView);
+                }
+                viewTrianglesSurvived += trianglesSurvived;
+            }
+
+            // Geometry
+            {
+                u32 trianglesSurvived = opaqueCullingResources.GetNumSurvivingTriangles(viewID);
+
+                if (showView)
+                {
+                    DrawCullingStatsEntry("Model (O) Geometry", triangles, trianglesSurvived, !showView);
                 }
                 viewTrianglesSurvived += trianglesSurvived;
             }
