@@ -14,8 +14,9 @@ public:
     {
         Renderer::Renderer* renderer = nullptr;
         std::string bufferNamePrefix = "";
-        Renderer::DescriptorSet* geometryPassDescriptorSet = nullptr;
         Renderer::DescriptorSet* materialPassDescriptorSet = nullptr;
+
+        bool enableTwoStepCulling = true;
     };
     virtual void Init(InitParams& params);
 
@@ -41,6 +42,9 @@ public:
 
     Renderer::DescriptorSet& GetOccluderFillDescriptorSet() { return _occluderFillDescriptorSet; }
     Renderer::DescriptorSet& GetCullingDescriptorSet() { return _cullingDescriptorSet; }
+    Renderer::DescriptorSet& GetGeometryPassDescriptorSet() { return _geometryPassDescriptorSet; }
+
+    bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
 
     // Drawcall stats
     u32 GetNumDrawCalls() { return static_cast<u32>(_drawCalls.Size()); }
@@ -55,6 +59,7 @@ public:
 protected:
     Renderer::Renderer* _renderer;
     std::string _bufferNamePrefix = "";
+    bool _enableTwoStepCulling;
 
     Renderer::GPUVector<Renderer::IndexedIndirectDraw> _drawCalls;
     std::atomic<u32> _drawCallsIndex = 0;
@@ -71,15 +76,15 @@ protected:
 
     Renderer::DescriptorSet _occluderFillDescriptorSet;
     Renderer::DescriptorSet _cullingDescriptorSet;
-    Renderer::DescriptorSet* _geometryPassDescriptorSet;
+    Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
 
-    u32 _numSurvivingOccluderDrawCalls;
-    u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS]; // One for the main view, then one per shadow cascade
+    u32 _numSurvivingOccluderDrawCalls = 0;
+    u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
 
-    u32 _numTriangles;
-    u32 _numSurvivingOccluderTriangles;
-    u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS]; // One for the main view, then one per shadow cascade
+    u32 _numTriangles = 0;
+    u32 _numSurvivingOccluderTriangles = 0;
+    u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
 };
 
 template<class T>
@@ -105,8 +110,11 @@ public:
         if (_drawCallDatas.SyncToGPU(_renderer))
         {
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
+            if (_materialPassDescriptorSet != nullptr)
+            {
+                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
+            }
         }
 	}
 

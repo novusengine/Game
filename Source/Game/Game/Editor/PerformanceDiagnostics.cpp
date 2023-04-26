@@ -199,7 +199,7 @@ namespace Editor
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
         bool viewRendersOpaqueModelsCulling = true;
-        bool viewRendersTransparentCModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
+        bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
 
         // Terrain
@@ -235,33 +235,15 @@ namespace Editor
         // Opaque Models
         if (viewRendersOpaqueModelsCulling)
         {
-            CullingResourcesBase& opaqueCullingResources = modelRenderer->GetOpaqueCullingResources();
+            CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
+            DrawCullingResourcesDrawcall("Model (O)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+        }
 
-            u32 drawCalls = opaqueCullingResources.GetNumDrawCalls();
-            viewDrawCalls += drawCalls;
-
-            // Occluders
-            if (viewSupportsOcclusionCulling)
-            {
-                u32 drawCallsSurvived = opaqueCullingResources.GetNumSurvivingOccluderDrawCalls();
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Model (O) Occluders", drawCalls, drawCallsSurvived, !showView);
-                }
-                viewDrawCallsSurvived += drawCallsSurvived;
-            }
-
-            // Geometry
-            {
-                u32 drawCallsSurvived = opaqueCullingResources.GetNumSurvivingDrawCalls(viewID);
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Model (O) Geometry", drawCalls, drawCallsSurvived, !showView);
-                }
-                viewDrawCallsSurvived += drawCallsSurvived;
-            };
+        // Transparent Models
+        if (viewRendersTransparentModelsCulling)
+        {
+            CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
+            DrawCullingResourcesDrawcall("Model (T)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
@@ -348,33 +330,15 @@ namespace Editor
         // Opaque Models
         if (viewRendersOpaqueModelsCulling)
         {
-            CullingResourcesBase& opaqueCullingResources = modelRenderer->GetOpaqueCullingResources();
+            CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
+            DrawCullingResourcesDrawcall("Model (O)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+        }
 
-            u32 triangles = opaqueCullingResources.GetNumTriangles();
-            viewTriangles += triangles;
-
-            // Occluders
-            if (viewSupportsOcclusionCulling)
-            {
-                u32 trianglesSurvived = opaqueCullingResources.GetNumSurvivingOccluderTriangles();
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Model (O) Occluders", triangles, trianglesSurvived, !showView);
-                }
-                viewTrianglesSurvived += trianglesSurvived;
-            }
-
-            // Geometry
-            {
-                u32 trianglesSurvived = opaqueCullingResources.GetNumSurvivingTriangles(viewID);
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Model (O) Geometry", triangles, trianglesSurvived, !showView);
-                }
-                viewTrianglesSurvived += trianglesSurvived;
-            }
+        // Opaque Models
+        if (viewRendersOpaqueModelsCulling)
+        {
+            CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
+            DrawCullingResourcesDrawcall("Model (T)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header
@@ -385,6 +349,64 @@ namespace Editor
 
         totalTriangles += viewTriangles;
         totalSurvivingTriangles += viewTrianglesSurvived;
+    }
+
+    void PerformanceDiagnostics::DrawCullingResourcesDrawcall(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool showView, bool viewSupportsOcclusionCulling, u32& viewDrawCalls, u32& viewDrawCallsSurvived)
+    {
+        u32 drawCalls = cullingResources.GetNumDrawCalls();
+        viewDrawCalls += drawCalls;
+
+        // Occluders
+        if (viewSupportsOcclusionCulling && cullingResources.HasSupportForTwoStepCulling())
+        {
+            u32 drawCallsSurvived = cullingResources.GetNumSurvivingOccluderDrawCalls();
+
+            if (showView)
+            {
+                DrawCullingStatsEntry(prefix + " Occluders", drawCalls, drawCallsSurvived, !showView);
+            }
+            viewDrawCallsSurvived += drawCallsSurvived;
+        }
+
+        // Geometry
+        {
+            u32 drawCallsSurvived = cullingResources.GetNumSurvivingDrawCalls(viewID);
+
+            if (showView)
+            {
+                DrawCullingStatsEntry(prefix + " Geometry", drawCalls, drawCallsSurvived, !showView);
+            }
+            viewDrawCallsSurvived += drawCallsSurvived;
+        };
+    }
+
+    void PerformanceDiagnostics::DrawCullingResourcesTriangle(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool showView, bool viewSupportsOcclusionCulling, u32& viewTriangles, u32& viewTrianglesSurvived)
+    {
+        u32 triangles = cullingResources.GetNumTriangles();
+        viewTriangles += triangles;
+
+        // Occluders
+        if (viewSupportsOcclusionCulling && cullingResources.HasSupportForTwoStepCulling())
+        {
+            u32 trianglesSurvived = cullingResources.GetNumSurvivingOccluderTriangles();
+
+            if (showView)
+            {
+                DrawCullingStatsEntry(prefix + " Occluders", triangles, trianglesSurvived, !showView);
+            }
+            viewTrianglesSurvived += trianglesSurvived;
+        }
+
+        // Geometry
+        {
+            u32 trianglesSurvived = cullingResources.GetNumSurvivingTriangles(viewID);
+
+            if (showView)
+            {
+                DrawCullingStatsEntry(prefix + " Geometry", triangles, trianglesSurvived, !showView);
+            }
+            viewTrianglesSurvived += trianglesSurvived;
+        }
     }
 
     void PerformanceDiagnostics::DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls, bool isCollapsed)

@@ -6,12 +6,10 @@
 void CullingResourcesBase::Init(InitParams& params)
 {
     DebugHandler::Assert(params.renderer != nullptr, "CullingResources : params.renderer is nullptr");
-    DebugHandler::Assert(params.geometryPassDescriptorSet != nullptr, "CullingResources : params.geometryPassDescriptorSet is nullptr");
-    DebugHandler::Assert(params.materialPassDescriptorSet != nullptr, "CullingResources : params.materialPassDescriptorSet is nullptr");
 
     _renderer = params.renderer;
     _bufferNamePrefix = params.bufferNamePrefix;
-    _geometryPassDescriptorSet = params.geometryPassDescriptorSet;
+    _enableTwoStepCulling = params.enableTwoStepCulling;
     _materialPassDescriptorSet = params.materialPassDescriptorSet;
 
     // DrawCalls
@@ -34,8 +32,12 @@ void CullingResourcesBase::Init(InitParams& params)
         desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
         _drawCountReadBackBuffer = _renderer->CreateBuffer(_drawCountReadBackBuffer, desc);
 
-        desc.name = _bufferNamePrefix + "OccluderDrawCountRBBuffer";
-        _occluderDrawCountReadBackBuffer = _renderer->CreateBuffer(_occluderDrawCountReadBackBuffer, desc);
+        if (_enableTwoStepCulling)
+        {
+            desc.name = _bufferNamePrefix + "OccluderDrawCountRBBuffer";
+            _occluderDrawCountReadBackBuffer = _renderer->CreateBuffer(_occluderDrawCountReadBackBuffer, desc);
+        }
+        
     }
 
     // Create TriangleCountBuffer
@@ -53,8 +55,11 @@ void CullingResourcesBase::Init(InitParams& params)
         desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
         _triangleCountReadBackBuffer = _renderer->CreateBuffer(_triangleCountReadBackBuffer, desc);
 
-        desc.name = _bufferNamePrefix + "OccluderTriangleCountRBBuffer";
-        _occluderTriangleCountReadBackBuffer = _renderer->CreateBuffer(_occluderTriangleCountReadBackBuffer, desc);
+        if (_enableTwoStepCulling)
+        {
+            desc.name = _bufferNamePrefix + "OccluderTriangleCountRBBuffer";
+            _occluderTriangleCountReadBackBuffer = _renderer->CreateBuffer(_occluderTriangleCountReadBackBuffer, desc);
+        }
     }
 }
 
@@ -73,6 +78,7 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
     {
         // Drawcalls
 
+        if (_enableTwoStepCulling)
         {
             u32* count = static_cast<u32*>(_renderer->MapBuffer(_occluderDrawCountReadBackBuffer));
             if (count != nullptr)
@@ -95,6 +101,7 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
         }
 
         // Triangles
+        if (_enableTwoStepCulling)
         {
             u32* count = static_cast<u32*>(_renderer->MapBuffer(_occluderTriangleCountReadBackBuffer));
             if (count != nullptr)
@@ -124,12 +131,19 @@ void CullingResourcesBase::SyncToGPU()
         // DrawCalls
         if (_drawCalls.SyncToGPU(_renderer))
         {
-            _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+            if (_enableTwoStepCulling)
+            {
+                _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+            }
             _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-            _geometryPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
-            _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+            if (_materialPassDescriptorSet != nullptr)
+            {
+                _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+            }
 
             // (Re)create Culled DrawCall Bitmask buffer
+            if (_enableTwoStepCulling)
             {
                 Renderer::BufferDesc desc;
                 desc.size = RenderUtils::CalcCullingBitmaskSize(_drawCalls.Size());

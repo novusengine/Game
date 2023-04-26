@@ -54,6 +54,7 @@ void ModelRenderer::Update(f32 deltaTime)
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);
+    _transparentCullingResources.Update(deltaTime, cullingEnabled);
 }
 
 void ModelRenderer::Clear()
@@ -81,10 +82,7 @@ void ModelRenderer::Clear()
     _textureUnitIndex.store(0);
 
     _opaqueCullingResources.Clear();
-
-    _transparentDrawCalls.Clear();
-    _transparentDrawCallDatas.Clear();
-    _transparentDrawCallsIndex.store(0);
+    _transparentCullingResources.Clear();
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 
@@ -103,6 +101,9 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (!CVAR_ModelCullingEnabled.Get())
         return;
 
+    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+        return;
+
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
 
     struct Data
@@ -111,7 +112,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::RenderPassMutableResource depth;
     };
 
-    renderGraph->AddPass<Data>("Model Occluders",
+    renderGraph->AddPass<Data>("Model (O) Occluders",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
@@ -123,24 +124,26 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelOccluders);
 
-            if (_opaqueCullingResources.GetDrawCalls().Size() > 0)
+            CulledRenderer::OccluderPassParams params;
+            params.passName = "Opaque";
+            params.renderResources = &resources;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.cullingResources = &_opaqueCullingResources;
+
+            params.frameIndex = frameIndex;
+            params.rt0 = data.visibilityBuffer;
+            params.depth = data.depth;
+
+            params.drawCallback = [&](const DrawParams& drawParams)
             {
-                CulledRenderer::OccluderPassParams params;
-                params.passName = "Opaque";
-                params.renderResources = &resources;
-                params.graphResources = &graphResources;
-                params.commandList = &commandList;
-                params.cullingResources = &_opaqueCullingResources;
+                Draw(resources, frameIndex, graphResources, commandList, drawParams);
+            };
 
-                params.frameIndex = frameIndex;
-                params.visibilityBuffer = data.visibilityBuffer;
-                params.depth = data.depth;
+            params.enableDrawing = CVAR_ModelDrawOccluders.Get();
+            params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
 
-                params.enableDrawing = CVAR_ModelDrawOccluders.Get();
-                params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
-
-                OccluderPass(params);
-            }
+            OccluderPass(params);
         });
 }
 
@@ -154,13 +157,16 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     if (!CVAR_ModelCullingEnabled.Get())
         return;
 
+    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+        return;
+
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
 
     struct Data
     {
     };
 
-    renderGraph->AddPass<Data>("Model Culling",
+    renderGraph->AddPass<Data>("Model (O) Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             return true; // Return true from setup to enable this pass, return false to disable it
@@ -169,25 +175,23 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
-            if (_opaqueCullingResources.GetDrawCalls().Size() > 0)
-            {
-                CulledRenderer::CullingPassParams params;
-                params.passName = "Opaque";
-                params.renderResources = &resources;
-                params.graphResources = &graphResources;
-                params.commandList = &commandList;
-                params.cullingResources = &_opaqueCullingResources;
+            CulledRenderer::CullingPassParams params;
+            params.passName = "Opaque";
+            params.renderResources = &resources;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.cullingResources = &_opaqueCullingResources;
 
-                params.frameIndex = frameIndex;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
-                params.occlusionCull = true;
+            params.frameIndex = frameIndex;
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.occlusionCull = true;
+            params.debugDrawColliders = false;
 
-                params.instanceIDOffset = offsetof(DrawCallData, instanceID);
-                params.modelIDOffset = offsetof(DrawCallData, modelID);
-                params.drawCallDataSize = sizeof(DrawCallData);
+            params.instanceIDOffset = offsetof(DrawCallData, instanceID);
+            params.modelIDOffset = offsetof(DrawCallData, modelID);
+            params.drawCallDataSize = sizeof(DrawCallData);
 
-                CullingPass(params);
-            }
+            CullingPass(params);
         });
 }
 
@@ -198,6 +202,9 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (!CVAR_ModelRendererEnabled.Get())
         return;
 
+    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+        return;
+
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
 
     struct Data
@@ -206,7 +213,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::RenderPassMutableResource depth;
     };
 
-    renderGraph->AddPass<Data>("Model Geometry",
+    renderGraph->AddPass<Data>("Model (O) Geometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
@@ -217,6 +224,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
+
             CulledRenderer::GeometryPassParams params;
             params.passName = "Opaque";
             params.renderResources = &resources;
@@ -225,8 +233,121 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.cullingResources = &_opaqueCullingResources;
 
             params.frameIndex = frameIndex;
-            params.visibilityBuffer = data.visibilityBuffer;
+            params.rt0 = data.visibilityBuffer;
             params.depth = data.depth;
+
+            params.drawCallback = [&](const DrawParams& drawParams)
+            {
+                Draw(resources, frameIndex, graphResources, commandList, drawParams);
+            };
+
+            params.enableDrawing = CVAR_ModelDrawGeometry.Get();
+            params.cullingEnabled = cullingEnabled;
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+
+            GeometryPass(params);
+        });
+}
+
+void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    ZoneScoped;
+
+    if (!CVAR_ModelRendererEnabled.Get())
+        return;
+
+    if (!CVAR_ModelCullingEnabled.Get())
+        return;
+
+    if (_transparentCullingResources.GetDrawCalls().Size() == 0)
+        return;
+
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+
+    struct Data
+    {
+    };
+
+    renderGraph->AddPass<Data>("Model (T) Culling",
+        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
+
+            CulledRenderer::CullingPassParams params;
+            params.passName = "Transparent";
+            params.renderResources = &resources;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.cullingResources = &_transparentCullingResources;
+
+            params.frameIndex = frameIndex;
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.occlusionCull = false;
+            params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
+            params.debugDrawColliders = false;
+
+            params.instanceIDOffset = offsetof(DrawCallData, instanceID);
+            params.modelIDOffset = offsetof(DrawCallData, modelID);
+            params.drawCallDataSize = sizeof(DrawCallData);
+
+            CullingPass(params);
+        });
+}
+
+void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    ZoneScoped;
+
+    if (!CVAR_ModelRendererEnabled.Get())
+        return;
+
+    if (_transparentCullingResources.GetDrawCalls().Size() == 0)
+        return;
+
+    const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
+
+    struct Data
+    {
+        Renderer::RenderPassMutableResource transparency;
+        Renderer::RenderPassMutableResource transparencyWeights;
+        Renderer::RenderPassMutableResource depth;
+    };
+
+    renderGraph->AddPass<Data>("Model (T) Geometry",
+        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        {
+            data.transparency = builder.Write(resources.transparency, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
+            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
+            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
+
+            commandList.ImageBarrier(resources.finalColor);
+
+            CulledRenderer::GeometryPassParams params;
+            params.passName = "Transparent";
+            params.renderResources = &resources;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.cullingResources = &_transparentCullingResources;
+
+            params.frameIndex = frameIndex;
+            params.rt0 = data.transparency;
+            params.rt1 = data.transparencyWeights;
+            params.depth = data.depth;
+
+            params.drawCallback = [&](const DrawParams& drawParams)
+            {
+                DrawTransparent(resources, frameIndex, graphResources, commandList, drawParams);
+            };
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
@@ -238,7 +359,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
 u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
 {
-    Renderer::GPUVector<DrawCallData>& drawCallDatas = (isOpaque) ? _opaqueCullingResources.GetDrawCallDatas() : _opaqueCullingResources.GetDrawCallDatas(); // TODO: Transparency
+    Renderer::GPUVector<DrawCallData>& drawCallDatas = (isOpaque) ? _opaqueCullingResources.GetDrawCallDatas() : _transparentCullingResources.GetDrawCallDatas();
 
     if (drawCallDatas.Size() < drawCallID)
     {
@@ -259,14 +380,13 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     _indices.Grow(reserveInfo.numIndices);
 
     _instanceDatas.Grow(reserveInfo.numInstances);
+
     _instanceMatrices.Grow(reserveInfo.numInstances);
 
     _textureUnits.Grow(reserveInfo.numTextureUnits);
 
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
-
-    _transparentDrawCalls.Grow(reserveInfo.numTransparentDrawcalls);
-    _transparentDrawCallDatas.Grow(reserveInfo.numTransparentDrawcalls);
+    _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -281,6 +401,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     // Add ModelManifest
     u32 modelManifestIndex = _modelManifestsIndex.fetch_add(1);
     ModelManifest& modelManifest = _modelManifests[modelManifestIndex];
+
+    modelManifest.debugName = name;
 
     // Add CullingData
     std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
@@ -331,7 +453,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(modelManifest.numOpaqueDrawCalls);
 
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
-        modelManifest.transparentDrawCallOffset = _transparentDrawCallsIndex.fetch_add(modelManifest.numTransparentDrawCalls);
+        modelManifest.transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(modelManifest.numTransparentDrawCalls);
 
         u32 numAddedIndices = 0;
 
@@ -384,12 +506,12 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             }
 
             // Draw Calls
-            // TODO: Clarifying comment, split into a branch
             u32& numAddedDrawCalls = (renderBatch.isTransparent) ? numAddedTransparentDrawCalls : numAddedOpaqueDrawCalls;
             u32& drawCallOffset = (renderBatch.isTransparent) ? modelManifest.transparentDrawCallOffset : modelManifest.opaqueDrawCallOffset;
 
-            std::vector<Renderer::IndexedIndirectDraw>& drawCalls = (renderBatch.isTransparent) ? _transparentDrawCalls.Get() : _opaqueCullingResources.GetDrawCalls().Get();
-            std::vector<DrawCallData>& drawCallDatas = (renderBatch.isTransparent) ? _transparentDrawCallDatas.Get() : _opaqueCullingResources.GetDrawCallDatas().Get();
+            CullingResources<DrawCallData>& cullingResources = (renderBatch.isTransparent) ? _transparentCullingResources : _opaqueCullingResources;
+            std::vector<Renderer::IndexedIndirectDraw>& drawCalls = cullingResources.GetDrawCalls().Get();
+            std::vector<DrawCallData>& drawCallDatas = cullingResources.GetDrawCallDatas().Get();
 
             u32 curDrawCallOffset = drawCallOffset + numAddedDrawCalls;
 
@@ -495,13 +617,13 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
     {
         u32 transparentBaseIndex = manifest.transparentDrawCallOffset;
 
-        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentDrawCalls.Get();
-        std::vector<DrawCallData>& transparentDrawCallDatas = _transparentDrawCallDatas.Get();
+        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls().Get();
+        std::vector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas().Get();
 
         // The first instance doesn't need to copy the drawcalls
         if (modelInstanceIndex != 0)
         {
-            transparentBaseIndex = _transparentDrawCallsIndex.fetch_add(manifest.numTransparentDrawCalls);
+            transparentBaseIndex = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
 
             // Copy DrawCalls
             {
@@ -530,6 +652,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
 
             DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
             drawCallData.instanceID = instanceID;
+            drawCallData.modelID = modelID;
         }
     }
 
@@ -543,9 +666,9 @@ void ModelRenderer::CreatePermanentResources()
     textureArrayDesc.size = 4096;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
-    _geometryPassDescriptorSet.Bind("_modelTextures"_h, _textures);
+    _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
+    _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
     _materialPassDescriptorSet.Bind("_modelTextures"_h, _textures);
-    //_transparencyPassDescriptorSet.Bind("_modelTextures"_h, _textures);
 
     Renderer::DataTextureDesc dataTextureDesc;
     dataTextureDesc.width = 1;
@@ -571,16 +694,20 @@ void ModelRenderer::CreatePermanentResources()
     samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
 
     _sampler = _renderer->CreateSampler(samplerDesc);
-    _geometryPassDescriptorSet.Bind("_sampler"_h, _sampler);
-    //_transparencyPassDescriptorSet.Bind("_sampler"_h, _sampler);
+    _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
+    _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
 
     CullingResources<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
     initParams.bufferNamePrefix = "OpaqueModels";
-    initParams.geometryPassDescriptorSet = &_geometryPassDescriptorSet;
     initParams.materialPassDescriptorSet = &_materialPassDescriptorSet;
-
+    initParams.enableTwoStepCulling = true;
     _opaqueCullingResources.Init(initParams);
+
+    initParams.bufferNamePrefix = "TransparentModels";
+    initParams.materialPassDescriptorSet = nullptr;
+    initParams.enableTwoStepCulling = false;
+    _transparentCullingResources.Init(initParams);
 }
 
 void ModelRenderer::SyncToGPU()
@@ -593,9 +720,9 @@ void ModelRenderer::SyncToGPU()
         _vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
         if (_vertices.SyncToGPU(_renderer))
         {
-            _geometryPassDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
             _materialPassDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
-            //_transparencyPassDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
         }
     }
 
@@ -605,9 +732,9 @@ void ModelRenderer::SyncToGPU()
         _indices.SetUsage(Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER);
         if (_indices.SyncToGPU(_renderer))
         {
-            _geometryPassDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
-            //_transparencyPassDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
         }
     }
 
@@ -617,9 +744,9 @@ void ModelRenderer::SyncToGPU()
         _textureUnits.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
         if (_textureUnits.SyncToGPU(_renderer))
         {
-            _geometryPassDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
-            //_transparencyPassDescriptorSet.Bind("_cModelTextureUnits"_h, _textureUnits.GetBuffer());
         }
     }
 
@@ -630,11 +757,12 @@ void ModelRenderer::SyncToGPU()
         if (_instanceDatas.SyncToGPU(_renderer))
         {
             _opaqueCullingResources.GetCullingDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            //_transparentCullingDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            //_animationPrepassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+
+            _transparentCullingResources.GetCullingDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+
             _materialPassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            //_transparencyPassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
         }
     }
 
@@ -645,16 +773,20 @@ void ModelRenderer::SyncToGPU()
         if (_instanceMatrices.SyncToGPU(_renderer))
         {
             _opaqueCullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices"_h, _instanceMatrices.GetBuffer());
-            //_transparentCullingDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+            _transparentCullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices"_h, _instanceMatrices.GetBuffer());
             //_animationPrepassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            //_transparencyPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
         }
     }
 
     _opaqueCullingResources.SyncToGPU();
+    _transparentCullingResources.SyncToGPU();
+
     SetupCullingResource(_opaqueCullingResources);
+    SetupCullingResource(_transparentCullingResources);
 }
 
 void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
@@ -678,7 +810,6 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     // Depth state
     pipelineDesc.states.depthStencilState.depthEnable = true;
     pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-
     pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
 
     // Rasterizer state
@@ -690,7 +821,11 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     // Render targets
     if (!params.shadowPass)
     {
-        pipelineDesc.renderTargets[0] = params.visibilityBuffer;
+        pipelineDesc.renderTargets[0] = params.rt0;
+    }
+    if (params.rt1 != Renderer::RenderPassMutableResource::Invalid())
+    {
+        pipelineDesc.renderTargets[1] = params.rt1;
     }
     pipelineDesc.depthStencil = params.depth;
 
@@ -714,11 +849,10 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
 
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
     //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, &_geometryPassDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 
-    // TODO: Culling
     if (params.cullingEnabled)
     {
         u32 drawCountBufferOffset = params.drawCountIndex * sizeof(u32);
@@ -729,5 +863,77 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
         commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
     }
     
+    commandList.EndPipeline(pipeline);
+}
+
+void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
+{
+    Renderer::GraphicsPipelineDesc pipelineDesc;
+    graphResources.InitializePipelineDesc(pipelineDesc);
+
+    // Shaders
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.path = "Model/DrawTransparent.vs.hlsl";
+
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.path = "Model/DrawTransparent.ps.hlsl";
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+    // Blend state
+    pipelineDesc.states.blendState.independentBlendEnable = true;
+
+    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+
+    pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
+    pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
+    pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
+
+    // Render targets
+    pipelineDesc.renderTargets[0] = params.rt0;
+    if (params.rt1 != Renderer::RenderPassMutableResource::Invalid())
+    {
+        pipelineDesc.renderTargets[1] = params.rt1;
+    }
+    pipelineDesc.depthStencil = params.depth;
+
+    // Draw
+    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    commandList.BeginPipeline(pipeline);
+
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
+
+    commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
+
+    if (params.cullingEnabled)
+    {
+        u32 drawCountBufferOffset = params.drawCountIndex * sizeof(u32);
+        commandList.DrawIndexedIndirectCount(params.argumentBuffer, 0, params.drawCountBuffer, drawCountBufferOffset, params.numMaxDrawCalls);
+    }
+    else
+    {
+        commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
+    }
+
     commandList.EndPipeline(pipeline);
 }

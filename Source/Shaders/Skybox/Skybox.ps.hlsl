@@ -19,7 +19,7 @@ struct VertexOutput
 
 struct PSOutput
 {
-    float4 color : SV_Target0;
+    uint4 vBuffer : SV_Target0;
 };
 
 PSOutput main(VertexOutput input) : SV_Target
@@ -60,6 +60,7 @@ PSOutput main(VertexOutput input) : SV_Target
     }
 
     PSOutput output;
-    output.color = color;
+    output.vBuffer.xzw = 0; // Zero out everything else, skybox is a pretty unique case
+    output.vBuffer.y = Float4ToPackedUnorms(color);
     return output;
 }

@@ -31,14 +31,14 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
 {
     struct Data
     {
-        Renderer::RenderPassMutableResource finalColor;
+        Renderer::RenderPassMutableResource visibilityBuffer;
         Renderer::RenderPassMutableResource depth;
     };
 
     renderGraph->AddPass<Data>("Skybox Pass",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.finalColor = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
 
             return true; // Return true from setup to enable this pass, return false to disable it
@@ -70,8 +70,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
 
             // Render targets
-            pipelineDesc.renderTargets[0] = data.finalColor;
-
+            pipelineDesc.renderTargets[0] = data.visibilityBuffer;
             pipelineDesc.depthStencil = data.depth;
 
             // Set pipeline
@@ -87,7 +86,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
                 commandList.PushConstant(&_skybandColors, 0, sizeof(SkybandColors));
             }
 
-            // NumVertices hardcoded as we use a Fullscreen Triangle (Check PostProcess.vs.hlsl for more information)
+            // NumVertices hardcoded as we use a Fullscreen Triangle (Check FullscreenTriangle.vs.hlsl for more information)
             commandList.Draw(3, 1, 0, 0);
 
             commandList.EndPipeline(pipeline);

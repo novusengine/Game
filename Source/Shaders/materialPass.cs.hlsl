@@ -24,8 +24,8 @@ permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
 [[vk::push_constant]] Constants _constants;*/
 
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
-//[[vk::binding(3, PER_PASS)]] Texture2D<float4> _transparency;
-//[[vk::binding(4, PER_PASS)]] Texture2D<float> _transparencyWeights;
+[[vk::binding(3, PER_PASS)]] Texture2D<float4> _transparency;
+[[vk::binding(4, PER_PASS)]] Texture2D<float> _transparencyWeights;
 [[vk::binding(5, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
 float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer)
@@ -249,8 +249,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	float4 color = float4(0, 0, 0, 1);
 	if (vBuffer.typeID == ObjectType::Skybox)
 	{
-		//color = PackedUnormsToFloat4(vBufferData.y); // Skybox is a unique case that packs the resulting color in the Y component of the visibility buffer
-		return;
+		color = PackedUnormsToFloat4(vBufferData.y); // Skybox is a unique case that packs the resulting color in the Y component of the visibility buffer
 	}
 	else if (vBuffer.typeID == ObjectType::Terrain)
 	{
@@ -266,13 +265,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	}
 
 	// Composite Transparency
-	//float4 transparency = _transparency.Load(uint3(pixelPos, 0));
-	//float transparencyWeight = _transparencyWeights.Load(uint3(pixelPos, 0));
+	float4 transparency = _transparency.Load(uint3(pixelPos, 0));
+	float transparencyWeight = _transparencyWeights.Load(uint3(pixelPos, 0));
 
-	//float3 transparencyColor = transparency.rgb / max(transparency.a, 1e-5);
+	float3 transparencyColor = transparency.rgb / max(transparency.a, 1e-5);
 
 	// Src: ONE_MINUS_SRC_ALPHA, Dst: SRC_ALPHA
-	//color.rgb = (transparencyColor.rgb * (1.0f - transparencyWeight)) + (color.rgb * transparencyWeight);
+	color.rgb = (transparencyColor.rgb * (1.0f - transparencyWeight)) + (color.rgb * transparencyWeight);
 
 	_resolvedColor[pixelPos] = float4(color.rgb, 1.0f);
 }

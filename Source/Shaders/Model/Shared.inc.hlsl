@@ -449,54 +449,48 @@ float4 ShadeModel(uint pixelId, float4 texture1, float4 texture2, out float3 spe
 
 float4 BlendModel(uint blendingMode, float4 previousColor, float4 color)
 {
-    float4 result = previousColor;
+    float4 result = float4(1.0f, 0.0f, 1.0f, 1.0f); // MAGENTA, just so it's very visible when something is unimplemented
+    float oneMinusSrcAlpha = (1.0f - color.a);
 
-    if (blendingMode == 0) // OPAQUE
+    if (blendingMode == 0) // OPAQUE (ONE, ZERO, ONE, ZERO)
     {
-        result = float4(color.rgb, 1);
+        result = float4(color.rgb, color.a);
     }
-    else if (blendingMode == 1) // ALPHA KEY
+    else if (blendingMode == 1) // ALPHA KEY (ONE, ZERO, ONE, ZERO)
     {
         // I don't think discarding here is needed since we already discard alphakeyed pixels in the geometry pass
         if (color.a >= 224.0f / 255.0f)
         {
-            float3 blendedColor = color.rgb * color.a + previousColor.rgb * (1 - color.a);
-            result.rgb += blendedColor;
-            result.a = max(color.a, previousColor.a); // TODO: Check if this is actually needed
+            result = color;
         }
-        /*else
-        {
-            discard;
-        }*/
     }
-    else if (blendingMode == 2) // ALPHA
+    else if (blendingMode == 2) // ALPHA (SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA)
     {
-        float3 blendedColor = color.rgb * color.a + previousColor.rgb * (1 - color.a);
-        result.rgb += blendedColor;
-        result.a = max(color.a, previousColor.a); // TODO: Check if this is actually needed
+        result.rgb = (color.rgb * color.a) + (previousColor.rgb * oneMinusSrcAlpha);
+        result.a = color.a + (previousColor.a * oneMinusSrcAlpha);
     }
-    else if (blendingMode == 3) // NO ALPHA ADD
+    else if (blendingMode == 3) // NO ALPHA ADD (ONE, ONE, ZERO, ONE)
     {
-        // TODO
-        result.rgb += color.rgb;
+        result.rgb = color.rgb + previousColor.rgb;
+        result.a = color.a; // I modified this, it used to be previousColor.a when I thought the blend mode comment made sense
     }
-    else if (blendingMode == 4) // ADD
+    else if (blendingMode == 4) // ADD (SRC_ALPHA, ONE, ZERO, ONE)
     {
-        // TODO
-        result.rgb += color.rgb * color.a;
-        result.a = color.a;
+        result.rgb = (color.rgb * color.a) + previousColor.rgb;
+        result.a = previousColor.a; // I modified this, it used to be previousColor.a when I thought the blend mode comment made sense
+        //result.a = max(color.a, previousColor.a);
     }
-    else if (blendingMode == 5) // MOD
+    else if (blendingMode == 5) // MOD (DST_COLOR, ZERO, DST_ALPHA, ZERO)
     {
-        // TODO
+        result = color * previousColor;
     }
-    else if (blendingMode == 6) // MOD2X
+    else if (blendingMode == 6) // MOD2X (DST_COLOR, SRC_COLOR, DST_ALPHA, SRC_ALPHA)
     {
-        // TODO
+        result = (color * previousColor) + (color * previousColor);
     }
-    else if (blendingMode == 7) // BLEND ADD
+    else if (blendingMode == 7) // BLEND ADD (ONE, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA)
     {
-        // TODO
+        result = color + (previousColor * oneMinusSrcAlpha);
     }
 
     return result;

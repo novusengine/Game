@@ -14,6 +14,7 @@ struct Constants
     uint instanceIDOffset;
     uint modelIDOffset;
     uint drawCallDataSize;
+    bool debugDrawColliders;
 };
 
 struct PackedCullingData
@@ -203,14 +204,17 @@ void CullForCamera(DrawInput drawInput,
     }
 
     // Debug draw AABB boxes
-    /*if (isVisible)
+    if (_constants.debugDrawColliders)
     {
-        DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        if (isVisible)
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        }
+        else
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::RED);
+        }
     }
-    else
-    {
-        DrawAABB3D(drawInput.aabb, DebugColor::RED);
-    }*/
 }
 
 [numthreads(32, 1, 1)]

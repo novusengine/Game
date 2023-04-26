@@ -28,6 +28,8 @@ void CulledRenderer::Clear()
 
 void CulledRenderer::OccluderPass(OccluderPassParams& params)
 {
+    DebugHandler::Assert(params.drawCallback != nullptr, "CulledRenderer : OccluderPass got params with invalid drawCallback");
+
     Renderer::GPUVector<Renderer::IndexedIndirectDraw>& drawCalls = params.cullingResources->GetDrawCalls();
 
     Renderer::BufferID drawCountBuffer = params.cullingResources->GetDrawCountBuffer();
@@ -105,14 +107,16 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         DrawParams drawParams;
         drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
         drawParams.shadowPass = false;
-        drawParams.visibilityBuffer = params.visibilityBuffer;
+        drawParams.drawDescriptorSet = &params.cullingResources->GetGeometryPassDescriptorSet();
+        drawParams.rt0 = params.rt0;
+        drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
         drawParams.argumentBuffer = params.cullingResources->GetCulledDrawsBuffer(0);
         drawParams.drawCountBuffer = drawCountBuffer;
         drawParams.drawCountIndex = 0;
         drawParams.numMaxDrawCalls = numDrawCalls;
 
-        Draw(*params.renderResources, params.frameIndex, *params.graphResources, *params.commandList, drawParams);
+        params.drawCallback(drawParams);
     }
 
     // Copy from our draw count buffer to the readback buffer
@@ -177,7 +181,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
         Renderer::ComputeShaderDesc shaderDesc;
         shaderDesc.path = "Utils/Culling.cs.hlsl";
-        shaderDesc.AddPermutationField("USE_BITMASKS", "1");
+        shaderDesc.AddPermutationField("USE_BITMASKS", params.disableTwoStepCulling ? "0" : "1");
         cullingPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
         // Do culling
@@ -192,6 +196,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             u32 instanceIDOffset;
             u32 modelIDOffset;
             u32 drawCallDataSize;
+            bool debugDrawColliders;
         };
         CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
 
@@ -201,13 +206,17 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
         cullConstants->instanceIDOffset = params.instanceIDOffset;
         cullConstants->modelIDOffset = params.modelIDOffset;
         cullConstants->drawCallDataSize = params.drawCallDataSize;
+        cullConstants->debugDrawColliders = params.debugDrawColliders;
         params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
         Renderer::DescriptorSet& cullingDescriptorSet = params.cullingResources->GetCullingDescriptorSet();
         cullingDescriptorSet.Bind("_depthPyramid"_h, params.renderResources->depthPyramid);
 
-        cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex));
-        cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(params.frameIndex));
+        if (params.cullingResources->HasSupportForTwoStepCulling())
+        {
+            cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex));
+            cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(params.frameIndex));
+        }
 
         params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &_debugRenderer->GetDebugDescriptorSet(), params.frameIndex);
         params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &cullingDescriptorSet, params.frameIndex);
@@ -231,6 +240,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
 void CulledRenderer::GeometryPass(GeometryPassParams& params)
 {
+    DebugHandler::Assert(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
+
     const u32 numDrawCalls = static_cast<u32>(params.cullingResources->GetDrawCalls().Size());
 
     Renderer::BufferID drawCountBuffer = params.cullingResources->GetDrawCountBuffer();
@@ -260,14 +271,16 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         DrawParams drawParams;
         drawParams.cullingEnabled = params.cullingEnabled;
         drawParams.shadowPass = false;
-        drawParams.visibilityBuffer = params.visibilityBuffer;
+        drawParams.drawDescriptorSet = &params.cullingResources->GetGeometryPassDescriptorSet();
+        drawParams.rt0 = params.rt0;
+        drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
         drawParams.argumentBuffer = (params.cullingEnabled) ? params.cullingResources->GetCulledDrawsBuffer(debugDrawCallBufferIndex) : params.cullingResources->GetDrawCalls().GetBuffer();
         drawParams.drawCountBuffer = drawCountBuffer;
         drawParams.drawCountIndex = debugDrawCallBufferIndex;
         drawParams.numMaxDrawCalls = numDrawCalls;
 
-        Draw(*params.renderResources, params.frameIndex, *params.graphResources, *params.commandList, drawParams);
+        params.drawCallback(drawParams);
     }
 
     // Copy from our draw count buffer to the readback buffer
@@ -309,7 +322,7 @@ void CulledRenderer::CreatePermanentResources()
 
     _occlusionSampler = _renderer->CreateSampler(occlusionSamplerDesc);
 
-    _cullingDatas.SetDebugName("CModelCullDataBuffer");
+    _cullingDatas.SetDebugName("ModelCullDataBuffer");
     _cullingDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 

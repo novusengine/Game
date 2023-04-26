@@ -18,6 +18,9 @@ public:
     Renderer::ImageID visibilityBuffer;
     Renderer::ImageID finalColor;
 
+    Renderer::ImageID transparency;
+    Renderer::ImageID transparencyWeights;
+
     Renderer::ImageID depthPyramid;
     Renderer::DepthImageID depth;
 

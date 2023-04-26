@@ -175,7 +175,6 @@ void ModelLoader::Update(f32 deltaTime)
 		}
 
 		DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
-
 		bool isSupported = discoveredModel.modelHeader.numVertices > 0;
 
 		// Only increment Instance Count & Drawcall Count if the model have vertices
@@ -201,7 +200,7 @@ void ModelLoader::Update(f32 deltaTime)
 	// Have ModelRenderer prepare all buffers for what we need to load
 	_modelRenderer->Reserve(reserveInfo);
 
-	//for (u32 i = 0; i < numDequeued; i++) // To be parallelized
+	//for (u32 i = 0; i < numDequeued; i++) 
 	enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
 	{
 		for (u32 i = range.start; i < range.end; i++)

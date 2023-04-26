@@ -52,8 +52,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         [=, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            //data.transparency = builder.Write(resources.transparency, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            //data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.transparency = builder.Write(resources.transparency, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
             data.resolvedColor = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
 
             return true; // Return true from setup to enable this pass, return false to disable it
@@ -63,8 +63,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
             commandList.ImageBarrier(resources.visibilityBuffer);
-            //commandList.ImageBarrier(resources.transparency);
-            //commandList.ImageBarrier(resources.transparencyWeights);
+            commandList.ImageBarrier(resources.transparency);
+            commandList.ImageBarrier(resources.transparencyWeights);
             commandList.ImageBarrier(resources.finalColor);
 
             Renderer::ComputePipelineDesc pipelineDesc;
@@ -115,8 +115,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             }*/
 
             _materialPassDescriptorSet.Bind("_visibilityBuffer", resources.visibilityBuffer);
-            //_materialPassDescriptorSet.Bind("_transparency", resources.transparency);
-            //_materialPassDescriptorSet.Bind("_transparencyWeights", resources.transparencyWeights);
+            _materialPassDescriptorSet.Bind("_transparency", resources.transparency);
+            _materialPassDescriptorSet.Bind("_transparencyWeights", resources.transparencyWeights);
             //_materialPassDescriptorSet.Bind("_ambientOcclusion", resources.ambientObscurance);
             _materialPassDescriptorSet.BindStorage("_resolvedColor", resources.finalColor, 0);
 

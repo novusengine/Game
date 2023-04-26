@@ -26,6 +26,21 @@ struct DrawParams;
 class CulledRenderer
 {
 protected:
+	struct DrawParams
+	{
+		bool cullingEnabled = false;
+		bool shadowPass = false;
+		u32 shadowCascade = 0;
+		Renderer::DescriptorSet* drawDescriptorSet;
+		Renderer::RenderPassMutableResource rt0;
+		Renderer::RenderPassMutableResource rt1;
+		Renderer::RenderPassMutableResource depth;
+		Renderer::BufferID argumentBuffer;
+		Renderer::BufferID drawCountBuffer;
+		u32 drawCountIndex = 0;
+		u32 numMaxDrawCalls = 0;
+	};
+
 	CulledRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
 	~CulledRenderer();
 
@@ -46,8 +61,11 @@ protected:
 
 	struct OccluderPassParams : public PassParams
 	{
-		Renderer::RenderPassMutableResource visibilityBuffer;
+		Renderer::RenderPassMutableResource rt0;
+		Renderer::RenderPassMutableResource rt1;
 		Renderer::RenderPassMutableResource depth;
+
+		std::function<void(const DrawParams&)> drawCallback;
 
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool disableTwoStepCulling = false;
@@ -58,6 +76,8 @@ protected:
 	{
 		u32 numCascades = 0;
 		bool occlusionCull = true;
+		bool disableTwoStepCulling = false;
+		bool debugDrawColliders = false;
 
 		u32 instanceIDOffset = 0;
 		u32 modelIDOffset = 0;
@@ -67,8 +87,11 @@ protected:
 
 	struct GeometryPassParams : public PassParams
 	{
-		Renderer::RenderPassMutableResource visibilityBuffer;
+		Renderer::RenderPassMutableResource rt0;
+		Renderer::RenderPassMutableResource rt1;
 		Renderer::RenderPassMutableResource depth;
+
+		std::function<void(const DrawParams&)> drawCallback;
 
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool cullingEnabled = false;
@@ -79,24 +102,8 @@ protected:
 	void SyncToGPU();
 	void SetupCullingResource(CullingResourcesBase& resources);
 
-protected:
-	struct DrawParams
-	{
-		bool cullingEnabled = false;
-		bool shadowPass = false;
-		u32 shadowCascade = 0;
-		Renderer::RenderPassMutableResource visibilityBuffer;
-		Renderer::RenderPassMutableResource depth;
-		Renderer::BufferID argumentBuffer;
-		Renderer::BufferID drawCountBuffer;
-		u32 drawCountIndex = 0;
-		u32 numMaxDrawCalls = 0;
-	};
-
 private:
 	void CreatePermanentResources();
-
-	virtual void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params) = 0;
 
 private:
 	Renderer::Renderer* _renderer = nullptr;

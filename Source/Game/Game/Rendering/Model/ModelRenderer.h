@@ -47,6 +47,8 @@ public:
 
 	struct ModelManifest
 	{
+		std::string debugName = "";
+
 		u32 opaqueDrawCallOffset = 0;
 		u32 numOpaqueDrawCalls = 0;
 
@@ -103,6 +105,9 @@ public:
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
+	void AddTransparencyCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+	void AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
 
 	Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
@@ -110,6 +115,7 @@ public:
 	u32 GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque);
 
 	CullingResources<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
+	CullingResources<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
 
 	// Drawcall stats
 	u32 GetNumDrawCalls() { return 0; }
@@ -126,7 +132,8 @@ private:
 
 	void SyncToGPU();
 
-	virtual void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params) override;
+	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
+	void DrawTransparent(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
 
 private:
 	PRAGMA_NO_PADDING_START
@@ -159,24 +166,17 @@ private:
 	std::atomic<u32> _textureUnitIndex = 0;
 
 	CullingResources<DrawCallData> _opaqueCullingResources;
-
-	Renderer::GPUVector<Renderer::IndexedIndirectDraw> _transparentDrawCalls;
-	Renderer::GPUVector<DrawCallData> _transparentDrawCallDatas;
-	std::atomic<u32> _transparentDrawCallsIndex = 0;
+	CullingResources<DrawCallData> _transparentCullingResources;
 
 	// GPU-only workbuffers
 	Renderer::BufferID _occluderArgumentBuffer;
 	Renderer::BufferID _argumentBuffer;
-
-	Renderer::BufferID _occluderDrawCountReadBackBuffer;
-	Renderer::BufferID _drawCountReadBackBuffer;
 
 	Renderer::TextureArrayID _textures;
 
 	Renderer::SamplerID _sampler;
 	Renderer::SamplerID _occlusionSampler;
 
-	Renderer::DescriptorSet _geometryPassDescriptorSet;
 	Renderer::DescriptorSet _materialPassDescriptorSet;
 
 	u32 _numOccluderDrawCalls = 0;

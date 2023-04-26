@@ -228,8 +228,6 @@ void GameRenderer::Render()
     }
     _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
 
-    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
-
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
@@ -254,16 +252,20 @@ void GameRenderer::Render()
             DepthPyramidUtils::BuildPyramid2(_renderer, graphResources, commandList, _resources, _frameIndex);
         });
 
-    // Culling Pass
-    _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
 
-    // Geometry Pass
+    _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
     
     _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
+    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
+
+    _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
+
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
+    //_materialRenderer->AddCompositeTransparenciesPass(&renderGraph, _resources, _frameIndex);
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
@@ -371,6 +373,28 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f);
 
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
+
+    // Transparency rendertarget
+    Renderer::ImageDesc transparencyDesc;
+    transparencyDesc.debugName = "Transparency";
+    transparencyDesc.dimensions = vec2(1.0f, 1.0f);
+    transparencyDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    transparencyDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
+    transparencyDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    transparencyDesc.clearColor = Color::Clear;
+
+    _resources.transparency = _renderer->CreateImage(transparencyDesc);
+
+    // Transparency weights rendertarget
+    Renderer::ImageDesc transparencyWeightsDesc;
+    transparencyWeightsDesc.debugName = "TransparencyWeights";
+    transparencyWeightsDesc.dimensions = vec2(1.0f, 1.0f);
+    transparencyWeightsDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    transparencyWeightsDesc.format = Renderer::ImageFormat::R16_FLOAT;
+    transparencyWeightsDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    transparencyWeightsDesc.clearColor = Color::Red;
+
+    _resources.transparencyWeights = _renderer->CreateImage(transparencyWeightsDesc);
 
     // depth pyramid ID rendertarget
     Renderer::ImageDesc pyramidDesc;
