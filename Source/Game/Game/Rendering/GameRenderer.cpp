@@ -196,6 +196,8 @@ void GameRenderer::Render()
     editorHandler->EndImGui();
     ImGui::Render();
 
+    _renderer->ResetTimeQueries(_frameIndex);
+
     // StartFrame Pass
     {
         struct StartFramePassData

@@ -141,9 +141,6 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 {
     DebugHandler::Assert(params.drawCallDataSize > 0, "CulledRenderer : CullingPass params provided an invalid drawCallDataSize");
 
-    Renderer::ComputePipelineDesc cullingPipelineDesc;
-    params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
-
     const u32 numDrawCalls = static_cast<u32>(params.cullingResources->GetDrawCalls().Size());
 
     // TODO: Animations
@@ -178,6 +175,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
         params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, drawCountBuffer);
         params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, drawCountBuffer);
         params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, triangleCountBuffer);
+
+        Renderer::ComputePipelineDesc cullingPipelineDesc;
+        params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
         Renderer::ComputeShaderDesc shaderDesc;
         shaderDesc.path = "Utils/Culling.cs.hlsl";

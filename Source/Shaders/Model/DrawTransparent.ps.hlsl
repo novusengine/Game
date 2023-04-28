@@ -12,7 +12,7 @@ struct PSInput
     float4 position : SV_Position;
     uint drawID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
-    float3 normal : TEXCOORD2;
+    //float3 normal : TEXCOORD2;
 };
 
 struct PSOutput

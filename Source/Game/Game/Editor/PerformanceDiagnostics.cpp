@@ -38,6 +38,7 @@ namespace Editor
 
         // Draw hardware info
         CPUInfo cpuInfo = CPUInfo::Get();
+        Renderer::Renderer* renderer = gameRenderer->GetRenderer();
 
         const std::string& cpuName = cpuInfo.GetPrettyName();
         const std::string& gpuName = gameRenderer->GetGPUName();
@@ -122,25 +123,58 @@ namespace Editor
 
             ImGui::Spacing();
             ImGui::Spacing();
-            ImGui::Text("Frametimes");
+            ImGui::Text("Frametimes (ms)");
             ImGui::Separator();
 
             // Draw Timing Graph
             {
-                ImGui::Text("Update Time (ms) : %f", average.simulationFrameTime * 1000);
-                ImGui::Text("Render Time CPU (ms): %f", average.renderFrameTime * 1000);
+                static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-                //read the frame buffer to gather timings for the histograms
+                if (ImGui::BeginTable("frametimes", 2, flags))
+                {
+                    ImGui::TableNextColumn();
+                    ImGui::Text("Total");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", average.deltaTimeS * 1000);
+                    ImGui::TableNextColumn();
+
+                    ImGui::Text("Update");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", average.simulationFrameTimeS * 1000);
+                    ImGui::TableNextColumn();
+
+                    ImGui::Text("Render CPU");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", average.renderFrameTimeS * 1000);
+                    ImGui::TableNextColumn();
+
+                    ImGui::Text("GPU", average.gpuFrameTimeMS);
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", average.gpuFrameTimeMS);
+                    ImGui::TableNextColumn();
+                    
+                    ImGui::EndTable();
+                }
+
+                // Read the frame buffer to gather timings for the histograms
+                std::vector<float> totalTimes;
+                totalTimes.reserve(stats.frameStats.size());
+
                 std::vector<float> updateTimes;
                 updateTimes.reserve(stats.frameStats.size());
 
                 std::vector<float> renderTimes;
                 renderTimes.reserve(stats.frameStats.size());
 
+                std::vector<float> gpuTimes;
+                gpuTimes.reserve(stats.frameStats.size());
+
                 for (int i = 0; i < stats.frameStats.size(); i++)
                 {
-                    updateTimes.push_back(stats.frameStats[i].simulationFrameTime * 1000);
-                    renderTimes.push_back(stats.frameStats[i].renderFrameTime * 1000);
+                    totalTimes.push_back(stats.frameStats[i].deltaTimeS * 1000);
+                    updateTimes.push_back(stats.frameStats[i].simulationFrameTimeS * 1000);
+                    renderTimes.push_back(stats.frameStats[i].renderFrameTimeS * 1000);
+                    gpuTimes.push_back(stats.frameStats[i].gpuFrameTimeMS);
                 }
 
                 ImPlot::SetNextAxesLimits(0.0, 120.0, 0, 33.0);
@@ -152,9 +186,38 @@ namespace Editor
                     ImPlot::SetupAxis(ImAxis_X1, "frame", ImPlotAxisFlags_Lock);
                     ImPlot::SetupAxis(ImAxis_Y1, "ms", ImPlotAxisFlags_LockMin); // ImPlotAxisFlags_LockMin
 
-                    ImPlot::PlotLine("Update Time", updateTimes.data(), (int)updateTimes.size());
-                    ImPlot::PlotLine("Render Time", renderTimes.data(), (int)renderTimes.size());
+                    ImPlot::PlotLine("Total", totalTimes.data(), (int)totalTimes.size());
+                    ImPlot::PlotLine("Update", updateTimes.data(), (int)updateTimes.size());
+                    ImPlot::PlotLine("Render", renderTimes.data(), (int)renderTimes.size());
+                    ImPlot::PlotLine("GPU", gpuTimes.data(), (int)gpuTimes.size());
                     ImPlot::EndPlot();
+                }
+
+                const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
+
+                if (frameTimeQueries.size() > 0)
+                {
+                    if (ImGui::CollapsingHeader("Render Passes (GPU)"))
+                    {
+                        if (ImGui::BeginTable("passtimes", 2, flags))
+                        {
+                            for (u32 i = 0; i < frameTimeQueries.size(); i++)
+                            {
+                                const std::string& name = renderer->GetTimeQueryName(frameTimeQueries[i]);
+
+                                f32 averageMS = 0.0f;
+                                if (stats.AverageNamed(name, 240, averageMS))
+                                {
+                                    ImGui::TableNextColumn();
+                                    ImGui::Text("%s", name.c_str());
+                                    ImGui::TableNextColumn();
+                                    ImGui::Text("%.3f", averageMS);
+                                }
+                            }
+
+                            ImGui::EndTable();
+                        }
+                    }
                 }
             }
         }

@@ -2,34 +2,52 @@
 #include <Base/Types.h>
 
 #include <deque>
+#include <robinhood/robinhood.h>
 
 namespace ECS::Singletons
 {
     struct EngineStats
     {
+        static const u32 MAX_ENTRIES = 120;
+
         struct Frame
         {
-            f32 deltaTime;
-            f32 simulationFrameTime;
-            f32 renderFrameTime;
+            f32 deltaTimeS;
+            f32 simulationFrameTimeS;
+            f32 renderFrameTimeS;
+            f32 gpuFrameTimeMS;
         };
-
         std::deque<Frame> frameStats;
 
-        void AddTimings(f32 deltaTime, f32 simulationTime, f32 renderTime)
+        robin_hood::unordered_map<u32, std::deque<f32>> namedStats;
+
+        void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 renderFrameTimeS, f32 gpuFrameTimeMS)
         {
             Frame newFrame;
-            newFrame.deltaTime = deltaTime;
-            newFrame.renderFrameTime = renderTime;
-            newFrame.simulationFrameTime = simulationTime;
+            newFrame.deltaTimeS = deltaTimeS;
+            newFrame.simulationFrameTimeS = simulationFrameTimeS;
+            newFrame.renderFrameTimeS = renderFrameTimeS;
+            newFrame.gpuFrameTimeMS = gpuFrameTimeMS;
 
-            //dont allow more than 120 frames stored
-            if (frameStats.size() > 120)
+            if (frameStats.size() > MAX_ENTRIES)
             {
                 frameStats.pop_back();
             }
 
             frameStats.push_front(newFrame);
+        }
+
+        void AddNamedStat(const std::string& name, f32 time)
+        {
+            u32 hashedName = StringUtils::fnv1a_32(name.c_str(), name.size());
+            std::deque<f32>& deque = namedStats[hashedName];
+
+            if (deque.size() > MAX_ENTRIES)
+            {
+                deque.pop_back();
+            }
+
+            deque.push_front(time);
         }
 
         //averages a frame timing from the last {numFrames} frames
@@ -49,21 +67,52 @@ namespace ECS::Singletons
                 {
                     Frame f = frameStats[i];
 
-                    averaged.deltaTime += f.deltaTime;
-                    averaged.renderFrameTime += f.renderFrameTime;
-                    averaged.simulationFrameTime += f.simulationFrameTime;
+                    averaged.deltaTimeS += f.deltaTimeS;
+                    averaged.simulationFrameTimeS += f.simulationFrameTimeS;
+                    averaged.renderFrameTimeS += f.renderFrameTimeS;
+                    averaged.gpuFrameTimeMS += f.gpuFrameTimeMS;
                 }
 
-                averaged.deltaTime /= count;
-                averaged.renderFrameTime /= count;
-                averaged.simulationFrameTime /= count;
+                averaged.deltaTimeS /= count;
+                averaged.simulationFrameTimeS /= count;
+                averaged.renderFrameTimeS /= count;
+                averaged.gpuFrameTimeMS /= count;
 
                 return averaged;
             }
             else
             {
-                return Frame{ 0.f,0.f,0.f };
+                return Frame{ 0.f,0.f,0.f,0.f };
             }
+        }
+
+        bool AverageNamed(const std::string& name, int numFrames, f32& average)
+        {
+            average = 0.0f;
+
+            u32 hashedName = StringUtils::fnv1a_32(name.c_str(), name.size());
+
+            if (!namedStats.contains(hashedName))
+            {
+                return false;
+            }
+
+            std::deque<f32>& deque = namedStats[hashedName];
+
+            size_t count = (size_t)numFrames;
+            if (numFrames > deque.size())
+            {
+                count = deque.size();
+            }
+
+            average = deque.front();
+            for (u32 i = 1; i < count; i++)
+            {
+                average += deque[i];
+            }
+            average /= count;
+
+            return true;
         }
     };
 }

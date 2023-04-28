@@ -97,14 +97,14 @@ void Application::Run()
 			f32 deltaTime = timer.GetDeltaTime();
 			timer.Tick();
 
-			timings.deltaTime = deltaTime;
+			timings.deltaTimeS = deltaTime;
 
 			updateTimer.Reset();
 
 			if (!Tick(deltaTime))
 				break;
 
-			timings.simulationFrameTime = updateTimer.GetLifeTime();
+			timings.simulationFrameTimeS = updateTimer.GetLifeTime();
 			renderTimer.Reset();
 
 			ServiceLocator::GetGameConsole()->Render(deltaTime);
@@ -114,8 +114,25 @@ void Application::Run()
 			if (!Render(deltaTime))
 				break;
 
-			timings.renderFrameTime = renderTimer.GetLifeTime();
-			engineStats.AddTimings(timings.deltaTime, timings.simulationFrameTime, timings.renderFrameTime);
+			timings.renderFrameTimeS = renderTimer.GetLifeTime();
+
+			// Get last GPU Frame time
+			Renderer::Renderer* renderer = _gameRenderer->GetRenderer();
+
+			const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
+
+			for (Renderer::TimeQueryID timeQueryID : frameTimeQueries)
+			{
+				const std::string& name = renderer->GetTimeQueryName(timeQueryID);
+				f32 durationMS = renderer->GetLastTimeQueryDuration(timeQueryID);
+
+				engineStats.AddNamedStat(name, durationMS);
+			}
+
+			Renderer::TimeQueryID totalTimeQuery = frameTimeQueries[0];
+			timings.gpuFrameTimeMS = renderer->GetLastTimeQueryDuration(totalTimeQuery);
+
+			engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.gpuFrameTimeMS);
 
 			bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
 			if (limitFrameRate)
