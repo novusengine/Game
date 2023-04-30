@@ -42,7 +42,7 @@ private:
 	void Run();
 	bool Init();
 	bool Tick(f32 deltaTime);
-	bool Render(f32 deltaTime);
+	bool Render(f32 deltaTime, f32& timeSpentWaiting);
 
 	void Cleanup();
 

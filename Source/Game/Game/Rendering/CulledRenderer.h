@@ -7,7 +7,7 @@
 #include <FileFormat/Warcraft/Shared.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
-#include <Renderer/DescriptorSet.h>
+#include <Renderer/DescriptorSetResource.h>
 #include <Renderer/FrameResource.h>
 #include <Renderer/GPUVector.h>
 
@@ -19,6 +19,7 @@ namespace Renderer
 	class Renderer;
 	class RenderGraph;
 	class RenderGraphResources;
+	class DescriptorSetResource;
 }
 
 struct DrawParams;
@@ -31,12 +32,17 @@ protected:
 		bool cullingEnabled = false;
 		bool shadowPass = false;
 		u32 shadowCascade = 0;
-		Renderer::DescriptorSet* drawDescriptorSet;
-		Renderer::RenderPassMutableResource rt0;
-		Renderer::RenderPassMutableResource rt1;
-		Renderer::RenderPassMutableResource depth;
+		
+		Renderer::ImageMutableResource rt0;
+		Renderer::ImageMutableResource rt1;
+		Renderer::DepthImageMutableResource depth;
+
 		Renderer::BufferID argumentBuffer;
 		Renderer::BufferID drawCountBuffer;
+
+		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource drawDescriptorSet;
+
 		u32 drawCountIndex = 0;
 		u32 numMaxDrawCalls = 0;
 	};
@@ -51,7 +57,6 @@ protected:
 	{
 		std::string passName = "";
 
-		RenderResources* renderResources;
 		Renderer::RenderGraphResources* graphResources;
 		Renderer::CommandList* commandList;
 		CullingResourcesBase* cullingResources;
@@ -61,9 +66,13 @@ protected:
 
 	struct OccluderPassParams : public PassParams
 	{
-		Renderer::RenderPassMutableResource rt0;
-		Renderer::RenderPassMutableResource rt1;
-		Renderer::RenderPassMutableResource depth;
+		Renderer::ImageMutableResource rt0;
+		Renderer::ImageMutableResource rt1;
+		Renderer::DepthImageMutableResource depth;
+
+		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource occluderFillDescriptorSet;
+		Renderer::DescriptorSetResource drawDescriptorSet;
 
 		std::function<void(const DrawParams&)> drawCallback;
 
@@ -74,6 +83,12 @@ protected:
 
 	struct CullingPassParams : public PassParams
 	{
+		Renderer::ImageResource depthPyramid;
+
+		Renderer::DescriptorSetResource debugDescriptorSet;
+		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource cullingDescriptorSet;
+
 		u32 numCascades = 0;
 		bool occlusionCull = true;
 		bool disableTwoStepCulling = false;
@@ -87,9 +102,12 @@ protected:
 
 	struct GeometryPassParams : public PassParams
 	{
-		Renderer::RenderPassMutableResource rt0;
-		Renderer::RenderPassMutableResource rt1;
-		Renderer::RenderPassMutableResource depth;
+		Renderer::ImageMutableResource rt0;
+		Renderer::ImageMutableResource rt1;
+		Renderer::DepthImageMutableResource depth;
+
+		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource drawDescriptorSet;
 
 		std::function<void(const DrawParams&)> drawCallback;
 

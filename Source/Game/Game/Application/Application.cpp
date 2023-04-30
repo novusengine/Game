@@ -111,10 +111,12 @@ void Application::Run()
 
 			_editorHandler->DrawImGuiMenuBar(deltaTime);
 
-			if (!Render(deltaTime))
+			f32 timeSpentWaiting = 0.0f;
+			if (!Render(deltaTime, timeSpentWaiting))
 				break;
 
-			timings.renderFrameTimeS = renderTimer.GetLifeTime();
+			timings.renderFrameTimeS = renderTimer.GetLifeTime() - timeSpentWaiting;
+			timings.renderWaitTimeS = timeSpentWaiting;
 
 			// Get last GPU Frame time
 			Renderer::Renderer* renderer = _gameRenderer->GetRenderer();
@@ -132,7 +134,7 @@ void Application::Run()
 			Renderer::TimeQueryID totalTimeQuery = frameTimeQueries[0];
 			timings.gpuFrameTimeMS = renderer->GetLastTimeQueryDuration(totalTimeQuery);
 
-			engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.gpuFrameTimeMS);
+			engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.renderWaitTimeS, timings.gpuFrameTimeMS);
 
 			bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
 			if (limitFrameRate)
@@ -289,9 +291,9 @@ bool Application::Tick(f32 deltaTime)
 	return true;
 }
 
-bool Application::Render(f32 deltaTime)
+bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
 {
-	_gameRenderer->Render();
+	timeSpentWaiting = _gameRenderer->Render();
 
 	ImGui::UpdatePlatformWindows();
 	ImGui::RenderPlatformWindowsDefault();

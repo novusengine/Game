@@ -36,14 +36,18 @@ void MaterialRenderer::Update(f32 deltaTime)
 
 void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    _materialPassDescriptorSet.Bind("_depth"_h, resources.depth);
-
     struct MaterialPassData
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource transparency;
-        Renderer::RenderPassMutableResource transparencyWeights;
-        Renderer::RenderPassMutableResource resolvedColor;
+        Renderer::ImageResource visibilityBuffer;
+        Renderer::ImageResource transparency;
+        Renderer::ImageResource transparencyWeights;
+        Renderer::DepthImageResource depth;
+        Renderer::ImageMutableResource resolvedColor;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource materialSet;
+        Renderer::DescriptorSetResource terrainSet;
+        Renderer::DescriptorSetResource modelSet;
     };
 
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
@@ -51,21 +55,25 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     renderGraph->AddPass<MaterialPassData>("Material Pass",
         [=, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.transparency = builder.Write(resources.transparency, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.resolvedColor = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::UAV, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+            data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
+            data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
+            data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
+            data.resolvedColor = builder.Write(resources.finalColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+
+            Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
+            Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.materialSet = builder.Use(_materialPassDescriptorSet);
+            data.terrainSet = builder.Use(terrainDescriptorSet);
+            data.modelSet = builder.Use(modelDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
-
-            commandList.ImageBarrier(resources.visibilityBuffer);
-            commandList.ImageBarrier(resources.transparency);
-            commandList.ImageBarrier(resources.transparencyWeights);
-            commandList.ImageBarrier(resources.finalColor);
 
             Renderer::ComputePipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);
@@ -114,34 +122,26 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 commandList.PushConstant(constants, 0, sizeof(PushConstants));
             }*/
 
-            _materialPassDescriptorSet.Bind("_visibilityBuffer", resources.visibilityBuffer);
-            _materialPassDescriptorSet.Bind("_transparency", resources.transparency);
-            _materialPassDescriptorSet.Bind("_transparencyWeights", resources.transparencyWeights);
-            //_materialPassDescriptorSet.Bind("_ambientOcclusion", resources.ambientObscurance);
-            _materialPassDescriptorSet.BindStorage("_resolvedColor", resources.finalColor, 0);
+            data.modelSet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.modelSet.Bind("_transparency", data.transparency);
+            data.modelSet.Bind("_transparencyWeights", data.transparencyWeights);
+            data.modelSet.Bind("_depth"_h, data.depth);
+            //_materialPassDescriptorSet.Bind("_ambientOcclusion", data.ambientObscurance);
+            data.modelSet.BindStorage("_resolvedColor", data.resolvedColor, 0);
 
             // Bind descriptorset
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
             //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_materialPassDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
 
-            Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &terrainDescriptorSet, frameIndex);
-
-            //Renderer::DescriptorSet& mapObjectDescriptorSet = _mapObjectRenderer->GetMaterialPassDescriptorSet();
-            //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MAPOBJECT, &mapObjectDescriptorSet, frameIndex);
-
-            Renderer::DescriptorSet& cModelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, &cModelDescriptorSet, frameIndex);
-
-            const uvec2& outputSize = _renderer->GetImageDimension(resources.finalColor, 0);
+            uvec2 outputSize = _renderer->GetImageDimensions(resources.finalColor, 0);
 
             uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 
             commandList.EndPipeline(pipeline);
-
-            commandList.ImageBarrier(resources.finalColor);
         });
 }
 

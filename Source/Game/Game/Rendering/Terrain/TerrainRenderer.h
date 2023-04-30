@@ -5,6 +5,7 @@
 #include <FileFormat/Warcraft/Shared.h>
 
 #include <Renderer/DescriptorSet.h>
+#include <Renderer/DescriptorSetResource.h>
 #include <Renderer/FrameResource.h>
 #include <Renderer/GPUVector.h>
 
@@ -16,6 +17,7 @@ namespace Renderer
 	class Renderer;
 	class RenderGraph;
 	class RenderGraphResources;
+	class DescriptorSetResource;
 }
 
 namespace Map
@@ -62,10 +64,16 @@ private:
 		bool shadowPass = false;
 		u32 shadowCascade = 0;
 		bool cullingEnabled = false;
-		Renderer::RenderPassMutableResource visibilityBuffer;
-		Renderer::RenderPassMutableResource depth;
+
+		Renderer::ImageMutableResource visibilityBuffer;
+		Renderer::DepthImageMutableResource depth;
+
 		Renderer::BufferID instanceBuffer;
 		Renderer::BufferID argumentBuffer;
+
+		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource drawDescriptorSet;
+
 		u32 argumentsIndex = 0;
 	};
 	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);

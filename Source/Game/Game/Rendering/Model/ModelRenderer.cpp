@@ -32,6 +32,9 @@ AutoCVar_Int CVAR_ModelDisableTwoStepCulling("modelRenderer.debug.disableTwoStep
 AutoCVar_Int CVAR_ModelDrawOccluders("modelRenderer.debug.drawOccluders", "enable the draw command for occluders, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelDrawGeometry("modelRenderer.debug.drawGeometry", "enable the draw command for geometry, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_ModelDrawOpaqueAABBs("modelRenderer.debug.drawOpaqueAABBs", "if enabled, the culling pass will debug draw all opaque AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDrawTransparentAABBs("modelRenderer.debug.drawTransparentAABBs", "if enabled, the culling pass will debug draw all transparent AABBs", 0, CVarFlags::EditCheckbox);
+
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
@@ -108,25 +111,32 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
     struct Data
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource visibilityBuffer;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource occluderFillSet;
+        Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Model (O) Occluders",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.occluderFillSet = builder.Use(_opaqueCullingResources.GetOccluderFillDescriptorSet());
+            data.drawSet = builder.Use(_opaqueCullingResources.GetGeometryPassDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelOccluders);
 
             CulledRenderer::OccluderPassParams params;
             params.passName = "Opaque";
-            params.renderResources = &resources;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_opaqueCullingResources;
@@ -134,6 +144,10 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
             params.depth = data.depth;
+
+            params.globalDescriptorSet = data.globalSet;
+            params.occluderFillDescriptorSet = data.occluderFillSet;
+            params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
             {
@@ -164,28 +178,44 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
     struct Data
     {
+        Renderer::ImageResource depthPyramid;
+
+        Renderer::DescriptorSetResource debugSet;
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource cullingSet;
     };
 
     renderGraph->AddPass<Data>("Model (O) Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.cullingSet = builder.Use(_opaqueCullingResources.GetCullingDescriptorSet());
+
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
             CulledRenderer::CullingPassParams params;
             params.passName = "Opaque";
-            params.renderResources = &resources;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_opaqueCullingResources;
-
             params.frameIndex = frameIndex;
+
+            params.depthPyramid = data.depthPyramid;
+
+            params.debugDescriptorSet = data.debugSet;
+            params.globalDescriptorSet = data.globalSet;
+            params.cullingDescriptorSet = data.cullingSet;
+
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
             params.occlusionCull = true;
-            params.debugDrawColliders = false;
+            params.debugDrawColliders = CVAR_ModelDrawOpaqueAABBs.Get();
 
             params.instanceIDOffset = offsetof(DrawCallData, instanceID);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
@@ -209,25 +239,30 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
     struct Data
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource visibilityBuffer;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Model (O) Geometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.drawSet = builder.Use(_opaqueCullingResources.GetGeometryPassDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
 
             CulledRenderer::GeometryPassParams params;
             params.passName = "Opaque";
-            params.renderResources = &resources;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_opaqueCullingResources;
@@ -235,6 +270,9 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
             params.depth = data.depth;
+
+            params.globalDescriptorSet = data.globalSet;
+            params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
             {
@@ -266,29 +304,45 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
 
     struct Data
     {
+        Renderer::ImageResource depthPyramid;
+
+        Renderer::DescriptorSetResource debugSet;
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource cullingSet;
     };
 
     renderGraph->AddPass<Data>("Model (T) Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.cullingSet = builder.Use(_transparentCullingResources.GetCullingDescriptorSet());
+
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
             CulledRenderer::CullingPassParams params;
             params.passName = "Transparent";
-            params.renderResources = &resources;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_transparentCullingResources;
-
             params.frameIndex = frameIndex;
+
+            params.depthPyramid = data.depthPyramid;
+
+            params.debugDescriptorSet = data.debugSet;
+            params.globalDescriptorSet = data.globalSet;
+            params.cullingDescriptorSet = data.cullingSet;
+
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
             params.occlusionCull = false;
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
-            params.debugDrawColliders = false;
+            params.debugDrawColliders = CVAR_ModelDrawTransparentAABBs.Get();
 
             params.instanceIDOffset = offsetof(DrawCallData, instanceID);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
@@ -312,29 +366,32 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
     struct Data
     {
-        Renderer::RenderPassMutableResource transparency;
-        Renderer::RenderPassMutableResource transparencyWeights;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource transparency;
+        Renderer::ImageMutableResource transparencyWeights;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Model (T) Geometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.transparency = builder.Write(resources.transparency, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
-            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.transparency = builder.Write(resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.drawSet = builder.Use(_transparentCullingResources.GetGeometryPassDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
 
-            commandList.ImageBarrier(resources.finalColor);
-
             CulledRenderer::GeometryPassParams params;
             params.passName = "Transparent";
-            params.renderResources = &resources;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_transparentCullingResources;
@@ -343,6 +400,9 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             params.rt0 = data.transparency;
             params.rt1 = data.transparencyWeights;
             params.depth = data.depth;
+
+            params.globalDescriptorSet = data.globalSet;
+            params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
             {
@@ -500,6 +560,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                         {
                             Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
                             textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
+
+                            DebugHandler::Assert(textureUnit.textureIds[j] < 4096, "ModelRenderer : LoadModel overflowed the 4096 textures we have support for");
                         }
                     }
                 }
@@ -823,7 +885,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     {
         pipelineDesc.renderTargets[0] = params.rt0;
     }
-    if (params.rt1 != Renderer::RenderPassMutableResource::Invalid())
+    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
     {
         pipelineDesc.renderTargets[1] = params.rt1;
     }
@@ -847,7 +909,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
         commandList.PushConstant(constants, 0, sizeof(PushConstants));
     }*/
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
     //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
 
@@ -910,7 +972,7 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
 
     // Render targets
     pipelineDesc.renderTargets[0] = params.rt0;
-    if (params.rt1 != Renderer::RenderPassMutableResource::Invalid())
+    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
     {
         pipelineDesc.renderTargets[1] = params.rt1;
     }
@@ -920,7 +982,7 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
     Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
     commandList.BeginPipeline(pipeline);
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);

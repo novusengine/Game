@@ -27,13 +27,13 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
     // UI Pass
     struct UIPassData
     {
-        Renderer::RenderPassMutableResource color;
+        Renderer::ImageMutableResource color;
     };
 
     renderGraph->AddPass<UIPassData>("ImguiPass",
         [=](UIPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.color = builder.Write(imguiTarget, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.color = builder.Write(imguiTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -69,10 +69,8 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
 
-            commandList.ImageBarrier(imguiTarget);
-
             // Set viewport
-            vec2 renderTargetSize = _renderer->GetImageDimension(imguiTarget);
+            vec2 renderTargetSize = graphResources.GetImageDimensions(data.color);
 
             //vec2 windowSize = _renderer->GetWindowSize();
             commandList.SetViewport(0, 0, renderTargetSize.x, renderTargetSize.y, 0.0f, 1.0f);

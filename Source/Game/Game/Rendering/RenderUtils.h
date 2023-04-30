@@ -19,78 +19,90 @@ class RenderUtils
 public:
     struct BlitParams
     {
-        Renderer::ImageID input;
+        Renderer::ImageResource input;
         u32 inputMipLevel = 0;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
 
-        Renderer::RenderPassMutableResource output;
+        Renderer::ImageMutableResource output;
         Renderer::SamplerID sampler;
+
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params);
 
     struct DepthBlitParams
     {
-        Renderer::DepthImageID input;
+        Renderer::DepthImageResource input;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
 
-        Renderer::RenderPassMutableResource output;
+        Renderer::ImageMutableResource output;
         Renderer::SamplerID sampler;
+        
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params);
 
     struct OverlayParams
     {
-        Renderer::ImageID overlayImage;
+        Renderer::ImageResource overlayImage;
         u32 mipLevel = 0;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
 
-        Renderer::RenderPassMutableResource baseImage;
+        Renderer::ImageMutableResource baseImage;
         Renderer::SamplerID sampler;
+
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params);
 
     struct DepthOverlayParams
     {
-        Renderer::DepthImageID overlayImage;
+        Renderer::DepthImageResource overlayImage;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
 
-        Renderer::RenderPassMutableResource baseImage;
+        Renderer::ImageMutableResource baseImage;
         Renderer::SamplerID sampler;
+
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params);
 
     struct PictureInPictureParams
     {
-        Renderer::ImageID pipImage;
+        Renderer::ImageResource pipImage;
         u32 mipLevel = 0;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
         Geometry::Box targetRegion;
 
-        Renderer::RenderPassMutableResource baseImage;
+        Renderer::ImageMutableResource baseImage;
         Renderer::SamplerID sampler;
+
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void PictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params);
 
     struct DepthPictureInPictureParams
     {
-        Renderer::DepthImageID pipImage;
+        Renderer::DepthImageResource pipImage;
         vec4 colorMultiplier;
         vec4 additiveColor;
         ivec4 channelRedirectors;
         Geometry::Box targetRegion;
 
-        Renderer::RenderPassMutableResource baseImage;
+        Renderer::ImageMutableResource baseImage;
         Renderer::SamplerID sampler;
+
+        Renderer::DescriptorSetResource descriptorSet;
     };
     static void DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params);
 
@@ -109,7 +121,15 @@ public:
         return (threadCount + localSize - 1) / localSize;
     }
 
-    static void CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DepthImageID source, Renderer::ImageID destination, u32 destinationMip);
+    struct CopyDepthToColorParams
+    {
+        Renderer::DepthImageResource source;
+        Renderer::ImageMutableResource destination;
+        u32 destinationMip;
+
+        Renderer::DescriptorSetResource descriptorSet;
+    };
+    static void CopyDepthToColor(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params);
 private:
 
 private:

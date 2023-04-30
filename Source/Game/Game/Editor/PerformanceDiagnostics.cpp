@@ -148,6 +148,11 @@ namespace Editor
                     ImGui::Text("%.3f", average.renderFrameTimeS * 1000);
                     ImGui::TableNextColumn();
 
+                    ImGui::Text("CPU wait for GPU");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", average.renderWaitTimeS * 1000);
+                    ImGui::TableNextColumn();
+
                     ImGui::Text("GPU", average.gpuFrameTimeMS);
                     ImGui::TableNextColumn();
                     ImGui::Text("%.3f", average.gpuFrameTimeMS);
@@ -166,6 +171,9 @@ namespace Editor
                 std::vector<float> renderTimes;
                 renderTimes.reserve(stats.frameStats.size());
 
+                std::vector<float> waitTimes;
+                waitTimes.reserve(stats.frameStats.size());
+
                 std::vector<float> gpuTimes;
                 gpuTimes.reserve(stats.frameStats.size());
 
@@ -174,6 +182,7 @@ namespace Editor
                     totalTimes.push_back(stats.frameStats[i].deltaTimeS * 1000);
                     updateTimes.push_back(stats.frameStats[i].simulationFrameTimeS * 1000);
                     renderTimes.push_back(stats.frameStats[i].renderFrameTimeS * 1000);
+                    waitTimes.push_back(stats.frameStats[i].renderWaitTimeS * 1000);
                     gpuTimes.push_back(stats.frameStats[i].gpuFrameTimeMS);
                 }
 
@@ -189,6 +198,7 @@ namespace Editor
                     ImPlot::PlotLine("Total", totalTimes.data(), (int)totalTimes.size());
                     ImPlot::PlotLine("Update", updateTimes.data(), (int)updateTimes.size());
                     ImPlot::PlotLine("Render", renderTimes.data(), (int)renderTimes.size());
+                    ImPlot::PlotLine("CPU wait For GPU", waitTimes.data(), (int)waitTimes.size());
                     ImPlot::PlotLine("GPU", gpuTimes.data(), (int)gpuTimes.size());
                     ImPlot::EndPlot();
                 }

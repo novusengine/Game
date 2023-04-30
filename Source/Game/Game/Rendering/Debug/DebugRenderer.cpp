@@ -76,9 +76,9 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 void DebugRenderer::Update(f32 deltaTime)
 {
 	// Draw world axises
-	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), 0xff0000ff);
-	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), 0xff00ff00);
-	//DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), 0xffff0000);
+	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), 0xff0000ff);
+	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), 0xff00ff00);
+	DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), 0xffff0000);
 }
 
 void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -92,7 +92,7 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 		{
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRenderReset);
 
@@ -113,16 +113,24 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 	struct Data
 	{
-		Renderer::RenderPassMutableResource color;
+		Renderer::ImageMutableResource color;
+
+		Renderer::DescriptorSetResource globalSet;
+		Renderer::DescriptorSetResource draw2DSet;
+		Renderer::DescriptorSetResource draw2DIndirectSet;
 	};
 	renderGraph->AddPass<Data>("DebugRender2D",
 		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
-			data.color = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+			data.globalSet = builder.Use(resources.globalDescriptorSet);
+			data.draw2DSet = builder.Use(_draw2DDescriptorSet);
+			data.draw2DIndirectSet = builder.Use(_draw2DIndirectDescriptorSet);
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
 
@@ -153,8 +161,8 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			{
 				commandList.BeginPipeline(pipeline);
 
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw2DDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DSet, frameIndex);
 
 				// Draw
 				commandList.Draw(static_cast<u32>(_debugVertices2D.Size()), 1, 0, 0);
@@ -163,16 +171,14 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			}
 			_debugVertices2D.Clear(false);
 
-			commandList.ImageBarrier(resources.finalColor);
-
 			// GPU side debug rendering
 			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices2D);
 			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _gpuDebugVertices2DArgumentBuffer);
 			{
 				commandList.BeginPipeline(pipeline);
 
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw2DIndirectDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DIndirectSet, frameIndex);
 
 				// Draw
 				commandList.DrawIndirect(_gpuDebugVertices2DArgumentBuffer, 0, 1);
@@ -192,18 +198,26 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 	struct Data
 	{
-		Renderer::RenderPassMutableResource color;
-		Renderer::RenderPassMutableResource depth;
+		Renderer::ImageMutableResource color;
+		Renderer::DepthImageMutableResource depth;
+
+		Renderer::DescriptorSetResource globalSet;
+		Renderer::DescriptorSetResource draw3DSet;
+		Renderer::DescriptorSetResource draw3DIndirectSet;
 	};
 	renderGraph->AddPass<Data>("DebugRender3D",
 		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
-			data.color = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-			data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+			data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+			data.globalSet = builder.Use(resources.globalDescriptorSet);
+			data.draw3DSet = builder.Use(_draw3DDescriptorSet);
+			data.draw3DIndirectSet = builder.Use(_draw3DIndirectDescriptorSet);
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender3D);
 
@@ -242,8 +256,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			{
 				commandList.BeginPipeline(pipeline);
 
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw3DDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DSet, frameIndex);
 
 				// Draw
 				commandList.Draw(static_cast<u32>(_debugVertices3D.Size()), 1, 0, 0);
@@ -252,8 +266,6 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			}
 			_debugVertices3D.Clear(false);
 
-			commandList.ImageBarrier(resources.finalColor);
-			
 			// GPU side debug rendering
 			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices3D);
 			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _gpuDebugVertices3D);
@@ -261,8 +273,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			{
 				commandList.BeginPipeline(pipeline);
 
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_draw3DIndirectDescriptorSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DIndirectSet, frameIndex);
 
 				// Draw
 				commandList.DrawIndirect(_gpuDebugVertices3DArgumentBuffer, 0, 1);

@@ -38,19 +38,23 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
 
     struct Data
     {
-        Renderer::RenderPassMutableResource finalColor;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource finalColor;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
     };
 
     renderGraph->AddPass<Data>("World Grid",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.finalColor = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.finalColor = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 
@@ -92,7 +96,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
             commandList.BeginPipeline(pipeline);
 
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
 
             struct Constants
             {

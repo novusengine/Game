@@ -60,99 +60,24 @@ void DepthPyramidUtils::InitBuffers(Renderer::Renderer* renderer)
     _pyramidDescriptorSet.Bind("srcSampler", _pyramidSampler);
 }
 
-void DepthPyramidUtils::BuildPyramid(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, RenderResources& resources, u32 frameIndex)
+void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 {
-    Renderer::ComputePipelineDesc queryPipelineDesc;
-    graphResources.InitializePipelineDesc(queryPipelineDesc);
-
-    Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.path = "Blitting/blitDepth.cs.hlsl";
-    queryPipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
-
-    // Do culling
-    Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(queryPipelineDesc);
-    commandList.BeginPipeline(pipeline);
-
-    commandList.PushMarker("Depth Pyramid ", Color::White);
-
-    Renderer::ImageDesc pyramidInfo = renderer->GetImageDesc(resources.depthPyramid);
-    Renderer::DepthImageDesc depthInfo = renderer->GetDepthImageDesc(resources.depth);
-    uvec2 pyramidSize = renderer->GetImageDimension(resources.depthPyramid, 0);
-
-    Renderer::SamplerDesc samplerDesc;
-    samplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
-    samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.minLOD = 0.f;
-    samplerDesc.maxLOD = 16.f;
-    samplerDesc.mode = Renderer::SamplerReductionMode::MIN;
-
-    Renderer::SamplerID occlusionSampler = renderer->CreateSampler(samplerDesc);
-    _pyramidDescriptorSet.Bind("_sampler", occlusionSampler);
-
-    for (uint32_t i = 0; i < pyramidInfo.mipLevels; ++i)
-    {
-
-        _pyramidDescriptorSet.BindStorage("_target", resources.depthPyramid, i);
-
-        if (i == 0)
-        {
-            _pyramidDescriptorSet.Bind("_source", resources.depth);
-        }
-        else
-        {
-            _pyramidDescriptorSet.Bind("_source", resources.depthPyramid, i - 1);
-        }
-
-        u32 levelWidth = pyramidSize.x >> i;
-        u32 levelHeight = pyramidSize.y >> i;
-        if (levelHeight < 1) levelHeight = 1;
-        if (levelWidth < 1) levelWidth = 1;
-
-        struct DepthReduceParams
-        {
-            glm::vec2 imageSize;
-            u32 level;
-            u32 dummy;
-        };
-
-        DepthReduceParams* reduceData = graphResources.FrameNew<DepthReduceParams>();
-        reduceData->imageSize = glm::vec2(levelWidth, levelHeight);
-        reduceData->level = i;
-
-        commandList.PushConstant(reduceData, 0, sizeof(DepthReduceParams));
-
-        commandList.BindDescriptorSet(Renderer::GLOBAL, &_pyramidDescriptorSet, frameIndex);
-        commandList.Dispatch(GetGroupCount(levelWidth, 32), GetGroupCount(levelHeight, 32), 1);
-
-        commandList.ImageBarrier(resources.depthPyramid);
-    }
-
-    commandList.EndPipeline(pipeline);
-    commandList.PopMarker();
-}
-
-void DepthPyramidUtils::BuildPyramid2(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, RenderResources& resources, u32 frameIndex)
-{
-    commandList.PushMarker("Depth Pyramid ", Color::White);
+    params.commandList->PushMarker("Depth Pyramid ", Color::White);
 
     // Copy first mip
     {
         Renderer::ComputePipelineDesc blitPipelineDesc;
-        graphResources.InitializePipelineDesc(blitPipelineDesc);
+        params.graphResources->InitializePipelineDesc(blitPipelineDesc);
 
         Renderer::ComputeShaderDesc shaderDesc;
         shaderDesc.path = "Blitting/blitDepth.cs.hlsl";
-        blitPipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
+        blitPipelineDesc.computeShader = params.renderer->LoadShader(shaderDesc);
 
-        Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(blitPipelineDesc);
-        commandList.BeginPipeline(pipeline);
+        Renderer::ComputePipelineID pipeline = params.renderer->CreatePipeline(blitPipelineDesc);
+        params.commandList->BeginPipeline(pipeline);
 
-        _copyDescriptorSet.Bind("_source", resources.depth);
-        _copyDescriptorSet.BindStorage("_target", resources.depthPyramid, 0);
-
-        uvec2 pyramidSize = renderer->GetImageDimension(resources.depthPyramid, 0);
+        params.copyDescriptorSet.Bind("_source", params.depth);
+        params.copyDescriptorSet.BindStorage("_target", params.depthPyramid, 0);
 
         struct CopyParams
         {
@@ -161,42 +86,40 @@ void DepthPyramidUtils::BuildPyramid2(Renderer::Renderer* renderer, Renderer::Re
             u32 dummy;
         };
 
-        CopyParams* copyData = graphResources.FrameNew<CopyParams>();
-        copyData->imageSize = glm::vec2(pyramidSize);
+        CopyParams* copyData = params.graphResources->FrameNew<CopyParams>();
+        copyData->imageSize = glm::vec2(params.pyramidSize);
         copyData->level = 0;
 
-        commandList.PushConstant(copyData, 0, sizeof(CopyParams));
+        params.commandList->PushConstant(copyData, 0, sizeof(CopyParams));
 
-        commandList.BindDescriptorSet(Renderer::GLOBAL, &_copyDescriptorSet, frameIndex);
-        commandList.Dispatch(GetGroupCount(pyramidSize.x, 32), GetGroupCount(pyramidSize.y, 32), 1);
+        params.commandList->BindDescriptorSet(Renderer::GLOBAL, params.copyDescriptorSet, params.frameIndex);
+        params.commandList->Dispatch(GetGroupCount(params.pyramidSize.x, 32), GetGroupCount(params.pyramidSize.y, 32), 1);
 
-        commandList.EndPipeline(pipeline);
+        params.commandList->EndPipeline(pipeline);
     }
 
-    commandList.ImageBarrier(resources.depthPyramid);
+    params.commandList->ImageBarrier(params.depthPyramid);
 
     // Downsample
     {
         Renderer::ComputePipelineDesc pipelineDesc;
-        graphResources.InitializePipelineDesc(pipelineDesc);
+        params.graphResources->InitializePipelineDesc(pipelineDesc);
 
         Renderer::ComputeShaderDesc shaderDesc;
         shaderDesc.path = "DownSampler/SinglePassDownsampler.cs.hlsl";
-        pipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
+        pipelineDesc.computeShader = params.renderer->LoadShader(shaderDesc);
 
-        Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
-        commandList.BeginPipeline(pipeline);
+        Renderer::ComputePipelineID pipeline = params.renderer->CreatePipeline(pipelineDesc);
+        params.commandList->BeginPipeline(pipeline);
 
-        _pyramidDescriptorSet.Bind("imgSrc", resources.depthPyramid, 0);
-        _pyramidDescriptorSet.BindStorage("imgDst", resources.depthPyramid, 1, 12);
-        _pyramidDescriptorSet.BindStorage("imgDst5", resources.depthPyramid, 6);
-
-        uvec2 inputSize = renderer->GetImageDimension(resources.depthPyramid);
+        params.pyramidDescriptorSet.Bind("imgSrc", params.depthPyramid, 0);
+        params.pyramidDescriptorSet.BindStorage("imgDst", params.depthPyramid, 1, 12);
+        params.pyramidDescriptorSet.BindStorage("imgDst5", params.depthPyramid, 6);
 
         varAU2(dispatchThreadGroupCountXY);
         varAU2(workGroupOffset);
         varAU2(numWorkGroupsAndMips);
-        varAU4(rectInfo) = initAU4(0, 0, inputSize.x, inputSize.y); // left, top, width, height
+        varAU4(rectInfo) = initAU4(0, 0, params.pyramidSize.x, params.pyramidSize.y); // left, top, width, height
         SpdSetup(dispatchThreadGroupCountXY, workGroupOffset, numWorkGroupsAndMips, rectInfo);
 
         struct Constants
@@ -207,25 +130,22 @@ void DepthPyramidUtils::BuildPyramid2(Renderer::Renderer* renderer, Renderer::Re
             vec2 invInputSize;
         };
 
-        Constants* constants = graphResources.FrameNew<Constants>();
+        Constants* constants = params.graphResources->FrameNew<Constants>();
         constants->numWorkGroups = numWorkGroupsAndMips[0];
         constants->mips = numWorkGroupsAndMips[1];
         constants->workGroupOffset[0] = workGroupOffset[0];
         constants->workGroupOffset[1] = workGroupOffset[1];
-        constants->invInputSize[0] = 1.0f / static_cast<f32>(inputSize.x);
-        constants->invInputSize[1] = 1.0f / static_cast<f32>(inputSize.y);
+        constants->invInputSize[0] = 1.0f / static_cast<f32>(params.pyramidSize.x);
+        constants->invInputSize[1] = 1.0f / static_cast<f32>(params.pyramidSize.y);
 
-        commandList.PushConstant(constants, 0, sizeof(Constants));
+        params.commandList->PushConstant(constants, 0, sizeof(Constants));
 
-        commandList.BindDescriptorSet(Renderer::PER_PASS, &_pyramidDescriptorSet, frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::PER_PASS, params.pyramidDescriptorSet, params.frameIndex);
 
-        const Renderer::ImageDesc& pyramidDesc = renderer->GetImageDesc(resources.depthPyramid);
-        commandList.Dispatch(dispatchThreadGroupCountXY[0], dispatchThreadGroupCountXY[1], 1);
+        params.commandList->Dispatch(dispatchThreadGroupCountXY[0], dispatchThreadGroupCountXY[1], 1);
 
-        commandList.EndPipeline(pipeline);
+        params.commandList->EndPipeline(pipeline);
     }
 
-    commandList.ImageBarrier(resources.depthPyramid);
-
-    commandList.PopMarker();
+    params.commandList->PopMarker();
 }

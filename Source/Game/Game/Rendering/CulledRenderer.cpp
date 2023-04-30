@@ -82,9 +82,9 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         // Bind descriptorset
         //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &params.renderResources->debugDescriptorSet, frameIndex);
-        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &params.renderResources->globalDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
         //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, frameIndex);
-        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &occluderFillDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.occluderFillDescriptorSet, params.frameIndex);
 
         params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
@@ -107,7 +107,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         DrawParams drawParams;
         drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
         drawParams.shadowPass = false;
-        drawParams.drawDescriptorSet = &params.cullingResources->GetGeometryPassDescriptorSet();
+        drawParams.globalDescriptorSet = params.globalDescriptorSet;
+        drawParams.drawDescriptorSet = params.drawDescriptorSet;
         drawParams.rt0 = params.rt0;
         drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
@@ -209,19 +210,19 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
         cullConstants->debugDrawColliders = params.debugDrawColliders;
         params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
-        Renderer::DescriptorSet& cullingDescriptorSet = params.cullingResources->GetCullingDescriptorSet();
-        cullingDescriptorSet.Bind("_depthPyramid"_h, params.renderResources->depthPyramid);
+        params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
 
         if (params.cullingResources->HasSupportForTwoStepCulling())
         {
+            Renderer::DescriptorSet& cullingDescriptorSet = params.cullingResources->GetCullingDescriptorSet();
             cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex));
             cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(params.frameIndex));
         }
 
-        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &_debugRenderer->GetDebugDescriptorSet(), params.frameIndex);
-        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &cullingDescriptorSet, params.frameIndex);
-        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &params.renderResources->globalDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
         //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.cullingDescriptorSet, params.frameIndex);
 
         params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
@@ -271,7 +272,8 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         DrawParams drawParams;
         drawParams.cullingEnabled = params.cullingEnabled;
         drawParams.shadowPass = false;
-        drawParams.drawDescriptorSet = &params.cullingResources->GetGeometryPassDescriptorSet();
+        drawParams.globalDescriptorSet = params.globalDescriptorSet;
+        drawParams.drawDescriptorSet = params.drawDescriptorSet;
         drawParams.rt0 = params.rt0;
         drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;

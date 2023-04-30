@@ -34,7 +34,7 @@ public:
 
 	bool UpdateWindow(f32 deltaTime);
 	void UpdateRenderers(f32 deltaTime);
-	void Render();
+	f32 Render();
 
 	void ReloadShaders(bool forceRecompileAll);
 

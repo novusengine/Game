@@ -25,18 +25,24 @@ void CubeRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRes
 {
 	struct Data
 	{
-        Renderer::RenderPassMutableResource color;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource color;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource terrainSet;
 	};
     renderGraph->AddPass<Data>("TerrainGeometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.color = builder.Write(resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.terrainSet = builder.Use(_geometryDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainGeometry);
 
@@ -69,7 +75,7 @@ void CubeRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRes
             Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
             
             // Set viewport
-            vec2 renderTargetSize = _renderer->GetImageDimension(resources.finalColor);
+            vec2 renderTargetSize = graphResources.GetImageDimensions(data.color);
 
             commandList.SetViewport(0, 0, renderTargetSize.x, renderTargetSize.y, 0.0f, 1.0f);
             commandList.SetScissorRect(0, static_cast<u32>(renderTargetSize.x), 0, static_cast<u32>(renderTargetSize.y));
@@ -77,8 +83,8 @@ void CubeRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRes
             commandList.BeginPipeline(pipeline);
 
             commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_DRAW, &_geometryDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_DRAW, data.terrainSet, frameIndex);
 
             commandList.DrawIndexed(36, 1, 0, 0, 0);
             commandList.EndPipeline(pipeline);

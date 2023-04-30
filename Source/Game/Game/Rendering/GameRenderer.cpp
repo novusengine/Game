@@ -172,11 +172,11 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _uiRenderer->Update(deltaTime);
 }
 
-void GameRenderer::Render()
+f32 GameRenderer::Render()
 {
     // If the window is minimized we want to pause rendering
     if (_window->IsMinimized())
-        return;
+        return 0.0f;
 
     if (_resources.cameras.SyncToGPU(_renderer))
     {
@@ -188,7 +188,7 @@ void GameRenderer::Render()
     renderGraphDesc.allocator = _frameAllocator; // We need to give our rendergraph an allocator to use
     Renderer::RenderGraph renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
 
-    _renderer->FlipFrame(_frameIndex);
+    f32 timeWaited = _renderer->FlipFrame(_frameIndex);
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->DrawImGui();
@@ -202,17 +202,17 @@ void GameRenderer::Render()
     {
         struct StartFramePassData
         {
-            Renderer::RenderPassMutableResource visibilityBuffer;
-            Renderer::RenderPassMutableResource finalColor;
-            Renderer::RenderPassMutableResource depth;
+            Renderer::ImageMutableResource visibilityBuffer;
+            Renderer::ImageMutableResource finalColor;
+            Renderer::DepthImageMutableResource depth;
         };
 
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
             [=](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
-                data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
-                data.finalColor = builder.Write(_resources.finalColor, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
-                data.depth = builder.Write(_resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
+                data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.finalColor = builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.depth = builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
@@ -222,7 +222,7 @@ void GameRenderer::Render()
                 commandList.MarkFrameStart(_frameIndex);
 
                 // Set viewport
-                vec2 renderSize = _renderer->GetImageDimension(_resources.finalColor);
+                vec2 renderSize = graphResources.GetImageDimensions(data.finalColor);
 
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
@@ -237,13 +237,21 @@ void GameRenderer::Render()
     // Depth Pyramid Pass
     struct PyramidPassData
     {
-        Renderer::RenderPassResource depth;
+        Renderer::DepthImageResource depth;
+        Renderer::ImageMutableResource depthPyramid;
+
+        Renderer::DescriptorSetResource copyDescriptorSet;
+        Renderer::DescriptorSetResource pyramidDescriptorSet;
     };
 
     renderGraph.AddPass<PyramidPassData>("PyramidPass",
         [=](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.depth = builder.Read(_resources.depth, Renderer::RenderGraphBuilder::ShaderStage::PIXEL);
+            data.depth = builder.Read(_resources.depth, Renderer::PipelineType::GRAPHICS);
+            data.depthPyramid = builder.Write(_resources.depthPyramid, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.copyDescriptorSet = builder.Use(DepthPyramidUtils::_copyDescriptorSet);
+            data.pyramidDescriptorSet = builder.Use(DepthPyramidUtils::_pyramidDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -251,7 +259,21 @@ void GameRenderer::Render()
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
 
-            DepthPyramidUtils::BuildPyramid2(_renderer, graphResources, commandList, _resources, _frameIndex);
+            DepthPyramidUtils::BuildPyramidParams params;
+            params.renderer = _renderer;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.resources = &_resources;
+            params.frameIndex = _frameIndex;
+
+            params.pyramidSize = graphResources.GetImageDimensions(data.depthPyramid, 0);
+            params.depth = data.depth;
+            params.depthPyramid = data.depthPyramid;
+
+            params.copyDescriptorSet = data.copyDescriptorSet;
+            params.pyramidDescriptorSet = data.pyramidDescriptorSet;
+
+            DepthPyramidUtils::BuildPyramid(params);
         });
 
 
@@ -267,7 +289,6 @@ void GameRenderer::Render()
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
-    //_materialRenderer->AddCompositeTransparenciesPass(&renderGraph, _resources, _frameIndex);
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
@@ -303,6 +324,7 @@ void GameRenderer::Render()
 
     // Flip the frameIndex between 0 and 1
     _frameIndex = !_frameIndex;
+    return timeWaited;
 }
 
 void GameRenderer::ReloadShaders(bool forceRecompileAll)

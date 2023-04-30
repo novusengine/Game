@@ -31,19 +31,23 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
 {
     struct Data
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource visibilityBuffer;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
     };
 
     renderGraph->AddPass<Data>("Skybox Pass",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 
@@ -77,7 +81,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
             commandList.BeginPipeline(pipeline);
 
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
 
             // Skyband Color Push Constant
             {

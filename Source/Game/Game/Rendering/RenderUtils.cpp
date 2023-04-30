@@ -72,15 +72,12 @@ std::string GetTexTypeName(Renderer::DepthImageDesc imageDesc)
 void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
-    commandList.ImageBarrier(params.input);
 
-    Renderer::ImageDesc imageDesc = renderer->GetImageDesc(params.input);
+    const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.path = "Blitting/blit.vs.hlsl";
-
-
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
@@ -108,8 +105,8 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
     }
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.input, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.input, mipLevel);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -134,16 +131,14 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.input);
     commandList.PopMarker();
 }
 
 void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
-    commandList.ImageBarrier(params.input);
 
-    Renderer::DepthImageDesc imageDesc = renderer->GetDepthImageDesc(params.input);
+    const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -169,8 +164,8 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     commandList.BeginPipeline(pipeline);
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.input);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.input);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -195,16 +190,14 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.input);
     commandList.PopMarker();
 }
 
 void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params)
 {
     commandList.PushMarker("Overlay", Color::White);
-    commandList.ImageBarrier(params.overlayImage);
 
-    Renderer::ImageDesc imageDesc = renderer->GetImageDesc(params.overlayImage);
+    const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.overlayImage);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -242,8 +235,8 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
     }
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.overlayImage, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.overlayImage, mipLevel);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -268,20 +261,18 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.overlayImage);
     commandList.PopMarker();
 }
 
 void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params)
 {
     commandList.PushMarker("DepthOverlay", Color::White);
-    commandList.ImageBarrier(params.overlayImage);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.path = "Blitting/blit.vs.hlsl";
 
-    Renderer::DepthImageDesc imageDesc = renderer->GetDepthImageDesc(params.overlayImage);
+    const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.overlayImage);
 
     Renderer::ImageComponentType componentType = Renderer::ToImageComponentType(imageDesc.format);
     std::string componentTypeName = "";
@@ -312,8 +303,8 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
     commandList.BeginPipeline(pipeline);
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.overlayImage);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.overlayImage);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -338,14 +329,12 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.overlayImage);
     commandList.PopMarker();
 }
 
 void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params)
 {
     commandList.PushMarker("PictureInPicture", Color::White);
-    commandList.ImageBarrier(params.pipImage);
 
     // Set viewport and scissor
     f32 width = static_cast<f32>(params.targetRegion.right - params.targetRegion.left);
@@ -354,7 +343,7 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     commandList.SetViewport(static_cast<f32>(params.targetRegion.left), static_cast<f32>(params.targetRegion.top), width, height, 0.0f, 1.0f);
     commandList.SetScissorRect(params.targetRegion.left, params.targetRegion.right, params.targetRegion.top, params.targetRegion.bottom);
 
-    Renderer::ImageDesc imageDesc = renderer->GetImageDesc(params.pipImage);
+    const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.pipImage);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -392,8 +381,8 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     }
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.pipImage, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.pipImage, mipLevel);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -418,7 +407,6 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.pipImage);
 
     // Reset the viewport and scissor
     vec2 renderSize = renderer->GetRenderSize();
@@ -431,7 +419,6 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
 void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params)
 {
     commandList.PushMarker("PictureInPicture", Color::White);
-    commandList.ImageBarrier(params.pipImage);
 
     // Set viewport and scissor
     f32 width = static_cast<f32>(params.targetRegion.right) - static_cast<f32>(params.targetRegion.left);
@@ -444,7 +431,7 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.path = "Blitting/blit.vs.hlsl";
 
-    Renderer::DepthImageDesc imageDesc = renderer->GetDepthImageDesc(params.pipImage);
+    const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.pipImage);
 
     Renderer::ImageComponentType componentType = Renderer::ToImageComponentType(imageDesc.format);
     std::string componentTypeName = "";
@@ -475,8 +462,8 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     commandList.BeginPipeline(pipeline);
 
     _overlayDescriptorSet.Bind("_sampler", params.sampler);
-    _overlayDescriptorSet.Bind("_texture", params.pipImage);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &_overlayDescriptorSet, frameIndex);
+    params.descriptorSet.Bind("_texture", params.pipImage);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -501,7 +488,6 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
-    commandList.ImageBarrier(params.pipImage);
 
     // Reset the viewport and scissor
     vec2 renderSize = renderer->GetRenderSize();
@@ -511,7 +497,7 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     commandList.PopMarker();
 }
 
-void RenderUtils::CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DepthImageID source, Renderer::ImageID destination, u32 destinationMip)
+void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params)
 {
     Renderer::ComputePipelineDesc queryPipelineDesc;
     graphResources.InitializePipelineDesc(queryPipelineDesc);
@@ -526,10 +512,10 @@ void RenderUtils::CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::Ren
 
     commandList.PushMarker("CopyDepthToColorRT", Color::White);
 
-    Renderer::ImageDesc destinationInfo = renderer->GetImageDesc(destination);
-    Renderer::DepthImageDesc sourceInfo = renderer->GetDepthImageDesc(source);
+    Renderer::ImageDesc destinationInfo = graphResources.GetImageDesc(params.destination);
+    Renderer::DepthImageDesc sourceInfo = graphResources.GetImageDesc(params.source);
 
-    uvec2 destinationSize = renderer->GetImageDimension(destination, destinationMip);
+    uvec2 destinationSize = graphResources.GetImageDimensions(params.destination, params.destinationMip);
 
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
@@ -542,8 +528,8 @@ void RenderUtils::CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::Ren
 
     Renderer::SamplerID occlusionSampler = renderer->CreateSampler(samplerDesc);
     _copyDepthToColorRTDescriptorSet.Bind("_sampler", occlusionSampler);
-    _copyDepthToColorRTDescriptorSet.Bind("_source", source);
-    _copyDepthToColorRTDescriptorSet.BindStorage("_target", destination, destinationMip);
+    params.descriptorSet.Bind("_source", params.source);
+    params.descriptorSet.BindStorage("_target", params.destination, params.destinationMip);
 
     struct CopyParams
     {
@@ -554,16 +540,14 @@ void RenderUtils::CopyDepthToColorRT(Renderer::Renderer* renderer, Renderer::Ren
 
     CopyParams* copyParams = graphResources.FrameNew<CopyParams>();
     copyParams->imageSize = glm::vec2(destinationSize);
-    copyParams->level = destinationMip;
+    copyParams->level = params.destinationMip;
 
     commandList.PushConstant(copyParams, 0, sizeof(CopyParams));
 
-    commandList.BindDescriptorSet(Renderer::GLOBAL, &_copyDepthToColorRTDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::GLOBAL, params.descriptorSet, frameIndex);
     commandList.Dispatch(GetGroupCount(destinationSize.x, 32), GetGroupCount(destinationSize.y, 32), 1);
 
     commandList.EndPipeline(pipeline);
-
-    commandList.ImageBarrier(destination);
 
     commandList.PopMarker();
 }

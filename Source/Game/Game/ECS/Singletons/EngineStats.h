@@ -15,18 +15,20 @@ namespace ECS::Singletons
             f32 deltaTimeS;
             f32 simulationFrameTimeS;
             f32 renderFrameTimeS;
+            f32 renderWaitTimeS;
             f32 gpuFrameTimeMS;
         };
         std::deque<Frame> frameStats;
 
         robin_hood::unordered_map<u32, std::deque<f32>> namedStats;
 
-        void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 renderFrameTimeS, f32 gpuFrameTimeMS)
+        void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 renderFrameTimeS, f32 renderWaitTimeS, f32 gpuFrameTimeMS)
         {
             Frame newFrame;
             newFrame.deltaTimeS = deltaTimeS;
             newFrame.simulationFrameTimeS = simulationFrameTimeS;
             newFrame.renderFrameTimeS = renderFrameTimeS;
+            newFrame.renderWaitTimeS = renderWaitTimeS;
             newFrame.gpuFrameTimeMS = gpuFrameTimeMS;
 
             if (frameStats.size() > MAX_ENTRIES)
@@ -70,19 +72,21 @@ namespace ECS::Singletons
                     averaged.deltaTimeS += f.deltaTimeS;
                     averaged.simulationFrameTimeS += f.simulationFrameTimeS;
                     averaged.renderFrameTimeS += f.renderFrameTimeS;
+                    averaged.renderWaitTimeS += f.renderWaitTimeS;
                     averaged.gpuFrameTimeMS += f.gpuFrameTimeMS;
                 }
 
                 averaged.deltaTimeS /= count;
                 averaged.simulationFrameTimeS /= count;
                 averaged.renderFrameTimeS /= count;
+                averaged.renderWaitTimeS /= count;
                 averaged.gpuFrameTimeMS /= count;
 
                 return averaged;
             }
             else
             {
-                return Frame{ 0.f,0.f,0.f,0.f };
+                return Frame{ 0.f,0.f,0.f,0.f,0.f };
             }
         }
 

@@ -61,13 +61,29 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
     {
         struct PixelQueryPassData
         {
-            Renderer::RenderPassMutableResource visibilityBuffer;
+            Renderer::ImageResource visibilityBuffer;
+
+            Renderer::DescriptorSetResource querySet;
+            Renderer::DescriptorSetResource terrainSet;
+            Renderer::DescriptorSetResource modelSet;
         };
 
         renderGraph->AddPass<PixelQueryPassData>("Query Pass",
             [=](PixelQueryPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
-                data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+                data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+
+                GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+
+                TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
+                Renderer::DescriptorSet& terrainDescriptorSet = terrainRenderer->GetMaterialPassDescriptorSet();
+
+                ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
+                Renderer::DescriptorSet& modelDescriptorSet = modelRenderer->GetMaterialPassDescriptorSet();
+
+                data.querySet = builder.Use(_queryDescriptorSet);
+                data.terrainSet = builder.Use(terrainDescriptorSet);
+                data.modelSet = builder.Use(modelDescriptorSet);
 
         return true; // Return true from setup to enable this pass, return false to disable it
             },
@@ -81,10 +97,6 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                 std::string frameIndexStr = "FrameIndex: " + std::to_string(_frameIndex);
                 TracyMessage(frameIndexStr.c_str(), frameIndexStr.length());
 
-                {
-                    ZoneScopedN("PixelQuery::ImageBarrier");
-                    commandList.ImageBarrier(resources.visibilityBuffer);
-                }
                 commandList.PushMarker("Pixel Queries " + std::to_string(numRequests), Color::White);
                 Renderer::ComputePipelineDesc queryPipelineDesc;
                 graphResources.InitializePipelineDesc(queryPipelineDesc);
@@ -110,19 +122,12 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                     commandList.PushConstant(queryRequests, 0, sizeof(QueryRequestConstant));
                 }
 
-                _queryDescriptorSet.Bind("_visibilityBuffer", resources.visibilityBuffer);
+                data.querySet.Bind("_visibilityBuffer", data.visibilityBuffer);
                 _queryDescriptorSet.Bind("_result", _pixelResultBuffer);
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_queryDescriptorSet, _frameIndex);
 
-                GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-
-                TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
-                Renderer::DescriptorSet& terrainDescriptorSet = terrainRenderer->GetMaterialPassDescriptorSet();
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &terrainDescriptorSet, _frameIndex);
-
-                ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
-                Renderer::DescriptorSet& modelDescriptorSet = modelRenderer->GetMaterialPassDescriptorSet();
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, &modelDescriptorSet, _frameIndex);
+                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.querySet, _frameIndex);
+                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, _frameIndex);
+                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, _frameIndex);
 
                 commandList.Dispatch(1, 1, 1);
 

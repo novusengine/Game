@@ -114,19 +114,27 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
     struct Data
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource visibilityBuffer;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource occluderFillSet;
+        Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Terrain Occluders",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.occluderFillSet = builder.Use(_occluderFillPassDescriptorSet);
+            data.drawSet = builder.Use(_geometryPassDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainOccluders);
 
@@ -181,7 +189,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &resources.debugDescriptorSet, frameIndex);
                 //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
                 //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_occluderFillPassDescriptorSet, frameIndex);
+                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.occluderFillSet, frameIndex);
 
                 commandList.Dispatch((cellCount + 31) / 32, 1, 1);
 
@@ -209,6 +217,9 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 drawParams.depth = data.depth;
                 drawParams.instanceBuffer = _culledInstanceBuffer[0];
                 drawParams.argumentBuffer = _argumentBuffer;
+
+                drawParams.globalDescriptorSet = data.globalSet;
+                drawParams.drawDescriptorSet = data.drawSet;
 
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
 
@@ -244,14 +255,25 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
     struct Data
     {
+        Renderer::ImageResource depthPyramid;
+
+        Renderer::DescriptorSetResource debugSet;
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource cullingSet;
     };
 
     renderGraph->AddPass<Data>("Terrain Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.cullingSet = builder.Use(_cullingPassDescriptorSet);
+
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCulling);
 
@@ -279,7 +301,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
                 commandList.PushConstant(resetConstants, 0, 4);
 
                 // Bind descriptorset
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, &_cullingPassDescriptorSet, frameIndex);
+                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.cullingSet, frameIndex);
 
                 commandList.Dispatch(1, 1, 1);
 
@@ -320,16 +342,15 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
 
-            commandList.ImageBarrier(resources.depthPyramid);
-            _cullingPassDescriptorSet.Bind("_depthPyramid"_h, resources.depthPyramid);
+            data.cullingSet.Bind("_depthPyramid"_h, data.depthPyramid);
             _cullingPassDescriptorSet.Bind("_prevCulledInstancesBitMask"_h, _culledInstanceBitMaskBuffer.Get(!frameIndex));
             _cullingPassDescriptorSet.Bind("_culledInstancesBitMask"_h, _culledInstanceBitMaskBuffer.Get(frameIndex));
 
             // Bind descriptorset
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &_debugRenderer->GetDebugDescriptorSet(), frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, data.debugSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
             //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &_cullingPassDescriptorSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.cullingSet, frameIndex);
 
             commandList.Dispatch((cellCount + 31) / 32, 1, 1);
 
@@ -351,19 +372,25 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
     struct Data
     {
-        Renderer::RenderPassMutableResource visibilityBuffer;
-        Renderer::RenderPassMutableResource depth;
+        Renderer::ImageMutableResource visibilityBuffer;
+        Renderer::DepthImageMutableResource depth;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource geometryPassSet;
     };
 
     renderGraph->AddPass<Data>("TerrainGeometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
-            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::RenderGraphBuilder::WriteMode::RENDERTARGET, Renderer::RenderGraphBuilder::LoadMode::LOAD);
+            data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.geometryPassSet = builder.Use(_geometryPassDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainGeometryPass);
 
@@ -391,6 +418,9 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                 drawParams.depth = data.depth;
                 drawParams.instanceBuffer = instanceBuffer;
                 drawParams.argumentBuffer = _argumentBuffer;
+
+                drawParams.globalDescriptorSet = data.globalSet;
+                drawParams.drawDescriptorSet = data.geometryPassSet;
 
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             }
@@ -865,9 +895,9 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     _geometryPassDescriptorSet.Bind("_instanceDatas"_h, params.instanceBuffer);
 
     // Bind descriptorset
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, &resources.globalDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
     //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, &_geometryPassDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, params.drawDescriptorSet, frameIndex);
 
     if (params.cullingEnabled)
     {
