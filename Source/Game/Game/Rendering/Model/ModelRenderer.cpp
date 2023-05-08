@@ -139,6 +139,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -331,6 +332,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
@@ -509,8 +511,8 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
-            data.transparency = builder.Write(resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+            data.transparency = builder.Write(resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
@@ -579,7 +581,8 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_vertices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_indices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_textureUnits.GetBuffer(), BufferUsage::COMPUTE);
-    
+    builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
 }
 
 u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)

@@ -63,6 +63,8 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
         {
             Renderer::ImageResource visibilityBuffer;
 
+            Renderer::BufferMutableResource pixelResultBuffer;
+
             Renderer::DescriptorSetResource querySet;
             Renderer::DescriptorSetResource terrainSet;
             Renderer::DescriptorSetResource modelSet;
@@ -75,6 +77,8 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                 GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
 
+                data.pixelResultBuffer = builder.Write(_pixelResultBuffer, Renderer::BufferPassUsage::COMPUTE);
+
                 TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
                 Renderer::DescriptorSet& terrainDescriptorSet = terrainRenderer->GetMaterialPassDescriptorSet();
 
@@ -85,58 +89,61 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                 data.terrainSet = builder.Use(terrainDescriptorSet);
                 data.modelSet = builder.Use(modelDescriptorSet);
 
-        return true; // Return true from setup to enable this pass, return false to disable it
+                terrainRenderer->RegisterMaterialPassBufferUsage(builder);
+                modelRenderer->RegisterMaterialPassBufferUsage(builder);
+
+                return true; // Return true from setup to enable this pass, return false to disable it
             },
             [=](PixelQueryPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 u32 numRequests = static_cast<u32>(_requests[_frameIndex].size());
-            if (numRequests > 0)
-            {
-                GPU_SCOPED_PROFILER_ZONE(commandList, QueryPass);
-
-                std::string frameIndexStr = "FrameIndex: " + std::to_string(_frameIndex);
-                TracyMessage(frameIndexStr.c_str(), frameIndexStr.length());
-
-                commandList.PushMarker("Pixel Queries " + std::to_string(numRequests), Color::White);
-                Renderer::ComputePipelineDesc queryPipelineDesc;
-                graphResources.InitializePipelineDesc(queryPipelineDesc);
-
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/ObjectQuery.cs.hlsl";
-                queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                // Do culling
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(queryPipelineDesc);
-                commandList.BeginPipeline(pipeline);
-
-                // Set Number of Requests we processed
-                _numRequestsLastFrame[_frameIndex] = numRequests;
-
-                // Copy Request Data to PixelDataBuffer
+                if (numRequests > 0)
                 {
-                    ZoneScopedN("PixelQuery::PushConstant");
-                    QueryRequestConstant* queryRequests = graphResources.FrameNew<QueryRequestConstant>();
+                    GPU_SCOPED_PROFILER_ZONE(commandList, QueryPass);
 
-                    queryRequests->numRequests = numRequests;
-                    std::memcpy(&queryRequests->pixelCoords[0], _requests[_frameIndex].data(), sizeof(QueryRequest) * numRequests);
-                    commandList.PushConstant(queryRequests, 0, sizeof(QueryRequestConstant));
+                    std::string frameIndexStr = "FrameIndex: " + std::to_string(_frameIndex);
+                    TracyMessage(frameIndexStr.c_str(), frameIndexStr.length());
+
+                    commandList.PushMarker("Pixel Queries " + std::to_string(numRequests), Color::White);
+                    Renderer::ComputePipelineDesc queryPipelineDesc;
+                    graphResources.InitializePipelineDesc(queryPipelineDesc);
+
+                    Renderer::ComputeShaderDesc shaderDesc;
+                    shaderDesc.path = "Utils/ObjectQuery.cs.hlsl";
+                    queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+                    // Do culling
+                    Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(queryPipelineDesc);
+                    commandList.BeginPipeline(pipeline);
+
+                    // Set Number of Requests we processed
+                    _numRequestsLastFrame[_frameIndex] = numRequests;
+
+                    // Copy Request Data to PixelDataBuffer
+                    {
+                        ZoneScopedN("PixelQuery::PushConstant");
+                        QueryRequestConstant* queryRequests = graphResources.FrameNew<QueryRequestConstant>();
+
+                        queryRequests->numRequests = numRequests;
+                        std::memcpy(&queryRequests->pixelCoords[0], _requests[_frameIndex].data(), sizeof(QueryRequest) * numRequests);
+                        commandList.PushConstant(queryRequests, 0, sizeof(QueryRequestConstant));
+                    }
+
+                    data.querySet.Bind("_visibilityBuffer", data.visibilityBuffer);
+                    data.querySet.Bind("_result", data.pixelResultBuffer);
+
+                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.querySet, _frameIndex);
+                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, _frameIndex);
+                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, _frameIndex);
+
+                    commandList.Dispatch(1, 1, 1);
+
+                    commandList.EndPipeline(pipeline);
+                    commandList.PopMarker();
+
+                    _requests[_frameIndex].clear();
                 }
-
-                data.querySet.Bind("_visibilityBuffer", data.visibilityBuffer);
-                _queryDescriptorSet.Bind("_result", _pixelResultBuffer);
-
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.querySet, _frameIndex);
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, _frameIndex);
-                commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, _frameIndex);
-
-                commandList.Dispatch(1, 1, 1);
-
-                commandList.EndPipeline(pipeline);
-                commandList.PopMarker();
-
-                _requests[_frameIndex].clear();
-            }
-            _frameIndex = !_frameIndex;
+                _frameIndex = !_frameIndex;
             });
     }
 }

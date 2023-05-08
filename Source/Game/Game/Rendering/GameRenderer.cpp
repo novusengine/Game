@@ -204,6 +204,8 @@ f32 GameRenderer::Render()
         {
             Renderer::ImageMutableResource visibilityBuffer;
             Renderer::ImageMutableResource finalColor;
+            Renderer::ImageMutableResource transparency;
+            Renderer::ImageMutableResource transparencyWeights;
             Renderer::DepthImageMutableResource depth;
         };
 
@@ -212,6 +214,8 @@ f32 GameRenderer::Render()
             {
                 data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.finalColor = builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.transparency = builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.transparencyWeights = builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.depth = builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
