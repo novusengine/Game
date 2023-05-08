@@ -32,16 +32,12 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
     Renderer::GPUVector<Renderer::IndexedIndirectDraw>& drawCalls = params.cullingResources->GetDrawCalls();
 
-    Renderer::BufferID drawCountBuffer = params.cullingResources->GetDrawCountBuffer();
-    Renderer::BufferID triangleCountBuffer = params.cullingResources->GetTriangleCountBuffer();
-
     // Reset the counters
-    params.commandList->FillBuffer(drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
-    params.commandList->FillBuffer(triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
+    params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
+    params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
 
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, drawCountBuffer);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, drawCountBuffer);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, triangleCountBuffer);
+    params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
     const u32 numDrawCalls = static_cast<u32>(drawCalls.Size());
     if (numDrawCalls == 0)
@@ -50,8 +46,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
     Renderer::BufferID culledDrawCallsBitMaskBuffer = params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex);
     if (params.disableTwoStepCulling)
     {
-        params.commandList->FillBuffer(culledDrawCallsBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(numDrawCalls), 0);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, culledDrawCallsBitMaskBuffer);
+        params.commandList->FillBuffer(params.culledDrawCallsBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(numDrawCalls), 0);
+        params.commandList->BufferBarrier(params.culledDrawCallsBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
     }
 
     // Fill the occluders to draw
@@ -77,8 +73,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         fillConstants->numTotalDraws = numDrawCalls;
         params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
 
-        Renderer::DescriptorSet& occluderFillDescriptorSet = params.cullingResources->GetOccluderFillDescriptorSet();
-        occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, culledDrawCallsBitMaskBuffer);
+        params.occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
 
         // Bind descriptorset
         //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &params.renderResources->debugDescriptorSet, frameIndex);
@@ -93,11 +88,9 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         params.commandList->PopMarker();
     }
 
-    for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-    {
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, params.cullingResources->GetCulledDrawsBuffer(i));
-    }
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, drawCountBuffer);
+    params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
+    params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+    params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
 
     if (params.enableDrawing)
     {
@@ -112,8 +105,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         drawParams.rt0 = params.rt0;
         drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
-        drawParams.argumentBuffer = params.cullingResources->GetCulledDrawsBuffer(0);
-        drawParams.drawCountBuffer = drawCountBuffer;
+        drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+        drawParams.drawCountBuffer = params.drawCountBuffer;
         drawParams.drawCountIndex = 0;
         drawParams.numMaxDrawCalls = numDrawCalls;
 
@@ -121,16 +114,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
     }
 
     // Copy from our draw count buffer to the readback buffer
-    Renderer::BufferID drawCountReadBackBuffer = params.cullingResources->GetOccluderDrawCountReadBackBuffer();
-    Renderer::BufferID triangleCountReadBackBuffer = params.cullingResources->GetOccluderTriangleCountReadBackBuffer();
-
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, drawCountBuffer);
-    params.commandList->CopyBuffer(drawCountReadBackBuffer, 0, drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, drawCountReadBackBuffer);
-
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToTransferSrc, triangleCountBuffer);
-    params.commandList->CopyBuffer(triangleCountReadBackBuffer, 0, triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToTransferSrc, triangleCountReadBackBuffer);
+    params.commandList->CopyBuffer(params.drawCountReadBackBuffer, 0, params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
+    params.commandList->CopyBuffer(params.triangleCountReadBackBuffer, 0, params.triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
 
     if (params.enableDrawing)
     {
@@ -144,38 +129,16 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
     const u32 numDrawCalls = static_cast<u32>(params.cullingResources->GetDrawCalls().Size());
 
-    // TODO: Animations
-    // clear visible instance counter
-    /*if (numDrawCalls > 0)
-    {
-        params.commandList->PushMarker(params.passName + " Clear instance visibility", Color::Grey);
-        params.commandList->FillBuffer(_visibleInstanceCountBuffer, 0, sizeof(u32), 0);
-        params.commandList->FillBuffer(_visibleInstanceMaskBuffer, 0, sizeof(u32) * ((numInstances + 31) / 32), 0);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _visibleInstanceCountBuffer);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _visibleInstanceMaskBuffer);
-        params.commandList->PopMarker();
-    }*/
-
-    Renderer::BufferID drawCountBuffer = params.cullingResources->GetDrawCountBuffer();
-
     if (numDrawCalls > 0)
     {
         params.commandList->PushMarker(params.passName + " Culling", Color::Yellow);
 
-        for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-        {
-            params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, params.cullingResources->GetCulledDrawsBuffer(i));
-        }
-        
-        Renderer::BufferID triangleCountBuffer = params.cullingResources->GetTriangleCountBuffer();
-
         // Reset the counters
-        params.commandList->FillBuffer(drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
-        params.commandList->FillBuffer(triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
+        params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
+        params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
 
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, drawCountBuffer);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, drawCountBuffer);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, triangleCountBuffer);
+        params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+        params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
         Renderer::ComputePipelineDesc cullingPipelineDesc;
         params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
@@ -214,9 +177,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
         if (params.cullingResources->HasSupportForTwoStepCulling())
         {
-            Renderer::DescriptorSet& cullingDescriptorSet = params.cullingResources->GetCullingDescriptorSet();
-            cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex));
-            cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.cullingResources->GetCulledDrawCallsBitMaskBuffer(params.frameIndex));
+            params.cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMask);
+            params.cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.currentCulledDrawCallsBitMask);
         }
 
         params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
@@ -233,9 +195,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     else
     {
         // Reset the counter
-        params.commandList->FillBuffer(drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, numDrawCalls);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToIndirectArguments, drawCountBuffer);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, drawCountBuffer);
+        params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, numDrawCalls);
     }
 }
 
@@ -245,22 +205,11 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
     const u32 numDrawCalls = static_cast<u32>(params.cullingResources->GetDrawCalls().Size());
 
-    Renderer::BufferID drawCountBuffer = params.cullingResources->GetDrawCountBuffer();
-    
-    if (params.cullingEnabled)
-    {
-        for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-        {
-            params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, params.cullingResources->GetCulledDrawsBuffer(i));//_opaqueCulledDrawCallBuffer[i]);
-        }
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, drawCountBuffer);
-    }
-    else
+    if (!params.cullingEnabled)
     {
         // Reset the counters
-        params.commandList->FillBuffer(drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, numDrawCalls);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToIndirectArguments, drawCountBuffer);
-        params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, drawCountBuffer);
+        params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, numDrawCalls);
+        params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
     }
 
     if (params.enableDrawing)
@@ -277,8 +226,8 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         drawParams.rt0 = params.rt0;
         drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
-        drawParams.argumentBuffer = (params.cullingEnabled) ? params.cullingResources->GetCulledDrawsBuffer(debugDrawCallBufferIndex) : params.cullingResources->GetDrawCalls().GetBuffer();
-        drawParams.drawCountBuffer = drawCountBuffer;
+        drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+        drawParams.drawCountBuffer = params.drawCountBuffer;
         drawParams.drawCountIndex = debugDrawCallBufferIndex;
         drawParams.numMaxDrawCalls = numDrawCalls;
 
@@ -286,17 +235,8 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
     }
 
     // Copy from our draw count buffer to the readback buffer
-    Renderer::BufferID triangleCountBuffer = params.cullingResources->GetTriangleCountBuffer();
-    Renderer::BufferID drawCountReadBackBuffer = params.cullingResources->GetDrawCountReadBackBuffer();
-    Renderer::BufferID triangleCountReadBackBuffer = params.cullingResources->GetTriangleCountReadBackBuffer();
-
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, drawCountBuffer);
-    params.commandList->CopyBuffer(drawCountReadBackBuffer, 0, drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, drawCountReadBackBuffer);
-
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToTransferSrc, triangleCountBuffer);
-    params.commandList->CopyBuffer(triangleCountReadBackBuffer, 0, triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
-    params.commandList->PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToTransferSrc, triangleCountReadBackBuffer);
+    params.commandList->CopyBuffer(params.drawCountReadBackBuffer, 0, params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
+    params.commandList->CopyBuffer(params.triangleCountReadBackBuffer, 0, params.triangleCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
 
     if (params.enableDrawing)
     {

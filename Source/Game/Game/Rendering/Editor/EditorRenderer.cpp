@@ -47,8 +47,12 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
     renderGraph->AddPass<Data>("World Grid",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.finalColor = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
 

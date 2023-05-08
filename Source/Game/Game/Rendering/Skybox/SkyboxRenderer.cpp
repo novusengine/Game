@@ -34,14 +34,19 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
 
+
         Renderer::DescriptorSetResource globalSet;
     };
 
     renderGraph->AddPass<Data>("Skybox Pass",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
 

@@ -50,7 +50,7 @@ struct CullingData
 [[vk::binding(8, PER_PASS)]] RWByteAddressBuffer _drawCount;
 [[vk::binding(9, PER_PASS)]] RWByteAddressBuffer _triangleCount;
 
-[[vk::binding(10, PER_PASS)]] RWByteAddressBuffer _culledDrawCalls[NUM_CULL_VIEWS];
+[[vk::binding(10, PER_PASS)]] RWByteAddressBuffer _culledDrawCalls;
 
 uint GetInstanceID(uint drawCallID)
 {
@@ -277,7 +277,7 @@ void main(CSInput input)
 
     CullOutput cullOutput;
     //cullOutput.visibleInstanceMask = _visibleInstanceMask;
-    cullOutput.drawCalls = _culledDrawCalls[0];
+    cullOutput.drawCalls = _culledDrawCalls;
     cullOutput.countIndex = 0;
     cullOutput.drawCount = _drawCount;
     cullOutput.triangleCount = _triangleCount;
@@ -294,7 +294,7 @@ void main(CSInput input)
 
     // Shadow cascades
     //[unroll]
-    for (uint i = 0; i < _constants.numCascades; i++)
+    /*for (uint i = 0; i < _constants.numCascades; i++)
     {
         Camera cascadeCamera = _cameras[i];
         drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
@@ -312,5 +312,5 @@ void main(CSInput input)
             bitmaskInput,
 #endif
             cullOutput);
-    }
+    }*/
 }

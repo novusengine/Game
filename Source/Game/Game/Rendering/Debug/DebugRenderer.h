@@ -40,6 +40,7 @@ public:
 	static vec3 UnProject(const vec3& point, const mat4x4& m);
 
 	Renderer::DescriptorSet& GetDebugDescriptorSet() { return _debugDescriptorSet; }
+	void RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
 

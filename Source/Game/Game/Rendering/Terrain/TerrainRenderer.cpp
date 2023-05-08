@@ -117,6 +117,11 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource culledInstanceBuffer;
+        Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
+        Renderer::BufferMutableResource argumentBuffer;
+        Renderer::BufferMutableResource occluderDrawCountReadBackBuffer;
+
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource occluderFillSet;
         Renderer::DescriptorSetResource drawSet;
@@ -125,8 +130,20 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
     renderGraph->AddPass<Data>("Terrain Occluders",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer[0], BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
+            data.culledInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.occluderDrawCountReadBackBuffer = builder.Write(_occluderDrawCountReadBackBuffer, BufferUsage::TRANSFER);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.occluderFillSet = builder.Use(_occluderFillPassDescriptorSet);
@@ -138,26 +155,20 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainOccluders);
 
-            Renderer::BufferID culledInstanceBitMaskBuffer = _culledInstanceBitMaskBuffer.Get(!frameIndex);
-
             // Reset the counters
             for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
             {
                 u32 argumentOffset = i * sizeof(Renderer::IndexedIndirectDraw);
-                commandList.FillBuffer(_argumentBuffer, argumentOffset + 4, 16, 0); // Reset everything but indexCount to 0
+                commandList.FillBuffer(data.argumentBuffer, argumentOffset + 4, 16, 0); // Reset everything but indexCount to 0
             }
 
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _argumentBuffer);
-
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, culledInstanceBitMaskBuffer);
+            commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
 
             u32 cellCount = static_cast<u32>(_instanceDatas.Size());
-
             if (forceDisableOccluders)
             {
-                commandList.FillBuffer(culledInstanceBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(cellCount), 0);
-
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, culledInstanceBitMaskBuffer);
+                commandList.FillBuffer(data.culledInstanceBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(cellCount), 0);
+                commandList.BufferBarrier(data.culledInstanceBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
             }
 
             // Fill the occluders to draw
@@ -183,7 +194,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 fillConstants->numTotalInstances = cellCount;
                 commandList.PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
 
-                _occluderFillPassDescriptorSet.Bind("_culledInstancesBitMask"_h, culledInstanceBitMaskBuffer);
+                data.occluderFillSet.Bind("_culledInstancesBitMask"_h, data.culledInstanceBitMaskBuffer);
 
                 // Bind descriptorset
                 //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &resources.debugDescriptorSet, frameIndex);
@@ -197,13 +208,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 commandList.PopMarker();
             }
 
-            for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-            {
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _culledInstanceBuffer[i]);
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToPixelShaderRead, _culledInstanceBuffer[i]);
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _culledInstanceBuffer[i]);
-            }
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _argumentBuffer);
+            commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Draw the occluders
             if (CVAR_TerrainOccludersEnabled.Get()) 
@@ -215,8 +220,8 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 drawParams.cullingEnabled = cullingEnabled;
                 drawParams.visibilityBuffer = data.visibilityBuffer;
                 drawParams.depth = data.depth;
-                drawParams.instanceBuffer = _culledInstanceBuffer[0];
-                drawParams.argumentBuffer = _argumentBuffer;
+                drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
+                drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
 
                 drawParams.globalDescriptorSet = data.globalSet;
                 drawParams.drawDescriptorSet = data.drawSet;
@@ -226,15 +231,12 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 commandList.PopMarker();
             }
 
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, _argumentBuffer);
             for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
             {
                 u32 dstOffset = i * sizeof(u32);
                 u32 argumentOffset = i * sizeof(Renderer::IndexedIndirectDraw);
-                commandList.CopyBuffer(_occluderDrawCountReadBackBuffer, dstOffset, _argumentBuffer, argumentOffset + 4, 4);
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, _occluderDrawCountReadBackBuffer);
+                commandList.CopyBuffer(data.occluderDrawCountReadBackBuffer, dstOffset, data.argumentBuffer, argumentOffset + 4, 4);
             }
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, _occluderDrawCountReadBackBuffer);
         });
 }
 
@@ -257,6 +259,11 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     {
         Renderer::ImageResource depthPyramid;
 
+        Renderer::BufferResource prevInstanceBitMaskBuffer;
+
+        Renderer::BufferMutableResource argumentBuffer; // Wrong on purpose
+        Renderer::BufferMutableResource currentInstanceBitMaskBuffer;
+
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
@@ -265,7 +272,18 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     renderGraph->AddPass<Data>("Terrain Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            data.prevInstanceBitMaskBuffer = builder.Read(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE);
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_cellHeightRanges.GetBuffer(), BufferUsage::COMPUTE);
+            
+            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::COMPUTE);
+            data.currentInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            builder.Write(_culledInstanceBuffer[0], BufferUsage::COMPUTE);
 
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
             data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -307,9 +325,16 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
                 commandList.EndPipeline(pipeline);
 
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _argumentBuffer);
                 commandList.PopMarker();
             }
+
+            // Reset the bitmask
+            const u32 cellCount = static_cast<u32>(_cellDatas.Size());
+            u32 bitmaskSize = RenderUtils::CalcCullingBitmaskSize(cellCount);
+            commandList.FillBuffer(data.currentInstanceBitMaskBuffer, 0, bitmaskSize, 0);
+
+            commandList.BufferBarrier(data.currentInstanceBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
+            commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Cull instances on GPU
             Renderer::ComputePipelineDesc pipelineDesc;
@@ -321,14 +346,6 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
             commandList.BeginPipeline(pipeline);
-
-            Renderer::BufferID currentInstanceBitMaskBuffer = _culledInstanceBitMaskBuffer.Get(frameIndex);
-
-            // Reset the bitmask
-            const u32 cellCount = static_cast<u32>(_cellDatas.Size());
-            u32 bitmaskSize = RenderUtils::CalcCullingBitmaskSize(cellCount);
-            commandList.FillBuffer(currentInstanceBitMaskBuffer, 0, bitmaskSize, 0);
-            commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, currentInstanceBitMaskBuffer);
 
             struct CullConstants
             {
@@ -343,8 +360,8 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
 
             data.cullingSet.Bind("_depthPyramid"_h, data.depthPyramid);
-            _cullingPassDescriptorSet.Bind("_prevCulledInstancesBitMask"_h, _culledInstanceBitMaskBuffer.Get(!frameIndex));
-            _cullingPassDescriptorSet.Bind("_culledInstancesBitMask"_h, _culledInstanceBitMaskBuffer.Get(frameIndex));
+            data.cullingSet.Bind("_prevCulledInstancesBitMask"_h, data.prevInstanceBitMaskBuffer);
+            data.cullingSet.Bind("_culledInstancesBitMask"_h, data.currentInstanceBitMaskBuffer);
 
             // Bind descriptorset
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, data.debugSet, frameIndex);
@@ -370,10 +387,20 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
     const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
 
+    // TODO: Fix
+    const Renderer::BufferID instanceBuffer = cullingEnabled ? _culledInstanceBuffer[0] : _instanceDatas.GetBuffer();
+    _materialPassDescriptorSet.Bind("_instanceDatas"_h, instanceBuffer);
+
     struct Data
     {
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
+
+        Renderer::BufferResource culledInstanceBuffer;
+
+        Renderer::BufferMutableResource argumentBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource occluderDrawCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource geometryPassSet;
@@ -382,8 +409,19 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
     renderGraph->AddPass<Data>("TerrainGeometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            data.culledInstanceBuffer = builder.Read(cullingEnabled ? _culledInstanceBuffer[0] : _instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+            data.drawCountReadBackBuffer = builder.Write(_drawCountReadBackBuffer, BufferUsage::TRANSFER);
+            data.occluderDrawCountReadBackBuffer = builder.Write(_occluderDrawCountReadBackBuffer, BufferUsage::TRANSFER);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.geometryPassSet = builder.Use(_geometryPassDescriptorSet);
@@ -394,21 +432,6 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainGeometryPass);
 
-            // Add barriers if we're culling
-            if (cullingEnabled)
-            {
-                for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-                {
-                    commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _culledInstanceBuffer[i]);
-                    commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToPixelShaderRead, _culledInstanceBuffer[i]);
-                    commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _culledInstanceBuffer[i]);
-                }
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _argumentBuffer);
-            }
-
-            const Renderer::BufferID instanceBuffer = cullingEnabled ? _culledInstanceBuffer[0] : _instanceDatas.GetBuffer();
-            _materialPassDescriptorSet.Bind("_instanceDatas"_h, instanceBuffer);
-
             if (CVAR_TerrainGeometryEnabled.Get())
             {
                 DrawParams drawParams;
@@ -416,8 +439,8 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                 drawParams.cullingEnabled = cullingEnabled;
                 drawParams.visibilityBuffer = data.visibilityBuffer;
                 drawParams.depth = data.depth;
-                drawParams.instanceBuffer = instanceBuffer;
-                drawParams.argumentBuffer = _argumentBuffer;
+                drawParams.instanceBuffer = data.culledInstanceBuffer;
+                drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
 
                 drawParams.globalDescriptorSet = data.globalSet;
                 drawParams.drawDescriptorSet = data.geometryPassSet;
@@ -427,15 +450,12 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
             if (cullingEnabled)
             {
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, _argumentBuffer);
                 for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
                 {
                     u32 dstOffset = i * sizeof(u32);
                     u32 argumentOffset = i * sizeof(Renderer::IndexedIndirectDraw);
-                    commandList.CopyBuffer(_drawCountReadBackBuffer, dstOffset, _argumentBuffer, argumentOffset + 4, 4);
-                    commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferDest, _occluderDrawCountReadBackBuffer);
+                    commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, argumentOffset + 4, 4);
                 }
-                commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToTransferSrc, _drawCountReadBackBuffer);
             }
         });
 }
@@ -604,6 +624,17 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     }
 
     return currentChunkIndex;
+}
+
+void TerrainRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder)
+{
+    using BufferUsage = Renderer::BufferPassUsage;
+
+    builder.Read(_vertices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_cellDatas.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_chunkDatas.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_culledInstanceBuffer[0], BufferUsage::COMPUTE);
 }
 
 void TerrainRenderer::CreatePermanentResources()
@@ -790,9 +821,9 @@ void TerrainRenderer::SyncToGPU()
                 desc.name = "TerrainCulledInstanceBuffer" + std::to_string(i);
                 _culledInstanceBuffer[i] = _renderer->CreateBuffer(_culledInstanceBuffer[i], desc);
 
-                _cullingPassDescriptorSet.BindArray("_culledInstances"_h, _culledInstanceBuffer[i], i);
+                
             }
-
+            _cullingPassDescriptorSet.Bind("_culledInstances"_h, _culledInstanceBuffer[0]);
             _occluderFillPassDescriptorSet.Bind("_culledInstances"_h, _culledInstanceBuffer[0]);
         }
     }
@@ -833,7 +864,7 @@ void TerrainRenderer::SyncToGPU()
     }
 }
 
-void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
+void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, DrawParams& params)
 {
     Renderer::GraphicsPipelineDesc pipelineDesc;
     graphResources.InitializePipelineDesc(pipelineDesc);
@@ -892,7 +923,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     }
 
     // Bind descriptors
-    _geometryPassDescriptorSet.Bind("_instanceDatas"_h, params.instanceBuffer);
+    params.drawDescriptorSet.Bind("_instanceDatas"_h, params.instanceBuffer);
 
     // Bind descriptorset
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);

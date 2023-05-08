@@ -69,6 +69,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.terrainSet = builder.Use(terrainDescriptorSet);
             data.modelSet = builder.Use(modelDescriptorSet);
 
+            _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
+            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
+
             return true; // Return true from setup to enable this pass, return false to disable it
         },
         [=](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute

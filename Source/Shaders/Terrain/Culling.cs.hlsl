@@ -23,7 +23,7 @@ struct Constants
 // Outputs
 [[vk::binding(5, TERRAIN)]] RWStructuredBuffer<uint> _culledInstancesBitMask;
 [[vk::binding(6, TERRAIN)]] RWByteAddressBuffer _arguments;
-[[vk::binding(7, TERRAIN)]] RWByteAddressBuffer _culledInstances[NUM_CULL_VIEWS];
+[[vk::binding(7, TERRAIN)]] RWByteAddressBuffer _culledInstances;
 
 float2 ReadHeightRange(uint instanceIndex)
 {
@@ -176,7 +176,7 @@ void main(CSInput input)
     bitmaskInput.outCulledInstancesBitMask = _culledInstancesBitMask;
 
     CullOutput cullOutput;
-    cullOutput.instanceBuffer = _culledInstances[0];
+    cullOutput.instanceBuffer = _culledInstances;
     cullOutput.argumentIndex = 0;
     cullOutput.argumentBuffer = _arguments;
 
@@ -184,19 +184,4 @@ void main(CSInput input)
     {
         CullForCamera(drawInput, _cameras[0], bitmaskInput, cullOutput);
     }
-
-    // Shadow cascades
-    /*for (uint i = 0; i < _constants.numCascades; i++)
-    {
-        Camera cascadeCamera = _cameras[i+1];
-
-        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
-        drawInput.isShadowPass = true;
-        bitmaskInput.useBitmasks = false;
-
-        cullOutput.instanceBuffer = _culledInstances[i + 1];
-        cullOutput.argumentIndex = i + 1;
-
-        CullForView(drawInput, cascadeCamera, bitmaskInput, cullOutput);
-    }*/
 }

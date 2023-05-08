@@ -27,6 +27,7 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 	u32 numGPUVertices = CVAR_DebugRendererNumGPUVertices.Get();
 	{
 		Renderer::BufferDesc desc;
+		desc.name = "DebugVertices2D";
 		desc.size = sizeof(DebugVertex2D) * numGPUVertices;
 		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
@@ -37,6 +38,7 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 
 	{
 		Renderer::BufferDesc desc;
+		desc.name = "DebugVertices3D";
 		desc.size = sizeof(DebugVertex3D) * numGPUVertices;
 		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
@@ -48,6 +50,7 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 	// Create indirect argument buffers for GPU-side debugging
 	{
 		Renderer::BufferDesc desc;
+		desc.name = "DebugVertices2DArgument";
 		desc.size = sizeof(Renderer::IndirectDraw);
 		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER;
 
@@ -61,6 +64,7 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 
 	{
 		Renderer::BufferDesc desc;
+		desc.name = "DebugVertices3DArgument";
 		desc.size = sizeof(Renderer::IndirectDraw);
 		desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER;
 
@@ -85,21 +89,26 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 {
 	struct Data
 	{
+		Renderer::BufferMutableResource gpuDebugVertices2DArgumentBuffer;
+		Renderer::BufferMutableResource gpuDebugVertices3DArgumentBuffer;
 	};
 
-	renderGraph->AddPass<Data>("DebugRenderReset", 
+	renderGraph->AddPass<Data>("DebugRenderReset",
 		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
+			using BufferUsage = Renderer::BufferPassUsage;
+
+			data.gpuDebugVertices2DArgumentBuffer = builder.Write(_gpuDebugVertices2DArgumentBuffer, BufferUsage::TRANSFER);
+			data.gpuDebugVertices3DArgumentBuffer = builder.Write(_gpuDebugVertices3DArgumentBuffer, BufferUsage::TRANSFER);
+
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
 		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRenderReset);
 
-			commandList.FillBuffer(_gpuDebugVertices2DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
-			commandList.FillBuffer(_gpuDebugVertices3DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _gpuDebugVertices2DArgumentBuffer);
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::TransferDestToComputeShaderRW, _gpuDebugVertices3DArgumentBuffer);
+			commandList.FillBuffer(data.gpuDebugVertices2DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
+			commandList.FillBuffer(data.gpuDebugVertices3DArgumentBuffer, 0, 4, 0); // Reset vertexCount to 0
 		});
 }
 
@@ -115,6 +124,9 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 	{
 		Renderer::ImageMutableResource color;
 
+		Renderer::BufferResource gpuDebugVertices2D;
+		Renderer::BufferResource gpuDebugVertices2DArgumentBuffer;
+
 		Renderer::DescriptorSetResource globalSet;
 		Renderer::DescriptorSetResource draw2DSet;
 		Renderer::DescriptorSetResource draw2DIndirectSet;
@@ -122,7 +134,13 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 	renderGraph->AddPass<Data>("DebugRender2D",
 		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
+			using BufferUsage = Renderer::BufferPassUsage;
+
 			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+			data.gpuDebugVertices2D = builder.Read(_gpuDebugVertices2D, BufferUsage::GRAPHICS);
+			data.gpuDebugVertices2DArgumentBuffer = builder.Read(_gpuDebugVertices2DArgumentBuffer, BufferUsage::GRAPHICS);
+			builder.Read(_debugVertices2D.GetBuffer(), BufferUsage::GRAPHICS);
 
 			data.globalSet = builder.Use(resources.globalDescriptorSet);
 			data.draw2DSet = builder.Use(_draw2DDescriptorSet);
@@ -172,8 +190,6 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			_debugVertices2D.Clear(false);
 
 			// GPU side debug rendering
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices2D);
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _gpuDebugVertices2DArgumentBuffer);
 			{
 				commandList.BeginPipeline(pipeline);
 
@@ -181,7 +197,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DIndirectSet, frameIndex);
 
 				// Draw
-				commandList.DrawIndirect(_gpuDebugVertices2DArgumentBuffer, 0, 1);
+				commandList.DrawIndirect(data.gpuDebugVertices2DArgumentBuffer, 0, 1);
 
 				commandList.EndPipeline(pipeline);
 			}
@@ -201,6 +217,9 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 		Renderer::ImageMutableResource color;
 		Renderer::DepthImageMutableResource depth;
 
+		Renderer::BufferResource gpuDebugVertices3D;
+		Renderer::BufferResource gpuDebugVertices3DArgumentBuffer;
+
 		Renderer::DescriptorSetResource globalSet;
 		Renderer::DescriptorSetResource draw3DSet;
 		Renderer::DescriptorSetResource draw3DIndirectSet;
@@ -208,8 +227,15 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 	renderGraph->AddPass<Data>("DebugRender3D",
 		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
+			using BufferUsage = Renderer::BufferPassUsage;
+
 			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 			data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+			data.gpuDebugVertices3D = builder.Read(_gpuDebugVertices3D, BufferUsage::GRAPHICS);
+			data.gpuDebugVertices3DArgumentBuffer = builder.Read(_gpuDebugVertices3DArgumentBuffer, BufferUsage::GRAPHICS);
+			builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+			builder.Read(_debugVertices3D.GetBuffer(), BufferUsage::GRAPHICS);
 
 			data.globalSet = builder.Use(resources.globalDescriptorSet);
 			data.draw3DSet = builder.Use(_draw3DDescriptorSet);
@@ -267,9 +293,6 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 			_debugVertices3D.Clear(false);
 
 			// GPU side debug rendering
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToComputeShaderRead, _gpuDebugVertices3D);
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToVertexShaderRead, _gpuDebugVertices3D);
-			commandList.PipelineBarrier(Renderer::PipelineBarrierType::ComputeWriteToIndirectArguments, _gpuDebugVertices3DArgumentBuffer);
 			{
 				commandList.BeginPipeline(pipeline);
 
@@ -277,7 +300,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 				commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DIndirectSet, frameIndex);
 
 				// Draw
-				commandList.DrawIndirect(_gpuDebugVertices3DArgumentBuffer, 0, 1);
+				commandList.DrawIndirect(data.gpuDebugVertices3DArgumentBuffer, 0, 1);
 
 				commandList.EndPipeline(pipeline);
 			}
@@ -460,4 +483,14 @@ void DebugRenderer::DrawMatrix(const mat4x4& matrix, f32 scale)
 	DrawLine3D(origin, origin + (vec3(matrix[0].x, matrix[0].y, matrix[0].z) * scale), 0xff0000ff);
 	DrawLine3D(origin, origin + (vec3(matrix[1].x, matrix[1].y, matrix[1].z) * scale), 0xff00ff00);
 	DrawLine3D(origin, origin + (vec3(matrix[2].x, matrix[2].y, matrix[2].z) * scale), 0xffff0000);
+}
+
+void DebugRenderer::RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder)
+{
+	using BufferUsage = Renderer::BufferPassUsage;
+	builder.Write(_gpuDebugVertices2D, BufferUsage::COMPUTE);
+	builder.Write(_gpuDebugVertices2DArgumentBuffer, BufferUsage::COMPUTE);
+
+	builder.Write(_gpuDebugVertices3D, BufferUsage::COMPUTE);
+	builder.Write(_gpuDebugVertices3DArgumentBuffer, BufferUsage::COMPUTE);
 }

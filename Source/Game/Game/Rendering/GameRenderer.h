@@ -74,7 +74,7 @@ private:
 	InputManager* _inputManager = nullptr;
 	PixelQuery* _pixelQuery = nullptr;
 
-	Memory::StackAllocator* _frameAllocator;
+	Memory::StackAllocator* _frameAllocator[2];
 
 	u8 _frameIndex = 0;
 	RenderResources _resources;

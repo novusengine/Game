@@ -16,6 +16,7 @@ namespace Renderer
 {
 	class Renderer;
 	class RenderGraph;
+	class RenderGraphBuilder;
 	class RenderGraphResources;
 	class DescriptorSetResource;
 }
@@ -43,6 +44,7 @@ public:
 	u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
 
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
+	void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 	// Drawcall stats
 	u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded; }
@@ -68,15 +70,15 @@ private:
 		Renderer::ImageMutableResource visibilityBuffer;
 		Renderer::DepthImageMutableResource depth;
 
-		Renderer::BufferID instanceBuffer;
-		Renderer::BufferID argumentBuffer;
+		Renderer::BufferResource instanceBuffer;
+		Renderer::BufferResource argumentBuffer;
 
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
 
 		u32 argumentsIndex = 0;
 	};
-	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
+	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, DrawParams& params);
 
 private:
 	PRAGMA_NO_PADDING_START

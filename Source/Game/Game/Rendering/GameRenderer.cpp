@@ -158,7 +158,7 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
     // Reset the memory in the frameAllocator
-    _frameAllocator->Reset();
+    _frameAllocator[_frameIndex]->Reset();
 
     _skyboxRenderer->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
@@ -185,7 +185,7 @@ f32 GameRenderer::Render()
 
     // Create rendergraph
     Renderer::RenderGraphDesc renderGraphDesc;
-    renderGraphDesc.allocator = _frameAllocator; // We need to give our rendergraph an allocator to use
+    renderGraphDesc.allocator = _frameAllocator[_frameIndex]; // We need to give our rendergraph an allocator to use
     Renderer::RenderGraph renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
 
     f32 timeWaited = _renderer->FlipFrame(_frameIndex);
@@ -247,8 +247,12 @@ f32 GameRenderer::Render()
     renderGraph.AddPass<PyramidPassData>("PyramidPass",
         [=](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.depth = builder.Read(_resources.depth, Renderer::PipelineType::GRAPHICS);
             data.depthPyramid = builder.Write(_resources.depthPyramid, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Write(DepthPyramidUtils::_atomicBuffer, BufferUsage::COMPUTE);
 
             data.copyDescriptorSet = builder.Use(DepthPyramidUtils::_copyDescriptorSet);
             data.pyramidDescriptorSet = builder.Use(DepthPyramidUtils::_pyramidDescriptorSet);
@@ -444,8 +448,11 @@ void GameRenderer::CreatePermanentResources()
     {
         const size_t FRAME_ALLOCATOR_SIZE = 16 * 1024 * 1024; // 16 MB
 
-        _frameAllocator = new Memory::StackAllocator();
-        _frameAllocator->Init(FRAME_ALLOCATOR_SIZE);
+        for (u32 i = 0; i < 2; i++)
+        {
+            _frameAllocator[i] = new Memory::StackAllocator();
+            _frameAllocator[i]->Init(FRAME_ALLOCATOR_SIZE);
+        }
     }
 
     _resources.sceneRenderedSemaphore = _renderer->CreateNSemaphore();

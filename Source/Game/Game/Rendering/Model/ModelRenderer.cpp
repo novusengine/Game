@@ -114,6 +114,13 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource occluderFillSet;
         Renderer::DescriptorSetResource drawSet;
@@ -122,8 +129,25 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     renderGraph->AddPass<Data>("Model (O) Occluders",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.culledDrawCallsBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.culledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.drawCountBuffer = builder.Write(_opaqueCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.triangleCountBuffer = builder.Write(_opaqueCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.drawCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetOccluderDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+            data.triangleCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetOccluderTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.occluderFillSet = builder.Use(_opaqueCullingResources.GetOccluderFillDescriptorSet());
@@ -144,6 +168,13 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
             params.depth = data.depth;
+
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.globalDescriptorSet = data.globalSet;
             params.occluderFillDescriptorSet = data.occluderFillSet;
@@ -180,6 +211,15 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     {
         Renderer::ImageResource depthPyramid;
 
+        Renderer::BufferResource prevCulledDrawCallsBitMask;
+
+        Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
@@ -188,11 +228,29 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     renderGraph->AddPass<Data>("Model (O) Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            data.prevCulledDrawCallsBitMask = builder.Read(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_cullingDatas.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
+
+            data.currentCulledDrawCallsBitMask = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+            data.culledDrawCallsBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+            data.drawCountBuffer = builder.Write(_opaqueCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            data.triangleCountBuffer = builder.Write(_opaqueCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            data.drawCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+            data.triangleCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.cullingSet = builder.Use(_opaqueCullingResources.GetCullingDescriptorSet());
+
+            _debugRenderer->RegisterCullingPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -208,6 +266,15 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.frameIndex = frameIndex;
 
             params.depthPyramid = data.depthPyramid;
+
+            params.prevCulledDrawCallsBitMask = data.prevCulledDrawCallsBitMask;
+
+            params.currentCulledDrawCallsBitMask = data.currentCulledDrawCallsBitMask;
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.debugDescriptorSet = data.debugSet;
             params.globalDescriptorSet = data.globalSet;
@@ -242,6 +309,12 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource drawSet;
     };
@@ -249,8 +322,24 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     renderGraph->AddPass<Data>("Model (O) Geometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.culledDrawCallsBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+            data.drawCountBuffer = builder.Write(_opaqueCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+            data.triangleCountBuffer = builder.Write(_opaqueCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+            data.drawCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+            data.triangleCountReadBackBuffer = builder.Write(_opaqueCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.drawSet = builder.Use(_opaqueCullingResources.GetGeometryPassDescriptorSet());
@@ -270,6 +359,12 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
             params.depth = data.depth;
+
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.globalDescriptorSet = data.globalSet;
             params.drawDescriptorSet = data.drawSet;
@@ -306,6 +401,12 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     {
         Renderer::ImageResource depthPyramid;
 
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
@@ -314,11 +415,28 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     renderGraph->AddPass<Data>("Model (T) Culling",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
+            ZoneScoped;
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_cullingDatas.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
+
+            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+            data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+            data.triangleCountReadBackBuffer = builder.Write(_transparentCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.cullingSet = builder.Use(_transparentCullingResources.GetCullingDescriptorSet());
+
+            _debugRenderer->RegisterCullingPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -334,6 +452,12 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.frameIndex = frameIndex;
 
             params.depthPyramid = data.depthPyramid;
+
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.debugDescriptorSet = data.debugSet;
             params.globalDescriptorSet = data.globalSet;
@@ -370,6 +494,12 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         Renderer::ImageMutableResource transparencyWeights;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource drawSet;
     };
@@ -377,9 +507,26 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
     renderGraph->AddPass<Data>("Model (T) Geometry",
         [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
+            using BufferUsage = Renderer::BufferPassUsage;
+
             data.transparency = builder.Write(resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
             data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+            data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+            data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+            data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+            data.triangleCountReadBackBuffer = builder.Write(_transparentCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.drawSet = builder.Use(_transparentCullingResources.GetGeometryPassDescriptorSet());
@@ -401,6 +548,12 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             params.rt1 = data.transparencyWeights;
             params.depth = data.depth;
 
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
+
             params.globalDescriptorSet = data.globalSet;
             params.drawDescriptorSet = data.drawSet;
 
@@ -415,6 +568,18 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             GeometryPass(params);
         });
+}
+
+void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder)
+{
+    using BufferUsage = Renderer::BufferPassUsage;
+
+    builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_vertices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_indices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_textureUnits.GetBuffer(), BufferUsage::COMPUTE);
+    
 }
 
 u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)

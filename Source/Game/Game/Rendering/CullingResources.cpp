@@ -170,9 +170,9 @@ void CullingResourcesBase::SyncToGPU()
                     desc.name = _bufferNamePrefix + "CulledDrawCallBuffer" + std::to_string(i);
 
                     _culledDrawCallsBuffer[i] = _renderer->CreateBuffer(_culledDrawCallsBuffer[i], desc);
-                    _cullingDescriptorSet.BindArray("_culledDrawCalls"_h, _culledDrawCallsBuffer[i], i);
+                    
                 }
-
+                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
                 _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
             }
 

@@ -37,8 +37,8 @@ protected:
 		Renderer::ImageMutableResource rt1;
 		Renderer::DepthImageMutableResource depth;
 
-		Renderer::BufferID argumentBuffer;
-		Renderer::BufferID drawCountBuffer;
+		Renderer::BufferMutableResource argumentBuffer;
+		Renderer::BufferMutableResource drawCountBuffer;
 
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
@@ -70,6 +70,13 @@ protected:
 		Renderer::ImageMutableResource rt1;
 		Renderer::DepthImageMutableResource depth;
 
+		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+		Renderer::BufferMutableResource drawCountBuffer;
+		Renderer::BufferMutableResource triangleCountBuffer;
+		Renderer::BufferMutableResource drawCountReadBackBuffer;
+		Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource occluderFillDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
@@ -84,6 +91,15 @@ protected:
 	struct CullingPassParams : public PassParams
 	{
 		Renderer::ImageResource depthPyramid;
+
+		Renderer::BufferResource prevCulledDrawCallsBitMask;
+
+		Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
+		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource drawCountBuffer;
+		Renderer::BufferMutableResource triangleCountBuffer;
+		Renderer::BufferMutableResource drawCountReadBackBuffer;
+		Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
 		Renderer::DescriptorSetResource debugDescriptorSet;
 		Renderer::DescriptorSetResource globalDescriptorSet;
@@ -105,6 +121,12 @@ protected:
 		Renderer::ImageMutableResource rt0;
 		Renderer::ImageMutableResource rt1;
 		Renderer::DepthImageMutableResource depth;
+
+		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource drawCountBuffer;
+		Renderer::BufferMutableResource triangleCountBuffer;
+		Renderer::BufferMutableResource drawCountReadBackBuffer;
+		Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;

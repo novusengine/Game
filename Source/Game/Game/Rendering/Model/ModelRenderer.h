@@ -109,6 +109,7 @@ public:
 	void AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
+	void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 	Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
 	std::vector<ModelManifest> GetModelManifests() { return _modelManifests; }
