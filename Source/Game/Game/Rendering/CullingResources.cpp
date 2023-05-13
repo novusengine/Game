@@ -198,3 +198,9 @@ void CullingResourcesBase::Grow(u32 growthSize)
 {
     _drawCalls.Grow(growthSize);
 }
+
+void CullingResourcesBase::FitBuffersAfterLoad()
+{
+    u32 numDrawCalls = _drawCallsIndex.load();
+    _drawCalls.Resize(numDrawCalls);
+}

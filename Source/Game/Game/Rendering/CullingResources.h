@@ -25,6 +25,7 @@ public:
     virtual void SyncToGPU();
     virtual void Clear();
     virtual void Grow(u32 growthSize);
+    virtual void FitBuffersAfterLoad();
 
     Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
     std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
@@ -91,7 +92,7 @@ template<class T>
 class CullingResources : public CullingResourcesBase
 {
 public:
-	void Init(InitParams& params)
+	void Init(InitParams& params) override
 	{
         CullingResourcesBase::Init(params);
 
@@ -102,7 +103,7 @@ public:
         SyncToGPU();
 	}
 
-	void SyncToGPU()
+	void SyncToGPU() override
 	{
         CullingResourcesBase::SyncToGPU();
 
@@ -118,16 +119,23 @@ public:
         }
 	}
 
-    void Clear()
+    void Clear() override
     {
         CullingResourcesBase::Clear();
         _drawCallDatas.Clear();
     }
 
-    void Grow(u32 growthSize)
+    void Grow(u32 growthSize) override
     {
         CullingResourcesBase::Grow(growthSize);
         _drawCallDatas.Grow(growthSize);
+    }
+
+    void FitBuffersAfterLoad() override
+    {
+        CullingResourcesBase::FitBuffersAfterLoad();
+        u32 numDrawCalls = _drawCallsIndex.load();
+        _drawCallDatas.Resize(numDrawCalls);
     }
 
     Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }

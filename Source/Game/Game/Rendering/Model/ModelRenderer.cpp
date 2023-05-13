@@ -58,6 +58,8 @@ void ModelRenderer::Update(f32 deltaTime)
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);
     _transparentCullingResources.Update(deltaTime, cullingEnabled);
+
+    SyncToGPU();
 }
 
 void ModelRenderer::Clear()
@@ -95,8 +97,6 @@ void ModelRenderer::Clear()
 void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     ZoneScoped;
-
-    SyncToGPU();
 
     if (!CVAR_ModelRendererEnabled.Get())
         return;
@@ -282,7 +282,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.cullingDescriptorSet = data.cullingSet;
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
-            params.occlusionCull = true;
+            params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.debugDrawColliders = CVAR_ModelDrawOpaqueAABBs.Get();
 
             params.instanceIDOffset = offsetof(DrawCallData, instanceID);
@@ -466,7 +466,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.cullingDescriptorSet = data.cullingSet;
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
-            params.occlusionCull = false;
+            params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
             params.debugDrawColliders = CVAR_ModelDrawTransparentAABBs.Get();
 
@@ -608,13 +608,34 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     _indices.Grow(reserveInfo.numIndices);
 
     _instanceDatas.Grow(reserveInfo.numInstances);
-
     _instanceMatrices.Grow(reserveInfo.numInstances);
 
     _textureUnits.Grow(reserveInfo.numTextureUnits);
 
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
+}
+
+void ModelRenderer::FitBuffersAfterLoad()
+{
+    u32 numModelsUsed = _modelManifestsIndex.load();
+    _cullingDatas.Resize(numModelsUsed);
+
+    u32 numVerticesUsed = _verticesIndex.load();
+    _vertices.Resize(numVerticesUsed);
+
+    u32 numIndicesUsed = _indicesIndex.load();
+    _indices.Resize(numIndicesUsed);
+
+    u32 numInstancesUsed = _instanceIndex.load();
+    _instanceDatas.Resize(numInstancesUsed);
+    _instanceMatrices.Resize(numInstancesUsed);
+
+    u32 numTextureUnitsUsed = _textureUnitIndex.load();
+    _textureUnits.Resize(numTextureUnitsUsed);
+
+    _opaqueCullingResources.FitBuffersAfterLoad();
+    _transparentCullingResources.FitBuffersAfterLoad();
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -633,9 +654,11 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     modelManifest.debugName = name;
 
     // Add CullingData
-    std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
-    Model::ComplexModel::CullingData& cullingData = cullingDatas[modelManifestIndex];
-    cullingData = model.cullingData;
+    {
+        std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
+        Model::ComplexModel::CullingData& cullingData = cullingDatas[modelManifestIndex];
+        cullingData = model.cullingData;
+    }
 
     // Add vertices
     {

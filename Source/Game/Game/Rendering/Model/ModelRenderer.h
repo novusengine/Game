@@ -5,7 +5,7 @@
 #include <Base/Types.h>
 #include <Base/Math/Geometry.h>
 
-#include <FileFormat/Warcraft/Shared.h>
+#include <FileFormat/Shared.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <Renderer/DescriptorSet.h>
@@ -98,6 +98,7 @@ public:
 	void Clear();
 
 	void Reserve(const ReserveInfo& reserveInfo);
+	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
 	u32 AddInstance(u32 modelID, const Terrain::Placement& placement);
 

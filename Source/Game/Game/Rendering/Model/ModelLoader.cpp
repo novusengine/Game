@@ -233,6 +233,8 @@ void ModelLoader::Update(f32 deltaTime)
 
 				if (!didLoad)
 					continue;
+
+
 			}
 
 			AddInstance(request);
@@ -242,6 +244,8 @@ void ModelLoader::Update(f32 deltaTime)
 	// Execute the multithreaded job
 	_scheduler.AddTaskSetToPipe(&loadModelsTask);
 	_scheduler.WaitforTask(&loadModelsTask);
+
+	_modelRenderer->FitBuffersAfterLoad();
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)

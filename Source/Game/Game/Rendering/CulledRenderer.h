@@ -4,7 +4,7 @@
 #include <Base/Types.h>
 #include <Base/Math/Geometry.h>
 
-#include <FileFormat/Warcraft/Shared.h>
+#include <FileFormat/Shared.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <Renderer/DescriptorSetResource.h>
