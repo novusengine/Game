@@ -25,7 +25,7 @@ namespace Editor
 
 		virtual void EndImGui() {};
 
-		bool IsHorizontal() { return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight()); }; // 'ive added this one
+		bool IsHorizontal() { return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight()); };
 		bool IsVisible() { return _isVisible; }
 		void SetIsVisible(bool isVisible);
 		void Reset() { _isVisible = _defaultVisible; }
