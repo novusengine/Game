@@ -12,7 +12,7 @@ bool FakeScrollingArea::Before()
     int firstVisibleRow = static_cast<int>(scrollPosition / _itemSize.y);
     _lastVisibleRow = static_cast<int>((scrollPosition + viewportHeight) / _itemSize.y);
 
-    firstVisibleRow = std::max(0, firstVisibleRow);
+    firstVisibleRow = std::max(0, firstVisibleRow - 1);
     _lastVisibleRow = std::min(_totalRows - 1, _lastVisibleRow);
 
     _firstVisibleItem = firstVisibleRow * itemsPerRow;
@@ -20,7 +20,7 @@ bool FakeScrollingArea::Before()
 
     if (_firstVisibleItem > 0)
     {
-        ImGui::Dummy(ImVec2(0, (float)firstVisibleRow * _itemSize.y));
+        ImGui::Dummy(ImVec2(0, (float)(firstVisibleRow) * _itemSize.y));
     }
 
     if (_firstVisibleItem <= _totalItems)
@@ -37,6 +37,11 @@ void FakeScrollingArea::After()
     if (_lastVisibleItem < _totalItems - 1)
     {
         int remainingRows = _totalRows - _lastVisibleRow - 1;
-        ImGui::Dummy(ImVec2(0, (float)(remainingRows + 2) * _itemSize.y));
+        ImGui::Dummy(ImVec2(0, (float)(remainingRows) * _itemSize.y));
+    }
+    else
+    {
+        // little padding at the end
+        ImGui::Dummy(ImVec2(0, _itemSize.y));
     }
 }
