@@ -284,11 +284,6 @@ namespace Editor
         }
     }
 
-    bool AssetBrowser::IsHorizontal()
-    {
-        return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight());
-    }
-
     bool AssetBrowser::CanDisplayMore(ImVec2 size)
     {
         float posX = ImGui::GetCursorPosX();

@@ -1,6 +1,4 @@
 #include "BaseEditor.h"
-#include <imgui/imgui.h>
-#include <imgui/imgui_internal.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
 

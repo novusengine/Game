@@ -61,7 +61,6 @@ namespace Editor
         void CalculateAverageFontWidth();
         void ProcessTree(TreeNode *sourceProcess);
         void BuildTreeView(TreeNode *node, bool expand = false);
-        [[nodiscard]] static bool IsHorizontal();
 
         void DrawFolderSection(float heightConstraint);
         void DrawFileSection(float heightConstraint);
