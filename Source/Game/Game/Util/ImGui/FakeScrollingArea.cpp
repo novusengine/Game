@@ -42,6 +42,6 @@ void FakeScrollingArea::After()
     else
     {
         // little padding at the end
-        ImGui::Dummy(ImVec2(0, _itemSize.y));
+        ImGui::Dummy(ImVec2(0, _itemSize.y * 2.f));
     }
 }
