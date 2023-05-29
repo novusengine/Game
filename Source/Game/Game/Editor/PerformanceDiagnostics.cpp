@@ -634,14 +634,35 @@ namespace Editor
 
         if (isCollapsed)
         {
-            ImGui::SameLine(textPos);
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
+            {
+                ImGui::SameLine(textPos);
+            }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
+            }
+
             ImGui::Text("%s", str);
         }
         else
         {
             ImGui::Separator();
             ImGui::Text("%.*s:", name.length(), name.data());
-            ImGui::SameLine(textPos);
+
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
+            {
+                ImGui::SameLine(textPos);
+            }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
+            }
+
             ImGui::Text("%s", str);
         }
     }
