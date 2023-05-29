@@ -1,6 +1,11 @@
 #pragma once
 #include "BaseEditor.h"
 
+#include <Game/Rendering/GameRenderer.h>
+#include <Game/ECS/Singletons/EngineStats.h>
+
+#include <imgui/imgui.h>
+
 #include <string_view>
 
 class CullingResourcesBase;
@@ -24,6 +29,12 @@ namespace Editor
 		void DrawCullingResourcesTriangle(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool showView, bool viewSupportsOcclusionCulling, u32& viewTriangles, u32& viewTrianglesSurvived);
 
 		void DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls, bool isCollapsed);
+
+		void DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numCascades);
+		void DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numCascades);
+		void DrawFrameTimes(f32 constraint, const ECS::Singletons::EngineStats::Frame& average, const ImGuiTableFlags& flags);
+		void DrawRenderPass(f32 constraint, Renderer::Renderer* renderer, ECS::Singletons::EngineStats& stats, const ImGuiTableFlags& flags);
+		void DrawFrameTimesGraph(f32 constraint, const ECS::Singletons::EngineStats& stats);
 
 	private:
 		bool _drawCallStatsOnlyForMainView = true;
