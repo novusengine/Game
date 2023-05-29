@@ -33,7 +33,7 @@ if (scrollingArea.Before())
 class FakeScrollingArea
 {
 public:
-    FakeScrollingArea(ImVec2 itemSize, int totalItems)
+    FakeScrollingArea(ImVec2 itemSize, i32 totalItems)
         : _itemSize(itemSize), _totalItems(totalItems),
           _beforeIsHandled(false)
     {}
@@ -41,20 +41,18 @@ public:
     [[nodiscard]] bool Before();
     void After();
 
-    [[nodiscard]] int GetFirstVisibleItem() const
-    { return _firstVisibleItem; }
-    [[nodiscard]] int GetLastVisibleItem() const
-    { return _lastVisibleItem; }
+    [[nodiscard]] i32 GetFirstVisibleItem() const { return _firstVisibleItem; }
+    [[nodiscard]] i32 GetLastVisibleItem() const { return _lastVisibleItem; }
 
 private:
     bool _beforeIsHandled;
 
     ImVec2 _itemSize;
-    int _totalItems;
+    i32 _totalItems;
 
-    int _totalRows = -1;
-    int _firstVisibleItem = -1;
-    int _lastVisibleItem = -1;
-    int _lastVisibleRow = -1;
+    i32 _totalRows = -1;
+    i32 _firstVisibleItem = -1;
+    i32 _lastVisibleItem = -1;
+    i32 _lastVisibleRow = -1;
 };
 

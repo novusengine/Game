@@ -1,7 +1,9 @@
 #include "AssetBrowser.h"
 
-#include <Base/Util/DebugHandler.h>
 #include <Game/Util/ImGui/FakeScrollingArea.h>
+
+#include <Base/Util/DebugHandler.h>
+#include <Base/Util/StringUtils.h>
 
 namespace Editor
 {
@@ -36,8 +38,8 @@ namespace Editor
             if (!_defaultImageHandle)
             {
                 Renderer::TextureDesc textureDesc;
-                textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds"; // need to have a default image ??
-                auto textureID = _renderer->LoadTexture(textureDesc);
+                textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds";
+                Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
                 _defaultImageHandle = _renderer->GetImguiImageHandle(textureID);
             }
 
@@ -51,7 +53,6 @@ namespace Editor
             }
             ImGui::Separator();
 
-            // docked from bottom / top / default
             if (IsHorizontal())
             {
                 f32 maxHeight = ImGui::GetContentRegionAvail().y * 0.9f;
@@ -75,20 +76,19 @@ namespace Editor
         ImGui::End();
     }
 
-    void AssetBrowser::DrawFolderSection(float heightConstraint)
+    void AssetBrowser::DrawFolderSection(f32 heightConstraint)
     {
         ImGui::Text("Directory");
 
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1, -1), ImVec2(-1, heightConstraint));
-        if (ImGui::BeginChild(
-            "##DirectoryScrolling", ImVec2(0, heightConstraint), true, ImGuiWindowFlags_HorizontalScrollbar))
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1, heightConstraint));
+        if (ImGui::BeginChild("##DirectoryScrolling", ImVec2(0, heightConstraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             BuildTreeView(_tree, true);
             ImGui::EndChild();
         }
     }
 
-    void AssetBrowser::DrawFileSection(float heightConstraint)
+    void AssetBrowser::DrawFileSection(f32 heightConstraint)
     {
         if (_currentNode)
         {
@@ -117,7 +117,7 @@ namespace Editor
                 sliderFlag = ImGuiSliderFlags_NoInput;
             }
 
-            static float displaySize = _defaultDisplayValue;
+            static f32 displaySize = _defaultDisplayValue;
             ImGui::PushItemWidth(150.f);
             ImGui::SliderFloat("##", &displaySize, _minDisplayScale, _maxDisplaySize, "Size x%.2f", sliderFlag);
             ImGui::PopItemWidth();
@@ -135,8 +135,7 @@ namespace Editor
             ImGui::PopItemWidth();
 
             ImGui::SetNextWindowSizeConstraints(ImVec2(-1, -1), ImVec2(-1, heightConstraint));
-            if (ImGui::BeginChild(
-                "##FileScrolling", ImVec2(0, heightConstraint), true, ImGuiWindowFlags_HorizontalScrollbar))
+            if (ImGui::BeginChild("##FileScrolling", ImVec2(0, heightConstraint), true, ImGuiWindowFlags_HorizontalScrollbar))
             {
                 if (!_currentNode->Files.empty())
                 {
@@ -144,20 +143,19 @@ namespace Editor
 
                     if (useFileRow)
                     {
-                        auto itemSize = ImVec2(
-                            ImGui::GetWindowContentRegionWidth(),
+                        ImVec2 itemSize(ImGui::GetWindowContentRegionWidth(),
                             ImGui::GetStyle().FramePadding.y * 2 + ImGui::GetTextLineHeightWithSpacing());
 
-                        FakeScrollingArea scrollingArea(itemSize, (int)_searchedFiles.size());
+                        FakeScrollingArea scrollingArea(itemSize, (i32)_searchedFiles.size());
                         if (scrollingArea.Before())
                         {
-                            auto firstItem = scrollingArea.GetFirstVisibleItem();
-                            auto lastItem = scrollingArea.GetLastVisibleItem();
+                            i32 firstItem = scrollingArea.GetFirstVisibleItem();
+                            i32 lastItem = scrollingArea.GetLastVisibleItem();
 
                             auto ite = _searchedFiles.begin();
                             std::advance(ite, firstItem);
 
-                            for (int i = firstItem; i <= lastItem; i++, ite++)
+                            for (i32 i = firstItem; i <= lastItem; i++, ite++)
                             {
                                 RowFileMode(*ite);
                             }
@@ -167,20 +165,17 @@ namespace Editor
                     }
                     else
                     {
-                        auto itemSize = ImVec2(
-                            realDisplaySize.x,
-                            (realDisplaySize.y + ImGui::CalcTextSize("DUMMY").y) * 1.1f);
-
-                        FakeScrollingArea scrollingArea(itemSize, (int)_searchedFiles.size());
+                        ImVec2 itemSize(realDisplaySize.x, (realDisplaySize.y + ImGui::CalcTextSize("DUMMY").y) * 1.1f);
+                        FakeScrollingArea scrollingArea(itemSize, (i32)_searchedFiles.size());
                         if (scrollingArea.Before())
                         {
-                            auto firstItem = scrollingArea.GetFirstVisibleItem();
-                            auto lastItem = scrollingArea.GetLastVisibleItem();
+                            i32 firstItem = scrollingArea.GetFirstVisibleItem();
+                            i32 lastItem = scrollingArea.GetLastVisibleItem();
 
                             auto ite = _searchedFiles.begin();
                             std::advance(ite, firstItem);
 
-                            for (int i = firstItem; i <= lastItem; i++, ite++)
+                            for (i32 i = firstItem; i <= lastItem; i++, ite++)
                             {
                                 const fs::path &item = *ite;
                                 ProcessDisplayRendering(item, i);
@@ -197,29 +192,29 @@ namespace Editor
         }
     }
 
-    void AssetBrowser::ItemClicked(const fs::path &/*item*/)
+    void AssetBrowser::ItemClicked(const fs::path& /*item*/)
     {
 
     }
 
-    void AssetBrowser::ItemHovered(const fs::path &/*item*/)
+    void AssetBrowser::ItemHovered(const fs::path& /*item*/)
     {
 
     }
 
     void AssetBrowser::CalculateAverageFontWidth()
     {
-        const ImWchar *glyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesDefault();
+        const ImWchar* glyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesDefault();
 
-        float totalWidth = 0.0f;
-        int glyphCount = 0;
+        f32 totalWidth = 0.0f;
+        i32 glyphCount = 0;
 
-        ImFont *font = ImGui::GetFont();
-        for (int i = 0; i < 65536; i++)
+        ImFont* font = ImGui::GetFont();
+        for (i32 i = 0; i < 65536; i++)
         {
             if (glyphRanges[i / 64] & (1 << (i % 64)))
             {
-                const ImFontGlyph *glyph = font->FindGlyph((ImWchar)i);
+                const ImFontGlyph* glyph = font->FindGlyph((ImWchar)i);
                 if (glyph)
                 {
                     totalWidth += glyph->AdvanceX;
@@ -228,22 +223,22 @@ namespace Editor
             }
         }
 
-        _averageFontWidth = (glyphCount > 0) ? (totalWidth / (float)glyphCount) : 1.f;
+        _averageFontWidth = (glyphCount > 0) ? (totalWidth / (f32)glyphCount) : 1.f;
     }
 
-    void AssetBrowser::ProcessTree(TreeNode *sourceProcess)
+    void AssetBrowser::ProcessTree(TreeNode* sourceProcess)
     {
         if (sourceProcess->FolderPath.empty())
             return;
 
-        for (const auto &item : fs::directory_iterator(sourceProcess->FolderPath))
+        for (const auto& item : fs::directory_iterator(sourceProcess->FolderPath))
         {
-            const auto &itemPath = item.path();
+            const auto& itemPath = item.path();
             if (fs::is_directory(itemPath))
             {
-                auto *Child = new TreeNode(itemPath);
-                sourceProcess->Folders.push_back(Child);
-                ProcessTree(Child);
+                auto* child = new TreeNode(itemPath);
+                sourceProcess->Folders.push_back(child);
+                ProcessTree(child);
             }
             else
             {
@@ -252,7 +247,7 @@ namespace Editor
         }
     }
 
-    void AssetBrowser::BuildTreeView(TreeNode *node, bool expand)
+    void AssetBrowser::BuildTreeView(TreeNode* node, bool expand)
     {
         std::string nodeName = node->FolderPath.filename().string();
         // display how many files a folder have
@@ -276,7 +271,7 @@ namespace Editor
                 _imagesSize.clear();
             }
 
-            for (const auto &folder : node->Folders)
+            for (const auto& folder : node->Folders)
             {
                 BuildTreeView(folder);
             }
@@ -286,13 +281,13 @@ namespace Editor
 
     bool AssetBrowser::CanDisplayMore(ImVec2 size)
     {
-        float posX = ImGui::GetCursorPosX();
-        float availableX = ImGui::GetWindowContentRegionWidth();
+        f32 posX = ImGui::GetCursorPosX();
+        f32 availableX = ImGui::GetWindowContentRegionWidth();
 
         return ((availableX - posX) > size.x);
     }
 
-    void AssetBrowser::RowFileMode(const fs::path &item)
+    void AssetBrowser::RowFileMode(const fs::path& item)
     {
         if (ImGui::Button(item.filename().string().c_str()))
         {
@@ -305,40 +300,42 @@ namespace Editor
     }
 
     void
-    AssetBrowser::DisplayFileMode(ImTextureID imageTexture, ImVec2 size, float scale, const fs::path &item, float fontWidth)
+    AssetBrowser::DisplayFileMode(ImTextureID imageTexture, ImVec2 size, f32 scale, const fs::path& item, f32 fontWidth)
     {
         const ImVec2 defaultSize(_defaultDisplaySize.x * scale, _defaultDisplaySize.y * scale); // need to be a square !
-        ImGui::BeginGroup();
-
-        auto itemName = item.filename().string();
-        auto ellipsedText = EllipsisText(itemName.c_str(), defaultSize.x, fontWidth);
-        float textHeight = ImGui::CalcTextSize(ellipsedText.c_str()).y;
+        std::string itemName = item.filename().string();
+        std::string ellipsedText = EllipsisText(itemName.c_str(), defaultSize.x, fontWidth);
+        f32 textHeight = ImGui::CalcTextSize(ellipsedText.c_str()).y;
         ImVec2 buttonSize = ImVec2(defaultSize.x * 1.1f, (defaultSize.y + textHeight) * 1.1f);
+        ImVec2 cursorPos, endCursorPos;
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-        auto cursorPos = ImGui::GetCursorPos();
-        if (ImGui::Button("##", buttonSize)) // background button
+        ImGui::BeginGroup();
         {
-            ItemClicked(item);
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
+            cursorPos = ImGui::GetCursorPos();
+            if (ImGui::Button("##", buttonSize)) // background button
+            {
+                ItemClicked(item);
+            }
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip("%s", itemName.c_str());
+                ItemHovered(item);
+            }
+            endCursorPos = ImGui::GetCursorPos();
+            ImGui::PopStyleVar();
+
+            CalculateAspectRatio(size, defaultSize);
+
+            ImVec2 imagePos = ImVec2((buttonSize.x - size.x) * 0.5f + cursorPos.x,
+                ((buttonSize.y - textHeight) - size.y) * 0.5f + cursorPos.y);
+
+            ImGui::SetCursorPos(imagePos);
+            ImGui::Image(imageTexture, size);
+            ImGui::SetCursorPosX((buttonSize.x - defaultSize.x) * 0.5f + cursorPos.x);
+            ImGui::SetCursorPosY(defaultSize.y + cursorPos.y + ImGui::GetStyle().FramePadding.y * 2.5f * scale);
+            ImGui::Text("%s", ellipsedText.c_str());
         }
-        if (ImGui::IsItemHovered())
-        {
-            ImGui::SetTooltip("%s", itemName.c_str());
-            ItemHovered(item);
-        }
-        auto endCursorPos = ImGui::GetCursorPos();
-        ImGui::PopStyleVar();
-
-        CalculateAspectRatio(size, defaultSize);
-
-        ImVec2 imagePos = ImVec2((buttonSize.x - size.x) * 0.5f + cursorPos.x,
-            ((buttonSize.y - textHeight) - size.y) * 0.5f + cursorPos.y);
-        ImGui::SetCursorPos(imagePos);
-        ImGui::Image(imageTexture, size);
-        ImGui::SetCursorPosX((buttonSize.x - defaultSize.x) * 0.5f + cursorPos.x);
-        ImGui::SetCursorPosY(defaultSize.y + cursorPos.y + ImGui::GetStyle().FramePadding.y * 2.5f * scale);
-        ImGui::Text("%s", ellipsedText.c_str());
-
         ImGui::EndGroup();
 
         ImGui::SetCursorPos(endCursorPos);
@@ -347,20 +344,20 @@ namespace Editor
             ImGui::NewLine();
     }
 
-    void AssetBrowser::ProcessDisplayRendering(const fs::path &item, i32 i)
+    void AssetBrowser::ProcessDisplayRendering(const fs::path& item, i32 i)
     {
-        auto ext = item.extension().string();
+        std::string extension = item.extension().string();
 
-        if (IsTexture(ext))
+        if (IsTexture(extension))
         {
             if (!_images[i])
             {
                 Renderer::TextureDesc textureDesc;
                 textureDesc.path = item.string();
-                auto textureID = _renderer->LoadTexture(textureDesc);
+                Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
                 _images[i] = _renderer->GetImguiImageHandle(textureID);
-                _imagesSize[i] = ImVec2((float)_renderer->GetTextureWidth(textureID),
-                    (float)_renderer->GetTextureHeight(textureID));
+                _imagesSize[i] = ImVec2((f32)_renderer->GetTextureWidth(textureID),
+                    (f32)_renderer->GetTextureHeight(textureID));
             }
 
             _currentImage = _images[i];
@@ -372,11 +369,11 @@ namespace Editor
         _currentSize = _defaultDisplaySize;
     }
 
-    void AssetBrowser::CalculateAspectRatio(ImVec2 &size, const ImVec2 ref)
+    void AssetBrowser::CalculateAspectRatio(ImVec2& size, const ImVec2 ref)
     {
         bool inverse = true;
-        float max = size.y;
-        float min = size.x;
+        f32 max = size.y;
+        f32 min = size.x;
 
         if (size.x >= size.y)
         {
@@ -385,7 +382,7 @@ namespace Editor
             inverse = false;
         }
 
-        float ratio = max / ref.x;
+        f32 ratio = max / ref.x;
 
         // if the texture is too small,
         // the resize ratio is blocked at x2.5
@@ -408,35 +405,17 @@ namespace Editor
         }
     }
 
-    bool AssetBrowser::SearchString(const std::string &ref, const std::string &key, bool insensitive)
+    bool AssetBrowser::IsTexture(const std::string& ref)
     {
-        std::string str = ref;
-        std::string substr = key;
-
-        if (insensitive)
-        {
-            std::transform(
-                str.begin(), str.end(), str.begin(), [](unsigned char c)
-                { return std::tolower(c); });
-            std::transform(
-                substr.begin(), substr.end(), substr.begin(), [](unsigned char c)
-                { return std::tolower(c); });
-        }
-
-        return (str.find(substr) != std::string::npos);
+        return StringUtils::SearchString(ref, ".dds", true);
     }
 
-    bool AssetBrowser::IsTexture(const std::string &ref)
-    {
-        return (ref == ".dds");
-    }
-
-    std::string AssetBrowser::EllipsisText(const char *ref, float width, float fontWidth)
+    std::string AssetBrowser::EllipsisText(const char* ref, f32 width, f32 fontWidth)
     {
         ImVec2 textSize = ImGui::CalcTextSize(ref);
         if (textSize.x > width)
         {
-            float ellipsisWidth = ImGui::CalcTextSize("...").x;
+            f32 ellipsisWidth = ImGui::CalcTextSize("...").x;
             int maxCharacters = static_cast<int>((width - ellipsisWidth) / (fontWidth * 1.1f));
             return (std::string(ref).substr(0, maxCharacters - 1) + "...");
         }
@@ -444,7 +423,7 @@ namespace Editor
         return ref;
     }
 
-    void AssetBrowser::ProcessFileSearch(const std::string &search)
+    void AssetBrowser::ProcessFileSearch(const std::string& search)
     {
         if (_searchedString != search)
         {
@@ -459,9 +438,9 @@ namespace Editor
                 _searchedFiles.reserve(temp.size());
 
                 _searchedString = search;
-                for (auto &file : temp)
+                for (auto& file : temp)
                 {
-                    if (SearchString(file.filename().string(), _searchedString, true))
+                    if (StringUtils::SearchString(file.filename().string(), _searchedString, true))
                     {
                         _searchedFiles.emplace_back(file);
                     }
@@ -474,9 +453,9 @@ namespace Editor
                 _searchedFiles.reserve(_currentNode->Files.size());
 
                 _searchedString = search;
-                for (auto &file : _currentNode->Files)
+                for (auto& file : _currentNode->Files)
                 {
-                    if (SearchString(file.filename().string(), _searchedString, true))
+                    if (StringUtils::SearchString(file.filename().string(), _searchedString, true))
                     {
                         _searchedFiles.emplace_back(file);
                     }
