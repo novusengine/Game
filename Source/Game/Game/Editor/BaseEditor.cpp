@@ -1,8 +1,8 @@
 #include "BaseEditor.h"
-#include <imgui/imgui.h>
-#include <imgui/imgui_internal.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
+
+#include <imgui/imgui.h>
 
 namespace Editor
 {
@@ -44,6 +44,11 @@ namespace Editor
 			cvarSystem->MarkDirty();
 		}
 		_lastIsVisible = _isVisible;
+	}
+
+	bool BaseEditor::IsHorizontal()
+	{
+		return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight());
 	}
 
 	void BaseEditor::SetIsVisible(bool isVisible)
