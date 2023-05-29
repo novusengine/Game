@@ -147,7 +147,7 @@ namespace Editor
                         ImVec2 itemSize(ImGui::GetWindowContentRegionWidth(),
                             ImGui::GetStyle().FramePadding.y * 2 + ImGui::GetTextLineHeightWithSpacing());
 
-                        FakeScrollingArea scrollingArea(itemSize, static_cast<f32>(_searchedFiles.size()));
+                        FakeScrollingArea scrollingArea(itemSize, static_cast<i32>(_searchedFiles.size()));
                         if (scrollingArea.Before())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
@@ -167,7 +167,7 @@ namespace Editor
                     else
                     {
                         ImVec2 itemSize(realDisplaySize.x, (realDisplaySize.y + ImGui::CalcTextSize("DUMMY").y) * 1.1f);
-                        FakeScrollingArea scrollingArea(itemSize, static_cast<f32>(_searchedFiles.size()));
+                        FakeScrollingArea scrollingArea(itemSize, static_cast<i32>(_searchedFiles.size()));
                         if (scrollingArea.Before())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
