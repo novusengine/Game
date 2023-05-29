@@ -1,9 +1,6 @@
 #pragma once
-#include <imgui/imgui.h>
 
-#include <vector>
-#include <iostream>
-#include <functional>
+#include <imgui/imgui.h>
 
 /*
  		This little class just handle all items that aren't visible in a scrolling area

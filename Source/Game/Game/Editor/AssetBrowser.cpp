@@ -9,7 +9,8 @@ namespace Editor
 {
     AssetBrowser::AssetBrowser()
         : BaseEditor(GetName(), true),
-          _tree(nullptr), _currentNode(nullptr)
+          _tree(nullptr),
+          _currentNode(nullptr)
     {
         fs::path relativeDataPath = fs::absolute("Data");
         if (!fs::is_directory(relativeDataPath))
@@ -146,7 +147,7 @@ namespace Editor
                         ImVec2 itemSize(ImGui::GetWindowContentRegionWidth(),
                             ImGui::GetStyle().FramePadding.y * 2 + ImGui::GetTextLineHeightWithSpacing());
 
-                        FakeScrollingArea scrollingArea(itemSize, (i32)_searchedFiles.size());
+                        FakeScrollingArea scrollingArea(itemSize, static_cast<f32>(_searchedFiles.size()));
                         if (scrollingArea.Before())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
@@ -166,7 +167,7 @@ namespace Editor
                     else
                     {
                         ImVec2 itemSize(realDisplaySize.x, (realDisplaySize.y + ImGui::CalcTextSize("DUMMY").y) * 1.1f);
-                        FakeScrollingArea scrollingArea(itemSize, (i32)_searchedFiles.size());
+                        FakeScrollingArea scrollingArea(itemSize, static_cast<f32>(_searchedFiles.size()));
                         if (scrollingArea.Before())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
@@ -214,7 +215,7 @@ namespace Editor
         {
             if (glyphRanges[i / 64] & (1 << (i % 64)))
             {
-                const ImFontGlyph* glyph = font->FindGlyph((ImWchar)i);
+                const ImFontGlyph* glyph = font->FindGlyph(static_cast<ImWchar>(i));
                 if (glyph)
                 {
                     totalWidth += glyph->AdvanceX;
@@ -223,7 +224,7 @@ namespace Editor
             }
         }
 
-        _averageFontWidth = (glyphCount > 0) ? (totalWidth / (f32)glyphCount) : 1.f;
+        _averageFontWidth = (glyphCount > 0) ? (totalWidth / static_cast<f32>(glyphCount)) : 1.f;
     }
 
     void AssetBrowser::ProcessTree(TreeNode* sourceProcess)
@@ -299,8 +300,7 @@ namespace Editor
         }
     }
 
-    void
-    AssetBrowser::DisplayFileMode(ImTextureID imageTexture, ImVec2 size, f32 scale, const fs::path& item, f32 fontWidth)
+    void AssetBrowser::DisplayFileMode(ImTextureID imageTexture, ImVec2 size, f32 scale, const fs::path& item, f32 fontWidth)
     {
         const ImVec2 defaultSize(_defaultDisplaySize.x * scale, _defaultDisplaySize.y * scale); // need to be a square !
         std::string itemName = item.filename().string();
@@ -356,8 +356,8 @@ namespace Editor
                 textureDesc.path = item.string();
                 Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
                 _images[i] = _renderer->GetImguiImageHandle(textureID);
-                _imagesSize[i] = ImVec2((f32)_renderer->GetTextureWidth(textureID),
-                    (f32)_renderer->GetTextureHeight(textureID));
+                _imagesSize[i] = ImVec2(static_cast<f32>(_renderer->GetTextureWidth(textureID)),
+                    static_cast<f32>(_renderer->GetTextureHeight(textureID)));
             }
 
             _currentImage = _images[i];
@@ -434,7 +434,6 @@ namespace Editor
             {
                 const auto temp = _searchedFiles;
                 _searchedFiles.clear();
-                _searchedFiles.shrink_to_fit();
                 _searchedFiles.reserve(temp.size());
 
                 _searchedString = search;
@@ -449,7 +448,6 @@ namespace Editor
             else
             {
                 _searchedFiles.clear();
-                _searchedFiles.shrink_to_fit();
                 _searchedFiles.reserve(_currentNode->Files.size());
 
                 _searchedString = search;

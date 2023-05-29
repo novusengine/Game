@@ -1,7 +1,5 @@
 #pragma once
 #include <Base/Types.h>
-#include <imgui/imgui.h>
-#include <imgui/imgui_internal.h>
 
 namespace Editor
 {
@@ -25,7 +23,7 @@ namespace Editor
 
 		virtual void EndImGui() {};
 
-		bool IsHorizontal() { return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight()); };
+		bool IsHorizontal();
 		bool IsVisible() { return _isVisible; }
 		void SetIsVisible(bool isVisible);
 		void Reset() { _isVisible = _defaultVisible; }
