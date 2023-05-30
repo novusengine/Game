@@ -1,13 +1,15 @@
 #include "ModelRenderer.h"
-#include "ModelRenderer.h"
-#include "Game/Rendering/CullUtils.h"
-#include "Game/Rendering/RenderUtils.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/TextureSingleton.h"
+
+#include <Game/Rendering/CullUtils.h>
+#include <Game/Rendering/RenderUtils.h>
+#include <Game/Rendering/GameRenderer.h>
+#include <Game/Rendering/RenderResources.h>
+#include <Game/Rendering/Debug/DebugRenderer.h>
+#include <Game/Util/ServiceLocator.h>
+#include <Game/Application/EnttRegistries.h>
+#include <Game/ECS/Singletons/TextureSingleton.h>
+#include <Game/ECS/Components/Transform.h>
+#include <Game/ECS/Components/Model.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -54,6 +56,19 @@ void ModelRenderer::Update(f32 deltaTime)
 
     if (!CVAR_ModelRendererEnabled.Get())
         return;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
+    {
+        u32 instanceID = model.instanceID;
+
+        std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
+        mat4x4& matrix = instanceMatrices[instanceID];
+
+        matrix = transform.matrix;
+        _instanceMatrices.SetDirtyElement(instanceID);
+    });
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);

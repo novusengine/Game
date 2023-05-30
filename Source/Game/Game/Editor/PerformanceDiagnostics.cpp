@@ -8,6 +8,7 @@
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
 #include <Game/Application/EnttRegistries.h>
+#include <Game/Util/ImguiUtil.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -43,7 +44,7 @@ namespace Editor
         const std::string& cpuName = cpuInfo.GetPrettyName();
         const std::string& gpuName = gameRenderer->GetGPUName();
 
-        if (ImGui::Begin("Performance"))
+        if (ImGui::Begin(GetName()))
         {
             ImGui::Text("CPU: %s", cpuName.c_str());
             ImGui::Text("GPU: %s", gpuName.c_str());

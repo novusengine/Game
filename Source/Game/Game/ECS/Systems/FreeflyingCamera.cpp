@@ -4,6 +4,7 @@
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Components/Transform.h"
 #include "Game/ECS/Components/Camera.h"
+#include "Game/ECS/Util/CameraUtil.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
 
@@ -49,21 +50,7 @@ namespace ECS::Systems
         _keybindGroup->AddKeyboardCallback("AltMod", GLFW_KEY_LEFT_ALT, KeybindAction::Press, KeybindModifier::Any, nullptr);
         _keybindGroup->AddKeyboardCallback("ToggleMouseCapture", GLFW_KEY_ESCAPE, KeybindAction::Press, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
         {
-            settings.captureMouse = !settings.captureMouse;
-
-            GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-            Window* window = gameRenderer->GetWindow();
-
-            if (settings.captureMouse)
-            {
-                ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-            }
-            else
-            {
-                ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
-                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-            }
+            ECS::Util::CameraUtil::SetCaptureMouse(!settings.captureMouse);
 
             return true;
         });
@@ -71,16 +58,10 @@ namespace ECS::Systems
         {
             if (!settings.captureMouse)
             {
-                settings.captureMouse = true;
+                ECS::Util::CameraUtil::SetCaptureMouse(true);
 
                 InputManager* inputManager = ServiceLocator::GetInputManager();
                 settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
-
-                GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-                Window* window = gameRenderer->GetWindow();
-                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-                ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
             }
             return true;
         });

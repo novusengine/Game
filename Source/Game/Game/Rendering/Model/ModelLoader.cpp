@@ -2,6 +2,9 @@
 #include "ModelRenderer.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/JoltState.h"
+#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Components/Name.h"
+#include "Game/ECS/Components/Model.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Util/ServiceLocator.h"
@@ -149,6 +152,7 @@ void ModelLoader::Clear()
 	_nameHashToLoadingMutex.clear();
 
 	_instanceIDToModelID.clear();
+	_instanceIDToEntityID.clear();
 	_modelIDToNameHash.clear();
 
 	_modelRenderer->Clear();
@@ -200,8 +204,21 @@ void ModelLoader::Update(f32 deltaTime)
 	// Have ModelRenderer prepare all buffers for what we need to load
 	_modelRenderer->Reserve(reserveInfo);
 
-	//for (u32 i = 0; i < numDequeued; i++) 
-	enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+	// Create entt entities
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+	_createdEntities.clear();
+	_createdEntities.resize(reserveInfo.numInstances);
+	registry->create(_createdEntities.begin(), _createdEntities.end());
+
+	registry->insert<ECS::Components::DirtyTransform>(_createdEntities.begin(), _createdEntities.end());
+	registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
+	registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
+	registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
+	registry->insert<ECS::Components::AABB>(_createdEntities.begin(), _createdEntities.end());
+	registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
+
+	std::atomic<u32> numCreatedInstances;
+	enki::TaskSet loadModelsTask(reserveInfo.numInstances, [&](enki::TaskSetPartition range, u32 threadNum)
 	{
 		for (u32 i = range.start; i < range.end; i++)
 		{
@@ -233,11 +250,10 @@ void ModelLoader::Update(f32 deltaTime)
 
 				if (!didLoad)
 					continue;
-
-
 			}
 
-			AddInstance(request);
+			u32 index = numCreatedInstances.fetch_add(1);
+			AddInstance(_createdEntities[index], request);
 		}
 	});
 
@@ -245,6 +261,10 @@ void ModelLoader::Update(f32 deltaTime)
 	_scheduler.AddTaskSetToPipe(&loadModelsTask);
 	_scheduler.WaitforTask(&loadModelsTask);
 
+	// Destroy the entities we didn't use
+	registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
+
+	// Fit the buffers to the data we loaded
 	_modelRenderer->FitBuffersAfterLoad();
 }
 
@@ -262,6 +282,15 @@ bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
 		return false;
 
 	modelID = _instanceIDToModelID[instanceID];
+	return true;
+}
+
+bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID)
+{
+	if (!_instanceIDToEntityID.contains(instanceID))
+		return false;
+
+	entityID = _instanceIDToEntityID[instanceID];
 	return true;
 }
 
@@ -316,18 +345,58 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 		return false;
 	}
 
+
 	u32 modelID = _modelRenderer->LoadModel(path.string(), model);
 	_nameHashToModelID[request.placement.nameHash] = modelID;
 
 	_modelIDToNameHash[modelID] = request.placement.nameHash;
+
+	ECS::Components::AABB& aabb = _modelIDToAABB[modelID];
+	aabb.centerPos = model.aabbCenter;
+	aabb.extents = model.aabbExtents;
+
 	return true;
 }
 
-void ModelLoader::AddInstance(const LoadRequestInternal& request)
+void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+	// Add components to the entity
+	ECS::Components::DirtyTransform& dirtyTransfom = registry->get<ECS::Components::DirtyTransform>(entityID);
+
+	ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+	transform.position = request.placement.position;
+	transform.rotation = request.placement.rotation;
+
+	f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
+	transform.scale = vec3(scale, scale, scale);
+
+	mat4x4 rotationMatrix = glm::toMat4(transform.rotation);
+	mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), transform.scale);
+	transform.matrix = glm::translate(mat4x4(1.0f), transform.position) * rotationMatrix * scaleMatrix;
+	transform.isDirty = true;
+
+	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
+	DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
+	name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
+	name.fullName = discoveredModel.name;
+	name.nameHash = discoveredModel.nameHash;
+
 	u32 modelID = _nameHashToModelID[request.placement.nameHash];
 	u32 instanceID = _modelRenderer->AddInstance(modelID, request.placement);
 
+	ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
+	model.modelID = modelID;
+	model.instanceID = instanceID;
+
+	const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
+
+	ECS::Components::AABB& aabb = registry->get<ECS::Components::AABB>(entityID);
+	aabb.centerPos = modelAABB.centerPos;
+	aabb.extents = modelAABB.extents;
+
 	std::scoped_lock lock(_instanceIDToModelIDMutex);
 	_instanceIDToModelID[instanceID] = modelID;
+	_instanceIDToEntityID[instanceID] = entityID;
 }

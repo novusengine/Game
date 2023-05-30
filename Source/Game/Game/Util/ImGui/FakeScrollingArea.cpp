@@ -1,6 +1,8 @@
 #include "FakeScrollingArea.h"
 
-bool FakeScrollingArea::Before()
+#include <imgui/imgui.h>
+
+bool FakeScrollingArea::Begin()
 {
     const f32 windowWidth = ImGui::GetWindowContentRegionWidth();
     const i32 itemsPerRow = static_cast<i32>(windowWidth / _itemSize.x);
@@ -24,14 +26,14 @@ bool FakeScrollingArea::Before()
     }
 
     if (_firstVisibleItem <= _totalItems)
-        _beforeIsHandled = true;
+        _beginIsHandled = true;
 
-    return _beforeIsHandled;
+    return _beginIsHandled;
 }
 
-void FakeScrollingArea::After()
+void FakeScrollingArea::End()
 {
-    if (!_beforeIsHandled)
+    if (!_beginIsHandled)
         return;
 
     if (_lastVisibleItem < _totalItems - 1)
@@ -44,4 +46,18 @@ void FakeScrollingArea::After()
         // little padding at the end
         ImGui::Dummy(ImVec2(0, _itemSize.y * 2.f));
     }
+}
+
+i32 FakeScrollingArea::GetFirstVisibleItem() const
+{
+    DebugHandler::Assert(_beginIsHandled, "FakeScrollingArea::GetFirstVisibleItem() called before Begin()");
+
+    return _firstVisibleItem;
+}
+
+i32 FakeScrollingArea::GetLastVisibleItem() const
+{
+    DebugHandler::Assert(_beginIsHandled, "FakeScrollingArea::GetLastVisibleItem() called before Begin()");
+
+    return _lastVisibleItem;
 }

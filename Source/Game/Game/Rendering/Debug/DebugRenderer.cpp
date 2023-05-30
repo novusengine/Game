@@ -136,7 +136,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
-			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+			data.color = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
 			data.gpuDebugVertices2D = builder.Read(_gpuDebugVertices2D, BufferUsage::GRAPHICS);
 			data.gpuDebugVertices2DArgumentBuffer = builder.Read(_gpuDebugVertices2DArgumentBuffer, BufferUsage::GRAPHICS);
@@ -229,7 +229,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
-			data.color = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+			data.color = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 			data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
 			data.gpuDebugVertices3D = builder.Read(_gpuDebugVertices3D, BufferUsage::GRAPHICS);
@@ -364,47 +364,47 @@ void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, uint32_t
 void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, uint32_t color)
 {
 	auto& vertices = _debugVertices3D.Get();
-	u32 vertexOffset = static_cast<u32>(vertices.size());
 
-	vec3 v0 = -extents;
-	vec3 v1 = +extents;
+	vec3 corners[8] = {
+		center + rotation * glm::vec3(-extents.x, -extents.y, -extents.z),
+		center + rotation * glm::vec3( extents.x, -extents.y, -extents.z),
+		center + rotation * glm::vec3( extents.x, -extents.y,  extents.z),
+		center + rotation * glm::vec3(-extents.x, -extents.y,  extents.z),
+		center + rotation * glm::vec3(-extents.x,  extents.y, -extents.z),
+		center + rotation * glm::vec3( extents.x,  extents.y, -extents.z),
+		center + rotation * glm::vec3( extents.x,  extents.y,  extents.z),
+		center + rotation * glm::vec3(-extents.x,  extents.y,  extents.z)
+	};
 
 	// Bottom
-	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
+	vertices.push_back({ corners[0], color });
+	vertices.push_back({ corners[1], color });
+	vertices.push_back({ corners[1], color });
+	vertices.push_back({ corners[2], color });
+	vertices.push_back({ corners[2], color });
+	vertices.push_back({ corners[3], color });
+	vertices.push_back({ corners[3], color });
+	vertices.push_back({ corners[0], color });
 
 	// Top
-	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
+	vertices.push_back({ corners[4], color });
+	vertices.push_back({ corners[5], color });
+	vertices.push_back({ corners[5], color });
+	vertices.push_back({ corners[6], color });
+	vertices.push_back({ corners[6], color });
+	vertices.push_back({ corners[7], color });
+	vertices.push_back({ corners[7], color });
+	vertices.push_back({ corners[4], color });
 
 	// Vertical edges
-	vertices.push_back({ { v0.x, v0.y, v0.z }, color });
-	vertices.push_back({ { v0.x, v1.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v0.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v0.z }, color });
-	vertices.push_back({ { v0.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v0.x, v1.y, v1.z }, color });
-	vertices.push_back({ { v1.x, v0.y, v1.z }, color });
-	vertices.push_back({ { v1.x, v1.y, v1.z }, color });
-
-	mat4x4 rotationMatrix = glm::mat4x4(rotation);
-	for (u32 i = 0; i < 24; i++)
-	{
-		DebugVertex3D& vertex = vertices[vertexOffset + i];
-		vertex.pos = center + vec3(rotationMatrix * vec4(vertex.pos, 1.0f));
-	}
+	vertices.push_back({ corners[0], color });
+	vertices.push_back({ corners[4], color });
+	vertices.push_back({ corners[1], color });
+	vertices.push_back({ corners[5], color });
+	vertices.push_back({ corners[2], color });
+	vertices.push_back({ corners[6], color });
+	vertices.push_back({ corners[3], color });
+	vertices.push_back({ corners[7], color });
 }
 
 void DebugRenderer::DrawTriangle2D(const glm::vec2& v0, const glm::vec2& v1, const glm::vec2& v2, uint32_t color)

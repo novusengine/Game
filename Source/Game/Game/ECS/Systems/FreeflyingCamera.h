@@ -12,7 +12,6 @@ namespace ECS::Systems
 		static void Init(entt::registry& registry);
 		static void Update(entt::registry& registry, f32 deltaTime);
 
-	private:
 		static void CapturedMouseMoved(entt::registry& registry, const vec2& position);
 		static void CapturedMouseScrolled(entt::registry& registry, const vec2& position);
 

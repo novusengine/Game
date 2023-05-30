@@ -17,6 +17,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     game::dependencies
     meshoptimizer
     enkiTS::enkiTS
+    refl-cpp::refl-cpp
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX UNITY_BUILD ON)

@@ -59,7 +59,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
             data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
-            data.resolvedColor = builder.Write(resources.finalColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+            data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
             Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
             Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
@@ -139,7 +139,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
 
-            uvec2 outputSize = _renderer->GetImageDimensions(resources.finalColor, 0);
+            uvec2 outputSize = _renderer->GetImageDimensions(resources.sceneColor, 0);
 
             uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);

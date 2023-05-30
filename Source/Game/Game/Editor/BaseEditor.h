@@ -11,7 +11,7 @@ namespace Editor
 		void UpdateVisibility();
 
 		virtual const char* GetName() = 0;
-		virtual void Show() { _isVisible = true; };
+		virtual void Show();
 
 		virtual void Update(f32 deltaTime) {};
 
@@ -24,13 +24,13 @@ namespace Editor
 		virtual void EndImGui() {};
 
 		bool IsHorizontal();
-		bool IsVisible() { return _isVisible; }
+		bool& IsVisible();
 		void SetIsVisible(bool isVisible);
-		void Reset() { _isVisible = _defaultVisible; }
+		void Reset();
 
 	protected:
-		bool _defaultVisible;
 		bool _isVisible;
 		bool _lastIsVisible;
+		bool _defaultVisible;
 	};
 }

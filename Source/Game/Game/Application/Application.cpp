@@ -9,6 +9,7 @@
 
 #include <Game/ECS/Scheduler.h>
 #include <Game/ECS/Singletons/EngineStats.h>
+#include <Game/ECS/Singletons/RenderState.h>
 #include <Game/Editor/EditorHandler.h>
 #include <Game/Gameplay/GameConsole/GameConsole.h>
 #include <Game/Rendering/GameRenderer.h>
@@ -89,6 +90,8 @@ void Application::Run()
 		Timer renderTimer;
 
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+		ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
 		
 		ECS::Singletons::EngineStats& engineStats = registry->ctx().at<ECS::Singletons::EngineStats>();
 		ECS::Singletons::EngineStats::Frame timings;		
@@ -100,6 +103,7 @@ void Application::Run()
 			timings.deltaTimeS = deltaTime;
 
 			updateTimer.Reset();
+			renderState.frameNumber++;
 
 			if (!Tick(deltaTime))
 				break;
@@ -220,6 +224,7 @@ bool Application::Tick(f32 deltaTime)
 
 	// Imgui New Frame
 	{
+		_editorHandler->NewFrame();
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();

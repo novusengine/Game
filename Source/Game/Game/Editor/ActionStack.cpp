@@ -43,7 +43,7 @@ namespace Editor
 
 	void ActionStackEditor::DrawImGui()
 	{
-		if (ImGui::Begin(GetName(), &_isVisible))
+		if (ImGui::Begin(GetName(), &IsVisible()))
 		{
 			if (_actionStack.size() > 0)
 			{

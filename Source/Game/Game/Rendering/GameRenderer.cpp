@@ -13,6 +13,7 @@
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Editor/EditorHandler.h"
+#include "Game/Editor/Viewport.h"
 
 #include <Input/InputManager.h>
 #include <Renderer/Renderer.h>
@@ -178,6 +179,24 @@ f32 GameRenderer::Render()
     if (_window->IsMinimized())
         return 0.0f;
 
+    Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
+    bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
+
+    if (!isEditorMode)
+    {
+        vec2 windowSize = _renderer->GetWindowSize();
+
+        if (windowSize.x != _lastWindowSize.x || windowSize.y != _lastWindowSize.y)
+        {
+            _renderer->SetRenderSize(windowSize);
+            _lastWindowSize = windowSize;
+        }
+    }
+    else
+    {
+        _lastWindowSize = vec2(1, 1);
+    }
+
     if (_resources.cameras.SyncToGPU(_renderer))
     {
         _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
@@ -190,7 +209,6 @@ f32 GameRenderer::Render()
 
     f32 timeWaited = _renderer->FlipFrame(_frameIndex);
 
-    Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->DrawImGui();
     editorHandler->EndEditor();
     editorHandler->EndImGui();
@@ -203,6 +221,7 @@ f32 GameRenderer::Render()
         struct StartFramePassData
         {
             Renderer::ImageMutableResource visibilityBuffer;
+            Renderer::ImageMutableResource sceneColor;
             Renderer::ImageMutableResource finalColor;
             Renderer::ImageMutableResource transparency;
             Renderer::ImageMutableResource transparencyWeights;
@@ -213,6 +232,7 @@ f32 GameRenderer::Render()
             [=](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
                 data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.sceneColor = builder.Write(_resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.finalColor = builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.transparency = builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.transparencyWeights = builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
@@ -226,7 +246,7 @@ f32 GameRenderer::Render()
                 commandList.MarkFrameStart(_frameIndex);
 
                 // Set viewport
-                vec2 renderSize = graphResources.GetImageDimensions(data.finalColor);
+                vec2 renderSize = graphResources.GetImageDimensions(data.sceneColor);
 
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
@@ -303,7 +323,9 @@ f32 GameRenderer::Render()
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
-    _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, _resources.finalColor);
+
+    Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
+    _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);
 
     renderGraph.AddSignalSemaphore(_resources.sceneRenderedSemaphore); // Signal that we are ready to present
     renderGraph.AddSignalSemaphore(_resources.frameSyncSemaphores.Get(_frameIndex)); // Signal that this frame has finished, for next frames sake
@@ -327,7 +349,6 @@ f32 GameRenderer::Render()
     renderGraph.Setup();
     renderGraph.Execute();
 
-    Renderer::ImageID finalTarget = _resources.finalColor;
     _renderer->Present(_window, finalTarget, _resources.sceneRenderedSemaphore);
 
     // Flip the frameIndex between 0 and 1
@@ -395,15 +416,20 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.visibilityBuffer = _renderer->CreateImage(visibilityBufferDesc);
 
-    // Final color rendertarget
+    // Scene color rendertarget
     Renderer::ImageDesc sceneColorDesc;
-    sceneColorDesc.debugName = "FinalColor";
+    sceneColorDesc.debugName = "SceneColor";
     sceneColorDesc.dimensions = vec2(1.0f, 1.0f);
-    sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
     sceneColorDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
     sceneColorDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
-    sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f);
+    sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f); // Sky blue
 
+    _resources.sceneColor = _renderer->CreateImage(sceneColorDesc);
+
+    sceneColorDesc.debugName = "FinalColor";
+    sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    sceneColorDesc.clearColor = Color(0.43f, 0.50f, 0.56f, 1.0f); // Slate gray
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
 
     // Transparency rendertarget
@@ -479,6 +505,7 @@ void GameRenderer::InitImgui()
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
+    //io.ConfigViewportsNoAutoMerge = true;
 
     ImFontConfig font_cfg;
     font_cfg.FontDataOwnedByAtlas = false;
@@ -489,10 +516,13 @@ void GameRenderer::InitImgui()
 
     // Apply theme
     {
-        ImGui::GetStyle().FrameRounding = 4.0f;
-        ImGui::GetStyle().GrabRounding = 4.0f;
+        ImGuiStyle& style = ImGui::GetStyle();
 
-        ImVec4* colors = ImGui::GetStyle().Colors;
+        style.FrameRounding = 2.0f;
+        style.GrabRounding = 2.0f;
+        style.WindowMinSize = vec2(100, 100);
+
+        ImVec4* colors = style.Colors;
         colors[ImGuiCol_Text] = ImVec4(0.95f, 0.96f, 0.98f, 1.00f);
         colors[ImGuiCol_TextDisabled] = ImVec4(0.36f, 0.42f, 0.47f, 1.00f);
         colors[ImGuiCol_WindowBg] = ImVec4(0.11f, 0.15f, 0.17f, 1.00f);

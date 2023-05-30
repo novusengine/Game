@@ -1,11 +1,13 @@
 #include "EditorHandler.h"
+#include "Viewport.h"
 #include "CVarEditor.h"
 #include "CameraInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "MapEditor.h"
-#include "ActionStack.h"
 #include "Inspector.h"
+#include "Hierarchy.h"
 #include "AssetBrowser.h"
+#include "ActionStack.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -16,6 +18,7 @@
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imgui_notify.h>
+#include <fstream>
 
 namespace Editor
 {
@@ -26,33 +29,70 @@ namespace Editor
         InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
         KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("GlobalEditor", 0);
 
+        _viewport = new Viewport();
+        _editors.push_back(_viewport);
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapEditor());
-        _editors.push_back(new AssetBrowser());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);
 
+
         _inspector = new Inspector();
         _editors.push_back(_inspector);
+
+        _viewport->SetInspector(_inspector);
+        _inspector->SetViewport(_viewport);
+
+        _hierarchy = new Hierarchy();
+        _editors.push_back(_hierarchy);
+
+        _inspector->SetHierarchy(_hierarchy);
+        _hierarchy->SetInspector(_inspector);
+
+        _assetBrowser = new AssetBrowser();
+        _editors.push_back(_assetBrowser);
+
+        _actionStackEditor = new ActionStackEditor(64);
+        _editors.push_back(_actionStackEditor);
         
         keybindGroup->SetActive(true);
+
+        _editorMode = _viewport->IsEditorMode();
+        LoadLayouts();
 
         // Bind switch editor keys
         keybindGroup->AddKeyboardCallback("Switch Editor Mode", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Shift, [this](i32 key, KeybindAction action, KeybindModifier modifier)
         {
+            SaveLayout();
             _editorMode = !_editorMode;
+            RestoreLayout();
 
             ImGui::InsertNotification({ ImGuiToastType_Info, 3000, "Editor: %s", _editorMode ? "Enabled" : "Disabled" });
+
+            _viewport->SetIsEditorMode(_editorMode);
+
             return true;
         });
+    }
+
+    void EditorHandler::NewFrame()
+    {
+
     }
 
     void EditorHandler::Update(f32 deltaTime)
     {
         ZoneScoped;
+
+        _timeSinceLayoutSave += deltaTime;
+        if (_timeSinceLayoutSave > LAYOUT_SAVE_INTERVAL)
+        {
+            _timeSinceLayoutSave -= LAYOUT_SAVE_INTERVAL;
+            SaveLayout();
+        }
 
         for (BaseEditor* editor : _editors)
         {
@@ -132,7 +172,7 @@ namespace Editor
                         ImGui::DockBuilderRemoveNodeChildNodes(_mainDockID);
                     }
 
-                    ResetLayout();
+                    ResetLayoutToDefault();
                 }
 
                 ImGui::EndMenu();
@@ -188,32 +228,94 @@ namespace Editor
         ImGui::PopStyleColor(1);
     }
 
-    void EditorHandler::ResetLayout()
+    void EditorHandler::ResetLayoutToDefault()
     {
         ImGuiID left;
         ImGuiID right = ImGui::DockBuilderSplitNode(_mainDockID, ImGuiDir_Right, 0.4f, NULL, &left);
 
-        ImGuiID hierarchy;
-        ImGuiID inspector = ImGui::DockBuilderSplitNode(right, ImGuiDir_Right, 0.5f, NULL, &hierarchy);
+        ImGuiID inspector;
+        ImGuiID farRight = ImGui::DockBuilderSplitNode(right, ImGuiDir_Right, 0.5f, NULL, &inspector);
 
-        ImGuiID belowInspector = ImGui::DockBuilderSplitNode(inspector, ImGuiDir_Down, 0.2f, NULL, &inspector);
+        ImGuiID hierarchy;
+        ImGuiID belowHierarchy = ImGui::DockBuilderSplitNode(farRight, ImGuiDir_Down, 0.2f, NULL, &hierarchy);
 
         ImGuiID viewport;
-        ImGuiID bottom = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.4f, NULL, &viewport);
+        ImGuiID assetBrowser = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.3f, NULL, &viewport);
 
-        ImGui::DockBuilderDockWindow("Engine Info", inspector, 0);
-        //ImGui::DockBuilderDockWindow(_inspector->GetName(), inspector, 1);
-        //ImGui::DockBuilderDockWindow(_actionStack->GetName(), belowInspector, 0);
-        ImGui::DockBuilderDockWindow("Clock", belowInspector, 1);
-        //ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy);
-        //ImGui::DockBuilderDockWindow(_viewport->GetName(), viewport);
-        ImGui::DockBuilderDockWindow("Bottom", bottom);
+        ImGui::DockBuilderDockWindow(_inspector->GetName(), inspector, 0);
+        
+        ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy, 0);
+        ImGui::DockBuilderDockWindow("Map", hierarchy, 1);
+        ImGui::DockBuilderDockWindow("Performance", hierarchy, 2);
+        ImGui::DockBuilderDockWindow("Camera Info", hierarchy, 3);
+
+        ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), belowHierarchy, 0);
+
+        ImGui::DockBuilderDockWindow(_viewport->GetName(), viewport, 0);
+
+        ImGui::DockBuilderDockWindow(_assetBrowser->GetName(), assetBrowser, 0);
 
         ImGui::DockBuilderFinish(_mainDockID);
 
         for (BaseEditor* editor : _editors)
         {
             editor->Reset();
+        }
+    }
+
+    void EditorHandler::LoadLayouts()
+    {
+        std::ifstream gameFile("Data/config/Game.layout");
+        if (gameFile.good()) 
+        {
+            _gameLayout.assign(std::istreambuf_iterator<char>(gameFile), std::istreambuf_iterator<char>());
+
+            if (!_editorMode)
+            {
+                _loadedStartupLayout = true;
+            }
+        }
+        
+        std::ifstream editorFile("Data/config/Editor.layout");
+        if (editorFile.good()) 
+        {
+            _editorLayout.assign(std::istreambuf_iterator<char>(editorFile), std::istreambuf_iterator<char>());
+
+            if (_editorMode)
+            {
+                _loadedStartupLayout = true;
+            }
+        }
+        RestoreLayout();
+    }
+
+    void EditorHandler::SaveLayout()
+    {
+        // Select the layout we want to save to
+        std::string& layout = (_editorMode) ? _editorLayout : _gameLayout;
+
+        size_t settingsSize;
+        const char* settings = ImGui::SaveIniSettingsToMemory(&settingsSize);
+
+        layout = settings;
+
+        std::string path = fmt::format("Data/config/{0}.layout", (_editorMode) ? "Editor" : "Game");
+        std::ofstream file(path);
+        if (file.is_open())
+        {
+            file << layout;
+            file.close();
+        }
+    }
+
+    void EditorHandler::RestoreLayout()
+    {
+        // Select the layout we want to restore from
+        std::string& layout = (_editorMode) ? _editorLayout : _gameLayout;
+
+        if (!layout.empty())
+        {
+            ImGui::LoadIniSettingsFromMemory(layout.data(), layout.size());
         }
     }
 
@@ -280,18 +382,18 @@ namespace Editor
         }
 
         static bool firstRun = true;
-        if (firstRun && !io.IniFileExisted)
+        if (firstRun && !io.IniFileExisted && !_loadedStartupLayout)
         {
             if (ImGui::DockBuilderGetNode(_mainDockID) != NULL)
             {
                 ImGui::DockBuilderRemoveNodeChildNodes(_mainDockID);
             }
-            ResetLayout();
+            ResetLayoutToDefault();
             firstRun = false;
         }
 
         if (ImGui::DockBuilderGetNode(_mainDockID) == NULL)
-            ResetLayout();
+            ResetLayoutToDefault();
     }
 
     void EditorHandler::EndEditor()

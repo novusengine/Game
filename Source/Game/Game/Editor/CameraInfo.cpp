@@ -38,7 +38,7 @@ namespace Editor
         ECS::Components::Camera& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
 
         // Print position
-        if (ImGui::Begin("Camera"))
+        if (ImGui::Begin(GetName()))
         {
             quat rotQuat = quat(vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll)));
 

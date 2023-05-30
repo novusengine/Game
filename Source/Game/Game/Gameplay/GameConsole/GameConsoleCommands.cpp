@@ -4,6 +4,7 @@
 #include "Game/ECS/Singletons/NetworkState.h"
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Rendering/GameRenderer.h"
 
 #include <Base/Memory/Bytebuffer.h>
 
