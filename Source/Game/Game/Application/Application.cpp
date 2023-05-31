@@ -94,7 +94,7 @@ void Application::Run()
 		ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
 		
 		ECS::Singletons::EngineStats& engineStats = registry->ctx().at<ECS::Singletons::EngineStats>();
-		ECS::Singletons::EngineStats::Frame timings;		
+		ECS::Singletons::FrameTimes timings;		
 		while (true)
 		{
 			f32 deltaTime = timer.GetDeltaTime();

@@ -4,10 +4,13 @@
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
 #include <Game/Util/ServiceLocator.h>
+#include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
 #include <Game/Application/EnttRegistries.h>
+#include <Game/ECS/Singletons/EngineStats.h>
 #include <Game/Util/ImguiUtil.h>
 
+#include <imgui/imgui.h>
 #include <entt/entt.hpp>
 #include <imgui/implot.h>
 
@@ -28,7 +31,7 @@ namespace Editor
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         ECS::Singletons::EngineStats& stats = registry->ctx().at<ECS::Singletons::EngineStats>();
 
-        ECS::Singletons::EngineStats::Frame average = stats.AverageFrame(240);
+        ECS::Singletons::FrameTimes average = stats.AverageFrame(240);
 
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
 
@@ -41,6 +44,27 @@ namespace Editor
 
         if (ImGui::Begin(GetName()))
         {
+
+            static bool enableStretching = true;
+
+            if (OpenMenu("Settings"))
+            {
+                if (ImGui::BeginMenu("Show"))
+                {
+                    ImGui::Checkbox("Surviving DrawCalls", &_showSurvivingDrawCalls);
+                    ImGui::Checkbox("Surviving Triangle", &_showSurvivingTriangle);
+                    ImGui::Checkbox("Frame Times", &_showFrameTime);
+                    ImGui::Checkbox("Render Pass", &_showRenderPass);
+                    ImGui::Checkbox("Frame Graph", &_showFrameGraph);
+
+                    ImGui::EndMenu();
+                }
+
+                ImGui::Checkbox("Enable Stretching", &enableStretching);
+
+                CloseMenu();
+            }
+
             ImGui::Text("CPU: %s", cpuName.c_str());
             if (IsHorizontal())
                 ImGui::SameLine();
@@ -52,69 +76,190 @@ namespace Editor
             u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
 
             ImGui::Spacing();
-            ImGui::Checkbox("Surviving information only for main view", &_drawCallStatsOnlyForMainView);
+
+            if (_showSurvivingDrawCalls || _showSurvivingTriangle)
+                ImGui::Checkbox("Surviving information only for main view", &_drawCallStatsOnlyForMainView);
+
+            const std::vector<bool> sectionOrder = {
+                _showSurvivingDrawCalls,
+                _showSurvivingTriangle,
+                _showFrameTime,
+                _showRenderPass,
+                _showFrameGraph
+            };
+
+            i32 howManySectionToDraw = 0;
+            for (const auto& showSection : sectionOrder)
+                howManySectionToDraw += static_cast<i32>(showSection);
+
+            if (howManySectionToDraw == 0)
+            {
+                ImGui::End();
+                return;
+            }
 
             if (IsHorizontal())
             {
-                f32 heightConstraint = ImGui::GetContentRegionAvail().y * 0.9f;
-                ImGui::Columns(5, "PerformanceDiagnosticsColumn", false);
+                std::vector<f32> newWidthProportions = (enableStretching) ?
+                    CalculateProportions(_sectionParamHorizontal, sectionOrder) : _sectionParamHorizontal;
 
-                ImGui::SetColumnWidth(0, ImGui::GetWindowWidth() * 0.175f);
-                ImGui::SetColumnWidth(1, ImGui::GetWindowWidth() * 0.175f);
-                ImGui::SetColumnWidth(2, ImGui::GetWindowWidth() * 0.15f);
-                ImGui::SetColumnWidth(3, ImGui::GetWindowWidth() * 0.15f);
-                ImGui::SetColumnWidth(4, ImGui::GetWindowWidth() * 0.3f);
+                ProportionsFix(newWidthProportions);
 
-                DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades);
-                ImGui::NextColumn();
-                DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades);
-                ImGui::NextColumn();
-                DrawFrameTimes(heightConstraint, average, flags);
-                ImGui::NextColumn();
-                DrawRenderPass(heightConstraint, renderer, stats, flags);
-                ImGui::NextColumn();
-                DrawFrameTimesGraph(heightConstraint, stats);
-                ImGui::Columns(1);
+                if (howManySectionToDraw > 1)
+                {
+                    f32 heightConstraint = ImGui::GetContentRegionAvail().y * 0.9f;
+                    ImGui::Columns(howManySectionToDraw, "PerformanceDiagnosticsColumn", false);
+
+                    i32 i = 0;
+                    i32 n = 0;
+                    for (const auto& showSection : sectionOrder)
+                    {
+                        if (!showSection)
+                        {
+                            i++;
+                            continue;
+                        }
+
+                        ImGui::SetColumnWidth(n, ImGui::GetWindowWidth() * newWidthProportions[i]);
+                        switch (i)
+                        {
+                        case 0:
+                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades);
+                            break;
+                        case 1:
+                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades);
+                            break;
+                        case 2:
+                            DrawFrameTimes(heightConstraint, average, flags);
+                            break;
+                        case 3:
+                            DrawRenderPass(heightConstraint, renderer, stats, flags);
+                            break;
+                        case 4:
+                            DrawFrameTimesGraph(heightConstraint, stats);
+                            break;
+                        default:
+                            break;
+                        }
+
+                        i++;
+                        n++;
+
+                        if (n == (howManySectionToDraw))
+                        {
+                            ImGui::Columns(1);
+                        }
+                        else
+                        {
+                            ImGui::NextColumn();
+                        }
+                    }
+                }
+                else if (howManySectionToDraw == 1)
+                {
+                    f32 heightConstraint = ImGui::GetContentRegionAvail().y * 0.9f;
+                    ImGui::Columns(howManySectionToDraw, "PerformanceDiagnosticsColumn", false);
+
+                    i32 i = 0;
+                    for (const auto& showSection : sectionOrder)
+                    {
+                        if (!showSection)
+                        {
+                            i++;
+                            continue;
+                        }
+
+                        f32 widthConstraint = ImGui::GetWindowWidth() * newWidthProportions[i];
+                        switch (i)
+                        {
+                        case 0:
+                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades, widthConstraint);
+                            break;
+                        case 1:
+                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades, widthConstraint);
+                            break;
+                        case 2:
+                            DrawFrameTimes(heightConstraint, average, flags, widthConstraint);
+                            break;
+                        case 3:
+                            DrawRenderPass(heightConstraint, renderer, stats, flags, widthConstraint);
+                            break;
+                        case 4:
+                            DrawFrameTimesGraph(heightConstraint, stats, widthConstraint);
+                            break;
+                        default:
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
                 bool canDisplayByColumn = (ImGui::GetContentRegionAvail().x > 450);
-                f32 heightConstraint = ImGui::GetContentRegionAvail().y * 0.18f;
+
+                if ((_showSurvivingDrawCalls != _showSurvivingTriangle) &&
+                    (_showFrameTime != _showRenderPass))
+                    canDisplayByColumn = false;
+
+                if (howManySectionToDraw == 1)
+                    canDisplayByColumn = false;
 
                 if (canDisplayByColumn)
                 {
-                    heightConstraint = ImGui::GetContentRegionAvail().y * 0.3f;
+                    std::vector<bool> fakeOrder = {false, false, false, false, true};
+                    if (_showSurvivingTriangle || _showSurvivingDrawCalls)
+                        fakeOrder[0] = true;
+                    if (_showFrameTime || _showRenderPass)
+                        fakeOrder[2] = true;
+
+                    std::vector<f32> newHeightProportions = (enableStretching) ?
+                        CalculateProportions(_sectionParamVerticalMultiColumn, fakeOrder) : _sectionParamVerticalMultiColumn;
+
+                    if (enableStretching)
+                    {
+                        newHeightProportions[1] = newHeightProportions[0];
+                        newHeightProportions[3] = newHeightProportions[2];
+                    }
+
+                    for (f32& height : newHeightProportions)
+                        height *= ImGui::GetContentRegionAvail().y;
+
+                    ProportionsFix(newHeightProportions);
+
                     if (ImGui::BeginTable("##PerformanceDiagnosticMultipleColumn", 2))
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades);
+                        DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numCascades);
                         ImGui::TableSetColumnIndex(1);
-                        DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades);
+                        DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numCascades);
 
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        DrawFrameTimes(heightConstraint, average, flags);
+                        DrawFrameTimes(newHeightProportions[2], average, flags);
                         ImGui::TableSetColumnIndex(1);
-                        DrawRenderPass(heightConstraint, renderer, stats, flags);
+                        DrawRenderPass(newHeightProportions[3], renderer, stats, flags);
 
                         ImGui::EndTable();
                     }
 
-                    heightConstraint *= 1.6f;
-                    DrawFrameTimesGraph(heightConstraint, stats);
+                    DrawFrameTimesGraph(newHeightProportions[4], stats);
                 }
                 else
                 {
-                    DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades);
-                    ImGui::Separator();
-                    DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades);
-                    ImGui::Separator();
-                    DrawFrameTimes(heightConstraint * 0.9f, average, flags);
-                    ImGui::Separator();
-                    DrawRenderPass(heightConstraint, renderer, stats, flags);
-                    ImGui::Separator();
-                    DrawFrameTimesGraph(heightConstraint * 2.f, stats);
+                    std::vector<f32> newHeightProportions = (enableStretching) ?
+                        CalculateProportions(_sectionParamVertical, sectionOrder) : _sectionParamVertical;
+
+                    for (f32& height : newHeightProportions)
+                        height *= ImGui::GetContentRegionAvail().y;
+
+                    ProportionsFix(newHeightProportions);
+
+                    DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numCascades);
+                    DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numCascades);
+                    DrawFrameTimes(newHeightProportions[2], average, flags);
+                    DrawRenderPass(newHeightProportions[3], renderer, stats, flags);
+                    DrawFrameTimesGraph(newHeightProportions[4], stats);
                 }
             }
         }
@@ -122,107 +267,151 @@ namespace Editor
         ImGui::End();
     }
 
-    void PerformanceDiagnostics::DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numCascades)
+    f32 PerformanceDiagnostics::CalculateTotalParam(const std::vector<f32>& params, const std::vector<bool>& shownItems)
     {
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1.f, constraint));
+        f32 totalWidth = 0.0f;
+        for (i32 i = 0; i < shownItems.size(); ++i)
+        {
+            if (shownItems[i])
+            {
+                totalWidth += params[i];
+            }
+        }
+        return totalWidth;
+    }
+
+    std::vector<f32> PerformanceDiagnostics::CalculateProportions(const std::vector<f32>& params, const std::vector<bool>& shownItems)
+    {
+        std::vector<f32> widthProportions(shownItems.size(), 0.0f);
+
+        f32 totalWidth = CalculateTotalParam(params, shownItems);
+
+        if (totalWidth > 0.0f)
+        {
+            for (i32 i = 0; i < shownItems.size(); ++i)
+            {
+                if (shownItems[i])
+                {
+                    widthProportions[i] = params[i] / totalWidth;
+                }
+            }
+        }
+
+        return widthProportions;
+    }
+
+    void PerformanceDiagnostics::ProportionsFix(std::vector<f32>& proportions)
+    {
+        for (f32& val : proportions)
+        {
+            if (val == 0.f)
+            {
+                val = 0.1f;
+            }
+        }
+    }
+
+    void PerformanceDiagnostics::DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint)
+    {
+        if (!_showSurvivingDrawCalls)
+            return;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
         if (ImGui::BeginChild("##SurvivingDrawCalls", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
-            bool showDrawCalls = ImGui::CollapsingHeader("DrawCalls");
-
             f32 textWidth = ImGui::CalcTextSize(text.c_str()).x;
             f32 windowWidth = ImGui::GetWindowContentRegionWidth();
             f32 textPos = windowWidth - textWidth;
 
-            // If we are not collapsed, add a header that explains the values
-            if (showDrawCalls)
+            ImGui::Text("DrawCalls");
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
             {
-                ImGui::SameLine();
-                if (textPos > ImGui::GetCursorPosX())
-                {
-                    ImGui::SameLine(textPos);
-                }
-                else
-                {
-                    ImGui::NewLine();
-                    ImGui::SetCursorPosX(textPos);
-                }
-
-                ImGui::Text("%s", text.c_str());
-                ImGui::Separator();
+                ImGui::SameLine(textPos);
             }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
+            }
+
+            ImGui::Text("%s", text.c_str());
+            ImGui::Separator();
 
             u32 totalDrawCalls = 0;
             u32 totalDrawCallsSurvived = 0;
 
             // Main view
-            DrawCullingDrawcallStatsView(0, textPos, totalDrawCalls, totalDrawCallsSurvived, showDrawCalls);
+            DrawCullingDrawCallStatsView(0, textPos, totalDrawCalls, totalDrawCallsSurvived);
 
             if (!_drawCallStatsOnlyForMainView)
             {
                 for (u32 i = 1; i < numCascades + 1; i++)
                 {
-                    DrawCullingDrawcallStatsView(i, textPos, totalDrawCalls, totalDrawCallsSurvived, showDrawCalls);
+                    DrawCullingDrawCallStatsView(i, textPos, totalDrawCalls, totalDrawCallsSurvived);
                 }
             }
 
             // Always draw Total, if we are collapsed it will go on the collapsable header
-            DrawCullingStatsEntry("Total", totalDrawCalls, totalDrawCallsSurvived, !showDrawCalls);
+            DrawCullingStatsEntry("Total", totalDrawCalls, totalDrawCallsSurvived);
 
             ImGui::EndChild();
         }
     }
 
-    void PerformanceDiagnostics::DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numCascades)
+    void PerformanceDiagnostics::DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint)
     {
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1.f, constraint));
+        if (!_showSurvivingTriangle)
+            return;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
         if (ImGui::BeginChild("##SurvivingTriangles", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
-            bool showTriangles = ImGui::CollapsingHeader("Triangles");
-
             f32 textWidth = ImGui::CalcTextSize(text.c_str()).x;
             f32 windowWidth = ImGui::GetWindowContentRegionWidth();
             f32 textPos = windowWidth - textWidth;
 
-            if (showTriangles)
+            ImGui::Text("Triangles");
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
             {
-                ImGui::SameLine();
-                if (textPos > ImGui::GetCursorPosX())
-                {
-                    ImGui::SameLine(textPos);
-                }
-                else
-                {
-                    ImGui::NewLine();
-                    ImGui::SetCursorPosX(textPos);
-                }
-
-                ImGui::Text("%s", text.c_str());
-                ImGui::Separator();
+                ImGui::SameLine(textPos);
             }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
+            }
+
+            ImGui::Text("%s", text.c_str());
+            ImGui::Separator();
 
             u32 totalTriangles = 0;
             u32 totalTrianglesSurvived = 0;
 
             // Main view
-            DrawCullingTriangleStatsView(0, textPos, totalTriangles, totalTrianglesSurvived, showTriangles);
+            DrawCullingTriangleStatsView(0, textPos, totalTriangles, totalTrianglesSurvived);
 
             if (!_drawCallStatsOnlyForMainView)
             {
                 for (u32 i = 1; i < numCascades + 1; i++)
                 {
-                    DrawCullingTriangleStatsView(i, textPos, totalTriangles, totalTrianglesSurvived, showTriangles);
+                    DrawCullingTriangleStatsView(i, textPos, totalTriangles, totalTrianglesSurvived);
                 }
             }
 
-            DrawCullingStatsEntry("Total", totalTriangles, totalTrianglesSurvived, !showTriangles);
+            DrawCullingStatsEntry("Total", totalTriangles, totalTrianglesSurvived);
 
             ImGui::EndChild();
         }
     }
 
-    void PerformanceDiagnostics::DrawFrameTimes(f32 constraint, const ECS::Singletons::EngineStats::Frame& average, const ImGuiTableFlags& flags)
+    void PerformanceDiagnostics::DrawFrameTimes(f32 constraint, const ECS::Singletons::FrameTimes& average, const ImGuiTableFlags& flags, f32 widthConstraint)
     {
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1.f, constraint));
+        if (!_showFrameTime)
+            return;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
         if (ImGui::BeginChild("##FrameTimes", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             ImGui::Text("Frametimes (ms)");
@@ -261,9 +450,12 @@ namespace Editor
         }
     }
 
-    void PerformanceDiagnostics::DrawRenderPass(f32 constraint, Renderer::Renderer* renderer, ECS::Singletons::EngineStats& stats, const ImGuiTableFlags& flags)
+    void PerformanceDiagnostics::DrawRenderPass(f32 constraint, Renderer::Renderer* renderer, ECS::Singletons::EngineStats& stats, const ImGuiTableFlags& flags, f32 widthConstraint)
     {
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1.f, constraint));
+        if (!_showRenderPass)
+            return;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
         if (ImGui::BeginChild("##RenderPass", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
@@ -295,9 +487,12 @@ namespace Editor
         }
     }
 
-    void PerformanceDiagnostics::DrawFrameTimesGraph(f32 constraint, const ECS::Singletons::EngineStats& stats)
+    void PerformanceDiagnostics::DrawFrameTimesGraph(f32 constraint, const ECS::Singletons::EngineStats& stats, f32 widthConstraint)
     {
-        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(-1.f, constraint));
+        if (!_showFrameGraph)
+            return;
+
+        ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
         if (ImGui::BeginChild("##FrameTimseGraph", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             f32 widthAvailable = ImGui::GetContentRegionAvail().x;
@@ -349,7 +544,7 @@ namespace Editor
         }
     }
 
-    void PerformanceDiagnostics::DrawCullingDrawcallStatsView(u32 viewID, f32 textPos, u32& totalDrawCalls, u32& totalSurvivingDrawcalls, bool showDrawcalls)
+    void PerformanceDiagnostics::DrawCullingDrawCallStatsView(u32 viewID, f32 textPos, u32& totalDrawCalls, u32& totalSurvivingDrawcalls)
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
@@ -363,31 +558,22 @@ namespace Editor
             viewName = "Shadow Cascade " + std::to_string(viewID - 1) + " Drawcalls";
         }
 
-        bool showView = showDrawcalls;
         if (!_drawCallStatsOnlyForMainView)
         {
-            if (showDrawcalls)
+            ImGui::Text("%s", viewName.c_str());
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
             {
-                showView = ImGui::CollapsingHeader(viewName.c_str());
+                ImGui::SameLine(textPos);
+            }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
             }
 
-            // If we are not collapsed, add a header that explains the values
-            if (showView)
-            {
-                ImGui::SameLine();
-                if (textPos > ImGui::GetCursorPosX())
-                {
-                    ImGui::SameLine(textPos);
-                }
-                else
-                {
-                    ImGui::NewLine();
-                    ImGui::SetCursorPosX(textPos);
-                }
-
-                ImGui::Text("%s", rightHeaderText.c_str());
-                ImGui::Separator();
-            }
+            ImGui::Text("%s", rightHeaderText.c_str());
+            ImGui::Separator();
         }
         
         u32 viewDrawCalls = 0;
@@ -410,22 +596,14 @@ namespace Editor
             if (viewSupportsOcclusionCulling)
             {
                 u32 drawCallsSurvived = terrainRenderer->GetNumOccluderDrawCalls();
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Terrain Occluders", drawCalls, drawCallsSurvived, !showView);
-                }
+                DrawCullingStatsEntry("Terrain Occluders", drawCalls, drawCallsSurvived);
                 viewDrawCallsSurvived += drawCallsSurvived;
             }
 
             // Geometry
             {
                 u32 drawCallsSurvived = terrainRenderer->GetNumSurvivingDrawCalls(viewID);
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Terrain Geometry", drawCalls, drawCallsSurvived, !showView);
-                }
+                DrawCullingStatsEntry("Terrain Geometry", drawCalls, drawCallsSurvived);
                 viewDrawCallsSurvived += drawCallsSurvived;
             };
         }
@@ -434,27 +612,24 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawcall("Model (O)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // Transparent Models
         if (viewRendersTransparentModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawcall("Model (T)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
-        if (showDrawcalls)
-        {
-            DrawCullingStatsEntry("View Total", viewDrawCalls, viewDrawCallsSurvived, !showView);
-        }
+        //DrawCullingStatsEntry("View Total", viewDrawCalls, viewDrawCallsSurvived, !showView);
 
         totalDrawCalls += viewDrawCalls;
         totalSurvivingDrawcalls += viewDrawCallsSurvived;
     }
 
-    void PerformanceDiagnostics::DrawCullingTriangleStatsView(u32 viewID, f32 textPos, u32& totalTriangles, u32& totalSurvivingTriangles, bool showTriangles)
+    void PerformanceDiagnostics::DrawCullingTriangleStatsView(u32 viewID, f32 textPos, u32& totalTriangles, u32& totalSurvivingTriangles)
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
@@ -468,31 +643,22 @@ namespace Editor
             viewName = "Shadow Cascade " + std::to_string(viewID - 1) + " Triangles";
         }
 
-        bool showView = showTriangles;
         if (!_drawCallStatsOnlyForMainView)
         {
-            if (showTriangles)
+            ImGui::Text("%s", viewName.c_str());
+            ImGui::SameLine();
+            if (textPos > ImGui::GetCursorPosX())
             {
-                showView = ImGui::CollapsingHeader(viewName.c_str());
+                ImGui::SameLine(textPos);
+            }
+            else
+            {
+                ImGui::NewLine();
+                ImGui::SetCursorPosX(textPos);
             }
 
-            // If we are not collapsed, add a header that explains the values
-            if (showView)
-            {
-                ImGui::SameLine();
-                if (textPos > ImGui::GetCursorPosX())
-                {
-                    ImGui::SameLine(textPos);
-                }
-                else
-                {
-                    ImGui::NewLine();
-                    ImGui::SetCursorPosX(textPos);
-                }
-
-                ImGui::Text("%s", rightHeaderText.c_str());
-                ImGui::Separator();
-            }
+            ImGui::Text("%s", rightHeaderText.c_str());
+            ImGui::Separator();
         }
 
         u32 viewTriangles = 0;
@@ -515,22 +681,14 @@ namespace Editor
             if (viewSupportsOcclusionCulling)
             {
                 u32 trianglesSurvived = terrainRenderer->GetNumOccluderTriangles();
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Terrain Occluders", triangles, trianglesSurvived, !showView);
-                }
+                DrawCullingStatsEntry("Terrain Occluders", triangles, trianglesSurvived);
                 viewTrianglesSurvived += trianglesSurvived;
             }
 
             // Geometry
             {
                 u32 trianglesSurvived = terrainRenderer->GetNumSurvivingGeometryTriangles(viewID);
-
-                if (showView)
-                {
-                    DrawCullingStatsEntry("Terrain Geometry", triangles, trianglesSurvived, !showView);
-                }
+                DrawCullingStatsEntry("Terrain Geometry", triangles, trianglesSurvived);
                 viewTrianglesSurvived += trianglesSurvived;
             }
         }
@@ -539,27 +697,29 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawcall("Model (O)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Opaque Models
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawcall("Model (T)", viewID, cullingResources, showView, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header
-        if (showTriangles)
-        {
-            DrawCullingStatsEntry("View Total", viewTriangles, viewTrianglesSurvived, !showView);
-        }
+        DrawCullingStatsEntry("View Total", viewTriangles, viewTrianglesSurvived);
 
         totalTriangles += viewTriangles;
         totalSurvivingTriangles += viewTrianglesSurvived;
     }
 
-    void PerformanceDiagnostics::DrawCullingResourcesDrawcall(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool showView, bool viewSupportsOcclusionCulling, u32& viewDrawCalls, u32& viewDrawCallsSurvived)
+    void PerformanceDiagnostics::DrawCullingResourcesDrawCalls(std::string prefix,
+                                                               u32 viewID,
+                                                               CullingResourcesBase& cullingResources,
+                                                               bool viewSupportsOcclusionCulling,
+                                                               u32& viewDrawCalls,
+                                                               u32& viewDrawCallsSurvived)
     {
         u32 drawCalls = cullingResources.GetNumDrawCalls();
         viewDrawCalls += drawCalls;
@@ -568,22 +728,14 @@ namespace Editor
         if (viewSupportsOcclusionCulling && cullingResources.HasSupportForTwoStepCulling())
         {
             u32 drawCallsSurvived = cullingResources.GetNumSurvivingOccluderDrawCalls();
-
-            if (showView)
-            {
-                DrawCullingStatsEntry(prefix + " Occluders", drawCalls, drawCallsSurvived, !showView);
-            }
+            DrawCullingStatsEntry(prefix + " Occluders", drawCalls, drawCallsSurvived);
             viewDrawCallsSurvived += drawCallsSurvived;
         }
 
         // Geometry
         {
             u32 drawCallsSurvived = cullingResources.GetNumSurvivingDrawCalls(viewID);
-
-            if (showView)
-            {
-                DrawCullingStatsEntry(prefix + " Geometry", drawCalls, drawCallsSurvived, !showView);
-            }
+            DrawCullingStatsEntry(prefix + " Geometry", drawCalls, drawCallsSurvived);
             viewDrawCallsSurvived += drawCallsSurvived;
         };
     }
@@ -600,7 +752,7 @@ namespace Editor
 
             if (showView)
             {
-                DrawCullingStatsEntry(prefix + " Occluders", triangles, trianglesSurvived, !showView);
+                DrawCullingStatsEntry(prefix + " Occluders", triangles, trianglesSurvived);
             }
             viewTrianglesSurvived += trianglesSurvived;
         }
@@ -611,13 +763,13 @@ namespace Editor
 
             if (showView)
             {
-                DrawCullingStatsEntry(prefix + " Geometry", triangles, trianglesSurvived, !showView);
+                DrawCullingStatsEntry(prefix + " Geometry", triangles, trianglesSurvived);
             }
             viewTrianglesSurvived += trianglesSurvived;
         }
     }
 
-    void PerformanceDiagnostics::DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls, bool isCollapsed)
+    void PerformanceDiagnostics::DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls)
     {
         f32 percent = 0;
         if (drawCalls > 0) // Avoid division by 0 NaNs
@@ -633,38 +785,20 @@ namespace Editor
 
         f32 textPos = windowWidth - textWidth;
 
-        if (isCollapsed)
-        {
-            ImGui::SameLine();
-            if (textPos > ImGui::GetCursorPosX())
-            {
-                ImGui::SameLine(textPos);
-            }
-            else
-            {
-                ImGui::NewLine();
-                ImGui::SetCursorPosX(textPos);
-            }
+        ImGui::Separator();
+        ImGui::Text("%.*s:", name.length(), name.data());
 
-            ImGui::Text("%s", str);
+        ImGui::SameLine();
+        if (textPos > ImGui::GetCursorPosX())
+        {
+            ImGui::SameLine(textPos);
         }
         else
         {
-            ImGui::Separator();
-            ImGui::Text("%.*s:", name.length(), name.data());
-
-            ImGui::SameLine();
-            if (textPos > ImGui::GetCursorPosX())
-            {
-                ImGui::SameLine(textPos);
-            }
-            else
-            {
-                ImGui::NewLine();
-                ImGui::SetCursorPosX(textPos);
-            }
-
-            ImGui::Text("%s", str);
+            ImGui::NewLine();
+            ImGui::SetCursorPosX(textPos);
         }
+
+        ImGui::Text("%s", str);
     }
 }
