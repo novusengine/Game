@@ -54,7 +54,52 @@ namespace Editor
 	{
 		_isVisible = true;
 	}
-	
+
+	bool BaseEditor::OpenMenu(const char* title)
+	{
+		std::string menuName = std::string("Menu" + std::string(GetName()));
+
+		if (OpenRightClickMenu())
+		{
+			ImGui::OpenPopup(menuName.c_str());
+		}
+
+		if (ImGui::BeginPopup(menuName.c_str()))
+		{
+			ImGui::Text("%s", title);
+			ImGui::Separator();
+
+			return true;
+		}
+
+		return false;
+	}
+
+	void BaseEditor::CloseMenu()
+	{
+		ImGui::EndPopup();
+	}
+
+	bool BaseEditor::OpenRightClickMenu()
+	{
+		return (IsMouseInsideWindow() && ImGui::IsMouseReleased(ImGuiMouseButton_Right));
+	}
+
+	// This is for be 100% sure the mouse is inside the desired window
+	// like that only desired code is called
+	bool BaseEditor::IsMouseInsideWindow()
+	{
+		ImVec2 mouse = ImGui::GetMousePos();
+		auto mouseX = mouse.x;
+		auto mouseY = mouse.y;
+		ImVec2 windowPos = ImGui::GetWindowPos();
+		ImVec2 windowSize = ImGui::GetWindowSize();
+
+		return (mouseX >= windowPos.x && mouseX <= windowPos.x + windowSize.x &&
+			mouseY >= windowPos.y && mouseY <= windowPos.y + windowSize.y &&
+			ImGui::IsWindowHovered());
+	}
+
 	bool BaseEditor::IsHorizontal()
 	{
 		return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight());
