@@ -49,7 +49,7 @@ namespace Editor
 
             if (OpenMenu("Settings"))
             {
-                if (ImGui::BeginMenu("Show"))
+                if (ImGui::BeginMenu("View"))
                 {
                     ImGui::Checkbox("Surviving DrawCalls", &_showSurvivingDrawCalls);
                     ImGui::Checkbox("Surviving Triangle", &_showSurvivingTriangle);
