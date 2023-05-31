@@ -16,6 +16,7 @@ public:
     Renderer::GPUVector<Camera> cameras;
 
     Renderer::ImageID visibilityBuffer;
+    Renderer::ImageID sceneColor;
     Renderer::ImageID finalColor;
 
     Renderer::ImageID transparency;

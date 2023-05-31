@@ -1,6 +1,9 @@
 #include "BaseEditor.h"
 
+#include <Game/Util/ImguiUtil.h>
+
 #include <Base/CVarSystem/CVarSystem.h>
+
 
 #include <imgui/imgui.h>
 
@@ -19,6 +22,7 @@ namespace Editor
 		if (cvar == nullptr)
 		{
 			cvarSystem->CreateIntCVar(cvarName.c_str(), "Is window open", defaultVisible, defaultVisible);
+			
 			_isVisible = defaultVisible;
 			cvarSystem->MarkDirty();
 			return;
@@ -46,13 +50,28 @@ namespace Editor
 		_lastIsVisible = _isVisible;
 	}
 
+	void BaseEditor::Show()
+	{
+		_isVisible = true;
+	}
+	
 	bool BaseEditor::IsHorizontal()
 	{
 		return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight());
 	}
 
+	bool& BaseEditor::IsVisible()
+	{
+		return _isVisible;
+	}
+
 	void BaseEditor::SetIsVisible(bool isVisible)
 	{
 		_isVisible = isVisible;
+	}
+
+	void BaseEditor::Reset()
+	{
+		_isVisible = _defaultVisible;
 	}
 }

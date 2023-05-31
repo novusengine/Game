@@ -8,7 +8,7 @@ namespace Editor
 	public:
 		MapEditor();
 
-		virtual const char* GetName() override { return "MapEditor"; }
+		virtual const char* GetName() override { return "Map"; }
 
 		virtual void DrawImGui() override;
 

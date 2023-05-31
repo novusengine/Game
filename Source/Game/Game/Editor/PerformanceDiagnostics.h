@@ -17,7 +17,7 @@ namespace Editor
 	public:
 		PerformanceDiagnostics();
 
-		virtual const char* GetName() override { return "PerformanceDiagnostics"; }
+		virtual const char* GetName() override { return "Performance"; }
 
 		virtual void DrawImGui() override;
 

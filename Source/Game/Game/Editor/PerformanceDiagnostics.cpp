@@ -6,6 +6,7 @@
 #include <Game/Util/ServiceLocator.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
 #include <Game/Application/EnttRegistries.h>
+#include <Game/Util/ImguiUtil.h>
 
 #include <entt/entt.hpp>
 #include <imgui/implot.h>
@@ -38,7 +39,7 @@ namespace Editor
         const std::string& cpuName = cpuInfo.GetPrettyName();
         const std::string& gpuName = gameRenderer->GetGPUName();
 
-        if (ImGui::Begin("Performance"))
+        if (ImGui::Begin(GetName()))
         {
             ImGui::Text("CPU: %s", cpuName.c_str());
             if (IsHorizontal())

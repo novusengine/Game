@@ -28,7 +28,7 @@ namespace Editor
 	void MapEditor::DrawImGui()
 	{
         // Print position
-        if (ImGui::Begin("Map"))
+        if (ImGui::Begin(GetName()))
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             entt::registry& registry = *registries->gameRegistry;

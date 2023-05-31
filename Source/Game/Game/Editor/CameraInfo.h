@@ -8,7 +8,7 @@ namespace Editor
 	public:
 		CameraInfo();
 
-		virtual const char* GetName() override { return "CameraInfo"; }
+		virtual const char* GetName() override { return "Camera Info"; }
 
 		virtual void DrawImGui() override;
 

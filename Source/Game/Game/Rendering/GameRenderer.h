@@ -77,6 +77,7 @@ private:
 	Memory::StackAllocator* _frameAllocator[2];
 
 	u8 _frameIndex = 0;
+	vec2 _lastWindowSize = vec2(1, 1);
 	RenderResources _resources;
 
 	// Sub Renderers

@@ -23,27 +23,23 @@ namespace Editor
         _tree = new TreeNode(_topPath);
         ProcessTree(_tree);
         _currentNode = _tree;
+
+        _gameRenderer = ServiceLocator::GetGameRenderer();
+        _renderer = _gameRenderer->GetRenderer();
+
+        Renderer::TextureDesc textureDesc;
+        textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds";
+        Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
+        _defaultImageHandle = _renderer->GetImguiImageHandle(textureID);
     }
 
     void AssetBrowser::DrawImGui()
     {
-        _gameRenderer = ServiceLocator::GetGameRenderer();
-        _renderer = _gameRenderer->GetRenderer();
-
         if (_averageFontWidth < 0.f)
             CalculateAverageFontWidth();
 
         if (ImGui::Begin(GetName()))
         {
-
-            if (!_defaultImageHandle)
-            {
-                Renderer::TextureDesc textureDesc;
-                textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds";
-                Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
-                _defaultImageHandle = _renderer->GetImguiImageHandle(textureID);
-            }
-
             ImGui::Text("Actual data folder : %s", _topPath.string().c_str());
             if (_currentNode)
             {
@@ -148,7 +144,7 @@ namespace Editor
                             ImGui::GetStyle().FramePadding.y * 2 + ImGui::GetTextLineHeightWithSpacing());
 
                         FakeScrollingArea scrollingArea(itemSize, static_cast<i32>(_searchedFiles.size()));
-                        if (scrollingArea.Before())
+                        if (scrollingArea.Begin())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
                             i32 lastItem = scrollingArea.GetLastVisibleItem();
@@ -161,14 +157,14 @@ namespace Editor
                                 RowFileMode(*ite);
                             }
 
-                            scrollingArea.After();
+                            scrollingArea.End();
                         }
                     }
                     else
                     {
                         ImVec2 itemSize(realDisplaySize.x, (realDisplaySize.y + ImGui::CalcTextSize("DUMMY").y) * 1.1f);
                         FakeScrollingArea scrollingArea(itemSize, static_cast<i32>(_searchedFiles.size()));
-                        if (scrollingArea.Before())
+                        if (scrollingArea.Begin())
                         {
                             i32 firstItem = scrollingArea.GetFirstVisibleItem();
                             i32 lastItem = scrollingArea.GetLastVisibleItem();
@@ -183,7 +179,7 @@ namespace Editor
                                 DisplayFileMode(_currentImage, _currentSize, displaySize, item, _averageFontWidth);
                             }
 
-                            scrollingArea.After();
+                            scrollingArea.End();
                         }
                     }
                 }

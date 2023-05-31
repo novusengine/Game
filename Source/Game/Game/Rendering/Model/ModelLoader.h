@@ -1,4 +1,6 @@
 #pragma once
+#include <Game/ECS/Components/AABB.h>
+
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
 #include <Base/Container/SafeUnorderedMap.h>
@@ -46,12 +48,13 @@ public:
 	void LoadPlacement(const Terrain::Placement& placement);
 
 	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
+	bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
 
 	DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);
 
 private:
 	bool LoadRequest(const LoadRequestInternal& request);
-	void AddInstance(const LoadRequestInternal& request);
+	void AddInstance(entt::entity entityID, const LoadRequestInternal& request);
 
 private:
 	enki::TaskScheduler _scheduler;
@@ -66,7 +69,11 @@ private:
 	robin_hood::unordered_map<u32, std::mutex*> _nameHashToLoadingMutex;
 
 	robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
+	robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
 	std::mutex _instanceIDToModelIDMutex;
 
 	robin_hood::unordered_map<u32, u32> _modelIDToNameHash;
+	robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;
+
+	std::vector<entt::entity> _createdEntities;
 };

@@ -38,7 +38,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
 
     struct Data
     {
-        Renderer::ImageMutableResource finalColor;
+        Renderer::ImageMutableResource sceneColor;
         Renderer::DepthImageMutableResource depth;
 
         Renderer::DescriptorSetResource globalSet;
@@ -49,7 +49,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
-            data.finalColor = builder.Write(resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.sceneColor = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
@@ -92,7 +92,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
 
             // Render targets
-            pipelineDesc.renderTargets[0] = data.finalColor;
+            pipelineDesc.renderTargets[0] = data.sceneColor;
 
             pipelineDesc.depthStencil = data.depth;
 
