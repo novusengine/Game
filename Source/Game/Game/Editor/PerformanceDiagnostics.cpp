@@ -20,12 +20,10 @@ namespace Editor
 {
     PerformanceDiagnostics::PerformanceDiagnostics()
         : BaseEditor(GetName(), true)
-	{
+        { }
 
-	}
-
-	void PerformanceDiagnostics::DrawImGui()
-	{
+    void PerformanceDiagnostics::DrawImGui()
+    {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -44,7 +42,6 @@ namespace Editor
 
         if (ImGui::Begin(GetName()))
         {
-
             static bool enableStretching = true;
 
             if (OpenMenu("Settings"))
@@ -61,7 +58,6 @@ namespace Editor
                 }
 
                 ImGui::Checkbox("Enable Stretching", &enableStretching);
-
                 CloseMenu();
             }
 
@@ -80,13 +76,14 @@ namespace Editor
             if (_showSurvivingDrawCalls || _showSurvivingTriangle)
                 ImGui::Checkbox("Surviving information only for main view", &_drawCallStatsOnlyForMainView);
 
-            const std::vector<bool> sectionOrder = {
-                _showSurvivingDrawCalls,
-                _showSurvivingTriangle,
-                _showFrameTime,
-                _showRenderPass,
-                _showFrameGraph
-            };
+            const std::vector<bool> sectionOrder =
+                {
+                    _showSurvivingDrawCalls,
+                    _showSurvivingTriangle,
+                    _showFrameTime,
+                    _showRenderPass,
+                    _showFrameGraph
+                };
 
             i32 howManySectionToDraw = 0;
             for (const auto& showSection : sectionOrder)
@@ -193,19 +190,21 @@ namespace Editor
                     }
                 }
             }
-            else
+            else // IsVertical()
             {
                 bool canDisplayByColumn = (ImGui::GetContentRegionAvail().x > 450);
 
-                if ((_showSurvivingDrawCalls != _showSurvivingTriangle) &&
-                    (_showFrameTime != _showRenderPass))
-                    canDisplayByColumn = false;
-
-                if (howManySectionToDraw == 1)
-                    canDisplayByColumn = false;
-
-                if (canDisplayByColumn)
+                // force displaying without column
+                if (((_showSurvivingDrawCalls != _showSurvivingTriangle) && (_showFrameTime != _showRenderPass))
+                    || howManySectionToDraw == 1)
                 {
+                    canDisplayByColumn = false;
+                }
+
+                if (canDisplayByColumn) // column display
+                {
+                    // fakeOrder is to calculate the real proportions if only half item in a row
+                    // is showed, like that he can stretch horizontally, this is an easy fix
                     std::vector<bool> fakeOrder = {false, false, false, false, true};
                     if (_showSurvivingTriangle || _showSurvivingDrawCalls)
                         fakeOrder[0] = true;
@@ -221,10 +220,12 @@ namespace Editor
                         newHeightProportions[3] = newHeightProportions[2];
                     }
 
-                    for (f32& height : newHeightProportions)
-                        height *= ImGui::GetContentRegionAvail().y;
-
                     ProportionsFix(newHeightProportions);
+
+                    for (f32& height : newHeightProportions)
+                    {
+                        height *= ImGui::GetContentRegionAvail().y;
+                    }
 
                     if (ImGui::BeginTable("##PerformanceDiagnosticMultipleColumn", 2))
                     {
@@ -245,15 +246,17 @@ namespace Editor
 
                     DrawFrameTimesGraph(newHeightProportions[4], stats);
                 }
-                else
+                else // row display
                 {
                     std::vector<f32> newHeightProportions = (enableStretching) ?
                         CalculateProportions(_sectionParamVertical, sectionOrder) : _sectionParamVertical;
 
-                    for (f32& height : newHeightProportions)
-                        height *= ImGui::GetContentRegionAvail().y;
-
                     ProportionsFix(newHeightProportions);
+
+                    for (f32& height : newHeightProportions)
+                    {
+                        height *= ImGui::GetContentRegionAvail().y;
+                    }
 
                     DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numCascades);
                     DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numCascades);
@@ -304,10 +307,7 @@ namespace Editor
     {
         for (f32& val : proportions)
         {
-            if (val == 0.f)
-            {
-                val = 0.1f;
-            }
+            val = (val == 0.f) ? 0.1f : val;
         }
     }
 
