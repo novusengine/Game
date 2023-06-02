@@ -20,7 +20,9 @@ namespace Editor
 {
     PerformanceDiagnostics::PerformanceDiagnostics()
         : BaseEditor(GetName(), true)
-        { }
+    {
+
+    }
 
     void PerformanceDiagnostics::DrawImGui()
     {
@@ -77,13 +79,13 @@ namespace Editor
                 ImGui::Checkbox("Surviving information only for main view", &_drawCallStatsOnlyForMainView);
 
             const std::vector<bool> sectionOrder =
-                {
-                    _showSurvivingDrawCalls,
-                    _showSurvivingTriangle,
-                    _showFrameTime,
-                    _showRenderPass,
-                    _showFrameGraph
-                };
+            {
+                _showSurvivingDrawCalls,
+                _showSurvivingTriangle,
+                _showFrameTime,
+                _showRenderPass,
+                _showFrameGraph
+            };
 
             i32 howManySectionToDraw = 0;
             for (const auto& showSection : sectionOrder)
@@ -499,22 +501,22 @@ namespace Editor
             widthAvailable = std::max(300.f, widthAvailable);
 
             // Read the frame buffer to gather timings for the histograms
-            std::vector<float> totalTimes;
+            std::vector<f32> totalTimes;
             totalTimes.reserve(stats.frameStats.size());
 
-            std::vector<float> updateTimes;
+            std::vector<f32> updateTimes;
             updateTimes.reserve(stats.frameStats.size());
 
-            std::vector<float> renderTimes;
+            std::vector<f32> renderTimes;
             renderTimes.reserve(stats.frameStats.size());
 
-            std::vector<float> waitTimes;
+            std::vector<f32> waitTimes;
             waitTimes.reserve(stats.frameStats.size());
 
-            std::vector<float> gpuTimes;
+            std::vector<f32> gpuTimes;
             gpuTimes.reserve(stats.frameStats.size());
 
-            for (int i = 0; i < stats.frameStats.size(); i++)
+            for (i32 i = 0; i < stats.frameStats.size(); i++)
             {
                 totalTimes.push_back(stats.frameStats[i].deltaTimeS * 1000);
                 updateTimes.push_back(stats.frameStats[i].simulationFrameTimeS * 1000);
@@ -532,11 +534,11 @@ namespace Editor
                 ImPlot::SetupAxis(ImAxis_X1, "frame", ImPlotAxisFlags_Lock);
                 ImPlot::SetupAxis(ImAxis_Y1, "ms", ImPlotAxisFlags_LockMin); // ImPlotAxisFlags_LockMin
 
-                ImPlot::PlotLine("Total", totalTimes.data(), (int)totalTimes.size());
-                ImPlot::PlotLine("Update", updateTimes.data(), (int)updateTimes.size());
-                ImPlot::PlotLine("Render", renderTimes.data(), (int)renderTimes.size());
-                ImPlot::PlotLine("CPU wait For GPU", waitTimes.data(), (int)waitTimes.size());
-                ImPlot::PlotLine("GPU", gpuTimes.data(), (int)gpuTimes.size());
+                ImPlot::PlotLine("Total", totalTimes.data(), static_cast<i32>(totalTimes.size()));
+                ImPlot::PlotLine("Update", updateTimes.data(), static_cast<i32>(updateTimes.size()));
+                ImPlot::PlotLine("Render", renderTimes.data(), static_cast<i32>(renderTimes.size()));
+                ImPlot::PlotLine("CPU wait For GPU", waitTimes.data(), static_cast<i32>(waitTimes.size()));
+                ImPlot::PlotLine("GPU", gpuTimes.data(), static_cast<i32>(gpuTimes.size()));
                 ImPlot::EndPlot();
             }
 
@@ -714,12 +716,7 @@ namespace Editor
         totalSurvivingTriangles += viewTrianglesSurvived;
     }
 
-    void PerformanceDiagnostics::DrawCullingResourcesDrawCalls(std::string prefix,
-                                                               u32 viewID,
-                                                               CullingResourcesBase& cullingResources,
-                                                               bool viewSupportsOcclusionCulling,
-                                                               u32& viewDrawCalls,
-                                                               u32& viewDrawCallsSurvived)
+    void PerformanceDiagnostics::DrawCullingResourcesDrawCalls(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool viewSupportsOcclusionCulling, u32& viewDrawCalls, u32& viewDrawCallsSurvived)
     {
         u32 drawCalls = cullingResources.GetNumDrawCalls();
         viewDrawCalls += drawCalls;
