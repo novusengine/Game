@@ -23,6 +23,12 @@ namespace Editor
 
 		virtual void EndImGui() {};
 
+		bool OpenMenu(const char* title);
+		void CloseMenu();
+
+		bool OpenRightClickMenu();
+		bool IsMouseInsideWindow();
+
 		bool IsHorizontal();
 		bool& IsVisible();
 		void SetIsVisible(bool isVisible);

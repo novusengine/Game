@@ -6,25 +6,26 @@
 
 namespace ECS::Singletons
 {
+
+    struct FrameTimes
+    {
+        f32 deltaTimeS;
+        f32 simulationFrameTimeS;
+        f32 renderFrameTimeS;
+        f32 renderWaitTimeS;
+        f32 gpuFrameTimeMS;
+    };
+
     struct EngineStats
     {
         static const u32 MAX_ENTRIES = 120;
-
-        struct Frame
-        {
-            f32 deltaTimeS;
-            f32 simulationFrameTimeS;
-            f32 renderFrameTimeS;
-            f32 renderWaitTimeS;
-            f32 gpuFrameTimeMS;
-        };
-        std::deque<Frame> frameStats;
+        std::deque<FrameTimes> frameStats;
 
         robin_hood::unordered_map<u32, std::deque<f32>> namedStats;
 
         void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 renderFrameTimeS, f32 renderWaitTimeS, f32 gpuFrameTimeMS)
         {
-            Frame newFrame;
+            FrameTimes newFrame;
             newFrame.deltaTimeS = deltaTimeS;
             newFrame.simulationFrameTimeS = simulationFrameTimeS;
             newFrame.renderFrameTimeS = renderFrameTimeS;
@@ -53,7 +54,7 @@ namespace ECS::Singletons
         }
 
         //averages a frame timing from the last {numFrames} frames
-        Frame AverageFrame(int numFrames)
+        FrameTimes AverageFrame(int numFrames)
         {
             if (frameStats.size() > 0)
             {
@@ -63,11 +64,11 @@ namespace ECS::Singletons
                     count = frameStats.size();
                 }
 
-                Frame averaged = frameStats.front();
+                FrameTimes averaged = frameStats.front();
 
                 for (uint32_t i = 1; i < count; i++)
                 {
-                    Frame f = frameStats[i];
+                    FrameTimes f = frameStats[i];
 
                     averaged.deltaTimeS += f.deltaTimeS;
                     averaged.simulationFrameTimeS += f.simulationFrameTimeS;
@@ -86,7 +87,7 @@ namespace ECS::Singletons
             }
             else
             {
-                return Frame{ 0.f,0.f,0.f,0.f,0.f };
+                return FrameTimes{ 0.f,0.f,0.f,0.f,0.f };
             }
         }
 
