@@ -1,5 +1,7 @@
 #include "FakeScrollingArea.h"
 
+#include <Base/Util/DebugHandler.h>
+
 #include <imgui/imgui.h>
 
 bool FakeScrollingArea::Begin()
