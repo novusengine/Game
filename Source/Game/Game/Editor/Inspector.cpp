@@ -1,6 +1,7 @@
 #include "Inspector.h"
 
 #include <Game/Util/ServiceLocator.h>
+#include <Game/Util/ImguiUtil.h>
 #include <Game/Application/EnttRegistries.h>
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
@@ -17,9 +18,11 @@
 #include <Game/ECS/Components/Camera.h>
 #include <Game/ECS/Components/Transform.h>
 #include <Game/ECS/Components/Model.h>
+#include <Game/ECS/Components/Name.h>
 #include <Game/Editor/EditorHandler.h>
 #include <Game/Editor/ActionStack.h>
 #include <Game/Editor/Hierarchy.h>
+#include <Game/Editor/Viewport.h>
 
 #include <Renderer/RenderSettings.h>
 
@@ -29,7 +32,6 @@
 #include <GLFW/glfw3.h>
 #include <entt/entt.hpp>
 #include <tracy/Tracy.hpp>
-
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui/imgui.h>

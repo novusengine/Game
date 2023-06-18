@@ -1,6 +1,8 @@
 #pragma once
 #include "BaseEditor.h"
 
+#include <entt/fwd.hpp>
+
 namespace Editor
 {
 	class Inspector;
@@ -22,7 +24,7 @@ namespace Editor
 
 	private:
 		Inspector* _inspector = nullptr;
-		entt::entity _selectedEntity = entt::null;
+		entt::entity _selectedEntity;
 		bool _scrollToSelected = false;
 	};
 }

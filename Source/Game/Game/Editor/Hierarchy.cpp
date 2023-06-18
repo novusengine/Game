@@ -7,6 +7,7 @@
 #include <Game/ECS/Util/CameraUtil.h>
 #include <Game/Util/ImguiUtil.h>
 #include <Game/Util/ImGui/FakeScrollingArea.h>
+#include <Game/Editor/Inspector.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

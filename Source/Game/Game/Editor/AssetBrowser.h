@@ -4,12 +4,14 @@
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Util/ServiceLocator.h>
 
+#include <entt/fwd.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imgui_notify.h>
 
 #include <filesystem>
 #include <utility>
+#include <map>
 
 namespace fs = std::filesystem;
 
@@ -95,11 +97,11 @@ namespace Editor
         std::vector<fs::path> _searchedFiles;
 
         std::map<int, void*> _images;
-        std::map<int, ImVec2> _imagesSize;
+        std::map<int, vec2> _imagesSize;
 
         void* _defaultImageHandle = nullptr;
         void* _currentImage = nullptr;
-        ImVec2 _currentSize;
+        vec2 _currentSize;
 
         f32 _averageFontWidth = -1.f;
     };

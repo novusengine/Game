@@ -10,6 +10,8 @@
 #include <Renderer/Window.h>
 
 #include <imgui/imgui.h>
+#include <entt/entt.hpp>
+#include <GLFW/glfw3.h>
 
 namespace ECS::Util
 {

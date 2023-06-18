@@ -8,6 +8,7 @@
 #include <FileFormat/Novus/Map/MapChunk.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
+#include <entt/fwd.hpp>
 #include <enkiTS/TaskScheduler.h>
 #include <robinhood/robinhood.h>
 #include <type_safe/strong_typedef.hpp>

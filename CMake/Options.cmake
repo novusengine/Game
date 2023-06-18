@@ -1,6 +1,7 @@
 include_guard(GLOBAL)
 
 # Setup Cached Options
+set(UNITY_BUILD_ENABLED ON CACHE BOOL "")
 
 # Setup Non-Cached Options
 set(ROOT_FOLDER ${PROJECT_NAME})

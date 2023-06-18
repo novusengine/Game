@@ -1,6 +1,8 @@
 #pragma once
 #include <cassert>
 
+#include <Game/Application/EnttRegistries.h>
+
 namespace Editor
 {
     class EditorHandler;
