@@ -23,6 +23,7 @@ class MaterialRenderer;
 class SkyboxRenderer;
 class EditorRenderer;
 class DebugRenderer;
+class CanvasRenderer;
 class UIRenderer;
 class PixelQuery;
 
@@ -91,6 +92,7 @@ private:
 	SkyboxRenderer* _skyboxRenderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
 	EditorRenderer* _editorRenderer = nullptr;
+	CanvasRenderer* _canvasRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;
 
 	robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;

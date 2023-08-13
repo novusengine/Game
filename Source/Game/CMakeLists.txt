@@ -18,6 +18,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     meshoptimizer
     enkiTS::enkiTS
     refl-cpp::refl-cpp
+    utfcpp::utfcpp
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX UNITY_BUILD ${UNITY_BUILD_ENABLED})
