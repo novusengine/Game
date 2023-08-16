@@ -46,7 +46,8 @@ void TerrainLoader::Update(f32 deltaTime)
 	{
 		if (loadRequest.loadType == LoadType::Partial)
 		{
-			LoadPartialMapRequest(loadRequest);
+			// TODO : Disabled as this needs fixing
+			//LoadPartialMapRequest(loadRequest);
 		}
 		else if (loadRequest.loadType == LoadType::Full)
 		{
@@ -387,29 +388,31 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
 					_chunkIDToLoadedID[chunkID] = chunkDataID;
 
-					size_t mapObjectOffset = sizeof(Map::Chunk) - (sizeof(std::vector<Terrain::Placement>) * 2);
+					u32 numMapObjectPlacements = chunk->numMapObjectPlacements;
+					u32 numComplexModelPlacements = chunk->numComplexModelPlacements;
 
-					u32 numMapObjectPlacements;
-					if (chunkBuffer->Get(numMapObjectPlacements, mapObjectOffset))
+					size_t mapObjectOffset = sizeof(Map::Chunk) - ((sizeof(std::vector<Terrain::Placement>) * 2) + sizeof(Map::LiquidInfo));
+					
+					if (numMapObjectPlacements)
 					{
 						for (u32 j = 0; j < numMapObjectPlacements; j++)
 						{
-							size_t offset = mapObjectOffset + sizeof(u32) + (j * sizeof(Terrain::Placement));
+							size_t offset = mapObjectOffset + (j * sizeof(Terrain::Placement));
 							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
-
+					
 							_modelLoader->LoadPlacement(*placement);
 						}
 					}
-					size_t cModelOffset = mapObjectOffset + sizeof(u32) + numMapObjectPlacements * sizeof(Terrain::Placement);
-
-					u32 numCModelPlacements;
-					if (chunkBuffer->Get(numCModelPlacements, cModelOffset))
+					
+					if (numComplexModelPlacements)
 					{
-						for (u32 j = 0; j < numCModelPlacements; j++)
-						{
-							size_t offset = cModelOffset + sizeof(u32) + (j * sizeof(Terrain::Placement));
-							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
+						size_t cModelOffset = mapObjectOffset + (numMapObjectPlacements * sizeof(Terrain::Placement));
 
+						for (u32 j = 0; j < numComplexModelPlacements; j++)
+						{
+							size_t offset = cModelOffset + (j * sizeof(Terrain::Placement));
+							Terrain::Placement* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[offset]);
+					
 							_modelLoader->LoadPlacement(*placement);
 						}
 					}
