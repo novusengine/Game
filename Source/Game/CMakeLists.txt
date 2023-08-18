@@ -18,9 +18,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     meshoptimizer
     enkiTS::enkiTS
     refl-cpp::refl-cpp
+    utfcpp::utfcpp
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX UNITY_BUILD ON)
+set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER ${ROOT_FOLDER} LINKER_LANGUAGE CXX UNITY_BUILD ${UNITY_BUILD_ENABLED})
 create_vs_filters(${GAME_FILES})
 
 #set the visual studio working directory to the parent path of the client executable

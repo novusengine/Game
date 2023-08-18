@@ -1,4 +1,5 @@
 #include "GameRenderer.h"
+#include "Canvas/CanvasRenderer.h"
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
@@ -136,6 +137,7 @@ GameRenderer::GameRenderer()
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
+    _canvasRenderer = new CanvasRenderer(_renderer);
     _uiRenderer = new UIRenderer(_renderer);
     _pixelQuery = new PixelQuery(_renderer);
 
@@ -170,6 +172,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _debugRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
+    _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
 }
 
@@ -323,6 +326,8 @@ f32 GameRenderer::Render()
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
+
+    _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);

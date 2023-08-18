@@ -1,15 +1,15 @@
 #include "PerformanceDiagnostics.h"
 
-#include <Base/CVarSystem/CVarSystemPrivate.h>
 #include <Base/Util/CPUInfo.h>
+#include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Game/Application/EnttRegistries.h>
-#include <Game/ECS/Singletons/EngineStats.h>
+#include <Game/Util/ServiceLocator.h>
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Model/ModelRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
+#include <Game/Application/EnttRegistries.h>
+#include <Game/ECS/Singletons/EngineStats.h>
 #include <Game/Util/ImguiUtil.h>
-#include <Game/Util/ServiceLocator.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

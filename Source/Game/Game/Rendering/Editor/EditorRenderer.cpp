@@ -1,12 +1,14 @@
 #include "EditorRenderer.h"
 
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Application/EnttRegistries.h"
+#include <Game/Rendering/Debug/DebugRenderer.h>
+#include <Game/Rendering/RenderResources.h>
+#include <Game/Util/ServiceLocator.h>
+#include <Game/Application/EnttRegistries.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
+
+#include <Base/CVarSystem/CVarSystem.h>
 
 #include <entt/entt.hpp>
 

@@ -1,9 +1,9 @@
 #pragma once
 #include <Game/ECS/Components/AABB.h>
 
+#include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
 #include <Base/Container/SafeUnorderedMap.h>
-#include <Base/Types.h>
 
 #include <FileFormat/Novus/Map/MapChunk.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>

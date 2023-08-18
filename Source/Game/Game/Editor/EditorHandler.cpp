@@ -8,6 +8,7 @@
 #include "Hierarchy.h"
 #include "AssetBrowser.h"
 #include "ActionStack.h"
+#include "EaseCurveTool.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -35,6 +36,7 @@ namespace Editor
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapEditor());
+        _editors.push_back(new EaseCurveTool());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);
