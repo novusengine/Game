@@ -101,6 +101,12 @@ void ModelRenderer::Clear()
     _textureUnits.Clear();
     _textureUnitIndex.store(0);
 
+    _boneMatrices.Clear();
+    _boneMatrixIndex.store(0);
+
+    _animatedVertices.Clear(false);
+    _animatedVerticesIndex.store(0);
+
     _opaqueCullingResources.Clear();
     _transparentCullingResources.Clear();
 
@@ -156,7 +162,10 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             data.culledDrawCallsBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             data.culledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -349,8 +358,11 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             data.culledDrawCallsBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
             data.drawCountBuffer = builder.Write(_opaqueCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
@@ -536,8 +548,11 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+            builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
             data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
@@ -598,6 +613,8 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_textureUnits.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_boneMatrices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Write(_animatedVertices.GetBuffer(), BufferUsage::COMPUTE);
 }
 
 u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
@@ -627,6 +644,15 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _textureUnits.Grow(reserveInfo.numTextureUnits);
 
+    u32 numBoneMatrices = _boneMatrices.Size();
+    _boneMatrices.Grow(reserveInfo.numBones);
+
+    std::vector<glm::mat4>& boneMatrices = _boneMatrices.Get();
+    for (u32 i = numBoneMatrices; i < reserveInfo.numBones; ++i)
+    {
+        boneMatrices[i] = glm::mat4(1.0f);
+    }
+
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
 }
@@ -648,6 +674,9 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     u32 numTextureUnitsUsed = _textureUnitIndex.load();
     _textureUnits.Resize(numTextureUnitsUsed);
+
+    u32 numBoneMatricesUsed = _boneMatrixIndex.load();
+    _boneMatrices.Resize(numBoneMatricesUsed);
 
     _opaqueCullingResources.FitBuffersAfterLoad();
     _transparentCullingResources.FitBuffersAfterLoad();
@@ -682,11 +711,14 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
         std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
 
+        u32 numModelVertices = static_cast<u32>(model.vertices.size());
+        assert(modelManifest.numVertices == numModelVertices);
+
         void* dst = &vertices[modelManifest.vertexOffset];
         void* src = model.vertices.data();
-        size_t size = sizeof(Model::ComplexModel::Vertex) * model.vertices.size();
+        size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
 
-        if (modelManifest.vertexOffset + model.vertices.size() > vertices.size())
+        if (modelManifest.vertexOffset + numModelVertices > vertices.size())
         {
             DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
         }
@@ -800,6 +832,14 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         }
     }
 
+    // Set Animated Data
+    {
+        modelManifest.numBones = static_cast<u32>(model.bones.size());
+        modelManifest.numTextureTransforms = static_cast<u32>(model.textureTransforms.size());
+
+        modelManifest.isAnimated = model.sequences.size() > 0 && modelManifest.numBones > 0;
+    }
+
     return modelManifestIndex;
 }
 
@@ -821,6 +861,16 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
 
         instanceData.modelID = modelID;
         instanceData.modelVertexOffset = manifest.vertexOffset;
+        
+        if (manifest.isAnimated)
+        {
+            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
+            if (animationSystemEnabled && *animationSystemEnabled == 1)
+            {
+                u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
+                instanceData.animatedVertexOffset = animatedVertexOffset;
+            }
+        }
     }
 
     // Add Instance matrix
@@ -927,6 +977,71 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
     return instanceID;
 }
 
+bool ModelRenderer::AddAnimationInstance(u32 instanceID)
+{
+    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
+
+    if (instanceID >= instanceDatas.size())
+    {
+		return false;
+	}
+
+    InstanceData& instanceData = instanceDatas[instanceID];
+
+    if (instanceData.animatedVertexOffset == InstanceData::InvalidID)
+    {
+        return false;
+    }
+
+    if (instanceData.boneMatrixOffset != InstanceData::InvalidID)
+    {
+        return false;
+    }
+
+    const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
+    instanceData.boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
+
+    return true;
+}
+bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
+{
+    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
+    if (instanceID >= instanceDatas.size())
+    {
+		return false;
+	}
+
+	InstanceData& instanceData = instanceDatas[instanceID];
+    if (instanceData.boneMatrixOffset == InstanceData::InvalidID)
+    {
+		return false;
+	}
+
+    const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
+
+	u32 globalBoneIndex = instanceData.boneMatrixOffset + localBoneIndex;
+    u32 endGlobalBoneIndex = globalBoneIndex + (count - 1);
+
+    // Check if the bone range is valid
+    if (endGlobalBoneIndex > instanceData.boneMatrixOffset + modelManifest.numBones)
+    {
+        return false;
+    }
+
+    if (count == 1)
+    {
+        _boneMatrices.Get()[globalBoneIndex] = *boneMatrixArray;
+        _boneMatrices.SetDirtyElement(globalBoneIndex);
+    }
+    else
+    {
+        memcpy(&_boneMatrices.Get()[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
+        _boneMatrices.SetDirtyElements(globalBoneIndex, count);
+    }
+
+    return true;
+}
+
 void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
@@ -994,10 +1109,33 @@ void ModelRenderer::SyncToGPU()
         }
     }
 
+    // Sync Animated Vertex buffer to GPU
+    {
+        _animatedVertices.SetDebugName("ModelAnimatedVertexBuffer");
+        _animatedVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+        size_t currentSizeInBuffer = _animatedVertices.Size();
+        size_t numAnimatedVertices = _animatedVerticesIndex;
+        size_t byteSize = numAnimatedVertices * sizeof(PackedAnimatedVertexPositions);
+
+        if (byteSize > currentSizeInBuffer)
+        {
+			_animatedVertices.Resize(numAnimatedVertices);
+		}
+
+        if (_animatedVertices.SyncToGPU(_renderer))
+        {
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+            _materialPassDescriptorSet.Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+        }
+    }
+
     // Sync Index buffer to GPU
     {
         _indices.SetDebugName("ModelIndexBuffer");
         _indices.SetUsage(Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER);
+
         if (_indices.SyncToGPU(_renderer))
         {
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
@@ -1047,6 +1185,20 @@ void ModelRenderer::SyncToGPU()
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+        }
+    }
+
+    // Sync BoneMatrices buffer to GPU
+    {
+        _boneMatrices.SetDebugName("ModelInstanceBoneMatrices");
+        _boneMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        if (_boneMatrices.SyncToGPU(_renderer))
+        {
+            //_animationPrepassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+            _materialPassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
         }
     }
 

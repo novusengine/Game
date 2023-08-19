@@ -47,16 +47,16 @@ PSOutput main(PSInput input)
         if (materialType == 0x8000)
             continue;
 
-        float4 texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_sampler, input.uv01.xy);
-        float4 texture2 = float4(1, 1, 1, 1);
+        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_sampler, input.uv01.xy);
+        float4 texture1Color = float4(1, 1, 1, 1);
 
         if (vertexShaderId > 2)
         {
             // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture2 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_sampler, input.uv01.zw);
+            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_sampler, input.uv01.zw);
         }
 
-        float4 shadedColor = ShadeModel(pixelShaderId, texture1, texture2, specular);
+        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
         color = BlendModel(blendingMode, color, shadedColor);
 
         if (color.a == 0.0f)

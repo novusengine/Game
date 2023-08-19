@@ -60,8 +60,9 @@ PSOutput main(PSInput input)
         float4 diffuseColor = float4(1, 1, 1, 1);
         // TODO: per-instance diffuseColor
 
-        float minAlpha = min(texture1.a, min(texture2.a, diffuseColor.a));
-        if (minAlpha < 224.0f / 255.0f)
+        // TODO : minAlpha is set based on the Pixel Shader Id
+        float minAlpha = texture1.a; // min(texture1.a, min(texture2.a, diffuseColor.a));
+        if (minAlpha < (128.0 / 255.0))
         {
             discard;
         }
@@ -83,20 +84,15 @@ PSOutput main(PSInput input)
     {
         vertices[i] = LoadModelVertex(vertexIDs[i]);
 
-        /* TODO: Animations
         // Load the skinned vertex position (in model-space) if this vertex was animated
-        if (instanceData.boneDeformOffset != 4294967295)
+        if (instanceData.boneMatrixOffset != 4294967295)
         {
             uint localVertexID = vertexIDs[i] - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
             uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
 
             vertices[i].position = LoadAnimatedVertexPosition(animatedVertexID);
-        }*/
+        }
 
-        // TODO: Calculating this bone transform matrix is rather expensive, we should do this once in the vertex shader and save the result
-        //float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
-
-        //vertices[i].position = mul(float4(vertices[i].position, 1.0f), boneTransformMatrix).xyz;
         vertices[i].position = mul(float4(vertices[i].position, 1.0f), instanceMatrix).xyz;
     }
 

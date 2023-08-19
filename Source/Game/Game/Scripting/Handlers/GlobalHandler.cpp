@@ -125,7 +125,7 @@ namespace Scripting
 			return 1;
 		}
 
-		DB::Client::Definitions::Map* map = ECS::Util::MapDBUtil::GetMapFromName(mapName);
+		DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(mapName);
 		if (map == nullptr)
 		{
 			ctx.PushBool(false);

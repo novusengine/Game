@@ -5,7 +5,7 @@
 struct ModelInstanceData
 {
     uint modelID;
-    uint boneDeformOffset;
+    uint boneMatrixOffset;
     uint boneInstanceDataOffset;
     uint textureTransformDeformOffset;
     uint textureTransformInstanceDataOffset;
@@ -149,7 +149,7 @@ ModelVertex LoadModelVertex(uint vertexID)
 
 [[vk::binding(2, MODEL)]] StructuredBuffer<ModelInstanceData> _modelInstanceDatas;
 [[vk::binding(3, MODEL)]] StructuredBuffer<float4x4> _modelInstanceMatrices;
-[[vk::binding(4, MODEL)]] StructuredBuffer<float4x4> _modelAnimationBoneDeformMatrices;
+[[vk::binding(4, MODEL)]] StructuredBuffer<float4x4> _instanceBoneMatrices;
 
 struct PackedAnimatedVertexPosition
 {
@@ -183,14 +183,14 @@ float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVert
 {
     float4x4 boneTransformMatrix = float4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
 
-    if (instanceData.boneDeformOffset != 4294967295)
+    if (instanceData.boneMatrixOffset != 4294967295)
     {
         boneTransformMatrix = float4x4(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
         [unroll]
         for (int j = 0; j < 4; j++)
         {
-            boneTransformMatrix += mul(vertex.boneWeights[j], _modelAnimationBoneDeformMatrices[instanceData.boneDeformOffset + vertex.boneIndices[j]]);
+            boneTransformMatrix += mul(vertex.boneWeights[j], _instanceBoneMatrices[instanceData.boneMatrixOffset + vertex.boneIndices[j]]);
         }
     }
 
@@ -458,11 +458,7 @@ float4 BlendModel(uint blendingMode, float4 previousColor, float4 color)
     }
     else if (blendingMode == 1) // ALPHA KEY (ONE, ZERO, ONE, ZERO)
     {
-        // I don't think discarding here is needed since we already discard alphakeyed pixels in the geometry pass
-        if (color.a >= 224.0f / 255.0f)
-        {
-            result = color;
-        }
+        result = color;
     }
     else if (blendingMode == 2) // ALPHA (SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA)
     {

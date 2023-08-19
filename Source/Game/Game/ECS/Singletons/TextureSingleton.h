@@ -6,6 +6,7 @@ namespace ECS::Singletons
 {
 	struct TextureSingleton
 	{
+	public:
 		TextureSingleton() {}
 
 		std::unordered_map<u32, std::string> textureHashToPath;

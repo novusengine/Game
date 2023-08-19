@@ -11,6 +11,7 @@ namespace ECS::Singletons
 {
 	struct MapDB
 	{
+	public:
 		MapDB() {}
 
 		DB::Client::ClientDB<DB::Client::Definitions::Map> entries;

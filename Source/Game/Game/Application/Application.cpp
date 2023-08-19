@@ -16,7 +16,6 @@
 #include <Game/Scripting/LuaManager.h>
 #include <Game/Util/ServiceLocator.h>
 #include <Game/Loaders/LoaderSystem.h>
-
 #include <Game/Scripting/LuaManager.h>
 #include <Game/Scripting/Systems/LuaSystemBase.h>
 
@@ -213,6 +212,15 @@ bool Application::Init()
 	ServiceLocator::SetLuaManager(_luaManager);
 	_luaManager->Init();
 
+	// Init AnimationSystem
+	{
+		// ModelRenderer is optional and nullptr can be passed in to run the AnimationSystem without it
+		ModelRenderer* modelRenderer = _gameRenderer->GetModelRenderer();
+		_animationSystem = new Animation::AnimationSystem(modelRenderer);
+
+		ServiceLocator::SetAnimationSystem(_animationSystem);
+	}
+
 	return true;
 }
 
@@ -280,6 +288,7 @@ bool Application::Tick(f32 deltaTime)
 	}
 
 	_ecsScheduler->Update(*_registries.gameRegistry, deltaTime);
+	_animationSystem->Update(deltaTime);
 
 	_editorHandler->Update(deltaTime);
 

@@ -23,6 +23,11 @@ namespace Scripting
     class LuaManager;
 }
 
+namespace Animation
+{
+    class AnimationSystem;
+}
+
 class ServiceLocator
 {
 public:
@@ -75,6 +80,13 @@ public:
     }
     static void SetLuaManager(Scripting::LuaManager* luaManager);
 
+    static Animation::AnimationSystem* GetAnimationSystem()
+    {
+        assert(_animationSystem != nullptr);
+        return _animationSystem;
+    }
+    static void SetAnimationSystem(Animation::AnimationSystem* animationSystem);
+
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
@@ -84,4 +96,5 @@ private:
     static EnttRegistries* _enttRegistries;
     static GameConsole* _gameConsole;
     static Scripting::LuaManager* _luaManager;
+    static Animation::AnimationSystem* _animationSystem;
 };

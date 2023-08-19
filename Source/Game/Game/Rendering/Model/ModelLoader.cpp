@@ -1,5 +1,6 @@
 #include "ModelLoader.h"
 #include "ModelRenderer.h"
+#include "Game/Animation/AnimationSystem.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Components/Transform.h"
@@ -36,7 +37,7 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 	, _requests()
 {
 	i32 numThreads = CVAR_ModelLoaderNumThreads.Get();
-	if (numThreads == 0)
+	if (numThreads == 0 || numThreads == -1)
 	{
 		_scheduler.Initialize();
 	}
@@ -156,6 +157,7 @@ void ModelLoader::Clear()
 	_modelIDToNameHash.clear();
 
 	_modelRenderer->Clear();
+	ServiceLocator::GetAnimationSystem()->Clear();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -186,6 +188,7 @@ void ModelLoader::Update(f32 deltaTime)
 			reserveInfo.numInstances += 1 * isSupported;
 			reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
 			reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+			reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
 		}
 
 		if (!_nameHashToLoadState.contains(nameHash))
@@ -201,8 +204,11 @@ void ModelLoader::Update(f32 deltaTime)
 		}
 	}
 
+	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+
 	// Have ModelRenderer prepare all buffers for what we need to load
 	_modelRenderer->Reserve(reserveInfo);
+	animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
 
 	// Create entt entities
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -224,16 +230,17 @@ void ModelLoader::Update(f32 deltaTime)
 		{
 			LoadRequestInternal& request = _workingRequests[i];
 
-			if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
+			u32 placementHash = request.placement.nameHash;
+			if (!_nameHashToDiscoveredModel.contains(placementHash))
 			{
 				// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
 				continue;
 			}
 
-			std::mutex* mutex = _nameHashToLoadingMutex[request.placement.nameHash];
+			std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
 			std::scoped_lock lock(*mutex);
 
-			LoadState loadState = _nameHashToLoadState[request.placement.nameHash];
+			LoadState loadState = _nameHashToLoadState[placementHash];
 
 			if (loadState == LoadState::Failed)
 				continue;
@@ -241,12 +248,12 @@ void ModelLoader::Update(f32 deltaTime)
 			if (loadState == LoadState::Received)
 			{
 				loadState = LoadState::Loading;
-				_nameHashToLoadState[request.placement.nameHash] = LoadState::Loading;
+				_nameHashToLoadState[placementHash] = LoadState::Loading;
 
 				bool didLoad = LoadRequest(request);
 
 				loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-				_nameHashToLoadState[request.placement.nameHash] = loadState;
+				_nameHashToLoadState[placementHash] = loadState;
 
 				if (!didLoad)
 					continue;
@@ -266,6 +273,7 @@ void ModelLoader::Update(f32 deltaTime)
 
 	// Fit the buffers to the data we loaded
 	_modelRenderer->FitBuffersAfterLoad();
+	animationSystem->FitToBuffersAfterLoad();
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -345,7 +353,6 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 		return false;
 	}
 
-
 	u32 modelID = _modelRenderer->LoadModel(path.string(), model);
 	_nameHashToModelID[request.placement.nameHash] = modelID;
 
@@ -354,6 +361,9 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 	ECS::Components::AABB& aabb = _modelIDToAABB[modelID];
 	aabb.centerPos = model.aabbCenter;
 	aabb.extents = model.aabbExtents;
+
+	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+	animationSystem->AddSkeleton(modelID, model);
 
 	return true;
 }
@@ -399,4 +409,10 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	std::scoped_lock lock(_instanceIDToModelIDMutex);
 	_instanceIDToModelID[instanceID] = modelID;
 	_instanceIDToEntityID[instanceID] = entityID;
+
+	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+	if (animationSystem->AddInstance(modelID, instanceID))
+	{
+		animationSystem->PlayAnimation(instanceID, 0);
+	}
 }

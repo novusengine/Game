@@ -25,6 +25,10 @@ namespace Scripting
 {
 	class LuaManager;
 }
+namespace Animation
+{
+	class AnimationSystem;
+}
 
 class Application
 {
@@ -58,6 +62,7 @@ private:
 
 	ECS::Scheduler* _ecsScheduler = nullptr;
 	Scripting::LuaManager* _luaManager = nullptr;
+	Animation::AnimationSystem* _animationSystem = nullptr;
 
 	nlohmann::json _cvarJson;
 

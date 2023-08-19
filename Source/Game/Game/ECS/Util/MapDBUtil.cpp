@@ -12,7 +12,7 @@
 
 namespace ECS::Util
 {
-	namespace MapDBUtil
+	namespace MapDB
 	{
 		DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash)
 		{

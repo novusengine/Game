@@ -123,7 +123,7 @@ namespace Editor
 
                 if (ImGui::Button("Load"))
                 {
-                    if (DB::Client::Definitions::Map* map = ECS::Util::MapDBUtil::GetMapFromName(*preview))
+                    if (DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(*preview))
                     {
                         if (_hasLoadedMap)
                         {

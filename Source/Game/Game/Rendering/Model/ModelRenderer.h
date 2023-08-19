@@ -10,6 +10,7 @@
 
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/FrameResource.h>
+#include <Renderer/GPUBuffer.h>
 #include <Renderer/GPUVector.h>
 
 class DebugRenderer;
@@ -33,6 +34,7 @@ class ModelRenderer : CulledRenderer
 public:
 	struct ReserveInfo
 	{
+	public:
 		u32 numInstances = 0;
 		u32 numModels = 0;
 
@@ -43,10 +45,13 @@ public:
 		u32 numIndices = 0;
 
 		u32 numTextureUnits = 0;
+
+		u32 numBones = 0;
 	};
 
 	struct ModelManifest
 	{
+	public:
 		std::string debugName = "";
 
 		u32 opaqueDrawCallOffset = 0;
@@ -60,10 +65,16 @@ public:
 
 		u32 indexOffset = 0;
 		u32 numIndices = 0;
+
+		u32 numBones = 0;
+		u32 numTextureTransforms = 0;
+
+		bool isAnimated = false;
 	};
 
 	struct DrawCallData
 	{
+	public:
 		u32 instanceID = 0;
 		u32 modelID = 0;
 		u32 textureUnitOffset = 0;
@@ -73,21 +84,38 @@ public:
 
 	struct InstanceData
 	{
+	public:
+		static constexpr u32 InvalidID = std::numeric_limits<u32>().max();
+
 		u32 modelID = 0;
-		u32 boneDeformOffset;
-		u32 boneInstanceDataOffset;
-		u32 textureTransformDeformOffset;
-		u32 textureTransformInstanceDataOffset;
-		u32 modelVertexOffset = 0;
-		u32 animatedVertexOffset = 0;
+		u32 boneMatrixOffset = InvalidID;
+		u32 boneInstanceDataOffset = InvalidID;
+		u32 textureTransformDeformOffset = InvalidID;
+		u32 textureTransformInstanceDataOffset = InvalidID;
+		u32 modelVertexOffset = InvalidID;
+		u32 animatedVertexOffset = InvalidID;
+	};
+
+	struct InstanceDataCPU
+	{
+	public:
+		u32 numBones = 0;
+		u32 numTextureTransforms = 0;
 	};
 
 	struct TextureUnit
 	{
+	public:
 		u16 data = 0; // Texture Flag + Material Flag + Material Blending Mode
 		u16 materialType = 0; // Shader ID
 		u32 textureIds[2] = { MODEL_INVALID_TEXTURE_ID, MODEL_INVALID_TEXTURE_ID };
 		u16 textureTransformIds[2] = { MODEL_INVALID_TEXTURE_TRANSFORM_ID, MODEL_INVALID_TEXTURE_TRANSFORM_ID };
+	};
+
+	struct PackedAnimatedVertexPositions
+	{
+		u32 packed0;
+		u32 packed1;
 	};
 
 public:
@@ -101,6 +129,9 @@ public:
 	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
 	u32 AddInstance(u32 modelID, const Terrain::Placement& placement);
+
+	bool AddAnimationInstance(u32 instanceID);
+	bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
 
 	void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -167,12 +198,18 @@ private:
 	Renderer::GPUVector<TextureUnit> _textureUnits;
 	std::atomic<u32> _textureUnitIndex = 0;
 
+	Renderer::GPUVector<mat4x4> _boneMatrices;
+	std::atomic<u32> _boneMatrixIndex = 0;
+
 	CullingResources<DrawCallData> _opaqueCullingResources;
 	CullingResources<DrawCallData> _transparentCullingResources;
 
 	// GPU-only workbuffers
 	Renderer::BufferID _occluderArgumentBuffer;
 	Renderer::BufferID _argumentBuffer;
+
+	Renderer::GPUBuffer<PackedAnimatedVertexPositions> _animatedVertices;
+	std::atomic<u32> _animatedVerticesIndex = 0;
 
 	Renderer::TextureArrayID _textures;
 

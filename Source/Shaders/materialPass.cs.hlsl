@@ -140,14 +140,13 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 	{
 		vertices[i] = LoadModelVertex(vertexIDs[i]);
 
-		/* TODO: Animations
 		// Animate the vertex normal if we need to
-		if (instanceData.boneDeformOffset != 4294967295)
+		if (instanceData.boneMatrixOffset != 4294967295)
 		{
 			// Calculate bone transform matrix
 			float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
 			vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
-		}*/
+		}
 
 		// Convert normals to world normals
 		vertices[i].normal = mul(vertices[i].normal, (float3x3)instanceMatrix);
@@ -192,18 +191,18 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 		if (materialType == 0x8000)
 			continue;
 
-		float4 texture0 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_sampler, pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
-		float4 texture1 = float4(0, 0, 0, 0);
+		float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_sampler, pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
+		float4 texture1Color = float4(0, 0, 0, 0);
 
 		if (vertexShaderId >= 2)
 		{
 			// ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-			texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_sampler, pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
+			texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_sampler, pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
 		}
 
 		isUnlit |= (materialFlags & 0x1);
 
-		float4 shadedColor = ShadeModel(pixelShaderId, texture0, texture1, specular);
+		float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
 		color = BlendModel(blendingMode, color, shadedColor);
 	}
 
