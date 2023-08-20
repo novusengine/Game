@@ -29,12 +29,7 @@ namespace ECS::Systems
 			obb.rotation = transform.rotation;
 			obb.extents = transform.scale * 0.5f;
 
-			u32 color = static_cast<u32>(debugMesh.color.r * 255.0f); // Red
-			color |= static_cast<u32>(debugMesh.color.g * 255.0f) << 8; // Green
-			color |= static_cast<u32>(debugMesh.color.b * 255.0f) << 16; // Blue
-			color |= 1u << 24u; // Alpha
-
-			debugRenderer->DrawOBB3D(obb.center, obb.extents, obb.rotation, color);
+			debugRenderer->DrawOBB3D(obb.center, obb.extents, obb.rotation, debugMesh.color);
 		});
 	}
 }

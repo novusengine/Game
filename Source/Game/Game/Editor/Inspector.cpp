@@ -335,7 +335,7 @@ namespace Editor
                 glm::vec3 transformedCenter = transform->position + transform->rotation * (aabb->centerPos * transform->scale);
                 glm::vec3 transformedExtents = aabb->extents * transform->scale;
 
-                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->rotation, 0xFFFF0000);
+                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->rotation, Color::Red);
             }
         }
         if (CVAR_InspectorWorldAABBShowFlag.Get() == ShowFlag::ENABLED)
@@ -345,7 +345,7 @@ namespace Editor
             {
                 vec3 center = (worldAABB->min + worldAABB->max) / 2.0f;
                 vec3 extents = (worldAABB->max - worldAABB->min) / 2.0f;
-                debugRenderer->DrawAABB3D(center, extents, 0xFF00FF00);
+                debugRenderer->DrawAABB3D(center, extents, Color::Green);
             }
         }
     }

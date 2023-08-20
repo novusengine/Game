@@ -6,6 +6,8 @@
 #include "Terrain/TerrainLoader.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
+//#include "Water/WaterRenderer.h"
+//#include "Water/WaterLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
@@ -131,8 +133,11 @@ GameRenderer::GameRenderer()
     _modelLoader = new ModelLoader(_modelRenderer);
     _modelLoader->Init();
 
+    //_waterRenderer = new WaterRenderer(_renderer, _debugRenderer);
+    //_waterLoader = new WaterLoader(_waterRenderer);
+
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
-    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader);
+    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader);// , _waterLoader);
 
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
@@ -323,9 +328,9 @@ f32 GameRenderer::Render()
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
+    _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
-    _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
 
@@ -478,6 +483,7 @@ void GameRenderer::CreatePermanentResources()
     mainDepthDesc.depthClearValue = 0.0f;
 
     _resources.depth = _renderer->CreateDepthImage(mainDepthDesc);
+    _resources.debugRendererDepth = _renderer->CreateDepthImage(mainDepthDesc);
 
     // Frame allocator, this is a fast allocator for data that is only needed this frame
     {

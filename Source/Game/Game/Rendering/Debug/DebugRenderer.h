@@ -24,18 +24,27 @@ public:
 	void Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void Add3DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
-	void DrawLine2D(const vec2& from, const vec2& to, uint32_t color);
-	void DrawLine3D(const vec3& from, const vec3& to, uint32_t color);
+	// Wireframe
+	void DrawLine2D(const vec2& from, const vec2& to, Color color);
+	void DrawLine3D(const vec3& from, const vec3& to, Color color);
 
-	void DrawAABB3D(const vec3& center, const vec3& extents, uint32_t color);
-	void DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, uint32_t color);
-	void DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, uint32_t color);
-	void DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, uint32_t color);
+	void DrawAABB3D(const vec3& center, const vec3& extents, Color color);
+	void DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, Color color);
+	void DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color);
+	void DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color);
 
-	void DrawCircle3D(const vec3& center, f32 radius, i32 resolution, uint32_t color);
+	void DrawCircle3D(const vec3& center, f32 radius, i32 resolution, Color color);
 
-	void DrawFrustum(const mat4x4& viewProjectionMatrix, uint32_t color);
+	void DrawFrustum(const mat4x4& viewProjectionMatrix, Color color);
 	void DrawMatrix(const mat4x4& matrix, f32 scale);
+
+	// Solid
+	void DrawLineSolid2D(const vec2& from, const vec2& to, Color color, bool shaded = false);
+
+	void DrawAABBSolid3D(const vec3& center, const vec3& extents, Color color, bool shaded = false);
+	void DrawOBBSolid3D(const vec3& center, const vec3& extents, const quat& rotation, Color color, bool shaded = false);
+	void DrawTriangleSolid2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color, bool shaded = false);
+	void DrawTriangleSolid3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color, bool shaded = false);
 
 	static vec3 UnProject(const vec3& point, const mat4x4& m);
 
@@ -43,22 +52,29 @@ public:
 	void RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
-
-private:
 	Renderer::Renderer* _renderer = nullptr;
 
 	struct DebugVertex2D
 	{
-		glm::vec2 pos;
-		uint32_t color;
+		vec2 pos;
+		u32 color;
 	};
 
 	struct DebugVertex3D
 	{
-		glm::vec3 pos;
-		uint32_t color;
+		vec3 pos;
+		u32 color;
 	};
 
+	struct DebugVertexSolid3D
+	{
+		vec4 pos;
+		vec4 normalAndColor; // xyz = normal, int(w) = color
+	};
+
+	Renderer::DescriptorSet _debugDescriptorSet;
+
+	// Wireframe
 	Renderer::GPUVector<DebugVertex2D> _debugVertices2D;
 	Renderer::GPUVector<DebugVertex3D> _debugVertices3D;
 
@@ -71,5 +87,12 @@ private:
 	Renderer::DescriptorSet _draw2DIndirectDescriptorSet;
 	Renderer::DescriptorSet _draw3DDescriptorSet;
 	Renderer::DescriptorSet _draw3DIndirectDescriptorSet;
-	Renderer::DescriptorSet _debugDescriptorSet;
+
+	// Solid
+	Renderer::GPUVector<DebugVertex2D> _debugVerticesSolid2D;
+	Renderer::GPUVector<DebugVertexSolid3D> _debugVerticesSolid3D;
+
+	Renderer::DescriptorSet _drawSolid2DDescriptorSet;
+	Renderer::DescriptorSet _drawSolid3DDescriptorSet;
+
 };

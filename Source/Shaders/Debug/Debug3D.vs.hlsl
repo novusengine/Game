@@ -23,10 +23,10 @@ float4 GetVertexColor(uint inColor)
 {
 	float4 color;
 
-	color.a = ((inColor & 0xff000000) >> 24) / 255.0f;
-	color.b = ((inColor & 0x00ff0000) >> 16) / 255.0f;
-	color.g = ((inColor & 0x0000ff00) >> 8) / 255.0f;
-	color.r = (inColor & 0x000000ff) / 255.0f;
+	color.r = ((inColor & 0xff000000) >> 24) / 255.0f;
+	color.g = ((inColor & 0x00ff0000) >> 16) / 255.0f;
+	color.b = ((inColor & 0x0000ff00) >> 8) / 255.0f;
+	color.a = (inColor & 0x000000ff) / 255.0f;
 
 	return color;
 }
