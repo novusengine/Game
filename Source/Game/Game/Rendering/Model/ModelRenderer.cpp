@@ -307,6 +307,9 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
+
+            params.modelIDIsDrawCallID = false;
+            params.cullingDataIsWorldspace = false;
             params.debugDrawColliders = CVAR_ModelDrawOpaqueAABBs.Get();
 
             params.instanceIDOffset = offsetof(DrawCallData, instanceID);
@@ -495,6 +498,9 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
+
+            params.modelIDIsDrawCallID = false;
+            params.cullingDataIsWorldspace = false;
             params.debugDrawColliders = CVAR_ModelDrawTransparentAABBs.Get();
 
             params.instanceIDOffset = offsetof(DrawCallData, instanceID);
@@ -644,7 +650,7 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _textureUnits.Grow(reserveInfo.numTextureUnits);
 
-    u32 numBoneMatrices = _boneMatrices.Size();
+    u32 numBoneMatrices = static_cast<u32>(_boneMatrices.Size());
     _boneMatrices.Grow(reserveInfo.numBones);
 
     std::vector<glm::mat4>& boneMatrices = _boneMatrices.Get();

@@ -8,6 +8,7 @@
 #include <type_safe/strong_typedef.hpp>
 
 class ModelLoader;
+class WaterLoader;
 
 class TerrainRenderer;
 class TerrainLoader
@@ -37,7 +38,7 @@ private:
 	};
 
 public:
-	TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader);
+	TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader);
 	
 	void Update(f32 deltaTime);
 
@@ -57,6 +58,7 @@ private:
 	std::string _currentMapInternalName = "None";
 
 	ModelLoader* _modelLoader = nullptr;
+	WaterLoader* _waterLoader = nullptr;
 
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 

@@ -6,8 +6,8 @@
 #include "Terrain/TerrainLoader.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
-//#include "Water/WaterRenderer.h"
-//#include "Water/WaterLoader.h"
+#include "Water/WaterRenderer.h"
+#include "Water/WaterLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
@@ -133,11 +133,11 @@ GameRenderer::GameRenderer()
     _modelLoader = new ModelLoader(_modelRenderer);
     _modelLoader->Init();
 
-    //_waterRenderer = new WaterRenderer(_renderer, _debugRenderer);
-    //_waterLoader = new WaterLoader(_waterRenderer);
+    _waterRenderer = new WaterRenderer(_renderer, _debugRenderer);
+    _waterLoader = new WaterLoader(_waterRenderer);
 
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
-    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader);// , _waterLoader);
+    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _waterLoader);
 
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
@@ -173,6 +173,8 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _terrainRenderer->Update(deltaTime);
     _modelLoader->Update(deltaTime);
     _modelRenderer->Update(deltaTime);
+    _waterLoader->Update(deltaTime);
+    _waterRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
@@ -213,7 +215,7 @@ f32 GameRenderer::Render()
     // Create rendergraph
     Renderer::RenderGraphDesc renderGraphDesc;
     renderGraphDesc.allocator = _frameAllocator[_frameIndex]; // We need to give our rendergraph an allocator to use
-    Renderer::RenderGraph renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
+    Renderer::RenderGraph& renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
 
     f32 timeWaited = _renderer->FlipFrame(_frameIndex);
 
@@ -323,6 +325,10 @@ f32 GameRenderer::Render()
 
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
+
+    _waterRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
+    _waterRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _waterRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
 
@@ -446,7 +452,7 @@ void GameRenderer::CreatePermanentResources()
     Renderer::ImageDesc transparencyDesc;
     transparencyDesc.debugName = "Transparency";
     transparencyDesc.dimensions = vec2(1.0f, 1.0f);
-    transparencyDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    transparencyDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
     transparencyDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
     transparencyDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
     transparencyDesc.clearColor = Color::Clear;
@@ -457,7 +463,7 @@ void GameRenderer::CreatePermanentResources()
     Renderer::ImageDesc transparencyWeightsDesc;
     transparencyWeightsDesc.debugName = "TransparencyWeights";
     transparencyWeightsDesc.dimensions = vec2(1.0f, 1.0f);
-    transparencyWeightsDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
+    transparencyWeightsDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
     transparencyWeightsDesc.format = Renderer::ImageFormat::R16_FLOAT;
     transparencyWeightsDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
     transparencyWeightsDesc.clearColor = Color::Red;
@@ -484,6 +490,17 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.depth = _renderer->CreateDepthImage(mainDepthDesc);
     _resources.debugRendererDepth = _renderer->CreateDepthImage(mainDepthDesc);
+
+    // Copy of the depth, as a color rendertarget
+    Renderer::ImageDesc depthColorCopyDesc;
+    depthColorCopyDesc.debugName = "DepthColorCopy";
+    depthColorCopyDesc.dimensions = vec2(1.0f, 1.0f);
+    depthColorCopyDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    depthColorCopyDesc.format = Renderer::ImageFormat::R32_FLOAT;
+    depthColorCopyDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    depthColorCopyDesc.clearColor = Color::Clear;
+
+    _resources.depthColorCopy = _renderer->CreateImage(depthColorCopyDesc);
 
     // Frame allocator, this is a fast allocator for data that is only needed this frame
     {

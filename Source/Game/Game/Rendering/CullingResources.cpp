@@ -125,8 +125,9 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
     }
 }
 
-void CullingResourcesBase::SyncToGPU()
+bool CullingResourcesBase::SyncToGPU()
 {
+    bool gotRecreated = false;
     {
         // DrawCalls
         if (_drawCalls.SyncToGPU(_renderer))
@@ -184,8 +185,11 @@ void CullingResourcesBase::SyncToGPU()
             {
                 _numTriangles += drawCall.indexCount / 3;
             }
+
+            gotRecreated = true;
         }
     }
+    return gotRecreated;
 }
 
 void CullingResourcesBase::Clear()

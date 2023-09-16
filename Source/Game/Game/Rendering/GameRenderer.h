@@ -24,6 +24,8 @@ class SkyboxRenderer;
 class EditorRenderer;
 class DebugRenderer;
 class CanvasRenderer;
+class WaterLoader;
+class WaterRenderer;
 class UIRenderer;
 class PixelQuery;
 
@@ -47,10 +49,12 @@ public:
 
 	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
+	WaterRenderer* GetWaterRenderer() { return _waterRenderer; }
 	DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
 
 	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
 	ModelLoader* GetModelLoader() { return _modelLoader; }
+	WaterLoader* GetWaterLoader() { return _waterLoader; }
 
 	RenderResources& GetRenderResources() { return _resources; }
 	PixelQuery* GetPixelQuery() { return _pixelQuery; }
@@ -87,6 +91,9 @@ private:
 
 	ModelRenderer* _modelRenderer = nullptr;
 	ModelLoader* _modelLoader = nullptr;
+
+	WaterRenderer* _waterRenderer = nullptr;
+	WaterLoader* _waterLoader = nullptr;
 
 	MaterialRenderer* _materialRenderer = nullptr;
 	SkyboxRenderer* _skyboxRenderer = nullptr;

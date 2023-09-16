@@ -24,6 +24,8 @@ public:
 
     Renderer::ImageID depthPyramid;
     Renderer::DepthImageID depth;
+    Renderer::ImageID depthColorCopy;
+
     Renderer::DepthImageID debugRendererDepth;
 
     Renderer::DescriptorSet globalDescriptorSet;

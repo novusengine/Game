@@ -20,6 +20,7 @@ namespace Renderer
 	class RenderGraph;
 	class RenderGraphResources;
 	class DescriptorSetResource;
+	class CommandList;
 }
 
 struct DrawParams;
@@ -108,6 +109,9 @@ protected:
 		u32 numCascades = 0;
 		bool occlusionCull = true;
 		bool disableTwoStepCulling = false;
+
+		bool modelIDIsDrawCallID = false;
+		bool cullingDataIsWorldspace = false;
 		bool debugDrawColliders = false;
 
 		u32 instanceIDOffset = 0;
@@ -122,6 +126,7 @@ protected:
 		Renderer::ImageMutableResource rt1;
 		Renderer::DepthImageMutableResource depth;
 
+		Renderer::BufferMutableResource drawCallsBuffer;
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
 		Renderer::BufferMutableResource drawCountBuffer;
 		Renderer::BufferMutableResource triangleCountBuffer;

@@ -82,7 +82,7 @@ PSOutput main(PSInput input)
 
     PSOutput output;
     output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;
-    output.transparencyWeight.a = color.a;// aaa;
+    output.transparencyWeight.a = color.a;
 
     return output;
 }

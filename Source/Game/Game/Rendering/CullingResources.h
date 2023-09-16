@@ -22,7 +22,7 @@ public:
 
     virtual void Update(f32 deltaTime, bool cullingEnabled);
 
-    virtual void SyncToGPU();
+    virtual bool SyncToGPU();
     virtual void Clear();
     virtual void Grow(u32 growthSize);
     virtual void FitBuffersAfterLoad();
@@ -103,20 +103,25 @@ public:
         SyncToGPU();
 	}
 
-	void SyncToGPU() override
+	bool SyncToGPU() override
 	{
         CullingResourcesBase::SyncToGPU();
+        bool gotRecreated = false;
 
         // DrawCallDatas
         if (_drawCallDatas.SyncToGPU(_renderer))
         {
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
             if (_materialPassDescriptorSet != nullptr)
             {
-                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer());
+                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
             }
+            gotRecreated = true;
         }
+
+        return gotRecreated;
 	}
 
     void Clear() override

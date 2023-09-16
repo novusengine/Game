@@ -69,7 +69,7 @@ namespace Editor
 
             if (cachedEditParameters.size() > 10)
             {
-                std::unordered_map<std::string, std::vector<CVarParameter*>> categorizedParams;
+                std::map<std::string, std::vector<CVarParameter*>> categorizedParams;
 
                 //insert all the edit parameters into the hashmap by category
                 for (auto p : cachedEditParameters)
@@ -103,9 +103,9 @@ namespace Editor
                 {
                     //alphabetical sort
                     std::sort(parameters.begin(), parameters.end(), [](CVarParameter* A, CVarParameter* B)
-                        {
-                            return A->name < B->name;
-                        });
+                    {
+                        return A->name < B->name;
+                    });
 
                     if (ImGui::BeginMenu(category.c_str()))
                     {

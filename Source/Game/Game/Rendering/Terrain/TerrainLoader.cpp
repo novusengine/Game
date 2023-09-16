@@ -5,6 +5,7 @@
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Rendering/Water/WaterLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -30,9 +31,10 @@ namespace fs = std::filesystem;
 AutoCVar_Int CVAR_TerrainLoaderPhysicsEnabled("terrainLoader.physics.enabled", "enable loading the terrain into the physics engine", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_TerrainLoaderPhysicsOptimizeBP("terrainLoader.physics.optimizeBP", "enables optimizing the broadphase", 1, CVarFlags::EditCheckbox);
 
-TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader)
+TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader)
 	: _terrainRenderer(terrainRenderer)
 	, _modelLoader(modelLoader)
+	, _waterLoader(waterLoader)
 	, _requests()
 {
 	_scheduler.Initialize();
@@ -175,25 +177,6 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 	_scheduler.AddTaskSetToPipe(&loadChunksTask);
 	_scheduler.WaitforTask(&loadChunksTask);
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
-}
-
-vec2 GetChunkPosition(u32 chunkID)
-{
-	const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
-	const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
-
-	const vec2 chunkPos = Terrain::MAP_HALF_SIZE - (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
-	return chunkPos;
-}
-vec2 GetCellPosition(u32 chunkID, u32 cellID)
-{
-	const u32 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-	const u32 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-
-	const vec2 chunkPos = GetChunkPosition(chunkID);
-	const vec2 cellPos = vec2(cellX, cellY) * Terrain::CELL_SIZE;
-	const vec2 cellWorldPos = chunkPos + cellPos;
-	return cellWorldPos;
 }
 
 vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
@@ -416,6 +399,75 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 							_modelLoader->LoadPlacement(*placement);
 						}
 					}
+
+					Map::LiquidInfo liquidInfo;
+					size_t liquidOffset = mapObjectOffset + (numMapObjectPlacements * sizeof(Terrain::Placement)) + (numComplexModelPlacements * sizeof(Terrain::Placement));
+					chunkBuffer->SkipRead(liquidOffset);
+
+					// Read Water
+					{
+						u32 numLiquidHeaders = 0;
+						if (!chunkBuffer->GetU32(numLiquidHeaders))
+							return false;
+
+						if (numLiquidHeaders != 0 && numLiquidHeaders != 256)
+						{
+							DebugHandler::PrintFatal("LiquidInfo should always contain either 0 or 256 liquid headers, but it contained {0} liquid headers", numLiquidHeaders);
+						}
+
+						if (numLiquidHeaders > 0)
+						{
+							liquidInfo.headers.resize(numLiquidHeaders);
+							if (!chunkBuffer->GetBytes(reinterpret_cast<u8*>(&liquidInfo.headers[0]), numLiquidHeaders * sizeof(Map::CellLiquidHeader)))
+								return false;
+						}
+
+						u32 numLiquidInstances = 0;
+						if (!chunkBuffer->GetU32(numLiquidInstances))
+							return false;
+
+						if (numLiquidInstances > 0)
+						{
+							liquidInfo.instances.resize(numLiquidInstances);
+							if (!chunkBuffer->GetBytes(reinterpret_cast<u8*>(&liquidInfo.instances[0]), numLiquidInstances * sizeof(Map::CellLiquidInstance)))
+								return false;
+						}
+
+						u32 numLiquidAttributes = 0;
+						if (!chunkBuffer->GetU32(numLiquidAttributes))
+							return false;
+
+						if (numLiquidAttributes > 0)
+						{
+							liquidInfo.attributes.resize(numLiquidAttributes);
+							if (!chunkBuffer->GetBytes(reinterpret_cast<u8*>(&liquidInfo.attributes[0]), numLiquidAttributes * sizeof(Map::CellLiquidAttributes)))
+								return false;
+						}
+
+						u32 numLiquidBitmapDataBytes = 0;
+						if (!chunkBuffer->GetU32(numLiquidBitmapDataBytes))
+							return false;
+
+						if (numLiquidBitmapDataBytes > 0)
+						{
+							liquidInfo.bitmapData.resize(numLiquidBitmapDataBytes);
+							if (!chunkBuffer->GetBytes(reinterpret_cast<u8*>(&liquidInfo.bitmapData[0]), numLiquidBitmapDataBytes * sizeof(u8)))
+								return false;
+						}
+
+						u32 numLiquidVertexDataBytes = 0;
+						if (!chunkBuffer->GetU32(numLiquidVertexDataBytes))
+							return false;
+
+						if (numLiquidVertexDataBytes > 0)
+						{
+							liquidInfo.vertexData.resize(numLiquidVertexDataBytes);
+							if (!chunkBuffer->GetBytes(reinterpret_cast<u8*>(&liquidInfo.vertexData[0]), numLiquidVertexDataBytes * sizeof(u8)))
+								return false;
+						}
+					}
+
+					_waterLoader->LoadFromChunk(chunkX, chunkY, &liquidInfo);
 				}
 			}
 		}

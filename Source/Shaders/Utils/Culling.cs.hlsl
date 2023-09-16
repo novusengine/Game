@@ -14,14 +14,16 @@ struct Constants
     uint instanceIDOffset;
     uint modelIDOffset;
     uint drawCallDataSize;
-    bool debugDrawColliders;
+    uint modelIDIsDrawCallID;
+    uint cullingDataIsWorldspace;
+    uint debugDrawColliders;
 };
 
 struct PackedCullingData
 {
-    uint data0; // half center.x, half center.y, 
-    uint data1; // half center.z, half extents.x,  
-    uint data2; // half extents.y, half extents.z, 
+    uint data0; // half min.x, half half.y, 
+    uint data1; // half half.z, half max.x, 
+    uint data2; // half max.y, half max.z, 
     float sphereRadius;
 }; // 16 bytes
 
@@ -115,7 +117,6 @@ struct DrawInput
 {
     CSInput csInput;
     Draw drawCall;
-    uint instanceID;
     float4 sphere;
     AABB aabb;
     float4x4 instanceMatrix;
@@ -154,8 +155,16 @@ void CullForCamera(DrawInput drawInput,
     }
     else if (drawInput.shouldOcclusionCull)
     {
-        float4x4 mvp = mul(camera.worldToClip, drawInput.instanceMatrix);
-        bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, mvp);
+        bool isIntersectingNearZ = false;
+        if (_constants.cullingDataIsWorldspace)
+        {
+            bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.worldToClip);
+        }
+        else
+        {
+            float4x4 mvp = mul(camera.worldToClip, drawInput.instanceMatrix);
+            bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, mvp);
+        }
 
         if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip))
         {
@@ -231,29 +240,42 @@ void main(CSInput input)
     Draw drawCall = _drawCalls[drawCallIndex];
 
     uint drawCallID = drawCall.firstInstance;
-    uint instanceID = GetInstanceID(drawCallID);
-    uint modelID = GetModelID(drawCallID);
+    uint modelID = drawCallID;
+    
+    if (!_constants.modelIDIsDrawCallID)
+    {
+        modelID = GetModelID(drawCallID);
+    }
 
     const CullingData cullingData = LoadCullingData(modelID);
 
-    float4x4 instanceMatrix = _instanceMatrices[instanceID];
-
-    // Get center and extents (Center is stored in min & Extents is stored in max)
-    float3 center = cullingData.boundingBox.min;
-    float3 extents = cullingData.boundingBox.max;
-
-    // Transform center
-    const float4x4 m = instanceMatrix;
-    float3 transformedCenter = mul(float4(center, 1.0f), m).xyz;
-
-    // Transform extents (take maximum)
-    const float3x3 absMatrix = float3x3(abs(m[0].xyz), abs(m[1].xyz), abs(m[2].xyz));
-    float3 transformedExtents = mul(extents, absMatrix);
-
-    // Transform to min/max AABB representation
     AABB aabb;
-    aabb.min = transformedCenter - transformedExtents;
-    aabb.max = transformedCenter + transformedExtents;
+    float4x4 instanceMatrix;
+    if (_constants.cullingDataIsWorldspace)
+    {
+        aabb = cullingData.boundingBox;
+    }
+    else
+    {
+        uint instanceID = GetInstanceID(drawCallID);
+        instanceMatrix = _instanceMatrices[instanceID];
+
+        // Get center and extents (Center is stored in min & Extents is stored in max)
+        float3 center = cullingData.boundingBox.min;
+        float3 extents = cullingData.boundingBox.max;
+
+        // Transform center
+        const float4x4 m = instanceMatrix;
+        float3 transformedCenter = mul(float4(center, 1.0f), m).xyz;
+
+        // Transform extents (take maximum)
+        const float3x3 absMatrix = float3x3(abs(m[0].xyz), abs(m[1].xyz), abs(m[2].xyz));
+        float3 transformedExtents = mul(extents, absMatrix);
+
+        // Transform to min/max AABB representation
+        aabb.min = transformedCenter - transformedExtents;
+        aabb.max = transformedCenter + transformedExtents;
+    }
 
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;
@@ -262,7 +284,6 @@ void main(CSInput input)
     DrawInput drawInput;
     drawInput.csInput = input;
     drawInput.drawCall = drawCall;
-    drawInput.instanceID = instanceID;
     drawInput.sphere = sphere;
     drawInput.aabb = aabb;
     drawInput.instanceMatrix = instanceMatrix;

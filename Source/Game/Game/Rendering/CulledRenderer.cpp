@@ -160,7 +160,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             u32 instanceIDOffset;
             u32 modelIDOffset;
             u32 drawCallDataSize;
-            bool debugDrawColliders;
+            u32 modelIDIsDrawCallID;
+            u32 cullingDataIsWorldspace;
+            u32 debugDrawColliders;
         };
         CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
 
@@ -170,6 +172,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
         cullConstants->instanceIDOffset = params.instanceIDOffset;
         cullConstants->modelIDOffset = params.modelIDOffset;
         cullConstants->drawCallDataSize = params.drawCallDataSize;
+
+        cullConstants->modelIDIsDrawCallID = params.modelIDIsDrawCallID;
+        cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
         cullConstants->debugDrawColliders = params.debugDrawColliders;
         params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
@@ -226,7 +231,24 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         drawParams.rt0 = params.rt0;
         drawParams.rt1 = params.rt1;
         drawParams.depth = params.depth;
-        drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+
+        if (params.cullingEnabled)
+        {
+            if (params.culledDrawCallsBuffer == Renderer::BufferMutableResource::Invalid())
+            {
+                DebugHandler::PrintFatal("Tried to draw with culling enabled but no culled draw calls buffer was provided");
+            }
+            drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+        }
+        else
+        {
+            if (params.drawCallsBuffer == Renderer::BufferMutableResource::Invalid())
+            {
+                DebugHandler::PrintFatal("Tried to draw with culling enabled but no draw calls buffer was provided");
+            }
+            drawParams.argumentBuffer = params.drawCallsBuffer;
+        }
+        
         drawParams.drawCountBuffer = params.drawCountBuffer;
         drawParams.drawCountIndex = debugDrawCallBufferIndex;
         drawParams.numMaxDrawCalls = numDrawCalls;
