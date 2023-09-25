@@ -1,10 +1,14 @@
 #pragma once
 
 #include <Base/Types.h>
+#include <Base/Container/ConcurrentQueue.h>
+
+#include <enkiTS/TaskScheduler.h>
 
 namespace Map
 {
 	struct Chunk;
+	struct LiquidInfo;
 }
 
 class WaterRenderer;
@@ -22,6 +26,10 @@ private:
 		u8 packedData;
 		u8 packedOffset;
 		u8 packedSize;
+
+		f32 height;
+		u32 bitmapDataOffset;
+		u32 vertexDataOffset;
 	};
 
 	struct LoadRequestInternal
@@ -44,7 +52,7 @@ public:
 	void LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo);
 
 private:
-	void LoadRequest(LoadRequestInternal& request, u32 bitmapOffset, u32 vertexDataOffset);
+	void LoadRequest(LoadRequestInternal& request);
 
 private:
 	enki::TaskScheduler _scheduler;

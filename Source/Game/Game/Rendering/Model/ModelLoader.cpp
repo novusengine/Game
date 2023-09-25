@@ -152,6 +152,7 @@ void ModelLoader::Clear()
 	}
 	_nameHashToLoadingMutex.clear();
 
+	_uniqueIDToinstanceID.clear();
 	_instanceIDToModelID.clear();
 	_instanceIDToEntityID.clear();
 	_modelIDToNameHash.clear();
@@ -258,6 +259,9 @@ void ModelLoader::Update(f32 deltaTime)
 				if (!didLoad)
 					continue;
 			}
+
+			if (_uniqueIDToinstanceID.contains(request.placement.uniqueID))
+				continue;
 
 			u32 index = numCreatedInstances.fetch_add(1);
 			AddInstance(_createdEntities[index], request);
@@ -407,6 +411,7 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	aabb.extents = modelAABB.extents;
 
 	std::scoped_lock lock(_instanceIDToModelIDMutex);
+	_uniqueIDToinstanceID[request.placement.uniqueID] = instanceID;
 	_instanceIDToModelID[instanceID] = modelID;
 	_instanceIDToEntityID[instanceID] = entityID;
 

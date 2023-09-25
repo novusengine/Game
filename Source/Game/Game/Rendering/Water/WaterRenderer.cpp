@@ -1,9 +1,13 @@
 #include "WaterRenderer.h"
 
-#include <Game/Rendering/Debug/DebugRenderer.h>
-#include <Game/Rendering/RenderUtils.h>
+#include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/RenderUtils.h"
+#include "Game/Rendering/RenderResources.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Renderer/Renderer.h>
+#include <Renderer/RenderGraph.h>
+#include <Renderer/RenderGraphBuilder.h>
 
 AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_WaterCullingEnabled("waterRenderer.culling", "enable water culling", 1, CVarFlags::EditCheckbox);
@@ -69,7 +73,7 @@ void WaterRenderer::FitAfterGrow()
 
 void WaterRenderer::Load(LoadDesc& desc)
 {
-    if (desc.width <= 1 || desc.height <= 1)
+    if (desc.width == 0 || desc.height == 0)
     {
         return;
     }
@@ -120,21 +124,20 @@ void WaterRenderer::Load(LoadDesc& desc)
 
     for (u8 y = 0; y <= desc.height; y++)
     {
-        // This represents World (Forward/Backward) in other words, our X axis
-        f32 offsetY = -(static_cast<f32>(desc.posY + y) * Terrain::PATCH_SIZE);
+        u8 yOffset = y + desc.posY;
+        f32 offsetY = -(static_cast<f32>(yOffset) * Terrain::PATCH_SIZE);
 
         for (u8 x = 0; x <= desc.width; x++)
         {
-            // This represents World (West/East) in other words, our Y axis
-            f32 offsetX = -(static_cast<f32>(desc.posX + x) * Terrain::PATCH_SIZE);
+            u8 xOffset = x + desc.posX;
+            f32 offsetX = -(static_cast<f32>(xOffset) * Terrain::PATCH_SIZE);
 
-            f32 vertexHeight = 0.0f;// desc.liquidBasePos.z;// + liquidInstance.height;
+            f32 vertexHeight = desc.defaultHeight;
 
-            u32 vertexIndex = x + (y * (desc.width + 1));
-
-            if (desc.heightMap != nullptr && desc.typeID != 2)
+            if (desc.heightMap != nullptr)
             {
-                vertexHeight = desc.heightMap[vertexIndex];
+                u32 vertexHeightIndex = (8 - y) + (x * (desc.height + 1));
+                vertexHeight = desc.heightMap[vertexHeightIndex];
             }
 
             vec2 uv = vec2(static_cast<f32>(-y) / 2.0f, static_cast<f32>(-x) / 2.0f); // These need to be inverted and swizzled
@@ -145,49 +148,51 @@ void WaterRenderer::Load(LoadDesc& desc)
                 uv = vec2(uvEntry->x, uvEntry->y); // This one however should not be inverted and swizzled
             }*/
 
+            u32 vertexIndex = x + (y * (desc.width + 1));
             Vertex& vertex = vertices[vertexOffset + vertexIndex];
-            vertex.xCellOffset = y + desc.liquidOffsetY; // These are intended to be flipped, we are going from 2D to 3D
-            vertex.yCellOffset = x + desc.liquidOffsetX;
+
+            // The offsets here are flipped on purpose
+            vertex.xCellOffset = yOffset;
+            vertex.yCellOffset = xOffset;
             vertex.height = f16(vertexHeight);
             vertex.uv = hvec2(uv);
 
-            // Calculate worldspace pos for AABB usage
-            vec2 pos2d = desc.cellPos -vec2(Terrain::PATCH_SIZE * (y + desc.liquidOffsetY), Terrain::PATCH_SIZE * (x + desc.liquidOffsetX));
+            vec2 cellOffsetPos = vec2(yOffset * Terrain::PATCH_SIZE, xOffset * Terrain::PATCH_SIZE);
+            vec3 cellPos = vec3(desc.cellPos.x - cellOffsetPos.x, vertexHeight, desc.cellPos.y - cellOffsetPos.y);
 
-            vec3 pos;// = desc.liquidBasePos - vec3(Terrain::PATCH_SIZE * (y + desc.liquidOffsetY), Terrain::PATCH_SIZE * (x + desc.liquidOffsetX), 0.0f);
-            pos.x = pos2d.x;
-            pos.y = vertexHeight;
-            pos.z = pos2d.y;
-            
-            min = glm::min(min, pos);
-            max = glm::max(max, pos);
+            min = glm::min(min, cellPos);
+            max = glm::max(max, cellPos);
+        }
+    }
 
-            if (y < desc.height && x < desc.width)
+    for (i32 y = desc.startY; y < desc.endY; y++)
+    {
+        for (i32 x = desc.startX; x < desc.endX; x++)
+        {
+            // Check if this tile is used
+            if (desc.bitMap != nullptr)
             {
-                // Check if this tile is used
-                /*if (desc.bitMap != nullptr)
-                {
-                    u8& bitmap = desc.bitMap[desc.bitmapDataOffset + y];
-                
-                    if ((bitmap & (1 << x)) == 0)
-                        continue;
-                }*/
+                i32 maskIndex = (x - desc.startX) * (desc.endY - desc.startY) + ((7 - y) - desc.startY);
+                bool exists = (desc.bitMap[maskIndex >> 3] >> ((maskIndex & 7))) & 1;
 
-                u16 topLeftVert = x + (y * (desc.width + 1));
-                u16 topRightVert = topLeftVert + 1;
-                u16 bottomLeftVert = topLeftVert + (desc.width + 1);
-                u16 bottomRightVert = bottomLeftVert + 1;
-
-                indices[indexOffset++] = topLeftVert;
-                indices[indexOffset++] = bottomLeftVert;
-                indices[indexOffset++] = topRightVert;
-
-                indices[indexOffset++] = topRightVert;
-                indices[indexOffset++] = bottomLeftVert;
-                indices[indexOffset++] = bottomRightVert;
-
-                drawCall.indexCount += 6;
+                if (!exists)
+                    continue;
             }
+
+            u16 topLeftVert = x + (y * (desc.width + 1));
+            u16 topRightVert = topLeftVert + 1;
+            u16 bottomLeftVert = topLeftVert + (desc.width + 1);
+            u16 bottomRightVert = bottomLeftVert + 1;
+
+            indices[indexOffset++] = topLeftVert;
+            indices[indexOffset++] = bottomLeftVert;
+            indices[indexOffset++] = topRightVert;
+
+            indices[indexOffset++] = topRightVert;
+            indices[indexOffset++] = bottomLeftVert;
+            indices[indexOffset++] = bottomRightVert;
+
+            drawCall.indexCount += 6;
         }
     }
 

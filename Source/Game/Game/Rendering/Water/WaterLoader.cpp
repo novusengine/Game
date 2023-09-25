@@ -1,6 +1,7 @@
 #include "WaterLoader.h"
 #include "WaterRenderer.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
 AutoCVar_Int CVAR_WaterLoaderEnabled("waterLoader.enabled", "enable water loading", 0, CVarFlags::EditCheckbox);
@@ -42,22 +43,11 @@ void WaterLoader::Update(f32 deltaTime)
 
     WaterRenderer::ReserveInfo reserveInfo;
 
-    u32 bitmapOffset = 0;
-    std::vector<u32> bitmapOffsets;
-    bitmapOffsets.reserve(numDequeued);
-
-    u32 vertexDataOffset = 0;
-    std::vector<u32> vertexDataOffsets;
-    vertexDataOffsets.reserve(numDequeued);
-
     for (u32 i = 0; i < numDequeued; i++)
     {
         LoadRequestInternal& request = _workingRequests[i];
 
         reserveInfo.numInstances += static_cast<u32>(request.instances.size());
-
-        bitmapOffsets.push_back(bitmapOffset);
-        vertexDataOffsets.push_back(vertexDataOffset);
 
         for (LiquidInstance& instance : request.instances)
         {
@@ -72,31 +62,6 @@ void WaterLoader::Update(f32 deltaTime)
 
             u32 indexCount = width * height * 6;
             reserveInfo.numIndices += indexCount;
-
-            // Bitmap offset
-            u32 bitMapBytes = (width * height + 7) / 8;
-            bitmapOffset += bitMapBytes;
-
-            // Vertex data offset
-            bool hasVertexData = instance.packedData >> 7;
-            u16 liquidVertexFormat = instance.packedData & 0x3F;
-
-            if (hasVertexData)
-            {
-                if (liquidVertexFormat == 0) // LiquidVertexFormat_Height
-                {
-                    vertexDataOffset += vertexCount * sizeof(f32);
-                }
-                else if (liquidVertexFormat == 1 || liquidVertexFormat == 3) // LiquidVertexFormat_Height_UV
-                {
-                    const size_t uvEntriesSize = sizeof(u16) * 2;
-                    vertexDataOffset += vertexCount * (sizeof(f32) + uvEntriesSize);
-                }
-                else
-                {
-                    DebugHandler::PrintFatal("Unknown liquid vertex format: {}", liquidVertexFormat);
-                }
-            }
 		}
     }
 
@@ -107,7 +72,7 @@ void WaterLoader::Update(f32 deltaTime)
     for (u32 i = 0; i < numDequeued; i++)
     {
         LoadRequestInternal& request = _workingRequests[i];
-        LoadRequest(request, bitmapOffsets[i], vertexDataOffsets[i]);
+        LoadRequest(request);
     }
 #else
     enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
@@ -132,24 +97,20 @@ vec2 GetChunkPosition(u32 chunkID)
     const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
     const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
-    const vec2 chunkPos = Terrain::MAP_HALF_SIZE - (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
+    const vec2 chunkPos = -Terrain::MAP_HALF_SIZE + (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
     return chunkPos;
 }
 
 vec2 GetCellPosition(u32 chunkID, u32 cellID)
 {
-    const u32 cellX = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-    const u32 cellY = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+    const u32 cellX = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+    const u32 cellY = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
 
     const vec2 chunkPos = GetChunkPosition(chunkID);
-    const vec2 cellPos = vec2(cellX, cellY) * Terrain::CELL_SIZE;
+    const vec2 cellPos = vec2(cellX+1, cellY) * Terrain::CELL_SIZE;
+
     vec2 cellWorldPos = chunkPos + cellPos;
-
-    f32 x = cellWorldPos.x;
-    cellWorldPos.x = -cellWorldPos.y;
-    cellWorldPos.y = x;
-
-    return cellWorldPos;
+    return vec2(cellWorldPos.x, -cellWorldPos.y);
 }
 
 void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo)
@@ -177,7 +138,7 @@ void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidI
 		
         for (u32 j = start; j < end; j++)
         {
-            Map::CellLiquidInstance& instance = liquidInfo->instances[j];
+            const Map::CellLiquidInstance& instance = liquidInfo->instances[j];
 
             LiquidInstance& liquidInstance = request.instances.emplace_back();
             liquidInstance.cellID = cellID;
@@ -185,10 +146,24 @@ void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidI
             liquidInstance.packedData = instance.packedData;
             liquidInstance.packedOffset = instance.packedOffset;
             liquidInstance.packedSize = instance.packedSize;
+            liquidInstance.height = instance.height;
+            liquidInstance.bitmapDataOffset = instance.bitmapDataOffset;
+            liquidInstance.vertexDataOffset = instance.vertexDataOffset;
         }
 
         instanceIndex += numInstances;
 	}
+
+    size_t bitmapDataSize = liquidInfo->bitmapData.size();
+    if (bitmapDataSize > 0)
+    {
+        request.bitmapData = new u8[bitmapDataSize];
+        memcpy(request.bitmapData, liquidInfo->bitmapData.data(), bitmapDataSize * sizeof(u8));
+    }
+    else
+    {
+        request.vertexData = nullptr;
+    }
 
     size_t vertexDataSize = liquidInfo->vertexData.size();
     if (vertexDataSize > 0)
@@ -196,27 +171,17 @@ void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidI
         request.vertexData = new u8[vertexDataSize];
         memcpy(request.vertexData, liquidInfo->vertexData.data(), vertexDataSize * sizeof(u8));
     }
-    
-    size_t bitmapDataSize = liquidInfo->bitmapData.size();
-    if (bitmapDataSize > 0)
+    else
     {
-        request.bitmapData = new u8[bitmapDataSize];
-        memcpy(request.bitmapData, liquidInfo->bitmapData.data(), bitmapDataSize * sizeof(u8));
+        request.vertexData = nullptr;
     }
 
     _requests.enqueue(request);
 }
 
-void WaterLoader::LoadRequest(LoadRequestInternal& request, u32 bitmapOffset, u32 vertexDataOffset)
+void WaterLoader::LoadRequest(LoadRequestInternal& request)
 {
     u32 chunkID = (request.chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE) + request.chunkX;
-    //vec2 chunkPos = GetChunkPosition(chunkID);
-
-    //vec3 chunkBasePos = Terrain::MAP_HALF_SIZE - vec3(Terrain::CHUNK_SIZE * request.chunkY, Terrain::CHUNK_SIZE * request.chunkX, Terrain::MAP_HALF_SIZE);
-
-    //u32 liquidInstanceIndex = 0;
-    u32 liquidBitmapDataOffset = 0;
-    u32 liquidVertexDataOffset = 0;
 
     for (u32 i = 0; i < request.instances.size(); i++)
     {
@@ -226,20 +191,14 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request, u32 bitmapOffset, u3
 
         u16 cellX = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
         u16 cellY = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-        //vec3 liquidBasePos = chunkBasePos - vec3(Terrain::CELL_SIZE * cellY, Terrain::CELL_SIZE * cellX, 0);
-        //liquidBasePos.x = -liquidBasePos.x;
-        //liquidBasePos.y = -liquidBasePos.y;
 
         const vec2 cellPos = GetCellPosition(chunkID, cellID);
 
         u8 posX = liquidInstance.packedOffset & 0xF;
         u8 posY = liquidInstance.packedOffset >> 4;
 
-        u8 height = liquidInstance.packedSize >> 4;
         u8 width = liquidInstance.packedSize & 0xF;
-
-        u8 liquidOffsetX = liquidInstance.packedOffset & 0xF;
-        u8 liquidOffsetY = liquidInstance.packedOffset >> 4;
+        u8 height = liquidInstance.packedSize >> 4;
 
         u32 vertexCount = (width + 1) * (height + 1);
         u32 bitMapBytes = (width * height + 7) / 8;
@@ -249,24 +208,17 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request, u32 bitmapOffset, u3
         u16 liquidVertexFormat = liquidInstance.packedData & 0x3F;
 
         f32* heightMap = nullptr;
+        u8* bitMap = nullptr;
         //Terrain::LiquidUVMapEntry* uvEntries = nullptr;
         
-        if (hasVertexData)
+        if (request.vertexData != nullptr && hasVertexData)
         {
-            if (liquidVertexFormat == 0) // LiquidVertexFormat_Height
-            {
-                heightMap = reinterpret_cast<f32*>(&request.vertexData[liquidVertexDataOffset]);
-                liquidVertexDataOffset += vertexCount * sizeof(f32);
-            }
-            else if (liquidVertexFormat == 1 || liquidVertexFormat == 3) // LiquidVertexFormat_Height_UV
-            {
-                heightMap = reinterpret_cast<f32*>(&request.vertexData[liquidVertexDataOffset]);
-                
-                //uvEntries = reinterpret_cast<Terrain::LiquidUVMapEntry*>(&request.vertexData[liquidVertexDataOffset + (vertexCount * sizeof(f32))]);
-                const size_t uvEntriesSize = sizeof(u16) * 2;
+            heightMap = reinterpret_cast<f32*>(&request.vertexData[liquidInstance.vertexDataOffset]);
+        }
 
-                liquidVertexDataOffset += vertexCount * (sizeof(f32) + uvEntriesSize);// sizeof(Terrain::LiquidUVMapEntry));
-            }
+        if (request.bitmapData != nullptr && hasBitmapData)
+        {
+            bitMap = &request.bitmapData[liquidInstance.bitmapDataOffset];
         }
 
         WaterRenderer::LoadDesc desc;
@@ -278,20 +230,33 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request, u32 bitmapOffset, u3
         desc.posY = posY;
         desc.width = width;
         desc.height = height;
+
+        desc.startX = 0;
+        desc.endX = 8;
+        desc.startY = 0;
+        desc.endY = 8;
+
+        if (liquidVertexFormat != 2)
+        {
+            desc.startX = desc.posX;
+            desc.endX = desc.startX + desc.width;
+
+            desc.startY = desc.posY;
+            desc.endY = desc.startY + desc.height;
+        }
+
         desc.cellPos = cellPos;
-        desc.liquidOffsetX = liquidOffsetX;
-        desc.liquidOffsetY = liquidOffsetY;
 
-        desc.bitmapDataOffset = liquidBitmapDataOffset;
-
+        desc.defaultHeight = liquidInstance.height;
         desc.heightMap = heightMap;
-        desc.bitMap = request.bitmapData;
+        desc.bitMap = bitMap;
 
         _waterRenderer->Load(desc);
-
-        // TODO: Get rid of this...
-        liquidBitmapDataOffset += bitMapBytes;
     }
 
-    delete request.vertexData; // TODO: Avoid this
+    if (request.vertexData)
+        delete request.vertexData; // TODO: Avoid this
+
+    if (request.bitmapData)
+        delete request.bitmapData;  // TODO: Avoid this
 }

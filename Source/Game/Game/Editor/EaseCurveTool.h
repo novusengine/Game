@@ -1,6 +1,8 @@
 #pragma once
 #include "BaseEditor.h"
 
+#include <imgui/imgui.h>
+
 namespace Editor
 {
     class EaseCurveTool : public BaseEditor
