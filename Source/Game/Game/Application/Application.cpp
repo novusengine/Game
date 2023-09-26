@@ -1,23 +1,24 @@
 #include "Application.h"
 
+#include "Game/Animation/AnimationSystem.h"
+#include "Game/ECS/Scheduler.h"
+#include "Game/ECS/Singletons/EngineStats.h"
+#include "Game/ECS/Singletons/RenderState.h"
+#include "Game/Editor/EditorHandler.h"
+#include "Game/Gameplay/GameConsole/GameConsole.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Scripting/LuaManager.h"
+#include "Game/Util/ServiceLocator.h"
+#include "Game/Loaders/LoaderSystem.h"
+#include "Game/Scripting/LuaManager.h"
+#include "Game/Scripting/Systems/LuaSystemBase.h"
+
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/Timer.h>
 #include <Base/Util/JsonUtils.h>
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/CPUInfo.h>
-
-#include <Game/ECS/Scheduler.h>
-#include <Game/ECS/Singletons/EngineStats.h>
-#include <Game/ECS/Singletons/RenderState.h>
-#include <Game/Editor/EditorHandler.h>
-#include <Game/Gameplay/GameConsole/GameConsole.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Scripting/LuaManager.h>
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Loaders/LoaderSystem.h>
-#include <Game/Scripting/LuaManager.h>
-#include <Game/Scripting/Systems/LuaSystemBase.h>
 
 #include <enkiTS/TaskScheduler.h>
 #include <entt/entt.hpp>

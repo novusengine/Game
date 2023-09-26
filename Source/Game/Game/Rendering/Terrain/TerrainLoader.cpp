@@ -471,6 +471,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 				}
 			}
 		}
+
+		return true;
 	});
 
 	DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");

@@ -65,13 +65,15 @@ public:
 		u8 width;
 		u8 height;
 
+		u8 startX;
+		u8 endX;
+
+		u8 startY;
+		u8 endY;
+
 		vec2 cellPos;
 
-		u8 liquidOffsetX;
-		u8 liquidOffsetY;
-
-		u32 bitmapDataOffset;
-
+		f32 defaultHeight;
 		f32* heightMap = nullptr;
 		u8* bitMap = nullptr;
 	};
