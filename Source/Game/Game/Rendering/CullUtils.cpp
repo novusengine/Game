@@ -1,8 +1,8 @@
 #include "CullUtils.h"
 
 #define A_CPU
-#include "DownSampler/ffx_a.h"
-#include "DownSampler/ffx_spd.h"
+#include "Downsampler/ffx_a.h"
+#include "Downsampler/ffx_spd.h"
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraphResources.h>

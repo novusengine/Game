@@ -1,0 +1,15 @@
+*
+!/CMake/
+!/CMake/*
+!/CMake/**/*
+!/Dependencies/
+!/Dependencies/*
+!/Dependencies/**/*
+!/Source/
+!/Source/*
+!/Source/**/*
+!/Submodules/
+!/Submodules/*
+!/Submodules/**/*
+.gitmodules
+CMakeLists.txt

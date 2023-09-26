@@ -10,6 +10,7 @@ namespace Renderer
 {
 	class Renderer;
 	class RenderGraph;
+    class RenderGraphBuilder;
 }
 
 class DebugRenderer

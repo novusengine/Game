@@ -101,7 +101,7 @@ namespace Editor
 
 			if (ImGui::IsItemClicked(0)) // Left click
 			{
-				KeybindModifier modifier = KeybindModifier::None;
+				KeybindModifier modifier = KeybindModifier::KeybindNone;
 
 				if (io.KeyShift)
 					modifier |= KeybindModifier::Shift;

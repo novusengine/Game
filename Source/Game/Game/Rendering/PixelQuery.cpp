@@ -44,7 +44,7 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
         memcpy(results.data(), dst, sizeof(PixelData) * numResultsToProcess);
         _renderer->UnmapBuffer(_pixelResultBuffer);
 
-        auto& tokenItr = _requestTokens[_frameIndex].begin();
+        auto tokenItr = _requestTokens[_frameIndex].begin();
         for (u32 i = 0; i < numResultsToProcess; i++)
         {
             const PixelData& pixelData = results[i];
@@ -172,14 +172,14 @@ u32 PixelQuery::PerformQuery(uvec2 pixelCoords)
             // We must also check the existing _results to ensure we we didn't create a duplicate token from an existing token
 
             token = dist(_generator);
-            auto& result = _requestTokens[_frameIndex].insert(token);
+            auto result = _requestTokens[_frameIndex].insert(token);
 
             bool didInsertNewToken = result.second;
             if (didInsertNewToken)
             {
                 bool isDuplicate = false;
-                auto& setItr = _requestTokens[!_frameIndex].find(token);
-                auto& resultItr = _results.find(token);
+                auto setItr = _requestTokens[!_frameIndex].find(token);
+                auto resultItr = _results.find(token);
 
                 isDuplicate |= setItr != _requestTokens[!_frameIndex].end();
                 isDuplicate |= resultItr != _results.end();

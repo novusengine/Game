@@ -47,7 +47,7 @@ namespace Scripting
 		template <typename T>
 		T* PushUserData(LuaUserDataDtor dtor, bool incrementPushCounter = true)
 		{
-			T* userData = reinterpret_cast<T*>(lua_newuserdatadtor(_state, sizeof(T), dtor));
+			T* userData = reinterpret_cast<T*>(AllocateUserData(_state, sizeof(T), dtor));
 			new (userData) T(); // Placement New to call constructor
 
 			_pushCounter += 1 * incrementPushCounter;
@@ -67,12 +67,12 @@ namespace Scripting
 		template <typename T>
 		T* GetUserData(T* fallback = nullptr, i32 index = -1)
 		{
-			if (!lua_isuserdata(_state, index))
+			if (!IsUserData(_state, index))
 			{
 				return fallback;
 			}
 
-			return reinterpret_cast<T*>(lua_touserdata(_state, index));
+			return reinterpret_cast<T*>(ToUserData(_state, index));
 		}
 		i32 GetRef(i32 index = -1);
 
@@ -100,6 +100,11 @@ namespace Scripting
 
 	private: // Internal Helpers
 		void SetLuaTable(const char* key, const LuaTable& value, u32 recursiveCounter);
+
+        // Wrappers to get rid of GCC dependency on lua.h in this header
+        inline void* AllocateUserData(lua_State* state, size_t size, LuaUserDataDtor dtor);
+        inline bool IsUserData(lua_State* state, i32 index);
+        inline void* ToUserData(lua_State* state, i32 index);
 
 	private:
 		lua_State* _state;

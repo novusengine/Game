@@ -142,25 +142,25 @@ namespace ECS::Systems
 
 		// Setup StaticMesh Sink
 		{
-			auto& sink = registry.on_construct<Components::StaticMesh>();
+			auto sink = registry.on_construct<Components::StaticMesh>();
 			sink.connect<&OnStaticMeshCreated>();
 		}
 
 		// Setup KinematicMesh Sink
 		{
-			auto& sink = registry.on_construct<Components::KinematicMesh>();
+			auto sink = registry.on_construct<Components::KinematicMesh>();
 			sink.connect<&OnKinematicMeshCreated>();
 		}
 
 		// Setup DynamicMesh Sink
 		{
-			auto& sink = registry.on_construct<Components::DynamicMesh>();
+			auto sink = registry.on_construct<Components::DynamicMesh>();
 			sink.connect<&OnDynamicMeshCreated>();
 		}
 
 		InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
 		KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-		keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::None, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+		keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::KeybindNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
 		{
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			auto& activeCamera = registry->ctx().at<ECS::Singletons::ActiveCamera>();

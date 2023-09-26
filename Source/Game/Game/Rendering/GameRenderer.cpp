@@ -94,7 +94,7 @@ void ScrollCallback(GLFWwindow* window, f64 x, f64 y)
 
 void WindowIconifyCallback(GLFWwindow* window, int iconified)
 {
-    Window* userWindow = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+    Novus::Window* userWindow = reinterpret_cast<Novus::Window*>(glfwGetWindowUserPointer(window));
     userWindow->SetIsMinimized(iconified == 1);
 }
 
@@ -102,7 +102,7 @@ GameRenderer::GameRenderer()
 {
     ServiceLocator::SetGameRenderer(this);
 
-	_window = new Window();
+	_window = new Novus::Window();
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
     _inputManager = new InputManager();
@@ -540,7 +540,7 @@ void GameRenderer::InitImgui()
     io.Fonts->AddFontFromMemoryTTF((void*)ruda, sizeof(ruda), 17.f, &font_cfg);
 
     // Initialize notify
-    ImGui::MergeIconsWithLatestFont(16.f, false);
+    //ImGui::MergeIconsWithLatestFont(16.f, false); // I don't think this is needed anymore, do we need something else?
 
     // Apply theme
     {

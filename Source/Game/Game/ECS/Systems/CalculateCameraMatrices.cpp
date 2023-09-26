@@ -78,7 +78,7 @@ namespace ECS::Systems
 
                 if (CVAR_CameraLockCullingFrustum.Get() == 0)
                 {
-                    mat4x4& m = glm::transpose(camera.worldToClip);
+                    mat4x4 m = glm::transpose(camera.worldToClip);
 
                     gpuCamera.frustum[(size_t)FrustumPlane::Left] = (m[3] + m[0]);
                     gpuCamera.frustum[(size_t)FrustumPlane::Right] = (m[3] - m[0]);

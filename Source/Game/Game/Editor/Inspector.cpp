@@ -13,7 +13,7 @@
 #include <Game/ECS/Singletons/MapDB.h>
 #include <Game/ECS/Singletons/TextureSingleton.h>
 #include <Game/ECS/Singletons/ActiveCamera.h>
-#include <Game/ECS/Singletons/FreeFlyingCameraSettings.h>
+#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game/ECS/Singletons/RenderState.h>
 #include <Game/ECS/Components/Camera.h>
 #include <Game/ECS/Components/Transform.h>
@@ -107,7 +107,7 @@ namespace Editor
         KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("Editor", 15);
         keybindGroup->SetActive(true);
 
-        keybindGroup->AddKeyboardCallback("Mouse Left", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Press, KeybindModifier::None | KeybindModifier::Shift, std::bind(&Inspector::OnMouseClickLeft, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        keybindGroup->AddKeyboardCallback("Mouse Left", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Press, KeybindModifier::KeybindNone | KeybindModifier::Shift, std::bind(&Inspector::OnMouseClickLeft, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     }
 
     void Inspector::SetViewport(Viewport* viewport)

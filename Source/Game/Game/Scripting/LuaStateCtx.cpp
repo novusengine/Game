@@ -120,7 +120,7 @@ namespace Scripting
 			}
 			else if (value.type() == typeid(LuaTable))
 			{
-				auto& val = std::any_cast<LuaTable>(value);
+				const auto& val = std::any_cast<LuaTable>(value);
 				SetGlobal(key.c_str(), val);
 			}
 			else
@@ -502,4 +502,19 @@ namespace Scripting
 			SetGlobal(key);
 		}
 	}
+
+    void* LuaStateCtx::AllocateUserData(lua_State* state, size_t size, LuaUserDataDtor dtor)
+    {
+        return lua_newuserdatadtor(state, size, dtor);
+    }
+
+    bool LuaStateCtx::IsUserData(lua_State* state, i32 index)
+    {
+        return lua_isuserdata(_state, index);
+    }
+
+    void* LuaStateCtx::ToUserData(lua_State* state, i32 index)
+    {
+        return lua_touserdata(_state, index);
+    }
 }

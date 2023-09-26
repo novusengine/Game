@@ -10,10 +10,15 @@ namespace Renderer
 {
 	class Renderer;
 }
+
+namespace Novus
+{
+    class Window;
+}
+
 struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
-class Window;
 class InputManager;
 class TerrainRenderer;
 class TerrainLoader;
@@ -59,7 +64,7 @@ public:
 	RenderResources& GetRenderResources() { return _resources; }
 	PixelQuery* GetPixelQuery() { return _pixelQuery; }
 
-	Window* GetWindow() { return _window; }
+	Novus::Window* GetWindow() { return _window; }
 	const std::string& GetGPUName();
 
 private:
@@ -75,7 +80,7 @@ private:
 	};
 
 	Renderer::Renderer* _renderer = nullptr;
-	Window* _window = nullptr;
+    Novus::Window* _window = nullptr;
 	InputManager* _inputManager = nullptr;
 	PixelQuery* _pixelQuery = nullptr;
 

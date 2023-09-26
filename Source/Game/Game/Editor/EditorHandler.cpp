@@ -72,7 +72,7 @@ namespace Editor
             _editorMode = !_editorMode;
             RestoreLayout();
 
-            ImGui::InsertNotification({ ImGuiToastType_Info, 3000, "Editor: %s", _editorMode ? "Enabled" : "Disabled" });
+            ImGui::InsertNotification({ ImGuiToastType::Info, 3000, "Editor: %s", _editorMode ? "Enabled" : "Disabled" });
 
             _viewport->SetIsEditorMode(_editorMode);
 
