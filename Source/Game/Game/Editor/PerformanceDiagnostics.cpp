@@ -441,7 +441,7 @@ namespace Editor
                 ImGui::Text("%.3f", average.renderWaitTimeS * 1000);
                 ImGui::TableNextColumn();
 
-                ImGui::Text("GPU", average.gpuFrameTimeMS);
+                ImGui::Text("GPU frame time");
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", average.gpuFrameTimeMS);
                 ImGui::TableNextColumn();
@@ -784,7 +784,7 @@ namespace Editor
         f32 textPos = windowWidth - textWidth;
 
         ImGui::Separator();
-        ImGui::Text("%.*s:", name.length(), name.data());
+        ImGui::Text("%.*s:", static_cast<int>(name.length()), name.data());
 
         ImGui::SameLine();
         if (textPos > ImGui::GetCursorPosX())

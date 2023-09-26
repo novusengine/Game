@@ -58,7 +58,9 @@ namespace Editor
 
         virtual char* GetActionName() override
         {
-            return "Transform Model";
+            static char buffer[]{"Transform Model"};
+
+            return buffer;
         }
 
         virtual void Undo() override
@@ -89,7 +91,7 @@ namespace Editor
             ImGui::SameLine(0.0f, 10.0f);
 
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(170, 170, 170, 255));
-            ImGui::Text(discoveredModel.name.c_str());
+            ImGui::Text("%s", discoveredModel.name.c_str());
             ImGui::PopStyleColor();
 
             ImGui::Unindent();
@@ -292,7 +294,7 @@ namespace Editor
         ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity);
         if (!name)
         {
-            ImGui::Text("Selected entity (%d) has no name component", entity);
+            ImGui::Text("Selected entity (%d) has no name component", static_cast<int>(entity));
         }
 
         bool isDirty = false;

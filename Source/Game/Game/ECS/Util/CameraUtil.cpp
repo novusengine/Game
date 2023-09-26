@@ -61,7 +61,7 @@ namespace ECS::Util
 
             camera.dirtyView = true;
 
-            registry->get_or_emplace<ECS::Components::DirtyTransform>(activeCamera.entity);
+            (void)registry->get_or_emplace<ECS::Components::DirtyTransform>(activeCamera.entity);
         }
 	}
 }
