@@ -93,6 +93,8 @@ public:
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
+	CullingResources<DrawCallData>& GetCullingResources() { return _cullingResources; }
+
 private:
 	void CreatePermanentResources();
 
