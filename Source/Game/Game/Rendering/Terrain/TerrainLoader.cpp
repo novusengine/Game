@@ -516,6 +516,12 @@ void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
 	{
 		_terrainRenderer->ClearChunks();
 
+		ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+		modelLoader->Clear();
+
+		WaterLoader* waterLoader = ServiceLocator::GetGameRenderer()->GetWaterLoader();
+		waterLoader->Clear();
+
 		for (auto& pair : _chunkIDToBodyID)
 		{
 			JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);

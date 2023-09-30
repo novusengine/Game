@@ -53,8 +53,8 @@ DrawCallData LoadDrawCallData(uint drawCallID)
 }
 
 [[vk::binding(2, PER_PASS)]] Texture2D<float> _depthRT;
-//[[vk::binding(2, PER_PASS)]] SamplerState _sampler;
-//[[vk::binding(4, PER_PASS)]] Texture2D<float4> _textures[1024];
+[[vk::binding(3, PER_PASS)]] SamplerState _sampler;
+[[vk::binding(4, PER_PASS)]] Texture2D<float4> _textures[512];
 
 struct PSInput
 {
@@ -92,15 +92,12 @@ PSOutput main(PSInput input)
 
     if (drawCallData.liquidType == 2 || drawCallData.liquidType == 3) // Lava or Slime
     {
-        float textureUVX = input.textureUV.x / 102.0f; // Found these by trial and error, unless we find another spot that looks bad this is what we're gonna use
-        float textureUVY = input.textureUV.y / 102.0f;
-
-        float2 textureUV = float2(textureUVX, textureUVY);
+        float2 textureUV = float2(input.textureUV.x, input.textureUV.y);
 
         // Add slow scrolling effect
-        textureUV += drawCallData.uvAnim * (_constants.currentTime);
+        textureUV += /*drawCallData.uvAnim*/ float2(0.0f, 1.0f) * (_constants.currentTime) * 0.05f;
 
-        color = float4(1, 0, 0, 1);//_textures[drawCallData.textureStartIndex + textureAnimationOffset].Sample(_sampler, textureUV);
+        color = _textures[drawCallData.textureStartIndex + textureAnimationOffset].Sample(_sampler, textureUV);
     }
     else
     {
@@ -111,12 +108,15 @@ PSOutput main(PSInput input)
         float blendFactor = clamp(linearDepthDifference, 0.0f, _constants.waterVisibilityRange) / _constants.waterVisibilityRange;
 
         // Blend color
-        color = lerp(_constants.shallowRiverColor, _constants.deepRiverColor, blendFactor);
+        float4 shallowColor = lerp(_constants.shallowRiverColor, _constants.shallowOceanColor, drawCallData.liquidType);
+        float4 deepColor = lerp(_constants.deepRiverColor, _constants.deepOceanColor, drawCallData.liquidType);
+
+        color = lerp(shallowColor, deepColor, blendFactor);
 
         // Animate the texture UV
-        float2 textureUV = Rot2(input.textureUV * drawCallData.uvAnim.x, drawCallData.uvAnim.y);
+        float2 textureUV = input.textureUV;//Rot2(input.textureUV * drawCallData.uvAnim.x, drawCallData.uvAnim.y);
 
-        float3 texture0 = float3(0, 0, 1);//_textures[drawCallData.textureStartIndex + textureAnimationOffset].Sample(_sampler, textureUV).rgb;
+        float3 texture0 = _textures[drawCallData.textureStartIndex + textureAnimationOffset].Sample(_sampler, textureUV).rgb;
 
         color.rgb = saturate(color.rgb + texture0);
     }

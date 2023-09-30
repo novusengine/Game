@@ -28,7 +28,13 @@ void WaterLoader::Init()
 
 void WaterLoader::Clear()
 {
+    LoadRequestInternal dummyRequest;
+    while (_requests.try_dequeue(dummyRequest))
+    {
+        // Just empty the queue
+    }
 
+    _waterRenderer->Clear();
 }
 
 void WaterLoader::Update(f32 deltaTime)
@@ -68,7 +74,7 @@ void WaterLoader::Update(f32 deltaTime)
     // Have WaterRenderer prepare all buffers for what we need to load
     _waterRenderer->Reserve(reserveInfo);
 
-#if 1
+#if 0
     for (u32 i = 0; i < numDequeued; i++)
     {
         LoadRequestInternal& request = _workingRequests[i];
@@ -209,7 +215,6 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request)
 
         f32* heightMap = nullptr;
         u8* bitMap = nullptr;
-        //Terrain::LiquidUVMapEntry* uvEntries = nullptr;
         
         if (request.vertexData != nullptr && hasVertexData)
         {
