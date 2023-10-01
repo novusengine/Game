@@ -8,16 +8,14 @@
 
 namespace ECS::Systems
 {
-    std::unordered_set<entt::entity> CalculateTransformMatrices::_entitiesToUndirty;
-
 	void CalculateTransformMatrices::Update(entt::registry& registry, f32 deltaTime)
 	{
         ECS::Singletons::RenderState& renderState = registry.ctx().at<ECS::Singletons::RenderState>();
 
         ECS::Components::DirtyTransformQueue* q = ServiceLocator::GetTransformQueue();
-        q->ProcessQueue([&](entt::entity entity) {
+        q->ProcessQueue([&](entt::entity entity) 
+		{
 
-            registry.get<Components::Transform>(entity).matrix = registry.get<Components::Transform>(entity).GetMatrix();
             registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
         });
 
@@ -27,39 +25,8 @@ namespace ECS::Systems
             //delete the dirty components from entities that werent dirtied this frame
 				if (dirtyTransform.dirtyFrame != renderState.frameNumber)
 				{
-                   registry.remove<Components::DirtyTransform>(entity);
+					registry.remove<Components::DirtyTransform>(entity);
 				}
 		});
-        
-
-        // Remove dirty components from last frame
-        auto it = _entitiesToUndirty.begin();
-        while (it != _entitiesToUndirty.end())
-        {
-            entt::entity entity = *it;
-            // make sure the entity is still valid
-            if (!registry.valid(entity))
-            {
-                it = _entitiesToUndirty.erase(it);
-				continue;
-            }
-
-            if (!registry.all_of<Components::DirtyTransform>(entity))
-            {
-                it = _entitiesToUndirty.erase(it);
-                continue;
-            }
-
-            Components::DirtyTransform& dirtyTransform = registry.get<Components::DirtyTransform>(entity);
-            if (dirtyTransform.dirtyFrame != renderState.frameNumber)
-            {
-                registry.remove<Components::DirtyTransform>(entity); // then remove the component from the entity in the registry
-                it = _entitiesToUndirty.erase(it); // erase the entity from _entitiesToUndirty first
-            }
-            else
-            {
-                it++;
-            }
-        }
 	}
 }

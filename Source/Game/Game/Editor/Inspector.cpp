@@ -359,7 +359,8 @@ namespace Editor
         
         mat4x4& viewMatrix = camera.worldToView;
         mat4x4& projMatrix = camera.viewToClip;
-        float* instanceMatrixPtr = glm::value_ptr(transform.matrix);
+        mat4x4 transformMatrix = transform.GetMatrix();
+        float* instanceMatrixPtr = glm::value_ptr(transformMatrix);
 
         ImGuizmo::OPERATION operation = static_cast<ImGuizmo::OPERATION>(_operation);
         ImGuizmo::MODE mode = static_cast<ImGuizmo::MODE>(_mode);

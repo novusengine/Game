@@ -31,21 +31,38 @@ namespace ECS::Components
 
 	struct Transform
 	{
+        // We are using Unitys Right Handed coordinate system
+        // +X = right
+        // +Y = up
+        // +Z = forward
+        static const vec3 WORLD_FORWARD;
+        static const vec3 WORLD_RIGHT;
+        static const vec3 WORLD_UP;
+
+		//makes the component use pointer stable references in entt. do not remove
+		static constexpr auto in_place_delete = true;
+
 	public:
 	
 		vec3 position = vec3(0.0f, 0.0f, 0.0f);
 		quat rotation = quat(0.0f, 0.0f, 0.0f, 1.0f);
 		vec3 scale = vec3(1.0f, 1.0f, 1.0f);
 
-		vec3 forward = vec3(0.0f, 0.0f, 1.0f);
-		vec3 right = vec3(1.0f, 0.0f, 0.0f);
-		vec3 up = vec3(0.0f, 1.0f, 0.0f);
+		
+		vec3 GetLocalForward() const {
 
+			return glm::toMat4(rotation) * vec4(WORLD_FORWARD,0);
+		}
 
-		//makes the component use pointer stable references in entt. do not remove
-		static constexpr auto in_place_delete = true;
+		vec3 GetLocalRight() const {
+			return glm::toMat4(rotation) * vec4(WORLD_RIGHT, 0);
+		}
+		
+		vec3 GetLocalUp() const {
+			return glm::toMat4(rotation) * vec4(WORLD_UP, 0);
+		}
 
-		mat4x4 GetMatrix() {
+		mat4x4 GetMatrix() const {
 			mat4x4 rotationMatrix = glm::toMat4(rotation);
 			mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
 			return glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
@@ -57,16 +74,6 @@ namespace ECS::Components
 				dirtyQueue->elements.enqueue({ ownerEntity });
 			}
 		}
-
-		mat4x4 matrix = mat4x4(1.0f);
-
-		// We are using Unitys Right Handed coordinate system
-		// +X = right
-		// +Y = up
-		// +Z = forward
-		static const vec3 WORLD_FORWARD;
-		static const vec3 WORLD_RIGHT;
-		static const vec3 WORLD_UP;
 	};
 }
 
@@ -74,9 +81,4 @@ REFL_TYPE(ECS::Components::Transform)
 	REFL_FIELD(position)
 	REFL_FIELD(rotation)
 	REFL_FIELD(scale, Reflection::DragSpeed(0.1f))
-
-	REFL_FIELD(forward, Reflection::Hidden())
-	REFL_FIELD(right, Reflection::Hidden())
-	REFL_FIELD(up, Reflection::Hidden())
-	REFL_FIELD(matrix, Reflection::Hidden())
 REFL_END

@@ -382,8 +382,6 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
 	transform.scale = vec3(scale, scale, scale);
 
-	transform.matrix = transform.GetMatrix();
-
 	transform.SetDirty(ServiceLocator::GetTransformQueue(), entityID);
 
 	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
