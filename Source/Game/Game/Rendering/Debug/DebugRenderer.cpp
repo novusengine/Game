@@ -400,7 +400,7 @@ void DebugRenderer::DrawLine2D(const glm::vec2& from, const glm::vec2& to, Color
 {
 	auto& vertices = _debugVertices2D.Get();
 
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	vertices.push_back({ from, colorInt });
 	vertices.push_back({ to, colorInt });
@@ -410,7 +410,7 @@ void DebugRenderer::DrawLine3D(const glm::vec3& from, const glm::vec3& to, Color
 {
 	auto& vertices = _debugVertices3D.Get();
 
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	vertices.push_back({ from, colorInt });
 	vertices.push_back({ to, colorInt });
@@ -423,7 +423,7 @@ void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, Color co
 	vec3 v0 = center - extents;
 	vec3 v1 = center + extents;
 
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	// Bottom
 	vertices.push_back({ { v0.x, v0.y, v0.z }, colorInt });
@@ -460,7 +460,7 @@ void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const qua
 {
 	auto& vertices = _debugVertices3D.Get();
 
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	vec3 corners[8] = {
 		center + rotation * glm::vec3(-extents.x, -extents.y, -extents.z),
@@ -522,7 +522,7 @@ void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution,
 {
 	auto& vertices = _debugVertices3D.Get();
 
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	constexpr f32 PI = glm::pi<f32>();
 	constexpr f32 TAU = PI * 2.0f;
@@ -587,7 +587,7 @@ void DebugRenderer::DrawMatrix(const mat4x4& matrix, f32 scale)
 void DebugRenderer::DrawLineSolid2D(const vec2& from, const vec2& to, Color color, bool shaded)
 {
 	color.a = static_cast<f32>(shaded);
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 
 	auto& vertices = _debugVerticesSolid2D.Get();
 
@@ -611,7 +611,7 @@ void DebugRenderer::DrawAABBSolid3D(const vec3& center, const vec3& extents, Col
 	vec3 rightNormal = { 1, 0, 0 };
 
 	color.a = static_cast<f32>(shaded);
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 	f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
 
 	// Bottom
@@ -693,7 +693,7 @@ void DebugRenderer::DrawOBBSolid3D(const vec3& center, const vec3& extents, cons
 	vec3 rightNormal = rotation * vec3(1, 0, 0);
 
 	color.a = static_cast<f32>(shaded);
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 	f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
 
 	// Bottom
@@ -767,7 +767,7 @@ void DebugRenderer::DrawTriangleSolid3D(const vec3& v0, const vec3& v1, const ve
 	vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
 	color.a = static_cast<f32>(shaded);
-	u32 colorInt = color.ToU32();
+	u32 colorInt = color.ToABGR32();
 	f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
 	
 	vertices.push_back({ vec4(v0, 0.0f), vec4(normal, colorFloat ) });

@@ -104,8 +104,8 @@ void Canvas::DrawText(Renderer::Font& font, const std::string& text, const vec2&
 		// Add char draw data
 		CanvasCharDrawData& charDrawData = charDrawDatas.emplace_back();
 		charDrawData.data.x = fontChar.textureIndex;
-		charDrawData.data.y = Color::White.ToU32();
-		charDrawData.data.z = Color::Black.ToU32();
+		charDrawData.data.y = Color::White.ToABGR32();
+		charDrawData.data.z = Color::Black.ToABGR32();
 
 		f32 outlineWidth = 0.5f;
 		charDrawData.data.w = *reinterpret_cast<i32*>(&outlineWidth);

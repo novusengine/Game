@@ -41,6 +41,16 @@ private:
 		u16 padding0;
 		hvec2 uvAnim = hvec2(f16(1), f16(0)); // x seems to be scrolling, y seems to be rotation
 	};
+
+	struct Constants
+	{
+		Color shallowOceanColor;
+		Color deepOceanColor;
+		Color shallowRiverColor;
+		Color deepRiverColor;
+		f32 waterVisibilityRange;
+		f32 currentTime;
+	};
 #pragma pack(pop)
 
 public:
@@ -83,6 +93,8 @@ public:
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
+	CullingResources<DrawCallData>& GetCullingResources() { return _cullingResources; }
+
 private:
 	void CreatePermanentResources();
 
@@ -95,10 +107,11 @@ private:
 	DebugRenderer* _debugRenderer = nullptr;
 
 	Renderer::DescriptorSet _copyDescriptorSet;
-	//Renderer::DescriptorSet _cullingDescriptorSet;
-	//Renderer::DescriptorSet _passDescriptorSet;
+
+	Constants _constants;
 
 	Renderer::SamplerID _sampler;
+	Renderer::TextureArrayID _textures;
 
 	CullingResources<DrawCallData> _cullingResources;
 	std::atomic<u32> _instanceIndex = 0;
@@ -108,4 +121,6 @@ private:
 
 	Renderer::GPUVector<u16> _indices;
 	std::atomic<u32> _indicesIndex = 0;
+
+	std::mutex _textureMutex;
 };
