@@ -51,15 +51,18 @@ namespace ECS::Components
         //makes the component use pointer stable references in entt. do not remove
         static constexpr auto in_place_delete = true;
 
-        vec3 GetLocalForward() const {
+        vec3 GetLocalForward() const
+        {
             return glm::toMat4(rotation) * vec4(WORLD_FORWARD, 0);
         }
 
-        vec3 GetLocalRight() const {
+        vec3 GetLocalRight() const
+        {
             return glm::toMat4(rotation) * vec4(WORLD_RIGHT, 0);
         }
 
-        vec3 GetLocalUp() const {
+        vec3 GetLocalUp() const
+        {
             return glm::toMat4(rotation) * vec4(WORLD_UP, 0);
         }
 
@@ -77,6 +80,7 @@ namespace ECS::Components
                 dirtyQueue->elements.enqueue({ ownerEntity });
             }
         }
+
         vec3 position = vec3(0.0f, 0.0f, 0.0f);
         quat rotation = quat(0.0f, 0.0f, 0.0f, 1.0f);
         vec3 scale = vec3(1.0f, 1.0f, 1.0f);

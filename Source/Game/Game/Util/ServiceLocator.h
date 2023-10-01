@@ -88,12 +88,12 @@ public:
     }
     static void SetAnimationSystem(Animation::AnimationSystem* animationSystem);
 
-	static ECS::Components::DirtyTransformQueue* GetTransformQueue()
-	{
-		assert(_dirtyTransformQueue != nullptr);
-		return _dirtyTransformQueue;
-	}
-	static void SetTransformQueue(ECS::Components::DirtyTransformQueue* _dirtyTransformQueue);
+    static ECS::Components::DirtyTransformQueue* GetTransformQueue()
+    {
+        assert(_dirtyTransformQueue != nullptr);
+        return _dirtyTransformQueue;
+    }
+    static void SetTransformQueue(ECS::Components::DirtyTransformQueue* _dirtyTransformQueue);
 
 private:
     ServiceLocator() { }

@@ -60,6 +60,6 @@ void ServiceLocator::SetAnimationSystem(Animation::AnimationSystem* animationSys
 
 void ServiceLocator::SetTransformQueue(ECS::Components::DirtyTransformQueue* dirtyTransformQueue)
 {
-	assert(_dirtyTransformQueue == nullptr);
-	_dirtyTransformQueue = dirtyTransformQueue;
+    assert(_dirtyTransformQueue == nullptr);
+    _dirtyTransformQueue = dirtyTransformQueue;
 }
