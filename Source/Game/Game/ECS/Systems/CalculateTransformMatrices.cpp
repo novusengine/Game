@@ -4,6 +4,7 @@
 #include "Game/ECS/Singletons/RenderState.h"
 
 #include <entt/entt.hpp>
+#include "Game/Util/ServiceLocator.h"
 
 namespace ECS::Systems
 {
@@ -13,23 +14,23 @@ namespace ECS::Systems
 	{
         ECS::Singletons::RenderState& renderState = registry.ctx().at<ECS::Singletons::RenderState>();
 
-        auto view = registry.view<Components::Transform, Components::DirtyTransform>();
-        view.each([&](entt::entity entity, Components::Transform& transform, ECS::Components::DirtyTransform& dirtyTransform)
-        {
-            if (transform.isDirty)
-            {
-                mat4x4 rotationMatrix = glm::toMat4(transform.rotation);
-                mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), transform.scale);
-                transform.matrix = glm::translate(mat4x4(1.0f), transform.position) * rotationMatrix * scaleMatrix;
+        ECS::Components::DirtyTransformQueue* q = ServiceLocator::GetTransformQueue();
+        q->ProcessQueue([&](entt::entity entity) {
 
-                dirtyTransform.dirtyFrame = renderState.frameNumber;
-
-                transform.isDirty = false;
-            }
-
-            // Delay removing the dirty component until the next frame
-            _entitiesToUndirty.insert(entity);
+            registry.get<Components::Transform>(entity).matrix = registry.get<Components::Transform>(entity).GetMatrix();
+            registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
         });
+
+        auto view = registry.view<Components::DirtyTransform>();
+        view.each([&](entt::entity entity,  ECS::Components::DirtyTransform& dirtyTransform)
+		{
+            //delete the dirty components from entities that werent dirtied this frame
+				if (dirtyTransform.dirtyFrame != renderState.frameNumber)
+				{
+                   registry.remove<Components::DirtyTransform>(entity);
+				}
+		});
+        
 
         // Remove dirty components from last frame
         auto it = _entitiesToUndirty.begin();
@@ -59,7 +60,6 @@ namespace ECS::Systems
             {
                 it++;
             }
-            
         }
 	}
 }

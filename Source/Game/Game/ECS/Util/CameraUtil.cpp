@@ -57,11 +57,10 @@ namespace ECS::Util
             f32 camDistance = (radius * 2.0f) / Math::Tan(fovInRadians / 2.0f);
 
             transform.position = position - (transform.forward * camDistance);
-            transform.isDirty = true;
+
+            transform.SetDirty(ServiceLocator::GetTransformQueue(), activeCamera.entity);
 
             camera.dirtyView = true;
-
-            registry->get_or_emplace<ECS::Components::DirtyTransform>(activeCamera.entity);
         }
 	}
 }

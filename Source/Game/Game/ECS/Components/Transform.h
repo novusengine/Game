@@ -1,6 +1,9 @@
 #pragma once
 #include <Base/Types.h>
 #include <Base/Util/Reflection.h>
+#include <Base/Container/ConcurrentQueue.h>
+
+#include "entt/entity/entity.hpp"
 
 namespace ECS::Components
 {
@@ -10,10 +13,26 @@ namespace ECS::Components
 		u64 dirtyFrame = 0;
 	};
 
+	struct DirtyTransformQueue {
+		struct TransformQueueItem {
+			entt::entity et;
+		};
+
+		moodycamel::ConcurrentQueue<TransformQueueItem> elements;
+
+		template<typename F>
+		void ProcessQueue(F&& fn) {
+			TransformQueueItem item;
+			while (elements.try_dequeue(item)) {
+				fn(item.et);
+			}
+		}
+	};
+
 	struct Transform
 	{
 	public:
-		bool isDirty = false;
+	
 		vec3 position = vec3(0.0f, 0.0f, 0.0f);
 		quat rotation = quat(0.0f, 0.0f, 0.0f, 1.0f);
 		vec3 scale = vec3(1.0f, 1.0f, 1.0f);
@@ -21,6 +40,23 @@ namespace ECS::Components
 		vec3 forward = vec3(0.0f, 0.0f, 1.0f);
 		vec3 right = vec3(1.0f, 0.0f, 0.0f);
 		vec3 up = vec3(0.0f, 1.0f, 0.0f);
+
+
+		//makes the component use pointer stable references in entt. do not remove
+		static constexpr auto in_place_delete = true;
+
+		mat4x4 GetMatrix() {
+			mat4x4 rotationMatrix = glm::toMat4(rotation);
+			mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
+			return glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+		}
+
+		void SetDirty(DirtyTransformQueue* dirtyQueue,entt::entity ownerEntity) {
+
+			if (ownerEntity != entt::null) {
+				dirtyQueue->elements.enqueue({ ownerEntity });
+			}
+		}
 
 		mat4x4 matrix = mat4x4(1.0f);
 
@@ -35,7 +71,6 @@ namespace ECS::Components
 }
 
 REFL_TYPE(ECS::Components::Transform)
-	REFL_FIELD(isDirty, Reflection::Hidden())
 	REFL_FIELD(position)
 	REFL_FIELD(rotation)
 	REFL_FIELD(scale, Reflection::DragSpeed(0.1f))

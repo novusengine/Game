@@ -9,6 +9,7 @@ namespace Editor
 }
 class InputManager;
 class GameRenderer;
+namespace ECS { namespace Components { struct DirtyTransformQueue; } }
 
 namespace enki
 {
@@ -87,6 +88,13 @@ public:
     }
     static void SetAnimationSystem(Animation::AnimationSystem* animationSystem);
 
+	static ECS::Components::DirtyTransformQueue* GetTransformQueue()
+	{
+		assert(_dirtyTransformQueue != nullptr);
+		return _dirtyTransformQueue;
+	}
+	static void SetTransformQueue(ECS::Components::DirtyTransformQueue* _dirtyTransformQueue);
+
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
@@ -97,4 +105,5 @@ private:
     static GameConsole* _gameConsole;
     static Scripting::LuaManager* _luaManager;
     static Animation::AnimationSystem* _animationSystem;
+    static ECS::Components::DirtyTransformQueue* _dirtyTransformQueue;
 };

@@ -216,8 +216,7 @@ void ModelLoader::Update(f32 deltaTime)
 	_createdEntities.clear();
 	_createdEntities.resize(reserveInfo.numInstances);
 	registry->create(_createdEntities.begin(), _createdEntities.end());
-
-	registry->insert<ECS::Components::DirtyTransform>(_createdEntities.begin(), _createdEntities.end());
+	
 	registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
 	registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
 	registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
@@ -376,9 +375,6 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 {
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-	// Add components to the entity
-	ECS::Components::DirtyTransform& dirtyTransfom = registry->get<ECS::Components::DirtyTransform>(entityID);
-
 	ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
 	transform.position = request.placement.position;
 	transform.rotation = request.placement.rotation;
@@ -386,10 +382,9 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
 	transform.scale = vec3(scale, scale, scale);
 
-	mat4x4 rotationMatrix = glm::toMat4(transform.rotation);
-	mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), transform.scale);
-	transform.matrix = glm::translate(mat4x4(1.0f), transform.position) * rotationMatrix * scaleMatrix;
-	transform.isDirty = true;
+	transform.matrix = transform.GetMatrix();
+
+	transform.SetDirty(ServiceLocator::GetTransformQueue(), entityID);
 
 	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
 	DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];

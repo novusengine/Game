@@ -310,11 +310,11 @@ namespace Editor
 
             if (isDirty)
             {
-                transform->isDirty = true;
+                
 
                 ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
 
-                ECS::Components::DirtyTransform& dirtyTransform = registry->get_or_emplace<ECS::Components::DirtyTransform>(entity);
+                transform->SetDirty(ServiceLocator::GetTransformQueue(), entity);
             }
         }
 

@@ -8,6 +8,7 @@ EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
 GameConsole* ServiceLocator::_gameConsole = nullptr;
 Scripting::LuaManager* ServiceLocator::_luaManager = nullptr;
 Animation::AnimationSystem* ServiceLocator::_animationSystem = nullptr;
+ECS::Components::DirtyTransformQueue* ServiceLocator::_dirtyTransformQueue = nullptr;
 
 void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
@@ -55,4 +56,10 @@ void ServiceLocator::SetAnimationSystem(Animation::AnimationSystem* animationSys
 {
     assert(_animationSystem == nullptr);
     _animationSystem = animationSystem;
+}
+
+void ServiceLocator::SetTransformQueue(ECS::Components::DirtyTransformQueue* dirtyTransformQueue)
+{
+	assert(_dirtyTransformQueue == nullptr);
+	_dirtyTransformQueue = dirtyTransformQueue;
 }
