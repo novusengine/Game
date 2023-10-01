@@ -13,24 +13,33 @@ namespace ECS::Components
         u64 dirtyFrame = 0;
     };
 
-    struct DirtyTransformQueue {
-        struct TransformQueueItem {
+    struct DirtyTransformQueue 
+    {
+    public:
+        template<typename F>
+        void ProcessQueue(F&& fn)
+        {
+            TransformQueueItem item;
+            while (elements.try_dequeue(item))
+            {
+                fn(item.et);
+            }
+        }
+
+    private:
+        friend struct Transform;
+        struct TransformQueueItem
+        {
+            public:
             entt::entity et;
         };
 
         moodycamel::ConcurrentQueue<TransformQueueItem> elements;
-
-        template<typename F>
-        void ProcessQueue(F&& fn) {
-            TransformQueueItem item;
-            while (elements.try_dequeue(item)) {
-                fn(item.et);
-            }
-        }
     };
 
     struct Transform
     {
+    public:
         // We are using Unitys Right Handed coordinate system
         // +X = right
         // +Y = up
@@ -40,13 +49,7 @@ namespace ECS::Components
         static const vec3 WORLD_UP;
 
         //makes the component use pointer stable references in entt. do not remove
-        static constexpr auto in_place_delete = true;	
-        public:
-
-        vec3 position = vec3(0.0f, 0.0f, 0.0f);
-        quat rotation = quat(0.0f, 0.0f, 0.0f, 1.0f);
-        vec3 scale = vec3(1.0f, 1.0f, 1.0f);
-
+        static constexpr auto in_place_delete = true;
 
         vec3 GetLocalForward() const {
             return glm::toMat4(rotation) * vec4(WORLD_FORWARD, 0);
@@ -74,6 +77,9 @@ namespace ECS::Components
                 dirtyQueue->elements.enqueue({ ownerEntity });
             }
         }
+        vec3 position = vec3(0.0f, 0.0f, 0.0f);
+        quat rotation = quat(0.0f, 0.0f, 0.0f, 1.0f);
+        vec3 scale = vec3(1.0f, 1.0f, 1.0f);
     };
 }
 

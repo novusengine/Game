@@ -20,9 +20,6 @@
 
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
-#ifdef JPH_DEBUG_RENDERER
-#include <Jolt/Renderer/DebugRenderer.h>
-#endif
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
