@@ -8,25 +8,24 @@
 
 namespace ECS::Systems
 {
-	void CalculateTransformMatrices::Update(entt::registry& registry, f32 deltaTime)
-	{
+    void CalculateTransformMatrices::Update(entt::registry& registry, f32 deltaTime)
+    {
         ECS::Singletons::RenderState& renderState = registry.ctx().at<ECS::Singletons::RenderState>();
 
-        ECS::Components::DirtyTransformQueue* q = ServiceLocator::GetTransformQueue();
-        q->ProcessQueue([&](entt::entity entity) 
-		{
-
+        //convert the async transform queue into dirty transform components
+        ServiceLocator::GetTransformQueue()->ProcessQueue([&](entt::entity entity)
+        {
             registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
         });
 
         auto view = registry.view<Components::DirtyTransform>();
         view.each([&](entt::entity entity,  ECS::Components::DirtyTransform& dirtyTransform)
-		{
+        {
             //delete the dirty components from entities that werent dirtied this frame
-				if (dirtyTransform.dirtyFrame != renderState.frameNumber)
-				{
-					registry.remove<Components::DirtyTransform>(entity);
-				}
-		});
-	}
+            if (dirtyTransform.dirtyFrame != renderState.frameNumber)
+            {
+                registry.remove<Components::DirtyTransform>(entity);
+            }
+        });
+    }
 }

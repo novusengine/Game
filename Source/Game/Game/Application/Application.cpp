@@ -187,9 +187,6 @@ bool Application::Init()
 	_registries.gameRegistry = new entt::registry();
 	ServiceLocator::SetEnttRegistries(&_registries);
 
-	_registries.gameRegistry = new entt::registry();
-	ServiceLocator::SetEnttRegistries(&_registries);
-
 	_gameRenderer = new GameRenderer();
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
