@@ -309,9 +309,7 @@ namespace Editor
             isDirty |= Util::Imgui::Inspect(*transform);
             if (isDirty)
             {
-                ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
-
-                transform->SetDirty(ServiceLocator::GetTransformQueue(), entity);
+                transform->SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entity);
             }
         }
 

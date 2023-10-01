@@ -26,7 +26,6 @@
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
-#include "../ECS/Components/Transform.h"
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
@@ -39,7 +38,6 @@ Application::~Application()
 	delete _editorHandler;
 	delete _ecsScheduler;
 	delete _taskScheduler;
-	delete _dirtyTransformQueue;
 }
 
 void Application::Start()
@@ -190,9 +188,6 @@ bool Application::Init()
 	_gameRenderer = new GameRenderer();
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
-
-	_dirtyTransformQueue= new ECS::Components::DirtyTransformQueue();
-	ServiceLocator::SetTransformQueue(_dirtyTransformQueue);
 
 	_ecsScheduler = new ECS::Scheduler();
 	_ecsScheduler->Init(*_registries.gameRegistry);

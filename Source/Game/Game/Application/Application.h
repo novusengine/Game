@@ -12,7 +12,6 @@ namespace Editor
 }
 class GameRenderer;
 class ModelLoader;
-namespace ECS { namespace Components { struct DirtyTransformQueue; } }
 
 namespace enki
 {
@@ -64,7 +63,6 @@ private:
 	ECS::Scheduler* _ecsScheduler = nullptr;
 	Scripting::LuaManager* _luaManager = nullptr;
 	Animation::AnimationSystem* _animationSystem = nullptr;
-	ECS::Components::DirtyTransformQueue* _dirtyTransformQueue = nullptr;
 
 	nlohmann::json _cvarJson;
 

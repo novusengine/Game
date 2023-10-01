@@ -5,15 +5,11 @@
 
 #include "entt/entity/entity.hpp"
 
-namespace ECS::Components
-{
-    struct DirtyTransform
-    {
-    public:
-        u64 dirtyFrame = 0;
-    };
+namespace ECS::Components{ struct Transform; }
 
-    struct DirtyTransformQueue 
+namespace ECS::Singletons {
+
+    struct DirtyTransformQueue
     {
     public:
         template<typename F>
@@ -27,14 +23,23 @@ namespace ECS::Components
         }
 
     private:
-        friend struct Transform;
+        friend struct ECS::Components::Transform;
         struct TransformQueueItem
         {
-            public:
+        public:
             entt::entity et;
         };
 
         moodycamel::ConcurrentQueue<TransformQueueItem> elements;
+    };
+}
+
+namespace ECS::Components
+{
+    struct DirtyTransform
+    {
+    public:
+        u64 dirtyFrame = 0;
     };
 
     struct Transform
@@ -73,11 +78,11 @@ namespace ECS::Components
             return glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
         }
 
-        void SetDirty(DirtyTransformQueue* dirtyQueue, entt::entity ownerEntity)
+        void SetDirty(ECS::Singletons::DirtyTransformQueue& dirtyQueue, entt::entity ownerEntity)
         {
             if (ownerEntity != entt::null)
             {
-                dirtyQueue->elements.enqueue({ ownerEntity });
+                dirtyQueue.elements.enqueue({ ownerEntity });
             }
         }
 

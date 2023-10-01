@@ -382,7 +382,7 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
 	transform.scale = vec3(scale, scale, scale);
 
-	transform.SetDirty(ServiceLocator::GetTransformQueue(), entityID);
+	transform.SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entityID);
 
 	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
 	DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];

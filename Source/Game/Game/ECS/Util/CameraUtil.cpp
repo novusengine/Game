@@ -58,7 +58,7 @@ namespace ECS::Util
 
             transform.position = position - (transform.GetLocalForward() * camDistance);
 
-            transform.SetDirty(ServiceLocator::GetTransformQueue(), activeCamera.entity);
+            transform.SetDirty(ctx.at<ECS::Singletons::DirtyTransformQueue>(), activeCamera.entity);
 
             camera.dirtyView = true;
         }
