@@ -17,7 +17,9 @@ class ModelRenderer;
 class ModelLoader
 {
 public:
-	static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
+	static constexpr u32 MAX_STATIC_LOADS_PER_FRAME = 65535;
+	static constexpr u32 MAX_DYNAMIC_LOADS_PER_FRAME = 1024;
+
 	enum LoadState
 	{
 		Received,
@@ -36,6 +38,8 @@ public:
 private:
 	struct LoadRequestInternal
 	{
+	public:
+		entt::entity entity;
 		Terrain::Placement placement;
 	};
 
@@ -47,6 +51,7 @@ public:
 	void Update(f32 deltaTime);
 
 	void LoadPlacement(const Terrain::Placement& placement);
+	void LoadModel(entt::entity entity, u32 modelNameHash);
 
 	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
 	bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
@@ -55,14 +60,16 @@ public:
 
 private:
 	bool LoadRequest(const LoadRequestInternal& request);
-	void AddInstance(entt::entity entityID, const LoadRequestInternal& request);
+	void AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request);
+	void AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request);
 
 private:
-	enki::TaskScheduler _scheduler;
 	ModelRenderer* _modelRenderer = nullptr;
+	std::vector<LoadRequestInternal> _staticLoadRequests;
+	moodycamel::ConcurrentQueue<LoadRequestInternal> _staticRequests;
 
-	LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];
-	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
+	std::vector<LoadRequestInternal> _dynamicLoadRequests;
+	moodycamel::ConcurrentQueue<LoadRequestInternal> _dynamicRequests;
 
 	robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
 	robin_hood::unordered_map<u32, u32> _nameHashToModelID;

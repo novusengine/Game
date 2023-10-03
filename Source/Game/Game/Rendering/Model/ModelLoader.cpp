@@ -30,22 +30,10 @@ namespace fs = std::filesystem;
 static const fs::path dataPath = fs::path("Data/");
 static const fs::path complexModelPath = dataPath / "ComplexModel/";
 
-AutoCVar_Int CVAR_ModelLoaderNumThreads("modelLoader.numThreads", "number of threads used for model loading, 0 = number of hardware threads", 0, CVarFlags::None);
-
 ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 	: _modelRenderer(modelRenderer)
-	, _requests()
-{
-	i32 numThreads = CVAR_ModelLoaderNumThreads.Get();
-	if (numThreads == 0 || numThreads == -1)
-	{
-		_scheduler.Initialize();
-	}
-	else
-	{
-		_scheduler.Initialize(numThreads);
-	}
-}
+	, _staticRequests(MAX_STATIC_LOADS_PER_FRAME) 
+	, _dynamicRequests(MAX_DYNAMIC_LOADS_PER_FRAME) { }
 
 void ModelLoader::Init()
 {
@@ -57,6 +45,8 @@ void ModelLoader::Init()
 	{
 		fs::create_directories(complexModelPath);
 	}
+
+	enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
 	// First recursively iterate the directory and find all paths
 	std::vector<fs::path> paths;
@@ -118,8 +108,8 @@ void ModelLoader::Init()
 	});
 
 	// Execute the multithreaded job
-	_scheduler.AddTaskSetToPipe(&discoverModelsTask);
-	_scheduler.WaitforTask(&discoverModelsTask);
+	taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
+	taskScheduler->WaitforTask(&discoverModelsTask);
 
 	// And lastly move the data into the hashmap
 	DiscoveredModel discoveredModel;
@@ -129,12 +119,19 @@ void ModelLoader::Init()
 	}
 
 	DebugHandler::Print("Found {0} models", _nameHashToDiscoveredModel.size());
+
+	_staticLoadRequests.resize(MAX_STATIC_LOADS_PER_FRAME);
+	_dynamicLoadRequests.resize(MAX_DYNAMIC_LOADS_PER_FRAME);
 }
 
 void ModelLoader::Clear()
 {
 	LoadRequestInternal dummyRequest;
-	while (_requests.try_dequeue(dummyRequest))
+	while (_staticRequests.try_dequeue(dummyRequest))
+	{
+		// Just empty the queue
+	}
+	while (_dynamicRequests.try_dequeue(dummyRequest))
 	{
 		// Just empty the queue
 	}
@@ -150,6 +147,7 @@ void ModelLoader::Clear()
 			it.second = nullptr;
 		}
 	}
+
 	_nameHashToLoadingMutex.clear();
 
 	_uniqueIDToinstanceID.clear();
@@ -163,128 +161,238 @@ void ModelLoader::Clear()
 
 void ModelLoader::Update(f32 deltaTime)
 {
-	// Count how many unique non-loaded request we have
-	u32 numDequeued = static_cast<u32>(_requests.try_dequeue_bulk(&_workingRequests[0], MAX_LOADS_PER_FRAME));
-	if (numDequeued == 0)
-		return;
+	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+	enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
-	ModelRenderer::ReserveInfo reserveInfo;
-
-	for (u32 i = 0; i < numDequeued; i++)
+	size_t staticRequests = _staticRequests.size_approx();
+	if (staticRequests > 0)
 	{
-		LoadRequestInternal& request = _workingRequests[i];
-		u32 nameHash = request.placement.nameHash;
-
-		if (!_nameHashToDiscoveredModel.contains(nameHash))
+		u32 numDequeued = static_cast<u32>(_staticRequests.try_dequeue_bulk(&_staticLoadRequests[0], MAX_STATIC_LOADS_PER_FRAME));
+		if (numDequeued > 0)
 		{
-			DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered");
-			continue;
-		}
+			ModelRenderer::ReserveInfo reserveInfo;
 
-		DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
-		bool isSupported = discoveredModel.modelHeader.numVertices > 0;
+			for (u32 i = 0; i < numDequeued; i++)
+			{
+				LoadRequestInternal& request = _staticLoadRequests[i];
+				u32 nameHash = request.placement.nameHash;
 
-		// Only increment Instance Count & Drawcall Count if the model have vertices
-		{
-			reserveInfo.numInstances += 1 * isSupported;
-			reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
-			reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
-			reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
-		}
+				if (!_nameHashToDiscoveredModel.contains(nameHash))
+				{
+					DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered");
+					continue;
+				}
 
-		if (!_nameHashToLoadState.contains(nameHash))
-		{
-			_nameHashToLoadState[nameHash] = LoadState::Received;
-			_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
-			_nameHashToLoadingMutex[nameHash] = new std::mutex();
+				DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
+				bool isSupported = discoveredModel.modelHeader.numVertices > 0;
 
-			reserveInfo.numModels++;
-			reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
-			reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
-			reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+				// Only increment Instance Count & Drawcall Count if the model have vertices
+				{
+					reserveInfo.numInstances += 1 * isSupported;
+					reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
+					reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+					reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
+				}
+
+				if (!_nameHashToLoadState.contains(nameHash))
+				{
+					_nameHashToLoadState[nameHash] = LoadState::Received;
+					_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
+					_nameHashToLoadingMutex[nameHash] = new std::mutex();
+
+					reserveInfo.numModels++;
+					reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
+					reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
+					reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+				}
+			}
+
+			// Have ModelRenderer prepare all buffers for what we need to load
+			_modelRenderer->Reserve(reserveInfo);
+			animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
+
+			// Create entt entities
+			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+			_createdEntities.clear();
+			_createdEntities.resize(reserveInfo.numInstances);
+			registry->create(_createdEntities.begin(), _createdEntities.end());
+
+			registry->insert<ECS::Components::DirtyTransform>(_createdEntities.begin(), _createdEntities.end());
+			registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
+			registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
+			registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
+			registry->insert<ECS::Components::AABB>(_createdEntities.begin(), _createdEntities.end());
+			registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
+
+			std::atomic<u32> numCreatedInstances;
+			enki::TaskSet loadModelsTask(reserveInfo.numInstances, [&](enki::TaskSetPartition range, u32 threadNum)
+			{
+				for (u32 i = range.start; i < range.end; i++)
+				{
+					LoadRequestInternal& request = _staticLoadRequests[i];
+
+					u32 placementHash = request.placement.nameHash;
+					if (!_nameHashToDiscoveredModel.contains(placementHash))
+					{
+						// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
+						continue;
+					}
+
+					std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
+					std::scoped_lock lock(*mutex);
+
+					LoadState loadState = _nameHashToLoadState[placementHash];
+
+					if (loadState == LoadState::Failed)
+						continue;
+
+					if (loadState == LoadState::Received)
+					{
+						loadState = LoadState::Loading;
+						_nameHashToLoadState[placementHash] = LoadState::Loading;
+
+						bool didLoad = LoadRequest(request);
+
+						loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+						_nameHashToLoadState[placementHash] = loadState;
+
+						if (!didLoad)
+							continue;
+					}
+
+					if (_uniqueIDToinstanceID.contains(request.placement.uniqueID))
+						continue;
+
+					u32 index = numCreatedInstances.fetch_add(1);
+					AddStaticInstance(_createdEntities[index], request);
+				}
+			});
+
+			// Execute the multithreaded job
+			taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+			taskScheduler->WaitforTask(&loadModelsTask);
+
+			// Destroy the entities we didn't use
+			registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
+
+			// Fit the buffers to the data we loaded
+			_modelRenderer->FitBuffersAfterLoad();
+			animationSystem->FitToBuffersAfterLoad();
 		}
 	}
 
-	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-
-	// Have ModelRenderer prepare all buffers for what we need to load
-	_modelRenderer->Reserve(reserveInfo);
-	animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
-
-	// Create entt entities
-	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-	_createdEntities.clear();
-	_createdEntities.resize(reserveInfo.numInstances);
-	registry->create(_createdEntities.begin(), _createdEntities.end());
-	
-	registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
-	registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
-	registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
-	registry->insert<ECS::Components::AABB>(_createdEntities.begin(), _createdEntities.end());
-	registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
-
-	std::atomic<u32> numCreatedInstances;
-	enki::TaskSet loadModelsTask(reserveInfo.numInstances, [&](enki::TaskSetPartition range, u32 threadNum)
+	size_t dynamicRequests = _dynamicRequests.size_approx();
+	if (dynamicRequests > 0)
 	{
-		for (u32 i = range.start; i < range.end; i++)
+		u32 numDequeued = static_cast<u32>(_dynamicRequests.try_dequeue_bulk(&_dynamicLoadRequests[0], MAX_DYNAMIC_LOADS_PER_FRAME));
+		if (numDequeued > 0)
 		{
-			LoadRequestInternal& request = _workingRequests[i];
+			ModelRenderer::ReserveInfo reserveInfo;
 
-			u32 placementHash = request.placement.nameHash;
-			if (!_nameHashToDiscoveredModel.contains(placementHash))
+			for (u32 i = 0; i < numDequeued; i++)
 			{
-				// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-				continue;
-			}
+				LoadRequestInternal& request = _dynamicLoadRequests[i];
+				u32 nameHash = request.placement.nameHash;
 
-			std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
-			std::scoped_lock lock(*mutex);
-
-			LoadState loadState = _nameHashToLoadState[placementHash];
-
-			if (loadState == LoadState::Failed)
-				continue;
-
-			if (loadState == LoadState::Received)
-			{
-				loadState = LoadState::Loading;
-				_nameHashToLoadState[placementHash] = LoadState::Loading;
-
-				bool didLoad = LoadRequest(request);
-
-				loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-				_nameHashToLoadState[placementHash] = loadState;
-
-				if (!didLoad)
+				if (!_nameHashToDiscoveredModel.contains(nameHash))
+				{
+					DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered");
 					continue;
+				}
+
+				DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
+				bool isSupported = discoveredModel.modelHeader.numVertices > 0;
+
+				// Only increment Instance Count & Drawcall Count if the model have vertices
+				{
+					reserveInfo.numInstances += 1 * isSupported;
+					reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
+					reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+					reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
+				}
+
+				if (!_nameHashToLoadState.contains(nameHash))
+				{
+					_nameHashToLoadState[nameHash] = LoadState::Received;
+					_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
+					_nameHashToLoadingMutex[nameHash] = new std::mutex();
+
+					reserveInfo.numModels++;
+					reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
+					reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
+					reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+
+					reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
+					reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+				}
 			}
 
-			if (_uniqueIDToinstanceID.contains(request.placement.uniqueID))
-				continue;
+			// Have ModelRenderer prepare all buffers for what we need to load
+			_modelRenderer->Reserve(reserveInfo);
+			animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
 
-			u32 index = numCreatedInstances.fetch_add(1);
-			AddInstance(_createdEntities[index], request);
+			for (u32 i = 0; i < reserveInfo.numInstances; i++)
+			{
+				LoadRequestInternal& request = _dynamicLoadRequests[i];
+
+				if (request.entity == entt::null)
+					continue;
+
+				u32 modelHash = request.placement.nameHash;
+				if (!_nameHashToDiscoveredModel.contains(modelHash))
+				{
+					// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
+					continue;
+				}
+
+				std::mutex* mutex = _nameHashToLoadingMutex[modelHash];
+				std::scoped_lock lock(*mutex);
+
+				LoadState loadState = _nameHashToLoadState[modelHash];
+
+				if (loadState == LoadState::Failed)
+					continue;
+
+				if (loadState == LoadState::Received)
+				{
+					loadState = LoadState::Loading;
+					_nameHashToLoadState[modelHash] = LoadState::Loading;
+
+					bool didLoad = LoadRequest(request);
+
+					loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+					_nameHashToLoadState[modelHash] = loadState;
+
+					if (!didLoad)
+						continue;
+				}
+
+				AddDynamicInstance(request.entity, request);
+			}
+
+			// Fit the buffers to the data we loaded
+			_modelRenderer->FitBuffersAfterLoad();
+			animationSystem->FitToBuffersAfterLoad();
 		}
-	});
-
-	// Execute the multithreaded job
-	_scheduler.AddTaskSetToPipe(&loadModelsTask);
-	_scheduler.WaitforTask(&loadModelsTask);
-
-	// Destroy the entities we didn't use
-	registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
-
-	// Fit the buffers to the data we loaded
-	_modelRenderer->FitBuffersAfterLoad();
-	animationSystem->FitToBuffersAfterLoad();
+	}
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 {
 	LoadRequestInternal loadRequest;
+	loadRequest.entity = entt::null;
 	loadRequest.placement = placement;
 
-	_requests.enqueue(loadRequest);
+	_staticRequests.enqueue(loadRequest);
+}
+
+void ModelLoader::LoadModel(entt::entity entity, u32 modelNameHash)
+{
+	LoadRequestInternal loadRequest;
+	loadRequest.entity = entity;
+	loadRequest.placement.nameHash = modelNameHash;
+
+	_dynamicRequests.enqueue(loadRequest);
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
@@ -371,7 +479,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 	return true;
 }
 
-void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& request)
+void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
@@ -391,7 +499,7 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 	name.nameHash = discoveredModel.nameHash;
 
 	u32 modelID = _nameHashToModelID[request.placement.nameHash];
-	u32 instanceID = _modelRenderer->AddInstance(modelID, request.placement);
+	u32 instanceID = _modelRenderer->AddPlacementInstance(modelID, request.placement);
 
 	ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
 	model.modelID = modelID;
@@ -405,6 +513,50 @@ void ModelLoader::AddInstance(entt::entity entityID, const LoadRequestInternal& 
 
 	std::scoped_lock lock(_instanceIDToModelIDMutex);
 	_uniqueIDToinstanceID[request.placement.uniqueID] = instanceID;
+	_instanceIDToModelID[instanceID] = modelID;
+	_instanceIDToEntityID[instanceID] = entityID;
+
+	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+	if (animationSystem->AddInstance(modelID, instanceID))
+	{
+		animationSystem->PlayAnimation(instanceID, 0);
+	}
+}
+
+void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
+{
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+	DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
+	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
+	name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
+	name.fullName = discoveredModel.name;
+	name.nameHash = discoveredModel.nameHash;
+
+	ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
+
+	u32 modelID = _nameHashToModelID[request.placement.nameHash];
+	u32 instanceID = model.instanceID;
+
+	const ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+	if (instanceID == std::numeric_limits<u32>().max())
+	{
+		instanceID = _modelRenderer->AddInstance(modelID, transform.position, transform.rotation, transform.scale);
+	}
+	else
+	{
+		_modelRenderer->ModifyInstance(instanceID, modelID, transform.position, transform.rotation, transform.scale);
+	}
+
+	model.modelID = modelID;
+	model.instanceID = instanceID;
+
+	const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
+	ECS::Components::AABB& aabb = registry->get<ECS::Components::AABB>(entityID);
+	aabb.centerPos = modelAABB.centerPos;
+	aabb.extents = modelAABB.extents;
+
+	std::scoped_lock lock(_instanceIDToModelIDMutex);
 	_instanceIDToModelID[instanceID] = modelID;
 	_instanceIDToEntityID[instanceID] = entityID;
 

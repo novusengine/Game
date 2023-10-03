@@ -25,11 +25,13 @@ public:
 
     bool Init()
     {
+        DebugHandler::Print("TextureLoader : Scanning for textures");
+
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
 
         entt::registry* registry = registries->gameRegistry;
-
         entt::registry::context& ctx = registry->ctx();
+
         ECS::Singletons::TextureSingleton& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
 
         static const fs::path fileExtension = ".dds";
@@ -41,11 +43,11 @@ public:
         std::string absolutePathStr = absolutePath.string();
         size_t subStrIndex = absolutePathStr.length() + 1; // + 1 here for folder seperator
 
-        moodycamel::ConcurrentQueue<TexturePair> texturePairs;
-
         std::vector<std::filesystem::path> paths;
         std::filesystem::recursive_directory_iterator dirpos{ absolutePath };
         std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
+
+        moodycamel::ConcurrentQueue<TexturePair> texturePairs(paths.size());
 
         std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&subStrIndex, &texturePairs](const std::filesystem::path& path)
         {
@@ -61,16 +63,18 @@ public:
             texturePairs.enqueue(texturePair);
         });
 
-        textureSingleton.textureHashToPath.reserve(texturePairs.size_approx());
-        textureSingleton.textureHashToTextureID.reserve(texturePairs.size_approx());
+        u32 numTexturePairs = static_cast<u32>(texturePairs.size_approx());
+
+        textureSingleton.textureHashToPath.reserve(numTexturePairs);
+        textureSingleton.textureHashToTextureID.reserve(numTexturePairs);
 
         TexturePair texturePair;
         while (texturePairs.try_dequeue(texturePair))
         {
-            auto itr = textureSingleton.textureHashToPath.find(texturePair.hash);
-            if (itr != textureSingleton.textureHashToPath.end())
+            if (textureSingleton.textureHashToPath.contains(texturePair.hash))
             {
-                DebugHandler::PrintError("Found duplicate texture hash ({0}) for Path ({1})", texturePair.hash, texturePair.path.c_str()); // This error cannot be more specific when loading in parallel unless we copy more data.
+                const std::string& path = textureSingleton.textureHashToPath[texturePair.hash];
+                DebugHandler::PrintError("Found duplicate texture hash ({0}) for Paths (\"{1}\") - (\"{2}\")", texturePair.hash, path.c_str(), texturePair.path.c_str());
             }
 
             textureSingleton.textureHashToPath[texturePair.hash] = (relativeParentPath / texturePair.path).string();

@@ -126,7 +126,5 @@ namespace Animation
 	private:
 		AnimationStorage _storage;
 		ModelRenderer* _modelRenderer = nullptr;
-
-		enki::TaskScheduler _scheduler;
 	};
 }
