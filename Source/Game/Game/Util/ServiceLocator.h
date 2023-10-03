@@ -9,7 +9,6 @@ namespace Editor
 }
 class InputManager;
 class GameRenderer;
-namespace ECS { namespace Components { struct DirtyTransformQueue; } }
 
 namespace enki
 {
