@@ -244,7 +244,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             if (params.drawCallsBuffer == Renderer::BufferMutableResource::Invalid())
             {
-                DebugHandler::PrintFatal("Tried to draw with culling enabled but no draw calls buffer was provided");
+                DebugHandler::PrintFatal("Tried to draw with culling disabled but no draw calls buffer was provided");
             }
             drawParams.argumentBuffer = params.drawCallsBuffer;
         }

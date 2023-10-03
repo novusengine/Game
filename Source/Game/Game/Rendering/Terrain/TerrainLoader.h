@@ -52,8 +52,6 @@ private:
 	void PrepareForChunks(LoadType loadType, u32 numChunks);
 
 private:
-	enki::TaskScheduler _scheduler;
-
 	TerrainRenderer* _terrainRenderer = nullptr;
 	std::string _currentMapInternalName = "None";
 

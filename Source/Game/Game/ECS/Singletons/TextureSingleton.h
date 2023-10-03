@@ -1,6 +1,7 @@
 #pragma once
 #include <Base/Types.h>
-#include <Base/Container/StringTable.h>
+
+#include <robinhood/robinhood.h>
 
 namespace ECS::Singletons
 {
@@ -9,7 +10,7 @@ namespace ECS::Singletons
 	public:
 		TextureSingleton() {}
 
-		std::unordered_map<u32, std::string> textureHashToPath;
-		std::unordered_map<u32, u32> textureHashToTextureID;
+		robin_hood::unordered_map<u32, std::string> textureHashToPath;
+		robin_hood::unordered_map<u32, u32> textureHashToTextureID;
 	};
 }

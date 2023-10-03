@@ -1,5 +1,6 @@
 #include "AnimationSystem.h"
 #include "Game/Rendering/Model/ModelRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -102,10 +103,7 @@ namespace Animation
 		}
 	}
 
-	AnimationSystem::AnimationSystem(ModelRenderer* modelRenderer) : _modelRenderer(modelRenderer)
-	{
-		_scheduler.Initialize();
-	}
+	AnimationSystem::AnimationSystem(ModelRenderer* modelRenderer) : _modelRenderer(modelRenderer) { }
 
 	bool AnimationSystem::AddSkeleton(ModelID modelID, Model::ComplexModel& model)
 	{
@@ -283,6 +281,8 @@ namespace Animation
 			return;
 		}
 
+		enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
+
 		u32 numInstances = static_cast<u32>(_storage.instanceIDs.size());
 		enki::TaskSet updateAnimationsTask(numInstances, [&](enki::TaskSetPartition range, u32 threadNum)
 		{
@@ -329,8 +329,8 @@ namespace Animation
 			}
 		});
 		
-		_scheduler.AddTaskSetToPipe(&updateAnimationsTask);
-		_scheduler.WaitforTask(&updateAnimationsTask);
+		taskScheduler->AddTaskSetToPipe(&updateAnimationsTask);
+		taskScheduler->WaitforTask(&updateAnimationsTask);
 
 		bool hasRenderer = HasModelRenderer();
 		if (hasRenderer)
@@ -517,14 +517,14 @@ namespace Animation
 
 				bool isLooping = animBone.primary.state == AnimationPlayState::LOOPING;
 				bool hasTransition = animBone.transition.state.sequence.sequenceID != AnimationSequenceInfo::InvalidID;
-				if (isLooping && !hasTransition && (progress + 150 >= sequence.duration))
-				{
-					animBone.transition.progress = 0.0f;
-
-					animBone.transition.state.state = AnimationPlayState::LOOPING;
-					animBone.transition.state.progress = 0.0f;
-					animBone.transition.state.sequence = animBone.primary.sequence;
-				}
+				//if (isLooping && !hasTransition && (progress + 150 >= sequence.duration))
+				//{
+				//	animBone.transition.progress = 0.0f;
+				//
+				//	animBone.transition.state.state = AnimationPlayState::LOOPING;
+				//	animBone.transition.state.progress = 0.0f;
+				//	animBone.transition.state.sequence = animBone.primary.sequence;
+				//}
 			}
 		}
 

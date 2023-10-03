@@ -35,10 +35,7 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
 	: _terrainRenderer(terrainRenderer)
 	, _modelLoader(modelLoader)
 	, _waterLoader(waterLoader)
-	, _requests()
-{
-	_scheduler.Initialize();
-}
+	, _requests() { }
 
 void TerrainLoader::Update(f32 deltaTime)
 {
@@ -75,6 +72,8 @@ void TerrainLoader::AddInstance(const LoadDesc& loadDesc)
 
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 {
+	enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
+
 	std::string mapName = request.mapName;
 	fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
 
@@ -160,8 +159,8 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 	});
 
 	DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
-	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
-	_scheduler.WaitforTask(&countValidChunksTask);
+	taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
+	taskScheduler->WaitforTask(&countValidChunksTask);
 	DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
 
 	u32 numChunksToLoad = numExistingChunks.load();
@@ -174,8 +173,8 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 	_terrainRenderer->ReserveChunks(numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
-	_scheduler.AddTaskSetToPipe(&loadChunksTask);
-	_scheduler.WaitforTask(&loadChunksTask);
+	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
+	taskScheduler->WaitforTask(&loadChunksTask);
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }
 
@@ -205,6 +204,8 @@ vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
 
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 {
+	enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
+
 	assert(request.loadType == LoadType::Full);
 	assert(request.mapName.size() > 0);
 
@@ -476,8 +477,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 	});
 
 	DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
-	_scheduler.AddTaskSetToPipe(&countValidChunksTask);
-	_scheduler.WaitforTask(&countValidChunksTask);
+	taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
+	taskScheduler->WaitforTask(&countValidChunksTask);
 	DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
 
 	u32 numChunksToLoad = numExistingChunks.load();
@@ -491,8 +492,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 	PrepareForChunks(LoadType::Full, numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
-	_scheduler.AddTaskSetToPipe(&loadChunksTask);
-	_scheduler.WaitforTask(&loadChunksTask);
+	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
+	taskScheduler->WaitforTask(&loadChunksTask);
 
 	if (physicsEnabled && CVAR_TerrainLoaderPhysicsOptimizeBP.Get())
 	{

@@ -1,25 +1,14 @@
 #include "WaterLoader.h"
 #include "WaterRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-AutoCVar_Int CVAR_WaterLoaderEnabled("waterLoader.enabled", "enable water loading", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_WaterLoaderNumThreads("waterLoader.numThreads", "number of threads used for water loading, 0 = number of hardware threads", 0, CVarFlags::None);
+AutoCVar_Int CVAR_WaterLoaderEnabled("waterLoader.enabled", "enable water loading", 1, CVarFlags::EditCheckbox);
 
 WaterLoader::WaterLoader(WaterRenderer* waterRenderer)
-	: _waterRenderer(waterRenderer)
-{
-    i32 numThreads = CVAR_WaterLoaderNumThreads.Get();
-    if (numThreads == 0 || numThreads == -1)
-    {
-        _scheduler.Initialize();
-    }
-    else
-    {
-        _scheduler.Initialize(numThreads);
-    }
-}
+	: _waterRenderer(waterRenderer) { }
 
 void WaterLoader::Init()
 {
@@ -41,6 +30,8 @@ void WaterLoader::Update(f32 deltaTime)
 {
     if (!CVAR_WaterLoaderEnabled.Get())
         return;
+
+    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
     // Count how many unique non-loaded request we have
     u32 numDequeued = static_cast<u32>(_requests.try_dequeue_bulk(&_workingRequests[0], MAX_LOADS_PER_FRAME));
@@ -91,8 +82,8 @@ void WaterLoader::Update(f32 deltaTime)
     });
     
     // Execute the multithreaded job
-    _scheduler.AddTaskSetToPipe(&loadModelsTask);
-    _scheduler.WaitforTask(&loadModelsTask);
+    taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+    taskScheduler->WaitforTask(&loadModelsTask);
 #endif
 
     _waterRenderer->FitAfterGrow();

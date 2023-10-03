@@ -14,7 +14,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_WaterCullingEnabled("waterRenderer.culling", "enable water culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_WaterOcclusionCullingEnabled("waterRenderer.culling.occlusion", "enable water occlusion culling", 1, CVarFlags::EditCheckbox);
 

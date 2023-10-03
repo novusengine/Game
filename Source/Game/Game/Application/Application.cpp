@@ -30,6 +30,7 @@
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
 AutoCVar_Int CVAR_CpuReportDetailLevel("application.cpuReportDetailLevel", "Sets the detail level for CPU info printing on startup. (0 = No Output, 1 = CPU Name, 2 = CPU Name + Feature Support)", 1);
+AutoCVar_Int CVAR_applicationNumThreads("application.numThreads", "number of threads used for multi threading, 0 = number of hardware threads", 0, CVarFlags::None);
 
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application()
@@ -92,8 +93,8 @@ void Application::Run()
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
 		ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
-		
 		ECS::Singletons::EngineStats& engineStats = registry->ctx().at<ECS::Singletons::EngineStats>();
+
 		ECS::Singletons::FrameTimes timings;		
 		while (true)
 		{
@@ -179,7 +180,17 @@ bool Application::Init()
 	cpuInfo.Print(CVAR_CpuReportDetailLevel.Get());
 
 	_taskScheduler = new enki::TaskScheduler();
-	_taskScheduler->Initialize();
+
+	i32 numThreads = CVAR_applicationNumThreads.Get();
+	if (numThreads <= 0)
+	{
+		_taskScheduler->Initialize();
+	}
+	else
+	{
+		_taskScheduler->Initialize(numThreads);
+	}
+
 	ServiceLocator::SetTaskScheduler(_taskScheduler);
 
 	_registries.gameRegistry = new entt::registry();
