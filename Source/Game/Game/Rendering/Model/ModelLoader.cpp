@@ -204,6 +204,9 @@ void ModelLoader::Update(f32 deltaTime)
 					reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
 					reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
 					reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+					
+					reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
+					reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
 				}
 			}
 
