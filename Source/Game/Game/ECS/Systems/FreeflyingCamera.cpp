@@ -99,22 +99,22 @@ namespace ECS::Systems
         // Input
         if (_keybindGroup->IsKeybindPressed("Forward"_h))
         {
-            cameraTransform.position += cameraTransform.forward * settings.cameraSpeed * deltaTime;
+            cameraTransform.position += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Backward"_h))
         {
-            cameraTransform.position += -cameraTransform.forward * settings.cameraSpeed * deltaTime;
+            cameraTransform.position += -cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Left"_h))
         {
-            cameraTransform.position += -cameraTransform.right * settings.cameraSpeed * deltaTime;
+            cameraTransform.position += -cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Right"_h))
         {
-            cameraTransform.position += cameraTransform.right * settings.cameraSpeed * deltaTime;
+            cameraTransform.position += cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Upwards"_h))
@@ -131,15 +131,6 @@ namespace ECS::Systems
         // Calculate rotation
         vec3 eulerAngles = vec3(camera.pitch, camera.yaw, camera.roll);
         cameraTransform.rotation = quat(glm::radians(eulerAngles));
-
-        // Calculate camera matrix
-        mat4x4 rotationMatrix = glm::mat4_cast(cameraTransform.rotation);
-        cameraTransform.matrix = glm::translate(mat4x4(1.0f), cameraTransform.position) * rotationMatrix;
-        
-        // Update direction vectors
-        cameraTransform.forward = rotationMatrix[2];
-        cameraTransform.right = rotationMatrix[0];
-        cameraTransform.up = rotationMatrix[1];
 	}
 
     void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)

@@ -66,7 +66,7 @@ void ModelRenderer::Update(f32 deltaTime)
         std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
         mat4x4& matrix = instanceMatrices[instanceID];
 
-        matrix = transform.matrix;
+        matrix = transform.GetMatrix();
         _instanceMatrices.SetDirtyElement(instanceID);
     });
 

@@ -303,18 +303,13 @@ namespace Editor
         }
 
         Util::Imgui::Inspect(*name);
-        
+
         if (transform)
         {
             isDirty |= Util::Imgui::Inspect(*transform);
-
             if (isDirty)
             {
-                transform->isDirty = true;
-
-                ECS::Singletons::RenderState& renderState = registry->ctx().at<ECS::Singletons::RenderState>();
-
-                ECS::Components::DirtyTransform& dirtyTransform = registry->get_or_emplace<ECS::Components::DirtyTransform>(entity);
+                transform->SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entity);
             }
         }
 
@@ -359,7 +354,8 @@ namespace Editor
         
         mat4x4& viewMatrix = camera.worldToView;
         mat4x4& projMatrix = camera.viewToClip;
-        float* instanceMatrixPtr = glm::value_ptr(transform.matrix);
+        mat4x4 transformMatrix = transform.GetMatrix();
+        float* instanceMatrixPtr = glm::value_ptr(transformMatrix);
 
         ImGuizmo::OPERATION operation = static_cast<ImGuizmo::OPERATION>(_operation);
         ImGuizmo::MODE mode = static_cast<ImGuizmo::MODE>(_mode);

@@ -107,9 +107,12 @@ namespace Editor
 
             ImGui::Separator();
 
-            ImGui::Text("Forward: (%.2f, %.2f, %.2f)", cameraTransform.forward.x, cameraTransform.forward.y, cameraTransform.forward.z);
-            ImGui::Text("Right: (%.2f, %.2f, %.2f)", cameraTransform.right.x, cameraTransform.right.y, cameraTransform.right.z);
-            ImGui::Text("Up: (%.2f, %.2f, %.2f)", cameraTransform.up.x, cameraTransform.up.y, cameraTransform.up.z);
+            const vec3 camForward = cameraTransform.GetLocalForward();
+            const vec3 camRight = cameraTransform.GetLocalRight();
+            const vec3 camUp = cameraTransform.GetLocalUp();
+            ImGui::Text("Forward: (%.2f, %.2f, %.2f)", camForward.x, camForward.y, camForward.z);
+            ImGui::Text("Right: (%.2f, %.2f, %.2f)", camRight.x, camRight.y, camRight.z);
+            ImGui::Text("Up: (%.2f, %.2f, %.2f)", camUp.x, camUp.y, camUp.z);
 
             ImGui::Separator();
 

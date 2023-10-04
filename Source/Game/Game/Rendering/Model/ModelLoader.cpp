@@ -490,10 +490,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 	f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
 	transform.scale = vec3(scale, scale, scale);
 
-	mat4x4 rotationMatrix = glm::toMat4(transform.rotation);
-	mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), transform.scale);
-	transform.matrix = glm::translate(mat4x4(1.0f), transform.position) * rotationMatrix * scaleMatrix;
-	transform.isDirty = true;
+	transform.SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entityID);
 
 	ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
 	DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
