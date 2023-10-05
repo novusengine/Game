@@ -29,10 +29,23 @@ AutoCVar_Int CVAR_ForceDisableOccluders("terrainRenderer.forcedisableoccluders",
 AutoCVar_Int CVAR_TerrainOccludersEnabled("terrainRenderer.draw.occluders", "should draw occluders", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_TerrainGeometryEnabled("terrainRenderer.draw.geometry", "should draw geometry", 1, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_TerrainValidateTransfers("validation.GPUVectors.terrainRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+
 TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
     , _debugRenderer(debugRenderer)
 {
+    if (CVAR_TerrainValidateTransfers.Get())
+    {
+        _cellIndices.SetValidation(true);
+        _vertices.SetValidation(true);
+        
+        _instanceDatas.SetValidation(true);
+        _cellDatas.SetValidation(true);
+        _chunkDatas.SetValidation(true);
+        _cellHeightRanges.SetValidation(true);
+    }
+
     CreatePermanentResources();
 
     // Gotta keep these here to make sure they're not unused...

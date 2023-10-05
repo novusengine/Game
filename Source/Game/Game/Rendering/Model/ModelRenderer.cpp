@@ -37,12 +37,28 @@ AutoCVar_Int CVAR_ModelDrawGeometry("modelRenderer.debug.drawGeometry", "enable 
 AutoCVar_Int CVAR_ModelDrawOpaqueAABBs("modelRenderer.debug.drawOpaqueAABBs", "if enabled, the culling pass will debug draw all opaque AABBs", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelDrawTransparentAABBs("modelRenderer.debug.drawTransparentAABBs", "if enabled, the culling pass will debug draw all transparent AABBs", 0, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_ModelValidateTransfers("validation.GPUVectors.modelRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
     , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
+    
+    if (CVAR_ModelValidateTransfers.Get())
+    {
+        _vertices.SetValidation(true);
+        _indices.SetValidation(true);
+        _instanceDatas.SetValidation(true);
+        _instanceMatrices.SetValidation(true);
+        _textureUnits.SetValidation(true);
+        _boneMatrices.SetValidation(true);
+
+        _cullingDatas.SetValidation(true);
+        _opaqueCullingResources.SetValidation(true);
+        _transparentCullingResources.SetValidation(true);
+    }
 }
 
 ModelRenderer::~ModelRenderer()

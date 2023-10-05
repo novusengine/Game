@@ -27,6 +27,8 @@ public:
     virtual void Grow(u32 growthSize);
     virtual void FitBuffersAfterLoad();
 
+    virtual void SetValidation(bool validation);
+
     Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
     std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
@@ -142,6 +144,12 @@ public:
         CullingResourcesBase::FitBuffersAfterLoad();
         u32 numDrawCalls = _drawCallsIndex.load();
         _drawCallDatas.Resize(numDrawCalls);
+    }
+
+    void SetValidation(bool validation) override
+    {
+        CullingResourcesBase::SetValidation(validation);
+        _drawCallDatas.SetValidation(validation);
     }
 
     Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }

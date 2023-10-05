@@ -286,7 +286,7 @@ void CulledRenderer::CreatePermanentResources()
 
     _occlusionSampler = _renderer->CreateSampler(occlusionSamplerDesc);
 
-    _cullingDatas.SetDebugName("ModelCullDataBuffer");
+    _cullingDatas.SetDebugName("CullDataBuffer");
     _cullingDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 

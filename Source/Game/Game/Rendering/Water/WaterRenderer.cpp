@@ -22,11 +22,22 @@ AutoCVar_Int CVAR_WaterDrawAABBs("waterRenderer.debug.drawAABBs", "if enabled, t
 
 AutoCVar_Float CVAR_WaterVisibilityRange("waterRenderer.visibilityRange", "How far underwater you should see", 500.0f, CVarFlags::EditFloatDrag);
 
+AutoCVar_Int CVAR_WaterValidateTransfers("validation.GPUVectors.waterRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+
 WaterRenderer::WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
 	, _debugRenderer(debugRenderer)
 {
+    if (CVAR_TerrainValidateTransfers.Get())
+    {
+        _vertices.SetValidation(true);
+        _indices.SetValidation(true);
+        _cullingDatas.SetValidation(true);
+
+        _cullingResources.SetValidation(true);
+    }
+
     CreatePermanentResources();
 }
 
