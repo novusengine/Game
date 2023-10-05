@@ -710,21 +710,21 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (O)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Transparent Models
         if (viewRendersTransparentModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Water
         if (viewRendersWaterCulling)
         {
             CullingResourcesBase& cullingResources = waterRenderer->GetCullingResources();
-            DrawCullingResourcesDrawCalls("Water", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Water", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header

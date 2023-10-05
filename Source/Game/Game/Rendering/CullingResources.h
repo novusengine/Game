@@ -48,7 +48,7 @@ public:
     bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
 
     // Drawcall stats
-    u32 GetNumDrawCalls() { return static_cast<u32>(_drawCalls.Size()); }
+    u32 GetNumDrawCalls() { return _numDrawCalls; }
     u32 GetNumSurvivingOccluderDrawCalls() { return _numSurvivingOccluderDrawCalls; }
     u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
 
@@ -80,9 +80,10 @@ protected:
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
 
+    u32 _numDrawCalls = 0;
     u32 _numSurvivingOccluderDrawCalls = 0;
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
-
+    
     u32 _numTriangles = 0;
     u32 _numSurvivingOccluderTriangles = 0;
     u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
