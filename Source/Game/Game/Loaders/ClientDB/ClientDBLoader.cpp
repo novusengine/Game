@@ -1,6 +1,7 @@
 #include "Game/Loaders/LoaderSystem.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/ECS/Singletons/MapDB.h"
+#include "Game/ECS/Singletons/LiquidDB.h"
 #include "Game/Application/EnttRegistries.h"
 
 #include <Base/Container/ConcurrentQueue.h>
@@ -97,6 +98,7 @@ public:
     void SetupSingletons(entt::registry::context& registryCtx)
     {
         registryCtx.emplace<ECS::Singletons::MapDB>();
+        registryCtx.emplace<ECS::Singletons::LiquidDB>();
     }
 
     bool LoadMapDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
@@ -127,6 +129,8 @@ public:
                 continue;
             }
 
+            mapDB.entries.idToIndexMap[map.id] = i;
+
             const std::string& mapName = stringTable.GetString(map.name);
             u32 mapNameHash = StringUtils::fnv1a_32(mapName.c_str(), mapName.length());
 
@@ -138,9 +142,35 @@ public:
         return true;
     }
 
+    bool LoadLiquidTypeDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
+    {
+        auto& liquidDB = registryCtx.at<ECS::Singletons::LiquidDB>();
+
+        // Clear, in case we already filled liquidDB
+        liquidDB.liquidTypes.data.clear();
+        liquidDB.liquidTypes.stringTable.Clear();
+
+        if (!liquidDB.liquidTypes.Read(buffer))
+        {
+            return false;
+        }
+
+        u32 numRecords = static_cast<u32>(liquidDB.liquidTypes.data.size());
+
+        for (u32 i = 0; i < numRecords; i++)
+        {
+            const DB::Client::Definitions::LiquidType& type = liquidDB.liquidTypes.data[i];
+
+            liquidDB.liquidTypes.idToIndexMap[type.id] = i;
+        }
+
+        return true;
+    }
+
     robin_hood::unordered_map<u32, std::function<bool(entt::registry::context&, std::shared_ptr<Bytebuffer>&, const ClientDBPair&)>> clientDBEntries =
     {
-        { "Map.cdb"_h, std::bind(&ClientDBLoader::LoadMapDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) }
+        { "Map.cdb"_h, std::bind(&ClientDBLoader::LoadMapDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) },
+        { "LiquidType.cdb"_h, std::bind(&ClientDBLoader::LoadLiquidTypeDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) }
     };
 };
 

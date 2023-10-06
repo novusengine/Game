@@ -148,7 +148,7 @@ void CullForCamera(DrawInput drawInput,
 #endif
     CullOutput cullOutput)
 {
-    bool isVisible = true;
+    bool isVisible = drawInput.drawCall.instanceCount > 0;
     if (!IsSphereInsideFrustum(camera.frustum, drawInput.sphere))
     {
         isVisible = false;
@@ -191,20 +191,13 @@ void CullForCamera(DrawInput drawInput,
     }
 #endif
 
-    /*if (isVisible)
-    {
-        const uint maskOffset = drawInput.instanceID / 32;
-        const uint mask = (uint)1 << (drawInput.instanceID % 32);
-        cullOutput.visibleInstanceMask.InterlockedOr(maskOffset * SIZEOF_UINT, mask);
-    }*/
-
     if (shouldRender)
     {
         uint countByteOffset = cullOutput.countIndex * sizeof(uint);
 
         // Update triangle count
         uint outTriangles;
-        cullOutput.triangleCount.InterlockedAdd(countByteOffset, drawInput.drawCall.indexCount / 3, outTriangles);
+        cullOutput.triangleCount.InterlockedAdd(countByteOffset, (drawInput.drawCall.indexCount / 3) * drawInput.drawCall.instanceCount, outTriangles);
 
         // Store DrawCall
         uint outIndex;
@@ -238,7 +231,6 @@ void main(CSInput input)
     const uint drawCallIndex = input.dispatchThreadID.x;
 
     Draw drawCall = _drawCalls[drawCallIndex];
-
     uint drawCallID = drawCall.firstInstance;
     uint modelID = drawCallID;
     

@@ -55,7 +55,6 @@ private:
 	void LoadRequest(LoadRequestInternal& request);
 
 private:
-	enki::TaskScheduler _scheduler;
 	WaterRenderer* _waterRenderer = nullptr;
 
 	LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];

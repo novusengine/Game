@@ -5,7 +5,6 @@
 #include "Game/ECS/Util/MapDBUtil.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Terrain/TerrainLoader.h"
-#include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
@@ -125,12 +124,6 @@ namespace Editor
                 {
                     if (DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(*preview))
                     {
-                        if (_hasLoadedMap)
-                        {
-                            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                            modelLoader->Clear();
-                        }
-
                         const std::string& mapInternalName = mapDB.entries.stringTable.GetString(map->internalName);
 
                         TerrainLoader* terrainLoader = ServiceLocator::GetGameRenderer()->GetTerrainLoader();

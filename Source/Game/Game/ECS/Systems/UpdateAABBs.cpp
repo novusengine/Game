@@ -28,9 +28,10 @@ namespace ECS::Systems
                 glm::vec3(max.x, max.y, max.z)
             };
 
+            const mat4x4 transformMatrix = transform.GetMatrix();
             for (int i = 0; i < 8; ++i)
             {
-                corners[i] = transform.matrix * glm::vec4(corners[i], 1.0f);
+                corners[i] = transformMatrix * glm::vec4(corners[i], 1.0f);
             }
 
             worldAABB.min = corners[0];

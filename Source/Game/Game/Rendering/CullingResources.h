@@ -27,6 +27,8 @@ public:
     virtual void Grow(u32 growthSize);
     virtual void FitBuffersAfterLoad();
 
+    virtual void SetValidation(bool validation);
+
     Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
     std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
@@ -48,7 +50,7 @@ public:
     bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
 
     // Drawcall stats
-    u32 GetNumDrawCalls() { return static_cast<u32>(_drawCalls.Size()); }
+    u32 GetNumDrawCalls() { return _numDrawCalls; }
     u32 GetNumSurvivingOccluderDrawCalls() { return _numSurvivingOccluderDrawCalls; }
     u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
 
@@ -80,9 +82,10 @@ protected:
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
 
+    u32 _numDrawCalls = 0;
     u32 _numSurvivingOccluderDrawCalls = 0;
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
-
+    
     u32 _numTriangles = 0;
     u32 _numSurvivingOccluderTriangles = 0;
     u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
@@ -141,6 +144,12 @@ public:
         CullingResourcesBase::FitBuffersAfterLoad();
         u32 numDrawCalls = _drawCallsIndex.load();
         _drawCallDatas.Resize(numDrawCalls);
+    }
+
+    void SetValidation(bool validation) override
+    {
+        CullingResourcesBase::SetValidation(validation);
+        _drawCallDatas.SetValidation(validation);
     }
 
     Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }

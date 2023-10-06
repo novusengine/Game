@@ -49,8 +49,9 @@ namespace ECS::Systems
             }
             if (camera.dirtyView)
             {
-                camera.viewToWorld = transform.matrix;
-                camera.worldToView = glm::inverse(transform.matrix);
+                mat4x4 transformMatrix = transform.GetMatrix();
+                camera.viewToWorld = transformMatrix;
+                camera.worldToView = glm::inverse(transformMatrix);
             }
 
             if (camera.dirtyPerspective || camera.dirtyView)

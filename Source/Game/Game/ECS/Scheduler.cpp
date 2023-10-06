@@ -38,6 +38,7 @@ namespace ECS
 		Singletons::EngineStats& engineStats = ctx.emplace<Singletons::EngineStats>();
 		
 		ctx.emplace<Singletons::RenderState>();
+		ctx.emplace<Singletons::DirtyTransformQueue>();
 	}
 
 	void Scheduler::Update(entt::registry& registry, f32 deltaTime)

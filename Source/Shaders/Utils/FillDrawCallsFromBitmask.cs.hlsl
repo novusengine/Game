@@ -39,8 +39,11 @@ void main(CSInput input)
     {
         Draw drawCall = _drawCalls[index];
 
+        if (drawCall.instanceCount == 0)
+            return;
+
         uint outTriangles;
-        _triangleCount.InterlockedAdd(0, drawCall.indexCount / 3, outTriangles);
+        _triangleCount.InterlockedAdd(0, (drawCall.indexCount / 3) * drawCall.instanceCount, outTriangles);
 
         uint outIndex;
         _drawCount.InterlockedAdd(0, 1, outIndex);

@@ -1,27 +1,43 @@
 #include "WaterRenderer.h"
 
+#include "Game/ECS/Singletons/LiquidDB.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Rendering/RenderUtils.h"
 #include "Game/Rendering/RenderResources.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/RenderGraphBuilder.h>
 
-AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 0, CVarFlags::EditCheckbox);
+#include <entt/entt.hpp>
+
+AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_WaterCullingEnabled("waterRenderer.culling", "enable water culling", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_WaterOcclusionCullingEnabled("waterRenderer.culling.occlusion", "enable water occlusion culling", 1, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_WaterDrawAABBs("waterRenderer.debug.drawAABBs", "if enabled, the culling pass will debug draw all AABBs", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Float CVAR_WaterVisibilityRange("waterRenderer.visibilityRange", "How far underwater you should see", 3.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_WaterVisibilityRange("waterRenderer.visibilityRange", "How far underwater you should see", 500.0f, CVarFlags::EditFloatDrag);
+
+AutoCVar_Int CVAR_WaterValidateTransfers("validation.GPUVectors.waterRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
 WaterRenderer::WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
 	, _debugRenderer(debugRenderer)
 {
+    if (CVAR_TerrainValidateTransfers.Get())
+    {
+        _vertices.SetValidation(true);
+        _indices.SetValidation(true);
+        _cullingDatas.SetValidation(true);
+
+        _cullingResources.SetValidation(true);
+    }
+
     CreatePermanentResources();
 }
 
@@ -35,6 +51,9 @@ void WaterRenderer::Update(f32 deltaTime)
     if (!CVAR_WaterRendererEnabled.Get())
         return;
 
+    _constants.waterVisibilityRange = CVAR_WaterVisibilityRange.GetFloat();
+    _constants.currentTime += deltaTime;
+
     const bool cullingEnabled = CVAR_WaterCullingEnabled.Get();
     _cullingResources.Update(deltaTime, cullingEnabled);
 
@@ -43,10 +62,9 @@ void WaterRenderer::Update(f32 deltaTime)
 
 void WaterRenderer::Clear()
 {
-    _cullingResources.Clear();
-
     _cullingDatas.Clear();
 
+    _cullingResources.Clear();
     _instanceIndex.store(0);
 
     _vertices.Clear();
@@ -54,6 +72,8 @@ void WaterRenderer::Clear()
 
     _indices.Clear();
     _indicesIndex.store(0);
+
+    _renderer->UnloadTexturesInArray(_textures, 1);
 }
 
 void WaterRenderer::Reserve(ReserveInfo& info)
@@ -102,22 +122,65 @@ void WaterRenderer::Load(LoadDesc& desc)
     DrawCallData& drawCallData = drawCallDatas[instanceOffset];
     drawCallData.chunkID = desc.chunkID;
     drawCallData.cellID = desc.cellID;
+    drawCallData.textureStartIndex = 0;
+    drawCallData.textureCount = 1;
+    drawCallData.hasDepth = 0;
+    drawCallData.liquidType = 0;
+    drawCallData.uvAnim = hvec2(0, 0);
 
-    /*NDBC::LiquidType* liquidType = liquidTypesNDBC->GetRowById<NDBC::LiquidType>(liquidInstance.liquidTypeID);
-    const std::string& liquidTexture = liquidTypesStringTable->GetString(liquidType->texture);
-    u32 liquidTextureHash = liquidTypesStringTable->GetStringHash(liquidType->texture);
+    // Load textures if they exist
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry::context& ctx = registry->ctx();
 
-    u32 textureIndex;
-    if (!TryLoadTexture(liquidTexture, liquidTextureHash, liquidType->numTextureFrames, textureIndex))
+    bool isLavaOrSlime = false;
+
+    auto& liquidDB = ctx.at<ECS::Singletons::LiquidDB>();
+    if (liquidDB.liquidTypes.HasEntry(desc.typeID))
     {
-        DebugHandler::PrintFatal("WaterRenderer::RegisterChunksToBeLoaded : failed to load texture %s", liquidTexture.c_str());
-    }*/
+        const DB::Client::Definitions::LiquidType& liquidType = liquidDB.liquidTypes.GetEntry(desc.typeID);
 
-    drawCallData.textureStartIndex = 0;//static_cast<u16>(textureIndex);
-    drawCallData.textureCount = 0;//liquidType->numTextureFrames;
-    drawCallData.hasDepth = 0;//liquidType->hasDepthEnabled;
-    drawCallData.liquidType = 0;//liquidType->type;
-    drawCallData.uvAnim = hvec2(0, 0);//hvec2(liquidType->uvAnim);
+        u32 textureHash = liquidType.textures[0];
+        const std::string& baseTextureName = liquidDB.liquidTypes.stringTable.GetString(textureHash);
+
+        u16 textureStartIndex = 0;
+        u32 textureCount = liquidType.frameCountTextures[0];
+
+        if (textureCount > std::numeric_limits<u8>().max())
+        {
+            DebugHandler::PrintFatal("Tried to load a water texture with more than 255 frames!");
+        }
+
+        {
+            std::scoped_lock lock(_textureMutex);
+
+            char textureBuffer[256];
+            for (u32 i = 0; i < liquidType.frameCountTextures[0]; i++)
+            {
+                i32 length = StringUtils::FormatString(textureBuffer, 256, baseTextureName.c_str(), i + 1);
+
+                Renderer::TextureDesc textureDesc;
+                textureDesc.path = "Data/Texture/" + std::string(textureBuffer, length);
+
+                u32 index;
+                _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
+
+                if (i == 0)
+                {
+                    textureStartIndex = static_cast<u16>(index);
+                }
+            }
+        }
+        
+        if (liquidType.soundBank == 2 || liquidType.soundBank == 3)
+        {
+            isLavaOrSlime = true;
+        }
+
+        drawCallData.textureStartIndex = textureStartIndex;
+        drawCallData.textureCount = textureCount;
+        drawCallData.liquidType = liquidType.soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is water, lava or slime in the future
+        drawCallData.uvAnim = hvec2(0, 0); // TODO: Load this from Vertex format data
+    }
 
     vec3 min = vec3(100000, 100000, 100000);
     vec3 max = vec3(-100000, -100000, -100000);
@@ -132,21 +195,23 @@ void WaterRenderer::Load(LoadDesc& desc)
             u8 xOffset = x + desc.posX;
             f32 offsetX = -(static_cast<f32>(xOffset) * Terrain::PATCH_SIZE);
 
-            f32 vertexHeight = desc.defaultHeight;
+            u32 vertexDataIndex = (8 - y) + (x * (desc.height + 1));
 
+            f32 vertexHeight = desc.defaultHeight;
             if (desc.heightMap != nullptr)
             {
-                u32 vertexHeightIndex = (8 - y) + (x * (desc.height + 1));
-                vertexHeight = desc.heightMap[vertexHeightIndex];
+                vertexHeight = desc.heightMap[vertexDataIndex];
             }
+
+            vec2 cellOffsetPos = vec2(yOffset * Terrain::PATCH_SIZE, xOffset * Terrain::PATCH_SIZE);
+            vec3 cellPos = vec3(desc.cellPos.x - cellOffsetPos.x, vertexHeight, desc.cellPos.y - cellOffsetPos.y);
 
             vec2 uv = vec2(static_cast<f32>(-y) / 2.0f, static_cast<f32>(-x) / 2.0f); // These need to be inverted and swizzled
 
-            /*if (uvEntries)
+            if (isLavaOrSlime)
             {
-                Terrain::LiquidUVMapEntry* uvEntry = &uvEntries[vertexIndex];
-                uv = vec2(uvEntry->x, uvEntry->y); // This one however should not be inverted and swizzled
-            }*/
+                uv = vec2(cellPos.x * 0.06f, cellPos.z * 0.06f);
+            }
 
             u32 vertexIndex = x + (y * (desc.width + 1));
             Vertex& vertex = vertices[vertexOffset + vertexIndex];
@@ -157,8 +222,25 @@ void WaterRenderer::Load(LoadDesc& desc)
             vertex.height = f16(vertexHeight);
             vertex.uv = hvec2(uv);
 
-            vec2 cellOffsetPos = vec2(yOffset * Terrain::PATCH_SIZE, xOffset * Terrain::PATCH_SIZE);
-            vec3 cellPos = vec3(desc.cellPos.x - cellOffsetPos.x, vertexHeight, desc.cellPos.y - cellOffsetPos.y);
+            if (yOffset >= desc.endY || xOffset >= desc.endX)
+            {
+                vec2 minWithoutHeight = glm::min(vec2(min.x, min.z), vec2(cellPos.x, cellPos.z));
+                vec2 maxWithoutHeight = glm::max(vec2(max.x, max.z), vec2(cellPos.x, cellPos.z));
+
+                min = vec3(minWithoutHeight.x, min.y, minWithoutHeight.y);
+                max = vec3(maxWithoutHeight.x, max.y, maxWithoutHeight.y);
+                continue;
+            }
+
+            // Check if this tile is used
+            if (desc.bitMap != nullptr)
+            {
+                i32 maskIndex = (xOffset - desc.startX) * (desc.endY - desc.startY) + ((7 - yOffset) - desc.startY);
+                bool exists = (desc.bitMap[maskIndex >> 3] >> ((maskIndex & 7))) & 1;
+
+                if (!exists)
+                    continue;
+            }
 
             min = glm::min(min, cellPos);
             max = glm::max(max, cellPos);
@@ -204,19 +286,6 @@ void WaterRenderer::Load(LoadDesc& desc)
     cullingData.center = min; // TODO: Unfuck our AABB representations, we currently mix AABBs with min/max variables and ones with center/extents...
     cullingData.extents = max;
     cullingData.boundingSphereRadius = glm::distance(min, max);
-
-    if (cullingData.boundingSphereRadius > 100.0f)
-    {
-        volatile int asd = 123;
-    }
-    if (cullingData.boundingSphereRadius > 1000.0f)
-    {
-        volatile int asdf = 123;
-    }
-    if (cullingData.boundingSphereRadius > 10000.0f)
-    {
-        volatile int asdg = 123;
-    }
 }
 
 void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -465,6 +534,41 @@ void WaterRenderer::CreatePermanentResources()
     initParams.materialPassDescriptorSet = nullptr; // Transparencies, we don't draw these in materialPass
     initParams.enableTwoStepCulling = false;
     _cullingResources.Init(initParams);
+
+    _constants.shallowOceanColor    = Color::FromBGR32(2635575);
+    _constants.deepOceanColor       = Color::FromBGR32(1387070);
+    _constants.shallowRiverColor    = Color::FromBGR32(1856070);
+    _constants.deepRiverColor       = Color::FromBGR32(861477);
+    _constants.waterVisibilityRange = CVAR_WaterVisibilityRange.GetFloat();
+    _constants.currentTime = 0;
+
+    Renderer::DescriptorSet& geometrySet = _cullingResources.GetGeometryPassDescriptorSet();
+
+    Renderer::TextureArrayDesc textureArrayDesc;
+    textureArrayDesc.size = 512;
+    _textures = _renderer->CreateTextureArray(textureArrayDesc);
+    geometrySet.Bind("_textures"_h, _textures);
+
+    Renderer::DataTextureDesc dataTextureDesc;
+    dataTextureDesc.width = 1;
+    dataTextureDesc.height = 1;
+    dataTextureDesc.format = Renderer::ImageFormat::R8G8B8A8_UNORM_SRGB;
+    dataTextureDesc.data = new u8[4]{ 0, 0, 0, 255 }; // Black color, because water textures are additive
+    dataTextureDesc.debugName = "WaterDebugTexture";
+
+    u32 arrayIndex = 0;
+    _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
+
+    Renderer::SamplerDesc samplerDesc;
+    samplerDesc.enabled = true;
+    samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+    samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
+    samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
+    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+    samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+    samplerDesc.maxAnisotropy = 8;
+    _sampler = _renderer->CreateSampler(samplerDesc);
+    geometrySet.Bind("_sampler"_h, _sampler);
 }
 
 void WaterRenderer::SyncToGPU()
@@ -553,24 +657,7 @@ void WaterRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.drawDescriptorSet, frameIndex);
 
-    struct Constants
-    {
-        Color shallowOceanColor;
-        Color deepOceanColor;
-        Color shallowRiverColor;
-        Color deepRiverColor;
-        float waterVisibilityRange;
-        float currentTime;
-    };
-    Constants* constants = graphResources.FrameNew<Constants>();
-
-    constants->shallowOceanColor    = Color(28.0f / 255.0f, 163.0f / 255.0f, 236.0f / 255.0f, 0.5f);
-    constants->deepOceanColor       = Color(15.0f / 255.0f, 94.0f / 255.0f, 156.0f / 255.0f, 0.9f);
-    constants->shallowRiverColor    = Color(116.0f / 255.0f, 204.0f / 255.0f, 244.0f / 255.0f, 0.5f);
-    constants->deepRiverColor       = Color(35.0f / 255.0f, 137.0f / 255.0f, 218.0f / 255.0f, 0.9f);
-    constants->waterVisibilityRange = CVAR_WaterVisibilityRange.GetFloat();
-    constants->currentTime = 0.0f; // TODO
-    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.PushConstant(&_constants, 0, sizeof(Constants));
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 

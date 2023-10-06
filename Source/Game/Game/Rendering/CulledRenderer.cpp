@@ -244,7 +244,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             if (params.drawCallsBuffer == Renderer::BufferMutableResource::Invalid())
             {
-                DebugHandler::PrintFatal("Tried to draw with culling enabled but no draw calls buffer was provided");
+                DebugHandler::PrintFatal("Tried to draw with culling disabled but no draw calls buffer was provided");
             }
             drawParams.argumentBuffer = params.drawCallsBuffer;
         }
@@ -286,7 +286,7 @@ void CulledRenderer::CreatePermanentResources()
 
     _occlusionSampler = _renderer->CreateSampler(occlusionSamplerDesc);
 
-    _cullingDatas.SetDebugName("ModelCullDataBuffer");
+    _cullingDatas.SetDebugName("CullDataBuffer");
     _cullingDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 

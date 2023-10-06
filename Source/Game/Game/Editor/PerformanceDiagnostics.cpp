@@ -7,6 +7,7 @@
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Model/ModelRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
+#include <Game/Rendering/Water/WaterRenderer.h>
 #include <Game/Application/EnttRegistries.h>
 #include <Game/ECS/Singletons/EngineStats.h>
 #include <Game/Util/ImguiUtil.h>
@@ -552,6 +553,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
+        WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
         
         const std::string rightHeaderText = "Survived / Total (%)";
 
@@ -625,6 +627,13 @@ namespace Editor
             DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
+        // Water
+        if (viewRendersWaterCulling)
+        {
+            CullingResourcesBase& cullingResources = waterRenderer->GetCullingResources();
+            DrawCullingResourcesDrawCalls("Water", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+        }
+
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
         //DrawCullingStatsEntry("View Total", viewDrawCalls, viewDrawCallsSurvived, !showView);
 
@@ -637,6 +646,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
+        WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
 
         const std::string rightHeaderText = "Survived / Total (%)";
 
@@ -671,7 +681,7 @@ namespace Editor
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
         bool viewRendersOpaqueModelsCulling = true;
-        bool viewRendersTransparentCModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
+        bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports water culling so far
 
         // Terrain
@@ -700,14 +710,21 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (O)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
-        // Opaque Models
-        if (viewRendersOpaqueModelsCulling)
+        // Transparent Models
+        if (viewRendersTransparentModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+        }
+
+        // Water
+        if (viewRendersWaterCulling)
+        {
+            CullingResourcesBase& cullingResources = waterRenderer->GetCullingResources();
+            DrawCullingResourcesTriangle("Water", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header

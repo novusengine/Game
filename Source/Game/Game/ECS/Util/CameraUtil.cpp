@@ -56,12 +56,11 @@ namespace ECS::Util
             // Compute the distance the camera should be to fit the entire bounding sphere
             f32 camDistance = (radius * 2.0f) / Math::Tan(fovInRadians / 2.0f);
 
-            transform.position = position - (transform.forward * camDistance);
-            transform.isDirty = true;
+            transform.position = position - (transform.GetLocalForward() * camDistance);
+
+            transform.SetDirty(ctx.at<ECS::Singletons::DirtyTransformQueue>(), activeCamera.entity);
 
             camera.dirtyView = true;
-
-            (void)registry->get_or_emplace<ECS::Components::DirtyTransform>(activeCamera.entity);
         }
 	}
 }

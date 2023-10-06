@@ -66,11 +66,9 @@ void CullingResourcesBase::Init(InitParams& params)
 void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
 {
     // Read back from the culling counters
-    u32 numDrawCalls = static_cast<u32>(_drawCalls.Size());
-
     for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
     {
-        _numSurvivingDrawCalls[i] = numDrawCalls;
+        _numSurvivingDrawCalls[i] = _numDrawCalls;
         _numSurvivingTriangles[i] = _numTriangles;
     }
 
@@ -177,13 +175,15 @@ bool CullingResourcesBase::SyncToGPU()
                 _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
             }
 
-            // Count triangles
+            // Count drawcalls and triangles
+            _numDrawCalls = 0;
             _numTriangles = 0;
 
             std::vector<Renderer::IndexedIndirectDraw>& drawCalls = _drawCalls.Get();
             for (Renderer::IndexedIndirectDraw& drawCall : drawCalls)
             {
-                _numTriangles += drawCall.indexCount / 3;
+                _numDrawCalls += drawCall.instanceCount;
+                _numTriangles += (drawCall.indexCount / 3) * drawCall.instanceCount;
             }
 
             gotRecreated = true;
@@ -207,4 +207,9 @@ void CullingResourcesBase::FitBuffersAfterLoad()
 {
     u32 numDrawCalls = _drawCallsIndex.load();
     _drawCalls.Resize(numDrawCalls);
+}
+
+void CullingResourcesBase::SetValidation(bool validation)
+{
+    _drawCalls.SetValidation(validation);
 }

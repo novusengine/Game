@@ -37,12 +37,28 @@ AutoCVar_Int CVAR_ModelDrawGeometry("modelRenderer.debug.drawGeometry", "enable 
 AutoCVar_Int CVAR_ModelDrawOpaqueAABBs("modelRenderer.debug.drawOpaqueAABBs", "if enabled, the culling pass will debug draw all opaque AABBs", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelDrawTransparentAABBs("modelRenderer.debug.drawTransparentAABBs", "if enabled, the culling pass will debug draw all transparent AABBs", 0, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_ModelValidateTransfers("validation.GPUVectors.modelRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
     , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
+    
+    if (CVAR_ModelValidateTransfers.Get())
+    {
+        _vertices.SetValidation(true);
+        _indices.SetValidation(true);
+        _instanceDatas.SetValidation(true);
+        _instanceMatrices.SetValidation(true);
+        _textureUnits.SetValidation(true);
+        _boneMatrices.SetValidation(true);
+
+        _cullingDatas.SetValidation(true);
+        _opaqueCullingResources.SetValidation(true);
+        _transparentCullingResources.SetValidation(true);
+    }
 }
 
 ModelRenderer::~ModelRenderer()
@@ -66,7 +82,7 @@ void ModelRenderer::Update(f32 deltaTime)
         std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
         mat4x4& matrix = instanceMatrices[instanceID];
 
-        matrix = transform.matrix;
+        matrix = transform.GetMatrix();
         _instanceMatrices.SetDirtyElement(instanceID);
     });
 
@@ -661,6 +677,14 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
+
+    u32 numUniqueOpaqueDrawCalls = static_cast<u32>(_modelOpaqueDrawCallTemplates.size());
+    _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls + reserveInfo.numUniqueOpaqueDrawcalls);
+    _modelOpaqueDrawCallDataTemplates.resize(numUniqueOpaqueDrawCalls + reserveInfo.numUniqueOpaqueDrawcalls);
+
+    u32 numUniqueTransparentDrawCalls = static_cast<u32>(_modelTransparentDrawCallTemplates.size());
+    _modelTransparentDrawCallTemplates.resize(numUniqueTransparentDrawCalls + reserveInfo.numUniqueTransparentDrawcalls);
+    _modelTransparentDrawCallDataTemplates.resize(numUniqueTransparentDrawCalls + reserveInfo.numUniqueTransparentDrawcalls);
 }
 
 void ModelRenderer::FitBuffersAfterLoad()
@@ -686,6 +710,14 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     _opaqueCullingResources.FitBuffersAfterLoad();
     _transparentCullingResources.FitBuffersAfterLoad();
+
+    u32 numUniqueOpaqueDrawCalls = _modelOpaqueDrawCallTemplateIndex.load();
+    _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls);
+    _modelOpaqueDrawCallDataTemplates.resize(numUniqueOpaqueDrawCalls);
+
+    u32 numUniqueTransparentDrawCalls = _modelTransparentDrawCallTemplateIndex.load();
+    _modelTransparentDrawCallTemplates.resize(numUniqueTransparentDrawCalls);
+    _modelTransparentDrawCallDataTemplates.resize(numUniqueTransparentDrawCalls);
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -754,10 +786,12 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     // Add TextureUnits and DrawCalls
     {
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
-        modelManifest.opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(modelManifest.numOpaqueDrawCalls);
+        modelManifest.opaqueDrawCallTemplateOffset = _modelOpaqueDrawCallTemplateIndex.fetch_add(modelManifest.numOpaqueDrawCalls);
+        modelManifest.opaqueDrawCallOffset = 0;
 
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
-        modelManifest.transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(modelManifest.numTransparentDrawCalls);
+        modelManifest.transparentDrawCallTemplateOffset = _modelTransparentDrawCallTemplateIndex.fetch_add(modelManifest.numTransparentDrawCalls);
+        modelManifest.transparentDrawCallOffset = 0;
 
         u32 numAddedIndices = 0;
 
@@ -790,45 +824,72 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                 // Textures
                 for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
                 {
+                    std::scoped_lock lock(_textureLoadMutex);
+
+                    Renderer::TextureDesc textureDesc;
                     u16 textureIndex = model.textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
 
                     Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                     {
-                        std::scoped_lock lock(_textureLoadMutex);
-
-                        Renderer::TextureDesc textureDesc;
                         textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
+                    }
+                    else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
+                    {
+                        static const u32 defaultSkinHash = "textures\\bakednpctextures\\creaturedisplayextra-00872.dds"_h;
+                        textureDesc.path = textureSingleton.textureHashToPath[defaultSkinHash];
+                    }
+                    else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
+                    {
+                        static const u32 defaultHairHash = "character\\human\\female\\humanfemalehairlongwavy.dds"_h;
+                        textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
+                    }
 
-                        if (textureDesc.path.size() > 0)
-                        {
-                            Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
-                            textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
+                    if (textureDesc.path.size() > 0)
+                    {
+                        Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
+                        textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
 
-                            DebugHandler::Assert(textureUnit.textureIds[j] < 4096, "ModelRenderer : LoadModel overflowed the 4096 textures we have support for");
-                        }
+                        DebugHandler::Assert(textureUnit.textureIds[j] < 4096, "ModelRenderer : LoadModel overflowed the 4096 textures we have support for");
                     }
                 }
             }
 
             // Draw Calls
             u32& numAddedDrawCalls = (renderBatch.isTransparent) ? numAddedTransparentDrawCalls : numAddedOpaqueDrawCalls;
-            u32& drawCallOffset = (renderBatch.isTransparent) ? modelManifest.transparentDrawCallOffset : modelManifest.opaqueDrawCallOffset;
+            u32& drawCallTemplateOffset = (renderBatch.isTransparent) ? modelManifest.transparentDrawCallTemplateOffset : modelManifest.opaqueDrawCallTemplateOffset;
 
-            CullingResources<DrawCallData>& cullingResources = (renderBatch.isTransparent) ? _transparentCullingResources : _opaqueCullingResources;
-            std::vector<Renderer::IndexedIndirectDraw>& drawCalls = cullingResources.GetDrawCalls().Get();
-            std::vector<DrawCallData>& drawCallDatas = cullingResources.GetDrawCallDatas().Get();
+            u32 curDrawCallOffset = drawCallTemplateOffset + numAddedDrawCalls;
 
-            u32 curDrawCallOffset = drawCallOffset + numAddedDrawCalls;
+            bool isAllowedGroupID = true;
 
-            Renderer::IndexedIndirectDraw& drawCall = drawCalls[curDrawCallOffset];
-            drawCall.indexCount = renderBatch.indexCount;
-            drawCall.instanceCount = 1;
-            drawCall.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
-            drawCall.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
-            drawCall.firstInstance = 0; // Is set during AddInstance
+            switch (renderBatch.groupID)
+            {
+                case 0: // Base
+                case 2: // Bald Head
+                case 401: // Gloves
+                case 501: // Boots
+                case 702: // Ears
+                case 1301: // Legs
+                case 1501: // Upper Back
+                //case 1703: // DK Eye Glow (Needs further support to be animated)
+                    break;
 
-            DrawCallData& drawCallData = drawCallDatas[curDrawCallOffset];
+                default:
+                {
+                    isAllowedGroupID = false;
+                    break;
+                }
+            }
+
+            Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
+            drawCallTemplate.indexCount = renderBatch.indexCount;
+            drawCallTemplate.instanceCount = 1 * isAllowedGroupID;
+            drawCallTemplate.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
+            drawCallTemplate.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
+            drawCallTemplate.firstInstance = 0; // Is set during AddInstance
+
+            DrawCallData& drawCallData = (renderBatch.isTransparent) ? _modelTransparentDrawCallDataTemplates[curDrawCallOffset] : _modelOpaqueDrawCallDataTemplates[curDrawCallOffset];
             drawCallData.instanceID = 0; // Is set during AddInstance
             drawCallData.textureUnitOffset = textureUnitBaseIndex;
             drawCallData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
@@ -849,7 +910,13 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelManifestIndex;
 }
 
-u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
+u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& placement)
+{
+    vec3 scale = vec3(placement.scale) / 1024.0f;
+    return AddInstance(modelID, placement.position, placement.rotation, scale);
+}
+
+u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
 {
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -867,7 +934,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
 
         instanceData.modelID = modelID;
         instanceData.modelVertexOffset = manifest.vertexOffset;
-        
+
         if (manifest.isAnimated)
         {
             i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
@@ -883,49 +950,39 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
 
-        vec3 pos = vec3(placement.position.x, placement.position.y, placement.position.z);
-
-        vec3 scale = vec3(placement.scale) / 1024.0f;
-
-        mat4x4 rotationMatrix = glm::toMat4(placement.rotation);
+        mat4x4 rotationMatrix = glm::toMat4(rotation);
         mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = glm::translate(mat4x4(1.0f), pos) * rotationMatrix * scaleMatrix;
+        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
     }
 
     // Set up Opaque DrawCalls and DrawCallDatas
     if (manifest.numOpaqueDrawCalls > 0)
     {
-        u32 opaqueBaseIndex = manifest.opaqueDrawCallOffset;
-
         std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls().Get();
         std::vector<DrawCallData>& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas().Get();
 
-        // The first instance doesn't need to copy the drawcalls
-        if (modelInstanceIndex != 0)
+        u32 opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+
+        // Copy DrawCalls
         {
-            opaqueBaseIndex = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
+            Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
+            size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+            memcpy(dst, src, size);
+        }
 
-            // Copy DrawCalls
-            {
-                Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueBaseIndex];
-                Renderer::IndexedIndirectDraw* src = &opaqueDrawCalls[manifest.opaqueDrawCallOffset];
-                size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-                memcpy(dst, src, size);
-            }
-
-            // Copy DrawCallDatas
-            {
-                DrawCallData* dst = &opaqueDrawCallDatas[opaqueBaseIndex];
-                DrawCallData* src = &opaqueDrawCallDatas[manifest.opaqueDrawCallOffset];
-                size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
-                memcpy(dst, src, size);
-            }
+        // Copy DrawCallDatas
+        {
+            DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
+            DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
+            size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
+            memcpy(dst, src, size);
         }
 
         // Modify the per-instance data
         for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
         {
-            u32 opaqueIndex = opaqueBaseIndex + i;
+            u32 opaqueIndex = opaqueDrawCallOffset + i;
 
             Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
             drawCall.firstInstance = opaqueIndex;
@@ -939,37 +996,31 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
     // Set up Transparent DrawCalls and DrawCallDatas
     if (manifest.numTransparentDrawCalls > 0)
     {
-        u32 transparentBaseIndex = manifest.transparentDrawCallOffset;
-
         std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls().Get();
         std::vector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas().Get();
 
-        // The first instance doesn't need to copy the drawcalls
-        if (modelInstanceIndex != 0)
+        u32 transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+
+        // Copy DrawCalls
         {
-            transparentBaseIndex = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
+            Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
+            size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+            memcpy(dst, src, size);
+        }
 
-            // Copy DrawCalls
-            {
-                Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentBaseIndex];
-                Renderer::IndexedIndirectDraw* src = &transparentDrawCalls[manifest.transparentDrawCallOffset];
-                size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-                memcpy(dst, src, size);
-            }
-
-            // Copy DrawCallDatas
-            {
-                DrawCallData* dst = &transparentDrawCallDatas[transparentBaseIndex];
-                DrawCallData* src = &transparentDrawCallDatas[manifest.transparentDrawCallOffset];
-                size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
-                memcpy(dst, src, size);
-            }
+        // Copy DrawCallDatas
+        {
+            DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
+            DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
+            size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
+            memcpy(dst, src, size);
         }
 
         // Modify the per-instance data
         for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
         {
-            u32 transparentIndex = transparentBaseIndex + i;
+            u32 transparentIndex = transparentDrawCallOffset + i;
 
             Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
             drawCall.firstInstance = transparentIndex;
@@ -981,6 +1032,186 @@ u32 ModelRenderer::AddInstance(u32 modelID, const Terrain::Placement& placement)
     }
 
     return instanceID;
+}
+
+void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
+{
+    InstanceData& instanceData = _instanceDatas.Get()[instanceID];
+
+    u32 oldModelID = instanceData.modelID;
+
+    if (modelID == oldModelID)
+        return;
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    u32 oldOpaqueNumDrawCalls = std::numeric_limits<u32>().max();
+    u32 oldOpaqueBaseIndex = std::numeric_limits<u32>().max();
+    u32 oldTransparentNumDrawCalls = std::numeric_limits<u32>().max();
+    u32 oldTransparentBaseIndex = std::numeric_limits<u32>().max();
+
+    u32 modelInstanceIndex = 0;
+    {
+        std::scoped_lock lock(_modelIDToNumInstancesMutex);
+
+        modelInstanceIndex = _modelIDToNumInstances[modelID]++;
+
+        if (oldModelID != std::numeric_limits<u32>().max())
+        {
+            ModelManifest& oldManifest = _modelManifests[oldModelID];
+
+            _modelIDToNumInstances[oldModelID]--;
+            oldOpaqueNumDrawCalls = oldManifest.numOpaqueDrawCalls;
+            oldOpaqueBaseIndex = oldManifest.opaqueDrawCallOffset;
+            oldTransparentNumDrawCalls = oldManifest.numTransparentDrawCalls;
+            oldTransparentBaseIndex = oldManifest.transparentDrawCallOffset;
+        }
+    }
+
+    // Modify InstanceData
+    {
+        instanceData.modelID = modelID;
+        instanceData.modelVertexOffset = manifest.vertexOffset;
+
+        if (manifest.isAnimated)
+        {
+            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
+            if (animationSystemEnabled && *animationSystemEnabled == 1)
+            {
+                u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
+                instanceData.animatedVertexOffset = animatedVertexOffset;
+            }
+        }
+        else
+        {
+            instanceData.animatedVertexOffset = std::numeric_limits<u32>().max();
+        }
+
+        _instanceDatas.SetDirtyElement(instanceID);
+    }
+
+    // Setup Instance matrix
+    {
+        mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
+
+        mat4x4 rotationMatrix = glm::toMat4(rotation);
+        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
+        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+
+        _instanceMatrices.SetDirtyElement(instanceID);
+    }
+
+    // Set up Opaque DrawCalls and DrawCallDatas
+    if (manifest.numOpaqueDrawCalls > 0)
+    {
+        std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls().Get();
+        std::vector<DrawCallData>& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas().Get();
+
+        u32 opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+
+        // Copy DrawCalls
+        {
+            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
+            Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
+            size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+            memcpy(dst, src, size);
+        }
+
+        // Copy DrawCallDatas
+        {
+            DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
+            DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
+            size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
+            memcpy(dst, src, size);
+        }
+
+        // Modify the per-instance data
+        for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
+        {
+            u32 opaqueIndex = opaqueDrawCallOffset + i;
+
+            Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
+            drawCall.firstInstance = opaqueIndex;
+
+            DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
+            drawCallData.instanceID = instanceID;
+            drawCallData.modelID = modelID;
+        }
+
+        // Modify the old per-instance data
+        if (oldModelID != std::numeric_limits<u32>().max())
+        {
+            for (u32 i = 0; i < oldOpaqueNumDrawCalls; i++)
+            {
+                u32 opaqueIndex = oldOpaqueBaseIndex + i;
+
+                Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
+                drawCall.instanceCount = 0;
+
+                DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
+                drawCallData.instanceID = std::numeric_limits<u32>().max();
+            }
+
+            _opaqueCullingResources.GetDrawCalls().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
+            _opaqueCullingResources.GetDrawCallDatas().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
+        }
+    }
+
+    // Set up Transparent DrawCalls and DrawCallDatas
+    if (manifest.numTransparentDrawCalls > 0)
+    {
+        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls().Get();
+        std::vector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas().Get();
+
+        u32 transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+
+        // Copy DrawCalls
+        {
+            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
+            Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
+            size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+            memcpy(dst, src, size);
+        }
+
+        // Copy DrawCallDatas
+        {
+            DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
+            DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
+            size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
+            memcpy(dst, src, size);
+        }
+
+        // Modify the per-instance data
+        for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
+        {
+            u32 transparentIndex = transparentDrawCallOffset + i;
+
+            Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
+            drawCall.firstInstance = transparentIndex;
+
+            DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
+            drawCallData.instanceID = instanceID;
+            drawCallData.modelID = modelID;
+        }
+
+        // Modify the old per-instance data
+        if (oldModelID != std::numeric_limits<u32>().max())
+        {
+            for (u32 i = 0; i < oldTransparentNumDrawCalls; i++)
+            {
+                u32 transparentIndex = oldTransparentBaseIndex + i;
+
+                Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
+                drawCall.instanceCount = 0;
+
+                DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
+                drawCallData.instanceID = std::numeric_limits<u32>().max();
+            }
+
+            _transparentCullingResources.GetDrawCalls().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
+            _transparentCullingResources.GetDrawCallDatas().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
+        }
+    }
 }
 
 bool ModelRenderer::AddAnimationInstance(u32 instanceID)

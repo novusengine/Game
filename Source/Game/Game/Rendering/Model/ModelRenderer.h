@@ -42,6 +42,9 @@ public:
 		u32 numOpaqueDrawcalls = 0;
 		u32 numTransparentDrawcalls = 0;
 
+		u32 numUniqueOpaqueDrawcalls = 0;
+		u32 numUniqueTransparentDrawcalls = 0;
+
 		u32 numVertices = 0;
 		u32 numIndices = 0;
 
@@ -55,11 +58,14 @@ public:
 	public:
 		std::string debugName = "";
 
-		u32 opaqueDrawCallOffset = 0;
+		u32 opaqueDrawCallTemplateOffset = 0;
 		u32 numOpaqueDrawCalls = 0;
 
-		u32 transparentDrawCallOffset = 0;
+		u32 transparentDrawCallTemplateOffset = 0;
 		u32 numTransparentDrawCalls = 0;
+
+		u32 opaqueDrawCallOffset = 0;
+		u32 transparentDrawCallOffset = 0;
 
 		u32 vertexOffset = 0;
 		u32 numVertices = 0;
@@ -129,7 +135,9 @@ public:
 	void Reserve(const ReserveInfo& reserveInfo);
 	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-	u32 AddInstance(u32 modelID, const Terrain::Placement& placement);
+	u32 AddPlacementInstance(u32 modelID, const Terrain::Placement& placement);
+	u32 AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
+	void ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
 
 	bool AddAnimationInstance(u32 instanceID);
 	bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
@@ -201,6 +209,14 @@ private:
 
 	Renderer::GPUVector<mat4x4> _boneMatrices;
 	std::atomic<u32> _boneMatrixIndex = 0;
+
+	std::vector<Renderer::IndexedIndirectDraw> _modelOpaqueDrawCallTemplates;
+	std::vector<DrawCallData> _modelOpaqueDrawCallDataTemplates;
+	std::atomic<u32> _modelOpaqueDrawCallTemplateIndex = 0;
+
+	std::vector<Renderer::IndexedIndirectDraw> _modelTransparentDrawCallTemplates;
+	std::vector<DrawCallData> _modelTransparentDrawCallDataTemplates;
+	std::atomic<u32> _modelTransparentDrawCallTemplateIndex = 0;
 
 	CullingResources<DrawCallData> _opaqueCullingResources;
 	CullingResources<DrawCallData> _transparentCullingResources;
