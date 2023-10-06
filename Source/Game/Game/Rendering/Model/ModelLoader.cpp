@@ -112,9 +112,19 @@ void ModelLoader::Init()
 	taskScheduler->WaitforTask(&discoverModelsTask);
 
 	// And lastly move the data into the hashmap
+
+	size_t numDiscoveredModels = discoveredModels.size_approx();
+	_nameHashToDiscoveredModel.reserve(numDiscoveredModels);
+
 	DiscoveredModel discoveredModel;
 	while (discoveredModels.try_dequeue(discoveredModel))
 	{
+		if (_nameHashToDiscoveredModel.contains(discoveredModel.nameHash))
+		{
+			const DiscoveredModel& existingDiscoveredModel = _nameHashToDiscoveredModel[discoveredModel.nameHash];
+			DebugHandler::PrintError("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name.c_str(), discoveredModel.name.c_str());
+		}
+
 		_nameHashToDiscoveredModel[discoveredModel.nameHash] = discoveredModel;
 	}
 
@@ -196,14 +206,16 @@ void ModelLoader::Update(f32 deltaTime)
 
 				if (!_nameHashToLoadState.contains(nameHash))
 				{
-					_nameHashToLoadState[nameHash] = LoadState::Received;
+					_nameHashToLoadState[nameHash] = static_cast<LoadState>((LoadState::Received * isSupported) + (LoadState::Failed * !isSupported));
 					_nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
 					_nameHashToLoadingMutex[nameHash] = new std::mutex();
 
-					reserveInfo.numModels++;
+					reserveInfo.numModels += 1 * isSupported;
 					reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
 					reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
 					reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+					reserveInfo.numDecorationSets += discoveredModel.modelHeader.numDecorationSets * isSupported;
+					reserveInfo.numDecorations += discoveredModel.modelHeader.numDecorations * isSupported;
 					
 					reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
 					reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
@@ -228,52 +240,53 @@ void ModelLoader::Update(f32 deltaTime)
 			registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
 
 			std::atomic<u32> numCreatedInstances;
-			enki::TaskSet loadModelsTask(reserveInfo.numInstances, [&](enki::TaskSetPartition range, u32 threadNum)
+			//enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+			//{
+			//	for (u32 i = range.start; i < range.end; i++)
+			for (u32 i = 0; i < numDequeued; i++)
 			{
-				for (u32 i = range.start; i < range.end; i++)
+				LoadRequestInternal& request = _staticLoadRequests[i];
+
+				u32 placementHash = request.placement.nameHash;
+				if (!_nameHashToDiscoveredModel.contains(placementHash))
 				{
-					LoadRequestInternal& request = _staticLoadRequests[i];
-
-					u32 placementHash = request.placement.nameHash;
-					if (!_nameHashToDiscoveredModel.contains(placementHash))
-					{
-						// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-						continue;
-					}
-
-					std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
-					std::scoped_lock lock(*mutex);
-
-					LoadState loadState = _nameHashToLoadState[placementHash];
-
-					if (loadState == LoadState::Failed)
-						continue;
-
-					if (loadState == LoadState::Received)
-					{
-						loadState = LoadState::Loading;
-						_nameHashToLoadState[placementHash] = LoadState::Loading;
-
-						bool didLoad = LoadRequest(request);
-
-						loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-						_nameHashToLoadState[placementHash] = loadState;
-
-						if (!didLoad)
-							continue;
-					}
-
-					if (_uniqueIDToinstanceID.contains(request.placement.uniqueID))
-						continue;
-
-					u32 index = numCreatedInstances.fetch_add(1);
-					AddStaticInstance(_createdEntities[index], request);
+					// Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
+					continue;
 				}
-			});
+
+				std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
+				std::scoped_lock lock(*mutex);
+
+				LoadState loadState = _nameHashToLoadState[placementHash];
+
+				if (loadState == LoadState::Failed)
+					continue;
+
+				if (loadState == LoadState::Received)
+				{
+					loadState = LoadState::Loading;
+					_nameHashToLoadState[placementHash] = LoadState::Loading;
+
+					bool didLoad = LoadRequest(request);
+
+					loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+					_nameHashToLoadState[placementHash] = loadState;
+
+					if (!didLoad)
+						continue;
+				}
+
+				if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
+					continue;
+
+				u32 index = numCreatedInstances.fetch_add(1);
+				AddStaticInstance(_createdEntities[index], request);
+			}
+			//});
 
 			// Execute the multithreaded job
-			taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-			taskScheduler->WaitforTask(&loadModelsTask);
+			//taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+			//taskScheduler->WaitforTask(&loadModelsTask);
 
 			// Destroy the entities we didn't use
 			registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
@@ -334,7 +347,7 @@ void ModelLoader::Update(f32 deltaTime)
 			_modelRenderer->Reserve(reserveInfo);
 			animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
 
-			for (u32 i = 0; i < reserveInfo.numInstances; i++)
+			for (u32 i = 0; i < numDequeued; i++)
 			{
 				LoadRequestInternal& request = _dynamicLoadRequests[i];
 
@@ -384,6 +397,23 @@ void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 {
 	LoadRequestInternal loadRequest;
 	loadRequest.entity = entt::null;
+	loadRequest.placement = placement;
+
+	_staticRequests.enqueue(loadRequest);
+}
+
+void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
+{
+	LoadRequestInternal loadRequest;
+	loadRequest.entity = entt::null;
+	loadRequest.instanceID = instanceID;
+
+	Terrain::Placement placement;
+	placement.nameHash = decoration.nameID;
+	placement.position = decoration.position;
+	placement.rotation = decoration.rotation;
+	placement.scale = static_cast<u16>(decoration.scale * 1024.0f);
+
 	loadRequest.placement = placement;
 
 	_staticRequests.enqueue(loadRequest);
@@ -466,6 +496,8 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 		DebugHandler::PrintError("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
 		return false;
 	}
+	
+	assert(discoveredModel.modelHeader.numVertices == model.vertices.size());
 
 	u32 modelID = _modelRenderer->LoadModel(path.string(), model);
 	_nameHashToModelID[request.placement.nameHash] = modelID;
@@ -519,11 +551,18 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 	_instanceIDToModelID[instanceID] = modelID;
 	_instanceIDToEntityID[instanceID] = entityID;
 
-	Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-	if (animationSystem->AddInstance(modelID, instanceID))
+	bool hasParent = request.instanceID != std::numeric_limits<u32>().max() && _instanceIDToEntityID.contains(request.instanceID);
+	if (hasParent)
 	{
-		animationSystem->PlayAnimation(instanceID, 0);
+		entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
 	}
+
+	/* Commented out on purpose to be dealt with at a later date when we have reimplemented GPU side animations */
+	//Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+	//if (animationSystem->AddInstance(modelID, instanceID))
+	//{
+	//	animationSystem->PlayAnimation(instanceID, 0);
+	//}
 }
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
@@ -541,7 +580,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 	u32 modelID = _nameHashToModelID[request.placement.nameHash];
 	u32 instanceID = model.instanceID;
 
-	const ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+	ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
 	if (instanceID == std::numeric_limits<u32>().max())
 	{
 		instanceID = _modelRenderer->AddInstance(modelID, transform.position, transform.rotation, transform.scale);

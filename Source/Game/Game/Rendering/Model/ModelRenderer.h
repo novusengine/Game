@@ -50,6 +50,9 @@ public:
 		u32 numTextureUnits = 0;
 
 		u32 numBones = 0;
+
+		u32 numDecorationSets = 0;
+		u32 numDecorations = 0;
 	};
 
 	struct ModelManifest
@@ -74,6 +77,12 @@ public:
 
 		u32 numBones = 0;
 		u32 numTextureTransforms = 0;
+
+		u32 decorationSetOffset = 0;
+		u32 numDecorationSets = 0;
+
+		u32 decorationOffset = 0;
+		u32 numDecorations = 0;
 
 		bool isAnimated = false;
 	};
@@ -189,6 +198,12 @@ private:
 
 	std::vector<ModelManifest> _modelManifests;
 	std::atomic<u32> _modelManifestsIndex = 0;
+
+	std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
+	std::atomic<u32> _modelDecorationSetsIndex = 0;
+
+	std::vector<Model::ComplexModel::Decoration> _modelDecorations;
+	std::atomic<u32> _modelDecorationsIndex = 0;
 
 	std::vector<u32> _modelIDToNumInstances;
 	std::mutex _modelIDToNumInstancesMutex;

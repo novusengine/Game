@@ -1,15 +1,16 @@
 #include "ModelRenderer.h"
 
-#include <Game/Rendering/CullUtils.h>
-#include <Game/Rendering/RenderUtils.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Rendering/RenderResources.h>
-#include <Game/Rendering/Debug/DebugRenderer.h>
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Application/EnttRegistries.h>
-#include <Game/ECS/Singletons/TextureSingleton.h>
-#include <Game/ECS/Components/Transform.h>
-#include <Game/ECS/Components/Model.h>
+#include "Game/Rendering/CullUtils.h"
+#include "Game/Rendering/RenderUtils.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/RenderResources.h"
+#include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Util/ServiceLocator.h"
+#include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Singletons/TextureSingleton.h"
+#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Components/Model.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -122,6 +123,12 @@ void ModelRenderer::Clear()
 
     _animatedVertices.Clear(false);
     _animatedVerticesIndex.store(0);
+
+    _modelDecorationSets.clear();
+    _modelDecorationSetsIndex.store(0);
+
+    _modelDecorations.clear();
+    _modelDecorationsIndex.store(0);
 
     _opaqueCullingResources.Clear();
     _transparentCullingResources.Clear();
@@ -675,6 +682,12 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
         boneMatrices[i] = glm::mat4(1.0f);
     }
 
+    u32 numDecorationSets = static_cast<u32>(_modelDecorationSets.size());
+    _modelDecorationSets.resize(numDecorationSets + reserveInfo.numDecorationSets);
+
+    u32 numDecorations = static_cast<u32>(_modelDecorations.size());
+    _modelDecorations.resize(numDecorations + reserveInfo.numDecorations);
+
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
 
@@ -707,6 +720,12 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     u32 numBoneMatricesUsed = _boneMatrixIndex.load();
     _boneMatrices.Resize(numBoneMatricesUsed);
+
+    u32 numDecorationSetsUsed = _modelDecorationSetsIndex.load();
+    _modelDecorationSets.resize(numDecorationSetsUsed);
+
+    u32 numDecorationsUsed = _modelDecorationsIndex.load();
+    _modelDecorations.resize(numDecorationsUsed);
 
     _opaqueCullingResources.FitBuffersAfterLoad();
     _transparentCullingResources.FitBuffersAfterLoad();
@@ -747,21 +766,24 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.numVertices = model.modelHeader.numVertices;
         modelManifest.vertexOffset = _verticesIndex.fetch_add(modelManifest.numVertices);
 
-        std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
-
-        u32 numModelVertices = static_cast<u32>(model.vertices.size());
-        assert(modelManifest.numVertices == numModelVertices);
-
-        void* dst = &vertices[modelManifest.vertexOffset];
-        void* src = model.vertices.data();
-        size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
-
-        if (modelManifest.vertexOffset + numModelVertices > vertices.size())
+        if (modelManifest.numVertices)
         {
-            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
-        }
+            std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
 
-        memcpy(dst, src, size);
+            u32 numModelVertices = static_cast<u32>(model.vertices.size());
+            assert(modelManifest.numVertices == numModelVertices);
+
+            void* dst = &vertices[modelManifest.vertexOffset];
+            void* src = model.vertices.data();
+            size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
+
+            if (modelManifest.vertexOffset + numModelVertices > vertices.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
     }
 
     // Add indices
@@ -769,18 +791,21 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.numIndices = model.modelHeader.numIndices;
         modelManifest.indexOffset = _indicesIndex.fetch_add(modelManifest.numIndices);
 
-        std::vector<u16>& indices = _indices.Get();
-
-        void* dst = &indices[modelManifest.indexOffset];
-        void* src = model.modelData.indices.data();
-        size_t size = sizeof(u16) * model.modelData.indices.size();
-
-        if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+        if (modelManifest.numIndices)
         {
-            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
-        }
+            std::vector<u16>& indices = _indices.Get();
 
-        memcpy(dst, src, size);
+            void* dst = &indices[modelManifest.indexOffset];
+            void* src = model.modelData.indices.data();
+            size_t size = sizeof(u16) * model.modelData.indices.size();
+
+            if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
     }
 
     // Add TextureUnits and DrawCalls
@@ -907,6 +932,47 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.isAnimated = model.sequences.size() > 0 && modelManifest.numBones > 0;
     }
 
+    // Add Decoration Data
+    {
+        modelManifest.numDecorationSets = model.modelHeader.numDecorationSets;
+        modelManifest.decorationSetOffset = _modelDecorationSetsIndex.fetch_add(modelManifest.numDecorationSets);
+
+        if (modelManifest.numDecorationSets)
+        {
+            std::vector<Model::ComplexModel::DecorationSet>& decorationSets = _modelDecorationSets;
+
+            void* dst = &decorationSets[modelManifest.decorationSetOffset];
+            void* src = model.decorationSets.data();
+            size_t size = sizeof(Model::ComplexModel::DecorationSet) * model.decorationSets.size();
+
+            if (modelManifest.decorationSetOffset + model.decorationSets.size() > decorationSets.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorationSets outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
+
+        modelManifest.numDecorations = model.modelHeader.numDecorations;
+        modelManifest.decorationOffset = _modelDecorationsIndex.fetch_add(modelManifest.numDecorations);
+
+        if (modelManifest.numDecorations)
+        {
+            std::vector<Model::ComplexModel::Decoration>& decorations = _modelDecorations;
+
+            void* dst = &decorations[modelManifest.decorationOffset];
+            void* src = model.decorations.data();
+            size_t size = sizeof(Model::ComplexModel::Decoration) * model.decorations.size();
+
+            if (modelManifest.decorationOffset + model.decorations.size() > decorations.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorations outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
+    }
+
     return modelManifestIndex;
 }
 
@@ -953,6 +1019,18 @@ u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& ro
         mat4x4 rotationMatrix = glm::toMat4(rotation);
         mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
         instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+    }
+
+    // Add Decorations
+    if (manifest.numDecorationSets && manifest.numDecorations)
+    {
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+        for (u32 i = 0; i < manifest.numDecorations; i++)
+        {
+            const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + i];
+            modelLoader->LoadDecoration(instanceID, manifestDecoration);
+        }
     }
 
     // Set up Opaque DrawCalls and DrawCallDatas
