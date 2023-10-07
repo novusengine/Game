@@ -9,8 +9,8 @@
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/TextureSingleton.h"
-#include "Game/ECS/Components/Transform.h"
 #include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Util/Transforms.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -46,7 +46,7 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
     , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
-    
+
     if (CVAR_ModelValidateTransfers.Get())
     {
         _vertices.SetValidation(true);
@@ -77,15 +77,15 @@ void ModelRenderer::Update(f32 deltaTime)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
-    {
-        u32 instanceID = model.instanceID;
+        {
+            u32 instanceID = model.instanceID;
 
-        std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
-        mat4x4& matrix = instanceMatrices[instanceID];
+            std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
+            mat4x4& matrix = instanceMatrices[instanceID];
 
-        matrix = transform.GetMatrix();
-        _instanceMatrices.SetDirtyElement(instanceID);
-    });
+            matrix = transform.GetMatrix();
+            _instanceMatrices.SetDirtyElement(instanceID);
+        });
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);
@@ -890,21 +890,21 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             switch (renderBatch.groupID)
             {
-                case 0: // Base
-                case 2: // Bald Head
-                case 401: // Gloves
-                case 501: // Boots
-                case 702: // Ears
-                case 1301: // Legs
-                case 1501: // Upper Back
+            case 0: // Base
+            case 2: // Bald Head
+            case 401: // Gloves
+            case 501: // Boots
+            case 702: // Ears
+            case 1301: // Legs
+            case 1501: // Upper Back
                 //case 1703: // DK Eye Glow (Needs further support to be animated)
-                    break;
+                break;
 
-                default:
-                {
-                    isAllowedGroupID = false;
-                    break;
-                }
+            default:
+            {
+                isAllowedGroupID = false;
+                break;
+            }
             }
 
             Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
@@ -979,10 +979,17 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& placement)
 {
     vec3 scale = vec3(placement.scale) / 1024.0f;
-    return AddInstance(modelID, placement.position, placement.rotation, scale);
+
+    // Add Instance matrix
+
+    mat4x4 rotationMatrix = glm::toMat4(placement.rotation);
+    mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
+    mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
+
+    return AddInstance(modelID, instanceMatrix);
 }
 
-u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
+u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
 {
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -1015,10 +1022,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& ro
     // Add Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-
-        mat4x4 rotationMatrix = glm::toMat4(rotation);
-        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+        instanceMatrix = transformMatrix;
     }
 
     // Add Decorations
@@ -1112,7 +1116,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& ro
     return instanceID;
 }
 
-void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
+void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix)
 {
     InstanceData& instanceData = _instanceDatas.Get()[instanceID];
 
@@ -1171,10 +1175,7 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const vec3& posi
     // Setup Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-
-        mat4x4 rotationMatrix = glm::toMat4(rotation);
-        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+        instanceMatrix = transformMatrix;
 
         _instanceMatrices.SetDirtyElement(instanceID);
     }
@@ -1298,8 +1299,8 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 
     if (instanceID >= instanceDatas.size())
     {
-		return false;
-	}
+        return false;
+    }
 
     InstanceData& instanceData = instanceDatas[instanceID];
 
@@ -1323,18 +1324,18 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
     std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
     if (instanceID >= instanceDatas.size())
     {
-		return false;
-	}
+        return false;
+    }
 
-	InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = instanceDatas[instanceID];
     if (instanceData.boneMatrixOffset == InstanceData::InvalidID)
     {
-		return false;
-	}
+        return false;
+    }
 
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
 
-	u32 globalBoneIndex = instanceData.boneMatrixOffset + localBoneIndex;
+    u32 globalBoneIndex = instanceData.boneMatrixOffset + localBoneIndex;
     u32 endGlobalBoneIndex = globalBoneIndex + (count - 1);
 
     // Check if the bone range is valid
@@ -1435,8 +1436,8 @@ void ModelRenderer::SyncToGPU()
 
         if (byteSize > currentSizeInBuffer)
         {
-			_animatedVertices.Resize(numAnimatedVertices);
-		}
+            _animatedVertices.Resize(numAnimatedVertices);
+        }
 
         if (_animatedVertices.SyncToGPU(_renderer))
         {
@@ -1597,7 +1598,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     {
         commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
     }
-    
+
     commandList.EndPipeline(pipeline);
 }
 

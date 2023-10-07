@@ -2,9 +2,9 @@
 
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Components/Transform.h"
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Util/CameraUtil.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
 
@@ -30,7 +30,7 @@ namespace ECS::Systems
             entt::entity cameraEntity = registry.create();
             activeCamera.entity = cameraEntity;
             Components::Transform& transform = registry.emplace<Components::Transform>(cameraEntity);
-            transform.position = vec3(0, 10, -10);
+            TransformSystem::Get(registry).SetLocalPosition(cameraEntity, vec3(0, 10, -10));
 
             Components::Camera& camera = registry.emplace<Components::Camera>(cameraEntity);
             camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
@@ -93,44 +93,50 @@ namespace ECS::Systems
         Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
         Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
 
+        auto& tSystem = ECS::TransformSystem::Get(registry);
+
         Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
         Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
 
+        vec3 cameraOffset = vec3(0.0f, 0.0f, 0.0f);
         // Input
         if (_keybindGroup->IsKeybindPressed("Forward"_h))
         {
-            cameraTransform.position += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
+            cameraOffset += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Backward"_h))
         {
-            cameraTransform.position += -cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
+            cameraOffset += -cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Left"_h))
         {
-            cameraTransform.position += -cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
+            cameraOffset += -cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Right"_h))
         {
-            cameraTransform.position += cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
+            cameraOffset += cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Upwards"_h))
         {
-            cameraTransform.position += vec3(0.0f, 1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
+            cameraOffset += vec3(0.0f, 1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Downwards"_h))
         {
-            cameraTransform.position += vec3(0.0f, -1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
+            cameraOffset += vec3(0.0f, -1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
 
+        tSystem.AddLocalOffset(activeCamera.entity, cameraOffset);
+
         // Calculate rotation
         vec3 eulerAngles = vec3(camera.pitch, camera.yaw, camera.roll);
-        cameraTransform.rotation = quat(glm::radians(eulerAngles));
+
+        tSystem.SetLocalRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
 	}
 
     void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)

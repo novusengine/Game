@@ -1,7 +1,7 @@
 #include "UpdateAABBs.h"
 
-#include "Game/ECS/Components/Transform.h"
 #include "Game/ECS/Components/AABB.h"
+#include "Game/ECS/Util/Transforms.h"
 
 #include <entt/entt.hpp>
 

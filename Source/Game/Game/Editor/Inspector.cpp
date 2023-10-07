@@ -16,9 +16,9 @@
 #include <Game/ECS/Singletons/FreeFlyingCameraSettings.h>
 #include <Game/ECS/Singletons/RenderState.h>
 #include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Components/Transform.h>
 #include <Game/ECS/Components/Model.h>
 #include <Game/ECS/Components/Name.h>
+#include <Game/ECS/Util/Transforms.h>
 #include <Game/Editor/EditorHandler.h>
 #include <Game/Editor/ActionStack.h>
 #include <Game/Editor/Hierarchy.h>
@@ -229,7 +229,7 @@ namespace Editor
 
     void Inspector::DirtySelection()
     {
-        
+
     }
 
     bool Inspector::OnMouseClickLeft(i32 key, KeybindAction action, KeybindModifier modifier)
@@ -295,23 +295,9 @@ namespace Editor
             ImGui::Text("Selected entity (%d) has no name component", entity);
         }
 
-        bool isDirty = false;
-        ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
-        if (transform)
-        {
-            isDirty |= DrawGizmo(registry, entity, *transform);
-        }
-
         Util::Imgui::Inspect(*name);
 
-        if (transform)
-        {
-            isDirty |= Util::Imgui::Inspect(*transform);
-            if (isDirty)
-            {
-                transform->SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entity);
-            }
-        }
+        InspectEntityTransforms(entity);
 
         ECS::Components::Model* model = registry->try_get<ECS::Components::Model>(entity);
         if (model)
@@ -324,13 +310,14 @@ namespace Editor
         if (CVAR_InspectorOBBShowFlag.Get() == ShowFlag::ENABLED)
         {
             ECS::Components::AABB* aabb = registry->try_get<ECS::Components::AABB>(entity);
+            ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
             if (transform && aabb)
             {
                 // Apply the transform's position and scale to the AABB's center and extents
-                glm::vec3 transformedCenter = transform->position + transform->rotation * (aabb->centerPos * transform->scale);
-                glm::vec3 transformedExtents = aabb->extents * transform->scale;
+                glm::vec3 transformedCenter = transform->GetLocalPosition() + transform->GetLocalRotation() * (aabb->centerPos * transform->GetLocalScale());
+                glm::vec3 transformedExtents = aabb->extents * transform->GetLocalScale();
 
-                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->rotation, Color::Red);
+                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->GetLocalRotation(), Color::Red);
             }
         }
         if (CVAR_InspectorWorldAABBShowFlag.Get() == ShowFlag::ENABLED)
@@ -345,13 +332,131 @@ namespace Editor
         }
     }
 
+    void Inspector::InspectEntityTransforms(entt::entity entity)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+        
+        if (transform)
+        {
+            DrawGizmo(registry, entity, *transform);
+
+            if (Util::Imgui::BeginGroupPanel("Transform"))
+            {
+                bool needRefresh = false;
+                
+                //editing the transform component members directly to only go through the transform system for propagation once
+                vec3 pos = transform->position;
+                if (ImGui::DragFloat3("position", &pos.x))
+                {
+                    transform->position = pos;
+                    needRefresh = true;
+                }
+
+                vec3 eulerAngles = glm::degrees(glm::eulerAngles(transform->rotation));
+                if (ImGui::DragFloat3("rotation", &eulerAngles.x))
+                {
+                    transform->rotation = glm::quat(glm::radians(eulerAngles));
+                    needRefresh = true;
+                }
+
+                vec3 scale = transform->scale;
+                if (ImGui::DragFloat3("scale", &scale.x))
+                {
+                    transform->scale = scale;
+                    needRefresh = true;
+                }
+
+                //if we have changed the transform components we need to update matrix and children
+                if (needRefresh)
+                {
+                    //setting local position will refresh all
+                    ECS::TransformSystem::Get(*registry).RefreshTransform(entity, *transform);
+                }
+            }
+            Util::Imgui::EndGroupPanel();
+
+            ECS::Components::SceneNode* node = registry->try_get<ECS::Components::SceneNode>(entity);
+            if (node)
+            {
+                if (Util::Imgui::BeginGroupPanel("SceneNode"))
+                {
+                    if (node->parent)
+                    {
+                        ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(node->parent->ownerEntity);
+                        if (name)
+                        {
+                            ImGui::Text("Parent: ");
+                            ImGui::SameLine();
+                            if (ImGui::Button(name->name.c_str()))
+                            {
+                                SelectEntity(node->parent->ownerEntity);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        ImGui::Text("Parent: %s", "none");
+                    }
+
+                    //draw children on a scroll bar
+                    if (node->firstChild)
+                    {
+                        struct ChildElement
+                        {
+                            ECS::Components::Name* name;
+                            entt::entity et;
+                        };
+                       
+                        //copy all the children of this scenenode into array for display
+                        std::vector<ChildElement> nameComps;
+                        ECS::TransformSystem::Get(*registry).IterateChildren(entity, [&](ECS::Components::SceneNode* child)
+                        {
+                            if (child && child->ownerEntity != entt::null)
+                            {
+                                ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(child->ownerEntity);
+                                if (name)
+                                {
+                                    nameComps.push_back({name,child->ownerEntity});
+                                }
+                            }
+                        });
+
+                        ImGui::Text(" %i children", nameComps.size());
+
+                        if (ImGui::BeginChild("childcomps",{0.0f,200.0f}))
+                        {
+                            for (const auto& c : nameComps)
+                            {   
+                                //evil hackery converting an entityID into a void* to use on the ID system
+                                ImGui::PushID((void*)c.et);
+                                if (ImGui::Button(c.name->name.c_str()))
+                                {
+                                    SelectEntity(c.et);
+                                }
+                                ImGui::PopID();
+                            }
+                        }
+                        ImGui::EndChild();
+                    }
+                }
+
+                Util::Imgui::EndGroupPanel();
+            }
+        }
+        ImGui::PopStyleColor();
+    }
+
     bool Inspector::DrawGizmo(entt::registry* registry, entt::entity entity, ECS::Components::Transform& transform)
     {
         entt::registry::context& ctx = registry->ctx();
 
         ECS::Singletons::ActiveCamera& activeCamera = ctx.at<ECS::Singletons::ActiveCamera>();
         ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
-        
+
         mat4x4& viewMatrix = camera.worldToView;
         mat4x4& projMatrix = camera.viewToClip;
         mat4x4 transformMatrix = transform.GetMatrix();
@@ -364,9 +469,21 @@ namespace Editor
 
         if (isDirty)
         {
+            
             vec3 eulerAngles;
-            ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(transform.position), glm::value_ptr(eulerAngles), glm::value_ptr(transform.scale));
-            transform.rotation = glm::quat(glm::radians(eulerAngles));
+            vec3 position = (transform.GetWorldPosition());
+            vec3 scale = (transform.GetWorldPosition());
+            ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
+
+            //only translation will work on child objects. need to fix later
+            if (operation & ImGuizmo::TRANSLATE)
+            {
+                ECS::TransformSystem::Get(*registry).SetWorldPosition(entity, position);
+            }
+            else
+            {
+                ECS::TransformSystem::Get(*registry).SetLocalTransform(entity, position, glm::quat(glm::radians(eulerAngles)), scale);
+            }
         }
 
         return isDirty;
@@ -393,7 +510,7 @@ namespace Editor
                 xOffset -= frameHeight + spacing + ImGui::CalcTextSize("Local").x;
                 xOffset -= frameHeight + spacing + ImGui::CalcTextSize("World").x;
                 xOffset -= 40.0f; // Some extra padding
-                
+
                 ImGui::SetCursorPos(vec2(xOffset, 0.0f));
 
                 ImGui::PushItemWidth(showWidth);
