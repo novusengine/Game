@@ -19,21 +19,22 @@ namespace ECS {
 
         static TransformSystem& Get(entt::registry& registry);
 
-        //api with entityID alone
-        void SetPosition(entt::entity entity, const vec3& newPosition);
-        void SetRotation(entt::entity entity, const quat& newRotation);
-        void SetScale(entt::entity entity, const vec3& newScale);
-        void SetPositionAndRotation(entt::entity entity, const vec3& newpos, const quat& newrotation);
-        void SetComponents(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
-        void AddOffset(entt::entity entity, const vec3& offset);
+        //api with entityID alone. Can do world transforms by accessing the scene component
+        void SetLocalPosition(entt::entity entity, const vec3& newPosition);
+        void SetWorldPosition(entt::entity entity, const vec3& newPosition);
+        void SetLocalRotation(entt::entity entity, const quat& newRotation);
+        void SetLocalScale(entt::entity entity, const vec3& newScale);
+        void SetLocalPositionAndRotation(entt::entity entity, const vec3& newpos, const quat& newrotation);
+        void SetLocalTransform(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void AddLocalOffset(entt::entity entity, const vec3& offset);
 
-        //api with transform component and entity ID to save lookup
-        void SetPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition);
-        void SetRotation(entt::entity entity, ECS::Components::Transform& transform, const quat& newRotation);
-        void SetScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale);
-        void SetPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation);
-        void SetComponents(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation, const vec3& newscale);
-        void AddOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
+        //api with transform component and entity ID to save lookup. Only local transforms
+        void SetLocalPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition);
+        void SetLocalRotation(entt::entity entity, ECS::Components::Transform& transform, const quat& newRotation);
+        void SetLocalScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale);
+        void SetLocalPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation);
+        void SetLocalTransform(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
 
         void ParentEntityTo(entt::entity parent, entt::entity child);
 
@@ -115,16 +116,16 @@ namespace ECS::Components
             }
         }
 
-        const vec3& GetPosition() const {
+        const vec3& GetLocalPosition() const {
             return position;
         }
 
         const vec3 GetWorldPosition() const;
 
-        const quat& GetRotation() const {
+        const quat& GetLocalRotation() const {
             return rotation;
         }
-        const vec3& GetScale() const {
+        const vec3& GetLocalScale() const {
             return scale;
         }
 
@@ -282,7 +283,7 @@ inline const vec3 ECS::Components::Transform::GetWorldPosition() const {
         return ownerNode->matrix[3];//vct;
     }
     else {
-        return GetPosition();
+        return GetLocalPosition();
     }
 }
 

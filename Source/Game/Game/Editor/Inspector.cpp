@@ -327,10 +327,10 @@ namespace Editor
             if (transform && aabb)
             {
                 // Apply the transform's position and scale to the AABB's center and extents
-                glm::vec3 transformedCenter = transform->GetPosition() + transform->GetRotation() * (aabb->centerPos * transform->GetScale());
-                glm::vec3 transformedExtents = aabb->extents * transform->GetScale();
+                glm::vec3 transformedCenter = transform->GetLocalPosition() + transform->GetLocalRotation() * (aabb->centerPos * transform->GetLocalScale());
+                glm::vec3 transformedExtents = aabb->extents * transform->GetLocalScale();
 
-                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->GetRotation(), Color::Red);
+                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->GetLocalRotation(), Color::Red);
             }
         }
         if (CVAR_InspectorWorldAABBShowFlag.Get() == ShowFlag::ENABLED)
@@ -364,12 +364,20 @@ namespace Editor
 
         if (isDirty)
         {
+            
             vec3 eulerAngles;
-            vec3 position = (transform.GetPosition());
-            vec3 scale = (transform.GetScale());
+            vec3 position = (transform.GetWorldPosition());
+            vec3 scale = (transform.GetWorldPosition());
             ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
 
-            ECS::TransformSystem::Get(*registry).SetComponents(entity, position, glm::quat(glm::radians(eulerAngles)), scale);
+            //only translation will work on child objects. need to fix later
+            if (operation & ImGuizmo::TRANSLATE)
+            {
+                ECS::TransformSystem::Get(*registry).SetWorldPosition(entity, position);
+            }
+            else {
+                ECS::TransformSystem::Get(*registry).SetLocalTransform(entity, position, glm::quat(glm::radians(eulerAngles)), scale);
+            }
         }
 
         return isDirty;

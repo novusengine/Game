@@ -40,14 +40,14 @@ namespace ECS::Systems
         {
             auto& transform = registry.get<ECS::Components::Transform>(entity);
 
-            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetScale().x * 0.5f, transform.GetScale().y * 0.5f, transform.GetScale().z * 0.5f));
+            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetLocalScale().x * 0.5f, transform.GetLocalScale().y * 0.5f, transform.GetLocalScale().z * 0.5f));
 
             // Create the shape
             JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
             JPH::ShapeRefC shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetPosition().x, transform.GetPosition().y, transform.GetPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetWorldPosition().x, transform.GetWorldPosition().y, transform.GetWorldPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
@@ -70,14 +70,14 @@ namespace ECS::Systems
         {
             auto& transform = registry.get<ECS::Components::Transform>(entity);
 
-            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetScale().x * 0.5f, transform.GetScale().y * 0.5f, transform.GetScale().z * 0.5f));
+            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetLocalScale().x * 0.5f, transform.GetLocalScale().y * 0.5f, transform.GetLocalScale().z * 0.5f));
 
             // Create the shape
             JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
             JPH::ShapeRefC shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetPosition().x, transform.GetPosition().y, transform.GetPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Kinematic, Jolt::Layers::MOVING);
+            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetWorldPosition().x, transform.GetWorldPosition().y, transform.GetWorldPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Kinematic, Jolt::Layers::MOVING);
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
@@ -103,14 +103,14 @@ namespace ECS::Systems
         {
             auto& transform = registry.get<ECS::Components::Transform>(entity);
 
-            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetScale().x * 0.5f, transform.GetScale().y * 0.5f, transform.GetScale().z * 0.5f));
+            JPH::BoxShapeSettings shapeSetting(JPH::Vec3(transform.GetLocalScale().x * 0.5f, transform.GetLocalScale().y * 0.5f, transform.GetLocalScale().z * 0.5f));
 
             // Create the shape
             JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
             JPH::ShapeRefC shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetPosition().x, transform.GetPosition().y, transform.GetPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Jolt::Layers::MOVING);
+            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(transform.GetWorldPosition().x, transform.GetWorldPosition().y, transform.GetWorldPosition().z), JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, Jolt::Layers::MOVING);
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
@@ -177,8 +177,8 @@ namespace ECS::Systems
 
                 auto& transform = registry->emplace<ECS::Components::Transform>(entity);
 
-                tSystem.SetPosition(entity, cameraTransform.GetPosition());
-                tSystem.SetScale(entity, vec3(1.0f, 1.0f, 1.0f));
+                tSystem.SetLocalPosition(entity, cameraTransform.GetLocalPosition());
+                tSystem.SetLocalScale(entity, vec3(1.0f, 1.0f, 1.0f));
 
                 auto& debugRenderTransform = registry->emplace<ECS::Components::DebugRenderTransform >(entity);
                 debugRenderTransform.color = Color::Magenta;
@@ -235,7 +235,7 @@ namespace ECS::Systems
                         vec3 newPosition = vec3(bodyPos.GetX(), bodyPos.GetY(), bodyPos.GetZ());
                         quat newRotation = glm::quat(bodyRot.GetW(), bodyRot.GetX(), bodyRot.GetY(), bodyRot.GetZ());
 
-                        tSystem.SetPositionAndRotation(entityID, newPosition, newRotation);
+                        tSystem.SetLocalPositionAndRotation(entityID, newPosition, newRotation);
                     }
                 }
             }

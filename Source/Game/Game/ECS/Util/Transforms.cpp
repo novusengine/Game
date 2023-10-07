@@ -25,61 +25,85 @@ ECS::TransformSystem& ECS::TransformSystem::Get(entt::registry& registry)
 	}
 }
 
-void ECS::TransformSystem::SetPosition(entt::entity entity, const vec3& newPosition)
+void ECS::TransformSystem::SetLocalPosition(entt::entity entity, const vec3& newPosition)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		SetPosition(entity, *tf, newPosition);
+		SetLocalPosition(entity, *tf, newPosition);
 	}
 }
 
-void ECS::TransformSystem::SetRotation(entt::entity entity, const quat& newRotation)
+
+void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& newPosition)
+{
+    ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
+
+    if (tf)
+	{
+
+		//we have a parent, need to calculate the transform properly
+		if (tf->ownerNode && tf->ownerNode->parent)
+		{
+			mat4x4 worldMatrix = tf->ownerNode->parent->matrix;
+			mat4x4 worldInv = glm::inverse(worldMatrix);
+			vec4 localSpace  = worldInv * vec4(newPosition,1.f);
+			SetLocalPosition(entity,*tf,vec3(localSpace));
+		}
+		//no parent or scenenode, so we can just set local position
+		else
+		{
+			SetLocalPosition(entity,*tf,newPosition);
+		}
+    }
+}
+
+void ECS::TransformSystem::SetLocalRotation(entt::entity entity, const quat& newRotation)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		SetRotation(entity, *tf, newRotation);
+		SetLocalRotation(entity, *tf, newRotation);
 	}
 }
 
-void ECS::TransformSystem::SetScale(entt::entity entity, const vec3& newScale)
+void ECS::TransformSystem::SetLocalScale(entt::entity entity, const vec3& newScale)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		SetScale(entity, *tf, newScale);
+		SetLocalScale(entity, *tf, newScale);
 	}
 }
 
-void ECS::TransformSystem::SetPositionAndRotation(entt::entity entity, const vec3& newPosition, const quat& newRotation)
+void ECS::TransformSystem::SetLocalPositionAndRotation(entt::entity entity, const vec3& newPosition, const quat& newRotation)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		SetPositionAndRotation(entity, *tf, newPosition, newRotation);
+		SetLocalPositionAndRotation(entity, *tf, newPosition, newRotation);
 	}
 }
 
-void ECS::TransformSystem::SetComponents(entt::entity entity, const vec3& newPosition, const quat& newRotation, const vec3& newScale)
+void ECS::TransformSystem::SetLocalTransform(entt::entity entity, const vec3& newPosition, const quat& newRotation, const vec3& newScale)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		SetComponents(entity, *tf, newPosition, newRotation, newScale);
+		SetLocalTransform(entity, *tf, newPosition, newRotation, newScale);
 	}
 }
 
-void ECS::TransformSystem::AddOffset(entt::entity entity, const vec3& offset)
+void ECS::TransformSystem::AddLocalOffset(entt::entity entity, const vec3& offset)
 {
 	ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
 	if (tf) {
-		AddOffset(entity, *tf, offset);
+		AddLocalOffset(entity, *tf, offset);
 	}
 }
 
-void ECS::TransformSystem::SetPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition)
+void ECS::TransformSystem::SetLocalPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition)
 {
 	if (newPosition != transform.position) {
 		transform.position = newPosition;
@@ -91,7 +115,7 @@ void ECS::TransformSystem::SetPosition(entt::entity entity, ECS::Components::Tra
 	}
 }
 
-void ECS::TransformSystem::SetRotation(entt::entity entity, ECS::Components::Transform& transform, const quat& newRotation)
+void ECS::TransformSystem::SetLocalRotation(entt::entity entity, ECS::Components::Transform& transform, const quat& newRotation)
 {
 
 	if (newRotation != transform.rotation) {
@@ -104,7 +128,7 @@ void ECS::TransformSystem::SetRotation(entt::entity entity, ECS::Components::Tra
 	}
 }
 
-void ECS::TransformSystem::SetScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale)
+void ECS::TransformSystem::SetLocalScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale)
 {
 
 	if (newScale != transform.scale) {
@@ -117,7 +141,7 @@ void ECS::TransformSystem::SetScale(entt::entity entity, ECS::Components::Transf
 	}
 }
 
-void ECS::TransformSystem::SetPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition, const quat& newRotation)
+void ECS::TransformSystem::SetLocalPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition, const quat& newRotation)
 {
 
 	if ((newPosition != transform.position || newRotation != transform.rotation)) {
@@ -131,7 +155,7 @@ void ECS::TransformSystem::SetPositionAndRotation(entt::entity entity, ECS::Comp
 	}
 }
 
-void ECS::TransformSystem::SetComponents(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition, const quat& newRotation, const vec3& newScale)
+void ECS::TransformSystem::SetLocalTransform(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition, const quat& newRotation, const vec3& newScale)
 {
 
 	if ((newPosition != transform.position || newRotation != transform.rotation || newScale != transform.scale)) {
@@ -146,7 +170,7 @@ void ECS::TransformSystem::SetComponents(entt::entity entity, ECS::Components::T
 	}
 }
 
-void ECS::TransformSystem::AddOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset)
+void ECS::TransformSystem::AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset)
 {
 	transform.position += offset;
 	transform.SetDirty(*this, entity);

@@ -520,7 +520,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     auto& tSystem =ECS::TransformSystem::Get(*registry);
 
     f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
-    tSystem.SetComponents(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));
+    tSystem.SetLocalTransform(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));
 
     ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
     DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];

@@ -26,8 +26,8 @@ namespace ECS::Systems
 		{
 			Geometry::OrientedBoundingBox obb;
 			obb.center = transform.GetWorldPosition();
-			obb.rotation = transform.GetPosition();
-			obb.extents = transform.GetScale() * 0.5f;
+			obb.rotation = transform.GetLocalRotation();
+			obb.extents = transform.GetLocalScale() * 0.5f;
 
 			debugRenderer->DrawOBB3D(obb.center, obb.extents, obb.rotation, debugMesh.color);
 		});

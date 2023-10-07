@@ -30,7 +30,7 @@ namespace ECS::Systems
             entt::entity cameraEntity = registry.create();
             activeCamera.entity = cameraEntity;
             Components::Transform& transform = registry.emplace<Components::Transform>(cameraEntity);
-            TransformSystem::Get(registry).SetPosition(cameraEntity, vec3(0, 10, -10));
+            TransformSystem::Get(registry).SetLocalPosition(cameraEntity, vec3(0, 10, -10));
 
             Components::Camera& camera = registry.emplace<Components::Camera>(cameraEntity);
             camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
@@ -133,12 +133,12 @@ namespace ECS::Systems
             camera.dirtyView = true;
         }
 
-        tSystem.AddOffset(activeCamera.entity, cameraOffset);
+        tSystem.AddLocalOffset(activeCamera.entity, cameraOffset);
 
         // Calculate rotation
         vec3 eulerAngles = vec3(camera.pitch, camera.yaw, camera.roll);
 
-        tSystem.SetRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
+        tSystem.SetLocalRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
 	}
 
     void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)
