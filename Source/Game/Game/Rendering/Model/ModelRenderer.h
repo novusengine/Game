@@ -144,8 +144,8 @@ public:
 	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
 	u32 AddPlacementInstance(u32 modelID, const Terrain::Placement& placement);
-	u32 AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
-	void ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
+	u32 AddInstance(u32 modelID, const mat4x4& transformMatrix);
+	void ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix);
 
 	bool AddAnimationInstance(u32 instanceID);
 	bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);

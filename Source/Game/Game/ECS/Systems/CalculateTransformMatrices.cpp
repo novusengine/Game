@@ -1,6 +1,6 @@
 #include "CalculateTransformMatrices.h"
 
-#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/ECS/Singletons/RenderState.h"
 
 #include <entt/entt.hpp>
@@ -11,11 +11,11 @@ namespace ECS::Systems
     void CalculateTransformMatrices::Update(entt::registry& registry, f32 deltaTime)
     {
         ECS::Singletons::RenderState& renderState = registry.ctx().at<ECS::Singletons::RenderState>();
-        ECS::Singletons::DirtyTransformQueue& transformQueue = registry.ctx().at<ECS::Singletons::DirtyTransformQueue>();
+        ECS::TransformSystem& transformQueue = ECS::TransformSystem::Get(registry);
         //convert the async transform queue into dirty transform components
-        transformQueue.ProcessQueue([&](entt::entity entity)
-        {
-            registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
+        transformQueue.ProcessMovedEntities([&](entt::entity entity)
+            {
+                registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
         });
 
         auto view = registry.view<Components::DirtyTransform>();

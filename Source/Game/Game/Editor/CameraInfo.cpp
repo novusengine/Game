@@ -4,7 +4,7 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
-#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/ECS/Components/Camera.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
@@ -93,7 +93,9 @@ namespace Editor
         {
             quat rotQuat = quat(vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll)));
 
-            ImGui::Text("Pos: (%.2f, %.2f, %.2f)", cameraTransform.position.x, cameraTransform.position.y, cameraTransform.position.z);
+            glm::vec3 worldPos = cameraTransform.GetWorldPosition();
+
+            ImGui::Text("Pos: (%.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z);
             ImGui::Text("Speed: %.2f", settings.cameraSpeed);
 
             ImGui::Separator();
@@ -116,7 +118,7 @@ namespace Editor
 
             ImGui::Separator();
 
-            vec2 chunkGlobalPos = WorldPositionToChunkGlobalPos(cameraTransform.position);
+            vec2 chunkGlobalPos = WorldPositionToChunkGlobalPos(worldPos);
             
             vec2 chunkPos = GetChunkIndicesFromAdtPosition(chunkGlobalPos);
             vec2 chunkRemainder = chunkPos - glm::floor(chunkPos);

@@ -16,9 +16,9 @@
 #include <Game/ECS/Singletons/FreeFlyingCameraSettings.h>
 #include <Game/ECS/Singletons/RenderState.h>
 #include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Components/Transform.h>
 #include <Game/ECS/Components/Model.h>
 #include <Game/ECS/Components/Name.h>
+#include <Game/ECS/Util/Transforms.h>
 #include <Game/Editor/EditorHandler.h>
 #include <Game/Editor/ActionStack.h>
 #include <Game/Editor/Hierarchy.h>
@@ -229,7 +229,7 @@ namespace Editor
 
     void Inspector::DirtySelection()
     {
-        
+
     }
 
     bool Inspector::OnMouseClickLeft(i32 key, KeybindAction action, KeybindModifier modifier)
@@ -309,7 +309,7 @@ namespace Editor
             isDirty |= Util::Imgui::Inspect(*transform);
             if (isDirty)
             {
-                transform->SetDirty(registry->ctx().at<ECS::Singletons::DirtyTransformQueue>(), entity);
+                transform->SetDirty(ECS::TransformSystem::Get(*registry), entity);
             }
         }
 
@@ -327,10 +327,10 @@ namespace Editor
             if (transform && aabb)
             {
                 // Apply the transform's position and scale to the AABB's center and extents
-                glm::vec3 transformedCenter = transform->position + transform->rotation * (aabb->centerPos * transform->scale);
-                glm::vec3 transformedExtents = aabb->extents * transform->scale;
+                glm::vec3 transformedCenter = transform->GetPosition() + transform->GetRotation() * (aabb->centerPos * transform->GetScale());
+                glm::vec3 transformedExtents = aabb->extents * transform->GetScale();
 
-                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->rotation, Color::Red);
+                debugRenderer->DrawOBB3D(transformedCenter, transformedExtents, transform->GetRotation(), Color::Red);
             }
         }
         if (CVAR_InspectorWorldAABBShowFlag.Get() == ShowFlag::ENABLED)
@@ -351,7 +351,7 @@ namespace Editor
 
         ECS::Singletons::ActiveCamera& activeCamera = ctx.at<ECS::Singletons::ActiveCamera>();
         ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
-        
+
         mat4x4& viewMatrix = camera.worldToView;
         mat4x4& projMatrix = camera.viewToClip;
         mat4x4 transformMatrix = transform.GetMatrix();
@@ -365,8 +365,11 @@ namespace Editor
         if (isDirty)
         {
             vec3 eulerAngles;
-            ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(transform.position), glm::value_ptr(eulerAngles), glm::value_ptr(transform.scale));
-            transform.rotation = glm::quat(glm::radians(eulerAngles));
+            vec3 position = (transform.GetPosition());
+            vec3 scale = (transform.GetScale());
+            ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
+
+            ECS::TransformSystem::Get(*registry).SetComponents(entity, position, glm::quat(glm::radians(eulerAngles)), scale);
         }
 
         return isDirty;
@@ -393,7 +396,7 @@ namespace Editor
                 xOffset -= frameHeight + spacing + ImGui::CalcTextSize("Local").x;
                 xOffset -= frameHeight + spacing + ImGui::CalcTextSize("World").x;
                 xOffset -= 40.0f; // Some extra padding
-                
+
                 ImGui::SetCursorPos(vec2(xOffset, 0.0f));
 
                 ImGui::PushItemWidth(showWidth);

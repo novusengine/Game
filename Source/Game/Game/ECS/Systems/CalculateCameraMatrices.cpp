@@ -1,6 +1,6 @@
 #include "CalculateCameraMatrices.h"
 
-#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/ECS/Components/Camera.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Util/ServiceLocator.h"
@@ -12,14 +12,6 @@
 #include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_CameraLockCullingFrustum("camera.lockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
-
-// We are using Unitys Right Handed coordinate system
-// +X = right
-// +Y = up
-// +Z = forward
-const vec3 ECS::Components::Transform::WORLD_FORWARD = vec3(0.0f, 0.0f, 1.0f);
-const vec3 ECS::Components::Transform::WORLD_RIGHT = vec3(1.0f, 0.0f, 0.0f);
-const vec3 ECS::Components::Transform::WORLD_UP = vec3(0.0f, 1.0f, 0.0f);
 
 enum class FrustumPlane
 {
@@ -72,7 +64,7 @@ namespace ECS::Systems
                 gpuCamera.worldToView = camera.worldToView;
                 gpuCamera.worldToClip = camera.worldToClip;
 
-                gpuCamera.eyePosition = vec4(transform.position, 0.0f);
+                gpuCamera.eyePosition = vec4(transform.GetWorldPosition(), 0.0f);
                 gpuCamera.eyeRotation = vec4(0.0f, camera.pitch, camera.yaw, 0.0f);
 
                 gpuCamera.nearFar = vec4(camera.nearClip, camera.farClip, 0.0f, 0.0f);

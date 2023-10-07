@@ -1,7 +1,7 @@
 #include "DrawDebugMesh.h"
 
 #include "Game/ECS/Components/DebugRenderTransform.h"
-#include "Game/ECS/Components/Transform.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Util/ServiceLocator.h"
@@ -25,9 +25,9 @@ namespace ECS::Systems
 		view.each([&](entt::entity entity, const Components::Transform& transform, const Components::DebugRenderTransform& debugMesh)
 		{
 			Geometry::OrientedBoundingBox obb;
-			obb.center = transform.position;
-			obb.rotation = transform.rotation;
-			obb.extents = transform.scale * 0.5f;
+			obb.center = transform.GetWorldPosition();
+			obb.rotation = transform.GetPosition();
+			obb.extents = transform.GetScale() * 0.5f;
 
 			debugRenderer->DrawOBB3D(obb.center, obb.extents, obb.rotation, debugMesh.color);
 		});

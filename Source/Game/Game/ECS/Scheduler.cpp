@@ -6,7 +6,6 @@
 #include <Game/ECS/Singletons/EngineStats.h>
 #include <Game/ECS/Singletons/RenderState.h>
 #include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Components/Transform.h>
 
 #include <Game/ECS/Systems/CalculateCameraMatrices.h>
 #include <Game/ECS/Systems/DrawDebugMesh.h>
@@ -38,7 +37,6 @@ namespace ECS
 		Singletons::EngineStats& engineStats = ctx.emplace<Singletons::EngineStats>();
 		
 		ctx.emplace<Singletons::RenderState>();
-		ctx.emplace<Singletons::DirtyTransformQueue>();
 	}
 
 	void Scheduler::Update(entt::registry& registry, f32 deltaTime)
