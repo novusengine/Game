@@ -1022,10 +1022,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     // Add Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-
-        //mat4x4 rotationMatrix = glm::toMat4(rotation);
-        //mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = transformMatrix;//glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+        instanceMatrix = transformMatrix;
     }
 
     // Add Decorations
@@ -1178,9 +1175,6 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& tr
     // Setup Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-
-        //mat4x4 rotationMatrix = glm::toMat4(rotation);
-        //mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
         instanceMatrix = transformMatrix;
 
         _instanceMatrices.SetDirtyElement(instanceID);

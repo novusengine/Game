@@ -1,19 +1,17 @@
 #pragma once
 #include <Base/Types.h>
-#include <entt/fwd.hpp>
-
-#include <Base/Types.h>
 #include <Base/Util/Reflection.h>
 #include <Base/Container/ConcurrentQueue.h>
+#include <Base/Math/Math.h>
 
-#include "entt/entity/entity.hpp"
-#include "Base/Math/Math.h"
+#include <entt/fwd.hpp>
+#include <entt/entity/entity.hpp>
 
 namespace ECS::Components { struct Transform; }
 namespace Editor {class Inspector;}
 
-namespace ECS {
-
+namespace ECS
+{
     struct TransformSystem
     {
     public:
@@ -40,9 +38,7 @@ namespace ECS {
         void AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
 
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
-        void ParentEntityTo(entt::entity parent, entt::entity child);
-
-        
+        void ParentEntityTo(entt::entity parent, entt::entity child);        
 
         //iterates the children of a given node. NOT recursive
         //callback is in the form SceneComponent* child
@@ -196,7 +192,8 @@ namespace ECS::Components
             return parent != nullptr;
         }
 
-        void DetachParent() {
+        void DetachParent()
+        {
             if (parent)
             {
                 parent->children--;

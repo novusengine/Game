@@ -1,6 +1,6 @@
 #include "Game/ECS/Util/Transforms.h"
-#include <entt/entt.hpp>
 #include "Base/Util/DebugHandler.h"
+#include <entt/entt.hpp>
 
 // We are using Unitys Right Handed coordinate system
 // +X = right
@@ -14,7 +14,9 @@ ECS::TransformSystem& ECS::TransformSystem::Get(entt::registry& registry)
 {
     ECS::TransformSystem* tf = registry.ctx().find<ECS::TransformSystem>();
     if (tf)
+    { 
         return *tf;
+    }
     else
     {
         // initialize on demand

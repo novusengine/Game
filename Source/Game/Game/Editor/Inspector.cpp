@@ -350,7 +350,8 @@ namespace Editor
                 
                 //editing the transform component members directly to only go through the transform system for propagation once
                 vec3 pos = transform->position;
-                if (ImGui::DragFloat3("position", &pos.x)) {
+                if (ImGui::DragFloat3("position", &pos.x))
+                {
                     transform->position = pos;
                     needRefresh = true;
                 }
@@ -362,13 +363,15 @@ namespace Editor
                 }
 
                 vec3 scale = transform->scale;
-                if (ImGui::DragFloat3("scale", &scale.x)) {
+                if (ImGui::DragFloat3("scale", &scale.x))
+                {
                     transform->scale = scale;
                     needRefresh = true;
                 }
 
                 //if we have changed the transform components we need to update matrix and children
-                if (needRefresh) {
+                if (needRefresh)
+                {
                     //setting local position will refresh all
                     ECS::TransformSystem::Get(*registry).RefreshTransform(entity, *transform);
                 }
