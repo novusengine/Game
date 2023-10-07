@@ -1,6 +1,5 @@
 #include "CalculateCameraMatrices.h"
 
-
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
