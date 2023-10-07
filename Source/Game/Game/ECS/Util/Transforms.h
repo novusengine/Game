@@ -10,13 +10,13 @@
 #include "Base/Math/Math.h"
 
 namespace ECS::Components { struct Transform; }
+namespace Editor {class Inspector;}
 
 namespace ECS {
 
     struct TransformSystem
     {
     public:
-
         static TransformSystem& Get(entt::registry& registry);
 
         //api with entityID alone. Can do world transforms by accessing the scene component
@@ -28,6 +28,9 @@ namespace ECS {
         void SetLocalTransform(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
         void AddLocalOffset(entt::entity entity, const vec3& offset);
 
+        //manually flags the entity as moved. will refresh its matrix and do the same for children
+        void RefreshTransform(entt::entity entity, ECS::Components::Transform& transform);
+
         //api with transform component and entity ID to save lookup. Only local transforms
         void SetLocalPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition);
         void SetLocalRotation(entt::entity entity, ECS::Components::Transform& transform, const quat& newRotation);
@@ -38,6 +41,8 @@ namespace ECS {
 
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
         void ParentEntityTo(entt::entity parent, entt::entity child);
+
+        
 
         //iterates the children of a given node. NOT recursive
         //callback is in the form SceneComponent* child
@@ -82,7 +87,7 @@ namespace ECS::Components
     struct Transform
     {
         friend struct ECS::TransformSystem;
-
+        friend class Editor::Inspector;
     public:
         // We are using Unitys Right Handed coordinate system
         // +X = right
@@ -160,19 +165,8 @@ namespace ECS::Components
     {
         friend struct TransformSystem;
         friend struct Transform;
-    private:
-        mat4a matrix;
-        Transform* transform{};
-        entt::entity ownerEntity;
+        friend class Editor::Inspector;
 
-        SceneNode* parent{};
-        SceneNode* firstChild{};
-        SceneNode* nextSibling{};
-        SceneNode* prevSibling{};
-        int children{ 0 };
-
-        //makes the component use pointer stable references in entt. do not remove
-        static constexpr auto in_place_delete = true;
     public:
         SceneNode(Transform* tf, entt::entity owner)
         {
@@ -182,8 +176,6 @@ namespace ECS::Components
         }
         ~SceneNode()
         {
-            //disconnect properly
-
             //separate from parent
             DetachParent();
 
@@ -292,6 +284,20 @@ namespace ECS::Components
                 matrix = transform->GetLocalMatrix();
             }
         }
+
+    private:
+        mat4a matrix;
+        Transform* transform{};
+        entt::entity ownerEntity;
+
+        SceneNode* parent{};
+        SceneNode* firstChild{};
+        SceneNode* nextSibling{};
+        SceneNode* prevSibling{};
+        int children{ 0 };
+
+        //makes the component use pointer stable references in entt. do not remove
+        static constexpr auto in_place_delete = true;
     };
 }
 
@@ -317,18 +323,18 @@ inline const vec3 ECS::Components::Transform::GetWorldPosition() const
 }
 
 template<typename F>
-void ECS::TransformSystem::IterateChildren(entt::entity node, F&& callback)
+void ECS::TransformSystem::IterateChildren(entt::entity entity, F&& callback)
 {
     ECS::Components::SceneNode* node = owner->try_get<ECS::Components::SceneNode>(entity);
     if(!node) return;
 
-    SceneNode* c = firstChild;
+    ECS::Components::SceneNode* c = node->firstChild;
     if (c) {
 
         callback(c);
         c = c->nextSibling;
 
-        while (c != firstChild) {
+        while (c != node->firstChild) {
             callback(c);
             c = c->nextSibling;
         }
@@ -339,5 +345,4 @@ REFL_TYPE(ECS::Components::Transform)
 //REFL_FIELD(position)
 //REFL_FIELD(rotation)
 //REFL_FIELD(scale, Reflection::DragSpeed(0.1f))
-
 REFL_END

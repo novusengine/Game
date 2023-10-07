@@ -295,23 +295,9 @@ namespace Editor
             ImGui::Text("Selected entity (%d) has no name component", entity);
         }
 
-        bool isDirty = false;
-        ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
-        if (transform)
-        {
-            isDirty |= DrawGizmo(registry, entity, *transform);
-        }
-
         Util::Imgui::Inspect(*name);
 
-        if (transform)
-        {
-            isDirty |= Util::Imgui::Inspect(*transform);
-            if (isDirty)
-            {
-                transform->SetDirty(ECS::TransformSystem::Get(*registry), entity);
-            }
-        }
+        InspectEntityTransforms(entity);
 
         ECS::Components::Model* model = registry->try_get<ECS::Components::Model>(entity);
         if (model)
@@ -324,6 +310,7 @@ namespace Editor
         if (CVAR_InspectorOBBShowFlag.Get() == ShowFlag::ENABLED)
         {
             ECS::Components::AABB* aabb = registry->try_get<ECS::Components::AABB>(entity);
+            ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
             if (transform && aabb)
             {
                 // Apply the transform's position and scale to the AABB's center and extents
@@ -343,6 +330,121 @@ namespace Editor
                 debugRenderer->DrawAABB3D(center, extents, Color::Green);
             }
         }
+    }
+
+    void Inspector::InspectEntityTransforms(entt::entity entity)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        bool isDirty = false;
+        ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1));
+        
+        if (transform)
+        {
+            isDirty |= DrawGizmo(registry, entity, *transform);
+
+            if (Util::Imgui::BeginGroupPanel("Transform"))
+            {
+                bool needRefresh = false;
+                
+                //editing the transform component members directly to only go through the transform system for propagation once
+                vec3 pos = transform->position;
+                if (ImGui::DragFloat3("position", &pos.x)) {
+                    transform->position = pos;
+                    needRefresh = true;
+                }
+
+                vec3 eulerAngles = glm::degrees(glm::eulerAngles(transform->rotation) ) ;
+                if (ImGui::DragFloat3("rotation", &eulerAngles.x)) {
+                    transform->rotation = glm::quat(glm::radians(eulerAngles));
+                    needRefresh = true;
+                }
+
+                vec3 scale = transform->scale;
+                if (ImGui::DragFloat3("scale", &scale.x)) {
+                    transform->scale = scale;
+                    needRefresh = true;
+                }
+
+                //if we have changed the transform components we need to update matrix and children
+                if (needRefresh) {
+                    //setting local position will refresh all
+                    ECS::TransformSystem::Get(*registry).RefreshTransform(entity, *transform);
+                }
+            }
+            Util::Imgui::EndGroupPanel();
+
+
+            ECS::Components::SceneNode* node = registry->try_get<ECS::Components::SceneNode>(entity);
+
+            if (node) {
+                if (Util::Imgui::BeginGroupPanel("SceneNode"))
+                {
+                    if (node->parent)
+                    {
+                        ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(node->parent->ownerEntity);
+                        if (name) {
+
+                            ImGui::Text("Parent: ");
+                            ImGui::SameLine();
+                            if (ImGui::Button(name->name.c_str()))
+                            {
+                                SelectEntity(node->parent->ownerEntity);
+                            }
+                        }
+                    }
+                    else {
+                        ImGui::Text("Parent: %s", "none");
+                    }
+
+                    //draw children on a scroll bar
+                    if (node->firstChild)
+                    {
+                        struct ChildElement
+                        {
+                            ECS::Components::Name* name;
+                            entt::entity et;
+                        };
+                       
+                        //copy all the children of this scenenode into array for display
+                        std::vector<ChildElement> nameComps;
+                        ECS::TransformSystem::Get(*registry).IterateChildren(entity, [&](ECS::Components::SceneNode* child)
+                        {
+                            if (child && child->ownerEntity != entt::null)
+                            {
+                                ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(child->ownerEntity);
+                                if (name) {
+                                    nameComps.push_back({name,child->ownerEntity});
+                                }
+                            }
+                        });
+
+                        ImGui::Text(" %i children", nameComps.size());
+
+                        if (ImGui::BeginChild("childcomps",{0.f,200.f}))
+                        {
+                            for (const auto& c : nameComps)
+                            {   
+                                //evil hackery converting an entityID into a void* to use on the ID system
+                                ImGui::PushID((void*)c.et);
+                                if (ImGui::Button(c.name->name.c_str()))
+                                {
+                                    SelectEntity(c.et);
+                                }
+                                ImGui::PopID();
+                            }
+                        }
+                        ImGui::EndChild();
+                    }
+                }
+
+                Util::Imgui::EndGroupPanel();
+            }
+        }
+
+        ImGui::PopStyleColor();
     }
 
     bool Inspector::DrawGizmo(entt::registry* registry, entt::entity entity, ECS::Components::Transform& transform)

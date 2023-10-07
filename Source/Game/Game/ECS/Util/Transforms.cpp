@@ -27,7 +27,6 @@ ECS::TransformSystem& ECS::TransformSystem::Get(entt::registry& registry)
 void ECS::TransformSystem::SetLocalPosition(entt::entity entity, const vec3& newPosition)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-
     if (tf)
     {
         SetLocalPosition(entity, *tf, newPosition);
@@ -37,7 +36,6 @@ void ECS::TransformSystem::SetLocalPosition(entt::entity entity, const vec3& new
 void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& newPosition)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-
     if (tf)
     {
         // we have a parent, need to calculate the transform properly
@@ -59,7 +57,6 @@ void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& new
 void ECS::TransformSystem::SetLocalRotation(entt::entity entity, const quat& newRotation)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-
     if (tf)
     {
         SetLocalRotation(entity, *tf, newRotation);
@@ -69,7 +66,6 @@ void ECS::TransformSystem::SetLocalRotation(entt::entity entity, const quat& new
 void ECS::TransformSystem::SetLocalScale(entt::entity entity, const vec3& newScale)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-
     if (tf)
     {
         SetLocalScale(entity, *tf, newScale);
@@ -100,17 +96,22 @@ void ECS::TransformSystem::AddLocalOffset(entt::entity entity, const vec3& offse
         AddLocalOffset(entity, *tf, offset);
 }
 
+void ECS::TransformSystem::RefreshTransform(entt::entity entity, ECS::Components::Transform& transform)
+{
+    transform.SetDirty(*this, entity);
+    if (transform.ownerNode)
+    {
+        transform.ownerNode->RefreshMatrix();
+        transform.ownerNode->PropagateMatrixToChildren(this);
+    }
+}
+
 void ECS::TransformSystem::SetLocalPosition(entt::entity entity, ECS::Components::Transform& transform, const vec3& newPosition)
 {
     if (newPosition != transform.position)
     {
-        transform.position = newPosition;
-        transform.SetDirty(*this, entity);
-        if (transform.ownerNode)
-        {
-            transform.ownerNode->RefreshMatrix();
-            transform.ownerNode->PropagateMatrixToChildren(this);
-        }
+        transform.position = newPosition; 
+        RefreshTransform(entity,transform);
     }
 }
 
@@ -119,12 +120,7 @@ void ECS::TransformSystem::SetLocalRotation(entt::entity entity, ECS::Components
     if (newRotation != transform.rotation)
     {
         transform.rotation = newRotation;
-        transform.SetDirty(*this, entity);
-        if (transform.ownerNode)
-        {
-            transform.ownerNode->RefreshMatrix();
-            transform.ownerNode->PropagateMatrixToChildren(this);
-        }
+        RefreshTransform(entity, transform);
     }
 }
 
@@ -133,12 +129,7 @@ void ECS::TransformSystem::SetLocalScale(entt::entity entity, ECS::Components::T
     if (newScale != transform.scale)
     {
         transform.scale = newScale;
-        transform.SetDirty(*this, entity);
-        if (transform.ownerNode)
-        {
-            transform.ownerNode->RefreshMatrix();
-            transform.ownerNode->PropagateMatrixToChildren(this);
-        }
+        RefreshTransform(entity, transform);
     }
 }
 
@@ -151,12 +142,7 @@ void ECS::TransformSystem::SetLocalPositionAndRotation(entt::entity entity,
     {
         transform.position = newPosition;
         transform.rotation = newRotation;
-        transform.SetDirty(*this, entity);
-        if (transform.ownerNode)
-        {
-            transform.ownerNode->RefreshMatrix();
-            transform.ownerNode->PropagateMatrixToChildren(this);
-        }
+        RefreshTransform(entity, transform);
     }
 }
 
@@ -171,24 +157,14 @@ void ECS::TransformSystem::SetLocalTransform(entt::entity entity,
         transform.position = newPosition;
         transform.rotation = newRotation;
         transform.scale = newScale;
-        transform.SetDirty(*this, entity);
-        if (transform.ownerNode)
-        {
-            transform.ownerNode->RefreshMatrix();
-            transform.ownerNode->PropagateMatrixToChildren(this);
-        }
+        RefreshTransform(entity, transform);
     }
 }
 
 void ECS::TransformSystem::AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset)
 {
     transform.position += offset;
-    transform.SetDirty(*this, entity);
-    if (transform.ownerNode)
-    {
-        transform.ownerNode->RefreshMatrix();
-        transform.ownerNode->PropagateMatrixToChildren(this);
-    }
+    RefreshTransform(entity, transform);
 }
 
 void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity child)
