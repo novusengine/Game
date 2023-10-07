@@ -192,10 +192,10 @@ f32 GameRenderer::Render()
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
 
+    vec2 windowSize = _renderer->GetWindowSize();
+
     if (!isEditorMode)
     {
-        vec2 windowSize = _renderer->GetWindowSize();
-
         if (windowSize.x != _lastWindowSize.x || windowSize.y != _lastWindowSize.y)
         {
             _renderer->SetRenderSize(windowSize);
@@ -204,7 +204,15 @@ f32 GameRenderer::Render()
     }
     else
     {
-        _lastWindowSize = vec2(1, 1);
+        vec2 viewportSize = editorHandler->GetViewport()->GetViewportSize();
+        viewportSize.x = glm::clamp(viewportSize.x, 1.0f, windowSize.x);
+        viewportSize.y = glm::clamp(viewportSize.y, 1.0f, windowSize.y);
+
+        if (viewportSize.x != _lastWindowSize.x || viewportSize.y != _lastWindowSize.y)
+        {
+            _renderer->SetRenderSize(viewportSize);
+            _lastWindowSize = viewportSize;
+        }
     }
 
     if (_resources.cameras.SyncToGPU(_renderer))

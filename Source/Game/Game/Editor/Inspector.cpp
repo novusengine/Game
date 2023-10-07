@@ -223,6 +223,7 @@ namespace Editor
             pixelQuery->FreeToken(_activeToken);
             _activeToken = 0;
         }
+
         _hierarchy->SelectEntity(entt::null);
         _selectedEntity = entt::null;
     }
@@ -259,7 +260,11 @@ namespace Editor
             return false;
         }
 
-        vec2 mousePos = inputManager->GetMousePosition();
+        vec2 mousePos;
+        if (!_viewport->GetMousePosition(mousePos))
+        {
+            return false;
+        }
 
         // Check if we need to free the previous _queriedToken
         {
