@@ -16,7 +16,7 @@ namespace ECS::Systems
         transformQueue.ProcessMovedEntities([&](entt::entity entity)
             {
                 registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
-        });
+            });
 
         auto view = registry.view<Components::DirtyTransform>();
         view.each([&](entt::entity entity,  ECS::Components::DirtyTransform& dirtyTransform)

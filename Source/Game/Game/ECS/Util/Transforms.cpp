@@ -27,10 +27,9 @@ ECS::TransformSystem& ECS::TransformSystem::Get(entt::registry& registry)
 void ECS::TransformSystem::SetLocalPosition(entt::entity entity, const vec3& newPosition)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-    if (tf)
-    {
-        SetLocalPosition(entity, *tf, newPosition);
-    }
+
+    if (tf) SetLocalPosition(entity, *tf, newPosition);
+
 }
 
 void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& newPosition)
@@ -57,43 +56,34 @@ void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& new
 void ECS::TransformSystem::SetLocalRotation(entt::entity entity, const quat& newRotation)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-    if (tf)
-    {
-        SetLocalRotation(entity, *tf, newRotation);
-    }
+    if (tf) SetLocalRotation(entity, *tf, newRotation);
 }
 
 void ECS::TransformSystem::SetLocalScale(entt::entity entity, const vec3& newScale)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
-    if (tf)
-    {
-        SetLocalScale(entity, *tf, newScale);
-    }
+    if (tf) SetLocalScale(entity, *tf, newScale);
 }
 
 void ECS::TransformSystem::SetLocalPositionAndRotation(entt::entity entity, const vec3& newPosition, const quat& newRotation)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
-    if (tf)
-        SetLocalPositionAndRotation(entity, *tf, newPosition, newRotation);
+    if (tf) SetLocalPositionAndRotation(entity, *tf, newPosition, newRotation);
 }
 
 void ECS::TransformSystem::SetLocalTransform(entt::entity entity, const vec3& newPosition, const quat& newRotation, const vec3& newScale)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
-    if (tf)
-        SetLocalTransform(entity, *tf, newPosition, newRotation, newScale);
+    if (tf) SetLocalTransform(entity, *tf, newPosition, newRotation, newScale);
 }
 
 void ECS::TransformSystem::AddLocalOffset(entt::entity entity, const vec3& offset)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
-    if (tf)
-        AddLocalOffset(entity, *tf, offset);
+    if (tf) AddLocalOffset(entity, *tf, offset);
 }
 
 void ECS::TransformSystem::RefreshTransform(entt::entity entity, ECS::Components::Transform& transform)
@@ -190,7 +180,5 @@ void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity chil
     childNode.SetParent(&parentNode);
 
     // set child matrix as dirty, and propagate matrices down in case the child object has its own children
-    tfc->SetDirty(*this, child);
-    childNode.RefreshMatrix();
-    childNode.PropagateMatrixToChildren(this);
+    RefreshTransform(child,*tfc);
 }
