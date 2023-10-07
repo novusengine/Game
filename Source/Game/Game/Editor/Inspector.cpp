@@ -426,7 +426,7 @@ namespace Editor
 
                         ImGui::Text(" %i children", nameComps.size());
 
-                        if (ImGui::BeginChild("childcomps",{0.f,200.f}))
+                        if (ImGui::BeginChild("childcomps",{0.0f,200.0f}))
                         {
                             for (const auto& c : nameComps)
                             {   
