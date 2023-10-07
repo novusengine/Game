@@ -329,20 +329,14 @@ void ECS::TransformSystem::IterateChildren(entt::entity entity, F&& callback)
     if(!node) return;
 
     ECS::Components::SceneNode* c = node->firstChild;
-    if (c) {
-
+    if (c)
+    {
         callback(c);
         c = c->nextSibling;
-
-        while (c != node->firstChild) {
+        while (c != node->firstChild)
+        {
             callback(c);
             c = c->nextSibling;
         }
     }
 }
-
-REFL_TYPE(ECS::Components::Transform)
-//REFL_FIELD(position)
-//REFL_FIELD(rotation)
-//REFL_FIELD(scale, Reflection::DragSpeed(0.1f))
-REFL_END

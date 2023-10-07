@@ -336,14 +336,13 @@ namespace Editor
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-        bool isDirty = false;
         ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
 
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1));
         
         if (transform)
         {
-            isDirty |= DrawGizmo(registry, entity, *transform);
+            DrawGizmo(registry, entity, *transform);
 
             if (Util::Imgui::BeginGroupPanel("Transform"))
             {
@@ -378,15 +377,15 @@ namespace Editor
 
 
             ECS::Components::SceneNode* node = registry->try_get<ECS::Components::SceneNode>(entity);
-
-            if (node) {
+            if (node)
+            {
                 if (Util::Imgui::BeginGroupPanel("SceneNode"))
                 {
                     if (node->parent)
                     {
                         ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(node->parent->ownerEntity);
-                        if (name) {
-
+                        if (name)
+                        {
                             ImGui::Text("Parent: ");
                             ImGui::SameLine();
                             if (ImGui::Button(name->name.c_str()))
@@ -395,7 +394,8 @@ namespace Editor
                             }
                         }
                     }
-                    else {
+                    else
+                    {
                         ImGui::Text("Parent: %s", "none");
                     }
 
@@ -443,7 +443,6 @@ namespace Editor
                 Util::Imgui::EndGroupPanel();
             }
         }
-
         ImGui::PopStyleColor();
     }
 
