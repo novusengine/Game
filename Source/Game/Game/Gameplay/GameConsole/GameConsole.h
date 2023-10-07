@@ -36,11 +36,15 @@ public:
 		char buffer[FormatBufferSize];
 		i32 length = StringUtils::FormatString(buffer, FormatBufferSize, string.c_str(), args...);
 
-		_linesToAppend.enqueue("[Success] : " + std::string(buffer, length));
+		if (length == 0)
+			return;
+
+		std::string result = std::string(buffer, length);
+		_linesToAppend.enqueue("[Success] : " + result);
 
 		if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
 		{
-			DebugHandler::PrintSuccess(string, args...);
+			DebugHandler::Print("{0}", result);
 		}
 	}
 

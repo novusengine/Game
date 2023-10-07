@@ -237,6 +237,9 @@ namespace Editor
         if (!CVAR_InspectorEnabled.Get())
             return false;
 
+        if (ImGuizmo::IsOver())
+            return false;
+
         ZoneScoped;
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -469,7 +472,6 @@ namespace Editor
 
         if (isDirty)
         {
-            
             vec3 eulerAngles;
             vec3 position = (transform.GetWorldPosition());
             vec3 scale = (transform.GetWorldPosition());
