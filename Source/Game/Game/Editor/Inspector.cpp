@@ -338,7 +338,7 @@ namespace Editor
 
         ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
 
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
         
         if (transform)
         {

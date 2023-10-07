@@ -99,17 +99,17 @@ namespace ECS::Components
 
         vec3 GetLocalForward() const
         {
-            return glm::toMat4(rotation) * vec4(WORLD_FORWARD, 0);
+            return glm::toMat4(rotation) * vec4(WORLD_FORWARD, 0.0f);
         }
 
         vec3 GetLocalRight() const
         {
-            return glm::toMat4(rotation) * vec4(WORLD_RIGHT, 0);
+            return glm::toMat4(rotation) * vec4(WORLD_RIGHT, 0.0f);
         }
 
         vec3 GetLocalUp() const
         {
-            return glm::toMat4(rotation) * vec4(WORLD_UP, 0);
+            return glm::toMat4(rotation) * vec4(WORLD_UP, 0.0f);
         }
 
         mat4x4 GetMatrix() const;
