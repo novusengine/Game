@@ -293,13 +293,6 @@ namespace ECS::Components
             }
         }
     };
-
-    //packed non-ECS scenenode with transform and scenenode
-    struct StandaloneNode
-    {
-        SceneNode node;
-        Transform transform;
-    };
 }
 
 inline mat4x4 ECS::Components::Transform::GetMatrix() const
