@@ -324,7 +324,7 @@ template<typename F>
 void ECS::TransformSystem::IterateChildren(entt::entity entity, F&& callback)
 {
     ECS::Components::SceneNode* node = owner->try_get<ECS::Components::SceneNode>(entity);
-    if(!node) return;
+    if (!node) return;
 
     ECS::Components::SceneNode* c = node->firstChild;
     if (c)

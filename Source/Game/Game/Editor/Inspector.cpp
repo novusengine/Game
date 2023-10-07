@@ -356,8 +356,9 @@ namespace Editor
                     needRefresh = true;
                 }
 
-                vec3 eulerAngles = glm::degrees(glm::eulerAngles(transform->rotation) ) ;
-                if (ImGui::DragFloat3("rotation", &eulerAngles.x)) {
+                vec3 eulerAngles = glm::degrees(glm::eulerAngles(transform->rotation));
+                if (ImGui::DragFloat3("rotation", &eulerAngles.x))
+                {
                     transform->rotation = glm::quat(glm::radians(eulerAngles));
                     needRefresh = true;
                 }
@@ -377,7 +378,6 @@ namespace Editor
                 }
             }
             Util::Imgui::EndGroupPanel();
-
 
             ECS::Components::SceneNode* node = registry->try_get<ECS::Components::SceneNode>(entity);
             if (node)
@@ -418,7 +418,8 @@ namespace Editor
                             if (child && child->ownerEntity != entt::null)
                             {
                                 ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(child->ownerEntity);
-                                if (name) {
+                                if (name)
+                                {
                                     nameComps.push_back({name,child->ownerEntity});
                                 }
                             }
@@ -479,7 +480,8 @@ namespace Editor
             {
                 ECS::TransformSystem::Get(*registry).SetWorldPosition(entity, position);
             }
-            else {
+            else
+            {
                 ECS::TransformSystem::Get(*registry).SetLocalTransform(entity, position, glm::quat(glm::radians(eulerAngles)), scale);
             }
         }
