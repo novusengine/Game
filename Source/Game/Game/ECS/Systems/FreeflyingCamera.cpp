@@ -98,8 +98,7 @@ namespace ECS::Systems
         Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
         Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
 
-        glm::vec3 cameraOffset = glm::vec3(0.f, 0.f, 0.f);
-
+        vec3 cameraOffset = glm::vec3(0.0f, 0.0f, 0.0f);
         // Input
         if (_keybindGroup->IsKeybindPressed("Forward"_h))
         {

@@ -31,7 +31,6 @@ void ECS::TransformSystem::SetLocalPosition(entt::entity entity, const vec3& new
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
 
     if (tf) SetLocalPosition(entity, *tf, newPosition);
-
 }
 
 void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& newPosition)

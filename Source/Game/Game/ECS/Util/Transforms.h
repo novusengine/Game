@@ -8,7 +8,7 @@
 #include <entt/entity/entity.hpp>
 
 namespace ECS::Components { struct Transform; }
-namespace Editor {class Inspector;}
+namespace Editor { class Inspector; }
 
 namespace ECS
 {
