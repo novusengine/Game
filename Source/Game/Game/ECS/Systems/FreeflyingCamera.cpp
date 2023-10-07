@@ -104,7 +104,6 @@ namespace ECS::Systems
         if (_keybindGroup->IsKeybindPressed("Forward"_h))
         {
             cameraOffset += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
-            // cameraTransform.position += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
         if (_keybindGroup->IsKeybindPressed("Backward"_h))

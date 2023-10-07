@@ -36,7 +36,13 @@ namespace ECS {
         void SetLocalTransform(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation, const vec3& newscale);
         void AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
 
+        //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
         void ParentEntityTo(entt::entity parent, entt::entity child);
+
+        //iterates the children of a given node. NOT recursive
+        //callback is in the form SceneComponent* child
+        template<typename F>
+        void IterateChildren(entt::entity node, F&& callback);
 
         template<typename F>
         void ProcessMovedEntities(F&& fn)
@@ -70,6 +76,9 @@ namespace ECS::Components
         u64 dirtyFrame = 0;
     };
 
+    //Transform component for handling entity positions/rotations/scale
+    //Can be used without a scenenode connection, in that case the transform will work in world space and recalculate the matrix on-demand
+    //The components are not directly accessible. Use the transform system to modify them so that matrix refreshing and scenenode hierarchy is updated properly
     struct Transform
     {
         friend struct ECS::TransformSystem;
@@ -116,16 +125,19 @@ namespace ECS::Components
             }
         }
 
-        const vec3& GetLocalPosition() const {
+        const vec3& GetLocalPosition() const
+        {
             return position;
         }
 
         const vec3 GetWorldPosition() const;
 
-        const quat& GetLocalRotation() const {
+        const quat& GetLocalRotation() const
+        {
             return rotation;
         }
-        const vec3& GetLocalScale() const {
+        const vec3& GetLocalScale() const
+        {
             return scale;
         }
 
@@ -137,125 +149,154 @@ namespace ECS::Components
         vec3 scale = vec3(1.0f, 1.0f, 1.0f);
     };
 
-    struct SceneNode {
+    //scene node component that holds the information for parenting and children of a given entity or node
+    // avoid using it directly, instead using the functions on TransformSystem to handle parenting and iterating children
+    //it builds an intrusive double linked list for the siblings of the same parent. 
+    //in the case a parent has only 1 child, the sibling list will point to the same object.
+    //a scene node cant work on its own, it must have a valid pointer to a Transform component. 
+    //when a transform component is connected to a scene node, it uses the scenenode matrix to hold the world matrix of the object.
+    //the matrix must be refreshed with RefreshMatrix every time the transform component updates its values
+    struct SceneNode
+    {
+        friend struct TransformSystem;
+        friend struct Transform;
+    private:
         mat4a matrix;
         Transform* transform{};
         entt::entity ownerEntity;
 
         SceneNode* parent{};
         SceneNode* firstChild{};
-        SceneNode* nextBrother{};
-        SceneNode* prevBrother{};
+        SceneNode* nextSibling{};
+        SceneNode* prevSibling{};
         int children{ 0 };
 
         //makes the component use pointer stable references in entt. do not remove
         static constexpr auto in_place_delete = true;
-
-        SceneNode(Transform* tf, entt::entity owner) {
-
+    public:
+        SceneNode(Transform* tf, entt::entity owner)
+        {
             transform = tf;
             tf->ownerNode = this;
             ownerEntity = owner;
         }
-        ~SceneNode() {
+        ~SceneNode()
+        {
             //disconnect properly
 
             //separate from parent
-            detachParent();
+            DetachParent();
 
             SceneNode* c = firstChild;
             //unparent children
-            while (c) {
-                SceneNode* next = c->nextBrother;
-                c->nextBrother = nullptr;
-                c->prevBrother = nullptr;
+            while (c)
+            {
+                SceneNode* next = c->nextSibling;
+                c->nextSibling = nullptr;
+                c->prevSibling = nullptr;
                 c->parent = nullptr;
                 c = next;
             }
         }
 
-        void detachParent() {
-            if (parent) {
+        bool HasParent() const
+        {
+            return parent != nullptr;
+        }
+
+        void DetachParent() {
+            if (parent)
+            {
                 parent->children--;
-                //its a circular linked list, if brother == node, its a single-child
-                if (nextBrother == this) {
+                //its a circular linked list, if Sibling == node, its a single-child
+                if (nextSibling == this)
+                {
                     parent->firstChild = nullptr;
                 }
-                else {
-                    prevBrother->nextBrother = nextBrother;
-                    nextBrother->prevBrother = prevBrother;
+                else
+                {
+                    prevSibling->nextSibling = nextSibling;
+                    nextSibling->prevSibling = prevSibling;
                 }
 
-                nextBrother = nullptr;
-                prevBrother = nullptr;
+                nextSibling = nullptr;
+                prevSibling = nullptr;
                 parent = nullptr;
             }
         }
 
-        void setParent(SceneNode* newParent) {
+        void SetParent(SceneNode* newParent)
+        {
             if (parent == newParent) return; //already a child of this
 
-
-            detachParent();
+            DetachParent();
             newParent->children++;
             //parent has no children
-            if (newParent->firstChild == nullptr) {
+            if (newParent->firstChild == nullptr)
+            {
                 newParent->firstChild = this;
-                prevBrother = this;
-                nextBrother = this;
+                prevSibling = this;
+                nextSibling = this;
             }
-            else {
+            else
+            {
                 //insert after the firstchild
-                nextBrother = newParent->firstChild->nextBrother;
-                prevBrother = newParent->firstChild;
+                nextSibling = newParent->firstChild->nextSibling;
+                prevSibling = newParent->firstChild;
 
-                prevBrother->nextBrother = this;
-                nextBrother->prevBrother = this;
+                prevSibling->nextSibling = this;
+                nextSibling->prevSibling = this;
             }
-
             parent = newParent;
         }
 
         //updates transform matrix of the children. does not recalculate matrix
         // the dirty queue can be kept as null if you dont want the nodes to get added to the dirty transform list
-        inline void propagate_matrix(TransformSystem* dirtyQueue) {
-
+        inline void PropagateMatrixToChildren(TransformSystem* dirtyQueue)
+        {
             SceneNode* c = firstChild;
-            if (c) {
-                if (dirtyQueue) {
+            if (c)
+            {
+                if (dirtyQueue)
+                {
                     c->transform->SetDirty(*dirtyQueue, c->ownerEntity);
                 }
 
-                c->refresh_matrix();
-                c->propagate_matrix(dirtyQueue);
-                c = c->nextBrother;
+                c->RefreshMatrix();
+                c->PropagateMatrixToChildren(dirtyQueue);
+                c = c->nextSibling;
 
-                while (c != firstChild) {
-                    if (dirtyQueue) {
+                while (c != firstChild)
+                {
+                    if (dirtyQueue)
+                    {
                         c->transform->SetDirty(*dirtyQueue, c->ownerEntity);
                     }
 
-                    c->refresh_matrix();
-                    c->propagate_matrix(dirtyQueue);
-                    c = c->nextBrother;
+                    c->RefreshMatrix();
+                    c->PropagateMatrixToChildren(dirtyQueue);
+                    c = c->nextSibling;
                 }
             }
         }
 
         //recalculates the matrix. If the scene-node has a parent, it gets transform root from it
-        inline void refresh_matrix() {
+        inline void RefreshMatrix()
+        {
             if (parent)
             {
                 matrix = Math::AffineMatrix::MatrixMul(parent->matrix, transform->GetLocalMatrix());
             }
-            else {
+            else
+            {
                 matrix = transform->GetLocalMatrix();
             }
         }
     };
 
     //packed non-ECS scenenode with transform and scenenode
-    struct StandaloneNode {
+    struct StandaloneNode
+    {
         SceneNode node;
         Transform transform;
     };
@@ -263,27 +304,41 @@ namespace ECS::Components
 
 inline mat4x4 ECS::Components::Transform::GetMatrix() const
 {
-    if (ownerNode) {
+    if (ownerNode)
+    {
         mat4x4 mt = ownerNode->matrix;
         mt[3][3] = 1.f; //glm does not finish the matrix properly when transforming m4a into m4x4
         return mt;
     }
-    else {
+    else
+    {
         mat4x4 mt = GetLocalMatrix();
         mt[3][3] = 1.f; //glm does not finish the matrix properly when transforming m4a into m4x4
         return mt;
     }
 }
 
-inline const vec3 ECS::Components::Transform::GetWorldPosition() const {
+inline const vec3 ECS::Components::Transform::GetWorldPosition() const
+{
+    return ownerNode ? ownerNode->matrix[3] : GetLocalPosition();
+}
 
-    if (ownerNode) {
-        //calculate world position by transforming a zero vector
-        //vec4 vct = ownerNode->matrix * glm::vec3{ 0.f, 0.f, 0.f};
-        return ownerNode->matrix[3];//vct;
-    }
-    else {
-        return GetLocalPosition();
+template<typename F>
+void ECS::TransformSystem::IterateChildren(entt::entity node, F&& callback)
+{
+    ECS::Components::SceneNode* node = owner->try_get<ECS::Components::SceneNode>(entity);
+    if(!node) return;
+
+    SceneNode* c = firstChild;
+    if (c) {
+
+        callback(c);
+        c = c->nextSibling;
+
+        while (c != firstChild) {
+            callback(c);
+            c = c->nextSibling;
+        }
     }
 }
 
