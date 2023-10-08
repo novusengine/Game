@@ -48,6 +48,7 @@ namespace Editor
 		void SelectModel(u32 instanceID);
 
 		void InspectEntity(entt::entity entity);
+		void InspectEntityTransforms(entt::entity entity);
 		bool DrawGizmo(entt::registry* registry, entt::entity entity, ECS::Components::Transform& transform);
 		void DrawGizmoControls();
 

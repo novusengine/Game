@@ -114,7 +114,7 @@ public:
             return false;
         }
 
-        StringTable& stringTable = mapDB.entries.stringTable;
+        Novus::Container::StringTable& stringTable = mapDB.entries.stringTable;
 
         u32 numRecords = static_cast<u32>(mapDB.entries.data.size());
         mapDB.mapNames.reserve(numRecords);

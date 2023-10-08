@@ -51,6 +51,9 @@ public:
 		u32 numTextureUnits = 0;
 
 		u32 numBones = 0;
+
+		u32 numDecorationSets = 0;
+		u32 numDecorations = 0;
 	};
 
 	struct ModelManifest
@@ -75,6 +78,12 @@ public:
 
 		u32 numBones = 0;
 		u32 numTextureTransforms = 0;
+
+		u32 decorationSetOffset = 0;
+		u32 numDecorationSets = 0;
+
+		u32 decorationOffset = 0;
+		u32 numDecorations = 0;
 
 		bool isAnimated = false;
 	};
@@ -136,8 +145,8 @@ public:
 	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
 	u32 AddPlacementInstance(u32 modelID, const Terrain::Placement& placement);
-	u32 AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
-	void ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale);
+	u32 AddInstance(u32 modelID, const mat4x4& transformMatrix);
+	void ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix);
 
 	bool AddAnimationInstance(u32 instanceID);
 	bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
@@ -190,6 +199,12 @@ private:
 
 	std::vector<ModelManifest> _modelManifests;
 	std::atomic<u32> _modelManifestsIndex = 0;
+
+	std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
+	std::atomic<u32> _modelDecorationSetsIndex = 0;
+
+	std::vector<Model::ComplexModel::Decoration> _modelDecorations;
+	std::atomic<u32> _modelDecorationsIndex = 0;
 
 	std::vector<u32> _modelIDToNumInstances;
 	std::mutex _modelIDToNumInstancesMutex;

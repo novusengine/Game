@@ -31,6 +31,24 @@ public:
 	}
 
 	template <typename... Args>
+	void PrintSuccess(const std::string& string, Args... args)
+	{
+		char buffer[FormatBufferSize];
+		i32 length = StringUtils::FormatString(buffer, FormatBufferSize, string.c_str(), args...);
+
+		if (length == 0)
+			return;
+
+		std::string result = std::string(buffer, length);
+		_linesToAppend.enqueue("[Success] : " + result);
+
+		if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+		{
+			DebugHandler::Print("{0}", result);
+		}
+	}
+
+	template <typename... Args>
 	void PrintWarning(const std::string& string, Args... args)
 	{
 		char buffer[FormatBufferSize];

@@ -29,7 +29,7 @@ WaterRenderer::WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
     , _renderer(renderer)
 	, _debugRenderer(debugRenderer)
 {
-    if (CVAR_TerrainValidateTransfers.Get())
+    if (CVAR_WaterValidateTransfers.Get())
     {
         _vertices.SetValidation(true);
         _indices.SetValidation(true);

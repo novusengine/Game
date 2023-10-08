@@ -17,5 +17,5 @@ private:
         commandHandlers[id] = handler;
     }
 
-    robin_hood::unordered_map<u16, std::function<bool(GameConsole*, std::vector<std::string>)>> commandHandlers;
+    robin_hood::unordered_map<u16, std::function<bool(GameConsole*, std::vector<std::string>&)>> commandHandlers;
 };

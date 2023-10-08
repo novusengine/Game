@@ -1,15 +1,16 @@
 #include "ModelRenderer.h"
 
-#include <Game/Rendering/CullUtils.h>
-#include <Game/Rendering/RenderUtils.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Rendering/RenderResources.h>
-#include <Game/Rendering/Debug/DebugRenderer.h>
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Application/EnttRegistries.h>
-#include <Game/ECS/Singletons/TextureSingleton.h>
-#include <Game/ECS/Components/Transform.h>
-#include <Game/ECS/Components/Model.h>
+#include "Game/Rendering/CullUtils.h"
+#include "Game/Rendering/RenderUtils.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/RenderResources.h"
+#include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Util/ServiceLocator.h"
+#include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Singletons/TextureSingleton.h"
+#include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Util/Transforms.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -45,7 +46,7 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
     , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
-    
+
     if (CVAR_ModelValidateTransfers.Get())
     {
         _vertices.SetValidation(true);
@@ -76,15 +77,15 @@ void ModelRenderer::Update(f32 deltaTime)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
-    {
-        u32 instanceID = model.instanceID;
+        {
+            u32 instanceID = model.instanceID;
 
-        std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
-        mat4x4& matrix = instanceMatrices[instanceID];
+            std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
+            mat4x4& matrix = instanceMatrices[instanceID];
 
-        matrix = transform.GetMatrix();
-        _instanceMatrices.SetDirtyElement(instanceID);
-    });
+            matrix = transform.GetMatrix();
+            _instanceMatrices.SetDirtyElement(instanceID);
+        });
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);
@@ -122,6 +123,12 @@ void ModelRenderer::Clear()
 
     _animatedVertices.Clear(false);
     _animatedVerticesIndex.store(0);
+
+    _modelDecorationSets.clear();
+    _modelDecorationSetsIndex.store(0);
+
+    _modelDecorations.clear();
+    _modelDecorationsIndex.store(0);
 
     _opaqueCullingResources.Clear();
     _transparentCullingResources.Clear();
@@ -675,6 +682,12 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
         boneMatrices[i] = glm::mat4(1.0f);
     }
 
+    u32 numDecorationSets = static_cast<u32>(_modelDecorationSets.size());
+    _modelDecorationSets.resize(numDecorationSets + reserveInfo.numDecorationSets);
+
+    u32 numDecorations = static_cast<u32>(_modelDecorations.size());
+    _modelDecorations.resize(numDecorations + reserveInfo.numDecorations);
+
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
 
@@ -707,6 +720,12 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     u32 numBoneMatricesUsed = _boneMatrixIndex.load();
     _boneMatrices.Resize(numBoneMatricesUsed);
+
+    u32 numDecorationSetsUsed = _modelDecorationSetsIndex.load();
+    _modelDecorationSets.resize(numDecorationSetsUsed);
+
+    u32 numDecorationsUsed = _modelDecorationsIndex.load();
+    _modelDecorations.resize(numDecorationsUsed);
 
     _opaqueCullingResources.FitBuffersAfterLoad();
     _transparentCullingResources.FitBuffersAfterLoad();
@@ -747,21 +766,24 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.numVertices = model.modelHeader.numVertices;
         modelManifest.vertexOffset = _verticesIndex.fetch_add(modelManifest.numVertices);
 
-        std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
-
-        u32 numModelVertices = static_cast<u32>(model.vertices.size());
-        assert(modelManifest.numVertices == numModelVertices);
-
-        void* dst = &vertices[modelManifest.vertexOffset];
-        void* src = model.vertices.data();
-        size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
-
-        if (modelManifest.vertexOffset + numModelVertices > vertices.size())
+        if (modelManifest.numVertices)
         {
-            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
-        }
+            std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
 
-        memcpy(dst, src, size);
+            u32 numModelVertices = static_cast<u32>(model.vertices.size());
+            assert(modelManifest.numVertices == numModelVertices);
+
+            void* dst = &vertices[modelManifest.vertexOffset];
+            void* src = model.vertices.data();
+            size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
+
+            if (modelManifest.vertexOffset + numModelVertices > vertices.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
     }
 
     // Add indices
@@ -769,18 +791,21 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.numIndices = model.modelHeader.numIndices;
         modelManifest.indexOffset = _indicesIndex.fetch_add(modelManifest.numIndices);
 
-        std::vector<u16>& indices = _indices.Get();
-
-        void* dst = &indices[modelManifest.indexOffset];
-        void* src = model.modelData.indices.data();
-        size_t size = sizeof(u16) * model.modelData.indices.size();
-
-        if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+        if (modelManifest.numIndices)
         {
-            DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
-        }
+            std::vector<u16>& indices = _indices.Get();
 
-        memcpy(dst, src, size);
+            void* dst = &indices[modelManifest.indexOffset];
+            void* src = model.modelData.indices.data();
+            size_t size = sizeof(u16) * model.modelData.indices.size();
+
+            if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
     }
 
     // Add TextureUnits and DrawCalls
@@ -865,21 +890,21 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             switch (renderBatch.groupID)
             {
-                case 0: // Base
-                case 2: // Bald Head
-                case 401: // Gloves
-                case 501: // Boots
-                case 702: // Ears
-                case 1301: // Legs
-                case 1501: // Upper Back
+            case 0: // Base
+            case 2: // Bald Head
+            case 401: // Gloves
+            case 501: // Boots
+            case 702: // Ears
+            case 1301: // Legs
+            case 1501: // Upper Back
                 //case 1703: // DK Eye Glow (Needs further support to be animated)
-                    break;
+                break;
 
-                default:
-                {
-                    isAllowedGroupID = false;
-                    break;
-                }
+            default:
+            {
+                isAllowedGroupID = false;
+                break;
+            }
             }
 
             Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
@@ -907,16 +932,64 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.isAnimated = model.sequences.size() > 0 && modelManifest.numBones > 0;
     }
 
+    // Add Decoration Data
+    {
+        modelManifest.numDecorationSets = model.modelHeader.numDecorationSets;
+        modelManifest.decorationSetOffset = _modelDecorationSetsIndex.fetch_add(modelManifest.numDecorationSets);
+
+        if (modelManifest.numDecorationSets)
+        {
+            std::vector<Model::ComplexModel::DecorationSet>& decorationSets = _modelDecorationSets;
+
+            void* dst = &decorationSets[modelManifest.decorationSetOffset];
+            void* src = model.decorationSets.data();
+            size_t size = sizeof(Model::ComplexModel::DecorationSet) * model.decorationSets.size();
+
+            if (modelManifest.decorationSetOffset + model.decorationSets.size() > decorationSets.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorationSets outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
+
+        modelManifest.numDecorations = model.modelHeader.numDecorations;
+        modelManifest.decorationOffset = _modelDecorationsIndex.fetch_add(modelManifest.numDecorations);
+
+        if (modelManifest.numDecorations)
+        {
+            std::vector<Model::ComplexModel::Decoration>& decorations = _modelDecorations;
+
+            void* dst = &decorations[modelManifest.decorationOffset];
+            void* src = model.decorations.data();
+            size_t size = sizeof(Model::ComplexModel::Decoration) * model.decorations.size();
+
+            if (modelManifest.decorationOffset + model.decorations.size() > decorations.size())
+            {
+                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorations outside array");
+            }
+
+            memcpy(dst, src, size);
+        }
+    }
+
     return modelManifestIndex;
 }
 
 u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& placement)
 {
     vec3 scale = vec3(placement.scale) / 1024.0f;
-    return AddInstance(modelID, placement.position, placement.rotation, scale);
+
+    // Add Instance matrix
+
+    mat4x4 rotationMatrix = glm::toMat4(placement.rotation);
+    mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
+    mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
+
+    return AddInstance(modelID, instanceMatrix);
 }
 
-u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
+u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
 {
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -949,10 +1022,19 @@ u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& ro
     // Add Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
+        instanceMatrix = transformMatrix;
+    }
 
-        mat4x4 rotationMatrix = glm::toMat4(rotation);
-        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+    // Add Decorations
+    if (manifest.numDecorationSets && manifest.numDecorations)
+    {
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+        for (u32 i = 0; i < manifest.numDecorations; i++)
+        {
+            const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + i];
+            modelLoader->LoadDecoration(instanceID, manifestDecoration);
+        }
     }
 
     // Set up Opaque DrawCalls and DrawCallDatas
@@ -1034,7 +1116,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const vec3& position, const quat& ro
     return instanceID;
 }
 
-void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const vec3& position, const quat& rotation, const vec3& scale)
+void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix)
 {
     InstanceData& instanceData = _instanceDatas.Get()[instanceID];
 
@@ -1093,10 +1175,7 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const vec3& posi
     // Setup Instance matrix
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-
-        mat4x4 rotationMatrix = glm::toMat4(rotation);
-        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-        instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
+        instanceMatrix = transformMatrix;
 
         _instanceMatrices.SetDirtyElement(instanceID);
     }
@@ -1220,8 +1299,8 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 
     if (instanceID >= instanceDatas.size())
     {
-		return false;
-	}
+        return false;
+    }
 
     InstanceData& instanceData = instanceDatas[instanceID];
 
@@ -1245,18 +1324,18 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
     std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
     if (instanceID >= instanceDatas.size())
     {
-		return false;
-	}
+        return false;
+    }
 
-	InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = instanceDatas[instanceID];
     if (instanceData.boneMatrixOffset == InstanceData::InvalidID)
     {
-		return false;
-	}
+        return false;
+    }
 
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
 
-	u32 globalBoneIndex = instanceData.boneMatrixOffset + localBoneIndex;
+    u32 globalBoneIndex = instanceData.boneMatrixOffset + localBoneIndex;
     u32 endGlobalBoneIndex = globalBoneIndex + (count - 1);
 
     // Check if the bone range is valid
@@ -1357,8 +1436,8 @@ void ModelRenderer::SyncToGPU()
 
         if (byteSize > currentSizeInBuffer)
         {
-			_animatedVertices.Resize(numAnimatedVertices);
-		}
+            _animatedVertices.Resize(numAnimatedVertices);
+        }
 
         if (_animatedVertices.SyncToGPU(_renderer))
         {
@@ -1519,7 +1598,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     {
         commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
     }
-    
+
     commandList.EndPipeline(pipeline);
 }
 

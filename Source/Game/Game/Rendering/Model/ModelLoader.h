@@ -40,6 +40,8 @@ private:
 	{
 	public:
 		entt::entity entity;
+		u32 instanceID = std::numeric_limits<u32>().max();
+		
 		Terrain::Placement placement;
 	};
 
@@ -51,6 +53,7 @@ public:
 	void Update(f32 deltaTime);
 
 	void LoadPlacement(const Terrain::Placement& placement);
+	void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
 	void LoadModel(entt::entity entity, u32 modelNameHash);
 
 	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);

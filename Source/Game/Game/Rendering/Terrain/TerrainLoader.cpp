@@ -2,6 +2,8 @@
 #include "TerrainRenderer.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/JoltState.h"
+#include "Game/Editor/EditorHandler.h"
+#include "Game/Editor/Inspector.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
@@ -522,6 +524,9 @@ void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
 
 		WaterLoader* waterLoader = ServiceLocator::GetGameRenderer()->GetWaterLoader();
 		waterLoader->Clear();
+
+		Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
+		editorHandler->GetInspector()->ClearSelection();
 
 		for (auto& pair : _chunkIDToBodyID)
 		{

@@ -4,9 +4,8 @@
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game/ECS/Singletons/ActiveCamera.h>
-#include <Game/ECS/Components/Transform.h>
 #include <Game/ECS/Components/Camera.h>
-
+#include <Game/ECS/Util/Transforms.h>
 #include <Renderer/Window.h>
 
 #include <imgui/imgui.h>
@@ -15,10 +14,10 @@
 
 namespace ECS::Util
 {
-	namespace CameraUtil
-	{
-		void SetCaptureMouse(bool capture)
-		{
+    namespace CameraUtil
+    {
+        void SetCaptureMouse(bool capture)
+        {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
@@ -39,7 +38,7 @@ namespace ECS::Util
                 ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             }
-		}
+        }
 
         void CenterOnObject(const vec3& position, f32 radius)
         {
@@ -56,11 +55,7 @@ namespace ECS::Util
             // Compute the distance the camera should be to fit the entire bounding sphere
             f32 camDistance = (radius * 2.0f) / Math::Tan(fovInRadians / 2.0f);
 
-            transform.position = position - (transform.GetLocalForward() * camDistance);
-
-            transform.SetDirty(ctx.at<ECS::Singletons::DirtyTransformQueue>(), activeCamera.entity);
-
-            camera.dirtyView = true;
+            ECS::TransformSystem::Get(*registry).SetLocalPosition(activeCamera.entity, position - (transform.GetLocalForward() * camDistance));
         }
-	}
+    }
 }
