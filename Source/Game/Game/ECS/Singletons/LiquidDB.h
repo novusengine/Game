@@ -1,6 +1,5 @@
 #pragma once
 #include <Base/Types.h>
-#include <Base/Container/StringTable.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 #include <FileFormat/Novus/ClientDB/Definitions.h>

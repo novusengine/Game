@@ -986,7 +986,44 @@ u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& p
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
     mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
 
-    return AddInstance(modelID, instanceMatrix);
+    u32 instanceID = AddInstance(modelID, instanceMatrix);
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    // Add Decorations
+    if (manifest.numDecorationSets && manifest.numDecorations)
+    {
+        if (placement.doodadSet == std::numeric_limits<u16>().max())
+        {
+            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+            // Load 0th doodadSet if it exists
+            const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset];
+
+            for (u32 i = 0; i < manifestDecorationSet.count; i++)
+            {
+                const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                modelLoader->LoadDecoration(instanceID, manifestDecoration);
+            }
+        }
+        else
+        {
+            if (placement.doodadSet < manifest.numDecorationSets)
+            {
+                ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+                const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset + placement.doodadSet];
+
+                for (u32 i = 0; i < manifestDecorationSet.count; i++)
+                {
+                    const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                    modelLoader->LoadDecoration(instanceID, manifestDecoration);
+                }
+            }
+        }
+    }
+
+    return instanceID;
 }
 
 u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
@@ -1023,18 +1060,6 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
         instanceMatrix = transformMatrix;
-    }
-
-    // Add Decorations
-    if (manifest.numDecorationSets && manifest.numDecorations)
-    {
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-
-        for (u32 i = 0; i < manifest.numDecorations; i++)
-        {
-            const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + i];
-            modelLoader->LoadDecoration(instanceID, manifestDecoration);
-        }
     }
 
     // Set up Opaque DrawCalls and DrawCallDatas

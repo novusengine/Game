@@ -3,8 +3,8 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/MapDB.h"
 #include "Game/ECS/Util/MapDBUtil.h"
+#include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Terrain/TerrainLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
@@ -122,18 +122,21 @@ namespace Editor
 
                 if (ImGui::Button("Load"))
                 {
-                    if (DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(*preview))
+                    if (preview && preview->length() > 0)
                     {
-                        const std::string& mapInternalName = mapDB.entries.stringTable.GetString(map->internalName);
+                        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 
-                        TerrainLoader* terrainLoader = ServiceLocator::GetGameRenderer()->GetTerrainLoader();
-                        TerrainLoader::LoadDesc loadDesc;
-                        loadDesc.loadType = TerrainLoader::LoadType::Full;
-                        loadDesc.mapName = mapInternalName;
-
-                        terrainLoader->AddInstance(loadDesc);
-                        _hasLoadedMap = true;
+                        u32 mapNameHash = StringUtils::fnv1a_32(preview->c_str(), preview->length());
+                        mapLoader->LoadMap(mapNameHash);
                     }
+                }
+
+                ImGui::SameLine();
+
+                if (ImGui::Button("Unload"))
+                {
+                    MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+                    mapLoader->UnloadMap();
                 }
             }
             else

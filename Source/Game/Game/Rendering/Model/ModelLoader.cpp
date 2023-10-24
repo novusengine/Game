@@ -56,56 +56,56 @@ void ModelLoader::Init()
     // Then create a multithreaded job to loop over the paths
     moodycamel::ConcurrentQueue<DiscoveredModel> discoveredModels;
     enki::TaskSet discoverModelsTask(static_cast<u32>(paths.size()), [&, paths](enki::TaskSetPartition range, u32 threadNum)
+    {
+        for (u32 i = range.start; i < range.end; i++)
         {
-            for (u32 i = range.start; i < range.end; i++)
+            const fs::path& path = paths[i];
+
+            if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
+                continue;
+
+            fs::path relativePath = fs::relative(path, complexModelPath);
+
+            PRAGMA_MSVC_IGNORE_WARNING(4244);
+            std::string cModelPath = relativePath.string();
+            std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
+
+            FileReader cModelFile(path.string());
+            if (!cModelFile.Open())
             {
-                const fs::path& path = paths[i];
-
-                if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
-                    continue;
-
-                fs::path relativePath = fs::relative(path, complexModelPath);
-
-                PRAGMA_MSVC_IGNORE_WARNING(4244);
-                std::string cModelPath = relativePath.string();
-                std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
-
-                FileReader cModelFile(path.string());
-                if (!cModelFile.Open())
-                {
-                    DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
-                    continue;
-                }
-
-                // Load the first HEADER_SIZE of the file into memory
-                size_t fileSize = cModelFile.Length();
-                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-
-                if (fileSize < HEADER_SIZE)
-                {
-                    DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
-                    continue;
-                }
-
-                std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
-
-                cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
-                cModelFile.Close();
-
-                // Extract the ModelHeader from the file and store it as a DiscoveredModel
-                DiscoveredModel discoveredModel;
-                if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
-                {
-                    DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
-                    continue;
-                }
-
-                discoveredModel.name = cModelPath;
-                discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
-
-                discoveredModels.enqueue(discoveredModel);
+                DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
+                continue;
             }
-        });
+
+            // Load the first HEADER_SIZE of the file into memory
+            size_t fileSize = cModelFile.Length();
+            constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+
+            if (fileSize < HEADER_SIZE)
+            {
+                DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
+                continue;
+            }
+
+            std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
+
+            cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
+            cModelFile.Close();
+
+            // Extract the ModelHeader from the file and store it as a DiscoveredModel
+            DiscoveredModel discoveredModel;
+            if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
+            {
+                DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
+                continue;
+            }
+
+            discoveredModel.name = cModelPath;
+            discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
+
+            discoveredModels.enqueue(discoveredModel);
+        }
+    });
 
     // Execute the multithreaded job
     taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
@@ -240,53 +240,52 @@ void ModelLoader::Update(f32 deltaTime)
             registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances;
-            //enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
-            //{
-            //	for (u32 i = range.start; i < range.end; i++)
-            for (u32 i = 0; i < numDequeued; i++)
+            enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
             {
-                LoadRequestInternal& request = _staticLoadRequests[i];
-
-                u32 placementHash = request.placement.nameHash;
-                if (!_nameHashToDiscoveredModel.contains(placementHash))
+            	for (u32 i = range.start; i < range.end; i++)
                 {
-                    // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-                    continue;
-                }
+                    LoadRequestInternal& request = _staticLoadRequests[i];
 
-                std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
-                std::scoped_lock lock(*mutex);
-
-                LoadState loadState = _nameHashToLoadState[placementHash];
-
-                if (loadState == LoadState::Failed)
-                    continue;
-
-                if (loadState == LoadState::Received)
-                {
-                    loadState = LoadState::Loading;
-                    _nameHashToLoadState[placementHash] = LoadState::Loading;
-
-                    bool didLoad = LoadRequest(request);
-
-                    loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-                    _nameHashToLoadState[placementHash] = loadState;
-
-                    if (!didLoad)
+                    u32 placementHash = request.placement.nameHash;
+                    if (!_nameHashToDiscoveredModel.contains(placementHash))
+                    {
+                        // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
                         continue;
+                    }
+
+                    std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
+                    std::scoped_lock lock(*mutex);
+
+                    LoadState loadState = _nameHashToLoadState[placementHash];
+
+                    if (loadState == LoadState::Failed)
+                        continue;
+
+                    if (loadState == LoadState::Received)
+                    {
+                        loadState = LoadState::Loading;
+                        _nameHashToLoadState[placementHash] = LoadState::Loading;
+
+                        bool didLoad = LoadRequest(request);
+
+                        loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+                        _nameHashToLoadState[placementHash] = loadState;
+
+                        if (!didLoad)
+                            continue;
+                    }
+
+                    if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
+                        continue;
+
+                    u32 index = numCreatedInstances.fetch_add(1);
+                    AddStaticInstance(_createdEntities[index], request);
                 }
-
-                if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
-                    continue;
-
-                u32 index = numCreatedInstances.fetch_add(1);
-                AddStaticInstance(_createdEntities[index], request);
-            }
-            //});
+            });
 
             // Execute the multithreaded job
-            //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-            //taskScheduler->WaitforTask(&loadModelsTask);
+            taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+            taskScheduler->WaitforTask(&loadModelsTask);
 
             // Destroy the entities we didn't use
             registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
@@ -446,6 +445,11 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
     return true;
 }
 
+bool ModelLoader::ContainsDiscoveredModel(u32 modelNameHash)
+{
+    return _nameHashToDiscoveredModel.contains(modelNameHash);
+}
+
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 modelID)
 {
     if (!_modelIDToNameHash.contains(modelID))
@@ -517,7 +521,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& tSystem =ECS::TransformSystem::Get(*registry);
+    auto& tSystem = ECS::TransformSystem::Get(*registry);
 
     f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
     tSystem.SetLocalTransform(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));

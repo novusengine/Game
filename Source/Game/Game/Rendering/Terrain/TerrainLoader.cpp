@@ -39,6 +39,34 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
 	, _waterLoader(waterLoader)
 	, _requests() { }
 
+void TerrainLoader::Clear()
+{
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
+	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+	LoadRequestInternal loadRequest;
+	while (_requests.try_dequeue(loadRequest)) { }
+
+	for (auto& pair : _chunkIDToBodyID)
+	{
+		JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
+
+		bodyInterface.RemoveBody(id);
+		bodyInterface.DestroyBody(id);
+	}
+
+	_chunkIDToLoadedID.clear();
+	_chunkIDToBodyID.clear();
+
+	ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
+	ServiceLocator::GetGameRenderer()->GetWaterLoader()->Clear();
+	_terrainRenderer->Clear();
+
+	Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
+	editorHandler->GetInspector()->ClearSelection();
+}
+
 void TerrainLoader::Update(f32 deltaTime)
 {
 	LoadRequestInternal loadRequest;
@@ -172,7 +200,7 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 		return;
 	}
 
-	_terrainRenderer->ReserveChunks(numChunksToLoad);
+	_terrainRenderer->Reserve(numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
@@ -517,29 +545,9 @@ void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
 	}
 	else if (loadType == LoadType::Full)
 	{
-		_terrainRenderer->ClearChunks();
+		Clear();
 
-		ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-		modelLoader->Clear();
-
-		WaterLoader* waterLoader = ServiceLocator::GetGameRenderer()->GetWaterLoader();
-		waterLoader->Clear();
-
-		Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
-		editorHandler->GetInspector()->ClearSelection();
-
-		for (auto& pair : _chunkIDToBodyID)
-		{
-			JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
-
-			bodyInterface.RemoveBody(id);
-			bodyInterface.DestroyBody(id);
-		}
-
-		_chunkIDToLoadedID.clear();
-		_chunkIDToBodyID.clear();
-
-		_terrainRenderer->ReserveChunks(numChunks);
+		_terrainRenderer->Reserve(numChunks);
 		_chunkIDToLoadedID.reserve(numChunks);
 		_chunkIDToBodyID.reserve(numChunks);
 	}

@@ -17,6 +17,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("setcursor"_h, GameConsoleCommands::HandleSetCursor);
     RegisterCommand("savecamera"_h, GameConsoleCommands::HandleSaveCamera);
     RegisterCommand("loadcamera"_h, GameConsoleCommands::HandleLoadCamera);
+    RegisterCommand("clearmap"_h, GameConsoleCommands::HandleClearMap);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

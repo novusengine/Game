@@ -59,6 +59,7 @@ public:
 	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
 	bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
 
+	bool ContainsDiscoveredModel(u32 modelNameHash);
 	DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);
 
 private:

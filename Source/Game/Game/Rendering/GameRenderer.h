@@ -19,6 +19,7 @@ class TerrainRenderer;
 class TerrainLoader;
 class ModelRenderer;
 class ModelLoader;
+class MapLoader;
 class MaterialRenderer;
 class SkyboxRenderer;
 class EditorRenderer;
@@ -55,6 +56,7 @@ public:
 	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
 	ModelLoader* GetModelLoader() { return _modelLoader; }
 	WaterLoader* GetWaterLoader() { return _waterLoader; }
+	MapLoader* GetMapLoader() { return _mapLoader; }
 
 	RenderResources& GetRenderResources() { return _resources; }
 	PixelQuery* GetPixelQuery() { return _pixelQuery; }
@@ -94,6 +96,8 @@ private:
 
 	WaterRenderer* _waterRenderer = nullptr;
 	WaterLoader* _waterLoader = nullptr;
+
+	MapLoader* _mapLoader = nullptr;
 
 	MaterialRenderer* _materialRenderer = nullptr;
 	SkyboxRenderer* _skyboxRenderer = nullptr;

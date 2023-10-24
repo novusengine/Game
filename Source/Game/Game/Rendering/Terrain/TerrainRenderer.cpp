@@ -100,17 +100,6 @@ void TerrainRenderer::Update(f32 deltaTime)
     SyncToGPU();
 }
 
-void TerrainRenderer::Clear()
-{
-    ZoneScoped;
-
-    _vertices.Clear();
-    _instanceDatas.Clear();
-    _cellDatas.Clear();
-    _chunkDatas.Clear();
-    _cellHeightRanges.Clear();
-}
-
 void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     if (!CVAR_TerrainRendererEnabled.Get())
@@ -473,7 +462,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         });
 }
 
-void TerrainRenderer::ClearChunks()
+void TerrainRenderer::Clear()
 {
     _numChunksLoaded = 0;
 
@@ -488,7 +477,7 @@ void TerrainRenderer::ClearChunks()
     _renderer->UnloadTexturesInArray(_textures, 0);
 }
 
-void TerrainRenderer::ReserveChunks(u32 numChunks)
+void TerrainRenderer::Reserve(u32 numChunks)
 {
     u32 totalNumCells = numChunks * Terrain::CHUNK_NUM_CELLS;
     u32 totalNumVertices = totalNumCells * Terrain::CELL_TOTAL_GRID_SIZE;

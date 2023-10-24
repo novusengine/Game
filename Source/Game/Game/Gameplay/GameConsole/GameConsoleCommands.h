@@ -13,4 +13,5 @@ public:
 	static bool HandleSetCursor(GameConsole* gameConsole, std::vector<std::string>& subCommands);
 	static bool HandleSaveCamera(GameConsole* gameConsole, std::vector<std::string>& subCommands);
 	static bool HandleLoadCamera(GameConsole* gameConsole, std::vector<std::string>& subCommands);
+	static bool HandleClearMap(GameConsole* gameConsole, std::vector<std::string>& subCommands);
 };

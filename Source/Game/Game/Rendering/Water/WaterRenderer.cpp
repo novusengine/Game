@@ -135,12 +135,12 @@ void WaterRenderer::Load(LoadDesc& desc)
     bool isLavaOrSlime = false;
 
     auto& liquidDB = ctx.at<ECS::Singletons::LiquidDB>();
-    if (liquidDB.liquidTypes.HasEntry(desc.typeID))
+    if (liquidDB.liquidTypes.ContainsEntryWithID(desc.typeID))
     {
-        const DB::Client::Definitions::LiquidType& liquidType = liquidDB.liquidTypes.GetEntry(desc.typeID);
+        const DB::Client::Definitions::LiquidType& liquidType = liquidDB.liquidTypes.GetEntryByID(desc.typeID);
 
         u32 textureHash = liquidType.textures[0];
-        const std::string& baseTextureName = liquidDB.liquidTypes.stringTable.GetString(textureHash);
+        const std::string& baseTextureName = liquidDB.liquidTypes.GetString(textureHash);
 
         u16 textureStartIndex = 0;
         u32 textureCount = liquidType.frameCountTextures[0];

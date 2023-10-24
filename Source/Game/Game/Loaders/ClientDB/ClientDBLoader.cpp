@@ -1,5 +1,6 @@
 #include "Game/Loaders/LoaderSystem.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/ECS/Singletons/CameraSaveDB.h"
 #include "Game/ECS/Singletons/MapDB.h"
 #include "Game/ECS/Singletons/LiquidDB.h"
 #include "Game/Application/EnttRegistries.h"
@@ -60,7 +61,7 @@ public:
             clientDBPairs.enqueue(clientDBPair);
         });
 
-        size_t numClientDBs = 0;
+        u32 numClientDBs = 0;
 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<8388608>();
 
@@ -90,6 +91,8 @@ public:
             }
         }
 
+        PostProcess(absolutePath, ctx, numClientDBs);
+
         DebugHandler::Print("Loaded {0} Client Database Files", numClientDBs);
 
         return true;
@@ -99,6 +102,21 @@ public:
     {
         registryCtx.emplace<ECS::Singletons::MapDB>();
         registryCtx.emplace<ECS::Singletons::LiquidDB>();
+        registryCtx.emplace<ECS::Singletons::CameraSaveDB>();
+    }
+
+    void PostProcess(const fs::path& clientDBsPath, entt::registry::context& registryCtx, u32& numClientDBs)
+    {
+        // Check if Camera Saves CDB Exists
+        {
+            fs::path cameraSavePath = clientDBsPath / "CameraSave.cdb";
+
+            if (!fs::exists(cameraSavePath))
+            {
+                auto& cameraSaveDB = registryCtx.at<ECS::Singletons::CameraSaveDB>();
+                cameraSaveDB.entries.Save(cameraSavePath.string());
+            }
+        }
     }
 
     bool LoadMapDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
@@ -106,37 +124,37 @@ public:
         auto& mapDB = registryCtx.at<ECS::Singletons::MapDB>();
 
         // Clear, in case we already filled mapDB
-        mapDB.entries.data.clear();
-        mapDB.entries.stringTable.Clear();
+        mapDB.entries.Clear();;
      
         if (!mapDB.entries.Read(buffer))
         {
             return false;
         }
 
-        Novus::Container::StringTable& stringTable = mapDB.entries.stringTable;
-
-        u32 numRecords = static_cast<u32>(mapDB.entries.data.size());
+        u32 numRecords = mapDB.entries.Count();
         mapDB.mapNames.reserve(numRecords);
         mapDB.mapInternalNames.reserve(numRecords);
-        mapDB.mapNameHashToEntryID.reserve(numRecords);
+        mapDB.mapNameHashToIndex.reserve(numRecords);
+        mapDB.mapInternalNameHashToIndex.reserve(numRecords);
 
         for (u32 i = 0; i < numRecords; i++)
         {
-            const DB::Client::Definitions::Map& map = mapDB.entries.data[i];
+            const DB::Client::Definitions::Map& map = mapDB.entries.GetEntryByIndex(i);
             if (map.name == std::numeric_limits<u32>().max())
             {
                 continue;
             }
 
-            mapDB.entries.idToIndexMap[map.id] = i;
-
-            const std::string& mapName = stringTable.GetString(map.name);
+            const std::string& mapName = mapDB.entries.GetString(map.name);
             u32 mapNameHash = StringUtils::fnv1a_32(mapName.c_str(), mapName.length());
 
+            const std::string& mapInternalName = mapDB.entries.GetString(map.internalName);
+            u32 mapInternalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
+
             mapDB.mapNames.push_back(mapName);
-            mapDB.mapInternalNames.push_back(stringTable.GetString(map.internalName));
-            mapDB.mapNameHashToEntryID[mapNameHash] = i;
+            mapDB.mapInternalNames.push_back(mapInternalName);
+            mapDB.mapNameHashToIndex[mapNameHash] = i;
+            mapDB.mapInternalNameHashToIndex[mapInternalNameHash] = i;
         }
 
         return true;
@@ -147,21 +165,42 @@ public:
         auto& liquidDB = registryCtx.at<ECS::Singletons::LiquidDB>();
 
         // Clear, in case we already filled liquidDB
-        liquidDB.liquidTypes.data.clear();
-        liquidDB.liquidTypes.stringTable.Clear();
+        liquidDB.liquidTypes.Clear();
 
         if (!liquidDB.liquidTypes.Read(buffer))
         {
             return false;
         }
 
-        u32 numRecords = static_cast<u32>(liquidDB.liquidTypes.data.size());
+        return true;
+    }
+
+    bool LoadCameraSaveDB(entt::registry::context& registryCtx, std::shared_ptr<Bytebuffer>& buffer, const ClientDBPair& pair)
+    {
+        auto& cameraSaveDB = registryCtx.at<ECS::Singletons::CameraSaveDB>();
+
+        // Clear, in case we already filled liquidDB
+        cameraSaveDB.entries.Clear();
+        cameraSaveDB.cameraSaveNameHashToID.clear();
+
+        if (!cameraSaveDB.entries.Read(buffer))
+        {
+            return false;
+        }
+
+        u32 numRecords = cameraSaveDB.entries.Count();
 
         for (u32 i = 0; i < numRecords; i++)
         {
-            const DB::Client::Definitions::LiquidType& type = liquidDB.liquidTypes.data[i];
+            const DB::Client::Definitions::CameraSave& cameraSave = cameraSaveDB.entries.GetEntryByIndex(i);
 
-            liquidDB.liquidTypes.idToIndexMap[type.id] = i;
+            if (!cameraSaveDB.entries.HasString(cameraSave.name))
+                continue;
+
+            const std::string& name = cameraSaveDB.entries.GetString(cameraSave.name);
+            u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+
+            cameraSaveDB.cameraSaveNameHashToID[nameHash] = cameraSave.id;
         }
 
         return true;
@@ -170,7 +209,8 @@ public:
     robin_hood::unordered_map<u32, std::function<bool(entt::registry::context&, std::shared_ptr<Bytebuffer>&, const ClientDBPair&)>> clientDBEntries =
     {
         { "Map.cdb"_h, std::bind(&ClientDBLoader::LoadMapDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) },
-        { "LiquidType.cdb"_h, std::bind(&ClientDBLoader::LoadLiquidTypeDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) }
+        { "LiquidType.cdb"_h, std::bind(&ClientDBLoader::LoadLiquidTypeDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) },
+        { "CameraSave.cdb"_h, std::bind(&ClientDBLoader::LoadCameraSaveDB, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3) }
     };
 };
 

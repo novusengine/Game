@@ -10,7 +10,7 @@ namespace ECS::Util
 {
 	namespace MapDB
 	{
-		DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash);
-		DB::Client::Definitions::Map* GetMapFromName(const std::string& name);
+		const DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash);
+		const DB::Client::Definitions::Map* GetMapFromName(const std::string& name);
 	}
 }

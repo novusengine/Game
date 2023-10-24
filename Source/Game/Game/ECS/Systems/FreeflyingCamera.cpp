@@ -177,7 +177,7 @@ namespace ECS::Systems
 
             f32 speed = settings.cameraSpeed;
             speed = speed + ((speed / 10.0f) * position.y);
-            speed = glm::max(speed, 7.1111f);
+            speed = glm::max(speed, 1.0f);
             settings.cameraSpeed = speed;
         }
     }

@@ -14,25 +14,28 @@ namespace ECS::Util
 {
 	namespace MapDB
 	{
-		DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash)
+		const DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash)
 		{
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			entt::registry::context& ctx = registry->ctx();
 
 			auto& mapDB = ctx.at<Singletons::MapDB>();
 
-			auto itr = mapDB.mapNameHashToEntryID.find(nameHash);
-			if (itr == mapDB.mapNameHashToEntryID.end())
+			auto itr = mapDB.mapNameHashToIndex.find(nameHash);
+			if (itr == mapDB.mapNameHashToIndex.end())
 				return nullptr;
 
 			u32 mapIndex = itr->second;
-			if (mapIndex >= mapDB.entries.data.size())
+			if (mapIndex >= mapDB.entries.Count())
 				return nullptr;
 
-			return &mapDB.entries.data[mapIndex];
+			if (!mapDB.entries.ContainsIndex(mapIndex))
+				return nullptr;
+
+			return &mapDB.entries.GetEntryByIndex(mapIndex);
 		}
 
-		DB::Client::Definitions::Map* GetMapFromName(const std::string& name)
+		const DB::Client::Definitions::Map* GetMapFromName(const std::string& name)
 		{
 			u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
 			return GetMapFromNameHash(nameHash);

@@ -2,6 +2,7 @@
 
 #include "Game/Animation/AnimationSystem.h"
 #include "Game/ECS/Scheduler.h"
+#include "Game/ECS/Singletons/CameraSaveDB.h"
 #include "Game/ECS/Singletons/EngineStats.h"
 #include "Game/ECS/Singletons/RenderState.h"
 #include "Game/Editor/EditorHandler.h"
@@ -26,6 +27,8 @@
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
+
+#include <filesystem>
 
 AutoCVar_Int CVAR_FramerateLimit("application.framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget("application.framerateLimitTarget", "target framerate while limited", 60);
@@ -312,6 +315,21 @@ bool Application::Tick(f32 deltaTime)
 		JsonUtils::SaveToPath(_cvarJson, "Data/Config/CVar.json");
 
 		CVarSystem::Get()->ClearDirty();
+	}
+
+	// Check Camera Save DB
+	{
+		auto& cameraSaveDB = _registries.gameRegistry->ctx().at<ECS::Singletons::CameraSaveDB>();
+		if (cameraSaveDB.IsDirty())
+		{
+			static const std::filesystem::path fileExtension = ".cdb";
+			std::filesystem::path relativeParentPath = "Data/ClientDB";
+			std::filesystem::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
+			std::filesystem::path cameraSavePath = absolutePath / "CameraSave.cdb";
+
+			cameraSaveDB.entries.Save(cameraSavePath.string());
+			cameraSaveDB.ClearDirty();
+		}
 	}
 
 	return true;
