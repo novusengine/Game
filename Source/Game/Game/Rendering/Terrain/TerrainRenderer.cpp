@@ -620,7 +620,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
     }
 
-    if (maxDiffuseID > 4096)
+    if (maxDiffuseID > Renderer::Settings::MAX_TEXTURES)
     {
         DebugHandler::PrintFatal("This is bad!");
     }
@@ -643,7 +643,7 @@ void TerrainRenderer::CreatePermanentResources()
 {
     ZoneScoped;
     Renderer::TextureArrayDesc textureArrayDesc;
-    textureArrayDesc.size = 4096;
+    textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
     _materialPassDescriptorSet.Bind("_terrainColorTextures", _textures);
@@ -876,6 +876,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     vertexShaderDesc.path = "Terrain/Draw.vs.hlsl";
     vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
     vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
@@ -883,6 +884,8 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     {
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.path = "Terrain/Draw.ps.hlsl";
+        pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
     }
 

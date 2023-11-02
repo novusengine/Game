@@ -875,7 +875,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                         Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
                         textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
 
-                        DebugHandler::Assert(textureUnit.textureIds[j] < 4096, "ModelRenderer : LoadModel overflowed the 4096 textures we have support for");
+                        DebugHandler::Assert(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
                     }
                 }
             }
@@ -1387,7 +1387,7 @@ void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
     Renderer::TextureArrayDesc textureArrayDesc;
-    textureArrayDesc.size = 4096;
+    textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
     _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
@@ -1560,12 +1560,14 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     vertexShaderDesc.path = "Model/Draw.vs.hlsl";
     vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
     vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Model/Draw.ps.hlsl";
     pixelShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
@@ -1635,11 +1637,14 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.path = "Model/DrawTransparent.vs.hlsl";
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Model/DrawTransparent.ps.hlsl";
+    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state

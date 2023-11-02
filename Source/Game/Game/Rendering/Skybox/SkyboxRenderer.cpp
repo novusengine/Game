@@ -89,11 +89,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
 
             // Skyband Color Push Constant
-            {
-                // TODO: Update _skybandColors here
-
-                commandList.PushConstant(&_skybandColors, 0, sizeof(SkybandColors));
-            }
+            commandList.PushConstant(&_skybandColors, 0, sizeof(SkybandColors));
 
             // NumVertices hardcoded as we use a Fullscreen Triangle (Check FullscreenTriangle.vs.hlsl for more information)
             commandList.Draw(3, 1, 0, 0);
