@@ -41,7 +41,7 @@ namespace ECS::Singletons
 				const std::string& name = cameraSaves.GetString(cameraSave.name);
 				u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
 
-				cameraSaveNameHashToID[nameHash] = cameraSave.id;
+				cameraSaveNameHashToID[nameHash] = cameraSave.GetID();
 			}
 
 			return true;

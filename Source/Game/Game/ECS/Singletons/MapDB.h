@@ -53,8 +53,8 @@ namespace ECS::Singletons
 
                mapNames.push_back(mapName);
                mapInternalNames.push_back(mapInternalName);
-               mapNameHashToID[mapNameHash] = map.id;
-               mapInternalNameHashToID[mapInternalNameHash] = map.id;
+               mapNameHashToID[mapNameHash] = map.GetID();
+               mapInternalNameHashToID[mapInternalNameHash] = map.GetID();
             }
 
             return true;

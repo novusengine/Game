@@ -273,7 +273,7 @@ namespace Editor
                                 cameraSave.code = cameraSaves.AddString(saveCode);
                                 cameraSaves.Add(cameraSave);
                 
-                                cameraSaveDB.cameraSaveNameHashToID[saveNameHash] = cameraSave.id;
+                                cameraSaveDB.cameraSaveNameHashToID[saveNameHash] = cameraSave.GetID();
                 
                                 currentSaveName.clear();
                             }
