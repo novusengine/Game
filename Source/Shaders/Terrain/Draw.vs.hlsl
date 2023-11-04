@@ -1,5 +1,6 @@
 permutation EDITOR_PASS = [0, 1];
 permutation SHADOW_PASS = [0, 1];
+permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "globalData.inc.hlsl"

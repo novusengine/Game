@@ -110,6 +110,8 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     Renderer::ComputeShaderDesc shaderDesc;
                     shaderDesc.path = "Utils/ObjectQuery.cs.hlsl";
+                    shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
                     queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
                     // Do culling

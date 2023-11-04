@@ -1,5 +1,6 @@
 permutation DEBUG_ID = [0, 1, 2, 3, 4];
 permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
+permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 
 #include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
@@ -32,6 +33,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 {
 	InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
 	uint globalCellID = cellInstance.globalCellID;
+
 
 	// Terrain code
 	uint globalVertexOffset = globalCellID * NUM_VERTICES_PER_CELL;
@@ -229,6 +231,14 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	uint4 vBufferData = LoadVisibilityBuffer(pixelPos);
 	const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
+#if DEBUG_ID != 0
+	if (vBuffer.typeID != ObjectType::Terrain && vBuffer.typeID != ObjectType::ModelOpaque)
+	{
+		_resolvedColor[pixelPos] = float4(0, 0, 0, 1);
+		return;
+	}
+#endif
+
 #if DEBUG_ID == 1 // TypeID debug output
 	float3 debugColor = IDToColor3(vBuffer.typeID);
 	_resolvedColor[pixelPos] = float4(debugColor, 1);
@@ -237,7 +247,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	float3 debugColor = IDToColor3(GetObjectID(vBuffer.typeID, vBuffer.drawID));
 	_resolvedColor[pixelPos] = float4(debugColor, 1);
 	return;
-#elif DEBUG_ID == 3 // TriangleID
+#elif DEBUG_ID == 3 // TriangleID   
 	float3 debugColor = IDToColor3(vBuffer.triangleID);
 	_resolvedColor[pixelPos] = float4(debugColor, 1);
 	return;
