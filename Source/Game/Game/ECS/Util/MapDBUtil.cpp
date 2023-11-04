@@ -14,31 +14,43 @@ namespace ECS::Util
 {
 	namespace MapDB
 	{
-		const DB::Client::Definitions::Map* GetMapFromNameHash(u32 nameHash)
+		bool GetMapFromNameHash(u32 nameHash, DB::Client::Definitions::Map* map)
 		{
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			entt::registry::context& ctx = registry->ctx();
 
-			auto& mapDB = ctx.at<Singletons::MapDB>();
+			auto& mapDB = ctx.get<Singletons::MapDB>();
 
-			auto itr = mapDB.mapNameHashToIndex.find(nameHash);
-			if (itr == mapDB.mapNameHashToIndex.end())
-				return nullptr;
+			auto itr = mapDB.mapNameHashToID.find(nameHash);
+			if (itr == mapDB.mapNameHashToID.end())
+				return false;
 
-			u32 mapIndex = itr->second;
-			if (mapIndex >= mapDB.entries.Count())
-				return nullptr;
-
-			if (!mapDB.entries.ContainsIndex(mapIndex))
-				return nullptr;
-
-			return &mapDB.entries.GetEntryByIndex(mapIndex);
+			return true;
 		}
 
-		const DB::Client::Definitions::Map* GetMapFromName(const std::string& name)
+		bool GetMapFromName(const std::string& name, DB::Client::Definitions::Map* map)
 		{
 			u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
-			return GetMapFromNameHash(nameHash);
+			return GetMapFromNameHash(nameHash, map);
+		}
+
+		bool GetMapFromInternalNameHash(u32 nameHash, DB::Client::Definitions::Map* map)
+		{
+			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+			entt::registry::context& ctx = registry->ctx();
+
+			auto& mapDB = ctx.get<Singletons::MapDB>();
+
+			auto itr = mapDB.mapInternalNameHashToID.find(nameHash);
+			if (itr == mapDB.mapInternalNameHashToID.end())
+				return false;
+
+			return true;
+		}
+		bool GetMapFromInternalName(const std::string& name, DB::Client::Definitions::Map* map)
+		{
+			u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+			return GetMapFromNameHash(nameHash, map);
 		}
 	}
 }

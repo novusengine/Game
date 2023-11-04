@@ -90,8 +90,8 @@ namespace ECS::Systems
 	{
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         auto& tSystem = ECS::TransformSystem::Get(registry);
 
@@ -143,8 +143,8 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
 
@@ -173,7 +173,7 @@ namespace ECS::Systems
         if (_keybindGroup->IsKeybindPressed("AltMod"_h))
         {
             entt::registry::context& ctx = registry.ctx();
-            Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+            Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
             f32 speed = settings.cameraSpeed;
             speed = speed + ((speed / 10.0f) * position.y);

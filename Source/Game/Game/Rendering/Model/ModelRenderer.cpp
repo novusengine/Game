@@ -746,7 +746,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.at<ECS::Singletons::TextureSingleton>();
+    ECS::Singletons::TextureSingleton& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
     // Add ModelManifest
     u32 modelManifestIndex = _modelManifestsIndex.fetch_add(1);

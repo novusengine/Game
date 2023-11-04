@@ -462,7 +462,7 @@ namespace Editor
     {
         entt::registry::context& ctx = registry->ctx();
 
-        ECS::Singletons::ActiveCamera& activeCamera = ctx.at<ECS::Singletons::ActiveCamera>();
+        ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
         ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
 
         mat4x4& viewMatrix = camera.worldToView;

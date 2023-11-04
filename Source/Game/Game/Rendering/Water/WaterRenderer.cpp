@@ -1,12 +1,15 @@
 #include "WaterRenderer.h"
 
-#include "Game/ECS/Singletons/LiquidDB.h"
+#include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Rendering/RenderUtils.h"
 #include "Game/Rendering/RenderResources.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
+
+#include <FileFormat/Novus/ClientDB/ClientDB.h>
+#include <FileFormat/Novus/ClientDB/Definitions.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -131,16 +134,16 @@ void WaterRenderer::Load(LoadDesc& desc)
     // Load textures if they exist
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry::context& ctx = registry->ctx();
+    auto& clientDBCollection = ctx.get<ECS::Singletons::ClientDBCollection>();
+    auto liquidTypes = clientDBCollection.Get<ClientDB::Definitions::LiquidType>(ECS::Singletons::ClientDBHash::LiquidType);
 
     bool isLavaOrSlime = false;
-
-    auto& liquidDB = ctx.at<ECS::Singletons::LiquidDB>();
-    if (liquidDB.liquidTypes.ContainsEntryWithID(desc.typeID))
+    if (liquidTypes.Contains(desc.typeID))
     {
-        const DB::Client::Definitions::LiquidType& liquidType = liquidDB.liquidTypes.GetEntryByID(desc.typeID);
+        const ClientDB::Definitions::LiquidType& liquidType = liquidTypes.GetByID(desc.typeID);
 
         u32 textureHash = liquidType.textures[0];
-        const std::string& baseTextureName = liquidDB.liquidTypes.GetString(textureHash);
+        const std::string& baseTextureName = liquidTypes.GetString(textureHash);
 
         u16 textureStartIndex = 0;
         u32 textureCount = liquidType.frameCountTextures[0];
@@ -170,7 +173,7 @@ void WaterRenderer::Load(LoadDesc& desc)
                 }
             }
         }
-        
+
         if (liquidType.soundBank == 2 || liquidType.soundBank == 3)
         {
             isLavaOrSlime = true;

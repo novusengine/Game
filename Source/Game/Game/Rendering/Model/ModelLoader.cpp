@@ -167,6 +167,11 @@ void ModelLoader::Clear()
 
     _modelRenderer->Clear();
     ServiceLocator::GetAnimationSystem()->Clear();
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    registry->destroy(_createdEntities.begin(), _createdEntities.end());
+    
+    _createdEntities.clear();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -228,16 +233,19 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Create entt entities
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            _createdEntities.clear();
-            _createdEntities.resize(reserveInfo.numInstances);
-            registry->create(_createdEntities.begin(), _createdEntities.end());
 
-            registry->insert<ECS::Components::DirtyTransform>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::AABB>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
+            size_t createdEntitiesOffset = _createdEntities.size();
+            _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
+            auto begin = _createdEntities.begin() + createdEntitiesOffset;
+            
+            registry->create(begin, _createdEntities.end());
+
+            registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances;
             enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
@@ -278,7 +286,7 @@ void ModelLoader::Update(f32 deltaTime)
                     if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
                         continue;
 
-                    u32 index = numCreatedInstances.fetch_add(1);
+                    u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
                     AddStaticInstance(_createdEntities[index], request);
                 }
             });
@@ -288,7 +296,9 @@ void ModelLoader::Update(f32 deltaTime)
             taskScheduler->WaitforTask(&loadModelsTask);
 
             // Destroy the entities we didn't use
-            registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
+            u32 numCreated = numCreatedInstances.load();
+            registry->destroy(begin + numCreated, _createdEntities.end());
+            _createdEntities.resize(createdEntitiesOffset + numCreated);
 
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();

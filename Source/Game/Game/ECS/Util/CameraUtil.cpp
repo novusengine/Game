@@ -21,7 +21,7 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ECS::Singletons::FreeflyingCameraSettings& settings = ctx.at<ECS::Singletons::FreeflyingCameraSettings>();
+            ECS::Singletons::FreeflyingCameraSettings& settings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
 
             settings.captureMouse = capture;
 
@@ -45,7 +45,7 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ECS::Singletons::ActiveCamera& activeCamera = ctx.at<ECS::Singletons::ActiveCamera>();
+            ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
             ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
             ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);

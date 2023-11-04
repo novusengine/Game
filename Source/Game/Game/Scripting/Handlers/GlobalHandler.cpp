@@ -126,8 +126,8 @@ namespace Scripting
 			return 1;
 		}
 
-		const DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(mapName);
-		if (map == nullptr)
+		DB::Client::Definitions::Map* map = nullptr;
+		if (!ECS::Util::MapDB::GetMapFromName(mapName, map))
 		{
 			ctx.PushBool(false);
 			return 1;
@@ -136,10 +136,10 @@ namespace Scripting
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 		entt::registry::context& registryContext = registry->ctx();
 
-		auto& mapDB = registryContext.at<ECS::Singletons::MapDB>();
+		auto& mapDB = registryContext.get<ECS::Singletons::MapDB>();
 
 		u32 mapNameHash = StringUtils::fnv1a_32(mapName, mapNameLen);
-		if (!mapDB.mapNameHashToIndex.contains(mapNameHash))
+		if (!mapDB.mapNameHashToID.contains(mapNameHash))
 		{
 			ctx.PushBool(false);
 			return 1;

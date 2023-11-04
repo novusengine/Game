@@ -47,6 +47,7 @@ private:
 	bool Init();
 	bool Tick(f32 deltaTime);
 	bool Render(f32 deltaTime, f32& timeSpentWaiting);
+	void SaveCDB();
 
 	void Cleanup();
 

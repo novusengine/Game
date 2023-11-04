@@ -34,7 +34,7 @@ namespace Editor
 
             entt::registry::context& ctx = registry.ctx();
 
-            auto& mapDB = ctx.at<ECS::Singletons::MapDB>();
+            auto& mapDB = ctx.get<ECS::Singletons::MapDB>();
             const std::vector<std::string>& mapNames = mapDB.mapNames;
 
             u32 numMaps = static_cast<u32>(mapNames.size());

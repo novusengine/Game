@@ -31,7 +31,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        ECS::Singletons::EngineStats& stats = registry->ctx().at<ECS::Singletons::EngineStats>();
+        ECS::Singletons::EngineStats& stats = registry->ctx().get<ECS::Singletons::EngineStats>();
 
         ECS::Singletons::FrameTimes average = stats.AverageFrame(240);
 

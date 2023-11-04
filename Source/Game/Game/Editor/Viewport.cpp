@@ -95,7 +95,7 @@ namespace Editor
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			entt::registry::context& ctx = registry->ctx();
 
-			ECS::Singletons::FreeflyingCameraSettings& cameraSettings = ctx.at<ECS::Singletons::FreeflyingCameraSettings>();
+			ECS::Singletons::FreeflyingCameraSettings& cameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
 
 			ImGuiIO& io = ImGui::GetIO();
 
@@ -192,7 +192,7 @@ namespace Editor
 
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			entt::registry::context& ctx = registry->ctx();
-			ECS::Singletons::FreeflyingCameraSettings& settings = ctx.at<ECS::Singletons::FreeflyingCameraSettings>();
+			ECS::Singletons::FreeflyingCameraSettings& settings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
 			ImGui::SameLine();
 			ImGui::Text("Camera Speed: %.1f", settings.cameraSpeed);
 		}

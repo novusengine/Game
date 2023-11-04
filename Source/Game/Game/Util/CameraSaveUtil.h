@@ -17,7 +17,7 @@ namespace Util::CameraSave
     inline bool GenerateSaveLocation(const std::string& saveName, std::string& result)
     {
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-		entt::entity activeCamera = registry->ctx().at<ECS::Singletons::ActiveCamera>().entity;
+		entt::entity activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>().entity;
 
 		const std::string& mapInternalName = ServiceLocator::GetGameRenderer()->GetTerrainLoader()->GetCurrentMapInternalName();
 
@@ -67,7 +67,7 @@ namespace Util::CameraSave
 		Bytebuffer buffer = Bytebuffer(result.data(), result.size());
 
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-		entt::entity activeCamera = registry->ctx().at<ECS::Singletons::ActiveCamera>().entity;
+		entt::entity activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>().entity;
 
 		std::string cameraSaveName = "";
 		std::string mapInternalName = "";

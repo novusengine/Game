@@ -1,5 +1,6 @@
 #include "GameConsoleCommands.h"
 #include "GameConsole.h"
+#include "GameConsoleCommandHandler.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Util/Transforms.h"
@@ -20,20 +21,49 @@
 #include <base64/base64.h>
 #include <entt/entt.hpp>
 
-bool GameConsoleCommands::HandleHelp(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleHelp(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	gameConsole->Print("-- Help --");
-	gameConsole->Print("Available Commands : 'help', 'ping', 'lua', 'eval'");
+
+	const auto& commandEntries = commandHandler->GetCommandEntries();
+	u32 numCommands = static_cast<u32>(commandEntries.size());
+
+	std::string commandList = "Available Commands : ";
+
+	std::vector<const std::string*> commandNames;
+	commandNames.reserve(numCommands);
+
+	for (const auto& pair : commandEntries)
+	{
+		commandNames.push_back(&pair.second.name);
+	}
+
+	std::sort(commandNames.begin(), commandNames.end(), [&](const std::string* a, const std::string* b) { return *a < *b; });
+
+	u32 counter = 0;
+	for (const std::string* commandName : commandNames)
+	{
+		commandList += "'" + *commandName + "'";
+
+		if (counter != numCommands - 1)
+		{
+			commandList += ", ";
+		}
+
+		counter++;
+	}
+
+	gameConsole->Print(commandList);
 	return false;
 }
 
-bool GameConsoleCommands::HandlePing(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandlePing(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	gameConsole->Print("pong");
 	return true;
 }
 
-bool GameConsoleCommands::HandleDoString(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleDoString(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	if (subCommands.size() == 0)
 		return false;
@@ -58,7 +88,7 @@ bool GameConsoleCommands::HandleDoString(GameConsole* gameConsole, std::vector<s
 	return true;
 }
 
-bool GameConsoleCommands::HandleLogin(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleLogin(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	if (subCommands.size() == 0)
 		return false;
@@ -74,13 +104,13 @@ bool GameConsoleCommands::HandleLogin(GameConsole* gameConsole, std::vector<std:
 
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-	ECS::Singletons::NetworkState& networkState = registry->ctx().at<ECS::Singletons::NetworkState>();
+	ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 	networkState.client->Send(buffer);
 
 	return true;
 }
 
-bool GameConsoleCommands::HandleReloadScripts(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleReloadScripts(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
 	luaManager->SetDirty();
@@ -88,7 +118,7 @@ bool GameConsoleCommands::HandleReloadScripts(GameConsole* gameConsole, std::vec
 	return false;
 }
 
-bool GameConsoleCommands::HandleSetCursor(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleSetCursor(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	if (subCommands.size() == 0)
 		return false;
@@ -102,7 +132,7 @@ bool GameConsoleCommands::HandleSetCursor(GameConsole* gameConsole, std::vector<
 	return false;
 }
 
-bool GameConsoleCommands::HandleSaveCamera(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleSaveCamera(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	if (subCommands.size() == 0)
 		return false;
@@ -124,7 +154,7 @@ bool GameConsoleCommands::HandleSaveCamera(GameConsole* gameConsole, std::vector
 	return false;
 }
 
-bool GameConsoleCommands::HandleLoadCamera(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleLoadCamera(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	if (subCommands.size() == 0)
 		return false;
@@ -146,7 +176,7 @@ bool GameConsoleCommands::HandleLoadCamera(GameConsole* gameConsole, std::vector
 	return false;
 }
 
-bool GameConsoleCommands::HandleClearMap(GameConsole* gameConsole, std::vector<std::string>& subCommands)
+bool GameConsoleCommands::HandleClearMap(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
 	MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 	mapLoader->UnloadMap();
