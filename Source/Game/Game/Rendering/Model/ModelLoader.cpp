@@ -102,6 +102,7 @@ void ModelLoader::Init()
 
             discoveredModel.name = cModelPath;
             discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
+            discoveredModel.hasShape = false;
 
             discoveredModels.enqueue(discoveredModel);
         }
@@ -148,6 +149,7 @@ void ModelLoader::Clear()
 
     _nameHashToLoadState.clear();
     _nameHashToModelID.clear();
+    _nameHashToJoltShape.clear();
 
     for (auto& it : _nameHashToLoadingMutex)
     {
@@ -158,17 +160,39 @@ void ModelLoader::Clear()
         }
     }
 
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    u32 numInstanceIDToBodyIDs = static_cast<u32>(_instanceIDToBodyID.size());
+    if (numInstanceIDToBodyIDs > 0)
+    {
+        auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+        for (auto& pair : _instanceIDToBodyID)
+        {
+            JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
+
+            bodyInterface.RemoveBody(id);
+            bodyInterface.DestroyBody(id);
+        }
+    }
+
+    for (auto& pair : _nameHashToJoltShape)
+    {
+        pair.second = nullptr;
+    }
+
     _nameHashToLoadingMutex.clear();
 
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
+    _instanceIDToBodyID.clear();
     _instanceIDToEntityID.clear();
     _modelIDToNameHash.clear();
 
     _modelRenderer->Clear();
     ServiceLocator::GetAnimationSystem()->Clear();
 
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     
     _createdEntities.clear();
@@ -522,6 +546,53 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     aabb.centerPos = model.aabbCenter;
     aabb.extents = model.aabbExtents;
 
+    // Generate Jolt Shape
+    {
+        // Disabled on purpose for now
+        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+
+        if (physicsEnabled)
+        {
+            u32 numCollisionVertices = static_cast<u32>(model.collisionVertexPositions.size());
+            u32 numCollisionIndices = static_cast<u32>(model.collisionIndices.size());
+            u32 indexRemainder = numCollisionIndices % 3;
+
+            if (numCollisionVertices > 0 && indexRemainder == 0)
+            {
+                u32 numTriangles = numCollisionIndices / 3;
+
+                JPH::VertexList vertexList;
+                vertexList.reserve(numCollisionVertices);
+
+                JPH::IndexedTriangleList triangleList;
+                triangleList.reserve(numTriangles);
+
+                for (u32 i = 0; i < numCollisionVertices; i++)
+                {
+                    const vec3& vertexPos = model.collisionVertexPositions[i];
+                    vertexList.push_back({ vertexPos.x, vertexPos.y, vertexPos.z });
+                }
+
+                for (u32 i = 0; i < numTriangles; i++)
+                {
+                    u32 offset = i * 3;
+
+                    u16 indexA = model.collisionIndices[offset + 0];
+                    u16 indexB = model.collisionIndices[offset + 1];
+                    u16 indexC = model.collisionIndices[offset + 2];
+
+                    triangleList.push_back({ indexA, indexB, indexC });
+                }
+
+                JPH::MeshShapeSettings shapeSetting(vertexList, triangleList);
+                JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
+
+                _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
+                discoveredModel.hasShape = true;
+            }
+        }
+    }
+
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     animationSystem->AddSkeleton(modelID, model);
 
@@ -565,6 +636,35 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     {
         entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
         tSystem.ParentEntityTo(parentEntityID, entityID);
+    }
+
+    if (discoveredModel.hasShape)
+    {
+        // Disabled on purpose for now
+        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+
+        if (physicsEnabled && !hasParent)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+            JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+            const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
+
+            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+            vec3 position = transform.GetWorldPosition();
+            const quat& rotation = transform.GetLocalRotation();
+
+            // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
+            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+
+            // Create the actual rigid body
+            JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+
+            JPH::BodyID bodyID = body->GetID();
+            bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+            _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+        }
     }
 
     /* Commented out on purpose to be dealt with at a later date when we have reimplemented GPU side animations */

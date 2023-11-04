@@ -30,9 +30,6 @@
 
 namespace fs = std::filesystem;
 
-AutoCVar_Int CVAR_TerrainLoaderPhysicsEnabled("terrainLoader.physics.enabled", "enable loading the terrain into the physics engine", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_TerrainLoaderPhysicsOptimizeBP("terrainLoader.physics.optimizeBP", "enables optimizing the broadphase", 1, CVarFlags::EditCheckbox);
-
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader)
 	: _terrainRenderer(terrainRenderer)
 	, _modelLoader(modelLoader)
@@ -263,7 +260,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-	bool physicsEnabled = CVAR_TerrainLoaderPhysicsEnabled.Get();
+	i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
 	auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
 	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
@@ -527,7 +524,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
 	taskScheduler->WaitforTask(&loadChunksTask);
 
-	if (physicsEnabled && CVAR_TerrainLoaderPhysicsOptimizeBP.Get())
+	i32 physicsOptimizeBP = *CVarSystem::Get()->GetIntCVar("physics.optimizeBP");
+	if (physicsEnabled && physicsOptimizeBP)
 	{
 		joltState.physicsSystem.OptimizeBroadPhase();
 	}

@@ -11,6 +11,7 @@
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
 
 #include <Input/KeybindGroup.h>
@@ -27,6 +28,9 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 
 using namespace JPH::literals;
+
+AutoCVar_Int CVAR_PhysicsEnabled("physics.enabled", "enables the physics engine", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_PhysicsOptimizeBP("physics.optimizeBP", "enables automatically optimizing the broadphase during load", 1, CVarFlags::EditCheckbox);
 
 namespace ECS::Systems
 {

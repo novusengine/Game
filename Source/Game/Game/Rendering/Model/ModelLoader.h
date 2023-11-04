@@ -10,6 +10,10 @@
 
 #include <entt/entt.hpp>
 #include <enkiTS/TaskScheduler.h>
+#include <Jolt/Jolt.h>
+#include <Jolt/Geometry/Triangle.h>
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <robinhood/robinhood.h>
 #include <type_safe/strong_typedef.hpp>
 
@@ -32,6 +36,8 @@ public:
 	{
 		std::string name;
 		u32 nameHash;
+
+		bool hasShape;
 		Model::ComplexModel::ModelHeader modelHeader;
 	};
 
@@ -77,11 +83,13 @@ private:
 
 	robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
 	robin_hood::unordered_map<u32, u32> _nameHashToModelID;
+	robin_hood::unordered_map<u32, JPH::ShapeRefC> _nameHashToJoltShape;
 	robin_hood::unordered_map<u32, DiscoveredModel> _nameHashToDiscoveredModel;
 	robin_hood::unordered_map<u32, std::mutex*> _nameHashToLoadingMutex;
 
 	robin_hood::unordered_map<u32, u32> _uniqueIDToinstanceID;
 	robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
+	robin_hood::unordered_map<u32, u32> _instanceIDToBodyID;
 	robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
 	std::mutex _instanceIDToModelIDMutex;
 
