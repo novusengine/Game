@@ -62,6 +62,13 @@ namespace Util
 		bool Inspect(const char* name, std::string& value, f32 speed);
 		bool Inspect(const char* name, const std::string& value, f32 speed);
 
+		// Sliders
+		void FloatSlider(const std::string& text, float* variable, float minVal, float maxVal, float step = 0.0f, float fastStep = 0.0f,
+			bool arrowsEnabled = false, const char* format = "%.2f", ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_None, 
+			float sliderWidth = ImGui::GetWindowWidth(), const std::string& append = "");
+
+		// Color Picker
+		void ColorPicker(std::string name, ImVec4* color, ImVec2 size = ImVec2(40.0f, 40.0f), std::string append = "");
 
 		template <typename ComponentType>
 		bool Inspect(ComponentType& component) 
