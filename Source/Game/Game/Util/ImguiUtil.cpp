@@ -861,7 +861,7 @@ namespace Util
 			return false;
 		}
 
-		void FloatSlider(const std::string& text, f32* variable, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
+		void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
 			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, f32 sliderWidth, const std::string& append)
 		{
 			ImGui::TextWrapped(text.c_str());
@@ -870,7 +870,7 @@ namespace Util
 				sliderWidth -= 70.0f;
 
 			ImGui::SetNextItemWidth(sliderWidth);
-			ImGui::SliderFloat(("##" + text + append).c_str(), variable, minVal, maxVal, format, sliderFlags);
+			ImGui::SliderFloat(("##" + text + append).c_str(), valuePtr, minVal, maxVal, format, sliderFlags);
 
 			if (ImGui::IsItemHovered())
 			{
@@ -885,11 +885,11 @@ namespace Util
 					{
 						if (ImGui::GetIO().KeyShift)
 						{
-							*variable += wheel * fastStep;
+							*valuePtr += wheel * fastStep;
 						}
 						else
 						{
-							*variable += wheel * step;
+							*valuePtr += wheel * step;
 						}
 					}
 				}
@@ -900,47 +900,47 @@ namespace Util
 				f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
 				ImGui::SameLine(0.0f, spacing);
 				ImGui::PushButtonRepeat(true);
+
 				if (ImGui::ArrowButton(("##left" + text + append).c_str(), ImGuiDir_Left))
 				{ 
 					if (ImGui::GetIO().KeyShift)
 					{
-						*(variable) -= fastStep;
+						*(valuePtr) -= fastStep;
 					}
 					else
 					{
-						*(variable) -= step;
+						*(valuePtr) -= step;
 					}
 				}
+
 				ImGui::SameLine(0.0f, spacing);
+
 				if (ImGui::ArrowButton(("##right" + text + append).c_str(), ImGuiDir_Right))
 				{
 					if (ImGui::GetIO().KeyShift)
 					{
-						*(variable) += fastStep;
+						*(valuePtr) += fastStep;
 					}
 					else
 					{
-						*(variable) += step;
+						*(valuePtr) += step;
 					}
 				}
+
 				ImGui::PopButtonRepeat();
 			}
 
-			if (*variable < minVal)
-				*variable = minVal;
-			
-			if (*variable > maxVal)
-				*variable = maxVal;
+			*valuePtr = glm::clamp(*valuePtr, minVal, maxVal);
 		}
 
-		void ColorPicker(const std::string& name, ImVec4* color, ImVec2 size, const std::string& append)
+		void ColorPicker(const std::string& name, ImVec4* valuePtr, ImVec2 size, const std::string& append)
 		{
 			ImGui::TextWrapped((name).c_str());
 
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-			ImGui::PushStyleColor(ImGuiCol_Button, *color);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *color);
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *color);
+			ImGui::PushStyleColor(ImGuiCol_Button, *valuePtr);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *valuePtr);
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *valuePtr);
 			
 			if (ImGui::Button(("##" + name + append + "Button").c_str(), size))
 				ImGui::OpenPopup((name + append + "popup").c_str());
@@ -957,7 +957,7 @@ namespace Util
 
 			if (ImGui::BeginPopup((name + append + "popup").c_str()))
 			{
-				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (f32*)color,
+				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (f32*)valuePtr,
 					ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview
 					| ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
 
