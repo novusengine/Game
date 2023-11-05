@@ -861,8 +861,8 @@ namespace Util
 			return false;
 		}
 
-		void FloatSlider(const std::string& text, float* variable, float minVal, float maxVal, float step, float fastStep, 
-			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, float sliderWidth, const std::string& append)
+		void FloatSlider(const std::string& text, f32* variable, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
+			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, f32 sliderWidth, const std::string& append)
 		{
 			ImGui::TextWrapped(text.c_str());
 
@@ -874,7 +874,7 @@ namespace Util
 
 			if (ImGui::IsItemHovered())
 			{
-				float wheel = ImGui::GetIO().MouseWheel;
+				f32 wheel = ImGui::GetIO().MouseWheel;
 				if (wheel)
 				{
 					if (ImGui::IsItemActive())
@@ -897,7 +897,7 @@ namespace Util
 
 			if (arrowsEnabled)
 			{
-				float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+				f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
 				ImGui::SameLine(0.0f, spacing);
 				ImGui::PushButtonRepeat(true);
 				if (ImGui::ArrowButton(("##left" + text + append).c_str(), ImGuiDir_Left))
@@ -933,7 +933,7 @@ namespace Util
 				*variable = maxVal;
 		}
 
-		void ColorPicker(std::string name, ImVec4* color, ImVec2 size, std::string append)
+		void ColorPicker(const std::string& name, ImVec4* color, ImVec2 size, const std::string& append)
 		{
 			ImGui::TextWrapped((name).c_str());
 
@@ -957,8 +957,9 @@ namespace Util
 
 			if (ImGui::BeginPopup((name + append + "popup").c_str()))
 			{
-				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (float*)color,
-					ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview | ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
+				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (f32*)color,
+					ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview
+					| ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
 
 				ImGui::EndPopup();
 			}

@@ -63,15 +63,15 @@ namespace Util
 		bool Inspect(const char* name, const std::string& value, f32 speed);
 
 		// Sliders
-		void FloatSlider(const std::string& text, float* variable, float minVal, float maxVal, float step = 0.0f, float fastStep = 0.0f,
+		void FloatSlider(const std::string& text, f32* variable, f32 minVal, f32 maxVal, f32 step = 0.0f, f32 fastStep = 0.0f,
 			bool arrowsEnabled = false, const char* format = "%.2f", ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_None, 
-			float sliderWidth = ImGui::GetWindowWidth(), const std::string& append = "");
+			f32 sliderWidth = ImGui::GetWindowWidth(), const std::string& append = "");
 
 		// Color Picker
-		void ColorPicker(std::string name, ImVec4* color, ImVec2 size = ImVec2(40.0f, 40.0f), std::string append = "");
+		void ColorPicker(const std::string& name, ImVec4* color, ImVec2 size = ImVec2(40.0f, 40.0f), const std::string& append = "");
 
 		template <typename ComponentType>
-		bool Inspect(ComponentType& component) 
+		bool Inspect(ComponentType& component)
 		{
 			static_assert(!std::is_pointer_v<ComponentType>, "Inspect<T>() does not support pointers, please dereference the pointer before calling Inspect<T>()");
 

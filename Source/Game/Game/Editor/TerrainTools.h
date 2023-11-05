@@ -18,9 +18,9 @@ namespace Editor
 
 
 	private:
-		float _brushHardness = 100.0f;
-		float _brushRadius = 10.0f;
-		float _brushPressure = 100.0f;
+		f32 _brushHardness = 100.0f;
+		f32 _brushRadius = 10.0f;
+		f32 _brushPressure = 100.0f;
 
 		ImVec4 _vertexColor = { 0.0f, 0.0f, 0.0f, 1.0f };
 	};
