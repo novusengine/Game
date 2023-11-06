@@ -36,5 +36,7 @@ namespace Editor
 
 		vec2 _viewportPos = vec2(0, 0);
 		vec2 _viewportSize = vec2(0, 0);
+
+		bool _rightClickStartedInViewport = false;
 	};
 }

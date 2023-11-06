@@ -3,7 +3,7 @@
 #include "CVarEditor.h"
 #include "CameraInfo.h"
 #include "PerformanceDiagnostics.h"
-#include "MapEditor.h"
+#include "MapSelector.h"
 #include "Inspector.h"
 #include "Hierarchy.h"
 #include "AssetBrowser.h"
@@ -15,10 +15,12 @@
 
 #include <Base/CVarSystem/CVarSystem.h>
 
-#include <tracy/Tracy.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imgui_notify.h>
+#include <imgui/imguizmo/ImGuizmo.h>
+#include <tracy/Tracy.hpp>
+
 #include <fstream>
 
 namespace Editor
@@ -30,17 +32,20 @@ namespace Editor
         InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
         KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("GlobalEditor", 0);
 
+        constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
+        KeybindGroup* imguiKeybindGroup = inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
+        imguiKeybindGroup->SetActive(true);
+
         _viewport = new Viewport();
         _editors.push_back(_viewport);
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
-        _editors.push_back(new MapEditor());
+        _editors.push_back(new MapSelector());
         _editors.push_back(new EaseCurveTool());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);
-
 
         _inspector = new Inspector();
         _editors.push_back(_inspector);
@@ -77,6 +82,37 @@ namespace Editor
             _viewport->SetIsEditorMode(_editorMode);
 
             return true;
+        });
+
+        imguiKeybindGroup->AddKeyboardInputValidator("KeyboardInputValidator", [](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+        {
+            auto& io = ImGui::GetIO();
+            bool wasConsumedByImGui = io.WantCaptureKeyboard;
+
+            return wasConsumedByImGui;
+        });
+
+        imguiKeybindGroup->AddMouseInputValidator("MousedInputValidator", [](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+        {
+            auto& io = ImGui::GetIO();
+            bool wasConsumedByImGui = io.WantCaptureMouse || ImGuizmo::IsOver();
+
+            return wasConsumedByImGui;
+        });
+
+        imguiKeybindGroup->AddMousePositionValidator([](f32 x, f32 y) -> bool
+        {
+            auto& io = ImGui::GetIO();
+            bool wasConsumedByImGui = io.MouseHoveredViewport;
+
+            return wasConsumedByImGui;
+        });
+
+        imguiKeybindGroup->AddMouseScrollValidator([this](f32 x, f32 y) -> bool
+        {
+            bool wasConsumedByImGui = _editorMode;
+
+            return wasConsumedByImGui;
         });
     }
 

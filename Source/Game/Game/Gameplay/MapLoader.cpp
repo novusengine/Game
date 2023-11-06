@@ -35,7 +35,7 @@ void MapLoader::Update(f32 deltaTime)
     while (_requests.try_dequeue(request)) { } // Empty the queue and only listen to the last request
 
     // Clear Map
-    if (request.mapNameHash == std::numeric_limits<u32>().max())
+    if (request.internalMapNameHash == std::numeric_limits<u32>().max())
     {
         ClearRenderersForMap();
     }
@@ -46,17 +46,15 @@ void MapLoader::Update(f32 deltaTime)
         auto& mapDB = registry->ctx().get<MapDB>();
         auto maps = clientDBCollection.Get<ClientDB::Definitions::Map>(ClientDBHash::Map);
 
-        const robin_hood::unordered_map<u32, u32>* mapNameHashToID = &mapDB.mapNameHashToID;
+        const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapDB.mapInternalNameHashToID;
 
-        if (request.isInternalName)
-        {
-            mapNameHashToID = &mapDB.mapInternalNameHashToID;
-        }
-
-        if (!mapNameHashToID->contains(request.mapNameHash))
+        if (!internalNameHashToID.contains(request.internalMapNameHash))
             return;
 
-        u32 mapID = mapNameHashToID->at(request.mapNameHash);
+        u32 mapID = internalNameHashToID.at(request.internalMapNameHash);
+        if (!maps.Contains(mapID))
+            return;
+
         const ClientDB::Definitions::Map& currentMap = maps.GetByID(mapID);
         
         static const fs::path fileExtension = ".map";
@@ -107,7 +105,7 @@ void MapLoader::Update(f32 deltaTime)
 void MapLoader::UnloadMap()
 {
     LoadDesc loadDesc;
-    loadDesc.mapNameHash = std::numeric_limits<u32>().max();
+    loadDesc.internalMapNameHash = std::numeric_limits<u32>().max();
 
     _requests.enqueue(loadDesc);
 }
@@ -115,16 +113,7 @@ void MapLoader::UnloadMap()
 void MapLoader::LoadMap(u32 mapHash)
 {
     LoadDesc loadDesc;
-    loadDesc.mapNameHash = mapHash;
-
-    _requests.enqueue(loadDesc);
-}
-
-void MapLoader::LoadMapWithInternalName(u32 mapHash)
-{
-    LoadDesc loadDesc;
-    loadDesc.isInternalName = true;
-    loadDesc.mapNameHash = mapHash;
+    loadDesc.internalMapNameHash = mapHash;
 
     _requests.enqueue(loadDesc);
 }

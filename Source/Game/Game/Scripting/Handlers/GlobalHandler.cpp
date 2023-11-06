@@ -1,6 +1,6 @@
 #include "GlobalHandler.h"
 #include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Util/MapDBUtil.h"
+#include "Game/ECS/Util/MapUtil.h"
 #include "Game/ECS/Singletons/MapDB.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -117,33 +117,23 @@ namespace Scripting
 	{
 		LuaStateCtx ctx(state);
 
-		const char* mapName = ctx.GetString();
-		size_t mapNameLen = strlen(mapName);
+		const char* mapInternalName = ctx.GetString();
+		size_t mapInternalNameLen = strlen(mapInternalName);
 
-		if (mapName == nullptr)
+		if (mapInternalName == nullptr)
 		{
 			ctx.PushBool(false);
 			return 1;
 		}
 
-		DB::Client::Definitions::Map* map = nullptr;
-		if (!ECS::Util::MapDB::GetMapFromName(mapName, map))
+		ClientDB::Definitions::Map* map = nullptr;
+		if (!ECS::Util::Map::GetMapFromInternalName(mapInternalName, map))
 		{
 			ctx.PushBool(false);
 			return 1;
 		}
 
-		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-		entt::registry::context& registryContext = registry->ctx();
-
-		auto& mapDB = registryContext.get<ECS::Singletons::MapDB>();
-
-		u32 mapNameHash = StringUtils::fnv1a_32(mapName, mapNameLen);
-		if (!mapDB.mapNameHashToID.contains(mapNameHash))
-		{
-			ctx.PushBool(false);
-			return 1;
-		}
+		u32 mapNameHash = StringUtils::fnv1a_32(mapInternalName, mapInternalNameLen);
 
 		MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 		mapLoader->LoadMap(mapNameHash);

@@ -31,6 +31,48 @@ namespace Editor
 		: BaseEditor(GetName(), true)
 	{
 		_lastPanelSize = vec2(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
+
+		InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+		KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+
+		imguiKeybindGroup->AddKeyboardCallback("Editor RightClick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
+		{
+			InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+			entt::registry::context& ctx = registry->ctx();
+
+			ECS::Singletons::FreeflyingCameraSettings& cameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+			if (cameraSettings.captureMouse)
+				return false;
+
+			cameraSettings.captureMouseHasMoved = false;
+
+			ImGuiContext* context = ImGui::GetCurrentContext();
+			_rightClickStartedInViewport = context->HoveredWindow && strcmp(context->HoveredWindow->Name, GetName()) == 0;
+			return true;
+		});
+
+		imguiKeybindGroup->AddMouseScrollCallback([this](f32 x, f32 y) -> bool
+		{
+			ImGuiContext* context = ImGui::GetCurrentContext();
+
+			if (context->HoveredWindow)
+			{
+				InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+				KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+
+				bool isViewportHovered = strcmp(context->HoveredWindow->Name, GetName()) == 0;
+				bool altIsDown = ImGui::GetIO().KeyAlt;
+
+				if (isViewportHovered && altIsDown)
+				{
+					entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+					ECS::Systems::FreeflyingCamera::CapturedMouseScrolled(*registry, vec2(x, y));
+				}
+			}
+
+			return true;
+		});
 	}
 
 	void Viewport::SetInspector(Inspector* inspector)
@@ -70,6 +112,9 @@ namespace Editor
 
 		if (ImGui::Begin(GetName(), &IsVisible()))
 		{
+			InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+			KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+
 			GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
 			Renderer::Renderer* renderer = gameRenderer->GetRenderer();
 			
@@ -99,43 +144,27 @@ namespace Editor
 
 			ImGuiIO& io = ImGui::GetIO();
 
-			if (ImGui::IsItemClicked(0)) // Left click
-			{
-				KeybindModifier modifier = KeybindModifier::None;
-
-				if (io.KeyShift)
-					modifier |= KeybindModifier::Shift;
-				else if (io.KeyCtrl)
-					modifier |= KeybindModifier::Ctrl;
-				else if (io.KeyAlt)
-					modifier |= KeybindModifier::Alt;
-
-				_inspector->OnMouseClickLeft(0, KeybindAction::Click, modifier);
-			}
-
-			if (ImGui::IsMouseDoubleClicked(1)) // Double right click
+			if (ImGui::IsMouseDoubleClicked(1) && ImGui::IsItemHovered()) // Double right click
 			{
 				ECS::Util::CameraUtil::SetCaptureMouse(true);
 
-				vec2 capturePos = windowPos + (contentRegionAvail / 2.0f);//vec2(windowPos.x + (contentRegionAvail.x / 2.0f), windowPos.y + (contentRegionAvail.y / 2.0f));
-				cameraSettings.prevMousePosition = capturePos;
+				cameraSettings.prevMousePosition = inputManager->GetMousePosition();
+				cameraSettings.captureMouseHasMoved = false;
 			}
-			else if (ImGui::IsItemClicked(1)) // Right click
+			else if (imguiKeybindGroup->IsKeybindPressed("Editor RightClick"_h))
 			{
-				cameraSettings.prevMousePosition = io.MousePos;
+				if (_rightClickStartedInViewport)
+				{
+					vec2 mousePos = inputManager->GetMousePosition();
+					ECS::Systems::FreeflyingCamera::CapturedMouseMoved(*registry, mousePos);
+				}
 			}
 			else
 			{
-				// If holding down rightclick
-				if (io.MouseDown[1])
-				{
-					ECS::Systems::FreeflyingCamera::CapturedMouseMoved(*registry, io.MousePos);
-				}
-				// If we scrolled
-				if (io.MouseWheel != 0.0f)
-				{
-					ECS::Systems::FreeflyingCamera::CapturedMouseScrolled(*registry, vec2(0.0f, io.MouseWheel));
-				}
+				_rightClickStartedInViewport = false;
+
+				if (!cameraSettings.captureMouse)
+					cameraSettings.captureMouseHasMoved = false;
 			}
 
 			DrawBottomBar(contentRegionAvail);
