@@ -861,61 +861,49 @@ namespace Util
 			return false;
 		}
 
+		void GroupHeader(const std::string& headerName)
+		{
+			ImGui::NewLine();
+
+			f32 centerAlignPos = (ImGui::GetWindowWidth() - ImGui::CalcTextSize(headerName.c_str()).x) * 0.5f;
+			ImGui::SetCursorPosX(centerAlignPos);
+
+			ImGui::TextWrapped(headerName.c_str());
+
+			ImGui::NewLine();
+		}
+
 		void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
 			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, f32 sliderWidth, const std::string& append)
 		{
+			f32 frameHeight = ImGui::GetFrameHeight();
+			f32 currentFontSize = ImGui::GetDrawListSharedData()->FontSize;
+			f32 arrowSize = frameHeight * 0.45f;
+			f32 arrowSpacing = frameHeight - 2.0f * arrowSize;
+			f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+
 			ImGui::TextWrapped(text.c_str());
 
 			if (sliderWidth == ImGui::GetWindowWidth())
-				sliderWidth -= 70.0f;
+				sliderWidth -= frameHeight;
 
 			ImGui::SetNextItemWidth(sliderWidth);
 			ImGui::SliderFloat(("##" + text + append).c_str(), valuePtr, minVal, maxVal, format, sliderFlags);
 
-			if (ImGui::IsItemHovered())
-			{
-				f32 wheel = ImGui::GetIO().MouseWheel;
-				if (wheel)
-				{
-					if (ImGui::IsItemActive())
-					{
-						ImGui::ClearActiveID();
-					}
-					else
-					{
-						if (ImGui::GetIO().KeyShift)
-						{
-							*valuePtr += wheel * fastStep;
-						}
-						else
-						{
-							*valuePtr += wheel * step;
-						}
-					}
-				}
-			}
+			HoveredMouseWheelStep(valuePtr, step, fastStep);
 
 			if (arrowsEnabled)
 			{
-				f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-				ImGui::SameLine(0.0f, spacing);
+				ImGui::SameLine(0.0f, 1.0f);
+				
+				ImGui::BeginGroup();
+
+				ImGui::GetDrawListSharedData()->FontSize = arrowSize;
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{ ImGui::GetCurrentContext()->Style.ItemSpacing.x, arrowSpacing });
+
 				ImGui::PushButtonRepeat(true);
 
-				if (ImGui::ArrowButton(("##left" + text + append).c_str(), ImGuiDir_Left))
-				{ 
-					if (ImGui::GetIO().KeyShift)
-					{
-						*(valuePtr) -= fastStep;
-					}
-					else
-					{
-						*(valuePtr) -= step;
-					}
-				}
-
-				ImGui::SameLine(0.0f, spacing);
-
-				if (ImGui::ArrowButton(("##right" + text + append).c_str(), ImGuiDir_Right))
+				if (ImGui::ArrowButtonEx(("##right" + text + append).c_str(), ImGuiDir_Up, ImVec2(arrowSize, arrowSize)))
 				{
 					if (ImGui::GetIO().KeyShift)
 					{
@@ -927,7 +915,26 @@ namespace Util
 					}
 				}
 
+				HoveredMouseWheelStep(valuePtr, step, fastStep);
+
+				if (ImGui::ArrowButtonEx(("##left" + text + append).c_str(), ImGuiDir_Down, ImVec2(arrowSize, arrowSize)))
+				{ 
+					if (ImGui::GetIO().KeyShift)
+					{
+						*(valuePtr) -= fastStep;
+					}
+					else
+					{
+						*(valuePtr) -= step;
+					}
+				}
+
+				HoveredMouseWheelStep(valuePtr, step, fastStep);
+
+				ImGui::GetDrawListSharedData()->FontSize = currentFontSize;
+				ImGui::PopStyleVar();
 				ImGui::PopButtonRepeat();
+				ImGui::EndGroup();
 			}
 
 			*valuePtr = glm::clamp(*valuePtr, minVal, maxVal);
@@ -935,13 +942,17 @@ namespace Util
 
 		void ColorPicker(const std::string& name, ImVec4* valuePtr, ImVec2 size, const std::string& append)
 		{
-			ImGui::TextWrapped((name).c_str());
+			// Make name optional?
+			//ImGui::TextWrapped((name).c_str());
 
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
 			ImGui::PushStyleColor(ImGuiCol_Button, *valuePtr);
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *valuePtr);
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *valuePtr);
-			
+
+			f32 centerAlignPos = (ImGui::GetWindowWidth() - size.x) * 0.5f;
+			ImGui::SetCursorPosX(centerAlignPos);
+
 			if (ImGui::Button(("##" + name + append + "Button").c_str(), size))
 				ImGui::OpenPopup((name + append + "popup").c_str());
 
@@ -962,6 +973,24 @@ namespace Util
 					| ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
 
 				ImGui::EndPopup();
+			}
+		}
+		void ColumnCheckBox(const std::string& valueName, bool valueArray[], i8 valueElement, i8 elementCount)
+		{
+			ImGui::TableNextColumn();
+
+			// Need To add center alignment here
+			
+			ImGui::Checkbox(valueName.c_str(), &valueArray[valueElement]);
+
+			if (valueArray[valueElement] == true)
+			{
+				for (int i = 0; i < elementCount; i++)
+				{
+					valueArray[i] = false;
+				}
+
+				valueArray[valueElement] = true;
 			}
 		}
 	}
