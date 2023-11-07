@@ -15,8 +15,7 @@ private:
     struct LoadDesc
     {
     public:
-        bool isInternalName = false;
-        u32 mapNameHash = std::numeric_limits<u32>().max();
+        u32 internalMapNameHash = std::numeric_limits<u32>().max();
     };
 
 public:
@@ -26,7 +25,6 @@ public:
 
     void UnloadMap();
     void LoadMap(u32 mapHash);
-    void LoadMapWithInternalName(u32 mapHash);
 
     const u32 GetCurrentMapIndex() { return _currentMapIndex; }
 

@@ -118,7 +118,7 @@ namespace Util::CameraSave
 			else
 			{
 				u32 mapInternalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
-				mapLoader->LoadMapWithInternalName(mapInternalNameHash);
+				mapLoader->LoadMap(mapInternalNameHash);
 			}
 		}
 

@@ -76,12 +76,14 @@ namespace ECS::Systems
         });
         _keybindGroup->AddMouseScrollCallback([&settings, &registry](f32 xPos, f32 yPos)
         {
-            if (settings.captureMouse)
+            bool altIsDown = _keybindGroup->IsKeybindPressed("AltMod"_h);
+                    
+            if (altIsDown)
             {
                 CapturedMouseScrolled(registry, vec2(xPos, yPos));
             }
 
-            return settings.captureMouse;
+            return altIsDown;
         });
 
 	}
@@ -170,15 +172,12 @@ namespace ECS::Systems
 
     void FreeflyingCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)
     {
-        if (_keybindGroup->IsKeybindPressed("AltMod"_h))
-        {
-            entt::registry::context& ctx = registry.ctx();
-            Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
+        entt::registry::context& ctx = registry.ctx();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
-            f32 speed = settings.cameraSpeed;
-            speed = speed + ((speed / 10.0f) * position.y);
-            speed = glm::max(speed, 1.0f);
-            settings.cameraSpeed = speed;
-        }
+        f32 speed = settings.cameraSpeed;
+        speed = speed + ((speed / 10.0f) * position.y);
+        speed = glm::max(speed, 1.0f);
+        settings.cameraSpeed = speed;
     }
 }

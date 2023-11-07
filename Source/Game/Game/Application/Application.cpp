@@ -7,6 +7,7 @@
 #include "Game/ECS/Singletons/EngineStats.h"
 #include "Game/ECS/Singletons/MapDB.h"
 #include "Game/ECS/Singletons/RenderState.h"
+#include "Game/ECS/Util/MapUtil.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Gameplay/GameConsole/GameConsole.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -254,7 +255,7 @@ bool Application::Init()
 		clientDBCollection.Register<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor, "Cursor");
 
 		MapDB& mapDB = _registries.gameRegistry->ctx().emplace<MapDB>();
-		mapDB.Refresh();
+		ECS::Util::Map::Refresh();
 
 		CameraSaveDB& cameraSaveDB = _registries.gameRegistry->ctx().emplace<CameraSaveDB>();
 		cameraSaveDB.Refresh();

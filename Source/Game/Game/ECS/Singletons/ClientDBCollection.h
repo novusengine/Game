@@ -49,6 +49,20 @@ namespace ECS::Singletons
 					DebugHandler::PrintFatal("ClientDBCollection : Failed to Initialize Storage. The Register call may have passed an incorrect Type with a size of 0. Size must be greater than 0.");
 				}
 
+				ClientDB::Storage<T> storage(rawDB);
+
+				u32 maxID = 0;
+
+				for (const T& element : storage)
+				{
+					if (!storage.IsValid(element))
+						continue;
+
+					maxID = glm::max(maxID, element.GetID());
+				}
+
+				rawDB->SetMaxID(maxID);
+
 				return true;
 			}
 
@@ -79,6 +93,7 @@ namespace ECS::Singletons
 			_dbHashToIndex[hash] = index;
 
 			rawDB->MarkDirty();
+
 			DebugHandler::Print("ClientDBCollection : Registered {0}", dbName);
 			return true;
 		}
