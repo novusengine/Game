@@ -75,7 +75,7 @@ namespace Util
 		void ColorPicker(const std::string& name, Color* valuePtr, vec2 size = vec2(40.0f, 40.0f), const std::string& append = "");
 
 		// Column Radio Button
-		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 countPosition);
+		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 brushType);
 
 		// Hovered Mouse Wheel Stepping
 		template <typename T>

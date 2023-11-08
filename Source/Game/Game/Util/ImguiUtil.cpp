@@ -971,13 +971,13 @@ namespace Util
 				ImGui::EndPopup();
 			}
 		}
-		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 countPosition)
+		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 brushType)
 		{
 			ImGui::TableNextColumn();
 
 			// Need to add center alignment
 
-			ImGui::RadioButton(valueName.c_str(), valuePtr, countPosition);
+			ImGui::RadioButton(valueName.c_str(), valuePtr, brushType);
 		}
 	}
 }
