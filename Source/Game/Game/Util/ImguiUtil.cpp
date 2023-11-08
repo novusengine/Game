@@ -860,5 +860,109 @@ namespace Util
 
 			return false;
 		}
+
+		void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
+			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, f32 sliderWidth, const std::string& append)
+		{
+			ImGui::TextWrapped(text.c_str());
+
+			if (sliderWidth == ImGui::GetWindowWidth())
+				sliderWidth -= 70.0f;
+
+			ImGui::SetNextItemWidth(sliderWidth);
+			ImGui::SliderFloat(("##" + text + append).c_str(), valuePtr, minVal, maxVal, format, sliderFlags);
+
+			if (ImGui::IsItemHovered())
+			{
+				f32 wheel = ImGui::GetIO().MouseWheel;
+				if (wheel)
+				{
+					if (ImGui::IsItemActive())
+					{
+						ImGui::ClearActiveID();
+					}
+					else
+					{
+						if (ImGui::GetIO().KeyShift)
+						{
+							*valuePtr += wheel * fastStep;
+						}
+						else
+						{
+							*valuePtr += wheel * step;
+						}
+					}
+				}
+			}
+
+			if (arrowsEnabled)
+			{
+				f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+				ImGui::SameLine(0.0f, spacing);
+				ImGui::PushButtonRepeat(true);
+
+				if (ImGui::ArrowButton(("##left" + text + append).c_str(), ImGuiDir_Left))
+				{ 
+					if (ImGui::GetIO().KeyShift)
+					{
+						*(valuePtr) -= fastStep;
+					}
+					else
+					{
+						*(valuePtr) -= step;
+					}
+				}
+
+				ImGui::SameLine(0.0f, spacing);
+
+				if (ImGui::ArrowButton(("##right" + text + append).c_str(), ImGuiDir_Right))
+				{
+					if (ImGui::GetIO().KeyShift)
+					{
+						*(valuePtr) += fastStep;
+					}
+					else
+					{
+						*(valuePtr) += step;
+					}
+				}
+
+				ImGui::PopButtonRepeat();
+			}
+
+			*valuePtr = glm::clamp(*valuePtr, minVal, maxVal);
+		}
+
+		void ColorPicker(const std::string& name, ImVec4* valuePtr, ImVec2 size, const std::string& append)
+		{
+			ImGui::TextWrapped((name).c_str());
+
+			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+			ImGui::PushStyleColor(ImGuiCol_Button, *valuePtr);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *valuePtr);
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *valuePtr);
+			
+			if (ImGui::Button(("##" + name + append + "Button").c_str(), size))
+				ImGui::OpenPopup((name + append + "popup").c_str());
+
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+			{
+				ImGui::BeginTooltip();
+				ImGui::Text("Click to edit!");
+				ImGui::EndTooltip();
+			}
+			
+			ImGui::PopStyleColor(3);
+			ImGui::PopStyleVar();
+
+			if (ImGui::BeginPopup((name + append + "popup").c_str()))
+			{
+				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (f32*)valuePtr,
+					ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview
+					| ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
+
+				ImGui::EndPopup();
+			}
+		}
 	}
 }

@@ -746,7 +746,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.at<ECS::Singletons::TextureSingleton>();
+    ECS::Singletons::TextureSingleton& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
     // Add ModelManifest
     u32 modelManifestIndex = _modelManifestsIndex.fetch_add(1);
@@ -875,7 +875,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                         Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
                         textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
 
-                        DebugHandler::Assert(textureUnit.textureIds[j] < 4096, "ModelRenderer : LoadModel overflowed the 4096 textures we have support for");
+                        DebugHandler::Assert(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
                     }
                 }
             }
@@ -986,7 +986,44 @@ u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& p
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
     mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
 
-    return AddInstance(modelID, instanceMatrix);
+    u32 instanceID = AddInstance(modelID, instanceMatrix);
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    // Add Decorations
+    if (manifest.numDecorationSets && manifest.numDecorations)
+    {
+        if (placement.doodadSet == std::numeric_limits<u16>().max())
+        {
+            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+            // Load 0th doodadSet if it exists
+            const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset];
+
+            for (u32 i = 0; i < manifestDecorationSet.count; i++)
+            {
+                const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                modelLoader->LoadDecoration(instanceID, manifestDecoration);
+            }
+        }
+        else
+        {
+            if (placement.doodadSet < manifest.numDecorationSets)
+            {
+                ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+                const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset + placement.doodadSet];
+
+                for (u32 i = 0; i < manifestDecorationSet.count; i++)
+                {
+                    const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                    modelLoader->LoadDecoration(instanceID, manifestDecoration);
+                }
+            }
+        }
+    }
+
+    return instanceID;
 }
 
 u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
@@ -1023,18 +1060,6 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     {
         mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
         instanceMatrix = transformMatrix;
-    }
-
-    // Add Decorations
-    if (manifest.numDecorationSets && manifest.numDecorations)
-    {
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-
-        for (u32 i = 0; i < manifest.numDecorations; i++)
-        {
-            const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + i];
-            modelLoader->LoadDecoration(instanceID, manifestDecoration);
-        }
     }
 
     // Set up Opaque DrawCalls and DrawCallDatas
@@ -1362,7 +1387,7 @@ void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
     Renderer::TextureArrayDesc textureArrayDesc;
-    textureArrayDesc.size = 4096;
+    textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
     _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
@@ -1535,12 +1560,14 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     vertexShaderDesc.path = "Model/Draw.vs.hlsl";
     vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
     vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Model/Draw.ps.hlsl";
     pixelShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
@@ -1610,11 +1637,14 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.path = "Model/DrawTransparent.vs.hlsl";
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Model/DrawTransparent.ps.hlsl";
+    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state

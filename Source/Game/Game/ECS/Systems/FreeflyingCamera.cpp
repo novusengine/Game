@@ -76,12 +76,14 @@ namespace ECS::Systems
         });
         _keybindGroup->AddMouseScrollCallback([&settings, &registry](f32 xPos, f32 yPos)
         {
-            if (settings.captureMouse)
+            bool altIsDown = _keybindGroup->IsKeybindPressed("AltMod"_h);
+                    
+            if (altIsDown)
             {
                 CapturedMouseScrolled(registry, vec2(xPos, yPos));
             }
 
-            return settings.captureMouse;
+            return altIsDown;
         });
 
 	}
@@ -90,8 +92,8 @@ namespace ECS::Systems
 	{
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         auto& tSystem = ECS::TransformSystem::Get(registry);
 
@@ -143,8 +145,8 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.at<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
 
@@ -170,15 +172,12 @@ namespace ECS::Systems
 
     void FreeflyingCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)
     {
-        if (_keybindGroup->IsKeybindPressed("AltMod"_h))
-        {
-            entt::registry::context& ctx = registry.ctx();
-            Singletons::FreeflyingCameraSettings& settings = ctx.at<Singletons::FreeflyingCameraSettings>();
+        entt::registry::context& ctx = registry.ctx();
+        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
-            f32 speed = settings.cameraSpeed;
-            speed = speed + ((speed / 10.0f) * position.y);
-            speed = glm::max(speed, 7.1111f);
-            settings.cameraSpeed = speed;
-        }
+        f32 speed = settings.cameraSpeed;
+        speed = speed + ((speed / 10.0f) * position.y);
+        speed = glm::max(speed, 1.0f);
+        settings.cameraSpeed = speed;
     }
 }

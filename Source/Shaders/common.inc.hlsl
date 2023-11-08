@@ -7,6 +7,15 @@
 #define SIZEOF_UINT4 16
 #define SIZEOF_DRAW_INDIRECT_ARGUMENTS 16
 
+#define MAX_TEXTURES_NORMAL 4096 // Don't increase this or we get issues with certain graphics cards not supporting enough textures
+#define MAX_TEXTURES_EXTENDED 8192 // Keep this synced with RenderSettings.h
+
+#if SUPPORTS_EXTENDED_TEXTURES
+#define MAX_TEXTURES MAX_TEXTURES_EXTENDED
+#else
+#define MAX_TEXTURES MAX_TEXTURES_NORMAL
+#endif
+
 float2 OctWrap(float2 v)
 {
     return (1.0 - abs(v.yx)) * (select(v.xy >= 0.0, 1.0, -1.0));

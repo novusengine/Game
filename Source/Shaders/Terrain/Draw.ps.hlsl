@@ -1,3 +1,4 @@
+permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "common.inc.hlsl"

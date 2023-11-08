@@ -10,7 +10,7 @@ namespace ECS::Systems
 {
     void CalculateTransformMatrices::Update(entt::registry& registry, f32 deltaTime)
     {
-        ECS::Singletons::RenderState& renderState = registry.ctx().at<ECS::Singletons::RenderState>();
+        ECS::Singletons::RenderState& renderState = registry.ctx().get<ECS::Singletons::RenderState>();
         ECS::TransformSystem& transformQueue = ECS::TransformSystem::Get(registry);
         //convert the async transform queue into dirty transform components
         transformQueue.ProcessMovedEntities([&](entt::entity entity)

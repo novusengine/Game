@@ -106,8 +106,7 @@ namespace Editor
         : BaseEditor(GetName(), true)
     {
         InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("Editor", 15);
-        keybindGroup->SetActive(true);
+        KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
         keybindGroup->AddKeyboardCallback("Mouse Left", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Press, KeybindModifier::KeybindNone | KeybindModifier::Shift, std::bind(&Inspector::OnMouseClickLeft, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     }
@@ -240,8 +239,18 @@ namespace Editor
         if (!CVAR_InspectorEnabled.Get())
             return false;
 
-        if (ImGuizmo::IsOver())
-            return false;
+        ImGuiContext* context = ImGui::GetCurrentContext();
+        if (context)
+        {
+            bool imguiItemHovered = ImGui::IsAnyItemHovered();
+            if (!imguiItemHovered && context->HoveredWindow)
+            {
+                imguiItemHovered |= strcmp(context->HoveredWindow->Name, _viewport->GetName()) != 0;
+            }
+
+            if (imguiItemHovered || ImGuizmo::IsOver())
+                return false;
+        }
 
         ZoneScoped;
 
@@ -464,7 +473,7 @@ namespace Editor
     {
         entt::registry::context& ctx = registry->ctx();
 
-        ECS::Singletons::ActiveCamera& activeCamera = ctx.at<ECS::Singletons::ActiveCamera>();
+        ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
         ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
 
         mat4x4& viewMatrix = camera.worldToView;

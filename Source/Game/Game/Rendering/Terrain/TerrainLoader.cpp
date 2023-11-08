@@ -30,14 +30,41 @@
 
 namespace fs = std::filesystem;
 
-AutoCVar_Int CVAR_TerrainLoaderPhysicsEnabled("terrainLoader.physics.enabled", "enable loading the terrain into the physics engine", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_TerrainLoaderPhysicsOptimizeBP("terrainLoader.physics.optimizeBP", "enables optimizing the broadphase", 1, CVarFlags::EditCheckbox);
-
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader)
 	: _terrainRenderer(terrainRenderer)
 	, _modelLoader(modelLoader)
 	, _waterLoader(waterLoader)
 	, _requests() { }
+
+void TerrainLoader::Clear()
+{
+	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+	auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+	LoadRequestInternal loadRequest;
+	while (_requests.try_dequeue(loadRequest)) { }
+
+	for (auto& pair : _chunkIDToBodyID)
+	{
+		JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
+
+		bodyInterface.RemoveBody(id);
+		bodyInterface.DestroyBody(id);
+	}
+
+	_chunkIDToLoadedID.clear();
+	_chunkIDToBodyID.clear();
+
+	ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
+	ServiceLocator::GetGameRenderer()->GetWaterLoader()->Clear();
+	_terrainRenderer->Clear();
+
+	Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
+	editorHandler->GetInspector()->ClearSelection();
+
+	_currentMapInternalName.clear();
+}
 
 void TerrainLoader::Update(f32 deltaTime)
 {
@@ -172,7 +199,7 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 		return;
 	}
 
-	_terrainRenderer->ReserveChunks(numChunksToLoad);
+	_terrainRenderer->Reserve(numChunksToLoad);
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
@@ -182,14 +209,14 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 
 vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
 {
-	const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-	const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+	const i32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+	const i32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
 
-	const u32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkX);
-	const u32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkY);
+	const i32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkX);
+	const i32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkY);
 
-	const u32 vX = vertexID % 17;
-	const u32 vY = vertexID / 17;
+	const i32 vX = vertexID % 17;
+	const i32 vY = vertexID / 17;
 
 	bool isOddRow = vX > 8;
 
@@ -197,11 +224,11 @@ vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
 	vertexOffset.x = -(8.5f * isOddRow);
 	vertexOffset.y = (0.5f * isOddRow);
 
-	uvec2 globalVertex = uvec2(vX + cellX * 8, vY + cellY * 8);
+	ivec2 globalVertex = ivec2(vX + cellX * 8, vY + cellY * 8);
 
 	vec2 finalPos = -Terrain::MAP_HALF_SIZE + (vec2(globalVertex) + vertexOffset) * Terrain::PATCH_SIZE;
 
-	return vec2(-finalPos.y, -finalPos.x);
+	return vec2(finalPos.x, -finalPos.y);
 }
 
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
@@ -233,8 +260,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-	bool physicsEnabled = CVAR_TerrainLoaderPhysicsEnabled.Get();
-	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
+	i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+	auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
 	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
 	enki::TaskSet countValidChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
@@ -365,7 +392,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					body->SetFriction(0.8f);
 
 					JPH::BodyID bodyID = body->GetID();
-					bodyInterface.AddBody(bodyID, JPH::EActivation::DontActivate);
+					bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
 					_chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
 				}
 
@@ -490,14 +517,15 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 		return;
 	}
 
-	_currentMapInternalName = mapName;
 	PrepareForChunks(LoadType::Full, numChunksToLoad);
+	_currentMapInternalName = mapName;
 
 	DebugHandler::Print("TerrainLoader : Started Chunk Loading");
 	taskScheduler->AddTaskSetToPipe(&loadChunksTask);
 	taskScheduler->WaitforTask(&loadChunksTask);
 
-	if (physicsEnabled && CVAR_TerrainLoaderPhysicsOptimizeBP.Get())
+	i32 physicsOptimizeBP = *CVarSystem::Get()->GetIntCVar("physics.optimizeBP");
+	if (physicsEnabled && physicsOptimizeBP)
 	{
 		joltState.physicsSystem.OptimizeBroadPhase();
 	}
@@ -508,7 +536,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
 {
 	entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-	auto& joltState = registry->ctx().at<ECS::Singletons::JoltState>();
+	auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
 	JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
 	if (loadType == LoadType::Partial)
@@ -517,29 +545,9 @@ void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
 	}
 	else if (loadType == LoadType::Full)
 	{
-		_terrainRenderer->ClearChunks();
+		Clear();
 
-		ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-		modelLoader->Clear();
-
-		WaterLoader* waterLoader = ServiceLocator::GetGameRenderer()->GetWaterLoader();
-		waterLoader->Clear();
-
-		Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
-		editorHandler->GetInspector()->ClearSelection();
-
-		for (auto& pair : _chunkIDToBodyID)
-		{
-			JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
-
-			bodyInterface.RemoveBody(id);
-			bodyInterface.DestroyBody(id);
-		}
-
-		_chunkIDToLoadedID.clear();
-		_chunkIDToBodyID.clear();
-
-		_terrainRenderer->ReserveChunks(numChunks);
+		_terrainRenderer->Reserve(numChunks);
 		_chunkIDToLoadedID.reserve(numChunks);
 		_chunkIDToBodyID.reserve(numChunks);
 	}

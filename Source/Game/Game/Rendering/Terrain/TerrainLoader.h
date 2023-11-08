@@ -40,6 +40,7 @@ private:
 public:
 	TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader);
 	
+	void Clear();
 	void Update(f32 deltaTime);
 
 	void AddInstance(const LoadDesc& loadDesc);
@@ -53,7 +54,7 @@ private:
 
 private:
 	TerrainRenderer* _terrainRenderer = nullptr;
-	std::string _currentMapInternalName = "None";
+	std::string _currentMapInternalName = "";
 
 	ModelLoader* _modelLoader = nullptr;
 	WaterLoader* _waterLoader = nullptr;

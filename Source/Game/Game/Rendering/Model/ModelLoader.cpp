@@ -56,56 +56,57 @@ void ModelLoader::Init()
     // Then create a multithreaded job to loop over the paths
     moodycamel::ConcurrentQueue<DiscoveredModel> discoveredModels;
     enki::TaskSet discoverModelsTask(static_cast<u32>(paths.size()), [&, paths](enki::TaskSetPartition range, u32 threadNum)
+    {
+        for (u32 i = range.start; i < range.end; i++)
         {
-            for (u32 i = range.start; i < range.end; i++)
+            const fs::path& path = paths[i];
+
+            if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
+                continue;
+
+            fs::path relativePath = fs::relative(path, complexModelPath);
+
+            PRAGMA_MSVC_IGNORE_WARNING(4244);
+            std::string cModelPath = relativePath.string();
+            std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
+
+            FileReader cModelFile(path.string());
+            if (!cModelFile.Open())
             {
-                const fs::path& path = paths[i];
-
-                if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
-                    continue;
-
-                fs::path relativePath = fs::relative(path, complexModelPath);
-
-                PRAGMA_MSVC_IGNORE_WARNING(4244);
-                std::string cModelPath = relativePath.string();
-                std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
-
-                FileReader cModelFile(path.string());
-                if (!cModelFile.Open())
-                {
-                    DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
-                    continue;
-                }
-
-                // Load the first HEADER_SIZE of the file into memory
-                size_t fileSize = cModelFile.Length();
-                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-
-                if (fileSize < HEADER_SIZE)
-                {
-                    DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
-                    continue;
-                }
-
-                std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
-
-                cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
-                cModelFile.Close();
-
-                // Extract the ModelHeader from the file and store it as a DiscoveredModel
-                DiscoveredModel discoveredModel;
-                if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
-                {
-                    DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
-                    continue;
-                }
-
-                discoveredModel.name = cModelPath;
-                discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
-
-                discoveredModels.enqueue(discoveredModel);
+                DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
+                continue;
             }
-        });
+
+            // Load the first HEADER_SIZE of the file into memory
+            size_t fileSize = cModelFile.Length();
+            constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+
+            if (fileSize < HEADER_SIZE)
+            {
+                DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
+                continue;
+            }
+
+            std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
+
+            cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
+            cModelFile.Close();
+
+            // Extract the ModelHeader from the file and store it as a DiscoveredModel
+            DiscoveredModel discoveredModel;
+            if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
+            {
+                DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
+                continue;
+            }
+
+            discoveredModel.name = cModelPath;
+            discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
+            discoveredModel.hasShape = false;
+
+            discoveredModels.enqueue(discoveredModel);
+        }
+    });
 
     // Execute the multithreaded job
     taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
@@ -148,6 +149,7 @@ void ModelLoader::Clear()
 
     _nameHashToLoadState.clear();
     _nameHashToModelID.clear();
+    _nameHashToJoltShape.clear();
 
     for (auto& it : _nameHashToLoadingMutex)
     {
@@ -158,15 +160,42 @@ void ModelLoader::Clear()
         }
     }
 
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    u32 numInstanceIDToBodyIDs = static_cast<u32>(_instanceIDToBodyID.size());
+    if (numInstanceIDToBodyIDs > 0)
+    {
+        auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+        for (auto& pair : _instanceIDToBodyID)
+        {
+            JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
+
+            bodyInterface.RemoveBody(id);
+            bodyInterface.DestroyBody(id);
+        }
+    }
+
+    for (auto& pair : _nameHashToJoltShape)
+    {
+        pair.second = nullptr;
+    }
+
     _nameHashToLoadingMutex.clear();
 
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
+    _instanceIDToBodyID.clear();
     _instanceIDToEntityID.clear();
     _modelIDToNameHash.clear();
 
     _modelRenderer->Clear();
     ServiceLocator::GetAnimationSystem()->Clear();
+
+    registry->destroy(_createdEntities.begin(), _createdEntities.end());
+    
+    _createdEntities.clear();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -228,68 +257,72 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Create entt entities
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            _createdEntities.clear();
-            _createdEntities.resize(reserveInfo.numInstances);
-            registry->create(_createdEntities.begin(), _createdEntities.end());
 
-            registry->insert<ECS::Components::DirtyTransform>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Transform>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Name>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::Model>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::AABB>(_createdEntities.begin(), _createdEntities.end());
-            registry->insert<ECS::Components::WorldAABB>(_createdEntities.begin(), _createdEntities.end());
+            size_t createdEntitiesOffset = _createdEntities.size();
+            _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
+            auto begin = _createdEntities.begin() + createdEntitiesOffset;
+            
+            registry->create(begin, _createdEntities.end());
+
+            registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances;
-            //enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
-            //{
-            //	for (u32 i = range.start; i < range.end; i++)
-            for (u32 i = 0; i < numDequeued; i++)
+            enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
             {
-                LoadRequestInternal& request = _staticLoadRequests[i];
-
-                u32 placementHash = request.placement.nameHash;
-                if (!_nameHashToDiscoveredModel.contains(placementHash))
+            	for (u32 i = range.start; i < range.end; i++)
                 {
-                    // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-                    continue;
-                }
+                    LoadRequestInternal& request = _staticLoadRequests[i];
 
-                std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
-                std::scoped_lock lock(*mutex);
-
-                LoadState loadState = _nameHashToLoadState[placementHash];
-
-                if (loadState == LoadState::Failed)
-                    continue;
-
-                if (loadState == LoadState::Received)
-                {
-                    loadState = LoadState::Loading;
-                    _nameHashToLoadState[placementHash] = LoadState::Loading;
-
-                    bool didLoad = LoadRequest(request);
-
-                    loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-                    _nameHashToLoadState[placementHash] = loadState;
-
-                    if (!didLoad)
+                    u32 placementHash = request.placement.nameHash;
+                    if (!_nameHashToDiscoveredModel.contains(placementHash))
+                    {
+                        // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
                         continue;
+                    }
+
+                    std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
+                    std::scoped_lock lock(*mutex);
+
+                    LoadState loadState = _nameHashToLoadState[placementHash];
+
+                    if (loadState == LoadState::Failed)
+                        continue;
+
+                    if (loadState == LoadState::Received)
+                    {
+                        loadState = LoadState::Loading;
+                        _nameHashToLoadState[placementHash] = LoadState::Loading;
+
+                        bool didLoad = LoadRequest(request);
+
+                        loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+                        _nameHashToLoadState[placementHash] = loadState;
+
+                        if (!didLoad)
+                            continue;
+                    }
+
+                    if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
+                        continue;
+
+                    u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
+                    AddStaticInstance(_createdEntities[index], request);
                 }
-
-                if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
-                    continue;
-
-                u32 index = numCreatedInstances.fetch_add(1);
-                AddStaticInstance(_createdEntities[index], request);
-            }
-            //});
+            });
 
             // Execute the multithreaded job
-            //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-            //taskScheduler->WaitforTask(&loadModelsTask);
+            taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+            taskScheduler->WaitforTask(&loadModelsTask);
 
             // Destroy the entities we didn't use
-            registry->destroy(_createdEntities.begin() + numCreatedInstances.load(), _createdEntities.end());
+            u32 numCreated = numCreatedInstances.load();
+            registry->destroy(begin + numCreated, _createdEntities.end());
+            _createdEntities.resize(createdEntitiesOffset + numCreated);
 
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
@@ -446,6 +479,11 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
     return true;
 }
 
+bool ModelLoader::ContainsDiscoveredModel(u32 modelNameHash)
+{
+    return _nameHashToDiscoveredModel.contains(modelNameHash);
+}
+
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 modelID)
 {
     if (!_modelIDToNameHash.contains(modelID))
@@ -508,6 +546,53 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     aabb.centerPos = model.aabbCenter;
     aabb.extents = model.aabbExtents;
 
+    // Generate Jolt Shape
+    {
+        // Disabled on purpose for now
+        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+
+        if (physicsEnabled)
+        {
+            u32 numCollisionVertices = static_cast<u32>(model.collisionVertexPositions.size());
+            u32 numCollisionIndices = static_cast<u32>(model.collisionIndices.size());
+            u32 indexRemainder = numCollisionIndices % 3;
+
+            if (numCollisionVertices > 0 && indexRemainder == 0)
+            {
+                u32 numTriangles = numCollisionIndices / 3;
+
+                JPH::VertexList vertexList;
+                vertexList.reserve(numCollisionVertices);
+
+                JPH::IndexedTriangleList triangleList;
+                triangleList.reserve(numTriangles);
+
+                for (u32 i = 0; i < numCollisionVertices; i++)
+                {
+                    const vec3& vertexPos = model.collisionVertexPositions[i];
+                    vertexList.push_back({ vertexPos.x, vertexPos.y, vertexPos.z });
+                }
+
+                for (u32 i = 0; i < numTriangles; i++)
+                {
+                    u32 offset = i * 3;
+
+                    u16 indexA = model.collisionIndices[offset + 0];
+                    u16 indexB = model.collisionIndices[offset + 1];
+                    u16 indexC = model.collisionIndices[offset + 2];
+
+                    triangleList.push_back({ indexA, indexB, indexC });
+                }
+
+                JPH::MeshShapeSettings shapeSetting(vertexList, triangleList);
+                JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
+
+                _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
+                discoveredModel.hasShape = true;
+            }
+        }
+    }
+
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     animationSystem->AddSkeleton(modelID, model);
 
@@ -517,7 +602,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& tSystem =ECS::TransformSystem::Get(*registry);
+    auto& tSystem = ECS::TransformSystem::Get(*registry);
 
     f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
     tSystem.SetLocalTransform(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));
@@ -551,6 +636,35 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     {
         entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
         tSystem.ParentEntityTo(parentEntityID, entityID);
+    }
+
+    if (discoveredModel.hasShape)
+    {
+        // Disabled on purpose for now
+        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+
+        if (physicsEnabled && !hasParent)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+            JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+            const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
+
+            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+            vec3 position = transform.GetWorldPosition();
+            const quat& rotation = transform.GetLocalRotation();
+
+            // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
+            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+
+            // Create the actual rigid body
+            JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+
+            JPH::BodyID bodyID = body->GetID();
+            bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+            _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+        }
     }
 
     /* Commented out on purpose to be dealt with at a later date when we have reimplemented GPU side animations */

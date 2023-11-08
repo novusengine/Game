@@ -100,17 +100,6 @@ void TerrainRenderer::Update(f32 deltaTime)
     SyncToGPU();
 }
 
-void TerrainRenderer::Clear()
-{
-    ZoneScoped;
-
-    _vertices.Clear();
-    _instanceDatas.Clear();
-    _cellDatas.Clear();
-    _chunkDatas.Clear();
-    _cellHeightRanges.Clear();
-}
-
 void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     if (!CVAR_TerrainRendererEnabled.Get())
@@ -473,7 +462,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         });
 }
 
-void TerrainRenderer::ClearChunks()
+void TerrainRenderer::Clear()
 {
     _numChunksLoaded = 0;
 
@@ -488,7 +477,7 @@ void TerrainRenderer::ClearChunks()
     _renderer->UnloadTexturesInArray(_textures, 0);
 }
 
-void TerrainRenderer::ReserveChunks(u32 numChunks)
+void TerrainRenderer::Reserve(u32 numChunks)
 {
     u32 totalNumCells = numChunks * Terrain::CHUNK_NUM_CELLS;
     u32 totalNumVertices = totalNumCells * Terrain::CELL_TOTAL_GRID_SIZE;
@@ -513,7 +502,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.at<ECS::Singletons::TextureSingleton>();
+    ECS::Singletons::TextureSingleton& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
     ChunkData& chunkData = _chunkDatas.Get()[currentChunkIndex];
 
@@ -631,7 +620,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
     }
 
-    if (maxDiffuseID > 4096)
+    if (maxDiffuseID > Renderer::Settings::MAX_TEXTURES)
     {
         DebugHandler::PrintFatal("This is bad!");
     }
@@ -654,7 +643,7 @@ void TerrainRenderer::CreatePermanentResources()
 {
     ZoneScoped;
     Renderer::TextureArrayDesc textureArrayDesc;
-    textureArrayDesc.size = 4096;
+    textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
     _materialPassDescriptorSet.Bind("_terrainColorTextures", _textures);
@@ -887,6 +876,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     vertexShaderDesc.path = "Terrain/Draw.vs.hlsl";
     vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
     vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
@@ -894,6 +884,8 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     {
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.path = "Terrain/Draw.ps.hlsl";
+        pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
     }
 

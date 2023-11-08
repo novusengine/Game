@@ -1,6 +1,7 @@
 #ifndef TERRAIN_SHARED_INCLUDED
 #define TERRAIN_SHARED_INCLUDED
 
+#include "common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 
 #define NUM_CHUNKS_PER_MAP_SIDE (64)
@@ -304,7 +305,7 @@ TerrainVertex LoadTerrainVertex(uint chunkID, uint cellID, uint vertexBaseOffset
 
 //[[vk::binding(6, TERRAIN)]] RWTexture2D<float4> _resolvedColor;
 
-[[vk::binding(7, TERRAIN)]] Texture2D<float4> _terrainColorTextures[4096];
+[[vk::binding(7, TERRAIN)]] Texture2D<float4> _terrainColorTextures[MAX_TEXTURES];
 [[vk::binding(8, TERRAIN)]] Texture2DArray<float4> _terrainAlphaTextures[NUM_CHUNKS_PER_MAP_SIDE * NUM_CHUNKS_PER_MAP_SIDE];
 
 #endif // TERRAIN_SHARED_INCLUDED

@@ -33,14 +33,13 @@ public:
 	~TerrainRenderer();
 
 	void Update(f32 deltaTime);
-	void Clear();
 
 	void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
-	void ClearChunks();
-	void ReserveChunks(u32 numChunks);
+	void Clear();
+	void Reserve(u32 numChunks);
 	u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
 
 	Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }

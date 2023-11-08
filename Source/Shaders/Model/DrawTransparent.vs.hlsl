@@ -1,4 +1,4 @@
-
+permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
 #include "Model/Shared.inc.hlsl"

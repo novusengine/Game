@@ -87,54 +87,20 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             shaderDesc.path = "materialPass.cs.hlsl";
             shaderDesc.AddPermutationField("DEBUG_ID", std::to_string(visibilityBufferDebugID));
             shaderDesc.AddPermutationField("SHADOW_FILTER_MODE", std::to_string(shadowFilterMode));
+            shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
             Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
             commandList.BeginPipeline(pipeline);
 
-            // Reenable this in shader as well
-            /*
-            if (visibilityBufferDebugID == 0 || visibilityBufferDebugID == 4)
-            {
-                // Push constant
-                struct PushConstants
-                {
-                    vec4 mouseWorldPosition;
-                    u32 numCascades;
-                    f32 shadowFilterSize;
-                    f32 shadowPenumbraFilterSize;
-                    u32 enabledShadows;
-                    u32 numTextureDecals;
-                    u32 numProceduralDecals;
-                };
-
-                PushConstants* constants = graphResources.FrameNew<PushConstants>();
-
-                /*Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
-                vec3 mouseWorldPosition;
-                viewport->GetMouseWorldPosition(mouseWorldPosition);
-                constants->mouseWorldPosition = vec4(mouseWorldPosition, 1.0f);*/
-                /*
-                constants->numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
-                constants->shadowFilterSize = 0;// static_cast<f32>(*CVarSystem::Get()->GetFloatCVar("shadows.filter.size"));
-                constants->shadowPenumbraFilterSize = 0;//static_cast<f32>(*CVarSystem::Get()->GetFloatCVar("shadows.filter.penumbraSize"));
-                constants->enabledShadows = 0;//*CVarSystem::Get()->GetIntCVar("shadows.enable");
-                constants->numTextureDecals = 0;//_numTextureDecals;
-                constants->numProceduralDecals = 0;// _numProceduralDecals;
-
-                commandList.PushConstant(constants, 0, sizeof(PushConstants));
-            }*/
-
             data.modelSet.Bind("_visibilityBuffer", data.visibilityBuffer);
             data.modelSet.Bind("_transparency", data.transparency);
             data.modelSet.Bind("_transparencyWeights", data.transparencyWeights);
             data.modelSet.Bind("_depth"_h, data.depth);
-            //_materialPassDescriptorSet.Bind("_ambientOcclusion", data.ambientObscurance);
             data.modelSet.BindStorage("_resolvedColor", data.resolvedColor, 0);
 
             // Bind descriptorset
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-            //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);

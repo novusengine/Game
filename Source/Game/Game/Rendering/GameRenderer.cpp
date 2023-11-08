@@ -14,9 +14,10 @@
 #include "PixelQuery.h"
 #include "CullUtils.h"
 
-#include "Game/Util/ServiceLocator.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Editor/Viewport.h"
+#include "Game/Gameplay/MapLoader.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
 #include <Renderer/Renderer.h>
@@ -139,6 +140,8 @@ GameRenderer::GameRenderer()
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _waterLoader);
 
+    _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _waterLoader);
+
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
@@ -169,6 +172,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _frameAllocator[_frameIndex]->Reset();
 
     _skyboxRenderer->Update(deltaTime);
+    _mapLoader->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
     _modelLoader->Update(deltaTime);

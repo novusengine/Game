@@ -3,17 +3,14 @@
 
 namespace Editor
 {
-	class MapEditor : public BaseEditor
+	class MapSelector : public BaseEditor
 	{
 	public:
-		MapEditor();
+		MapSelector();
 
 		virtual const char* GetName() override { return "Map"; }
 
 		virtual void DrawImGui() override;
-
-	private:
-		bool _hasLoadedMap = false;
 
 	private:
 	};

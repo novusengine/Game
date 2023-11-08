@@ -1,14 +1,13 @@
 #include "GlobalHandler.h"
-#include "Game/ECS/Util/MapDBUtil.h"
+#include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Util/MapUtil.h"
 #include "Game/ECS/Singletons/MapDB.h"
+#include "Game/Gameplay/MapLoader.h"
+#include "Game/Rendering/GameRenderer.h"
 #include "Game/Scripting/LuaStateCtx.h"
-
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Scripting/Systems/LuaSystemBase.h"
 #include "Game/Util/ServiceLocator.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Terrain/TerrainLoader.h"
-#include "Game/Application/EnttRegistries.h"
 
 #include <entt/entt.hpp>
 #include <lualib.h>
@@ -118,32 +117,26 @@ namespace Scripting
 	{
 		LuaStateCtx ctx(state);
 
-		const char* mapName = ctx.GetString();
-		if (mapName == nullptr)
+		const char* mapInternalName = ctx.GetString();
+		size_t mapInternalNameLen = strlen(mapInternalName);
+
+		if (mapInternalName == nullptr)
 		{
 			ctx.PushBool(false);
 			return 1;
 		}
 
-		DB::Client::Definitions::Map* map = ECS::Util::MapDB::GetMapFromName(mapName);
-		if (map == nullptr)
+		ClientDB::Definitions::Map* map = nullptr;
+		if (!ECS::Util::Map::GetMapFromInternalName(mapInternalName, map))
 		{
 			ctx.PushBool(false);
 			return 1;
 		}
 
-		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-		entt::registry::context& registryContext = registry->ctx();
+		u32 mapNameHash = StringUtils::fnv1a_32(mapInternalName, mapInternalNameLen);
 
-		auto& mapDB = registryContext.at<ECS::Singletons::MapDB>();
-		const std::string& interalName = mapDB.entries.stringTable.GetString(map->internalName);
-
-		TerrainLoader::LoadDesc loadDesc;
-		loadDesc.loadType = TerrainLoader::LoadType::Full;
-		loadDesc.mapName = interalName;
-
-		TerrainLoader* terrainLoader = ServiceLocator::GetGameRenderer()->GetTerrainLoader();
-		terrainLoader->AddInstance(loadDesc);
+		MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+		mapLoader->LoadMap(mapNameHash);
 
 		ctx.PushBool(true);
 		return 1;

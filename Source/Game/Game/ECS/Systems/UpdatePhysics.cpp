@@ -11,6 +11,7 @@
 #include "Game/Rendering/Debug/DebugRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
 
 #include <Input/KeybindGroup.h>
@@ -28,12 +29,15 @@
 
 using namespace JPH::literals;
 
+AutoCVar_Int CVAR_PhysicsEnabled("physics.enabled", "enables the physics engine", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_PhysicsOptimizeBP("physics.optimizeBP", "enables automatically optimizing the broadphase during load", 1, CVarFlags::EditCheckbox);
+
 namespace ECS::Systems
 {
     void OnStaticMeshCreated(entt::registry& registry, entt::entity entity)
     {
         entt::registry::context& ctx = registry.ctx();
-        auto& joltState = ctx.at<Singletons::JoltState>();
+        auto& joltState = ctx.get<Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
         // Create Body
@@ -63,7 +67,7 @@ namespace ECS::Systems
     void OnKinematicMeshCreated(entt::registry& registry, entt::entity entity)
     {
         entt::registry::context& ctx = registry.ctx();
-        auto& joltState = ctx.at<Singletons::JoltState>();
+        auto& joltState = ctx.get<Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
         // Create Body
@@ -92,11 +96,11 @@ namespace ECS::Systems
 
     void OnDynamicMeshCreated(entt::registry& registry, entt::entity entity)
     {
-        auto& activeCamera = registry.ctx().at<ECS::Singletons::ActiveCamera>();
+        auto& activeCamera = registry.ctx().get<ECS::Singletons::ActiveCamera>();
         auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
 
         entt::registry::context& ctx = registry.ctx();
-        auto& joltState = ctx.at<Singletons::JoltState>();
+        auto& joltState = ctx.get<Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
         // Create Body
@@ -160,39 +164,39 @@ namespace ECS::Systems
         InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
         keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::None, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
+            auto& tSystem = ECS::TransformSystem::Get(*registry);
+
+            if (activeCamera.entity == entt::null)
             {
-                entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-                auto& activeCamera = registry->ctx().at<ECS::Singletons::ActiveCamera>();
-                auto& tSystem = ECS::TransformSystem::Get(*registry);
+                DebugHandler::PrintError("[Keybind:Debug] ActiveCamera::entity not set!");
+                return false;
+            }
 
-                if (activeCamera.entity == entt::null)
-                {
-                    DebugHandler::PrintError("[Keybind:Debug] ActiveCamera::entity not set!");
-                    return false;
-                }
+            auto& cameraTransform = registry->get<ECS::Components::Transform>(activeCamera.entity);
 
-                auto& cameraTransform = registry->get<ECS::Components::Transform>(activeCamera.entity);
+            entt::entity entity = registry->create();
 
-                entt::entity entity = registry->create();
+            auto& transform = registry->emplace<ECS::Components::Transform>(entity);
 
-                auto& transform = registry->emplace<ECS::Components::Transform>(entity);
+            tSystem.SetLocalPosition(entity, cameraTransform.GetLocalPosition());
+            tSystem.SetLocalScale(entity, vec3(1.0f, 1.0f, 1.0f));
 
-                tSystem.SetLocalPosition(entity, cameraTransform.GetLocalPosition());
-                tSystem.SetLocalScale(entity, vec3(1.0f, 1.0f, 1.0f));
+            auto& debugRenderTransform = registry->emplace<ECS::Components::DebugRenderTransform >(entity);
+            debugRenderTransform.color = Color::Magenta;
 
-                auto& debugRenderTransform = registry->emplace<ECS::Components::DebugRenderTransform >(entity);
-                debugRenderTransform.color = Color::Magenta;
+            registry->emplace<ECS::Components::DynamicMesh>(entity);
 
-                registry->emplace<ECS::Components::DynamicMesh>(entity);
-
-                return true;
-            });
+            return true;
+        });
     }
 
     void UpdatePhysics::Update(entt::registry& registry, f32 deltaTime)
     {
         entt::registry::context& ctx = registry.ctx();
-        auto& joltState = ctx.at<Singletons::JoltState>();
+        auto& joltState = ctx.get<Singletons::JoltState>();
         auto& tSystem = TransformSystem::Get(registry);
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();

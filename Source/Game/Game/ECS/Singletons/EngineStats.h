@@ -6,7 +6,6 @@
 
 namespace ECS::Singletons
 {
-
     struct FrameTimes
     {
         f32 deltaTimeS;

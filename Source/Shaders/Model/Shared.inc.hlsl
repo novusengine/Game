@@ -208,7 +208,7 @@ struct ModelTextureUnit
 };
 
 [[vk::binding(8, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
-[[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[4096]; // We give this index 20 because it always needs to be last in this descriptor set
+[[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[MAX_TEXTURES]; // We give this index 20 because it always needs to be last in this descriptor set
 
 enum ModelPixelShaderID
 {
