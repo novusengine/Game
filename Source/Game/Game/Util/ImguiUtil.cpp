@@ -971,7 +971,6 @@ namespace Util
 				ImGui::EndPopup();
 			}
 		}
-
 		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 countPosition)
 		{
 			ImGui::TableNextColumn();

@@ -21,7 +21,7 @@ namespace Editor
 				Util::Imgui::ColumnRadioButton("Flatten", &_brushTool, BrushTypes::FLAT);
 				Util::Imgui::ColumnRadioButton("Smooth", &_brushTool, BrushTypes::SMOOTH);
 				Util::Imgui::ColumnRadioButton("Linear", &_brushTool, BrushTypes::LINEAR);
-				Util::Imgui::ColumnRadioButton("Linear", &_brushTool, BrushTypes::VERTEX);
+				Util::Imgui::ColumnRadioButton("Vertex", &_brushTool, BrushTypes::VERTEX);
 
 				ImGui::EndTable();
 			}
