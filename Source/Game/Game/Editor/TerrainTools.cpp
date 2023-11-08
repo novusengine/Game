@@ -18,10 +18,10 @@ namespace Editor
 
 			if (ImGui::BeginTable("Brush Type Table", 2))
 			{
-				Util::Imgui::ColumnCheckBox("Flatten", _brushTypes, BrushTypes::FLAT, BrushTypes::COUNT);
-				Util::Imgui::ColumnCheckBox("Smooth", _brushTypes, BrushTypes::SMOOTH, BrushTypes::COUNT);
-				Util::Imgui::ColumnCheckBox("Linear", _brushTypes, BrushTypes::LINEAR, BrushTypes::COUNT);
-				Util::Imgui::ColumnCheckBox("Vertex", _brushTypes, BrushTypes::VERTEX, BrushTypes::COUNT);
+				Util::Imgui::ColumnRadioButton("Flatten", &_brushTool, BrushTypes::FLAT);
+				Util::Imgui::ColumnRadioButton("Smooth", &_brushTool, BrushTypes::SMOOTH);
+				Util::Imgui::ColumnRadioButton("Linear", &_brushTool, BrushTypes::LINEAR);
+				Util::Imgui::ColumnRadioButton("Linear", &_brushTool, BrushTypes::VERTEX);
 
 				ImGui::EndTable();
 			}
@@ -40,6 +40,7 @@ namespace Editor
 
 			Util::Imgui::ColorPicker("Vertex Color:", &_vertexColor, vec2(100.0f, 100.0f));
 		}
+
 		ImGui::End();
 	}
 }

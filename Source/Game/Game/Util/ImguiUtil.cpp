@@ -972,21 +972,13 @@ namespace Util
 			}
 		}
 
-		void ColumnCheckBox(const std::string& valueName, bool valueArray[], i8 valueElement, i8 elementCount)
+		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 countPosition)
 		{
 			ImGui::TableNextColumn();
 
-			// Need To add center alignment here
+			// Need to add center alignment
 
-			ImGui::Checkbox(valueName.c_str(), &valueArray[valueElement]);
-			if (valueArray[valueElement] == true)
-			{
-				for (int i = 0; i < elementCount; i++)
-				{
-					valueArray[i] = false;
-				}
-				valueArray[valueElement] = true;
-			}
+			ImGui::RadioButton(valueName.c_str(), valuePtr, countPosition);
 		}
 	}
 }

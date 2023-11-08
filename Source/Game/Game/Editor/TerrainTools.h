@@ -25,7 +25,7 @@ namespace Editor
 		virtual void DrawImGui() override;
 
 	private:
-		bool _brushTypes[BrushTypes::COUNT] = { false };
+		i32 _brushTool = 0;
 
 		f32 _brushHardness = 100.0f;
 		f32 _brushRadius = 10.0f;
