@@ -169,7 +169,7 @@ namespace Util
 
 			for (int i = 0; i < 4; ++i)
 			{
-				
+
 				switch (i)
 				{
 					// left half-plane
@@ -184,10 +184,10 @@ namespace Util
 
 				if (s_treeOpen)
 				{
-				ImGui::GetWindowDrawList()->AddRect(
-					frameRect.Min, frameRect.Max,
-					ImColor(ImGui::GetStyleColorVec4(ImGuiCol_Border)),
-					halfFrame.x);
+					ImGui::GetWindowDrawList()->AddRect(
+						frameRect.Min, frameRect.Max,
+						ImColor(ImGui::GetStyleColorVec4(ImGuiCol_Border)),
+						halfFrame.x);
 				}
 
 				ImGui::PopClipRect();
@@ -686,7 +686,7 @@ namespace Util
 			DrawColoredRectAndReadOnlyI32("##W", value.w, ImVec4(1.0f, 1.0f, 1.0f, 1.0f), fractionOfWidth);
 
 			ImGui::PopID();
-			
+
 			return false;
 		}
 
@@ -744,7 +744,7 @@ namespace Util
 		{
 			ImGui::AlignTextToFramePadding();
 			ImGui::Text("%s", name);
-			
+
 			ImGui::PushID(name);
 
 			f32 fractionOfWidth = ImGui::GetContentRegionAvail().x;
@@ -861,61 +861,45 @@ namespace Util
 			return false;
 		}
 
+		void GroupHeader(const std::string& headerName)
+		{
+			f32 centerAlignPos = (ImGui::GetWindowWidth() - ImGui::CalcTextSize(headerName.c_str()).x) * 0.5f;
+			ImGui::SetCursorPosX(centerAlignPos);
+
+			ImGui::TextWrapped(headerName.c_str());
+		}
+
 		void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
 			bool arrowsEnabled, const char* format, ImGuiSliderFlags sliderFlags, f32 sliderWidth, const std::string& append)
 		{
+			f32 frameHeight = ImGui::GetFrameHeight();
+			f32 currentFontSize = ImGui::GetDrawListSharedData()->FontSize;
+			f32 arrowSize = frameHeight * 0.45f;
+			f32 arrowSpacing = frameHeight - 2.0f * arrowSize;
+			f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+
 			ImGui::TextWrapped(text.c_str());
 
 			if (sliderWidth == ImGui::GetWindowWidth())
-				sliderWidth -= 70.0f;
+				sliderWidth -= frameHeight;
 
 			ImGui::SetNextItemWidth(sliderWidth);
 			ImGui::SliderFloat(("##" + text + append).c_str(), valuePtr, minVal, maxVal, format, sliderFlags);
 
-			if (ImGui::IsItemHovered())
-			{
-				f32 wheel = ImGui::GetIO().MouseWheel;
-				if (wheel)
-				{
-					if (ImGui::IsItemActive())
-					{
-						ImGui::ClearActiveID();
-					}
-					else
-					{
-						if (ImGui::GetIO().KeyShift)
-						{
-							*valuePtr += wheel * fastStep;
-						}
-						else
-						{
-							*valuePtr += wheel * step;
-						}
-					}
-				}
-			}
+			HoveredMouseWheelStep(valuePtr, step, fastStep);
 
 			if (arrowsEnabled)
 			{
-				f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-				ImGui::SameLine(0.0f, spacing);
+				ImGui::SameLine(0.0f, 1.0f);
+
+				ImGui::BeginGroup();
+
+				ImGui::GetDrawListSharedData()->FontSize = arrowSize;
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, vec2{ ImGui::GetCurrentContext()->Style.ItemSpacing.x, arrowSpacing });
+
 				ImGui::PushButtonRepeat(true);
 
-				if (ImGui::ArrowButton(("##left" + text + append).c_str(), ImGuiDir_Left))
-				{ 
-					if (ImGui::GetIO().KeyShift)
-					{
-						*(valuePtr) -= fastStep;
-					}
-					else
-					{
-						*(valuePtr) -= step;
-					}
-				}
-
-				ImGui::SameLine(0.0f, spacing);
-
-				if (ImGui::ArrowButton(("##right" + text + append).c_str(), ImGuiDir_Right))
+				if (ImGui::ArrowButtonEx(("##right" + text + append).c_str(), ImGuiDir_Up, vec2(arrowSize, arrowSize)))
 				{
 					if (ImGui::GetIO().KeyShift)
 					{
@@ -927,21 +911,44 @@ namespace Util
 					}
 				}
 
+				HoveredMouseWheelStep(valuePtr, step, fastStep);
+
+				if (ImGui::ArrowButtonEx(("##left" + text + append).c_str(), ImGuiDir_Down, vec2(arrowSize, arrowSize)))
+				{
+					if (ImGui::GetIO().KeyShift)
+					{
+						*(valuePtr) -= fastStep;
+					}
+					else
+					{
+						*(valuePtr) -= step;
+					}
+				}
+
+				HoveredMouseWheelStep(valuePtr, step, fastStep);
+
+				ImGui::GetDrawListSharedData()->FontSize = currentFontSize;
+				ImGui::PopStyleVar();
 				ImGui::PopButtonRepeat();
+				ImGui::EndGroup();
 			}
 
 			*valuePtr = glm::clamp(*valuePtr, minVal, maxVal);
 		}
 
-		void ColorPicker(const std::string& name, ImVec4* valuePtr, ImVec2 size, const std::string& append)
+		void ColorPicker(const std::string& name, Color* valuePtr, vec2 size, const std::string& append)
 		{
-			ImGui::TextWrapped((name).c_str());
+			// Make name optional?
+			//ImGui::TextWrapped((name).c_str());
 
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-			ImGui::PushStyleColor(ImGuiCol_Button, *valuePtr);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *valuePtr);
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *valuePtr);
-			
+			ImGui::PushStyleColor(ImGuiCol_Button, *reinterpret_cast<ImVec4*>(valuePtr));
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, *reinterpret_cast<ImVec4*>(valuePtr));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, *reinterpret_cast<ImVec4*>(valuePtr));
+
+			f32 centerAlignPos = (ImGui::GetWindowWidth() - size.x) * 0.5f;
+			ImGui::SetCursorPosX(centerAlignPos);
+
 			if (ImGui::Button(("##" + name + append + "Button").c_str(), size))
 				ImGui::OpenPopup((name + append + "popup").c_str());
 
@@ -951,18 +958,26 @@ namespace Util
 				ImGui::Text("Click to edit!");
 				ImGui::EndTooltip();
 			}
-			
+
 			ImGui::PopStyleColor(3);
 			ImGui::PopStyleVar();
 
 			if (ImGui::BeginPopup((name + append + "popup").c_str()))
 			{
-				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), (f32*)valuePtr,
+				ImGui::ColorPicker4(("##" + name + append + "Label").c_str(), reinterpret_cast<f32*>(valuePtr),
 					ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreview
 					| ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
 
 				ImGui::EndPopup();
 			}
+		}
+		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 brushType)
+		{
+			ImGui::TableNextColumn();
+
+			// Need to add center alignment
+
+			ImGui::RadioButton(valueName.c_str(), valuePtr, brushType);
 		}
 	}
 }
