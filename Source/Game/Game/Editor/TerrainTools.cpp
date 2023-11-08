@@ -38,7 +38,7 @@ namespace Editor
 
 			Util::Imgui::GroupHeader("Vertex Color Picker");
 
-			Util::Imgui::ColorPicker("Vertex Color:", &_vertexColor, ImVec2(100.0f, 100.0f));
+			Util::Imgui::ColorPicker("Vertex Color:", &_vertexColor, vec2(100.0f, 100.0f));
 		}
 		ImGui::End();
 	}

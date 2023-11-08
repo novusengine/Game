@@ -31,6 +31,6 @@ namespace Editor
 		f32 _brushRadius = 10.0f;
 		f32 _brushPressure = 100.0f;
 
-		Color _vertexColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+		Color _vertexColor = Color::Black;
 	};
 }

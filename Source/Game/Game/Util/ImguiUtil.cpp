@@ -895,11 +895,11 @@ namespace Util
 				ImGui::BeginGroup();
 
 				ImGui::GetDrawListSharedData()->FontSize = arrowSize;
-				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2{ ImGui::GetCurrentContext()->Style.ItemSpacing.x, arrowSpacing });
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, vec2{ ImGui::GetCurrentContext()->Style.ItemSpacing.x, arrowSpacing });
 
 				ImGui::PushButtonRepeat(true);
 
-				if (ImGui::ArrowButtonEx(("##right" + text + append).c_str(), ImGuiDir_Up, ImVec2(arrowSize, arrowSize)))
+				if (ImGui::ArrowButtonEx(("##right" + text + append).c_str(), ImGuiDir_Up, vec2(arrowSize, arrowSize)))
 				{
 					if (ImGui::GetIO().KeyShift)
 					{
@@ -913,7 +913,7 @@ namespace Util
 
 				HoveredMouseWheelStep(valuePtr, step, fastStep);
 
-				if (ImGui::ArrowButtonEx(("##left" + text + append).c_str(), ImGuiDir_Down, ImVec2(arrowSize, arrowSize)))
+				if (ImGui::ArrowButtonEx(("##left" + text + append).c_str(), ImGuiDir_Down, vec2(arrowSize, arrowSize)))
 				{
 					if (ImGui::GetIO().KeyShift)
 					{
@@ -975,6 +975,7 @@ namespace Util
 		void ColumnCheckBox(const std::string& valueName, bool valueArray[], i8 valueElement, i8 elementCount)
 		{
 			ImGui::TableNextColumn();
+
 			// Need To add center alignment here
 
 			ImGui::Checkbox(valueName.c_str(), &valueArray[valueElement]);
