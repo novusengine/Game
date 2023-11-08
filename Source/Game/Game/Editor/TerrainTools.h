@@ -3,6 +3,9 @@
 
 #include <imgui/imgui.h>
 
+#include <Base/Math/Color.h>
+
+
 namespace Editor
 {
 	class TerrainTools : public BaseEditor
