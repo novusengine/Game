@@ -444,7 +444,7 @@ namespace Editor
                             }
                         });
 
-                        ImGui::Text(" %i children", nameComps.size());
+                        ImGui::Text(" %zu children", nameComps.size());
 
                         if (ImGui::BeginChild("childcomps",{0.0f,200.0f}))
                         {

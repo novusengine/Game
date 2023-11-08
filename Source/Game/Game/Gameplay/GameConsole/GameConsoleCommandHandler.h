@@ -26,7 +26,7 @@ public:
     const robin_hood::unordered_map<u16, GameConsoleCommandEntry>& GetCommandEntries() { return _commandHandlers; }
 
 private:
-    bool RegisterCommand(const std::string& commandName, const std::function<bool(GameConsoleCommandHandler*, GameConsole*, std::vector<std::string>)>& handler)
+    bool RegisterCommand(const std::string& commandName, const std::function<bool(GameConsoleCommandHandler*, GameConsole*, std::vector<std::string>&)>& handler)
     {
         u32 commandHash = StringUtils::fnv1a_32(commandName.c_str(), commandName.length());
 

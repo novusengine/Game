@@ -130,8 +130,8 @@ namespace ECS::Singletons
 			std::string name;
 		};
 
-		friend class Application;
-		friend class ClientDBLoader;
+		friend class ::Application;
+		friend class ::ClientDBLoader;
 
 		std::vector<ClientDB::StorageRaw*> _dbs;
 		robin_hood::unordered_map<ClientDBHash, u32> _dbHashToIndex;

@@ -5,8 +5,7 @@
 #include <Base/Math/Math.h>
 #include <Base/Util/Reflection.h>
 
-#include <entt/fwd.hpp>
-#include <entt/entity/entity.hpp>
+#include <entt/entt.hpp>
 
 namespace ECS::Components { struct Transform; }
 namespace Editor { class Inspector; }
@@ -160,7 +159,7 @@ namespace ECS::Components
     //the matrix must be refreshed with RefreshMatrix every time the transform component updates its values
     struct SceneNode
     {
-        friend struct TransformSystem;
+        friend struct ECS::TransformSystem;
         friend struct Transform;
         friend class Editor::Inspector;
 

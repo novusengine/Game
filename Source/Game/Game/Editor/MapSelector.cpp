@@ -39,8 +39,7 @@ namespace Editor
             entt::registry::context& ctx = registry.ctx();
             
             auto& clientDBCollection = ctx.get<ClientDBCollection>();
-            auto& mapDB = ctx.get<MapDB>();
-            auto& mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
             u32 numMaps = mapStorage.Count();
             if (numMaps > 0)
@@ -48,8 +47,8 @@ namespace Editor
                 static u32 currentMapID = 0;
                 static u32 previewID = 0;
             
-                static std::string currentFilter = "";
-                static std::string tempString = "";
+                static std::string currentFilter;
+                static std::string tempString;
             
                 if (!mapStorage.Contains(currentMapID))
                 {
@@ -77,7 +76,7 @@ namespace Editor
             
                 if (ImGui::BeginCombo("##maplist", preview.c_str()))
                 {
-                    std::string selectableName = "";
+                    std::string selectableName;
                     selectableName.reserve(128);
             
                     for (const Definitions::Map& map : mapStorage)

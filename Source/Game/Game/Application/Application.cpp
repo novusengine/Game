@@ -254,15 +254,14 @@ bool Application::Init()
 		clientDBCollection.Register<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave, "CameraSave");
 		clientDBCollection.Register<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor, "Cursor");
 
-		MapDB& mapDB = _registries.gameRegistry->ctx().emplace<MapDB>();
 		ECS::Util::Map::Refresh();
 
-		CameraSaveDB& cameraSaveDB = _registries.gameRegistry->ctx().emplace<CameraSaveDB>();
+		auto& cameraSaveDB = _registries.gameRegistry->ctx().emplace<CameraSaveDB>();
 		cameraSaveDB.Refresh();
 
 		// Setup Cursors
 		{
-			auto& cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
+			auto cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
 
 			if (cursors.Count() == 0)
 			{
