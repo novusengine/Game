@@ -254,6 +254,7 @@ bool Application::Init()
 		clientDBCollection.Register<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave, "CameraSave");
 		clientDBCollection.Register<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor, "Cursor");
 
+		_registries.gameRegistry->ctx().emplace<MapDB>();
 		ECS::Util::Map::Refresh();
 
 		auto& cameraSaveDB = _registries.gameRegistry->ctx().emplace<CameraSaveDB>();
