@@ -88,7 +88,7 @@ namespace Util
 				{
 					if (ImGui::IsItemActive())
 					{
-						ImGui::ClearActiveID();
+//						ImGui::ClearActiveID();
 					}
 					else
 					{
