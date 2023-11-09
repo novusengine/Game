@@ -2,6 +2,7 @@
 #include <imgui/imgui.h>
 
 #include <Base/Util/Reflection.h>
+#include <Base/Math/Color.h>
 
 struct ImGuiWindow;
 
@@ -62,13 +63,47 @@ namespace Util
 		bool Inspect(const char* name, std::string& value, f32 speed);
 		bool Inspect(const char* name, const std::string& value, f32 speed);
 
+		// Group Header
+		void GroupHeader(const std::string& headerName);
+
 		// Sliders
 		void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step = 0.0f, f32 fastStep = 0.0f,
-			bool arrowsEnabled = false, const char* format = "%.2f", ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_None, 
+			bool arrowsEnabled = false, const char* format = "%.2f", ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_None,
 			f32 sliderWidth = ImGui::GetWindowWidth(), const std::string& append = "");
 
 		// Color Picker
-		void ColorPicker(const std::string& name, ImVec4* valuePtr, ImVec2 size = ImVec2(40.0f, 40.0f), const std::string& append = "");
+		void ColorPicker(const std::string& name, Color* valuePtr, vec2 size = vec2(40.0f, 40.0f), const std::string& append = "");
+
+		// Column Radio Button
+		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 brushType);
+
+		// Hovered Mouse Wheel Stepping
+		template <typename T>
+		void HoveredMouseWheelStep(T* valuePtr, T step, T fastStep)
+		{
+			if (ImGui::IsItemHovered())
+			{
+				f32 wheel = ImGui::GetIO().MouseWheel;
+				if (wheel)
+				{
+					if (ImGui::IsItemActive())
+					{
+						ImGui::ClearActiveID();
+					}
+					else
+					{
+						if (ImGui::GetIO().KeyShift)
+						{
+							*valuePtr += wheel * fastStep;
+						}
+						else
+						{
+							*valuePtr += wheel * step;
+						}
+					}
+				}
+			}
+		}
 
 		template <typename ComponentType>
 		bool Inspect(ComponentType& component)
