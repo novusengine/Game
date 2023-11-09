@@ -55,6 +55,7 @@ public:
                 return;
 
             std::string texturePath = path.string().substr(subStrIndex);
+            std::replace(texturePath.begin(), texturePath.end(), '\\', '/');
 
             TexturePair texturePair;
             texturePair.path = texturePath;

@@ -251,6 +251,19 @@ void ModelLoader::Update(f32 deltaTime)
                 }
             }
 
+            // Prepare lookup tables
+            _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
+            _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
+            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
+            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
+            _nameHashToLoadingMutex.reserve(_nameHashToLoadingMutex.size() + reserveInfo.numModels);
+
+            _nameHashToJoltShape.reserve(_nameHashToJoltShape.size() + reserveInfo.numInstances);
+            _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
+            _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
+            _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
+            _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
+
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
             animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
@@ -375,6 +388,19 @@ void ModelLoader::Update(f32 deltaTime)
                     reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
                 }
             }
+
+            // Prepare lookup tables
+            _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
+            _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
+            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
+            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
+            _nameHashToLoadingMutex.reserve(_nameHashToLoadingMutex.size() + reserveInfo.numModels);
+
+            _nameHashToJoltShape.reserve(_nameHashToJoltShape.size() + reserveInfo.numInstances);
+            _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
+            _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
+            _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
+            _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
 
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);

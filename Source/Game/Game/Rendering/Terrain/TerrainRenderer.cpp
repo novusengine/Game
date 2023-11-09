@@ -516,10 +516,13 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     u32 alphaMapStringID = chunk->chunkAlphaMapTextureHash;
     if (alphaMapStringID != std::numeric_limits<u32>().max())
     {
-        Renderer::TextureDesc chunkAlphaMapDesc;
-        chunkAlphaMapDesc.path = textureSingleton.textureHashToPath[alphaMapStringID];
+        if (textureSingleton.textureHashToPath.contains(alphaMapStringID))
+        {
+            Renderer::TextureDesc chunkAlphaMapDesc;
+            chunkAlphaMapDesc.path = textureSingleton.textureHashToPath[alphaMapStringID];
 
-        _renderer->LoadTextureIntoArray(chunkAlphaMapDesc, _alphaTextures, chunkData.alphaMapID);
+            _renderer->LoadTextureIntoArray(chunkAlphaMapDesc, _alphaTextures, chunkData.alphaMapID);
+        }
     }
 
     vec2 chunkOrigin;
