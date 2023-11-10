@@ -284,7 +284,7 @@ void ModelLoader::Update(f32 deltaTime)
             registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
             registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
-            std::atomic<u32> numCreatedInstances;
+            std::atomic<u32> numCreatedInstances = 0;
             enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
             {
             	for (u32 i = range.start; i < range.end; i++)

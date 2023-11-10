@@ -78,31 +78,25 @@ namespace Util
 		void ColumnRadioButton(const std::string& valueName, i32* valuePtr, i32 brushType);
 
 		// Hovered Mouse Wheel Stepping
-		template <typename T>
-		void HoveredMouseWheelStep(T* valuePtr, T step, T fastStep)
-		{
-			if (ImGui::IsItemHovered())
-			{
-				f32 wheel = ImGui::GetIO().MouseWheel;
-				if (wheel)
-				{
-					if (ImGui::IsItemActive())
-					{
-//						ImGui::ClearActiveID();
-					}
-					else
-					{
-						if (ImGui::GetIO().KeyShift)
-						{
-							*valuePtr += wheel * fastStep;
-						}
-						else
-						{
-							*valuePtr += wheel * step;
-						}
-					}
-				}
-			}
+        template <typename T>
+        void HoveredMouseWheelStep(T* valuePtr, T step, T fastStep)
+        {
+            if (ImGui::IsItemHovered())
+            {
+                f32 wheel = ImGui::GetIO().MouseWheel;
+
+                if (wheel)
+                {
+                    if (ImGui::GetIO().KeyShift)
+                    {
+                        *valuePtr += wheel * fastStep;
+                    }
+                    else
+                    {
+                        *valuePtr += wheel * step;
+                    }
+                }
+            }
 		}
 
 		template <typename ComponentType>
