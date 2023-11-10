@@ -311,7 +311,7 @@ namespace Editor
         ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity);
         if (!name)
         {
-            ImGui::Text("Selected entity (%d) has no name component", static_cast<int>(entity));
+            ImGui::Text("Selected entity (%d) has no name component", static_cast<i32>(entity));
         }
 
         Util::Imgui::Inspect(*name);

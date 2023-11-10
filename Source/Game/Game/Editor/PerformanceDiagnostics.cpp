@@ -801,7 +801,7 @@ namespace Editor
         f32 textPos = windowWidth - textWidth;
 
         ImGui::Separator();
-        ImGui::Text("%.*s:", static_cast<int>(name.length()), name.data());
+        ImGui::Text("%.*s:", static_cast<i32>(name.length()), name.data());
 
         ImGui::SameLine();
         if (textPos > ImGui::GetCursorPosX())
