@@ -47,7 +47,7 @@ namespace Editor
 		if (ImGui::Begin(GetName()))
 		{
 			Util::Imgui::ItemRowsBackground();
-			auto& view = registry->view<ECS::Components::Name>();
+			auto view = registry->view<ECS::Components::Name>();
 
 			vec2 itemSize = vec2(ImGui::GetContentRegionAvail().x, ImGui::GetTextLineHeightWithSpacing());
 			if (_scrollToSelected)

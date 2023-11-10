@@ -22,8 +22,6 @@
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Core/TempAllocator.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 
@@ -145,25 +143,25 @@ namespace ECS::Systems
 
         // Setup StaticMesh Sink
         {
-            auto& sink = registry.on_construct<Components::StaticMesh>();
+            auto sink = registry.on_construct<Components::StaticMesh>();
             sink.connect<&OnStaticMeshCreated>();
         }
 
         // Setup KinematicMesh Sink
         {
-            auto& sink = registry.on_construct<Components::KinematicMesh>();
+            auto sink = registry.on_construct<Components::KinematicMesh>();
             sink.connect<&OnKinematicMeshCreated>();
         }
 
         // Setup DynamicMesh Sink
         {
-            auto& sink = registry.on_construct<Components::DynamicMesh>();
+            auto sink = registry.on_construct<Components::DynamicMesh>();
             sink.connect<&OnDynamicMeshCreated>();
         }
 
         InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-        keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::None, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::ModNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
@@ -216,24 +214,22 @@ namespace ECS::Systems
             JPH::BodyIDVector activeBodyIDs;
             joltState.physicsSystem.GetActiveBodies(activeBodyIDs);
 
-            if (activeBodyIDs.size() > 0)
+            if (!activeBodyIDs.empty())
             {
                 JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
-                for (u32 i = 0; i < activeBodyIDs.size(); i++)
+                for (auto bodyID : activeBodyIDs)
                 {
-                    JPH::BodyID bodyID = activeBodyIDs[i];
-
                     u32 userData = static_cast<u32>(bodyInterface.GetUserData(bodyID));
-                    entt::entity entityID = static_cast<entt::entity>(userData);
+                    auto entityID = static_cast<entt::entity>(userData);
 
                     bool needsPhysicsWriteToECS = registry.any_of<Components::StaticMesh, Components::KinematicMesh, Components::DynamicMesh>(entityID);
                     if (needsPhysicsWriteToECS)
                     {
                         auto& transform = registry.get<ECS::Components::Transform>(entityID);
 
-                        JPH::Vec3 bodyPos;
-                        JPH::Quat bodyRot;
+                        JPH::Vec3 bodyPos{};
+                        JPH::Quat bodyRot{};
                         bodyInterface.GetPositionAndRotation(bodyID, bodyPos, bodyRot);
 
                         vec3 newPosition = vec3(bodyPos.GetX(), bodyPos.GetY(), bodyPos.GetZ());

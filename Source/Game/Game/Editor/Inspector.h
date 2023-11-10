@@ -6,7 +6,6 @@
 
 #include <Input/InputManager.h>
 
-class Window;
 class DebugRenderer;
 
 namespace ECS::Components

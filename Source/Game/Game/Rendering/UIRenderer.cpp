@@ -103,7 +103,7 @@ void UIRenderer::CreatePermanentResources()
     bufferDesc.name = "IndexBuffer";
     bufferDesc.size = indexBufferSize;
     bufferDesc.usage = Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-    bufferDesc.cpuAccess = Renderer::BufferCPUAccess::None;
+    bufferDesc.cpuAccess = Renderer::BufferCPUAccess::AccessNone;
 
     _indexBuffer = _renderer->CreateBuffer(bufferDesc);
 

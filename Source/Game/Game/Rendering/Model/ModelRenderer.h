@@ -21,6 +21,7 @@ namespace Renderer
 	class Renderer;
 	class RenderGraph;
 	class RenderGraphResources;
+    class RenderGraphBuilder;
 }
 
 struct DrawParams;

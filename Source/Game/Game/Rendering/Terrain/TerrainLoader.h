@@ -10,6 +10,11 @@
 class ModelLoader;
 class WaterLoader;
 
+namespace Map
+{
+    struct Chunk;
+}
+
 class TerrainRenderer;
 class TerrainLoader
 {
@@ -63,4 +68,5 @@ private:
 
 	robin_hood::unordered_map<u32, u32> _chunkIDToLoadedID;
 	robin_hood::unordered_map<u32, u32> _chunkIDToBodyID;
+    robin_hood::unordered_map<u32, Map::Chunk*> _chunkIDToChunkPtr;
 };

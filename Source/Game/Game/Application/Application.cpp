@@ -262,7 +262,7 @@ bool Application::Init()
 
 		// Setup Cursors
 		{
-			auto& cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
+			auto cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
 
 			if (cursors.Count() == 0)
 			{

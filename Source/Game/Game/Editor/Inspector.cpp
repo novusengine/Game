@@ -13,7 +13,7 @@
 #include <Game/ECS/Singletons/MapDB.h>
 #include <Game/ECS/Singletons/TextureSingleton.h>
 #include <Game/ECS/Singletons/ActiveCamera.h>
-#include <Game/ECS/Singletons/FreeFlyingCameraSettings.h>
+#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game/ECS/Singletons/RenderState.h>
 #include <Game/ECS/Components/Camera.h>
 #include <Game/ECS/Components/Model.h>
@@ -58,7 +58,9 @@ namespace Editor
 
         virtual char* GetActionName() override
         {
-            return "Transform Model";
+            static char buffer[]{"Transform Model"};
+
+            return buffer;
         }
 
         virtual void Undo() override
@@ -89,7 +91,7 @@ namespace Editor
             ImGui::SameLine(0.0f, 10.0f);
 
             ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(170, 170, 170, 255));
-            ImGui::Text(discoveredModel.name.c_str());
+            ImGui::Text("%s", discoveredModel.name.c_str());
             ImGui::PopStyleColor();
 
             ImGui::Unindent();
@@ -106,7 +108,7 @@ namespace Editor
         InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
-        keybindGroup->AddKeyboardCallback("Mouse Left", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Press, KeybindModifier::None | KeybindModifier::Shift, std::bind(&Inspector::OnMouseClickLeft, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+        keybindGroup->AddKeyboardCallback("Mouse Left", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Press, KeybindModifier::ModNone | KeybindModifier::Shift, std::bind(&Inspector::OnMouseClickLeft, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     }
 
     void Inspector::SetViewport(Viewport* viewport)
@@ -309,7 +311,7 @@ namespace Editor
         ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity);
         if (!name)
         {
-            ImGui::Text("Selected entity (%d) has no name component", entity);
+            ImGui::Text("Selected entity (%d) has no name component", static_cast<i32>(entity));
         }
 
         Util::Imgui::Inspect(*name);
@@ -442,7 +444,7 @@ namespace Editor
                             }
                         });
 
-                        ImGui::Text(" %i children", nameComps.size());
+                        ImGui::Text(" %zu children", nameComps.size());
 
                         if (ImGui::BeginChild("childcomps",{0.0f,200.0f}))
                         {

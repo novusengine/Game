@@ -26,7 +26,7 @@ namespace ECS::Util
             settings.captureMouse = capture;
 
             GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-            Window* window = gameRenderer->GetWindow();
+            Novus::Window* window = gameRenderer->GetWindow();
 
             if (capture)
             {
