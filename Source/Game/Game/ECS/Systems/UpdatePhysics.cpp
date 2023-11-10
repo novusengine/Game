@@ -161,7 +161,7 @@ namespace ECS::Systems
 
         InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-        keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::KeybindNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::ModNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
