@@ -79,17 +79,17 @@ void MapLoader::Update(f32 deltaTime)
         
         fileReader.Read(buffer.get(), bufferLength);
         
-        Map::Layout mapLayout;
-        if (!buffer->Get(mapLayout))
+        Map::MapHeader mapHeader;
+        if (!Map::MapHeader::Read(buffer, mapHeader))
             return;
         
-        if (mapLayout.flags.UseMapObjectAsBase)
+        if (mapHeader.flags.UseMapObjectAsBase)
         {
-            if (!_modelLoader->ContainsDiscoveredModel(mapLayout.placement.nameHash))
+            if (!_modelLoader->ContainsDiscoveredModel(mapHeader.placement.nameHash))
                 return;
         
             ClearRenderersForMap();
-            _modelLoader->LoadPlacement(mapLayout.placement);
+            _modelLoader->LoadPlacement(mapHeader.placement);
         }
         else
         {
