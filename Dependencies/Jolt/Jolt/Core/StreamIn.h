@@ -1,12 +1,15 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
+#include <Jolt/Core/NonCopyable.h>
+
 JPH_NAMESPACE_BEGIN
 
 /// Simple binary input stream
-class StreamIn
+class JPH_EXPORT StreamIn : public NonCopyable
 {
 public:
 	/// Virtual destructor
@@ -27,7 +30,7 @@ public:
 	{
 		ReadBytes(&outT, sizeof(outT));
 	}
-	
+
 	/// Read a vector of primitives from the binary stream
 	template <class T, class A>
 	void				Read(std::vector<T, A> &outT)

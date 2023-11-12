@@ -1,3 +1,4 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
@@ -13,7 +14,7 @@ JPH_NAMESPACE_BEGIN
 class AABox;
 
 /// Oriented box
-class [[nodiscard]] OrientedBox
+class [[nodiscard]] JPH_EXPORT OrientedBox
 {
 public:
 	JPH_OVERRIDE_NEW_DELETE
@@ -30,7 +31,7 @@ public:
 
 	/// Test if two oriented boxes overlap eachother
 	bool			Overlaps(const OrientedBox &inBox, float inEpsilon = 1.0e-6f) const;
-						
+
 	Mat44			mOrientation;														///< Transform that positions and rotates the local space axis aligned box into world space
 	Vec3			mHalfExtents;														///< Half extents (half the size of the edge) of the local space axis aligned box
 };

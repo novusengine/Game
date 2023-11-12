@@ -1,3 +1,4 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
@@ -12,8 +13,8 @@
 
 JPH_NAMESPACE_BEGIN
 
-void ConstraintManager::Add(Constraint **inConstraints, int inNumber)						
-{ 
+void ConstraintManager::Add(Constraint **inConstraints, int inNumber)
+{
 	UniqueLock lock(mConstraintsMutex JPH_IF_ENABLE_ASSERTS(, mLockContext, EPhysicsLockTypes::ConstraintsList));
 
 	mConstraints.reserve(mConstraints.size() + inNumber);
@@ -102,7 +103,15 @@ void ConstraintManager::sSortConstraints(Constraint **inActiveConstraints, uint3
 {
 	JPH_PROFILE_FUNCTION();
 
-	QuickSort(inConstraintIdxBegin, inConstraintIdxEnd, [inActiveConstraints](uint32 inLHS, uint32 inRHS) { return inActiveConstraints[inLHS]->mConstraintIndex < inActiveConstraints[inRHS]->mConstraintIndex; });
+	QuickSort(inConstraintIdxBegin, inConstraintIdxEnd, [inActiveConstraints](uint32 inLHS, uint32 inRHS) {
+		const Constraint *lhs = inActiveConstraints[inLHS];
+		const Constraint *rhs = inActiveConstraints[inRHS];
+
+		if (lhs->GetConstraintPriority() != rhs->GetConstraintPriority())
+			return lhs->GetConstraintPriority() < rhs->GetConstraintPriority();
+
+		return lhs->mConstraintIndex < rhs->mConstraintIndex;
+	});
 }
 
 void ConstraintManager::sSetupVelocityConstraints(Constraint **inActiveConstraints, uint32 inNumActiveConstraints, float inDeltaTime)
@@ -113,14 +122,14 @@ void ConstraintManager::sSetupVelocityConstraints(Constraint **inActiveConstrain
 		(*c)->SetupVelocityConstraint(inDeltaTime);
 }
 
-void ConstraintManager::sSetupVelocityConstraints(Constraint **inActiveConstraints, const uint32 *inConstraintIdxBegin, const uint32 *inConstraintIdxEnd, float inDeltaTime)
+void ConstraintManager::sWarmStartVelocityConstraints(Constraint **inActiveConstraints, const uint32 *inConstraintIdxBegin, const uint32 *inConstraintIdxEnd, float inWarmStartImpulseRatio)
 {
 	JPH_PROFILE_FUNCTION();
 
 	for (const uint32 *constraint_idx = inConstraintIdxBegin; constraint_idx < inConstraintIdxEnd; ++constraint_idx)
 	{
 		Constraint *c = inActiveConstraints[*constraint_idx];
-		c->SetupVelocityConstraint(inDeltaTime);
+		c->WarmStartVelocityConstraint(inWarmStartImpulseRatio);
 	}
 }
 
@@ -189,7 +198,7 @@ void ConstraintManager::DrawConstraints(DebugRenderer *inRenderer) const
 
 	UniqueLock lock(mConstraintsMutex JPH_IF_ENABLE_ASSERTS(, mLockContext, EPhysicsLockTypes::ConstraintsList));
 
-	for (const Ref<Constraint> &c : mConstraints)			
+	for (const Ref<Constraint> &c : mConstraints)
 		c->DrawConstraint(inRenderer);
 }
 
@@ -214,32 +223,86 @@ void ConstraintManager::DrawConstraintReferenceFrame(DebugRenderer *inRenderer) 
 }
 #endif // JPH_DEBUG_RENDERER
 
-void ConstraintManager::SaveState(StateRecorder &inStream) const
-{	
+void ConstraintManager::SaveState(StateRecorder &inStream, const StateRecorderFilter *inFilter) const
+{
 	UniqueLock lock(mConstraintsMutex JPH_IF_ENABLE_ASSERTS(, mLockContext, EPhysicsLockTypes::ConstraintsList));
 
 	// Write state of constraints
-	size_t num_constraints = mConstraints.size();
-	inStream.Write(num_constraints);
-	for (const Ref<Constraint> &c : mConstraints)
-		c->SaveState(inStream);
+	if (inFilter != nullptr)
+	{
+		// Determine which constraints to save
+		Array<Constraint *> constraints;
+		constraints.reserve(mConstraints.size());
+		for (const Ref<Constraint> &c : mConstraints)
+			if (inFilter->ShouldSaveConstraint(*c))
+				constraints.push_back(c);
+
+		// Save them
+		uint32 num_constraints = (uint32)constraints.size();
+		inStream.Write(num_constraints);
+		for (const Constraint *c : constraints)
+		{
+			inStream.Write(c->mConstraintIndex);
+			c->SaveState(inStream);
+		}
+	}
+	else
+	{
+		// Save all constraints
+		uint32 num_constraints = (uint32)mConstraints.size();
+		inStream.Write(num_constraints);
+		for (const Ref<Constraint> &c : mConstraints)
+		{
+			inStream.Write(c->mConstraintIndex);
+			c->SaveState(inStream);
+		}
+	}
 }
 
 bool ConstraintManager::RestoreState(StateRecorder &inStream)
 {
 	UniqueLock lock(mConstraintsMutex JPH_IF_ENABLE_ASSERTS(, mLockContext, EPhysicsLockTypes::ConstraintsList));
 
-	// Read state of constraints
-	size_t num_constraints = mConstraints.size(); // Initialize to current value for validation
-	inStream.Read(num_constraints);
-	if (num_constraints != mConstraints.size())
+	if (inStream.IsValidating())
 	{
-		JPH_ASSERT(false, "Cannot handle adding/removing constraints");
-		return false;
+		// Read state of constraints
+		uint32 num_constraints = (uint32)mConstraints.size(); // Initialize to current value for validation
+		inStream.Read(num_constraints);
+		if (num_constraints != mConstraints.size())
+		{
+			JPH_ASSERT(false, "Cannot handle adding/removing constraints");
+			return false;
+		}
+		for (const Ref<Constraint> &c : mConstraints)
+		{
+			uint32 constraint_index = c->mConstraintIndex;
+			inStream.Read(constraint_index);
+			if (constraint_index != c->mConstraintIndex)
+			{
+				JPH_ASSERT(false, "Unexpected constraint index");
+				return false;
+			}
+			c->RestoreState(inStream);
+		}
 	}
+	else
+	{
+		// Not validating, use more flexible reading, read number of constraints
+		uint32 num_constraints = 0;
+		inStream.Read(num_constraints);
 
-	for (Ref<Constraint> &c : mConstraints)
-		c->RestoreState(inStream);
+		for (uint32 idx = 0; idx < num_constraints; ++idx)
+		{
+			uint32 constraint_index;
+			inStream.Read(constraint_index);
+			if (mConstraints.size() <= constraint_index)
+			{
+				JPH_ASSERT(false, "Restoring state for non-existing constraint");
+				return false;
+			}
+			mConstraints[constraint_index]->RestoreState(inStream);
+		}
+	}
 
 	return true;
 }

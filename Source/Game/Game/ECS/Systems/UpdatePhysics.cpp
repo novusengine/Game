@@ -202,17 +202,16 @@ namespace ECS::Systems
 
         // Step the world
         {
-            constexpr i32 integrationSubSteps = 1;
             constexpr f32 minTimePerStep = 1 / 60.0f;
             const i32 collisionSteps = static_cast<i32>(glm::ceil(deltaTime / minTimePerStep));
 
-            joltState.physicsSystem.Update(deltaTime, collisionSteps, integrationSubSteps, &joltState.allocator, &joltState.scheduler);
+            joltState.physicsSystem.Update(deltaTime, collisionSteps, &joltState.allocator, &joltState.scheduler);
         }
 
         // Update ECS with new Physics State
         {
             JPH::BodyIDVector activeBodyIDs;
-            joltState.physicsSystem.GetActiveBodies(activeBodyIDs);
+            joltState.physicsSystem.GetActiveBodies(JPH::EBodyType::RigidBody, activeBodyIDs);
 
             if (!activeBodyIDs.empty())
             {
