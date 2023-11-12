@@ -1,3 +1,4 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
@@ -10,7 +11,9 @@
 
 JPH_NAMESPACE_BEGIN
 
+class BodyID;
 class IslandBuilder;
+class LargeIslandSplitter;
 class BodyManager;
 class StateRecorder;
 class StreamIn;
@@ -58,10 +61,10 @@ enum class EConstraintSpace
 };
 
 /// Class used to store the configuration of a constraint. Allows run-time creation of constraints.
-class ConstraintSettings : public SerializableObject, public RefTarget<ConstraintSettings>
+class JPH_EXPORT ConstraintSettings : public SerializableObject, public RefTarget<ConstraintSettings>
 {
 public:
-	JPH_DECLARE_SERIALIZABLE_VIRTUAL(ConstraintSettings)
+	JPH_DECLARE_SERIALIZABLE_VIRTUAL(JPH_EXPORT, ConstraintSettings)
 
 	using ConstraintResult = Result<Ref<ConstraintSettings>>;
 
@@ -74,6 +77,10 @@ public:
 	/// If this constraint is enabled initially. Use Constraint::SetEnabled to toggle after creation.
 	bool						mEnabled = true;
 
+	/// Priority of the constraint when solving. Higher numbers have are more likely to be solved correctly.
+	/// Note that if you want a deterministic simulation and you cannot guarantee the order in which constraints are added/removed, you can make the priority for all constraints unique to get a deterministic ordering.
+	uint32						mConstraintPriority = 0;
+
 	/// Override for the number of solver velocity iterations to run, the total amount of iterations is the max of PhysicsSettings::mNumVelocitySteps and this for all constraints in the island.
 	int							mNumVelocityStepsOverride = 0;
 
@@ -83,13 +90,16 @@ public:
 	/// Size of constraint when drawing it through the debug renderer
 	float						mDrawConstraintSize = 1.0f;
 
+	/// User data value (can be used by application)
+	uint64						mUserData = 0;
+
 protected:
 	/// This function should not be called directly, it is used by sRestoreFromBinaryState.
 	virtual void				RestoreBinaryState(StreamIn &inStream);
 };
 
 /// Base class for all physics constraints. A constraint removes one or more degrees of freedom for a rigid body.
-class Constraint : public RefTarget<Constraint>, public NonCopyable
+class JPH_EXPORT Constraint : public RefTarget<Constraint>, public NonCopyable
 {
 public:
 	JPH_OVERRIDE_NEW_DELETE
@@ -99,9 +109,11 @@ public:
 #ifdef JPH_DEBUG_RENDERER
 		mDrawConstraintSize(inSettings.mDrawConstraintSize),
 #endif // JPH_DEBUG_RENDERER
+		mConstraintPriority(inSettings.mConstraintPriority),
 		mNumVelocityStepsOverride(inSettings.mNumVelocityStepsOverride),
 		mNumPositionStepsOverride(inSettings.mNumPositionStepsOverride),
-		mEnabled(inSettings.mEnabled)
+		mEnabled(inSettings.mEnabled),
+		mUserData(inSettings.mUserData)
 	{
 	}
 
@@ -113,6 +125,11 @@ public:
 
 	/// Get the sub type of a constraint
 	virtual EConstraintSubType	GetSubType() const = 0;
+
+	/// Priority of the constraint when solving. Higher numbers have are more likely to be solved correctly.
+	/// Note that if you want a deterministic simulation and you cannot guarantee the order in which constraints are added/removed, you can make the priority for all constraints unique to get a deterministic ordering.
+	uint32						GetConstraintPriority() const				{ return mConstraintPriority; }
+	void						SetConstraintPriority(uint32 inPriority)	{ mConstraintPriority = inPriority; }
 
 	/// Override for the number of solver velocity iterations to run, the total amount of iterations is the max of PhysicsSettings::mNumVelocitySteps and this for all constraints in the island.
 	void						SetNumVelocityStepsOverride(int inN)		{ mNumVelocityStepsOverride = inN; }
@@ -131,6 +148,16 @@ public:
 	/// Test if a constraint is enabled.
 	bool						GetEnabled() const							{ return mEnabled; }
 
+	/// Access to the user data, can be used for anything by the application
+	uint64						GetUserData() const							{ return mUserData; }
+	void						SetUserData(uint64 inUserData)				{ mUserData = inUserData; }
+
+	/// Notify the constraint that the shape of a body has changed and that its center of mass has moved by inDeltaCOM.
+	/// Bodies don't know which constraints are connected to them so the user is responsible for notifying the relevant constraints when a body changes.
+	/// @param inBodyID ID of the body that has changed
+	/// @param inDeltaCOM The delta of the center of mass of the body (shape->GetCenterOfMass() - shape_before_change->GetCenterOfMass())
+	virtual void				NotifyShapeChanged(const BodyID &inBodyID, Vec3Arg inDeltaCOM) = 0;
+
 	///@name Solver interface
 	///@{
 	virtual bool				IsActive() const							{ return mEnabled; }
@@ -143,11 +170,14 @@ public:
 	/// Link bodies that are connected by this constraint in the island builder
 	virtual void				BuildIslands(uint32 inConstraintIndex, IslandBuilder &ioBuilder, BodyManager &inBodyManager) = 0;
 
+	/// Link bodies that are connected by this constraint in the same split. Returns the split index.
+	virtual uint				BuildIslandSplits(LargeIslandSplitter &ioSplitter) const = 0;
+
 #ifdef JPH_DEBUG_RENDERER
 	// Drawing interface
 	virtual void				DrawConstraint(DebugRenderer *inRenderer) const = 0;
-	virtual void				DrawConstraintLimits(DebugRenderer *inRenderer) const { }
-	virtual void				DrawConstraintReferenceFrame(DebugRenderer *inRenderer) const { }
+	virtual void				DrawConstraintLimits([[maybe_unused]] DebugRenderer *inRenderer) const { }
+	virtual void				DrawConstraintReferenceFrame([[maybe_unused]] DebugRenderer *inRenderer) const { }
 
 	/// Size of constraint when drawing it through the debug renderer
 	float						GetDrawConstraintSize() const				{ return mDrawConstraintSize; }
@@ -181,6 +211,9 @@ private:
 	/// Index in the mConstraints list of the ConstraintManager for easy finding
 	uint32						mConstraintIndex = cInvalidConstraintIndex;
 
+	/// Priority of the constraint when solving. Higher numbers have are more likely to be solved correctly.
+	uint32						mConstraintPriority = 0;
+
 	/// Override for the number of solver velocity iterations to run, the total amount of iterations is the max of PhysicsSettings::mNumVelocitySteps and this for all constraints in the island.
 	int							mNumVelocityStepsOverride = 0;
 
@@ -189,6 +222,9 @@ private:
 
 	/// If this constraint is currently enabled
 	bool						mEnabled = true;
+
+	/// User data value (can be used by application)
+	uint64						mUserData;
 };
 
 JPH_NAMESPACE_END

@@ -1,3 +1,4 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
@@ -40,8 +41,8 @@ struct PhysicsSettings
 	/// Baumgarte stabilization factor (how much of the position error to 'fix' in 1 update) (unit: dimensionless, 0 = nothing, 1 = 100%)
 	float		mBaumgarte = 0.2f;
 
-	/// Radius around objects inside which speculative contact points will be detected. Note that if this is too big 
-	/// you will get ghost collisions as speculative contacts are based on the closest points during the collision detection 
+	/// Radius around objects inside which speculative contact points will be detected. Note that if this is too big
+	/// you will get ghost collisions as speculative contacts are based on the closest points during the collision detection
 	/// step which may not be the actual closest points by the time the two objects hit (unit: meters)
 	float		mSpeculativeContactDistance = 0.02f;
 
@@ -88,6 +89,9 @@ struct PhysicsSettings
 	/// Velocity of points on bounding box of object below which an object can be considered sleeping (unit: m/s)
 	float		mPointVelocitySleepThreshold = 0.03f;
 
+	/// By default the simulation is deterministic, it is possible to turn this off by setting this setting to false. This will make the simulation run faster but it will no longer be deterministic.
+	bool		mDeterministicSimulation = true;
+
 	///@name These variables are mainly for debugging purposes, they allow turning on/off certain subsystems. You probably want to leave them alone.
 	///@{
 
@@ -99,6 +103,9 @@ struct PhysicsSettings
 
 	/// Whether or not to reduce manifolds with similar contact normals into one contact manifold
 	bool		mUseManifoldReduction = true;
+
+	/// If we split up large islands into smaller parallel batches of work (to improve performance)
+	bool		mUseLargeIslandSplitter = true;
 
 	/// If objects can go to sleep or not
 	bool		mAllowSleeping = true;

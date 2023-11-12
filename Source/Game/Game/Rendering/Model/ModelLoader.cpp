@@ -285,9 +285,10 @@ void ModelLoader::Update(f32 deltaTime)
             registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances = 0;
-            enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
-            {
-            	for (u32 i = range.start; i < range.end; i++)
+            //enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+            //{
+            	//for (u32 i = range.start; i < range.end; i++)
+                for (u32 i = 0; i < numDequeued; i++)
                 {
                     LoadRequestInternal& request = _staticLoadRequests[i];
 
@@ -326,11 +327,11 @@ void ModelLoader::Update(f32 deltaTime)
                     u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
                     AddStaticInstance(_createdEntities[index], request);
                 }
-            });
+            //});
 
             // Execute the multithreaded job
-            taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-            taskScheduler->WaitforTask(&loadModelsTask);
+            //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+            //taskScheduler->WaitforTask(&loadModelsTask);
 
             // Destroy the entities we didn't use
             u32 numCreated = numCreatedInstances.load();

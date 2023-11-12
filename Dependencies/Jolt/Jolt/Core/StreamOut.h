@@ -1,12 +1,15 @@
+// Jolt Physics Library (https://github.com/jrouwe/JoltPhysics)
 // SPDX-FileCopyrightText: 2021 Jorrit Rouwe
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
+#include <Jolt/Core/NonCopyable.h>
+
 JPH_NAMESPACE_BEGIN
 
 /// Simple binary output stream
-class StreamOut
+class JPH_EXPORT StreamOut : public NonCopyable
 {
 public:
 	/// Virtual destructor
