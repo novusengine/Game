@@ -1,7 +1,7 @@
 #include "Game/ECS/Util/Transforms.h"
 #include <Base/Util/DebugHandler.h>
 #include <entt/entt.hpp>
-#include "glm/gtc/quaternion.hpp"
+#include <glm/gtc/quaternion.hpp>
 
 // We are using Unitys Right Handed coordinate system
 // +X = right
@@ -211,7 +211,8 @@ ECS::Components::Transform* ECS::Components::Transform::GetParentTransform() con
     {
         return ownerNode->parent->transform;
     }
-    else {
+    else
+    {
         return nullptr;
     }
 }

@@ -483,7 +483,7 @@ namespace Editor
         mat4a tm = Math::AffineMatrix::TransformMatrix(transform.GetWorldPosition(), transform.GetWorldRotation(), transform.GetLocalScale());
         mat4x4 transformMatrix = tm;
         //affine matrices converted to mat4 need their last element set manually.
-        transformMatrix[3][3] = 1.f;
+        transformMatrix[3][3] = 1.0f;
 
         float* instanceMatrixPtr = glm::value_ptr(transformMatrix);
 

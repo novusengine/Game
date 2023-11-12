@@ -325,12 +325,14 @@ inline const vec3 ECS::Components::Transform::GetWorldPosition() const
 }
 inline const quat ECS::Components::Transform::GetWorldRotation() const
 {
-    if (ownerNode && ownerNode->parent && ownerNode->parent->transform) {
+    if (ownerNode && ownerNode->parent && ownerNode->parent->transform)
+    {
         //finding the rotation from the matrix is not reliable, we need to check up the parenting stack to build the correct rotation operation
         // TODO: find a way to get rotation in reliable way from parent matrix?
         return ownerNode->parent->transform->GetWorldRotation() * GetLocalRotation();
     }
-    else {
+    else
+    {
         return GetLocalRotation();
     }
 }
