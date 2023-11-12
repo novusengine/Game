@@ -1,6 +1,7 @@
 #include "Game/ECS/Util/Transforms.h"
 #include <Base/Util/DebugHandler.h>
 #include <entt/entt.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 // We are using Unitys Right Handed coordinate system
 // +X = right
@@ -39,9 +40,9 @@ void ECS::TransformSystem::SetWorldPosition(entt::entity entity, const vec3& new
     if (tf)
     {
         // we have a parent, need to calculate the transform properly
-        if (tf->ownerNode && tf->ownerNode->parent)
+        if (ECS::Components::Transform* parentTransform = tf->GetParentTransform())
         {
-            mat4x4 worldMatrix = tf->ownerNode->parent->matrix;
+            mat4x4 worldMatrix = parentTransform->GetMatrix();
             mat4x4 worldInv = glm::inverse(worldMatrix);
             vec4 localSpace = worldInv * vec4(newPosition, 1.f);
             SetLocalPosition(entity, *tf, vec3(localSpace));
@@ -58,6 +59,26 @@ void ECS::TransformSystem::SetLocalRotation(entt::entity entity, const quat& new
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
     if (tf) SetLocalRotation(entity, *tf, newRotation);
+}
+
+void ECS::TransformSystem::SetWorldRotation(entt::entity entity, const quat& newRotation)
+{
+    ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
+    if (tf)
+    {
+        // we have a parent, need to calculate the transform properly
+        if (ECS::Components::Transform* parentTransform = tf->GetParentTransform())
+        {
+            quat parent = parentTransform->GetWorldRotation();
+            quat delta = glm::inverse(parent) * newRotation;
+            SetLocalRotation(entity, *tf, delta);
+        }
+        // no parent or scenenode, so we can just set local rotation directly
+        else
+        {
+            SetLocalRotation(entity, *tf, newRotation);
+        }
+    }
 }
 
 void ECS::TransformSystem::SetLocalScale(entt::entity entity, const vec3& newScale)
@@ -182,4 +203,16 @@ void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity chil
 
     // set child matrix as dirty, and propagate matrices down in case the child object has its own children
     RefreshTransform(child,*tfc);
+}
+
+ECS::Components::Transform* ECS::Components::Transform::GetParentTransform() const
+{
+    if (ownerNode && ownerNode->parent && ownerNode->parent->transform)
+    {
+        return ownerNode->parent->transform;
+    }
+    else
+    {
+        return nullptr;
+    }
 }

@@ -21,6 +21,7 @@ namespace ECS
         void SetLocalPosition(entt::entity entity, const vec3& newPosition);
         void SetWorldPosition(entt::entity entity, const vec3& newPosition);
         void SetLocalRotation(entt::entity entity, const quat& newRotation);
+        void SetWorldRotation(entt::entity entity, const quat& newRotation);
         void SetLocalScale(entt::entity entity, const vec3& newScale);
         void SetLocalPositionAndRotation(entt::entity entity, const vec3& newpos, const quat& newrotation);
         void SetLocalTransform(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
@@ -132,6 +133,8 @@ namespace ECS::Components
         }
 
         const vec3 GetWorldPosition() const;
+        const quat GetWorldRotation() const;
+
 
         const quat& GetLocalRotation() const
         {
@@ -141,6 +144,8 @@ namespace ECS::Components
         {
             return scale;
         }
+
+        Transform* GetParentTransform() const;
 
         struct SceneNode* ownerNode{ nullptr };
 
@@ -318,6 +323,20 @@ inline const vec3 ECS::Components::Transform::GetWorldPosition() const
 {
     return ownerNode ? ownerNode->matrix[3] : GetLocalPosition();
 }
+inline const quat ECS::Components::Transform::GetWorldRotation() const
+{
+    if (ownerNode && ownerNode->parent && ownerNode->parent->transform)
+    {
+        //finding the rotation from the matrix is not reliable, we need to check up the parenting stack to build the correct rotation operation
+        // TODO: find a way to get rotation in reliable way from parent matrix?
+        return ownerNode->parent->transform->GetWorldRotation() * GetLocalRotation();
+    }
+    else
+    {
+        return GetLocalRotation();
+    }
+}
+
 
 template<typename F>
 void ECS::TransformSystem::IterateChildren(entt::entity entity, F&& callback)
