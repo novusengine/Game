@@ -478,7 +478,13 @@ namespace Editor
 
         mat4x4& viewMatrix = camera.worldToView;
         mat4x4& projMatrix = camera.viewToClip;
-        mat4x4 transformMatrix = transform.GetMatrix();
+
+        //we build a matrix to send to imguizmo by using local scale instead of world scale. This fixes issues with parented scales.
+        mat4a tm = Math::AffineMatrix::TransformMatrix(transform.GetWorldPosition(), transform.GetWorldRotation(), transform.GetLocalScale());
+        mat4x4 transformMatrix = tm;
+        //affine matrices converted to mat4 need their last element set manually.
+        transformMatrix[3][3] = 1.f;
+
         float* instanceMatrixPtr = glm::value_ptr(transformMatrix);
 
         ImGuizmo::OPERATION operation = static_cast<ImGuizmo::OPERATION>(_operation);
@@ -490,13 +496,21 @@ namespace Editor
         {
             vec3 eulerAngles;
             vec3 position = (transform.GetWorldPosition());
-            vec3 scale = (transform.GetWorldPosition());
+            vec3 scale = (transform.GetLocalScale());
             ImGuizmo::DecomposeMatrixToComponents(instanceMatrixPtr, glm::value_ptr(position), glm::value_ptr(eulerAngles), glm::value_ptr(scale));
 
             //only translation will work on child objects. need to fix later
             if (operation & ImGuizmo::TRANSLATE)
             {
                 ECS::TransformSystem::Get(*registry).SetWorldPosition(entity, position);
+            }
+            else if (operation & ImGuizmo::ROTATE)
+            {
+                ECS::TransformSystem::Get(*registry).SetWorldRotation(entity, glm::quat(glm::radians(eulerAngles)));
+            }
+            else if (operation & ImGuizmo::SCALE)
+            {
+                ECS::TransformSystem::Get(*registry).SetLocalScale(entity, scale);
             }
             else
             {
