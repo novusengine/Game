@@ -9,6 +9,8 @@
 #include <Renderer/FrameResource.h>
 #include <Renderer/GPUVector.h>
 
+#include <robinhood/robinhood.h>
+
 class DebugRenderer;
 struct RenderResources;
 
@@ -83,9 +85,10 @@ private:
 	PRAGMA_NO_PADDING_START
 	struct TerrainVertex
 	{
-		u8 normal[3] = { 0, 0, 0 };
-		u8 color[3] = { 0, 0, 0 };
-		f16 height = f16(0);
+		u8 normal[3] = { 0, 0, 0 }; // 3 bytes
+		u8 color[3] = { 0, 0, 0 }; // 3 bytes
+		u8 padding[2] = { 0, 0 }; // 2 bytes
+		f32 height = 0; // 4 bytes
 	};
 
 	struct InstanceData
@@ -107,8 +110,8 @@ private:
 
 	struct CellHeightRange
 	{
-		f16 min = f16(0);
-		f16 max = f16(0);
+		f32 min = 0;
+		f32 max = 0;
 	};
 	PRAGMA_NO_PADDING_END
 
@@ -154,4 +157,9 @@ private:
 
 	u32 _numOccluderDrawCalls = 0;
 	u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
+	
+	std::shared_mutex _packedChunkCellIDToGlobalCellIDMutex;
+	robin_hood::unordered_map<u32, u32> _packedChunkCellIDToGlobalCellID;
+
+	friend class TerrainManipulator;
 };

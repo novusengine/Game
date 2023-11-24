@@ -4,6 +4,7 @@
 #include "Debug/DebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
+#include "Terrain/TerrainManipulator.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
 #include "Water/WaterRenderer.h"
@@ -70,27 +71,27 @@ struct ImGui_ImplGlfw_Data
 
 void KeyCallback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 modifiers)
 {
-    ServiceLocator::GetGameRenderer()->GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
+    ServiceLocator::GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
 }
 
 void CharCallback(GLFWwindow* window, u32 unicodeKey)
 {
-    ServiceLocator::GetGameRenderer()->GetInputManager()->CharInputHandler(unicodeKey);
+    ServiceLocator::GetInputManager()->CharInputHandler(unicodeKey);
 }
 
 void MouseCallback(GLFWwindow* window, i32 button, i32 action, i32 modifiers)
 {
-    ServiceLocator::GetGameRenderer()->GetInputManager()->MouseInputHandler(button, action, modifiers);
+    ServiceLocator::GetInputManager()->MouseInputHandler(button, action, modifiers);
 }
 
 void CursorPositionCallback(GLFWwindow* window, f64 x, f64 y)
 {
-    ServiceLocator::GetGameRenderer()->GetInputManager()->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
+    ServiceLocator::GetInputManager()->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
 }
 
 void ScrollCallback(GLFWwindow* window, f64 x, f64 y)
 {
-    ServiceLocator::GetGameRenderer()->GetInputManager()->MouseScrollHandler(static_cast<f32>(x), static_cast<f32>(y));
+    ServiceLocator::GetInputManager()->MouseScrollHandler(static_cast<f32>(x), static_cast<f32>(y));
 }
 
 void WindowIconifyCallback(GLFWwindow* window, int iconified)
@@ -99,17 +100,14 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
     userWindow->SetIsMinimized(iconified == 1);
 }
 
-GameRenderer::GameRenderer()
+GameRenderer::GameRenderer(InputManager* inputManager)
 {
     ServiceLocator::SetGameRenderer(this);
 
 	_window = new Novus::Window();
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
-    _inputManager = new InputManager();
-    ServiceLocator::SetInputManager(_inputManager);
-
-    KeybindGroup* debugKeybindGroup = _inputManager->CreateKeybindGroup("Debug", 15);
+    KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);
 
     glfwSetKeyCallback(_window->GetWindow(), KeyCallback);
@@ -139,6 +137,7 @@ GameRenderer::GameRenderer()
 
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _waterLoader);
+    _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _waterLoader);
 
@@ -175,6 +174,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _mapLoader->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
+    _terrainManipulator->Update(deltaTime);
     _modelLoader->Update(deltaTime);
     _modelRenderer->Update(deltaTime);
     _waterLoader->Update(deltaTime);

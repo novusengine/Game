@@ -26,7 +26,8 @@ private:
 	{
 		u8 xCellOffset = 0;
 		u8 yCellOffset = 0;
-		f16 height = f16(0);
+		u8 padding[2] = { 0, 0 };
+		f32 height = 0.0f;
 		hvec2 uv = hvec2(f16(0), f16(0));
 	};
 

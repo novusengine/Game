@@ -1,14 +1,16 @@
 #include "TerrainLoader.h"
 #include "TerrainRenderer.h"
+
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Editor/Inspector.h"
-#include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Rendering/Water/WaterLoader.h"
 #include "Game/Util/ServiceLocator.h"
+#include "Game/Util/MapUtil.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
@@ -220,30 +222,6 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 	DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
 }
 
-vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
-{
-	const i32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-	const i32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-
-	const i32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkX);
-	const i32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkY);
-
-	const i32 vX = vertexID % 17;
-	const i32 vY = vertexID / 17;
-
-	bool isOddRow = vX > 8;
-
-	vec2 vertexOffset;
-	vertexOffset.x = -(8.5f * isOddRow);
-	vertexOffset.y = (0.5f * isOddRow);
-
-	ivec2 globalVertex = ivec2(vX + cellX * 8, vY + cellY * 8);
-
-	vec2 finalPos = -Terrain::MAP_HALF_SIZE + (vec2(globalVertex) + vertexOffset) * Terrain::PATCH_SIZE;
-
-	return vec2(finalPos.x, -finalPos.y);
-}
-
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 {
 	enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
@@ -355,7 +333,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 						{
 							const Map::Cell::VertexData& vertexA = cell.vertexData[i];
 
-							vec2 pos = GetGlobalVertexPosition(chunkID, cellID, i);
+							vec2 pos = Util::Map::GetGlobalVertexPosition(chunkID, cellID, i);
 							vertexList.push_back({ pos.x, f32(vertexA.height), pos.y });
 						}
 

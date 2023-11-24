@@ -210,7 +210,14 @@ bool Application::Init()
 	_registries.gameRegistry = new entt::registry();
 	ServiceLocator::SetEnttRegistries(&_registries);
 
-	_gameRenderer = new GameRenderer();
+	_inputManager = new InputManager();
+	ServiceLocator::SetInputManager(_inputManager);
+
+	constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
+	KeybindGroup* imguiGroup = _inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
+	imguiGroup->SetActive(true);
+
+	_gameRenderer = new GameRenderer(_inputManager);
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
 

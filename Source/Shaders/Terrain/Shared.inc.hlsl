@@ -209,7 +209,8 @@ struct PackedTerrainVertex
 {
     uint packed0;
     uint packed1;
-}; // 8 bytes
+    float height;
+}; // 12 bytes
 
 struct TerrainVertex
 {
@@ -249,7 +250,7 @@ float UnpackHalf(uint encoded)
 
 TerrainVertex UnpackTerrainVertex(const PackedTerrainVertex packedVertex)
 {
-    // The vertex consists of 8 bytes of data, we split this into two uints called data0 and data1
+    // The vertex consists of 12 bytes of data, we split this into two uints called data0 and data1 and a float called height
     // data0 contains, in order:
     // u8 normal.x
     // u8 normal.y
@@ -259,13 +260,15 @@ TerrainVertex UnpackTerrainVertex(const PackedTerrainVertex packedVertex)
     // data1 contains, in order:
     // u8 color.g
     // u8 color.b
-    // half height, 2 bytes
+    // u16 padding, 2 bytes
+    //
+    // f32 height
 
     TerrainVertex vertex;
 
 #if !GEOMETRY_PASS
     // Unpack normal and color
-    uint normal = packedVertex.packed0;// & 0x00FFFFFFu;
+    uint normal = packedVertex.packed0 & 0x00FFFFFFu;
     uint color = ((packedVertex.packed1 & 0x0000FFFFu) << 8u) | (packedVertex.packed0 >> 24u);
 
     vertex.normal = UnpackTerrainNormal(normal);
@@ -273,8 +276,7 @@ TerrainVertex UnpackTerrainVertex(const PackedTerrainVertex packedVertex)
 #endif
 
     // Unpack height
-    uint height = packedVertex.packed1 >> 16u;
-    vertex.position.y = UnpackHalf(height);
+    vertex.position.y = packedVertex.height;
 
     return vertex;
 }

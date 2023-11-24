@@ -30,12 +30,10 @@ namespace Editor
 
     EditorHandler::EditorHandler()
     {
-        InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+        InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("GlobalEditor", 0);
 
-        constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
-        KeybindGroup* imguiKeybindGroup = inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
-        imguiKeybindGroup->SetActive(true);
+        KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
         _viewport = new Viewport();
         _editors.push_back(_viewport);
@@ -43,7 +41,6 @@ namespace Editor
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
-        _editors.push_back(new TerrainTools());
         _editors.push_back(new EaseCurveTool());
 
         _actionStackEditor = new ActionStackEditor(64);
@@ -64,8 +61,8 @@ namespace Editor
         _assetBrowser = new AssetBrowser();
         _editors.push_back(_assetBrowser);
 
-        _actionStackEditor = new ActionStackEditor(64);
-        _editors.push_back(_actionStackEditor);
+        _terrainTools = new TerrainTools();
+        _editors.push_back(_terrainTools);
         
         keybindGroup->SetActive(true);
 

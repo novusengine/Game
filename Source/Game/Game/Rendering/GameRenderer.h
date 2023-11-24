@@ -22,6 +22,7 @@ struct GLFWcursor;
 class InputManager;
 class TerrainRenderer;
 class TerrainLoader;
+class TerrainManipulator;
 class ModelRenderer;
 class ModelLoader;
 class MapLoader;
@@ -38,7 +39,7 @@ class PixelQuery;
 class GameRenderer
 {
 public:
-	GameRenderer();
+	GameRenderer(InputManager* inputManager);
 	~GameRenderer();
 
 	bool UpdateWindow(f32 deltaTime);
@@ -50,7 +51,6 @@ public:
 	bool AddCursor(u32 nameHash, const std::string& path);
 	bool SetCursor(u32 nameHash, u32 imguiMouseCursor = 0);
 
-	InputManager* GetInputManager() { return _inputManager; }
 	Renderer::Renderer* GetRenderer() { return _renderer; }
 
 	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
@@ -62,6 +62,8 @@ public:
 	ModelLoader* GetModelLoader() { return _modelLoader; }
 	WaterLoader* GetWaterLoader() { return _waterLoader; }
 	MapLoader* GetMapLoader() { return _mapLoader; }
+
+	TerrainManipulator* GetTerrainManipulator() { return _terrainManipulator; }
 
 	RenderResources& GetRenderResources() { return _resources; }
 	PixelQuery* GetPixelQuery() { return _pixelQuery; }
@@ -83,7 +85,6 @@ private:
 
 	Renderer::Renderer* _renderer = nullptr;
     Novus::Window* _window = nullptr;
-	InputManager* _inputManager = nullptr;
 	PixelQuery* _pixelQuery = nullptr;
 
 	Memory::StackAllocator* _frameAllocator[2];
@@ -95,6 +96,7 @@ private:
 	// Sub Renderers
 	TerrainRenderer* _terrainRenderer = nullptr;
 	TerrainLoader* _terrainLoader = nullptr;
+	TerrainManipulator* _terrainManipulator = nullptr;
 
 	ModelRenderer* _modelRenderer = nullptr;
 	ModelLoader* _modelLoader = nullptr;

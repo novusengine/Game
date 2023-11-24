@@ -535,6 +535,51 @@ void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution,
 	}
 }
 
+void DebugRenderer::DrawSphere3D(const vec3& center, f32 radius, i32 resolution, Color color)
+{
+	auto& vertices = _debugVertices3D.Get();
+
+	u32 colorInt = color.ToABGR32();
+
+	// Latitude lines
+	for (i32 lat = 0; lat <= resolution; ++lat) 
+	{
+		f32 theta = lat * Math::PI / resolution;
+		f32 sinTheta = sin(theta);
+		f32 cosTheta = cos(theta);
+
+		// Loop around the longitude
+		for (i32 lon = 0; lon <= resolution; ++lon) 
+		{
+			f32 phi = lon * 2 * Math::PI / resolution;
+			f32 sinPhi = sin(phi);
+			f32 cosPhi = cos(phi);
+
+			vec3 point;
+			point.x = center.x + radius * cosPhi * sinTheta;
+			point.y = center.y + radius * cosTheta;
+			point.z = center.z + radius * sinPhi * sinTheta;
+
+			// Connect this point to the next, and the one directly 'below' it if we're not at the poles
+			if (lon != resolution) 
+			{
+				vertices.push_back({ point, colorInt });
+				vertices.push_back({ {center.x + radius * cos(phi + 2 * Math::PI / resolution) * sinTheta,
+									  center.y + radius * cosTheta,
+									  center.z + radius * sin(phi + 2 * Math::PI / resolution) * sinTheta}, colorInt });
+			}
+
+			if (lat != resolution) 
+			{
+				vertices.push_back({ point, colorInt });
+				vertices.push_back({ {center.x + radius * cosPhi * sin(theta + Math::PI / resolution),
+									  center.y + radius * cos(theta + Math::PI / resolution),
+									  center.z + radius * sinPhi * sin(theta + Math::PI / resolution)}, colorInt });
+			}
+		}
+	}
+}
+
 vec3 DebugRenderer::UnProject(const vec3& point, const mat4x4& m)
 {
 	vec4 obj = m * vec4(point, 1.0f);

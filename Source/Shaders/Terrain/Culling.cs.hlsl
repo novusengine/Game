@@ -11,11 +11,17 @@ struct Constants
     uint occlusionCull;
 };
 
+struct HeightRange
+{
+    float min;
+    float max;
+};
+
 [[vk::push_constant]] Constants _constants;
 
 // Inputs
 [[vk::binding(0, TERRAIN)]] StructuredBuffer<InstanceData> _instances;
-[[vk::binding(1, TERRAIN)]] StructuredBuffer<uint> _heightRanges;
+[[vk::binding(1, TERRAIN)]] StructuredBuffer<HeightRange> _heightRanges;
 [[vk::binding(2, TERRAIN)]] SamplerState _depthSampler;
 [[vk::binding(3, TERRAIN)]] Texture2D<float> _depthPyramid;
 [[vk::binding(4, TERRAIN)]] StructuredBuffer<uint> _prevCulledInstancesBitMask;
@@ -27,10 +33,8 @@ struct Constants
 
 float2 ReadHeightRange(uint instanceIndex)
 {
-    const uint packed = _heightRanges[instanceIndex];
-    const float min = f16tof32(packed >> 16);
-    const float max = f16tof32(packed);
-    return float2(min, max);
+    const HeightRange range = _heightRanges[instanceIndex];
+    return float2(range.min, range.max);
 }
 
 bool SphereIsForwardPlane(float4 plane, float4 sphere)

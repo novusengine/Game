@@ -32,12 +32,12 @@ namespace Editor
 	{
 		_lastPanelSize = vec2(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
-		InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+		InputManager* inputManager = ServiceLocator::GetInputManager();
 		KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
 		imguiKeybindGroup->AddKeyboardCallback("Editor RightClick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
 		{
-			InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+			InputManager* inputManager = ServiceLocator::GetInputManager();
 			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 			entt::registry::context& ctx = registry->ctx();
 
@@ -58,7 +58,7 @@ namespace Editor
 
 			if (context->HoveredWindow)
 			{
-				InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+				InputManager* inputManager = ServiceLocator::GetInputManager();
 				KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
 				bool isViewportHovered = strcmp(context->HoveredWindow->Name, GetName()) == 0;
@@ -112,7 +112,7 @@ namespace Editor
 
 		if (ImGui::Begin(GetName(), &IsVisible()))
 		{
-			InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+			InputManager* inputManager = ServiceLocator::GetInputManager();
 			KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
 			GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
@@ -206,6 +206,22 @@ namespace Editor
 		{
 			vec2 mousePosition = inputManager->GetMousePosition();
 			outMousePos = mousePosition;
+		}
+
+		return true;
+	}
+
+	bool Viewport::IsMouseHoveredOver()
+	{
+		vec2 mousePos = ImGui::GetMousePos();
+
+		vec2 viewportPos = GetViewportPosition();
+		mousePos -= viewportPos;
+
+		vec2 viewportSize = GetViewportSize();
+		if (mousePos.x < 0 || mousePos.y < 0 || mousePos.x >= viewportSize.x || mousePos.y >= viewportSize.y)
+		{
+			return false;
 		}
 
 		return true;

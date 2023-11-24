@@ -102,9 +102,9 @@ namespace Scripting
 		void SetLuaTable(const char* key, const LuaTable& value, u32 recursiveCounter);
 
         // Wrappers to get rid of GCC dependency on lua.h in this header
-        inline void* AllocateUserData(lua_State* state, size_t size, LuaUserDataDtor dtor);
-        inline bool IsUserData(lua_State* state, i32 index);
-        inline void* ToUserData(lua_State* state, i32 index);
+        void* AllocateUserData(lua_State* state, size_t size, LuaUserDataDtor dtor);
+        bool IsUserData(lua_State* state, i32 index);
+        void* ToUserData(lua_State* state, i32 index);
 
 	private:
 		lua_State* _state;

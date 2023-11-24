@@ -41,9 +41,10 @@ DrawCallData LoadDrawCallData(uint drawCallID)
 
 struct PackedVertex
 {
-    uint packed0; // u8 xCellOffset, u8 yCellOffset, f16 height
+    uint packed0; // u8 xCellOffset, u8 yCellOffset, u16 padding
+    float height;
     uint packed1; // f16 xUV, f16 yUV
-}; // 8 bytes
+}; // 12 bytes
 
 struct Vertex
 {
@@ -63,7 +64,7 @@ Vertex LoadVertex(DrawCallData drawCallData, uint vertexID)
 
     float2 cellBasePos = GetCellPosition(drawCallData.chunkID, drawCallData.cellID);
     vertex.position.xz = cellBasePos - cellOffsetPos;
-    vertex.position.y = f16tof32(packedVertex.packed0 >> 16);
+    vertex.position.y = packedVertex.height;
 
     vertex.uv.x = f16tof32(packedVertex.packed1 >> 0);
     vertex.uv.y = f16tof32(packedVertex.packed1 >> 16);

@@ -1,11 +1,14 @@
 #include "MaterialRenderer.h"
 
+#include "Game/Application/EnttRegistries.h"
+#include "Game/Editor/EditorHandler.h"
+#include "Game/Editor/TerrainTools.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/Model/ModelRenderer.h"
 #include "Game/Rendering/RenderResources.h"
 #include "Game/Rendering/Terrain/TerrainRenderer.h"
-#include "Game/Rendering/Model/ModelRenderer.h"
+#include "Game/Util/PhysicsUtil.h"
 #include "Game/Util/ServiceLocator.h"
-#include "Game/Application/EnttRegistries.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -15,6 +18,7 @@
 #include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_VisibilityBufferDebugID("material.visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
+AutoCVar_ShowFlag CVAR_DrawTerrainWireframe("material.drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
 
 MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer)
     : _renderer(renderer)
@@ -61,6 +65,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
             data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
+            builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+
             Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
             Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
 
@@ -88,6 +94,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             shaderDesc.AddPermutationField("DEBUG_ID", std::to_string(visibilityBufferDebugID));
             shaderDesc.AddPermutationField("SHADOW_FILTER_MODE", std::to_string(shadowFilterMode));
             shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+            shaderDesc.AddPermutationField("EDITOR_MODE", CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED ? "1" : "0");
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
             Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
@@ -104,6 +111,37 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
+
+            if (CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED)
+            {
+                Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
+
+                vec3 mouseWorldPosition = vec3(0, 0, 0);
+                Util::Physics::GetMouseWorldPosition(viewport, mouseWorldPosition);
+
+                struct Constants
+                {
+                    vec4 mouseWorldPos;
+                    vec4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
+                    Color wireframeColor;
+                    Color vertexColor;
+                    Color brushColor;
+                };
+
+                Constants* constants = graphResources.FrameNew<Constants>();
+                constants->mouseWorldPos = vec4(mouseWorldPosition, 1.0f);
+
+                Editor::TerrainTools* terrainTools = ServiceLocator::GetEditorHandler()->GetTerrainTools();
+                constants->brushSettings.x = terrainTools->GetHardness();
+                constants->brushSettings.y = terrainTools->GetRadius();
+                constants->brushSettings.z = terrainTools->GetPressure();
+                constants->brushSettings.w = 0.25f; // Falloff, hardcoded for now
+
+                constants->wireframeColor = terrainTools->GetWireframeColor();
+                constants->vertexColor = terrainTools->GetVertexColor();
+                constants->brushColor = terrainTools->GetBrushColor();
+                commandList.PushConstant(constants, 0, sizeof(Constants));
+            }
 
             uvec2 outputSize = _renderer->GetImageDimensions(resources.sceneColor, 0);
 

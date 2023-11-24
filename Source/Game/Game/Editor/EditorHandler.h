@@ -10,6 +10,7 @@ namespace Editor
     class Hierarchy;
     class AssetBrowser;
     class ActionStackEditor;
+    class TerrainTools;
 
     class EditorHandler
     {
@@ -31,6 +32,7 @@ namespace Editor
         Viewport* GetViewport() { return _viewport; }
         ActionStackEditor* GetActionStackEditor() { return _actionStackEditor; }
         Inspector* GetInspector() { return _inspector; }
+        TerrainTools* GetTerrainTools() { return _terrainTools; }
 
     private:
         void ResetLayoutToDefault();
@@ -48,6 +50,7 @@ namespace Editor
         Hierarchy* _hierarchy = nullptr;
         AssetBrowser* _assetBrowser = nullptr;
         ActionStackEditor* _actionStackEditor = nullptr;
+        TerrainTools* _terrainTools = nullptr;
         
         const f32 LAYOUT_SAVE_INTERVAL = 5.0f;
         f32 _timeSinceLayoutSave = 0.0f;

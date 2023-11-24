@@ -489,6 +489,11 @@ void TerrainRenderer::Reserve(u32 numChunks)
     _cellHeightRanges.Grow(totalNumCells);
     _cellBoundingBoxes.resize(_cellBoundingBoxes.size() + totalNumCells);
 
+    {
+        std::scoped_lock lock(_packedChunkCellIDToGlobalCellIDMutex);
+        _packedChunkCellIDToGlobalCellID.reserve(_packedChunkCellIDToGlobalCellID.size() + totalNumCells);
+    }
+
     _vertices.Grow(totalNumVertices);
 }
 
@@ -545,6 +550,11 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         InstanceData& instanceData = instanceDatas[cellIndex];
         instanceData.packedChunkCellID = (chunkGridIndex << 16) | (cellID & 0xffff);
         instanceData.globalCellID = cellIndex;
+
+        {
+            std::scoped_lock lock(_packedChunkCellIDToGlobalCellIDMutex);
+            _packedChunkCellIDToGlobalCellID[instanceData.packedChunkCellID] = cellIndex;
+        }
 
         CellData& cellData = cellDatas[cellIndex];
         cellData.hole = cell.hole;
@@ -863,9 +873,10 @@ void TerrainRenderer::SyncToGPU()
     {
         _cellHeightRanges.SetDebugName("CellHeightRangeBuffer");
         _cellHeightRanges.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
-        _cellHeightRanges.SyncToGPU(_renderer);
-
-        _cullingPassDescriptorSet.Bind("_heightRanges"_h, _cellHeightRanges.GetBuffer());
+        if (_cellHeightRanges.SyncToGPU(_renderer))
+        {
+            _cullingPassDescriptorSet.Bind("_heightRanges"_h, _cellHeightRanges.GetBuffer());
+        }
     }
 }
 

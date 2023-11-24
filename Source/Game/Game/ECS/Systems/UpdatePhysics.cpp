@@ -159,7 +159,7 @@ namespace ECS::Systems
             sink.connect<&OnDynamicMeshCreated>();
         }
 
-        InputManager* inputManager = ServiceLocator::GetGameRenderer()->GetInputManager();
+        InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
         keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::ModNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
         {

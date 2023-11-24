@@ -10,6 +10,7 @@ namespace Editor
 {
 	class EditorHandler;
 }
+class InputManager;
 class GameRenderer;
 class ModelLoader;
 
@@ -54,6 +55,7 @@ private:
 private:
 	bool _isRunning = false;
 
+	InputManager* _inputManager = nullptr;
 	GameRenderer* _gameRenderer = nullptr;
 
 	Editor::EditorHandler* _editorHandler = nullptr;

@@ -35,6 +35,7 @@ public:
 	void DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color);
 
 	void DrawCircle3D(const vec3& center, f32 radius, i32 resolution, Color color);
+	void DrawSphere3D(const vec3& center, f32 radius, i32 resolution, Color color);
 
 	void DrawFrustum(const mat4x4& viewProjectionMatrix, Color color);
 	void DrawMatrix(const mat4x4& matrix, f32 scale);

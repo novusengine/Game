@@ -222,7 +222,7 @@ void WaterRenderer::Load(LoadDesc& desc)
             // The offsets here are flipped on purpose
             vertex.xCellOffset = yOffset;
             vertex.yCellOffset = xOffset;
-            vertex.height = f16(vertexHeight);
+            vertex.height = vertexHeight;
             vertex.uv = hvec2(uv);
 
             if (yOffset >= desc.endY || xOffset >= desc.endX)

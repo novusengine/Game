@@ -1,28 +1,25 @@
 permutation DEBUG_ID = [0, 1, 2, 3, 4];
 permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
+permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 
 #include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
+#include "Include/Editor.inc.hlsl"
 #include "Terrain/Shared.inc.hlsl"
-//#include "mapObject.inc.hlsl"
-//#include "cModel.inc.hlsl"
-//#include "decals.inc.hlsl"
 
 // Reenable this in C++ as well
-/*struct Constants
+struct Constants
 {
 	float4 mouseWorldPos;
-	uint numCascades;
-	float shadowFilterSize;
-	float shadowPenumbraFilterSize;
-	uint enabledShadows;
-	uint numTextureDecals;
-	uint numProceduralDecals;
+	float4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
+	float4 wireframeColor;
+	float4 vertexColor;
+	float4 brushColor;
 };
 
-[[vk::push_constant]] Constants _constants;*/
+[[vk::push_constant]] Constants _constants;
 
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float4> _transparency;
@@ -33,7 +30,6 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 {
 	InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
 	uint globalCellID = cellInstance.globalCellID;
-
 
 	// Terrain code
 	uint globalVertexOffset = globalCellID * NUM_VERTICES_PER_CELL;
@@ -120,6 +116,52 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	float3 normal = normalize(pixelNormal);
 	//float ambientOcclusion = _ambientOcclusion.Load(float3(pixelPos, 0)).x;
 	//color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), normal, ambientOcclusion, true, screenUV, pixelShadowPosition, _constants.shadowFilterSize, _constants.shadowPenumbraFilterSize, shadowCascadeIndex, _constants.enabledShadows);
+
+#if EDITOR_MODE == 1
+	// These should be push constants
+	const float brushHardness = _constants.brushSettings.x;
+	const float brushRadius = _constants.brushSettings.y;
+	const float brushPressure = _constants.brushSettings.z;
+	const float brushFalloff = _constants.brushSettings.w;
+
+	const float wireframeMaxDistance = 533.0f;
+	const float wireframeFalloffDistance = 100.0f;
+
+	// Wireframe
+	float4 pixelClipSpacePosition = mul(float4(pixelWorldPosition.value, 1.0f), _cameras[0].worldToClip);
+	pixelClipSpacePosition.xyz /= pixelClipSpacePosition.w;
+
+	float4 verticesClipSpacePosition[3];
+	[unroll]
+	for (int i = 0; i < 3; i++)
+	{
+		verticesClipSpacePosition[i] = mul(float4(vertices[i].position, 1.0f), _cameras[0].worldToClip);
+		verticesClipSpacePosition[i].xyz /= verticesClipSpacePosition[i].w;
+	}
+	
+	float wireframe = WireframeTriangle(pixelClipSpacePosition.xyz, verticesClipSpacePosition[0].xyz, verticesClipSpacePosition[1].xyz, verticesClipSpacePosition[2].xyz);
+
+	// Account for distance to camera
+	float distanceFromPixelToCamera = length(pixelWorldPosition.value.xz - _cameras[0].eyePosition.xz);
+	float falloff = saturate((wireframeMaxDistance - distanceFromPixelToCamera) / wireframeFalloffDistance);
+	wireframe *= falloff;
+
+	color.rgb = lerp(color.rgb, _constants.wireframeColor.rgb, wireframe);
+
+	// Wireframe triangle corners
+	float distanceToMouse = distance(_constants.mouseWorldPos.xz, pixelWorldPosition.value.xz);
+	if (distanceToMouse < brushRadius)
+	{
+		float corner = WireframeTriangleCorners(pixelClipSpacePosition.xyz, verticesClipSpacePosition[0].xyz, verticesClipSpacePosition[1].xyz, verticesClipSpacePosition[2].xyz);
+
+		color.rgb = lerp(color.rgb, _constants.vertexColor.rgb, corner);
+    }
+
+	// Editor Brush
+	float brush = EditorCircleBrush(_constants.mouseWorldPos.xyz, pixelWorldPosition.value.xyz, brushRadius, brushFalloff, vBuffer.barycentrics);
+
+	color.rgb = lerp(_constants.brushColor.rgb, color.rgb, brush);
+#endif
 
 	return saturate(color);
 }

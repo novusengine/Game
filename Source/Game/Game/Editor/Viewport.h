@@ -23,6 +23,7 @@ namespace Editor
 
 		// This will get the correct mouse position, regardless if we're in editor mode or not. Returns true if the mouse position is within the viewport
 		bool GetMousePosition(vec2& outMousePos);
+		bool IsMouseHoveredOver();
 
 		const vec2& GetViewportPosition() { return _viewportPos; }
 		const vec2& GetViewportSize() { return _viewportSize; }
