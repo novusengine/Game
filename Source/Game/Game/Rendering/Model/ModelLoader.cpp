@@ -576,7 +576,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     // Generate Jolt Shape
     {
         // Disabled on purpose for now
-        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
 
         if (physicsEnabled)
         {
@@ -668,9 +668,9 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     if (discoveredModel.hasShape)
     {
         // Disabled on purpose for now
-        i32 physicsEnabled = false; // *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
 
-        if (physicsEnabled && !hasParent)
+        if (physicsEnabled)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
@@ -680,7 +680,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
             ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
-            const quat& rotation = transform.GetLocalRotation();
+            const quat& rotation = transform.GetWorldRotation();
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
             JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);

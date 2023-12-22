@@ -136,7 +136,7 @@ namespace ECS::Systems
 
         // We must initialize Jolt before creating the JoltState Singleton as it depends on Jolt
         auto& joltState = ctx.emplace<Singletons::JoltState>();
-
+        
         joltState.physicsSystem.Init(Jolt::Settings::maxBodies, Jolt::Settings::numBodyMutexes, Jolt::Settings::maxBodyPairs, Jolt::Settings::maxContactConstraints, joltState.broadPhaseLayerInterface, joltState.objectVSBroadPhaseLayerFilter, joltState.objectVSObjectLayerFilter);
         joltState.physicsSystem.SetBodyActivationListener(&joltState.bodyActivationListener);
         joltState.physicsSystem.SetContactListener(&joltState.contactListener);
