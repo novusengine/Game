@@ -1,6 +1,8 @@
 #pragma once
 #include "BaseEditor.h"
 
+#include <Base/Types.h>
+
 namespace Editor
 {
 	class MapSelector : public BaseEditor
@@ -12,6 +14,10 @@ namespace Editor
 
 		virtual void DrawImGui() override;
 
+		void ShowListViewWithIcons();
+
 	private:
+		void* _mapIcons[5] = { nullptr };
+		vec2 _mapIconSizes[5];
 	};
 }

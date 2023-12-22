@@ -57,12 +57,11 @@ void MapLoader::Update(f32 deltaTime)
 
         const ClientDB::Definitions::Map& currentMap = maps.GetByID(mapID);
         
-        static const fs::path fileExtension = ".map";
         fs::path relativeParentPath = "Data/Map";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
         
         const std::string& internalMapName = maps.GetString(currentMap.internalName);
-        std::string mapFile = ((absolutePath / internalMapName / internalMapName).replace_extension(fileExtension)).string();
+        std::string mapFile = ((absolutePath / internalMapName / internalMapName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
         
         if (!fs::exists(mapFile))
         {
