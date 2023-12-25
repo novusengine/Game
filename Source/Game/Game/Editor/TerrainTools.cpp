@@ -46,12 +46,25 @@ namespace Editor
 
 			ImGui::NewLine();
 
-			Util::Imgui::GroupHeader("Wireframe Color");
-			Util::Imgui::ColorPicker("Wireframe Color:", &_wireframeColor, vec2(100.0f, 100.0f));
+			Util::Imgui::GroupHeader("Chunk Edge Color");
+			Util::Imgui::ColorPicker("Chunk Edge Color:", &_chunkEdgeColor, vec2(100.0f, 100.0f));
+			ImGui::NewLine();
+
+			Util::Imgui::GroupHeader("Cell Edge Color");
+			Util::Imgui::ColorPicker("Cell Edge Color:", &_cellEdgeColor, vec2(100.0f, 100.0f));
+			ImGui::NewLine();
+
+			Util::Imgui::GroupHeader("Patch Edge Color");
+			Util::Imgui::ColorPicker("Patch Edge Color:", &_patchEdgeColor, vec2(100.0f, 100.0f));
+			ImGui::NewLine();
+
 			Util::Imgui::GroupHeader("Vertex Color");
 			Util::Imgui::ColorPicker("Vertex Color:", &_vertexColor, vec2(100.0f, 100.0f));
+			ImGui::NewLine();
+
 			Util::Imgui::GroupHeader("Brush Color");
 			Util::Imgui::ColorPicker("Brush Color:", &_brushColor, vec2(100.0f, 100.0f));
+			ImGui::NewLine();
 		}
 
 		ImGui::End();
