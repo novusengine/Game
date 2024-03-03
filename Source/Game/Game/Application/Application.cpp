@@ -49,15 +49,22 @@ Application::~Application()
 	delete _taskScheduler;
 }
 
-void Application::Start()
+void Application::Start(bool startInSeparateThread)
 {
 	if (_isRunning)
 		return;
 
-	_isRunning = true;
+	if (startInSeparateThread)
+	{
+		_isRunning = true;
 
-	std::thread applicationThread = std::thread(&Application::Run, this);
-	applicationThread.detach();
+		std::thread applicationThread = std::thread(&Application::Run, this);
+		applicationThread.detach();
+	}
+	else
+	{
+		_isRunning = Init();
+	}
 }
 
 void Application::Stop()
@@ -120,6 +127,10 @@ void Application::Run()
 			updateTimer.Reset();
 			renderState.frameNumber++;
 
+			bool shouldExit = !_gameRenderer->UpdateWindow(deltaTime);
+			if (shouldExit)
+				break;
+
 			if (!Tick(deltaTime))
 				break;
 
@@ -178,6 +189,8 @@ bool Application::Init()
 {
 	// Setup CVar Config
 	{
+		std::filesystem::path currentPath = std::filesystem::current_path();
+		DebugHandler::Print("Current Path : {}", currentPath.string());
 		std::filesystem::create_directories("Data/Config");
 
 		nlohmann::ordered_json fallback;
@@ -382,10 +395,6 @@ bool Application::Init()
 
 bool Application::Tick(f32 deltaTime)
 {
-	bool shouldExit = !_gameRenderer->UpdateWindow(deltaTime);
-	if (shouldExit)
-		return false;
-
 	// Imgui New Frame
 	{
 		_editorHandler->NewFrame();

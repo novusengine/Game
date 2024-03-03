@@ -584,7 +584,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
             u32 numCollisionIndices = static_cast<u32>(model.collisionIndices.size());
             u32 indexRemainder = numCollisionIndices % 3;
 
-            if (numCollisionVertices > 0 && indexRemainder == 0)
+            if (numCollisionVertices > 0 && numCollisionIndices > 0 && indexRemainder == 0)
             {
                 u32 numTriangles = numCollisionIndices / 3;
 

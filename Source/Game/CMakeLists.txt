@@ -1,6 +1,6 @@
 project(game VERSION 1.0.0 DESCRIPTION "Game is an application")
 
-file(GLOB_RECURSE GAME_FILES "*.cpp" "*.h")
+file(GLOB_RECURSE GAME_FILES "main.cpp" "*.cpp" "*.h")
 
 set(GAME_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} CACHE STRING "" FORCE)
 set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_CURRENT_SOURCE_DIR}/appicon.rc")

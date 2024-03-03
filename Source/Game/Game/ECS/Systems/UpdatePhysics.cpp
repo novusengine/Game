@@ -182,7 +182,7 @@ namespace ECS::Systems
             tSystem.SetLocalPosition(entity, cameraTransform.GetLocalPosition());
             tSystem.SetLocalScale(entity, vec3(1.0f, 1.0f, 1.0f));
 
-            auto& debugRenderTransform = registry->emplace<ECS::Components::DebugRenderTransform >(entity);
+            auto& debugRenderTransform = registry->emplace<ECS::Components::DebugRenderTransform>(entity);
             debugRenderTransform.color = Color::Magenta;
 
             registry->emplace<ECS::Components::DynamicMesh>(entity);

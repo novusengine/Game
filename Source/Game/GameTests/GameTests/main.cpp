@@ -1,30 +1,18 @@
 #include <Base/Types.h>
 #include <Base/Util/DebugHandler.h>
 
+#include <Game/Application/Application.h>
 #include <Game/ECS/Components/Camera.h>
 
 #include <catch2/catch_test_macros.hpp>
-
-TEST_CASE("Example Test", "[camera]")
+ 
+TEST_CASE("Application Start", "[Application]")
 {
-    ECS::Components::Camera camera;
-    camera.dirtyView = false;
+    Application app;
+    app.Start(false);
 
-    SECTION("Camera Test 1")
-    {
-        camera.dirtyView = true;
-        REQUIRE(camera.dirtyView == true);
-    }
+    f32 deltaTime = 1.0f / 60.0f;
+    app.Tick(deltaTime);
 
-    SECTION("Camera Test 2")
-    {
-        REQUIRE(camera.dirtyView == false);
-    }
-
-    camera.dirtyView = true;
-
-    SECTION("Camera Test 3")
-    {
-        REQUIRE(camera.dirtyView == true);
-    }
+    REQUIRE(app.IsRunning());
 }

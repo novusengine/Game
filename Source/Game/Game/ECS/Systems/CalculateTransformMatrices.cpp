@@ -14,9 +14,9 @@ namespace ECS::Systems
         ECS::TransformSystem& transformQueue = ECS::TransformSystem::Get(registry);
         //convert the async transform queue into dirty transform components
         transformQueue.ProcessMovedEntities([&](entt::entity entity)
-            {
-                registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
-            });
+        {
+            registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
+        });
 
         auto view = registry.view<Components::DirtyTransform>();
         view.each([&](entt::entity entity,  ECS::Components::DirtyTransform& dirtyTransform)

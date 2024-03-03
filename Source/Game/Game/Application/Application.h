@@ -37,16 +37,18 @@ public:
 	Application();
 	~Application();
 
-	void Start();
+	void Start(bool startInSeparateThread);
 	void Stop();
 
 	void PassMessage(MessageInbound& message);
 	bool TryGetMessageOutbound(MessageOutbound& message);
 
+	bool IsRunning() { return _isRunning; }
+	bool Tick(f32 deltaTime);
+
 private:
 	void Run();
 	bool Init();
-	bool Tick(f32 deltaTime);
 	bool Render(f32 deltaTime, f32& timeSpentWaiting);
 	void SaveCDB();
 
