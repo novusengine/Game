@@ -36,7 +36,9 @@ namespace Editor
 
 		virtual void DrawImGui() override;
 
-		Color GetWireframeColor() { return _wireframeColor; }
+		Color GetChunkEdgeColor() { return _chunkEdgeColor; }
+		Color GetCellEdgeColor() { return _cellEdgeColor; }
+		Color GetPatchEdgeColor() { return _patchEdgeColor; }
 		Color GetVertexColor() { return _vertexColor; }
 		Color GetBrushColor() { return _brushColor; }
 
@@ -54,8 +56,10 @@ namespace Editor
 		f32 _brushRadius = 10.0f;
 		f32 _brushPressure = 25.0f;
 
-		Color _wireframeColor = Color::Black;
-		Color _vertexColor = Color::Green;
+		Color _chunkEdgeColor = Color::Green;
+		Color _cellEdgeColor = Color::Red;
+		Color _patchEdgeColor = Color::Blue;
+		Color _vertexColor = Color::PastelBlue;
 		Color _brushColor = Color::White;
 	};
 }
