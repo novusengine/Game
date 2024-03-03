@@ -123,7 +123,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 {
                     vec4 mouseWorldPos;
                     vec4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
-                    Color wireframeColor;
+                    Color chunkEdgeColor;
+                    Color cellEdgeColor;
+                    Color patchEdgeColor;
                     Color vertexColor;
                     Color brushColor;
                 };
@@ -137,7 +139,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->brushSettings.z = terrainTools->GetPressure();
                 constants->brushSettings.w = 0.25f; // Falloff, hardcoded for now
 
-                constants->wireframeColor = terrainTools->GetWireframeColor();
+                constants->chunkEdgeColor = terrainTools->GetChunkEdgeColor();
+                constants->cellEdgeColor = terrainTools->GetCellEdgeColor();
+                constants->patchEdgeColor = terrainTools->GetPatchEdgeColor();
                 constants->vertexColor = terrainTools->GetVertexColor();
                 constants->brushColor = terrainTools->GetBrushColor();
                 commandList.PushConstant(constants, 0, sizeof(Constants));

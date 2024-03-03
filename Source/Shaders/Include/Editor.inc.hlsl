@@ -9,6 +9,13 @@ float sdCapsule(float3 p, float3 a, float3 b)
     return length(pa - ba * h);
 }
 
+float sdCapsule(float2 p, float2 a, float2 b)
+{
+    float2 pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
 // 1.0f means draw wireframe, 0.0f means don't
 float WireframeTriangle(float3 pos, float3 v0, float3 v1, float3 v2)
 {
@@ -19,6 +26,21 @@ float WireframeTriangle(float3 pos, float3 v0, float3 v1, float3 v2)
     float minDistanceToEdge = min(min(distanceToEdge0, distanceToEdge1), distanceToEdge2);
 
     if (minDistanceToEdge < 0.001f)
+    {
+        return 1.0f;
+    }
+
+    return 0.0f;
+}
+
+// 1.0f means draw wireframe, 0.0f means don't
+float WireframeEdge(float2 pos, float2 v0, float2 v1)
+{
+    // TODO: Anti-aliasing by taking several samples with a jittered position
+    const float testDistance = 0.001f;
+
+    float distanceToEdge = sdCapsule(pos, v0, v1);
+    if (distanceToEdge < testDistance)
     {
         return 1.0f;
     }

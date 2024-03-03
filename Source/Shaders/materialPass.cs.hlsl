@@ -14,7 +14,9 @@ struct Constants
 {
 	float4 mouseWorldPos;
 	float4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
-	float4 wireframeColor;
+	float4 chunkEdgeColor;
+	float4 cellEdgeColor;
+	float4 patchEdgeColor;
 	float4 vertexColor;
 	float4 brushColor;
 };
@@ -118,7 +120,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	//color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), normal, ambientOcclusion, true, screenUV, pixelShadowPosition, _constants.shadowFilterSize, _constants.shadowPenumbraFilterSize, shadowCascadeIndex, _constants.enabledShadows);
 
 #if EDITOR_MODE == 1
-	// These should be push constants
+	// Get settings from push constants
 	const float brushHardness = _constants.brushSettings.x;
 	const float brushRadius = _constants.brushSettings.y;
 	const float brushPressure = _constants.brushSettings.z;
@@ -127,7 +129,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	const float wireframeMaxDistance = 533.0f;
 	const float wireframeFalloffDistance = 100.0f;
 
-	// Wireframe
+	// Wireframes
 	float4 pixelClipSpacePosition = mul(float4(pixelWorldPosition.value, 1.0f), _cameras[0].worldToClip);
 	pixelClipSpacePosition.xyz /= pixelClipSpacePosition.w;
 
@@ -138,15 +140,49 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 		verticesClipSpacePosition[i] = mul(float4(vertices[i].position, 1.0f), _cameras[0].worldToClip);
 		verticesClipSpacePosition[i].xyz /= verticesClipSpacePosition[i].w;
 	}
-	
-	float wireframe = WireframeTriangle(pixelClipSpacePosition.xyz, verticesClipSpacePosition[0].xyz, verticesClipSpacePosition[1].xyz, verticesClipSpacePosition[2].xyz);
 
 	// Account for distance to camera
 	float distanceFromPixelToCamera = length(pixelWorldPosition.value.xz - _cameras[0].eyePosition.xz);
 	float falloff = saturate((wireframeMaxDistance - distanceFromPixelToCamera) / wireframeFalloffDistance);
-	wireframe *= falloff;
 
-	color.rgb = lerp(color.rgb, _constants.wireframeColor.rgb, wireframe);
+	// Patches
+	float patchEdgeWireframe = WireframeEdge(pixelClipSpacePosition.xy, verticesClipSpacePosition[1].xy, verticesClipSpacePosition[2].xy);
+	patchEdgeWireframe *= falloff;
+
+	// Cells
+	bool isLeftCellEdge = localVertexIDs[1] % 17 == 0 && localVertexIDs[2] % 17 == 0;
+	bool isRightCellEdge = localVertexIDs[1] % 17 == 8 && localVertexIDs[2] % 17 == 8;
+	bool isTopCellEdge = localVertexIDs[1] <= 8 && localVertexIDs[2] <= 8;
+	bool isBottomCellEdge = localVertexIDs[1] >= 136 && localVertexIDs[2] >= 136;
+
+	bool isCellEdge = isLeftCellEdge || isRightCellEdge || isTopCellEdge || isBottomCellEdge;
+
+	// Chunks
+	bool isLeftChunkEdge = cellID % 16 == 0;
+	bool isRightChunkEdge = cellID % 16 == 15;
+	bool isTopChunkEdge = cellID < 16;
+	bool isBottomChunkEdge = cellID >= 240;
+	
+	bool isChunkEdge = (isLeftChunkEdge && isLeftCellEdge) ||
+						(isRightChunkEdge && isRightCellEdge) ||
+						(isTopChunkEdge && isTopCellEdge) ||
+						(isBottomChunkEdge && isBottomCellEdge);
+
+	if (isChunkEdge)
+	{
+		// Chunk edge wireframe
+		color.rgb = lerp(color.rgb, _constants.chunkEdgeColor.rgb, patchEdgeWireframe);
+	}
+	else if (isCellEdge)
+	{
+		// Cell edge wireframe
+		color.rgb = lerp(color.rgb, _constants.cellEdgeColor.rgb, patchEdgeWireframe);
+	}
+	else
+	{
+		// Patch edge wireframe
+		color.rgb = lerp(color.rgb, _constants.patchEdgeColor.rgb, patchEdgeWireframe);
+	}
 
 	// Wireframe triangle corners
 	float distanceToMouse = distance(_constants.mouseWorldPos.xz, pixelWorldPosition.value.xz);
