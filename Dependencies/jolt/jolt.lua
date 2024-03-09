@@ -478,10 +478,10 @@ local function SetupLib()
         AddDefines({"_DEBUG"})
 
     filter "configurations:RelDebug"
-        AddDefines({"_DEBUG"})
+        AddDefines({"NDEBUG"})
 
     filter "configurations:Release"
-    AddDefines({"NDEBUG"})
+        AddDefines({"NDEBUG"})
 
     filter { }
     AddDefines({"JPH_PROFILE_ENABLED", "JPH_DEBUG_RENDERER", "CROSS_PLATFORM_DETERMINISTIC"})
