@@ -1,6 +1,6 @@
-#include "Application/Application.h"
-#include "Application/Message.h"
-#include "Application/ConsoleCommandHandler.h"
+#include "Game/Application/Application.h"
+#include "Game/Application/Message.h"
+#include "Game/Application/ConsoleCommandHandler.h"
 
 #include <Base/Types.h>
 #include <Base/Util/StringUtils.h>
@@ -11,7 +11,7 @@
 i32 main()
 {
 	Application app;
-	app.Start();
+	app.Start(true);
 
     ConsoleCommandHandler commandHandler;
     auto future = std::async(std::launch::async, StringUtils::GetLineFromCin);

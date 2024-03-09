@@ -16,6 +16,8 @@
 
 #include <Base/CVarSystem/CVarSystem.h>
 
+#include <GLFW/glfw3.h>
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imgui_notify.h>

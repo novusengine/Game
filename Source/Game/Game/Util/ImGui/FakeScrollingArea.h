@@ -1,4 +1,5 @@
 #pragma once
+#include <Base/Types.h>
 
 /*
 This little class just handle all items that aren't visible in a scrolling area

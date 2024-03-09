@@ -1,9 +1,11 @@
 #include "ActionStack.h"
-#include "../Util/ServiceLocator.h"
 #include "EditorHandler.h"
 #include "Inspector.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
+
+#include <GLFW/glfw3.h>
 #include <imgui/imgui.h>
 
 namespace Editor

@@ -19,6 +19,8 @@
 
 #include <Renderer/RenderSettings.h>
 
+#include <GLFW/glfw3.h>
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imguizmo/ImGuizmo.h>

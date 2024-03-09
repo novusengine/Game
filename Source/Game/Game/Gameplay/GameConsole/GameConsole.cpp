@@ -11,6 +11,8 @@
 #include <Input/InputManager.h>
 #include <Renderer/RenderSettings.h>
 
+#include <GLFW/glfw3.h>
+
 AutoCVar_Int CVAR_GameConsoleEnabled("gameconsole.Enabled", "enable game console", 1, CVarFlags::EditReadOnly);
 AutoCVar_Int CVAR_GameConsoleDuplicateToTerminal("gameconsole.DuplicateToTerminal", "enable printing to terminal", 1, CVarFlags::EditCheckbox);
 

@@ -27,6 +27,7 @@
 #include <Renderer/Window.h>
 #include <Renderer/Descriptors/RenderGraphDesc.h>
 #include <Renderer/Renderers/Vulkan/RendererVK.h>
+#include <Renderer/Renderers/Vulkan/Backend/stb_image.h>
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_notify.h>
@@ -35,8 +36,8 @@
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
-#include <Renderer/Renderers/Vulkan/Backend/stb_image.h>
 #include <gli/gli.hpp>
+#include <GLFW/glfw3.h>
 
 enum GlfwClientApi
 {

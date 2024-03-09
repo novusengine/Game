@@ -12,8 +12,9 @@
 #include <Base/Util/DebugHandler.h>
 #include <Renderer/Window.h>
 
-#include <imgui/imgui.h>
 #include <entt/entt.hpp>
+#include <imgui/imgui.h>
+#include <GLFW/glfw3.h>
 
 namespace ECS::Systems
 {
