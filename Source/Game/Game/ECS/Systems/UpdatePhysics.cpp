@@ -19,6 +19,8 @@
 
 #include <entt/entt.hpp>
 
+#include <GLFW/glfw3.h>
+
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>

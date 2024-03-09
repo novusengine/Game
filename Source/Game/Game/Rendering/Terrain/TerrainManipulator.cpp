@@ -11,6 +11,7 @@
 
 #include <Input/InputManager.h>
 
+#include <GLFW/glfw3.h>
 
 TerrainManipulator::TerrainManipulator(TerrainRenderer& terrainRenderer, DebugRenderer& debugRenderer)
     : _terrainRenderer(terrainRenderer)

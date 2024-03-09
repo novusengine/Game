@@ -1,8 +1,9 @@
 #pragma once
-#include <imgui/imgui.h>
-
-#include <Base/Util/Reflection.h>
+#include <Base/Types.h>
 #include <Base/Math/Color.h>
+#include <Base/Util/Reflection.h>
+
+#include <imgui/imgui.h>
 
 struct ImGuiWindow;
 
@@ -13,7 +14,7 @@ namespace Util
 		bool IsDockedToMain();
 		bool IsDockedToMain(ImGuiWindow* window);
 
-		void ItemRowsBackground(float lineHeight = -1.0f, const ImColor& color = ImColor(20, 20, 20, 64));
+		void ItemRowsBackground(f32 lineHeight = -1.0f, const ImColor& color = ImColor(20, 20, 20, 64));
 		
 		bool BeginGroupPanel(const char* name, const ImVec2& size = ImVec2(0, 0));
 		void EndGroupPanel();

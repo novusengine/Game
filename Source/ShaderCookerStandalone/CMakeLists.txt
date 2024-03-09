@@ -26,7 +26,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 add_custom_command(
-    TARGET shadercookerstandalone 
+    TARGET shadercookerstandalone
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         "${DXCOMPILER_DYNAMIC_LIB_PATH}"
