@@ -438,6 +438,11 @@ local function SetupLib()
 
     AddIncludeDirs(includeDir)
 
+    local enableDebugRenderer = BuildSettings:Get("Jolt Enable Debug Renderer")
+    if enableDebugRenderer ~= nil and enableDebugRenderer == true then
+        AddDefines({"JPH_DEBUG_RENDERER"})
+    end
+
     local floatPointExceptions = BuildSettings:Get("Jolt Floating Point Exceptions")
     if floatPointExceptions ~= nil and floatPointExceptions == true then
         AddDefines({"JPH_FLOATING_POINT_EXCEPTIONS_ENABLED"})
@@ -484,7 +489,7 @@ local function SetupLib()
         AddDefines({"NDEBUG"})
 
     filter { }
-    AddDefines({"JPH_PROFILE_ENABLED", "JPH_DEBUG_RENDERER", "CROSS_PLATFORM_DETERMINISTIC"})
+    AddDefines({"JPH_PROFILE_ENABLED", "CROSS_PLATFORM_DETERMINISTIC"})
     AddLinks("wininet")
 end
 SetupLib()
@@ -494,6 +499,11 @@ local function Include()
     local includeDir = basePath
 
     AddIncludeDirs(includeDir)
+
+    local enableDebugRenderer = BuildSettings:Get("Jolt Enable Debug Renderer")
+    if enableDebugRenderer ~= nil and enableDebugRenderer == true then
+        AddDefines({"JPH_DEBUG_RENDERER"})
+    end
 
     local floatPointExceptions = BuildSettings:Get("Jolt Floating Point Exceptions")
     if floatPointExceptions ~= nil and floatPointExceptions == true then
@@ -529,7 +539,7 @@ local function Include()
         AddDefines({"JPH_TRACK_NARROWPHASE_STATS"})
     end
 
-    AddDefines({"JPH_PROFILE_ENABLED", "JPH_DEBUG_RENDERER", "CROSS_PLATFORM_DETERMINISTIC"})
+    AddDefines({"JPH_PROFILE_ENABLED", "CROSS_PLATFORM_DETERMINISTIC"})
 
     AddLinks("Jolt")
 end

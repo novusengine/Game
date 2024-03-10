@@ -132,10 +132,6 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
 
-        JPH::RegisterDefaultAllocator();
-        JPH::Factory::sInstance = new JPH::Factory();
-        JPH::RegisterTypes();
-
         // We must initialize Jolt before creating the JoltState Singleton as it depends on Jolt
         auto& joltState = ctx.emplace<Singletons::JoltState>();
         

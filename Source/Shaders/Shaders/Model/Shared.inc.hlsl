@@ -197,7 +197,7 @@ float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVert
     return boneTransformMatrix;
 }
 
-[[vk::binding(6, MODEL)]] StructuredBuffer<Draw> _modelDraws;
+[[vk::binding(6, MODEL)]] StructuredBuffer<IndexedDraw> _modelDraws;
 [[vk::binding(7, MODEL)]] StructuredBuffer<uint> _modelIndices;
 
 struct ModelTextureUnit

@@ -6,6 +6,7 @@
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Editor/Inspector.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Rendering/Water/WaterLoader.h"
@@ -73,6 +74,7 @@ void TerrainLoader::Clear()
 
 	ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
 	ServiceLocator::GetGameRenderer()->GetWaterLoader()->Clear();
+	ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 	_terrainRenderer->Clear();
 
 	Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
@@ -333,7 +335,10 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 						{
 							const Map::Cell::VertexData& vertexA = cell.vertexData[i];
 
-							vec2 pos = Util::Map::GetGlobalVertexPosition(chunkID, cellID, i);
+							vec2 pos = Util::Map::GetCellVertexPosition(cellID, i);
+							assert(pos.x <= Terrain::CHUNK_SIZE);
+							assert(pos.y <= Terrain::CHUNK_SIZE);
+
 							vertexList.push_back({ pos.x, f32(vertexA.height), pos.y });
 						}
 
@@ -380,7 +385,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 					JPH::ShapeRefC shape = shapeResult.Get(); // We don't expect an error here, but you can check floor_shape_result for HasError() / GetError()
 
 					// Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-					JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+					vec2 chunkPos = Util::Map::GetChunkPosition(chunkID);
+					JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(chunkPos.x, 0.0f, chunkPos.y), JPH::Quat::sIdentity(), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
 
 					// Create the actual rigid body
 					JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr

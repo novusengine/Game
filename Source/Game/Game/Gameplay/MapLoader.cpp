@@ -4,6 +4,8 @@
 #include "Game/Editor/Inspector.h"
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/MapDB.h"
+#include "Game/Rendering/GameRenderer.h"
+#include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/Terrain/TerrainLoader.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Rendering/Model/ModelRenderer.h"
@@ -122,6 +124,8 @@ void MapLoader::ClearRenderersForMap()
     _terrainLoader->Clear();
     _modelLoader->Clear();
     _waterLoader->Clear();
+
+    ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->GetInspector()->ClearSelection();

@@ -30,6 +30,7 @@ class MaterialRenderer;
 class SkyboxRenderer;
 class EditorRenderer;
 class DebugRenderer;
+class JoltDebugRenderer;
 class CanvasRenderer;
 class WaterLoader;
 class WaterRenderer;
@@ -57,6 +58,7 @@ public:
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
 	WaterRenderer* GetWaterRenderer() { return _waterRenderer; }
 	DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
+	JoltDebugRenderer* GetJoltDebugRenderer() { return _joltDebugRenderer; }
 
 	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
 	ModelLoader* GetModelLoader() { return _modelLoader; }
@@ -109,6 +111,7 @@ private:
 	MaterialRenderer* _materialRenderer = nullptr;
 	SkyboxRenderer* _skyboxRenderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
+	JoltDebugRenderer* _joltDebugRenderer = nullptr;
 	EditorRenderer* _editorRenderer = nullptr;
 	CanvasRenderer* _canvasRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;

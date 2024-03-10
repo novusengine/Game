@@ -20,12 +20,12 @@ TerrainManipulator::TerrainManipulator(TerrainRenderer& terrainRenderer, DebugRe
     InputManager* inputManager = ServiceLocator::GetInputManager();
     KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 
-    keybindGroup->AddKeyboardCallback("Manipulate", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Click, KeybindModifier::Any, [&](i32 key, KeybindAction action, KeybindModifier modifier) 
+    /*keybindGroup->AddKeyboardCallback("Manipulate", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Click, KeybindModifier::Any, [&](i32 key, KeybindAction action, KeybindModifier modifier)
     {
         _isManipulating = action == KeybindAction::Press;
         _isLower = modifier == KeybindModifier::Shift;
         return true;
-    });
+    });*/
 }
 
 TerrainManipulator::~TerrainManipulator()

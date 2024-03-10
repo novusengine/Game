@@ -37,7 +37,7 @@ namespace Util
             const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
             const vec2 chunkPos = -Terrain::MAP_HALF_SIZE + (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
-            return chunkPos;
+            return vec2(chunkPos.x, -chunkPos.y);
         }
 
         u32 GetCellIdFromCellPos(const vec2& cellPos)
@@ -62,10 +62,31 @@ namespace Util
             return vec2(cellWorldPos.x, -cellWorldPos.y);
         }
 
+        vec2 GetCellVertexPosition(u32 cellID, u32 vertexID)
+        {
+            const i32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE));
+            const i32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE));
+
+            const i32 vX = vertexID % 17;
+            const i32 vY = vertexID / 17;
+
+            bool isOddRow = vX > 8;
+
+            vec2 vertexOffset;
+            vertexOffset.x = -(8.5f * isOddRow);
+            vertexOffset.y = (0.5f * isOddRow);
+
+            ivec2 globalVertex = ivec2(vX + cellX * 8, vY + cellY * 8);
+
+            vec2 finalPos = (vec2(globalVertex) + vertexOffset) * Terrain::PATCH_SIZE;
+
+            return vec2(finalPos.x, -finalPos.y);
+        }
+
         vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID)
         {
-            const i32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-            const i32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const i32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+            const i32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE * Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
 
             const i32 cellX = ((cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkX);
             const i32 cellY = ((cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE) + chunkY);
@@ -83,7 +104,7 @@ namespace Util
 
             vec2 finalPos = -Terrain::MAP_HALF_SIZE + (vec2(globalVertex) + vertexOffset) * Terrain::PATCH_SIZE;
 
-            return vec2(finalPos.x, -finalPos.y);
+            return vec2(-finalPos.y, finalPos.x);
         }
     }
 }

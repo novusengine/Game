@@ -35,7 +35,7 @@ struct CullingData
 
 // Inputs
 [[vk::push_constant]] Constants _constants;
-[[vk::binding(0, PER_PASS)]] StructuredBuffer<Draw> _drawCalls;
+[[vk::binding(0, PER_PASS)]] StructuredBuffer<IndexedDraw> _drawCalls;
 [[vk::binding(1, PER_PASS)]] ByteAddressBuffer _drawCallDatas;
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<PackedCullingData> _cullingDatas;
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<float4x4> _instanceMatrices;
@@ -116,7 +116,7 @@ struct CSInput
 struct DrawInput
 {
     CSInput csInput;
-    Draw drawCall;
+    IndexedDraw drawCall;
     float4 sphere;
     AABB aabb;
     float4x4 instanceMatrix;
@@ -230,7 +230,7 @@ void main(CSInput input)
     // Load DrawCall
     const uint drawCallIndex = input.dispatchThreadID.x;
 
-    Draw drawCall = _drawCalls[drawCallIndex];
+    IndexedDraw drawCall = _drawCalls[drawCallIndex];
     uint drawCallID = drawCall.firstInstance;
     uint modelID = drawCallID;
     

@@ -94,7 +94,7 @@ public:
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
-	CullingResources<DrawCallData>& GetCullingResources() { return _cullingResources; }
+	CullingResourcesIndexed<DrawCallData>& GetCullingResources() { return _cullingResources; }
 
 private:
 	void CreatePermanentResources();
@@ -114,7 +114,7 @@ private:
 	Renderer::SamplerID _sampler;
 	Renderer::TextureArrayID _textures;
 
-	CullingResources<DrawCallData> _cullingResources;
+	CullingResourcesIndexed<DrawCallData> _cullingResources;
 	std::atomic<u32> _instanceIndex = 0;
 
 	Renderer::GPUVector<Vertex> _vertices;

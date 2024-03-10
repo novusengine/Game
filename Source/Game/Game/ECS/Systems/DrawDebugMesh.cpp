@@ -29,7 +29,7 @@ namespace ECS::Systems
 			obb.rotation = transform.GetLocalRotation();
 			obb.extents = transform.GetLocalScale() * 0.5f;
 
-			debugRenderer->DrawOBB3D(obb.center, obb.extents, obb.rotation, debugMesh.color);
+			debugRenderer->DrawOBBSolid3D(obb.center, obb.extents, obb.rotation, debugMesh.color);
 		});
 	}
 }

@@ -604,9 +604,9 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
                 {
                     u32 offset = i * 3;
 
-                    u16 indexA = model.collisionIndices[offset + 0];
+                    u16 indexA = model.collisionIndices[offset + 2];
                     u16 indexB = model.collisionIndices[offset + 1];
-                    u16 indexC = model.collisionIndices[offset + 2];
+                    u16 indexC = model.collisionIndices[offset + 0];
 
                     triangleList.push_back({ indexA, indexB, indexC });
                 }
@@ -667,16 +667,17 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
     if (discoveredModel.hasShape)
     {
-        // Disabled on purpose for now
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
 
-        if (physicsEnabled)
+        if (physicsEnabled && !hasParent)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
             const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
+
+            // TODO: We need to scale the shape
 
             ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
