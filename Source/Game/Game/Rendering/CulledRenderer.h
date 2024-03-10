@@ -46,6 +46,7 @@ protected:
 
 		u32 drawCountIndex = 0;
 		u32 numMaxDrawCalls = 0;
+		bool isIndexed = true;
 	};
 
 	CulledRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
@@ -65,6 +66,48 @@ protected:
 		u8 frameIndex;
 	};
 
+	template <typename Data>
+	void OccluderPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetOccluderDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetOccluderTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+		data.occluderFillSet = builder.Use(cullingResources->GetOccluderFillDescriptorSet());
+		data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+	}
+
+	template <typename Data>
+	void OccluderPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesNonIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetOccluderDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetOccluderTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+		data.occluderFillSet = builder.Use(cullingResources->GetOccluderFillDescriptorSet());
+		data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+	}
+
 	struct OccluderPassParams : public PassParams
 	{
 		Renderer::ImageMutableResource rt0;
@@ -72,7 +115,10 @@ protected:
 		Renderer::DepthImageMutableResource depth;
 
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource culledDrawCallCountBuffer;
 		Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+		Renderer::BufferMutableResource culledInstanceCountsBuffer;
+		
 		Renderer::BufferMutableResource drawCountBuffer;
 		Renderer::BufferMutableResource triangleCountBuffer;
 		Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -80,14 +126,60 @@ protected:
 
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource occluderFillDescriptorSet;
+		Renderer::DescriptorSetResource createIndirectDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
 
-		std::function<void(const DrawParams&)> drawCallback;
+		std::function<void(DrawParams&)> drawCallback;
+
+		u32 baseInstanceLookupOffset = 0;
+		u32 drawCallDataSize = 0;
 
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool disableTwoStepCulling = false;
+		bool isIndexed = true;
+		bool useInstancedCulling = false;
 	};
 	void OccluderPass(OccluderPassParams& params);
+
+	template <typename Data>
+	void CullingPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.prevCulledDrawCallsBitMask = builder.Read(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
+		data.currentCulledDrawCallsBitMask = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
+
+		data.cullingSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+	}
+
+	template <typename Data>
+	void CullingPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesNonIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.prevCulledDrawCallsBitMask = builder.Read(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
+		data.currentCulledDrawCallsBitMask = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+		
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
+
+		data.cullingSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+	}
 
 	struct CullingPassParams : public PassParams
 	{
@@ -96,7 +188,10 @@ protected:
 		Renderer::BufferResource prevCulledDrawCallsBitMask;
 
 		Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
+		Renderer::BufferMutableResource culledInstanceCountsBuffer;
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
 		Renderer::BufferMutableResource drawCountBuffer;
 		Renderer::BufferMutableResource triangleCountBuffer;
 		Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -116,9 +211,46 @@ protected:
 
 		u32 instanceIDOffset = 0;
 		u32 modelIDOffset = 0;
+		u32 baseInstanceLookupOffset = 0;
 		u32 drawCallDataSize = 0;
+
+		bool useInstancedCulling = false;
 	};
 	void CullingPass(CullingPassParams& params);
+
+	template <typename Data>
+	void GeometryPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
+
+		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+	}
+
+	template <typename Data>
+	void GeometryPassSetup(Data& data, Renderer::RenderGraphBuilder& builder, CullingResourcesNonIndexedBase* cullingResources, u8 frameIndex)
+	{
+		using BufferUsage = Renderer::BufferPassUsage;
+
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
+
+		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+	}
 
 	struct GeometryPassParams : public PassParams
 	{
@@ -128,6 +260,8 @@ protected:
 
 		Renderer::BufferMutableResource drawCallsBuffer;
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
+		Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
 		Renderer::BufferMutableResource drawCountBuffer;
 		Renderer::BufferMutableResource triangleCountBuffer;
 		Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -136,10 +270,11 @@ protected:
 		Renderer::DescriptorSetResource globalDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
 
-		std::function<void(const DrawParams&)> drawCallback;
+		std::function<void(DrawParams&)> drawCallback;
 
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool cullingEnabled = false;
+		bool useInstancedCulling = false;
 		u32 numCascades = 0;
 	};
 	void GeometryPass(GeometryPassParams& params);
@@ -150,11 +285,10 @@ protected:
 private:
 	void CreatePermanentResources();
 
-private:
+protected:
 	Renderer::Renderer* _renderer = nullptr;
 	DebugRenderer* _debugRenderer = nullptr;
-	
-protected:
+
 	Renderer::GPUVector<Model::ComplexModel::CullingData> _cullingDatas;
 
 	Renderer::SamplerID _occlusionSampler;

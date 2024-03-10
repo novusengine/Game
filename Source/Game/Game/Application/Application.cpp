@@ -29,6 +29,9 @@
 #include <imgui/backends/imgui_impl_vulkan.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/imguizmo/ImGuizmo.h>
+#include <Jolt/Jolt.h>
+#include <Jolt/Core/Factory.h>
+#include <Jolt/RegisterTypes.h>
 #include <tracy/Tracy.hpp>
 
 #include <filesystem>
@@ -229,6 +232,10 @@ bool Application::Init()
 	constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
 	KeybindGroup* imguiGroup = _inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
 	imguiGroup->SetActive(true);
+
+	JPH::RegisterDefaultAllocator();
+	JPH::Factory::sInstance = new JPH::Factory();
+	JPH::RegisterTypes();
 
 	_gameRenderer = new GameRenderer(_inputManager);
 	_editorHandler = new Editor::EditorHandler();

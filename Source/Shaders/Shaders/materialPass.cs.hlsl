@@ -209,7 +209,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 	float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
 
 	// Get the VertexIDs of the triangle we're in
-	Draw draw = _modelDraws[vBuffer.drawID];
+	IndexedDraw draw = _modelDraws[vBuffer.drawID];
 	uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
 
 	// Get Vertices
@@ -334,9 +334,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	float2 pixelUV = pixelPos / dimensions;
 
 	float4 color = float4(0, 0, 0, 1);
-	if (vBuffer.typeID == ObjectType::Skybox)
+	if (vBuffer.typeID == ObjectType::Skybox || vBuffer.typeID == ObjectType::JoltDebug)
 	{
-		color = PackedUnormsToFloat4(vBufferData.y); // Skybox is a unique case that packs the resulting color in the Y component of the visibility buffer
+		// These are passthrough and only write a color packed into vBufferData.y
+		color = PackedUnormsToFloat4(vBufferData.y);
 	}
 	else if (vBuffer.typeID == ObjectType::Terrain)
 	{

@@ -531,7 +531,7 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
 void WaterRenderer::CreatePermanentResources()
 {
-    CullingResources<DrawCallData>::InitParams initParams;
+    CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
     initParams.bufferNamePrefix = "Water";
     initParams.materialPassDescriptorSet = nullptr; // Transparencies, we don't draw these in materialPass

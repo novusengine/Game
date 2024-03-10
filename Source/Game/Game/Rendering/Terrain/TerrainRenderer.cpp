@@ -773,24 +773,24 @@ void TerrainRenderer::CreatePermanentResources()
                 const u32 centerVertex = baseVertex + Terrain::CELL_OUTER_GRID_STRIDE;
 
                 // Up triangle
+                indices.push_back(topLeftVertex);
                 indices.push_back(centerVertex);
                 indices.push_back(topRightVertex);
-                indices.push_back(topLeftVertex);
-
+                
                 // Left triangle
+                indices.push_back(bottomLeftVertex);
                 indices.push_back(centerVertex);
                 indices.push_back(topLeftVertex);
-                indices.push_back(bottomLeftVertex);
-
+                
                 // Down triangle
+                indices.push_back(bottomRightVertex);
                 indices.push_back(centerVertex);
                 indices.push_back(bottomLeftVertex);
-                indices.push_back(bottomRightVertex);
-
+                
                 // Right triangle
+                indices.push_back(topRightVertex);
                 indices.push_back(centerVertex);
                 indices.push_back(bottomRightVertex);
-                indices.push_back(topRightVertex);
             }
         }
     }

@@ -7,6 +7,12 @@
 #include <Renderer/Buffer.h>
 #include <Renderer/GPUVector.h>
 
+struct InstanceRef
+{
+    u32 instanceID;
+    u32 drawID;
+};
+
 class CullingResourcesBase
 {
 public:
@@ -24,18 +30,22 @@ public:
 
     virtual bool SyncToGPU();
     virtual void Clear();
-    virtual void Grow(u32 growthSize);
-    virtual void FitBuffersAfterLoad();
 
-    virtual void SetValidation(bool validation);
+    virtual u32 GetDrawCallsSize() = 0;
+    virtual bool IsIndexed() = 0;
 
-    Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
     std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
-    Renderer::BufferID GetCulledDrawCallsBitMaskBuffer(u8 frame) { return _culledDrawCallsBitMaskBuffer.Get(frame); }
-    Renderer::BufferID GetCulledDrawsBuffer(u32 index) { return _culledDrawCallsBuffer[index]; }
+    Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
 
-    Renderer::BufferID GetDrawCountBuffer() { return _drawCountBuffer; }
+    Renderer::BufferID GetCulledDrawCallsBitMaskBuffer(u8 frame) { return _culledDrawCallsBitMaskBuffer.Get(frame); }
+    Renderer::BufferID GetCulledInstanceCountsBuffer() { return _culledInstanceCountsBuffer; }
+    Renderer::BufferID GetCulledInstanceLookupTableBuffer() { return _culledInstanceLookupTableBuffer; }
+
+    Renderer::BufferID GetCulledDrawsBuffer(u32 index) { return _culledDrawCallsBuffer[index]; }
+    Renderer::BufferID GetCulledDrawCallCountBuffer() { return _culledDrawCallCountBuffer; }
+
+    Renderer::BufferID GetDrawCountBuffer() { return _instanceCountBuffer; }
     Renderer::BufferID GetTriangleCountBuffer() { return _triangleCountBuffer; }
 
     Renderer::BufferID GetOccluderDrawCountReadBackBuffer() { return _occluderDrawCountReadBackBuffer; }
@@ -49,10 +59,12 @@ public:
 
     bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
 
-    // Drawcall stats
-    u32 GetNumDrawCalls() { return _numDrawCalls; }
-    u32 GetNumSurvivingOccluderDrawCalls() { return _numSurvivingOccluderDrawCalls; }
-    u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
+    void ResetCullingStats();
+
+    // Instances stats
+    u32 GetNumInstances() { return _numInstances; }
+    u32 GetNumSurvivingOccluderInstances() { return _numSurvivingOccluderInstances; }
+    u32 GetNumSurvivingInstances(u32 viewID) { return _numSurvivingInstances[viewID]; }
 
     // Triangle stats
     u32 GetNumTriangles() { return _numTriangles; }
@@ -64,12 +76,17 @@ protected:
     std::string _bufferNamePrefix = "";
     bool _enableTwoStepCulling;
 
-    Renderer::GPUVector<Renderer::IndexedIndirectDraw> _drawCalls;
     std::atomic<u32> _drawCallsIndex = 0;
 
+    Renderer::GPUVector<InstanceRef> _instanceRefs;
+
     FrameResource<Renderer::BufferID, 2> _culledDrawCallsBitMaskBuffer;
+    Renderer::BufferID _culledInstanceCountsBuffer;
+    Renderer::BufferID _culledInstanceLookupTableBuffer;
+
     Renderer::BufferID _culledDrawCallsBuffer[Renderer::Settings::MAX_VIEWS];
-    Renderer::BufferID _drawCountBuffer;
+    Renderer::BufferID _culledDrawCallCountBuffer;
+    Renderer::BufferID _instanceCountBuffer;
     Renderer::BufferID _triangleCountBuffer;
 
     Renderer::BufferID _drawCountReadBackBuffer;
@@ -82,22 +99,66 @@ protected:
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
 
-    u32 _numDrawCalls = 0;
-    u32 _numSurvivingOccluderDrawCalls = 0;
-    u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
+    u32 _numInstances = 0;
+    u32 _numSurvivingOccluderInstances = 0;
+    u32 _numSurvivingInstances[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
     
     u32 _numTriangles = 0;
     u32 _numSurvivingOccluderTriangles = 0;
     u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
 };
 
+class CullingResourcesIndexedBase : public CullingResourcesBase
+{
+public:
+    void Init(InitParams& params) override;
+
+    bool SyncToGPU() override;
+    void Clear() override;
+
+    u32 GetDrawCallsSize() override;
+    bool IsIndexed() override { return true; }
+
+    virtual void Grow(u32 growthSize);
+    virtual void FitBuffersAfterLoad();
+
+    virtual void SetValidation(bool validation);
+
+    Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
+
+protected:
+    Renderer::GPUVector<Renderer::IndexedIndirectDraw> _drawCalls;
+};
+
+class CullingResourcesNonIndexedBase : public CullingResourcesBase
+{
+public:
+    void Init(InitParams& params) override;
+
+    bool SyncToGPU() override;
+    void Clear() override;
+
+    u32 GetDrawCallsSize() override;
+    bool IsIndexed() override { return false; }
+
+    virtual void Grow(u32 growthSize);
+    virtual void FitBuffersAfterLoad();
+
+    virtual void SetValidation(bool validation);
+
+    Renderer::GPUVector<Renderer::IndirectDraw>& GetDrawCalls() { return _drawCalls; }
+
+protected:
+    Renderer::GPUVector<Renderer::IndirectDraw> _drawCalls;
+};
+
 template<class T>
-class CullingResources : public CullingResourcesBase
+class CullingResourcesIndexed : public CullingResourcesIndexedBase
 {
 public:
 	void Init(InitParams& params) override
 	{
-        CullingResourcesBase::Init(params);
+        CullingResourcesIndexedBase::Init(params);
 
         // DrawCallDatas
         _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
@@ -108,12 +169,12 @@ public:
 
 	bool SyncToGPU() override
 	{
-        CullingResourcesBase::SyncToGPU();
-        bool gotRecreated = false;
+        bool gotRecreated = CullingResourcesIndexedBase::SyncToGPU();
 
         // DrawCallDatas
         if (_drawCallDatas.SyncToGPU(_renderer))
         {
+            _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
@@ -129,26 +190,26 @@ public:
 
     void Clear() override
     {
-        CullingResourcesBase::Clear();
+        CullingResourcesIndexedBase::Clear();
         _drawCallDatas.Clear();
     }
 
     void Grow(u32 growthSize) override
     {
-        CullingResourcesBase::Grow(growthSize);
+        CullingResourcesIndexedBase::Grow(growthSize);
         _drawCallDatas.Grow(growthSize);
     }
 
     void FitBuffersAfterLoad() override
     {
-        CullingResourcesBase::FitBuffersAfterLoad();
+        CullingResourcesIndexedBase::FitBuffersAfterLoad();
         u32 numDrawCalls = _drawCallsIndex.load();
         _drawCallDatas.Resize(numDrawCalls);
     }
 
     void SetValidation(bool validation) override
     {
-        CullingResourcesBase::SetValidation(validation);
+        CullingResourcesIndexedBase::SetValidation(validation);
         _drawCallDatas.SetValidation(validation);
     }
 
@@ -156,4 +217,71 @@ public:
 
 private:
 	Renderer::GPUVector<T> _drawCallDatas;
+};
+
+template<class T>
+class CullingResourcesNonIndexed : public CullingResourcesNonIndexedBase
+{
+public:
+    void Init(InitParams& params) override
+    {
+        CullingResourcesNonIndexedBase::Init(params);
+
+        // DrawCallDatas
+        _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
+        _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+        SyncToGPU();
+    }
+
+    bool SyncToGPU() override
+    {
+        bool gotRecreated = CullingResourcesNonIndexedBase::SyncToGPU();
+
+        // DrawCallDatas
+        if (_drawCallDatas.SyncToGPU(_renderer))
+        {
+            _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
+            if (_materialPassDescriptorSet != nullptr)
+            {
+                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
+            }
+            gotRecreated = true;
+        }
+
+        return gotRecreated;
+    }
+
+    void Clear() override
+    {
+        CullingResourcesNonIndexedBase::Clear();
+        _drawCallDatas.Clear();
+    }
+
+    void Grow(u32 growthSize) override
+    {
+        CullingResourcesNonIndexedBase::Grow(growthSize);
+        _drawCallDatas.Grow(growthSize);
+    }
+
+    void FitBuffersAfterLoad() override
+    {
+        CullingResourcesNonIndexedBase::FitBuffersAfterLoad();
+        u32 numDrawCalls = _drawCallsIndex.load();
+        _drawCallDatas.Resize(numDrawCalls);
+    }
+
+    void SetValidation(bool validation) override
+    {
+        CullingResourcesNonIndexedBase::SetValidation(validation);
+        _drawCallDatas.SetValidation(validation);
+    }
+
+    Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
+
+private:
+    Renderer::GPUVector<T> _drawCallDatas;
 };

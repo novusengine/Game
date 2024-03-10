@@ -8,6 +8,7 @@
 #include <Game/Rendering/Model/ModelRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
 #include <Game/Rendering/Water/WaterRenderer.h>
+#include <Game/Rendering/Debug/JoltDebugRenderer.h>
 #include <Game/Application/EnttRegistries.h>
 #include <Game/ECS/Singletons/EngineStats.h>
 #include <Game/Util/ImguiUtil.h>
@@ -554,6 +555,7 @@ namespace Editor
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
         WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
+        JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
         
         const std::string rightHeaderText = "Survived / Total (%)";
 
@@ -590,6 +592,7 @@ namespace Editor
         bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
+        bool viewRendersJoltDebug = viewID == 0;
 
         // Terrain
         if (viewRendersTerrainCulling)
@@ -634,6 +637,17 @@ namespace Editor
             DrawCullingResourcesDrawCalls("Water", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
+        // Jolt Debug
+        if (viewRendersJoltDebug)
+        {
+            CullingResourcesBase& indexedCullingResources = joltDebugRenderer->GetIndexedCullingResources();
+            DrawCullingResourcesDrawCalls("Jolt Debug Indexed", viewID, indexedCullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+
+            CullingResourcesBase& cullingResources = joltDebugRenderer->GetCullingResources();
+            DrawCullingResourcesDrawCalls("Jolt Debug", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+        }
+
+
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
         //DrawCullingStatsEntry("View Total", viewDrawCalls, viewDrawCallsSurvived, !showView);
 
@@ -647,6 +661,7 @@ namespace Editor
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
         WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
+        JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
 
         const std::string rightHeaderText = "Survived / Total (%)";
 
@@ -683,6 +698,7 @@ namespace Editor
         bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersWaterCulling = viewID == 0; // Only main view supports water culling so far
+        bool viewRendersJoltDebug = viewID == 0;
 
         // Terrain
         if (viewRendersTerrainCulling)
@@ -727,6 +743,16 @@ namespace Editor
             DrawCullingResourcesTriangle("Water", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
+        // Jolt Debug
+        if (viewRendersJoltDebug)
+        {
+            CullingResourcesBase& indexedCullingResources = joltDebugRenderer->GetIndexedCullingResources();
+            DrawCullingResourcesTriangle("Jolt Debug Indexed", viewID, indexedCullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+
+            CullingResourcesBase& cullingResources = joltDebugRenderer->GetCullingResources();
+            DrawCullingResourcesTriangle("Jolt Debug", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+        }
+
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header
         DrawCullingStatsEntry("View Total", viewTriangles, viewTrianglesSurvived);
 
@@ -736,20 +762,20 @@ namespace Editor
 
     void PerformanceDiagnostics::DrawCullingResourcesDrawCalls(std::string prefix, u32 viewID, CullingResourcesBase& cullingResources, bool viewSupportsOcclusionCulling, u32& viewDrawCalls, u32& viewDrawCallsSurvived)
     {
-        u32 drawCalls = cullingResources.GetNumDrawCalls();
+        u32 drawCalls = cullingResources.GetNumInstances();
         viewDrawCalls += drawCalls;
 
         // Occluders
         if (viewSupportsOcclusionCulling && cullingResources.HasSupportForTwoStepCulling())
         {
-            u32 drawCallsSurvived = cullingResources.GetNumSurvivingOccluderDrawCalls();
+            u32 drawCallsSurvived = cullingResources.GetNumSurvivingOccluderInstances();
             DrawCullingStatsEntry(prefix + " Occluders", drawCalls, drawCallsSurvived);
             viewDrawCallsSurvived += drawCallsSurvived;
         }
 
         // Geometry
         {
-            u32 drawCallsSurvived = cullingResources.GetNumSurvivingDrawCalls(viewID);
+            u32 drawCallsSurvived = cullingResources.GetNumSurvivingInstances(viewID);
             DrawCullingStatsEntry(prefix + " Geometry", drawCalls, drawCallsSurvived);
             viewDrawCallsSurvived += drawCallsSurvived;
         };
