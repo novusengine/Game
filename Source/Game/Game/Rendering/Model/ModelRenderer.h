@@ -165,8 +165,8 @@ public:
 	std::vector<ModelManifest> GetModelManifests() { return _modelManifests; }
 	u32 GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque);
 
-	CullingResources<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
-	CullingResources<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
+	CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
+	CullingResourcesIndexed<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
 
 	// Drawcall stats
 	u32 GetNumDrawCalls() { return 0; }
@@ -233,8 +233,8 @@ private:
 	std::vector<DrawCallData> _modelTransparentDrawCallDataTemplates;
 	std::atomic<u32> _modelTransparentDrawCallTemplateIndex = 0;
 
-	CullingResources<DrawCallData> _opaqueCullingResources;
-	CullingResources<DrawCallData> _transparentCullingResources;
+	CullingResourcesIndexed<DrawCallData> _opaqueCullingResources;
+	CullingResourcesIndexed<DrawCallData> _transparentCullingResources;
 
 	// GPU-only workbuffers
 	Renderer::BufferID _occluderArgumentBuffer;

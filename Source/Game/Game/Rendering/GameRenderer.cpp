@@ -2,6 +2,7 @@
 #include "Canvas/CanvasRenderer.h"
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
+#include "Debug/JoltDebugRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
 #include "Terrain/TerrainManipulator.h"
@@ -105,6 +106,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 {
     ServiceLocator::SetGameRenderer(this);
 
+    JPH::RegisterDefaultAllocator();
+
 	_window = new Novus::Window();
 	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
@@ -128,6 +131,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 	_renderer->InitWindow(_window);
 
     _debugRenderer = new DebugRenderer(_renderer);
+    _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
 
     _modelRenderer = new ModelRenderer(_renderer, _debugRenderer);
     _modelLoader = new ModelLoader(_modelRenderer);
@@ -181,6 +185,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _waterLoader->Update(deltaTime);
     _waterRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
+    _joltDebugRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
@@ -280,6 +285,7 @@ f32 GameRenderer::Render()
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
+    _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
 
     // Depth Pyramid Pass
     struct PyramidPassData
@@ -333,6 +339,9 @@ f32 GameRenderer::Render()
     
     _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+
+    _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 

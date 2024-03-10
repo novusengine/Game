@@ -22,6 +22,7 @@ BuildSettings:Add("Typesafe Enable Wrapper", false)
 BuildSettings:Add("Typesafe Arithmetic Policy", 0) -- (0 = "default", 1 = "ub", 2 = "checked")
 
 -- Settings for Jolt
+BuildSettings:Add("Jolt Enable Debug Renderer", true)
 BuildSettings:Add("Jolt Floating Point Exceptions", false)
 BuildSettings:Add("Jolt Double Precision", false)
 BuildSettings:Add("Jolt Cross Platform Deterministic", false)

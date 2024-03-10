@@ -74,7 +74,7 @@ PSOutput main(PSInput input)
     float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
 
     // Get the VertexIDs of the triangle we're in
-    Draw draw = _modelDraws[input.drawID];
+    IndexedDraw draw = _modelDraws[input.drawID];
     uint3 vertexIDs = GetVertexIDs(input.triangleID, draw, _modelIndices);
 
     // Load the vertices

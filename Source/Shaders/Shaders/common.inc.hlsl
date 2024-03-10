@@ -113,6 +113,14 @@ float4 ToFloat4(float4 input, float defaultAlphaVal)
 
 struct Draw
 {
+    uint vertexCount;
+    uint instanceCount;
+    uint firstVertex;
+    uint firstInstance;
+};
+
+struct IndexedDraw
+{
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
@@ -120,15 +128,15 @@ struct Draw
     uint firstInstance;
 };
 
-void WriteDrawToByteAdressBuffer(RWByteAddressBuffer byteAddressBuffer, uint drawOffset, Draw draw)
+void WriteDrawToByteAdressBuffer(RWByteAddressBuffer byteAddressBuffer, uint drawOffset, IndexedDraw draw)
 {
-    uint byteOffset = drawOffset * sizeof(Draw);
+    uint byteOffset = drawOffset * sizeof(IndexedDraw);
 
     byteAddressBuffer.Store4(byteOffset, uint4(draw.indexCount, draw.instanceCount, draw.firstIndex, draw.vertexOffset));
     byteAddressBuffer.Store(byteOffset + (4 * sizeof(uint)), draw.firstInstance);
 }
 
-uint3 GetVertexIDs(uint triangleID, Draw draw, StructuredBuffer<uint> indexBuffer)
+uint3 GetVertexIDs(uint triangleID, IndexedDraw draw, StructuredBuffer<uint> indexBuffer)
 {
     uint localIndexID = triangleID * 3;
 
@@ -177,7 +185,8 @@ enum ObjectType : uint
 {
     Skybox = 0, // We clear to this color so we won't be writing it
     Terrain = 1,
-    ModelOpaque = 2
+    ModelOpaque = 2,
+    JoltDebug = 3
 };
 
 #endif // COMMON_INCLUDED
