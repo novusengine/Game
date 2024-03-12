@@ -47,7 +47,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
     };
 
     renderGraph->AddPass<Data>("World Grid",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -60,7 +60,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 

@@ -34,6 +34,10 @@ public:
     virtual u32 GetDrawCallsSize() = 0;
     virtual bool IsIndexed() = 0;
 
+    virtual void Grow(u32 growthSize);
+    virtual void Resize(u32 size);
+    virtual void FitBuffersAfterLoad();
+
     std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
     Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
@@ -119,8 +123,9 @@ public:
     u32 GetDrawCallsSize() override;
     bool IsIndexed() override { return true; }
 
-    virtual void Grow(u32 growthSize);
-    virtual void FitBuffersAfterLoad();
+    virtual void Grow(u32 growthSize) override;
+    virtual void Resize(u32 size) override;
+    virtual void FitBuffersAfterLoad() override;
 
     virtual void SetValidation(bool validation);
 
@@ -141,8 +146,9 @@ public:
     u32 GetDrawCallsSize() override;
     bool IsIndexed() override { return false; }
 
-    virtual void Grow(u32 growthSize);
-    virtual void FitBuffersAfterLoad();
+    virtual void Grow(u32 growthSize) override;
+    virtual void Resize(u32 size) override;
+    virtual void FitBuffersAfterLoad() override;
 
     virtual void SetValidation(bool validation);
 
@@ -198,6 +204,12 @@ public:
     {
         CullingResourcesIndexedBase::Grow(growthSize);
         _drawCallDatas.Grow(growthSize);
+    }
+
+    void Resize(u32 size) override
+    {
+        CullingResourcesIndexedBase::Resize(size);
+        _drawCallDatas.Resize(size);
     }
 
     void FitBuffersAfterLoad() override
@@ -265,6 +277,12 @@ public:
     {
         CullingResourcesNonIndexedBase::Grow(growthSize);
         _drawCallDatas.Grow(growthSize);
+    }
+
+    void Resize(u32 size) override
+    {
+        CullingResourcesNonIndexedBase::Resize(size);
+        _drawCallDatas.Resize(size);
     }
 
     void FitBuffersAfterLoad() override

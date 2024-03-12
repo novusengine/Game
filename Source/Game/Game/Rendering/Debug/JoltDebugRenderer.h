@@ -115,6 +115,4 @@ private:
 
 	Renderer::GPUVector<PackedVertex> _vertices;
 	Renderer::GPUVector<u32> _indices;
-
-	u32 _debugDraws = 0;
 };

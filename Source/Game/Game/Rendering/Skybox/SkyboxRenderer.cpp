@@ -39,7 +39,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
     };
 
     renderGraph->AddPass<Data>("Skybox Pass",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -52,7 +52,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 

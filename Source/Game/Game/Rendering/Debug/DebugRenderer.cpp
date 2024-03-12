@@ -105,7 +105,7 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 	};
 
 	renderGraph->AddPass<Data>("DebugRenderReset",
-		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+		[this](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
@@ -114,7 +114,7 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[this](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRenderReset);
 
@@ -148,7 +148,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 		Renderer::DescriptorSetResource drawSolid2DSet;
 	};
 	renderGraph->AddPass<Data>("DebugRender2D",
-		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+		[this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
@@ -166,7 +166,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
 
@@ -270,7 +270,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 		Renderer::DescriptorSetResource drawSolid3DSet;
 	};
 	renderGraph->AddPass<Data>("DebugRender3D",
-		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+		[this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
@@ -298,7 +298,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender3D);
 

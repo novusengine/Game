@@ -322,7 +322,7 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     };
 
     renderGraph->AddPass<Data>("Water Culling",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             ZoneScoped;
             using BufferUsage = Renderer::BufferPassUsage;
@@ -349,7 +349,7 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
@@ -404,7 +404,7 @@ void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderR
     };
 
     renderGraph->AddPass<Data>("Copy Depth",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -415,7 +415,7 @@ void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderR
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, CopyDepth);
 
@@ -461,7 +461,7 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     };
 
     renderGraph->AddPass<Data>("Water Geometry",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -489,7 +489,7 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, WaterGeometry);
 

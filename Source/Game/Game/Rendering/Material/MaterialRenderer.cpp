@@ -57,7 +57,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
 
     renderGraph->AddPass<MaterialPassData>("Material Pass",
-        [=, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
             data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
@@ -80,7 +80,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
