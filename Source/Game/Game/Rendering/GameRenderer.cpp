@@ -257,7 +257,7 @@ f32 GameRenderer::Render()
         };
 
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
-            [=](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+            [this](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
                 data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.sceneColor = builder.Write(_resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
@@ -268,7 +268,7 @@ f32 GameRenderer::Render()
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [&](StartFramePassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this](StartFramePassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, StartFramePass);
                 commandList.MarkFrameStart(_frameIndex);
@@ -298,7 +298,7 @@ f32 GameRenderer::Render()
     };
 
     renderGraph.AddPass<PyramidPassData>("PyramidPass",
-        [=](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -312,7 +312,7 @@ f32 GameRenderer::Render()
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](PyramidPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this](PyramidPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
 

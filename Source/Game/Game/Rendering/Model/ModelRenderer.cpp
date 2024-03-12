@@ -172,7 +172,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     };
 
     renderGraph->AddPass<Data>("Model (O) Occluders",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -196,7 +196,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelOccluders);
 
@@ -267,7 +267,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     };
 
     renderGraph->AddPass<Data>("Model (O) Culling",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -287,7 +287,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
@@ -356,7 +356,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     };
 
     renderGraph->AddPass<Data>("Model (O) Geometry",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -380,7 +380,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
 
@@ -447,7 +447,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     };
 
     renderGraph->AddPass<Data>("Model (T) Culling",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             ZoneScoped;
             using BufferUsage = Renderer::BufferPassUsage;
@@ -474,7 +474,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
@@ -542,7 +542,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
     };
 
     renderGraph->AddPass<Data>("Model (T) Geometry",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -573,7 +573,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
 
