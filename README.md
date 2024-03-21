@@ -23,7 +23,7 @@ Here we include a honorable mention to all the libraries included directly into 
 * [All Libraries from Engine](https://github.com/novusengine/Engine)
 * [Jolt](https://github.com/jrouwe/JoltPhysics)
 
-## How to build
+## How to build (Microsoft Visual 2022)
 >[!TIP]
 > It's recommended to fork, clone, and build [Engine](https://github.com/novusengine/Engine) first.
 1. Download the dependencies.
