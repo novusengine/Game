@@ -8,8 +8,8 @@
 #include "Terrain/TerrainManipulator.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
-#include "Water/WaterRenderer.h"
-#include "Water/WaterLoader.h"
+#include "Liquid/LiquidRenderer.h"
+#include "Liquid/LiquidLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
@@ -137,14 +137,14 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _modelLoader = new ModelLoader(_modelRenderer);
     _modelLoader->Init();
 
-    _waterRenderer = new WaterRenderer(_renderer, _debugRenderer);
-    _waterLoader = new WaterLoader(_waterRenderer);
+    _liquidRenderer = new LiquidRenderer(_renderer, _debugRenderer);
+    _liquidLoader = new LiquidLoader(_liquidRenderer);
 
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
-    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _waterLoader);
+    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
     _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
 
-    _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _waterLoader);
+    _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
 
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
@@ -182,8 +182,8 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _terrainManipulator->Update(deltaTime);
     _modelLoader->Update(deltaTime);
     _modelRenderer->Update(deltaTime);
-    _waterLoader->Update(deltaTime);
-    _waterRenderer->Update(deltaTime);
+    _liquidLoader->Update(deltaTime);
+    _liquidRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
     _joltDebugRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
@@ -348,9 +348,9 @@ f32 GameRenderer::Render()
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
 
-    _waterRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
-    _waterRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
-    _waterRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+    _liquidRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
+    _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
+    _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
 

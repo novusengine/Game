@@ -9,7 +9,7 @@
 #include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
-#include "Game/Rendering/Water/WaterLoader.h"
+#include "Game/Rendering/Liquid/LiquidLoader.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Util/MapUtil.h"
 
@@ -33,10 +33,10 @@
 
 namespace fs = std::filesystem;
 
-TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, WaterLoader* waterLoader)
+TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader)
 	: _terrainRenderer(terrainRenderer)
 	, _modelLoader(modelLoader)
-	, _waterLoader(waterLoader)
+	, _liquidLoader(liquidLoader)
 	, _requests()
 {
 	_chunkIDToLoadedID.reserve(4096);
@@ -73,7 +73,7 @@ void TerrainLoader::Clear()
 	_chunkIDToChunkPtr.clear();
 
 	ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
-	ServiceLocator::GetGameRenderer()->GetWaterLoader()->Clear();
+	ServiceLocator::GetGameRenderer()->GetLiquidLoader()->Clear();
 	ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 	_terrainRenderer->Clear();
 
@@ -427,7 +427,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 						}
 					}
 
-					// Load Water
+					// Load Liquid
 					{
 						u32 numLiquidHeaders = static_cast<u32>(chunk->liquidInfo.headers.size());
 
@@ -438,7 +438,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
 						if (numLiquidHeaders == 256)
 						{
-							_waterLoader->LoadFromChunk(chunkX, chunkY, &chunk->liquidInfo);
+							_liquidLoader->LoadFromChunk(chunkX, chunkY, &chunk->liquidInfo);
 						}
                     }
 				}

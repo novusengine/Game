@@ -9,7 +9,7 @@
 #include "Game/Rendering/Terrain/TerrainLoader.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Rendering/Model/ModelRenderer.h"
-#include "Game/Rendering/Water/WaterLoader.h"
+#include "Game/Rendering/Liquid/LiquidLoader.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Memory/Bytebuffer.h>
@@ -123,7 +123,7 @@ void MapLoader::ClearRenderersForMap()
 {
     _terrainLoader->Clear();
     _modelLoader->Clear();
-    _waterLoader->Clear();
+    _liquidLoader->Clear();
 
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 
