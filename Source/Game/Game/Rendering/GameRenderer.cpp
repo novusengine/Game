@@ -197,7 +197,12 @@ f32 GameRenderer::Render()
 {
     // If the window is minimized we want to pause rendering
     if (_window->IsMinimized())
+    {
+        ImGui::End();
+        ImGui::Render();
+        
         return 0.0f;
+    }
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
