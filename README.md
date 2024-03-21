@@ -30,9 +30,9 @@ Here we include a honorable mention to all the libraries included directly into 
 * [Cpp-Taskflow](https://github.com/cpp-taskflow/cpp-taskflow)
 
 ## How to build
-1. Download the dependencies.
 >[!TIP]
 > It's recommended to fork, clone, and build [Engine](https://github.com/novusengine/Engine) first and use a [symlink](https://schinagl.priv.at/nt/hardlinkshellext/linkshellextension.html) to link the engine into the `Submodule` folder of the Game.
+1. Download the dependencies.
 2. Fork and clone the repositry
 3. Open the project folder and open a terminal within the project's directory.
 4. Use the command `premake5 vs2022`
