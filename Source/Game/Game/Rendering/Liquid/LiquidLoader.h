@@ -11,9 +11,9 @@ namespace Map
 	struct LiquidInfo;
 }
 
-class WaterRenderer;
+class LiquidRenderer;
 
-class WaterLoader
+class LiquidLoader
 {
 	static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
 
@@ -43,7 +43,7 @@ private:
 	};
 
 public:
-	WaterLoader(WaterRenderer* waterRenderer);
+	LiquidLoader(LiquidRenderer* liquidRenderer);
 
 	void Init();
 	void Clear();
@@ -55,7 +55,7 @@ private:
 	void LoadRequest(LoadRequestInternal& request);
 
 private:
-	WaterRenderer* _waterRenderer = nullptr;
+	LiquidRenderer* _liquidRenderer = nullptr;
 
 	LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];
 	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;

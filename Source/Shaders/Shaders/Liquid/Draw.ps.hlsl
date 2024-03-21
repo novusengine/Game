@@ -8,7 +8,7 @@ struct Constants
     float4 deepOceanColor;
     float4 shallowRiverColor;
     float4 deepRiverColor;
-    float waterVisibilityRange;
+    float liquidVisibilityRange;
     float currentTime;
 };
 
@@ -81,14 +81,14 @@ PSOutput main(PSInput input)
 
     uint textureAnimationOffset = fmod(ceil(_constants.currentTime * drawCallData.textureCount), drawCallData.textureCount);
 
-    // We need to get the depth of the opaque pixel "under" this water pixel
+    // We need to get the depth of the opaque pixel "under" this liquid pixel
     float2 dimensions;
     _depthRT.GetDimensions(dimensions.x, dimensions.y);
 
     float2 pixelUV = input.pixelPos.xy / dimensions;
 
     float4 color = float4(1, 0, 0, 1);
-    float waterDepth = input.pixelPos.z / input.pixelPos.w;
+    float liquidDepth = input.pixelPos.z / input.pixelPos.w;
 
     if (drawCallData.liquidType == 2 || drawCallData.liquidType == 3) // Lava or Slime
     {
@@ -104,8 +104,8 @@ PSOutput main(PSInput input)
         // Get the depths
         float opaqueDepth = _depthRT.Load(int3(input.pixelPos.xy, 0)); // 0.0 .. 1.0
 
-        float linearDepthDifference = LinearizeDepth((1.0f - opaqueDepth), 0.1f, 100000.0f) - LinearizeDepth((1.0f - (waterDepth)), 0.1f, 100000.0f);
-        float blendFactor = clamp(linearDepthDifference, 0.0f, _constants.waterVisibilityRange) / _constants.waterVisibilityRange;
+        float linearDepthDifference = LinearizeDepth((1.0f - opaqueDepth), 0.1f, 100000.0f) - LinearizeDepth((1.0f - (liquidDepth)), 0.1f, 100000.0f);
+        float blendFactor = clamp(linearDepthDifference, 0.0f, _constants.liquidVisibilityRange) / _constants.liquidVisibilityRange;
 
         // Blend color
         float4 shallowColor = lerp(_constants.shallowRiverColor, _constants.shallowOceanColor, drawCallData.liquidType);
@@ -122,7 +122,7 @@ PSOutput main(PSInput input)
     }
 
     // Calculate OIT weight and output
-    float oitWeight = CalculateOITWeight(color, waterDepth);
+    float oitWeight = CalculateOITWeight(color, liquidDepth);
 
     PSOutput output;
     output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;

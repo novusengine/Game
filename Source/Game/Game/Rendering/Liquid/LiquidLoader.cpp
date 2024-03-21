@@ -1,21 +1,21 @@
-#include "WaterLoader.h"
-#include "WaterRenderer.h"
+#include "LiquidLoader.h"
+#include "LiquidRenderer.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-AutoCVar_Int CVAR_WaterLoaderEnabled("waterLoader.enabled", "enable water loading", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidLoaderEnabled("liquidLoader.enabled", "enable liquid loading", 1, CVarFlags::EditCheckbox);
 
-WaterLoader::WaterLoader(WaterRenderer* waterRenderer)
-	: _waterRenderer(waterRenderer) { }
+LiquidLoader::LiquidLoader(LiquidRenderer* liquidRenderer)
+	: _liquidRenderer(liquidRenderer) { }
 
-void WaterLoader::Init()
+void LiquidLoader::Init()
 {
 
 }
 
-void WaterLoader::Clear()
+void LiquidLoader::Clear()
 {
     LoadRequestInternal dummyRequest;
     while (_requests.try_dequeue(dummyRequest))
@@ -23,12 +23,12 @@ void WaterLoader::Clear()
         // Just empty the queue
     }
 
-    _waterRenderer->Clear();
+    _liquidRenderer->Clear();
 }
 
-void WaterLoader::Update(f32 deltaTime)
+void LiquidLoader::Update(f32 deltaTime)
 {
-    if (!CVAR_WaterLoaderEnabled.Get())
+    if (!CVAR_LiquidLoaderEnabled.Get())
         return;
 
     enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
@@ -38,7 +38,7 @@ void WaterLoader::Update(f32 deltaTime)
     if (numDequeued == 0)
         return;
 
-    WaterRenderer::ReserveInfo reserveInfo;
+    LiquidRenderer::ReserveInfo reserveInfo;
 
     for (u32 i = 0; i < numDequeued; i++)
     {
@@ -62,8 +62,8 @@ void WaterLoader::Update(f32 deltaTime)
 		}
     }
 
-    // Have WaterRenderer prepare all buffers for what we need to load
-    _waterRenderer->Reserve(reserveInfo);
+    // Have LiquidRenderer prepare all buffers for what we need to load
+    _liquidRenderer->Reserve(reserveInfo);
 
 #if 0
     for (u32 i = 0; i < numDequeued; i++)
@@ -86,7 +86,7 @@ void WaterLoader::Update(f32 deltaTime)
     taskScheduler->WaitforTask(&loadModelsTask);
 #endif
 
-    _waterRenderer->FitAfterGrow();
+    _liquidRenderer->FitAfterGrow();
 }
 
 vec2 GetChunkPosition(u32 chunkID)
@@ -110,9 +110,9 @@ vec2 GetCellPosition(u32 chunkID, u32 cellID)
     return vec2(cellWorldPos.x, -cellWorldPos.y);
 }
 
-void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo)
+void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo)
 {
-    if (!CVAR_WaterLoaderEnabled.Get())
+    if (!CVAR_LiquidLoaderEnabled.Get())
         return;
 
     if (liquidInfo->headers.size() == 0)
@@ -176,13 +176,13 @@ void WaterLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidI
     _requests.enqueue(request);
 }
 
-void WaterLoader::LoadRequest(LoadRequestInternal& request)
+void LiquidLoader::LoadRequest(LoadRequestInternal& request)
 {
     u32 chunkID = (request.chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE) + request.chunkX;
 
     for (u32 i = 0; i < request.instances.size(); i++)
     {
-        WaterLoader::LiquidInstance& liquidInstance = request.instances[i];
+        LiquidLoader::LiquidInstance& liquidInstance = request.instances[i];
 
         u16 cellID = liquidInstance.cellID;
 
@@ -217,7 +217,7 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request)
             bitMap = &request.bitmapData[liquidInstance.bitmapDataOffset];
         }
 
-        WaterRenderer::LoadDesc desc;
+        LiquidRenderer::LoadDesc desc;
         desc.chunkID = chunkID;
         desc.cellID = cellID;
         desc.typeID = liquidInstance.typeID;
@@ -247,7 +247,7 @@ void WaterLoader::LoadRequest(LoadRequestInternal& request)
         desc.heightMap = heightMap;
         desc.bitMap = bitMap;
 
-        _waterRenderer->Load(desc);
+        _liquidRenderer->Load(desc);
     }
 
     if (request.vertexData)

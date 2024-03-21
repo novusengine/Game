@@ -10,7 +10,7 @@ namespace Renderer
 
 class DebugRenderer;
 
-class WaterRenderer : CulledRenderer
+class LiquidRenderer : CulledRenderer
 {
 public:
 	struct ReserveInfo
@@ -49,14 +49,14 @@ private:
 		Color deepOceanColor;
 		Color shallowRiverColor;
 		Color deepRiverColor;
-		f32 waterVisibilityRange;
+		f32 liquidVisibilityRange;
 		f32 currentTime;
 	};
 #pragma pack(pop)
 
 public:
-	WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
-	~WaterRenderer();
+	LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+	~LiquidRenderer();
 
 	void Update(f32 deltaTime);
 	void Clear();

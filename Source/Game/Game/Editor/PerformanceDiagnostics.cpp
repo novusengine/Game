@@ -7,7 +7,7 @@
 #include <Game/Rendering/GameRenderer.h>
 #include <Game/Rendering/Model/ModelRenderer.h>
 #include <Game/Rendering/Terrain/TerrainRenderer.h>
-#include <Game/Rendering/Water/WaterRenderer.h>
+#include <Game/Rendering/Liquid/LiquidRenderer.h>
 #include <Game/Rendering/Debug/JoltDebugRenderer.h>
 #include <Game/Application/EnttRegistries.h>
 #include <Game/ECS/Singletons/EngineStats.h>
@@ -554,7 +554,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
-        WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
+        LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
         
         const std::string rightHeaderText = "Survived / Total (%)";
@@ -591,7 +591,7 @@ namespace Editor
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
         bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
-        bool viewRendersWaterCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
+        bool viewRendersLiquidCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
         bool viewRendersJoltDebug = viewID == 0;
 
         // Terrain
@@ -630,11 +630,11 @@ namespace Editor
             DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
-        // Water
-        if (viewRendersWaterCulling)
+        // Liquid
+        if (viewRendersLiquidCulling)
         {
-            CullingResourcesBase& cullingResources = waterRenderer->GetCullingResources();
-            DrawCullingResourcesDrawCalls("Water", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            CullingResourcesBase& cullingResources = liquidRenderer->GetCullingResources();
+            DrawCullingResourcesDrawCalls("Liquid", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // Jolt Debug
@@ -660,7 +660,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
-        WaterRenderer* waterRenderer = gameRenderer->GetWaterRenderer();
+        LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
 
         const std::string rightHeaderText = "Survived / Total (%)";
@@ -697,7 +697,7 @@ namespace Editor
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
         bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
-        bool viewRendersWaterCulling = viewID == 0; // Only main view supports water culling so far
+        bool viewRendersLiquidCulling = viewID == 0; // Only main view supports liquid culling so far
         bool viewRendersJoltDebug = viewID == 0;
 
         // Terrain
@@ -736,11 +736,11 @@ namespace Editor
             DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
-        // Water
-        if (viewRendersWaterCulling)
+        // Liquid
+        if (viewRendersLiquidCulling)
         {
-            CullingResourcesBase& cullingResources = waterRenderer->GetCullingResources();
-            DrawCullingResourcesTriangle("Water", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            CullingResourcesBase& cullingResources = liquidRenderer->GetCullingResources();
+            DrawCullingResourcesTriangle("Liquid", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Jolt Debug
