@@ -12,6 +12,8 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 // Reenable this in C++ as well
 struct Constants
 {
+	float4 fogColor;
+	float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
 	float4 mouseWorldPos;
 	float4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
 	float4 chunkEdgeColor;
@@ -28,7 +30,7 @@ struct Constants
 [[vk::binding(4, PER_PASS)]] Texture2D<float> _transparencyWeights;
 [[vk::binding(5, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
-float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer)
+float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
 	InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
 	uint globalCellID = cellInstance.globalCellID;
@@ -52,7 +54,8 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	// Interpolate vertex attributes
 	FullBary2 pixelUV = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv, vertices[1].uv, vertices[2].uv); // [0..8] This is correct for terrain color textures
 	FullBary3 pixelWorldPosition = CalcFullBary3(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
-
+    outPixelWorldPos = pixelWorldPosition.value;
+	
 	//Camera mainCamera = _cameras[0];
 	//float4 pixelViewPosition = mul(float4(pixelWorldPosition.value, 1.0f), mainCamera.worldToView);
 	uint shadowCascadeIndex = 0;// GetShadowCascadeIndexFromDepth(pixelViewPosition.z, _constants.numCascades);
@@ -202,7 +205,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 	return saturate(color);
 }
 
-float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer)
+float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
 	ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
 	ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
@@ -238,7 +241,8 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 
 	float3 pixelVertexPosition = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
 	float3 pixelWorldPosition = mul(float4(pixelVertexPosition, 1.0f), instanceMatrix).xyz;
-
+	outPixelWorldPos = pixelWorldPosition;
+	
 	float4 pixelViewPosition = mul(float4(pixelWorldPosition, 1.0f), _cameras[0].worldToView);
 	uint shadowCascadeIndex = 0;// GetShadowCascadeIndexFromDepth(pixelViewPosition.z, _constants.numCascades);
 #if DEBUG_ID == 4
@@ -334,6 +338,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	float2 pixelUV = pixelPos / dimensions;
 
 	float4 color = float4(0, 0, 0, 1);
+	
+    float3 pixelWorldPos = _cameras[0].eyePosition.xyz;
 	if (vBuffer.typeID == ObjectType::Skybox || vBuffer.typeID == ObjectType::JoltDebug)
 	{
 		// These are passthrough and only write a color packed into vBufferData.y
@@ -341,12 +347,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	}
 	else if (vBuffer.typeID == ObjectType::Terrain)
 	{
-		color = ShadeTerrain(pixelPos, pixelUV, vBuffer);
-	}
+		color = ShadeTerrain(pixelPos, pixelUV, vBuffer, pixelWorldPos);
+    }
 	else if (vBuffer.typeID == ObjectType::ModelOpaque) // Transparent models are not rendered using visibility buffers
 	{
-		color = ShadeModel(pixelPos, pixelUV, vBuffer);
-	}
+		color = ShadeModel(pixelPos, pixelUV, vBuffer, pixelWorldPos);
+    }
 	else
 	{
 		color.rg = vBuffer.barycentrics.bary;
@@ -361,5 +367,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	// Src: ONE_MINUS_SRC_ALPHA, Dst: SRC_ALPHA
 	color.rgb = (transparencyColor.rgb * (1.0f - transparencyWeight)) + (color.rgb * transparencyWeight);
 
+    float3 cameraWorldPos = _cameras[0].eyePosition.xyz;
+    float distToPixel = distance(cameraWorldPos, pixelWorldPos);
+
+    float fogIntensity = (distToPixel - _constants.fogSettings.y) / (_constants.fogSettings.z - _constants.fogSettings.y);
+    fogIntensity = clamp(fogIntensity, 0, 1) * _constants.fogSettings.x;
+    color.rgb = lerp(color.rgb, _constants.fogColor.rgb, fogIntensity);
+	
 	_resolvedColor[pixelPos] = float4(color.rgb, 1.0f);
 }
