@@ -195,7 +195,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 		float corner = WireframeTriangleCorners(pixelClipSpacePosition.xyz, verticesClipSpacePosition[0].xyz, verticesClipSpacePosition[1].xyz, verticesClipSpacePosition[2].xyz);
 
 		color.rgb = lerp(color.rgb, _constants.vertexColor.rgb, corner);
-    }
+	}
 
 	// Editor Brush
 	float brush = EditorCircleBrush(_constants.mouseWorldPos.xyz, pixelWorldPosition.value.xyz, brushRadius, brushFalloff, vBuffer.barycentrics);
@@ -350,11 +350,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	else if (vBuffer.typeID == ObjectType::Terrain)
 	{
 		color = ShadeTerrain(pixelPos, pixelUV, vBuffer, pixelWorldPos);
-    }
+	}
 	else if (vBuffer.typeID == ObjectType::ModelOpaque) // Transparent models are not rendered using visibility buffers
 	{
 		color = ShadeModel(pixelPos, pixelUV, vBuffer, pixelWorldPos);
-    }
+	}
 	else
 	{
 		color.rg = vBuffer.barycentrics.bary;
