@@ -21,80 +21,85 @@ class ModelRenderer;
 class ModelLoader
 {
 public:
-	static constexpr u32 MAX_STATIC_LOADS_PER_FRAME = 65535;
-	static constexpr u32 MAX_DYNAMIC_LOADS_PER_FRAME = 1024;
+    static constexpr u32 MAX_STATIC_LOADS_PER_FRAME = 65535;
+    static constexpr u32 MAX_DYNAMIC_LOADS_PER_FRAME = 1024;
 
-	enum LoadState
-	{
-		Received,
-		Loading,
-		Loaded,
-		Failed
-	};
+    enum LoadState
+    {
+        Received,
+        Loading,
+        Loaded,
+        Failed
+    };
 
-	struct DiscoveredModel
-	{
-		std::string name;
-		u32 nameHash;
+    struct DiscoveredModel
+    {
+        std::string name;
+        u32 nameHash;
 
-		bool hasShape;
-		Model::ComplexModel::ModelHeader modelHeader;
-	};
+        bool hasShape;
+        Model::ComplexModel::ModelHeader modelHeader;
+    };
 
 private:
-	struct LoadRequestInternal
-	{
-	public:
-		entt::entity entity;
-		u32 instanceID = std::numeric_limits<u32>().max();
-		
-		Terrain::Placement placement;
-	};
+    struct LoadRequestInternal
+    {
+    public:
+        entt::entity entity;
+        u32 instanceID = std::numeric_limits<u32>().max();
+        
+        Terrain::Placement placement;
+    };
 
 public:
-	ModelLoader(ModelRenderer* modelRenderer);
+    ModelLoader(ModelRenderer* modelRenderer);
 
-	void Init();
-	void Clear();
-	void Update(f32 deltaTime);
+    void Init();
+    void Clear();
+    void Update(f32 deltaTime);
 
-	void LoadPlacement(const Terrain::Placement& placement);
-	void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
-	void LoadModel(entt::entity entity, u32 modelNameHash);
+    entt::entity CreateModelEntity(const std::string& name);
 
-	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
-	bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
+    void LoadPlacement(const Terrain::Placement& placement);
+    void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
+    void LoadModelForEntity(entt::entity entity, u32 modelNameHash);
 
-	bool ContainsDiscoveredModel(u32 modelNameHash);
-	DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);
+    void UnloadModelForEntity(entt::entity entity, u32 modelID);
+
+    u32 GetModelHashFromModelPath(const std::string& modelPath);
+    bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
+    bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
+
+    bool ContainsDiscoveredModel(u32 modelNameHash);
+    DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);
 
 private:
-	bool LoadRequest(const LoadRequestInternal& request);
-	void AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request);
-	void AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request);
+    bool LoadRequest(const LoadRequestInternal& request);
+    void AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request);
+    void AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request);
 
 private:
-	ModelRenderer* _modelRenderer = nullptr;
-	std::vector<LoadRequestInternal> _staticLoadRequests;
-	moodycamel::ConcurrentQueue<LoadRequestInternal> _staticRequests;
+    ModelRenderer* _modelRenderer = nullptr;
+    std::vector<LoadRequestInternal> _staticLoadRequests;
+    moodycamel::ConcurrentQueue<LoadRequestInternal> _staticRequests;
 
-	std::vector<LoadRequestInternal> _dynamicLoadRequests;
-	moodycamel::ConcurrentQueue<LoadRequestInternal> _dynamicRequests;
+    std::vector<LoadRequestInternal> _dynamicLoadRequests;
+    moodycamel::ConcurrentQueue<LoadRequestInternal> _dynamicRequests;
 
-	robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
-	robin_hood::unordered_map<u32, u32> _nameHashToModelID;
-	robin_hood::unordered_map<u32, JPH::ShapeRefC> _nameHashToJoltShape;
-	robin_hood::unordered_map<u32, DiscoveredModel> _nameHashToDiscoveredModel;
-	robin_hood::unordered_map<u32, std::mutex*> _nameHashToLoadingMutex;
+    robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
+    robin_hood::unordered_map<u32, u32> _nameHashToModelID;
+    robin_hood::unordered_map<u32, JPH::ShapeRefC> _nameHashToJoltShape;
+    robin_hood::unordered_map<u32, DiscoveredModel> _nameHashToDiscoveredModel;
+    robin_hood::unordered_map<u32, std::mutex*> _nameHashToLoadingMutex;
 
-	robin_hood::unordered_map<u32, u32> _uniqueIDToinstanceID;
-	robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
-	robin_hood::unordered_map<u32, u32> _instanceIDToBodyID;
-	robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
-	std::mutex _instanceIDToModelIDMutex;
+    robin_hood::unordered_map<u32, u32> _uniqueIDToinstanceID;
+    robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
+    robin_hood::unordered_map<u32, u32> _instanceIDToBodyID;
+    robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
+    std::mutex _instanceIDToModelIDMutex;
 
-	robin_hood::unordered_map<u32, u32> _modelIDToNameHash;
-	robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;
+    robin_hood::unordered_map<u32, u32> _modelIDToNameHash;
+    robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;
 
-	std::vector<entt::entity> _createdEntities;
+    std::vector<entt::entity> _createdEntities;
 };

@@ -1,4 +1,4 @@
-#include "WaterRenderer.h"
+#include "LiquidRenderer.h"
 
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
@@ -17,22 +17,22 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_WaterRendererEnabled("waterRenderer.enabled", "enable waterrendering", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_WaterCullingEnabled("waterRenderer.culling", "enable water culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_WaterOcclusionCullingEnabled("waterRenderer.culling.occlusion", "enable water occlusion culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidRendererEnabled("liquidRenderer.enabled", "enable liquidrendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidCullingEnabled("liquidRenderer.culling", "enable liquid culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidOcclusionCullingEnabled("liquidRenderer.culling.occlusion", "enable liquid occlusion culling", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_WaterDrawAABBs("waterRenderer.debug.drawAABBs", "if enabled, the culling pass will debug draw all AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidDrawAABBs("liquidRenderer.debug.drawAABBs", "if enabled, the culling pass will debug draw all AABBs", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Float CVAR_WaterVisibilityRange("waterRenderer.visibilityRange", "How far underwater you should see", 500.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_LiquidVisibilityRange("liquidRenderer.visibilityRange", "How far under a liquid you should see", 500.0f, CVarFlags::EditFloatDrag);
 
-AutoCVar_Int CVAR_WaterValidateTransfers("validation.GPUVectors.waterRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidValidateTransfers("validation.GPUVectors.liquidRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
-WaterRenderer::WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+LiquidRenderer::LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
-	, _debugRenderer(debugRenderer)
+    , _debugRenderer(debugRenderer)
 {
-    if (CVAR_WaterValidateTransfers.Get())
+    if (CVAR_LiquidValidateTransfers.Get())
     {
         _vertices.SetValidation(true);
         _indices.SetValidation(true);
@@ -44,26 +44,26 @@ WaterRenderer::WaterRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
     CreatePermanentResources();
 }
 
-WaterRenderer::~WaterRenderer()
+LiquidRenderer::~LiquidRenderer()
 {
 
 }
 
-void WaterRenderer::Update(f32 deltaTime)
+void LiquidRenderer::Update(f32 deltaTime)
 {
-    if (!CVAR_WaterRendererEnabled.Get())
+    if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
-    _constants.waterVisibilityRange = CVAR_WaterVisibilityRange.GetFloat();
+    _constants.liquidVisibilityRange = CVAR_LiquidVisibilityRange.GetFloat();
     _constants.currentTime += deltaTime;
 
-    const bool cullingEnabled = CVAR_WaterCullingEnabled.Get();
+    const bool cullingEnabled = CVAR_LiquidCullingEnabled.Get();
     _cullingResources.Update(deltaTime, cullingEnabled);
 
     SyncToGPU();
 }
 
-void WaterRenderer::Clear()
+void LiquidRenderer::Clear()
 {
     _cullingDatas.Clear();
 
@@ -79,7 +79,7 @@ void WaterRenderer::Clear()
     _renderer->UnloadTexturesInArray(_textures, 1);
 }
 
-void WaterRenderer::Reserve(ReserveInfo& info)
+void LiquidRenderer::Reserve(ReserveInfo& info)
 {
     _cullingResources.Grow(info.numInstances);
 
@@ -89,12 +89,12 @@ void WaterRenderer::Reserve(ReserveInfo& info)
     _indices.Grow(info.numIndices);
 }
 
-void WaterRenderer::FitAfterGrow()
+void LiquidRenderer::FitAfterGrow()
 {
-	// TODO
+    // TODO
 }
 
-void WaterRenderer::Load(LoadDesc& desc)
+void LiquidRenderer::Load(LoadDesc& desc)
 {
     if (desc.width == 0 || desc.height == 0)
     {
@@ -150,7 +150,7 @@ void WaterRenderer::Load(LoadDesc& desc)
 
         if (textureCount > std::numeric_limits<u8>().max())
         {
-            DebugHandler::PrintFatal("Tried to load a water texture with more than 255 frames!");
+            DebugHandler::PrintFatal("Tried to load a liquid texture with more than 255 frames!");
         }
 
         {
@@ -181,7 +181,7 @@ void WaterRenderer::Load(LoadDesc& desc)
 
         drawCallData.textureStartIndex = textureStartIndex;
         drawCallData.textureCount = textureCount;
-        drawCallData.liquidType = liquidType.soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is water, lava or slime in the future
+        drawCallData.liquidType = liquidType.soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
         drawCallData.uvAnim = hvec2(0, 0); // TODO: Load this from Vertex format data
     }
 
@@ -281,7 +281,7 @@ void WaterRenderer::Load(LoadDesc& desc)
         }
     }
 
-    // Water can be a flat plane so lets add offsets
+    // Liquids can be a flat plane so lets add offsets
     min.y -= 0.5f;
     max.y += 0.5f;
 
@@ -291,14 +291,14 @@ void WaterRenderer::Load(LoadDesc& desc)
     cullingData.boundingSphereRadius = glm::distance(min, max);
 }
 
-void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     ZoneScoped;
 
-    if (!CVAR_WaterRendererEnabled.Get())
+    if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
-    if (!CVAR_WaterCullingEnabled.Get())
+    if (!CVAR_LiquidCullingEnabled.Get())
         return;
 
     if (_cullingResources.GetDrawCalls().Size() == 0)
@@ -321,8 +321,8 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::DescriptorSetResource cullingSet;
     };
 
-    renderGraph->AddPass<Data>("Water Culling",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+    renderGraph->AddPass<Data>("Liquid Culling",
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             ZoneScoped;
             using BufferUsage = Renderer::BufferPassUsage;
@@ -349,7 +349,7 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelCulling);
 
@@ -373,12 +373,12 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.cullingDescriptorSet = data.cullingSet;
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
-            params.occlusionCull = CVAR_WaterOcclusionCullingEnabled.Get();
+            params.occlusionCull = CVAR_LiquidOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
 
             params.modelIDIsDrawCallID = true;
             params.cullingDataIsWorldspace = true;
-            params.debugDrawColliders = CVAR_WaterDrawAABBs.Get();
+            params.debugDrawColliders = CVAR_LiquidDrawAABBs.Get();
 
             params.instanceIDOffset = 0;// offsetof(DrawCallData, instanceID);
             params.modelIDOffset = 0;// offsetof(DrawCallData, modelID);
@@ -388,11 +388,11 @@ void WaterRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         });
 }
 
-void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+void LiquidRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     ZoneScoped;
 
-    if (!CVAR_WaterRendererEnabled.Get())
+    if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
     struct Data
@@ -404,7 +404,7 @@ void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderR
     };
 
     renderGraph->AddPass<Data>("Copy Depth",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -415,7 +415,7 @@ void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderR
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, CopyDepth);
 
@@ -429,17 +429,17 @@ void WaterRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, RenderR
         });
 }
 
-void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     ZoneScoped;
 
-    if (!CVAR_WaterRendererEnabled.Get())
+    if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
     if (_cullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    const bool cullingEnabled = CVAR_WaterCullingEnabled.Get();
+    const bool cullingEnabled = CVAR_LiquidCullingEnabled.Get();
 
     struct Data
     {
@@ -460,8 +460,8 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::DescriptorSetResource drawSet;
     };
 
-    renderGraph->AddPass<Data>("Water Geometry",
-        [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+    renderGraph->AddPass<Data>("Liquid Geometry",
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -489,14 +489,14 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
-            GPU_SCOPED_PROFILER_ZONE(commandList, WaterGeometry);
+            GPU_SCOPED_PROFILER_ZONE(commandList, LiquidGeometry);
 
             data.drawSet.Bind("_depthRT"_h, data.depthRead);
 
             CulledRenderer::GeometryPassParams params;
-            params.passName = "Water";
+            params.passName = "Liquid";
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.cullingResources = &_cullingResources;
@@ -529,11 +529,11 @@ void WaterRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         });
 }
 
-void WaterRenderer::CreatePermanentResources()
+void LiquidRenderer::CreatePermanentResources()
 {
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
-    initParams.bufferNamePrefix = "Water";
+    initParams.bufferNamePrefix = "Liquid";
     initParams.materialPassDescriptorSet = nullptr; // Transparencies, we don't draw these in materialPass
     initParams.enableTwoStepCulling = false;
     _cullingResources.Init(initParams);
@@ -542,7 +542,7 @@ void WaterRenderer::CreatePermanentResources()
     _constants.deepOceanColor       = Color::FromBGR32(1387070);
     _constants.shallowRiverColor    = Color::FromBGR32(1856070);
     _constants.deepRiverColor       = Color::FromBGR32(861477);
-    _constants.waterVisibilityRange = CVAR_WaterVisibilityRange.GetFloat();
+    _constants.liquidVisibilityRange = CVAR_LiquidVisibilityRange.GetFloat();
     _constants.currentTime = 0;
 
     Renderer::DescriptorSet& geometrySet = _cullingResources.GetGeometryPassDescriptorSet();
@@ -556,8 +556,8 @@ void WaterRenderer::CreatePermanentResources()
     dataTextureDesc.width = 1;
     dataTextureDesc.height = 1;
     dataTextureDesc.format = Renderer::ImageFormat::R8G8B8A8_UNORM_SRGB;
-    dataTextureDesc.data = new u8[4]{ 0, 0, 0, 255 }; // Black color, because water textures are additive
-    dataTextureDesc.debugName = "WaterDebugTexture";
+    dataTextureDesc.data = new u8[4]{ 0, 0, 0, 255 }; // Black color, because liquid textures are additive
+    dataTextureDesc.debugName = "LiquidDebugTexture";
 
     u32 arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
@@ -572,15 +572,27 @@ void WaterRenderer::CreatePermanentResources()
     samplerDesc.maxAnisotropy = 8;
     _sampler = _renderer->CreateSampler(samplerDesc);
     geometrySet.Bind("_sampler"_h, _sampler);
+
+    Renderer::SamplerDesc depthCopySamplerDesc;
+    depthCopySamplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
+    depthCopySamplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.minLOD = 0.f;
+    depthCopySamplerDesc.maxLOD = 16.f;
+    depthCopySamplerDesc.mode = Renderer::SamplerReductionMode::MIN;
+
+    _depthCopySampler = _renderer->CreateSampler(samplerDesc);
+    _copyDescriptorSet.Bind("_sampler"_h, _depthCopySampler);
 }
 
-void WaterRenderer::SyncToGPU()
+void LiquidRenderer::SyncToGPU()
 {
     CulledRenderer::SyncToGPU();
 
     // Sync Vertex buffer to GPU
     {
-        _vertices.SetDebugName("WaterVertexBuffer");
+        _vertices.SetDebugName("LiquidVertexBuffer");
         _vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
         if (_vertices.SyncToGPU(_renderer))
         {
@@ -590,7 +602,7 @@ void WaterRenderer::SyncToGPU()
 
     // Sync Index buffer to GPU
     {
-        _indices.SetDebugName("WaterIndexBuffer");
+        _indices.SetDebugName("LiquidIndexBuffer");
         _indices.SetUsage(Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER);
 
         if (_indices.SyncToGPU(_renderer))
@@ -600,22 +612,22 @@ void WaterRenderer::SyncToGPU()
     }
 
     _cullingResources.SyncToGPU();
-    SetupCullingResource(_cullingResources);
+    BindCullingResource(_cullingResources);
 }
 
-void WaterRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
+void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
 {
     Renderer::GraphicsPipelineDesc pipelineDesc;
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Water/Draw.vs.hlsl";
+    vertexShaderDesc.path = "Liquid/Draw.vs.hlsl";
 
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Water/Draw.ps.hlsl";
+    pixelShaderDesc.path = "Liquid/Draw.ps.hlsl";
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state

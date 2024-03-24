@@ -71,7 +71,7 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
         };
 
         renderGraph->AddPass<PixelQueryPassData>("Query Pass",
-            [=](PixelQueryPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+            [this, &resources](PixelQueryPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
                 data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
 
@@ -94,7 +94,7 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](PixelQueryPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this](PixelQueryPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 u32 numRequests = static_cast<u32>(_requests[_frameIndex].size());
                 if (numRequests > 0)

@@ -19,7 +19,7 @@ private:
     };
 
 public:
-    MapLoader(TerrainLoader* terrainLoader, ModelLoader* modelLoader, WaterLoader* waterLoader) : _terrainLoader(terrainLoader), _modelLoader(modelLoader), _waterLoader(waterLoader) { }
+    MapLoader(TerrainLoader* terrainLoader, ModelLoader* modelLoader, LiquidLoader* liquidLoader) : _terrainLoader(terrainLoader), _modelLoader(modelLoader), _liquidLoader(liquidLoader) { }
 
     void Update(f32 deltaTime);
 
@@ -34,7 +34,7 @@ private:
 private:
     TerrainLoader* _terrainLoader = nullptr;
     ModelLoader* _modelLoader = nullptr;
-    WaterLoader* _waterLoader = nullptr;
+    LiquidLoader* _liquidLoader = nullptr;
 
     u32 _currentMapIndex = std::numeric_limits<u32>().max();
     moodycamel::ConcurrentQueue<LoadDesc> _requests;

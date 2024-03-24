@@ -68,7 +68,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 		Renderer::DescriptorSetResource textDescriptorSet;
 	};
 	renderGraph->AddPass<Data>("Canvases",
-		[=, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+		[this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
 		{
 			using BufferUsage = Renderer::BufferPassUsage;
 
@@ -83,7 +83,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 			return true;// Return true from setup to enable this pass, return false to disable it
 		},
-		[=, &resources](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+		[this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
 		{
 			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
 

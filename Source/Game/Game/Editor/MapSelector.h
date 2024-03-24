@@ -19,5 +19,7 @@ namespace Editor
 	private:
 		void* _mapIcons[5] = { nullptr };
 		vec2 _mapIconSizes[5];
+
+		u32 _currentSelectedMapID = 0;
 	};
 }

@@ -177,6 +177,22 @@ void CullingResourcesBase::Clear()
     _instanceRefs.Clear();
 }
 
+void CullingResourcesBase::Grow(u32 growthSize)
+{
+    _instanceRefs.Grow(growthSize);
+}
+
+void CullingResourcesBase::Resize(u32 size)
+{
+    _instanceRefs.Resize(size);
+}
+
+void CullingResourcesBase::FitBuffersAfterLoad()
+{
+    u32 numDrawCalls = _drawCallsIndex.load();
+    _instanceRefs.Resize(numDrawCalls);
+}
+
 void CullingResourcesBase::ResetCullingStats()
 {
     _numSurvivingOccluderInstances = 0;
@@ -291,11 +307,19 @@ u32 CullingResourcesIndexedBase::GetDrawCallsSize()
 
 void CullingResourcesIndexedBase::Grow(u32 growthSize)
 {
+    CullingResourcesBase::Grow(growthSize);
     _drawCalls.Grow(growthSize);
+}
+
+void CullingResourcesIndexedBase::Resize(u32 size)
+{
+    CullingResourcesBase::Resize(size);
+    _drawCalls.Resize(size);
 }
 
 void CullingResourcesIndexedBase::FitBuffersAfterLoad()
 {
+    CullingResourcesBase::FitBuffersAfterLoad();
     u32 numDrawCalls = _drawCallsIndex.load();
     _drawCalls.Resize(numDrawCalls);
 }
@@ -406,11 +430,19 @@ u32 CullingResourcesNonIndexedBase::GetDrawCallsSize()
 
 void CullingResourcesNonIndexedBase::Grow(u32 growthSize)
 {
+    CullingResourcesBase::Grow(growthSize);
     _drawCalls.Grow(growthSize);
+}
+
+void CullingResourcesNonIndexedBase::Resize(u32 size)
+{
+    CullingResourcesBase::Resize(size);
+    _drawCalls.Resize(size);
 }
 
 void CullingResourcesNonIndexedBase::FitBuffersAfterLoad()
 {
+    CullingResourcesBase::FitBuffersAfterLoad();
     u32 numDrawCalls = _drawCallsIndex.load();
     _drawCalls.Resize(numDrawCalls);
 }

@@ -55,8 +55,6 @@ JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, ::DebugRender
 
 void JoltDebugRenderer::Update(f32 deltaTime)
 {
-    _debugDraws = 0;
-
     if (CVAR_JoltDebugRender.Get() == ShowFlag::DISABLED)
     {
         _indexedCullingResources.ResetCullingStats();
@@ -135,7 +133,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
     if (_indexedCullingResources.GetNumInstances() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Occluders (I)",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -158,7 +156,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugOccluders);
 
@@ -175,6 +173,8 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
                 params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+                params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
+
                 params.drawCountBuffer = data.drawCountBuffer;
                 params.triangleCountBuffer = data.triangleCountBuffer;
                 params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -206,7 +206,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
     if (_cullingResources.GetNumInstances() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Occluders",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -229,7 +229,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugOccluders);
 
@@ -310,7 +310,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
     if (_indexedCullingResources.GetDrawCalls().Size() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Culling (I)",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -333,7 +333,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugOccluders);
 
@@ -379,7 +379,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
     if (_cullingResources.GetDrawCalls().Size() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Culling",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -402,7 +402,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugOccluders);
 
@@ -473,7 +473,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
     if (_indexedCullingResources.GetDrawCalls().Size() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Geometry (I)",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -496,7 +496,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+            [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugGeometry);
 
@@ -554,7 +554,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
     if (_cullingResources.GetDrawCalls().Size() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Geometry",
-            [=, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
@@ -577,7 +577,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [=](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+            [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
             {
                 GPU_SCOPED_PROFILER_ZONE(commandList, JoltDebugGeometry);
 
@@ -956,8 +956,8 @@ void JoltDebugRenderer::SyncToGPU()
     _indexedCullingResources.SyncToGPU();
     _cullingResources.SyncToGPU();
 
-    SetupCullingResource(_indexedCullingResources);
-    SetupCullingResource(_cullingResources);
+    BindCullingResource(_indexedCullingResources);
+    BindCullingResource(_cullingResources);
 }
 
 void JoltDebugRenderer::Compact()

@@ -31,15 +31,17 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
     };
 
     renderGraph->AddPass<UIPassData>("ImguiPass",
-        [=](UIPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, imguiTarget](UIPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.color = builder.Write(imguiTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](UIPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this](UIPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ImguiPass);
+
+            commandList.ImageBarrier(data.color);
 
             Renderer::GraphicsPipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);

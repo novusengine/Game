@@ -272,6 +272,12 @@ namespace Editor
                             mapLoader->LoadMap(internalMapNameHash);
                         }
 
+                        if (ImGui::MenuItem("Unload"))
+                        {
+                            MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+                            mapLoader->UnloadMap();
+                        }
+
                         ImGui::EndPopup();
                     }
                     else
@@ -279,11 +285,33 @@ namespace Editor
                         popupMapID = std::numeric_limits<u32>().max();
                     }
 
+                    _currentSelectedMapID = currentMapIDSelected;
+
                     ImGui::PopID();
                 }
             }
 
             ImGui::EndListBox();
+        }
+
+        f32 mapHandlerButtonWidth = ImGui::GetWindowSize().x * 0.5f - 19.5f; // Black Magic GUI Math
+
+        if (ImGui::Button("Load Map", ImVec2(mapHandlerButtonWidth, 50.0f)))
+        {
+            MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+
+            const Definitions::Map& map = mapStorage.GetByID(_currentSelectedMapID);
+            const std::string& internalName = mapStorage.GetString(map.internalName);
+
+            u32 internalMapNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+            mapLoader->LoadMap(internalMapNameHash);
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Unload Map", ImVec2(mapHandlerButtonWidth, 50.0f)))
+        {
+            MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+            mapLoader->UnloadMap();
         }
     }
 

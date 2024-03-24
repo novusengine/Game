@@ -26,7 +26,6 @@ public:
         ivec4 channelRedirectors;
 
         Renderer::ImageMutableResource output;
-        Renderer::SamplerID sampler;
 
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -40,7 +39,6 @@ public:
         ivec4 channelRedirectors;
 
         Renderer::ImageMutableResource output;
-        Renderer::SamplerID sampler;
         
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -55,7 +53,6 @@ public:
         ivec4 channelRedirectors;
 
         Renderer::ImageMutableResource baseImage;
-        Renderer::SamplerID sampler;
 
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -69,7 +66,6 @@ public:
         ivec4 channelRedirectors;
 
         Renderer::ImageMutableResource baseImage;
-        Renderer::SamplerID sampler;
 
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -85,7 +81,6 @@ public:
         Geometry::Box targetRegion;
 
         Renderer::ImageMutableResource baseImage;
-        Renderer::SamplerID sampler;
 
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -100,7 +95,6 @@ public:
         Geometry::Box targetRegion;
 
         Renderer::ImageMutableResource baseImage;
-        Renderer::SamplerID sampler;
 
         Renderer::DescriptorSetResource descriptorSet;
     };
@@ -131,8 +125,4 @@ public:
     };
     static void CopyDepthToColor(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params);
 private:
-
-private:
-    static Renderer::DescriptorSet _overlayDescriptorSet;
-    static Renderer::DescriptorSet _copyDepthToColorRTDescriptorSet;
 };

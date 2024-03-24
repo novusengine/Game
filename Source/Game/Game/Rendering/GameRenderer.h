@@ -32,8 +32,8 @@ class EditorRenderer;
 class DebugRenderer;
 class JoltDebugRenderer;
 class CanvasRenderer;
-class WaterLoader;
-class WaterRenderer;
+class LiquidLoader;
+class LiquidRenderer;
 class UIRenderer;
 class PixelQuery;
 
@@ -56,13 +56,13 @@ public:
 
 	TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
 	ModelRenderer* GetModelRenderer() { return _modelRenderer; }
-	WaterRenderer* GetWaterRenderer() { return _waterRenderer; }
+	LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }
 	DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
 	JoltDebugRenderer* GetJoltDebugRenderer() { return _joltDebugRenderer; }
 
 	TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
 	ModelLoader* GetModelLoader() { return _modelLoader; }
-	WaterLoader* GetWaterLoader() { return _waterLoader; }
+	LiquidLoader* GetLiquidLoader() { return _liquidLoader; }
 	MapLoader* GetMapLoader() { return _mapLoader; }
 
 	TerrainManipulator* GetTerrainManipulator() { return _terrainManipulator; }
@@ -103,8 +103,8 @@ private:
 	ModelRenderer* _modelRenderer = nullptr;
 	ModelLoader* _modelLoader = nullptr;
 
-	WaterRenderer* _waterRenderer = nullptr;
-	WaterLoader* _waterLoader = nullptr;
+	LiquidRenderer* _liquidRenderer = nullptr;
+	LiquidLoader* _liquidLoader = nullptr;
 
 	MapLoader* _mapLoader = nullptr;
 

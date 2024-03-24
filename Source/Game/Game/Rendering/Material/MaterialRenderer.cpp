@@ -19,6 +19,10 @@
 
 AutoCVar_Int CVAR_VisibilityBufferDebugID("material.visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
 AutoCVar_ShowFlag CVAR_DrawTerrainWireframe("material.drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
+AutoCVar_ShowFlag CVAR_EnableFog("camera.enableFog", "Toggle fog", ShowFlag::DISABLED);
+AutoCVar_VecFloat CVAR_FogColor("camera.fogColor", "Change fog color", vec4(0.33f, 0.2f, 0.38f, 1.0f), CVarFlags::None);
+AutoCVar_Float CVAR_FogBeginDist("camera.fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_FogEndDist("camera.fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
 
 MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer)
     : _renderer(renderer)
@@ -43,6 +47,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     struct MaterialPassData
     {
         Renderer::ImageResource visibilityBuffer;
+        Renderer::ImageResource skyboxColor;
         Renderer::ImageResource transparency;
         Renderer::ImageResource transparencyWeights;
         Renderer::DepthImageResource depth;
@@ -57,9 +62,10 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
 
     renderGraph->AddPass<MaterialPassData>("Material Pass",
-        [=, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+            data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
             data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
             data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
@@ -80,7 +86,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [=](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex, visibilityBufferDebugID](MaterialPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
@@ -101,6 +107,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             commandList.BeginPipeline(pipeline);
 
             data.modelSet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.modelSet.Bind("_skyboxColor", data.skyboxColor);
             data.modelSet.Bind("_transparency", data.transparency);
             data.modelSet.Bind("_transparencyWeights", data.transparencyWeights);
             data.modelSet.Bind("_depth"_h, data.depth);
@@ -112,7 +119,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
 
-            if (CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED)
+            //if (CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED)
             {
                 Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
 
@@ -121,6 +128,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 struct Constants
                 {
+                    vec4 fogColor;
+                    vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
                     vec4 mouseWorldPos;
                     vec4 brushSettings; // x = hardness, y = radius, z = pressure, w = falloff
                     Color chunkEdgeColor;
@@ -144,6 +153,12 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->patchEdgeColor = terrainTools->GetPatchEdgeColor();
                 constants->vertexColor = terrainTools->GetVertexColor();
                 constants->brushColor = terrainTools->GetBrushColor();
+
+                constants->fogColor = CVAR_FogColor.Get();
+                constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;
+                constants->fogSettings.y = CVAR_FogBeginDist.GetFloat();
+                constants->fogSettings.z = CVAR_FogEndDist.GetFloat();
+
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
 
