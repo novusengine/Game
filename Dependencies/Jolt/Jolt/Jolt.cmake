@@ -203,13 +203,9 @@ set(JOLT_PHYSICS_SRC_FILES
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseBruteForce.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseBruteForce.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseLayer.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceMask.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseQuadTree.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseQuadTree.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/BroadPhaseQuery.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterMask.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/QuadTree.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/BroadPhase/QuadTree.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/CastConvexVsTriangles.cpp
@@ -244,8 +240,6 @@ set(JOLT_PHYSICS_SRC_FILES
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/NarrowPhaseStats.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/NarrowPhaseStats.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/ObjectLayer.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/ObjectLayerPairFilterMask.h
-	${JOLT_PHYSICS_ROOT}/Physics/Collision/ObjectLayerPairFilterTable.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/PhysicsMaterial.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/PhysicsMaterial.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/PhysicsMaterialSimple.cpp
@@ -299,7 +293,6 @@ set(JOLT_PHYSICS_SRC_FILES
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/SortReverseAndStore.h
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/TransformedShape.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Collision/TransformedShape.h
-	${JOLT_PHYSICS_ROOT}/Physics/Constraints/CalculateSolverSteps.h
 	${JOLT_PHYSICS_ROOT}/Physics/Constraints/ConeConstraint.cpp
 	${JOLT_PHYSICS_ROOT}/Physics/Constraints/ConeConstraint.h
 	${JOLT_PHYSICS_ROOT}/Physics/Constraints/Constraint.cpp

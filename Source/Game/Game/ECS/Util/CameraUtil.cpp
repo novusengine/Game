@@ -2,8 +2,9 @@
 
 #include <Game/Util/ServiceLocator.h>
 #include <Game/Rendering/GameRenderer.h>
-#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game/ECS/Singletons/ActiveCamera.h>
+#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
+#include <Game/ECS/Singletons/OrbitalCameraSettings.h>
 #include <Game/ECS/Components/Camera.h>
 #include <Game/ECS/Util/Transforms.h>
 #include <Renderer/Window.h>
@@ -21,9 +22,20 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ECS::Singletons::FreeflyingCameraSettings& settings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+            ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+            ECS::Singletons::FreeflyingCameraSettings& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+            ECS::Singletons::OrbitalCameraSettings& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
 
-            settings.captureMouse = capture;
+            if (activeCamera.entity == freeFlyingCameraSettings.entity)
+            {
+                freeFlyingCameraSettings.captureMouse = capture;
+                freeFlyingCameraSettings.captureMouseHasMoved = false;
+            }
+            else if (activeCamera.entity == orbitalCameraSettings.entity)
+            {
+                orbitalCameraSettings.captureMouse = capture;
+                orbitalCameraSettings.captureMouseHasMoved = false;
+            }
 
             GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
             Novus::Window* window = gameRenderer->GetWindow();
@@ -46,6 +58,9 @@ namespace ECS::Util
             entt::registry::context& ctx = registry->ctx();
 
             ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+
+            if (activeCamera.entity == entt::null)
+                return;
 
             ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
             ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);

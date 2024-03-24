@@ -25,8 +25,8 @@ enum class FrustumPlane
 
 namespace ECS::Systems
 {
-	void CalculateCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
-	{
+    void CalculateCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
+    {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
@@ -87,5 +87,5 @@ namespace ECS::Systems
             camera.dirtyPerspective = false;
             camera.dirtyView = false;
         });
-	}
+    }
 }

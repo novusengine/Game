@@ -4,15 +4,17 @@
 
 namespace ECS::Singletons
 {
-	struct FreeflyingCameraSettings
-	{
-	public:
-		bool captureMouse;
-		bool captureMouseHasMoved;
+    struct FreeflyingCameraSettings
+    {
+    public:
+        entt::entity entity;
 
-		vec2 prevMousePosition;
+        bool captureMouse;
+        bool captureMouseHasMoved;
 
-		f32 mouseSensitivity = 0.05f;
-		f32 cameraSpeed = 150.0f;
-	};
+        vec2 prevMousePosition;
+
+        f32 mouseSensitivity = 0.05f;
+        f32 cameraSpeed = 150.0f;
+    };
 }

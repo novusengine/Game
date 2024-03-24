@@ -28,6 +28,9 @@ namespace Util
                 entt::registry::context& ctx = registry->ctx();
                 ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
+                if (activeCamera.entity == entt::null)
+                    return false;
+
                 ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
 
                 ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);

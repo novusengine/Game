@@ -6,7 +6,7 @@ class KeybindGroup;
 
 namespace ECS::Systems
 {
-    class FreeflyingCamera
+    class OrbitalCamera
     {
     public:
         static void Init(entt::registry& registry);

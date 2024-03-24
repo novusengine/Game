@@ -44,11 +44,6 @@ public:
 		return mValue;
 	}
 
-	JPH_INLINE Type					GetValue() const
-	{
-		return mValue;
-	}
-
 private:
 	Type							mValue;
 };
