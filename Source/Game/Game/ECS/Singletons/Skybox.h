@@ -3,9 +3,9 @@
 
 namespace ECS::Singletons
 {
-	struct Skybox
-	{
-	public:
-		entt::entity entity;
-	};
+    struct Skybox
+    {
+    public:
+        entt::entity entity;
+    };
 }

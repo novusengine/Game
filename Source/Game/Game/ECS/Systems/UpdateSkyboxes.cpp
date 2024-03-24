@@ -30,9 +30,9 @@ namespace ECS::Systems
         skybox.entity = modelLoader->CreateModelEntity("Skybox");
         registry.emplace<ECS::Components::SkyboxModelTag>(skybox.entity);
     }
-    
+
     void UpdateSkyboxes::Update(entt::registry& registry, f32 deltaTime)
-	{
+    {
         if (CVAR_CameraLockSkybox.Get())
             return;
 
@@ -52,5 +52,5 @@ namespace ECS::Systems
         {
             transformSystem.SetWorldPosition(e, cameraPosition);
         });
-	}
+    }
 }

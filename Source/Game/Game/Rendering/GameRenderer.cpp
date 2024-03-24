@@ -108,8 +108,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 
     JPH::RegisterDefaultAllocator();
 
-	_window = new Novus::Window();
-	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
+    _window = new Novus::Window();
+    _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
     KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);
@@ -121,14 +121,14 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
-	_renderer = new Renderer::RendererVK(_window);
+    _renderer = new Renderer::RendererVK(_window);
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
 
     InitImgui();
-	_renderer->InitDebug();
-	_renderer->InitWindow(_window);
+    _renderer->InitDebug();
+    _renderer->InitWindow(_window);
 
     _debugRenderer = new DebugRenderer(_renderer);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
@@ -162,7 +162,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 
 GameRenderer::~GameRenderer()
 {
-	delete _renderer;
+    delete _renderer;
 }
 
 bool GameRenderer::UpdateWindow(f32 deltaTime)

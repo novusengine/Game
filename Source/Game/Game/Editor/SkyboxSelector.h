@@ -5,20 +5,20 @@
 
 namespace Editor
 {
-	struct SkyboxSelectorDataBase {};
+    struct SkyboxSelectorDataBase {};
 
-	class SkyboxSelector : public BaseEditor
-	{
-	public:
-		SkyboxSelector();
+    class SkyboxSelector : public BaseEditor
+    {
+    public:
+        SkyboxSelector();
 
-		virtual const char* GetName() override { return "Skybox"; }
+        virtual const char* GetName() override { return "Skybox"; }
 
-		virtual void DrawImGui() override;
+        virtual void DrawImGui() override;
 
-		void ShowListView();
+        void ShowListView();
 
-	private:
-		SkyboxSelectorDataBase* _data = nullptr;
-	};
+    private:
+        SkyboxSelectorDataBase* _data = nullptr;
+    };
 }

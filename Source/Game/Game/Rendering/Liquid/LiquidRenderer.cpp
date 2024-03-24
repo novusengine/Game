@@ -30,7 +30,7 @@ AutoCVar_Int CVAR_LiquidValidateTransfers("validation.GPUVectors.liquidRenderer"
 LiquidRenderer::LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
-	, _debugRenderer(debugRenderer)
+    , _debugRenderer(debugRenderer)
 {
     if (CVAR_LiquidValidateTransfers.Get())
     {
@@ -91,7 +91,7 @@ void LiquidRenderer::Reserve(ReserveInfo& info)
 
 void LiquidRenderer::FitAfterGrow()
 {
-	// TODO
+    // TODO
 }
 
 void LiquidRenderer::Load(LoadDesc& desc)

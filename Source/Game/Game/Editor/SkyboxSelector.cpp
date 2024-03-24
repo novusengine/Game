@@ -35,7 +35,7 @@ namespace Editor
 
     SkyboxSelector::SkyboxSelector()
         : BaseEditor(GetName(), true)
-	{
+    {
         SkyboxSelectorData* data = new SkyboxSelectorData();
         _data = data;
 
@@ -59,7 +59,7 @@ namespace Editor
             path = fs::relative(path, complexModelPath);
             data->skyboxPaths.push_back(path);
         }
-	}
+    }
 
     bool DrawSkyboxItem(const fs::path& skyboxPath, u32 skyboxID, std::string& filter, u32& selectedSkyboxID, u32& popupSkyboxID)
     {
@@ -260,12 +260,12 @@ namespace Editor
         }
     }
 
-	void SkyboxSelector::DrawImGui()
-	{
+    void SkyboxSelector::DrawImGui()
+    {
         if (ImGui::Begin(GetName()))
         {
             ShowListView();
         }
         ImGui::End();
-	}
+    }
 }
