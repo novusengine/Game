@@ -34,6 +34,10 @@ jobs:
         sudo apt update
         sudo apt install vulkan-sdk
 
+    - name: Checkout submodules
+      run: |
+        git submodule update --init --recursive
+
     - name: Run Premake
       run: |
         export VULKAN_SDK=/usr/include/vulkan
