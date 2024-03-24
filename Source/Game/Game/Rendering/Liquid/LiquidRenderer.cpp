@@ -30,7 +30,7 @@ AutoCVar_Int CVAR_LiquidValidateTransfers("validation.GPUVectors.liquidRenderer"
 LiquidRenderer::LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
-	, _debugRenderer(debugRenderer)
+    , _debugRenderer(debugRenderer)
 {
     if (CVAR_LiquidValidateTransfers.Get())
     {
@@ -91,7 +91,7 @@ void LiquidRenderer::Reserve(ReserveInfo& info)
 
 void LiquidRenderer::FitAfterGrow()
 {
-	// TODO
+    // TODO
 }
 
 void LiquidRenderer::Load(LoadDesc& desc)
@@ -572,6 +572,18 @@ void LiquidRenderer::CreatePermanentResources()
     samplerDesc.maxAnisotropy = 8;
     _sampler = _renderer->CreateSampler(samplerDesc);
     geometrySet.Bind("_sampler"_h, _sampler);
+
+    Renderer::SamplerDesc depthCopySamplerDesc;
+    depthCopySamplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
+    depthCopySamplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+    depthCopySamplerDesc.minLOD = 0.f;
+    depthCopySamplerDesc.maxLOD = 16.f;
+    depthCopySamplerDesc.mode = Renderer::SamplerReductionMode::MIN;
+
+    _depthCopySampler = _renderer->CreateSampler(samplerDesc);
+    _copyDescriptorSet.Bind("_sampler"_h, _depthCopySampler);
 }
 
 void LiquidRenderer::SyncToGPU()
@@ -600,7 +612,7 @@ void LiquidRenderer::SyncToGPU()
     }
 
     _cullingResources.SyncToGPU();
-    SetupCullingResource(_cullingResources);
+    BindCullingResource(_cullingResources);
 }
 
 void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)

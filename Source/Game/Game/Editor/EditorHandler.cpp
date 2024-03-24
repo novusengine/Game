@@ -4,6 +4,7 @@
 #include "CameraInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "MapSelector.h"
+#include "SkyboxSelector.h"
 #include "TerrainTools.h"
 #include "Inspector.h"
 #include "Hierarchy.h"
@@ -43,6 +44,7 @@ namespace Editor
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
+        _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
 
         _actionStackEditor = new ActionStackEditor(64);

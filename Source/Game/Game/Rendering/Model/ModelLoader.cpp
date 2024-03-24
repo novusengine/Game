@@ -5,6 +5,7 @@
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Components/Name.h"
 #include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Singletons/Skybox.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
@@ -196,6 +197,10 @@ void ModelLoader::Clear()
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     
     _createdEntities.clear();
+
+    entt::registry::context& ctx = registry->ctx();
+    ECS::Singletons::Skybox& skybox = ctx.get<ECS::Singletons::Skybox>();
+    registry->get<ECS::Components::Model>(skybox.entity).instanceID = std::numeric_limits<u32>::max();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -352,10 +357,19 @@ void ModelLoader::Update(f32 deltaTime)
         {
             ModelRenderer::ReserveInfo reserveInfo;
 
+            std::vector<u32> unloadRequests;
+            unloadRequests.reserve(16);
+
             for (u32 i = 0; i < numDequeued; i++)
             {
                 LoadRequestInternal& request = _dynamicLoadRequests[i];
                 u32 nameHash = request.placement.nameHash;
+
+                if (nameHash == std::numeric_limits<u32>().max())
+                {
+                    unloadRequests.push_back(i);
+                    continue;
+                }
 
                 if (!_nameHashToDiscoveredModel.contains(nameHash))
                 {
@@ -446,11 +460,43 @@ void ModelLoader::Update(f32 deltaTime)
                 AddDynamicInstance(request.entity, request);
             }
 
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            mat4x4 identity = mat4x4(1.0f);
+
+            for (u32 dynamicRequestID : unloadRequests)
+            {
+                LoadRequestInternal& request = _dynamicLoadRequests[dynamicRequestID];
+
+                ECS::Components::Model& model = registry->get<ECS::Components::Model>(request.entity);
+
+                if (model.modelID != request.placement.uniqueID)
+                    continue;
+
+                _modelRenderer->ModifyInstance(request.entity, model.instanceID, std::numeric_limits<u32>().max(), identity);
+            }
+
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
             animationSystem->FitToBuffersAfterLoad();
         }
     }
+}
+
+entt::entity ModelLoader::CreateModelEntity(const std::string& name)
+{
+    entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    entt::entity entity = registry.create();
+    auto& nameComponent = registry.emplace<ECS::Components::Name>(entity);
+    nameComponent.name = name;
+    nameComponent.nameHash = StringUtils::fnv1a_32(name.c_str(), name.size());
+    nameComponent.fullName = "";
+
+    registry.emplace<ECS::Components::AABB>(entity);
+    registry.emplace<ECS::Components::Transform>(entity);
+    registry.emplace<ECS::Components::Model>(entity);
+
+    return entt::entity(entity);
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -479,13 +525,36 @@ void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Deco
     _staticRequests.enqueue(loadRequest);
 }
 
-void ModelLoader::LoadModel(entt::entity entity, u32 modelNameHash)
+void ModelLoader::LoadModelForEntity(entt::entity entity, u32 modelNameHash)
 {
     LoadRequestInternal loadRequest;
     loadRequest.entity = entity;
     loadRequest.placement.nameHash = modelNameHash;
 
     _dynamicRequests.enqueue(loadRequest);
+}
+
+void ModelLoader::UnloadModelForEntity(entt::entity entity, u32 modelID)
+{
+    LoadRequestInternal loadRequest;
+    loadRequest.entity = entity;
+    loadRequest.placement.uniqueID = modelID;
+    loadRequest.placement.nameHash = std::numeric_limits<u32>().max();
+
+    _dynamicRequests.enqueue(loadRequest);
+}
+
+u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
+{
+    u32 nameHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+
+    if (!_nameHashToDiscoveredModel.contains(nameHash))
+    {
+        DebugHandler::PrintError("Failed to find DiscoveredModel for Model ({0})", modelPath);
+        return std::numeric_limits<u32>().max();
+    }
+
+    return nameHash;
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
@@ -641,7 +710,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     name.nameHash = discoveredModel.nameHash;
 
     u32 modelID = _nameHashToModelID[request.placement.nameHash];
-    u32 instanceID = _modelRenderer->AddPlacementInstance(modelID, request.placement);
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, request.placement);
 
     ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
     model.modelID = modelID;
@@ -721,11 +790,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
     if (instanceID == std::numeric_limits<u32>().max())
     {
-        instanceID = _modelRenderer->AddInstance(modelID, transform.GetMatrix());
+        instanceID = _modelRenderer->AddInstance(entityID, modelID, transform.GetMatrix());
     }
     else
     {
-        _modelRenderer->ModifyInstance(instanceID, modelID, transform.GetMatrix());
+        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, transform.GetMatrix());
     }
 
     model.modelID = modelID;

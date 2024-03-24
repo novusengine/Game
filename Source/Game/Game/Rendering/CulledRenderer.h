@@ -280,7 +280,7 @@ protected:
 	void GeometryPass(GeometryPassParams& params);
 
 	void SyncToGPU();
-	void SetupCullingResource(CullingResourcesBase& resources);
+	void BindCullingResource(CullingResourcesBase& resources);
 
 private:
 	void CreatePermanentResources();

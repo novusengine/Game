@@ -6,8 +6,8 @@
 
 namespace Renderer
 {
-	class Renderer;
-	class RenderGraph;
+    class Renderer;
+    class RenderGraph;
 
 }
 
@@ -18,23 +18,23 @@ struct RenderResources;
 class MaterialRenderer
 {
 public:
-	MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer);
-	~MaterialRenderer();
+    MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer);
+    ~MaterialRenderer();
 
-	void Update(f32 deltaTime);
+    void Update(f32 deltaTime);
 
-	void AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-
-private:
-	void CreatePermanentResources();
+    void AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
 private:
-	Renderer::Renderer* _renderer;
+    void CreatePermanentResources();
 
-	Renderer::DescriptorSet _materialPassDescriptorSet;
+private:
+    Renderer::Renderer* _renderer;
 
-	Renderer::SamplerID _sampler;
+    Renderer::DescriptorSet _materialPassDescriptorSet;
 
-	TerrainRenderer* _terrainRenderer = nullptr;
-	ModelRenderer* _modelRenderer = nullptr;
+    Renderer::SamplerID _sampler;
+
+    TerrainRenderer* _terrainRenderer = nullptr;
+    ModelRenderer* _modelRenderer = nullptr;
 };
