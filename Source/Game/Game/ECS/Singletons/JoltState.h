@@ -21,10 +21,10 @@ namespace Jolt
 {
 	namespace Settings
 	{
-		static constexpr u32 maxBodies = 65536;
+		static constexpr u32 maxBodies = 65536 * 10;
 		static constexpr u32 numBodyMutexes = 0;
-		static constexpr u32 maxBodyPairs = 65536;
-		static constexpr u32 maxContactConstraints = 10240;
+		static constexpr u32 maxBodyPairs = 65536 * 10;
+		static constexpr u32 maxContactConstraints = 10240 * 10;
 	}
 
 	namespace Layers

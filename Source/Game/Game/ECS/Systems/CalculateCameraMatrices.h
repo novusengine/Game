@@ -4,9 +4,9 @@
 
 namespace ECS::Systems
 {
-	class CalculateCameraMatrices
-	{
-	public:
-		static void Update(entt::registry& registry, f32 deltaTime);
-	};
+    class CalculateCameraMatrices
+    {
+    public:
+        static void Update(entt::registry& registry, f32 deltaTime);
+    };
 }

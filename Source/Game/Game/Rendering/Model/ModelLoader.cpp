@@ -9,6 +9,7 @@
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Util/JoltStream.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Memory/FileReader.h>
@@ -19,6 +20,10 @@
 #include <FileFormat/Novus/Map/MapChunk.h>
 
 #include <entt/entt.hpp>
+
+
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 
 #include <atomic>
 #include <mutex>
@@ -192,6 +197,14 @@ void ModelLoader::Clear()
     _modelIDToNameHash.clear();
 
     _modelRenderer->Clear();
+
+
+    auto view = registry->view<ECS::Components::Model>();
+    view.each([&](ECS::Components::Model& model)
+    {
+        model.instanceID = std::numeric_limits<u32>().max();
+    });
+
     ServiceLocator::GetAnimationSystem()->Clear();
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
@@ -373,7 +386,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                 if (!_nameHashToDiscoveredModel.contains(nameHash))
                 {
-                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered");
+                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
                     continue;
                 }
 
@@ -646,46 +659,21 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     {
         // Disabled on purpose for now
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        u32 numPhysicsBytes = static_cast<u32>(model.physicsData.size());
 
-        if (physicsEnabled)
+        if (physicsEnabled && numPhysicsBytes > 0)
         {
-            u32 numCollisionVertices = static_cast<u32>(model.collisionVertexPositions.size());
-            u32 numCollisionIndices = static_cast<u32>(model.collisionIndices.size());
-            u32 indexRemainder = numCollisionIndices % 3;
+            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(model.physicsData.data(), numPhysicsBytes);
+            JoltStreamIn streamIn(physicsBuffer);
 
-            if (numCollisionVertices > 0 && numCollisionIndices > 0 && indexRemainder == 0)
-            {
-                u32 numTriangles = numCollisionIndices / 3;
+            JPH::Shape::IDToShapeMap shapeMap;
+            JPH::Shape::IDToMaterialMap materialMap;
 
-                JPH::VertexList vertexList;
-                vertexList.reserve(numCollisionVertices);
+            JPH::MeshShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(streamIn, shapeMap, materialMap);
+            JPH::ShapeRefC shape = shapeResult.Get();
 
-                JPH::IndexedTriangleList triangleList;
-                triangleList.reserve(numTriangles);
-
-                for (u32 i = 0; i < numCollisionVertices; i++)
-                {
-                    const vec3& vertexPos = model.collisionVertexPositions[i];
-                    vertexList.push_back({ vertexPos.x, vertexPos.y, vertexPos.z });
-                }
-
-                for (u32 i = 0; i < numTriangles; i++)
-                {
-                    u32 offset = i * 3;
-
-                    u16 indexA = model.collisionIndices[offset + 2];
-                    u16 indexB = model.collisionIndices[offset + 1];
-                    u16 indexC = model.collisionIndices[offset + 0];
-
-                    triangleList.push_back({ indexA, indexB, indexC });
-                }
-
-                JPH::MeshShapeSettings shapeSetting(vertexList, triangleList);
-                JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
-
-                _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
-                discoveredModel.hasShape = true;
-            }
+            _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
+            discoveredModel.hasShape = true;
         }
     }
 
@@ -753,7 +741,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             const quat& rotation = transform.GetWorldRotation();
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3::sReplicate(scale)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
@@ -768,7 +756,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     //Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     //if (animationSystem->AddInstance(modelID, instanceID))
     //{
-    //	animationSystem->PlayAnimation(instanceID, 0);
+    //	animationSystem->PlayAnimation(instanceID, Animation::Type::Stand, true, true);
     //}
 }
 
@@ -812,6 +800,6 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     if (animationSystem->AddInstance(modelID, instanceID))
     {
-        animationSystem->PlayAnimation(instanceID, 0);
+        animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop);
     }
 }

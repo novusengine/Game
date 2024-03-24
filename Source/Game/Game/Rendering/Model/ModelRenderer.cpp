@@ -1043,12 +1043,12 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
                     {
-                        static const u32 defaultSkinHash = "textures\\bakednpctextures\\creaturedisplayextra-00872.dds"_h;
+                        static const u32 defaultSkinHash = "textures/bakednpctextures/creaturedisplayextra-00872.dds"_h;
                         textureDesc.path = textureSingleton.textureHashToPath[defaultSkinHash];
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
                     {
-                        static const u32 defaultHairHash = "character\\human\\female\\humanfemalehairlongwavy.dds"_h;
+                        static const u32 defaultHairHash = "character/human/female/humanfemalehairlongwavy.dds"_h;
                         textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
                     }
 

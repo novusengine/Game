@@ -205,6 +205,30 @@ void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity chil
     RefreshTransform(child,*tfc);
 }
 
+void ECS::TransformSystem::ClearParent(entt::entity entity)
+{
+    ECS::Components::Transform* transform = owner->try_get<ECS::Components::Transform>(entity);
+
+    if (!transform)
+    {
+        DebugHandler::PrintError("Transform system, trying to clear parent from entity with no transform!");
+        assert(transform);
+    }
+
+    ECS::Components::SceneNode* sceneNode = owner->try_get<ECS::Components::SceneNode>(entity);
+    if (!sceneNode)
+    {
+        DebugHandler::PrintError("Transform system, trying to clear parent from entity with no scene node!");
+        assert(sceneNode);
+    }
+
+    if (sceneNode->HasParent())
+    {
+        sceneNode->DetachParent();
+        RefreshTransform(entity, *transform);
+    }
+}
+
 ECS::Components::Transform* ECS::Components::Transform::GetParentTransform() const
 {
     if (ownerNode && ownerNode->parent && ownerNode->parent->transform)

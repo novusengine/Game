@@ -1,9 +1,18 @@
 #include "AssetBrowser.h"
 
-#include <Game/Util/ImGui/FakeScrollingArea.h>
+#include "Game/ECS/Singletons/ActiveCamera.h"
+#include "Game/ECS/Util/Transforms.h"
+#include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Util/ImGui/FakeScrollingArea.h"
 
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/StringUtils.h>
+
+#include <FileFormat/Novus/Model/ComplexModel.h>
+
+#include <entt/entt.hpp>
+#include <Game/ECS/Components/Name.h>
+#include <Game/ECS/Components/Model.h>
 
 namespace Editor
 {
@@ -20,6 +29,8 @@ namespace Editor
         }
 
         _topPath = relativeDataPath;
+        _modelTopPath = _topPath / "ComplexModel";
+
         _tree = new TreeNode(_topPath);
         ProcessTree(_tree);
         _currentNode = _tree;
@@ -191,12 +202,43 @@ namespace Editor
 
     void AssetBrowser::ItemClicked(const fs::path& /*item*/)
     {
-
     }
 
-    void AssetBrowser::ItemHovered(const fs::path& /*item*/)
+    void AssetBrowser::ItemHovered(const fs::path& item)
     {
+        if (item.extension() == Model::FILE_EXTENSION)
+        {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+            {
+                // Spawn model at camera position
 
+                EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+                entt::registry& registry = *registries->gameRegistry;
+                entt::registry::context& ctx = registry.ctx();
+
+                auto& tSystem = ECS::TransformSystem::Get(registry);
+                ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+
+                if (activeCamera.entity == entt::null)
+                    return;
+
+                ECS::Components::Transform& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
+
+                entt::entity entity = registry.create();
+                registry.emplace<ECS::Components::Name>(entity);
+                registry.emplace<ECS::Components::Model>(entity);
+                registry.emplace<ECS::Components::AABB>(entity);
+                registry.emplace<ECS::Components::Transform>(entity);
+
+                tSystem.SetLocalTransform(entity, cameraTransform.GetWorldPosition(), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+
+                std::string relativePath = fs::relative(item, _modelTopPath).string();
+                std::replace(relativePath.begin(), relativePath.end(), L'\\', L'/');
+
+                u32 modelPathHash = StringUtils::fnv1a_32(relativePath.c_str(), relativePath.length());
+                _gameRenderer->GetModelLoader()->LoadModelForEntity(entity, modelPathHash);
+            }
+        }
     }
 
     void AssetBrowser::CalculateAverageFontWidth()
