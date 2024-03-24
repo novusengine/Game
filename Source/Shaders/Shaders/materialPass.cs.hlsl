@@ -26,9 +26,10 @@ struct Constants
 [[vk::push_constant]] Constants _constants;
 
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
-[[vk::binding(3, PER_PASS)]] Texture2D<float4> _transparency;
-[[vk::binding(4, PER_PASS)]] Texture2D<float> _transparencyWeights;
-[[vk::binding(5, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
+[[vk::binding(3, PER_PASS)]] Texture2D<float4> _skyboxColor;
+[[vk::binding(4, PER_PASS)]] Texture2D<float4> _transparency;
+[[vk::binding(5, PER_PASS)]] Texture2D<float> _transparencyWeights;
+[[vk::binding(6, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
 float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
@@ -342,7 +343,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 	float4 color = float4(0, 0, 0, 1);
 	
 	float3 pixelWorldPos = _cameras[0].eyePosition.xyz;
-	if (vBuffer.typeID == ObjectType::Skybox || vBuffer.typeID == ObjectType::JoltDebug)
+	if (vBuffer.typeID == ObjectType::Skybox)
+	{
+		color = _skyboxColor.Load(int3(pixelPos, 0));
+	}
+	else if (vBuffer.typeID == ObjectType::JoltDebug)
 	{
 		// These are passthrough and only write a color packed into vBufferData.y
 		color = PackedUnormsToFloat4(vBufferData.y);

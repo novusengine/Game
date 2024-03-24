@@ -13,6 +13,8 @@
 #include <Renderer/GPUBuffer.h>
 #include <Renderer/GPUVector.h>
 
+#include <entt/fwd.hpp>
+
 class DebugRenderer;
 struct RenderResources;
 
@@ -66,9 +68,6 @@ public:
 
 		u32 transparentDrawCallTemplateOffset = 0;
 		u32 numTransparentDrawCalls = 0;
-
-		u32 opaqueDrawCallOffset = 0;
-		u32 transparentDrawCallOffset = 0;
 
 		u32 vertexOffset = 0;
 		u32 numVertices = 0;
@@ -144,12 +143,14 @@ public:
 	void Reserve(const ReserveInfo& reserveInfo);
 	void FitBuffersAfterLoad();
 	u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-	u32 AddPlacementInstance(u32 modelID, const Terrain::Placement& placement);
-	u32 AddInstance(u32 modelID, const mat4x4& transformMatrix);
-	void ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix);
+	u32 AddPlacementInstance(entt::entity entityID, u32 modelID, const Terrain::Placement& placement);
+	u32 AddInstance(entt::entity entityID, u32 modelID, const mat4x4& transformMatrix);
+	void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, const mat4x4& transformMatrix);
 
 	bool AddAnimationInstance(u32 instanceID);
 	bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
+
+	void AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
 	void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 	void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -162,7 +163,7 @@ public:
 	void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 	Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
-	std::vector<ModelManifest> GetModelManifests() { return _modelManifests; }
+	const std::vector<ModelManifest>& GetModelManifests() { return _modelManifests; }
 	u32 GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque);
 
 	CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
@@ -185,6 +186,7 @@ private:
 
 	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
 	void DrawTransparent(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
+	void DrawSkybox(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params, bool isTransparent);
 
 private:
 	PRAGMA_NO_PADDING_START
@@ -217,6 +219,8 @@ private:
 
 	Renderer::GPUVector<InstanceData> _instanceDatas;
 	Renderer::GPUVector<mat4x4> _instanceMatrices;
+	std::vector<u32> _instanceIDToOpaqueDrawCallOffset;
+	std::vector<u32> _instanceIDToTransparentDrawCallOffset;
 	std::atomic<u32> _instanceIndex = 0;
 
 	Renderer::GPUVector<TextureUnit> _textureUnits;
@@ -235,6 +239,9 @@ private:
 
 	CullingResourcesIndexed<DrawCallData> _opaqueCullingResources;
 	CullingResourcesIndexed<DrawCallData> _transparentCullingResources;
+
+	CullingResourcesIndexed<DrawCallData> _opaqueSkyboxCullingResources;
+	CullingResourcesIndexed<DrawCallData> _transparentSkyboxCullingResources;
 
 	// GPU-only workbuffers
 	Renderer::BufferID _occluderArgumentBuffer;

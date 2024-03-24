@@ -8,9 +8,6 @@
 #include <Renderer/Descriptors/VertexShaderDesc.h>
 #include <Renderer/Descriptors/PixelShaderDesc.h>
 
-Renderer::DescriptorSet RenderUtils::_overlayDescriptorSet;
-Renderer::DescriptorSet RenderUtils::_copyDepthToColorRTDescriptorSet;
-
 std::string GetTexTypeName(Renderer::ImageDesc imageDesc)
 {
     Renderer::ImageComponentType componentType = Renderer::ToImageComponentType(imageDesc.format);
@@ -104,7 +101,6 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
         mipLevel = imageDesc.mipLevels - 1;
     }
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.input, mipLevel);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -163,7 +159,6 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
     commandList.BeginPipeline(pipeline);
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.input);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -234,7 +229,6 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
         mipLevel = imageDesc.mipLevels - 1;
     }
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.overlayImage, mipLevel);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -302,7 +296,6 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
 
     commandList.BeginPipeline(pipeline);
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.overlayImage);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -380,7 +373,6 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
         mipLevel = imageDesc.mipLevels - 1;
     }
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.pipImage, mipLevel);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -461,7 +453,6 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
 
     commandList.BeginPipeline(pipeline);
 
-    _overlayDescriptorSet.Bind("_sampler", params.sampler);
     params.descriptorSet.Bind("_texture", params.pipImage);
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.descriptorSet, frameIndex);
 
@@ -517,17 +508,6 @@ void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, Renderer::Rende
 
     uvec2 destinationSize = graphResources.GetImageDimensions(params.destination, params.destinationMip);
 
-    Renderer::SamplerDesc samplerDesc;
-    samplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
-    samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.minLOD = 0.f;
-    samplerDesc.maxLOD = 16.f;
-    samplerDesc.mode = Renderer::SamplerReductionMode::MIN;
-
-    Renderer::SamplerID occlusionSampler = renderer->CreateSampler(samplerDesc);
-    _copyDepthToColorRTDescriptorSet.Bind("_sampler", occlusionSampler);
     params.descriptorSet.Bind("_source", params.source);
     params.descriptorSet.BindStorage("_target", params.destination, params.destinationMip);
 

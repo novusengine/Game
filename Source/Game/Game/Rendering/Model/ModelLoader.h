@@ -58,10 +58,15 @@ public:
 	void Clear();
 	void Update(f32 deltaTime);
 
+	entt::entity CreateModelEntity(const std::string& name);
+
 	void LoadPlacement(const Terrain::Placement& placement);
 	void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
-	void LoadModel(entt::entity entity, u32 modelNameHash);
+	void LoadModelForEntity(entt::entity entity, u32 modelNameHash);
 
+	void UnloadModelForEntity(entt::entity entity, u32 modelID);
+
+	u32 GetModelHashFromModelPath(const std::string& modelPath);
 	bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
 	bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
 

@@ -112,6 +112,7 @@ private:
 	Constants _constants;
 
 	Renderer::SamplerID _sampler;
+	Renderer::SamplerID _depthCopySampler;
 	Renderer::TextureArrayID _textures;
 
 	CullingResourcesIndexed<DrawCallData> _cullingResources;

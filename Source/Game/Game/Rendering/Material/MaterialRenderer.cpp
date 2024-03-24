@@ -47,6 +47,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     struct MaterialPassData
     {
         Renderer::ImageResource visibilityBuffer;
+        Renderer::ImageResource skyboxColor;
         Renderer::ImageResource transparency;
         Renderer::ImageResource transparencyWeights;
         Renderer::DepthImageResource depth;
@@ -64,6 +65,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         [this, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+            data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
             data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
             data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
@@ -105,6 +107,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             commandList.BeginPipeline(pipeline);
 
             data.modelSet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.modelSet.Bind("_skyboxColor", data.skyboxColor);
             data.modelSet.Bind("_transparency", data.transparency);
             data.modelSet.Bind("_transparencyWeights", data.transparencyWeights);
             data.modelSet.Bind("_depth"_h, data.depth);

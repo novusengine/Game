@@ -41,6 +41,8 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ImguiPass);
 
+            commandList.ImageBarrier(data.color);
+
             Renderer::GraphicsPipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);
 
