@@ -7,8 +7,10 @@ on:
 jobs:
   win-build:
     runs-on: self-hosted
+    
     strategy:
       fail-fast: false
+      
     steps:
     - uses: actions/checkout@v4
       with:
@@ -19,7 +21,7 @@ jobs:
       run: |
         git submodule update --init --recursive
 
-    - name: Premake
+    - name: Run Premake
       run: |
         premake5 vs2022
 
