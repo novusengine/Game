@@ -4,10 +4,10 @@
 
 namespace ECS::Systems
 {
-	class UpdatePhysics
-	{
-	public:
-		static void Init(entt::registry& registry);
-		static void Update(entt::registry& registry, f32 deltaTime);
-	};
+    class UpdatePhysics
+    {
+    public:
+        static void Init(entt::registry& registry);
+        static void Update(entt::registry& registry, f32 deltaTime);
+    };
 }

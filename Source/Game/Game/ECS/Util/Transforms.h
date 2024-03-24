@@ -40,6 +40,7 @@ namespace ECS
 
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
         void ParentEntityTo(entt::entity parent, entt::entity child);        
+        void ClearParent(entt::entity entity);
 
         //iterates the children of a given node. NOT recursive
         //callback is in the form SceneComponent* child
@@ -134,7 +135,6 @@ namespace ECS::Components
 
         const vec3 GetWorldPosition() const;
         const quat GetWorldRotation() const;
-
 
         const quat& GetLocalRotation() const
         {

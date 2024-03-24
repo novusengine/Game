@@ -93,6 +93,7 @@ namespace Editor
         bool _needToResetScroll = false;
 
         fs::path _topPath;
+        fs::path _modelTopPath;
         std::string _searchedString;
         std::vector<fs::path> _searchedFiles;
 

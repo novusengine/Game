@@ -956,8 +956,8 @@ void JoltDebugRenderer::SyncToGPU()
     _indexedCullingResources.SyncToGPU();
     _cullingResources.SyncToGPU();
 
-    SetupCullingResource(_indexedCullingResources);
-    SetupCullingResource(_cullingResources);
+    BindCullingResource(_indexedCullingResources);
+    BindCullingResource(_cullingResources);
 }
 
 void JoltDebugRenderer::Compact()

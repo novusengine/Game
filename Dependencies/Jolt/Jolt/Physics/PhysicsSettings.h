@@ -75,10 +75,10 @@ struct PhysicsSettings
 
 	/// Number of solver velocity iterations to run
 	/// Note that this needs to be >= 2 in order for friction to work (friction is applied using the non-penetration impulse from the previous iteration)
-	uint		mNumVelocitySteps = 10;
+	int			mNumVelocitySteps = 10;
 
 	/// Number of solver position iterations to run
-	uint		mNumPositionSteps = 2;
+	int			mNumPositionSteps = 2;
 
 	/// Minimal velocity needed before a collision can be elastic (unit: m)
 	float		mMinVelocityForRestitution = 1.0f;
@@ -101,7 +101,7 @@ struct PhysicsSettings
 	/// Whether or not to use the body pair cache, which removes the need for narrow phase collision detection when orientation between two bodies didn't change
 	bool		mUseBodyPairContactCache = true;
 
-	/// Whether or not to reduce manifolds with similar contact normals into one contact manifold (see description at Body::SetUseManifoldReduction)
+	/// Whether or not to reduce manifolds with similar contact normals into one contact manifold
 	bool		mUseManifoldReduction = true;
 
 	/// If we split up large islands into smaller parallel batches of work (to improve performance)

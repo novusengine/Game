@@ -108,8 +108,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 
     JPH::RegisterDefaultAllocator();
 
-	_window = new Novus::Window();
-	_window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
+    _window = new Novus::Window();
+    _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
     KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);
@@ -121,14 +121,14 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
-	_renderer = new Renderer::RendererVK(_window);
+    _renderer = new Renderer::RendererVK(_window);
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
 
     InitImgui();
-	_renderer->InitDebug();
-	_renderer->InitWindow(_window);
+    _renderer->InitDebug();
+    _renderer->InitWindow(_window);
 
     _debugRenderer = new DebugRenderer(_renderer);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
@@ -162,7 +162,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 
 GameRenderer::~GameRenderer()
 {
-	delete _renderer;
+    delete _renderer;
 }
 
 bool GameRenderer::UpdateWindow(f32 deltaTime)
@@ -255,10 +255,12 @@ f32 GameRenderer::Render()
         {
             Renderer::ImageMutableResource visibilityBuffer;
             Renderer::ImageMutableResource sceneColor;
+            Renderer::ImageMutableResource skyboxColor;
             Renderer::ImageMutableResource finalColor;
             Renderer::ImageMutableResource transparency;
             Renderer::ImageMutableResource transparencyWeights;
             Renderer::DepthImageMutableResource depth;
+            Renderer::DepthImageMutableResource skyboxDepth;
         };
 
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
@@ -266,10 +268,12 @@ f32 GameRenderer::Render()
             {
                 data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.sceneColor = builder.Write(_resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.skyboxColor = builder.Write(_resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.finalColor = builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.transparency = builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.transparencyWeights = builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.depth = builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                data.skyboxDepth = builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
@@ -286,6 +290,9 @@ f32 GameRenderer::Render()
             });
     }
     _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
+
+    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
@@ -338,7 +345,6 @@ f32 GameRenderer::Render()
             DepthPyramidUtils::BuildPyramid(params);
         });
 
-
     _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
     
@@ -347,8 +353,6 @@ f32 GameRenderer::Render()
 
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
-
-    _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
@@ -469,6 +473,7 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f); // Sky blue
 
     _resources.sceneColor = _renderer->CreateImage(sceneColorDesc);
+    _resources.skyboxColor = _renderer->CreateImage(sceneColorDesc);
 
     sceneColorDesc.debugName = "FinalColor";
     sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
@@ -516,6 +521,7 @@ void GameRenderer::CreatePermanentResources()
     mainDepthDesc.depthClearValue = 0.0f;
 
     _resources.depth = _renderer->CreateDepthImage(mainDepthDesc);
+    _resources.skyboxDepth = _renderer->CreateDepthImage(mainDepthDesc);
     _resources.debugRendererDepth = _renderer->CreateDepthImage(mainDepthDesc);
 
     // Copy of the depth, as a color rendertarget

@@ -10,8 +10,8 @@ namespace Editor
 
 namespace Util
 {
-	namespace Physics
-	{
-		bool GetMouseWorldPosition(Editor::Viewport* viewport, vec3& mouseWorldPosition);
-	}
+    namespace Physics
+    {
+        bool GetMouseWorldPosition(Editor::Viewport* viewport, vec3& mouseWorldPosition);
+    }
 }

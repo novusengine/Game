@@ -97,6 +97,10 @@ namespace ECS::Systems
     void OnDynamicMeshCreated(entt::registry& registry, entt::entity entity)
     {
         auto& activeCamera = registry.ctx().get<ECS::Singletons::ActiveCamera>();
+
+        if (activeCamera.entity == entt::null)
+            return;
+
         auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
 
         entt::registry::context& ctx = registry.ctx();
@@ -201,7 +205,8 @@ namespace ECS::Systems
         // Step the world
         {
             constexpr f32 minTimePerStep = 1 / 60.0f;
-            const i32 collisionSteps = static_cast<i32>(glm::ceil(deltaTime / minTimePerStep));
+            i32 collisionSteps = static_cast<i32>(glm::ceil(deltaTime / minTimePerStep));
+            collisionSteps = glm::clamp(collisionSteps, 1, 4);
 
             joltState.physicsSystem.Update(deltaTime, collisionSteps, &joltState.allocator, &joltState.scheduler);
         }
@@ -220,7 +225,7 @@ namespace ECS::Systems
                     u32 userData = static_cast<u32>(bodyInterface.GetUserData(bodyID));
                     auto entityID = static_cast<entt::entity>(userData);
 
-                    bool needsPhysicsWriteToECS = registry.any_of<Components::StaticMesh, Components::KinematicMesh, Components::DynamicMesh>(entityID);
+                    bool needsPhysicsWriteToECS = registry.any_of<Components::Transform>(entityID);
                     if (needsPhysicsWriteToECS)
                     {
                         auto& transform = registry.get<ECS::Components::Transform>(entityID);

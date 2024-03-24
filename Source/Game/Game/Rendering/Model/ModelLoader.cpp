@@ -5,9 +5,11 @@
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Components/Name.h"
 #include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Singletons/Skybox.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
+#include "Game/Util/JoltStream.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Memory/FileReader.h>
@@ -18,6 +20,10 @@
 #include <FileFormat/Novus/Map/MapChunk.h>
 
 #include <entt/entt.hpp>
+
+
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 
 #include <atomic>
 #include <mutex>
@@ -191,11 +197,23 @@ void ModelLoader::Clear()
     _modelIDToNameHash.clear();
 
     _modelRenderer->Clear();
+
+
+    auto view = registry->view<ECS::Components::Model>();
+    view.each([&](ECS::Components::Model& model)
+    {
+        model.instanceID = std::numeric_limits<u32>().max();
+    });
+
     ServiceLocator::GetAnimationSystem()->Clear();
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     
     _createdEntities.clear();
+
+    entt::registry::context& ctx = registry->ctx();
+    ECS::Singletons::Skybox& skybox = ctx.get<ECS::Singletons::Skybox>();
+    registry->get<ECS::Components::Model>(skybox.entity).instanceID = std::numeric_limits<u32>::max();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -352,14 +370,23 @@ void ModelLoader::Update(f32 deltaTime)
         {
             ModelRenderer::ReserveInfo reserveInfo;
 
+            std::vector<u32> unloadRequests;
+            unloadRequests.reserve(16);
+
             for (u32 i = 0; i < numDequeued; i++)
             {
                 LoadRequestInternal& request = _dynamicLoadRequests[i];
                 u32 nameHash = request.placement.nameHash;
 
+                if (nameHash == std::numeric_limits<u32>().max())
+                {
+                    unloadRequests.push_back(i);
+                    continue;
+                }
+
                 if (!_nameHashToDiscoveredModel.contains(nameHash))
                 {
-                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered");
+                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
                     continue;
                 }
 
@@ -446,11 +473,43 @@ void ModelLoader::Update(f32 deltaTime)
                 AddDynamicInstance(request.entity, request);
             }
 
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            mat4x4 identity = mat4x4(1.0f);
+
+            for (u32 dynamicRequestID : unloadRequests)
+            {
+                LoadRequestInternal& request = _dynamicLoadRequests[dynamicRequestID];
+
+                ECS::Components::Model& model = registry->get<ECS::Components::Model>(request.entity);
+
+                if (model.modelID != request.placement.uniqueID)
+                    continue;
+
+                _modelRenderer->ModifyInstance(request.entity, model.instanceID, std::numeric_limits<u32>().max(), identity);
+            }
+
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
             animationSystem->FitToBuffersAfterLoad();
         }
     }
+}
+
+entt::entity ModelLoader::CreateModelEntity(const std::string& name)
+{
+    entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    entt::entity entity = registry.create();
+    auto& nameComponent = registry.emplace<ECS::Components::Name>(entity);
+    nameComponent.name = name;
+    nameComponent.nameHash = StringUtils::fnv1a_32(name.c_str(), name.size());
+    nameComponent.fullName = "";
+
+    registry.emplace<ECS::Components::AABB>(entity);
+    registry.emplace<ECS::Components::Transform>(entity);
+    registry.emplace<ECS::Components::Model>(entity);
+
+    return entt::entity(entity);
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -479,13 +538,36 @@ void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Deco
     _staticRequests.enqueue(loadRequest);
 }
 
-void ModelLoader::LoadModel(entt::entity entity, u32 modelNameHash)
+void ModelLoader::LoadModelForEntity(entt::entity entity, u32 modelNameHash)
 {
     LoadRequestInternal loadRequest;
     loadRequest.entity = entity;
     loadRequest.placement.nameHash = modelNameHash;
 
     _dynamicRequests.enqueue(loadRequest);
+}
+
+void ModelLoader::UnloadModelForEntity(entt::entity entity, u32 modelID)
+{
+    LoadRequestInternal loadRequest;
+    loadRequest.entity = entity;
+    loadRequest.placement.uniqueID = modelID;
+    loadRequest.placement.nameHash = std::numeric_limits<u32>().max();
+
+    _dynamicRequests.enqueue(loadRequest);
+}
+
+u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
+{
+    u32 nameHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+
+    if (!_nameHashToDiscoveredModel.contains(nameHash))
+    {
+        DebugHandler::PrintError("Failed to find DiscoveredModel for Model ({0})", modelPath);
+        return std::numeric_limits<u32>().max();
+    }
+
+    return nameHash;
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
@@ -577,46 +659,21 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     {
         // Disabled on purpose for now
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        u32 numPhysicsBytes = static_cast<u32>(model.physicsData.size());
 
-        if (physicsEnabled)
+        if (physicsEnabled && numPhysicsBytes > 0)
         {
-            u32 numCollisionVertices = static_cast<u32>(model.collisionVertexPositions.size());
-            u32 numCollisionIndices = static_cast<u32>(model.collisionIndices.size());
-            u32 indexRemainder = numCollisionIndices % 3;
+            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(model.physicsData.data(), numPhysicsBytes);
+            JoltStreamIn streamIn(physicsBuffer);
 
-            if (numCollisionVertices > 0 && numCollisionIndices > 0 && indexRemainder == 0)
-            {
-                u32 numTriangles = numCollisionIndices / 3;
+            JPH::Shape::IDToShapeMap shapeMap;
+            JPH::Shape::IDToMaterialMap materialMap;
 
-                JPH::VertexList vertexList;
-                vertexList.reserve(numCollisionVertices);
+            JPH::MeshShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(streamIn, shapeMap, materialMap);
+            JPH::ShapeRefC shape = shapeResult.Get();
 
-                JPH::IndexedTriangleList triangleList;
-                triangleList.reserve(numTriangles);
-
-                for (u32 i = 0; i < numCollisionVertices; i++)
-                {
-                    const vec3& vertexPos = model.collisionVertexPositions[i];
-                    vertexList.push_back({ vertexPos.x, vertexPos.y, vertexPos.z });
-                }
-
-                for (u32 i = 0; i < numTriangles; i++)
-                {
-                    u32 offset = i * 3;
-
-                    u16 indexA = model.collisionIndices[offset + 2];
-                    u16 indexB = model.collisionIndices[offset + 1];
-                    u16 indexC = model.collisionIndices[offset + 0];
-
-                    triangleList.push_back({ indexA, indexB, indexC });
-                }
-
-                JPH::MeshShapeSettings shapeSetting(vertexList, triangleList);
-                JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
-
-                _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
-                discoveredModel.hasShape = true;
-            }
+            _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
+            discoveredModel.hasShape = true;
         }
     }
 
@@ -641,7 +698,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     name.nameHash = discoveredModel.nameHash;
 
     u32 modelID = _nameHashToModelID[request.placement.nameHash];
-    u32 instanceID = _modelRenderer->AddPlacementInstance(modelID, request.placement);
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, request.placement);
 
     ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
     model.modelID = modelID;
@@ -684,7 +741,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             const quat& rotation = transform.GetWorldRotation();
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(shape, JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3::sReplicate(scale)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
@@ -699,7 +756,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     //Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     //if (animationSystem->AddInstance(modelID, instanceID))
     //{
-    //	animationSystem->PlayAnimation(instanceID, 0);
+    //	animationSystem->PlayAnimation(instanceID, Animation::Type::Stand, true, true);
     //}
 }
 
@@ -721,11 +778,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
     if (instanceID == std::numeric_limits<u32>().max())
     {
-        instanceID = _modelRenderer->AddInstance(modelID, transform.GetMatrix());
+        instanceID = _modelRenderer->AddInstance(entityID, modelID, transform.GetMatrix());
     }
     else
     {
-        _modelRenderer->ModifyInstance(instanceID, modelID, transform.GetMatrix());
+        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, transform.GetMatrix());
     }
 
     model.modelID = modelID;
@@ -743,6 +800,6 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     if (animationSystem->AddInstance(modelID, instanceID))
     {
-        animationSystem->PlayAnimation(instanceID, 0);
+        animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop);
     }
 }

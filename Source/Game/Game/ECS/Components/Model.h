@@ -8,7 +8,7 @@ namespace ECS::Components
 	{
 	public:
 		u32 modelID;
-		u32 instanceID;
+		u32 instanceID = std::numeric_limits<u32>().max();
 	};
 }
 

@@ -1,5 +1,6 @@
 #include "FreeflyingCamera.h"
 
+#include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Components/Camera.h"
@@ -20,8 +21,8 @@ namespace ECS::Systems
 {
     KeybindGroup* FreeflyingCamera::_keybindGroup = nullptr;
 
-	void FreeflyingCamera::Init(entt::registry& registry)
-	{
+    void FreeflyingCamera::Init(entt::registry& registry)
+    {
         entt::registry::context& ctx = registry.ctx();
         Singletons::ActiveCamera& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
         Singletons::FreeflyingCameraSettings& settings = ctx.emplace<Singletons::FreeflyingCameraSettings>();
@@ -30,6 +31,8 @@ namespace ECS::Systems
         {
             entt::entity cameraEntity = registry.create();
             activeCamera.entity = cameraEntity;
+            settings.entity = cameraEntity;
+
             Components::Transform& transform = registry.emplace<Components::Transform>(cameraEntity);
             TransformSystem::Get(registry).SetLocalPosition(cameraEntity, vec3(0, 10, -10));
 
@@ -39,7 +42,7 @@ namespace ECS::Systems
         }
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
-		_keybindGroup = inputManager->CreateKeybindGroup("FreeFlyingCamera", 10);
+        _keybindGroup = inputManager->CreateKeybindGroup("FreeFlyingCamera", 10);
         _keybindGroup->SetActive(true);
 
         _keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, nullptr);
@@ -86,15 +89,17 @@ namespace ECS::Systems
 
             return altIsDown;
         });
+    }
 
-	}
-
-	void FreeflyingCamera::Update(entt::registry& registry, f32 deltaTime)
-	{
+    void FreeflyingCamera::Update(entt::registry& registry, f32 deltaTime)
+    {
         entt::registry::context& ctx = registry.ctx();
 
         Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
         Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
+
+        if (activeCamera.entity != settings.entity)
+            return;
 
         auto& tSystem = ECS::TransformSystem::Get(registry);
 
@@ -140,10 +145,13 @@ namespace ECS::Systems
         vec3 eulerAngles = vec3(camera.pitch, camera.yaw, camera.roll);
 
         tSystem.SetLocalRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
-	}
+    }
 
     void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)
     {
+        if (!_keybindGroup->IsActive())
+            return;
+
         entt::registry::context& ctx = registry.ctx();
 
         Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();

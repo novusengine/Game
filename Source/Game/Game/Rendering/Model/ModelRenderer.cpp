@@ -8,8 +8,9 @@
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/TextureSingleton.h"
 #include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Components/Tags.h"
+#include "Game/ECS/Singletons/TextureSingleton.h"
 #include "Game/ECS/Util/Transforms.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -57,8 +58,12 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
         _boneMatrices.SetValidation(true);
 
         _cullingDatas.SetValidation(true);
+
         _opaqueCullingResources.SetValidation(true);
         _transparentCullingResources.SetValidation(true);
+
+        _opaqueSkyboxCullingResources.SetValidation(true);
+        _transparentSkyboxCullingResources.SetValidation(true);
     }
 }
 
@@ -77,19 +82,26 @@ void ModelRenderer::Update(f32 deltaTime)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
+    {
+        u32 instanceID = model.instanceID;
+        if (instanceID == std::numeric_limits<u32>::max())
         {
-            u32 instanceID = model.instanceID;
+            return;
+        }
 
-            std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
-            mat4x4& matrix = instanceMatrices[instanceID];
+        std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
+        mat4x4& matrix = instanceMatrices[instanceID];
 
-            matrix = transform.GetMatrix();
-            _instanceMatrices.SetDirtyElement(instanceID);
-        });
+        matrix = transform.GetMatrix();
+        _instanceMatrices.SetDirtyElement(instanceID);
+    });
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
     _opaqueCullingResources.Update(deltaTime, cullingEnabled);
     _transparentCullingResources.Update(deltaTime, cullingEnabled);
+
+    _opaqueSkyboxCullingResources.Update(deltaTime, false);
+    _transparentSkyboxCullingResources.Update(deltaTime, false);
 
     SyncToGPU();
 }
@@ -132,6 +144,9 @@ void ModelRenderer::Clear()
 
     _opaqueCullingResources.Clear();
     _transparentCullingResources.Clear();
+
+    _opaqueSkyboxCullingResources.Clear();
+    _transparentSkyboxCullingResources.Clear();
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 
@@ -610,6 +625,186 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         });
 }
 
+void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    ZoneScoped;
+
+    if (!CVAR_ModelRendererEnabled.Get())
+        return;
+
+    if (_opaqueSkyboxCullingResources.GetDrawCalls().Size() > 0)
+    {
+        struct Data
+        {
+            Renderer::ImageMutableResource color;
+            Renderer::DepthImageMutableResource depth;
+
+            Renderer::BufferMutableResource drawCallsBuffer;
+            Renderer::BufferMutableResource culledDrawCallsBuffer;
+            Renderer::BufferMutableResource drawCountBuffer;
+            Renderer::BufferMutableResource triangleCountBuffer;
+            Renderer::BufferMutableResource drawCountReadBackBuffer;
+            Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
+            Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource drawSet;
+        };
+
+        renderGraph->AddPass<Data>("Skybox Models",
+            [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            {
+                using BufferUsage = Renderer::BufferPassUsage;
+
+                data.color = builder.Write(resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.depth = builder.Write(resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+                builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_opaqueSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+                builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
+
+                data.drawCallsBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+                data.culledDrawCallsBuffer = builder.Write(_opaqueSkyboxCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+                data.drawCountBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+                data.triangleCountBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+                data.drawCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+                data.triangleCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+                data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.drawSet = builder.Use(_opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet());
+
+                return true; // Return true from setup to enable this pass, return false to disable it
+            },
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+            {
+                GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxModels);
+
+                CulledRenderer::GeometryPassParams params;
+                params.passName = "Skybox Models";
+                params.graphResources = &graphResources;
+                params.commandList = &commandList;
+                params.cullingResources = &_opaqueSkyboxCullingResources;
+
+                params.frameIndex = frameIndex;
+                params.rt0 = data.color;
+                params.depth = data.depth;
+
+                params.drawCallsBuffer = data.drawCallsBuffer;
+                params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+                params.drawCountBuffer = data.drawCountBuffer;
+                params.triangleCountBuffer = data.triangleCountBuffer;
+                params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+                params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
+
+                params.globalDescriptorSet = data.globalSet;
+                params.drawDescriptorSet = data.drawSet;
+
+                params.drawCallback = [&](const DrawParams& drawParams)
+                {
+                    DrawSkybox(resources, frameIndex, graphResources, commandList, drawParams, false);
+                };
+
+                params.enableDrawing = CVAR_ModelDrawGeometry.Get();
+                params.cullingEnabled = false;
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+
+                GeometryPass(params);
+            });
+    }
+
+    if (_transparentSkyboxCullingResources.GetDrawCalls().Size() > 0)
+    {
+        struct Data
+        {
+            Renderer::ImageMutableResource color;
+            Renderer::DepthImageMutableResource depth;
+
+            Renderer::BufferMutableResource drawCallsBuffer;
+            Renderer::BufferMutableResource culledDrawCallsBuffer;
+            Renderer::BufferMutableResource drawCountBuffer;
+            Renderer::BufferMutableResource triangleCountBuffer;
+            Renderer::BufferMutableResource drawCountReadBackBuffer;
+            Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
+            Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource drawSet;
+        };
+
+        renderGraph->AddPass<Data>("Skybox Models (T)",
+            [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+            {
+                using BufferUsage = Renderer::BufferPassUsage;
+
+                data.color = builder.Write(resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.depth = builder.Write(resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+                builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_transparentSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+
+                builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
+
+                data.drawCallsBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+                data.culledDrawCallsBuffer = builder.Write(_transparentSkyboxCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+                data.drawCountBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+                data.triangleCountBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+                data.drawCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
+                data.triangleCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+
+                data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.drawSet = builder.Use(_transparentSkyboxCullingResources.GetGeometryPassDescriptorSet());
+
+                return true; // Return true from setup to enable this pass, return false to disable it
+            },
+            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+            {
+                GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxTransparency);
+
+                CulledRenderer::GeometryPassParams params;
+                params.passName = "Skybox Models (T)";
+                params.graphResources = &graphResources;
+                params.commandList = &commandList;
+                params.cullingResources = &_transparentSkyboxCullingResources;
+
+                params.frameIndex = frameIndex;
+                params.rt0 = data.color;
+                params.depth = data.depth;
+
+                params.drawCallsBuffer = data.drawCallsBuffer;
+                params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+                params.drawCountBuffer = data.drawCountBuffer;
+                params.triangleCountBuffer = data.triangleCountBuffer;
+                params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+                params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
+
+                params.globalDescriptorSet = data.globalSet;
+                params.drawDescriptorSet = data.drawSet;
+
+                params.drawCallback = [&](const DrawParams& drawParams)
+                {
+                    DrawSkybox(resources, frameIndex, graphResources, commandList, drawParams, true);
+                };
+
+                params.enableDrawing = CVAR_ModelDrawGeometry.Get();
+                params.cullingEnabled = false;
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+
+                GeometryPass(params);
+            });
+    }
+}
+
 void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder)
 {
     using BufferUsage = Renderer::BufferPassUsage;
@@ -649,6 +844,8 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _instanceDatas.Grow(reserveInfo.numInstances);
     _instanceMatrices.Grow(reserveInfo.numInstances);
+    _instanceIDToOpaqueDrawCallOffset.resize(_instanceIDToOpaqueDrawCallOffset.size() + reserveInfo.numInstances);
+    _instanceIDToTransparentDrawCallOffset.resize(_instanceIDToTransparentDrawCallOffset.size() + reserveInfo.numInstances);
 
     _textureUnits.Grow(reserveInfo.numTextureUnits);
 
@@ -669,6 +866,9 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
     _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
+
+    _opaqueSkyboxCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
+    _transparentSkyboxCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
 
     u32 numUniqueOpaqueDrawCalls = static_cast<u32>(_modelOpaqueDrawCallTemplates.size());
     _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls + reserveInfo.numUniqueOpaqueDrawcalls);
@@ -693,6 +893,8 @@ void ModelRenderer::FitBuffersAfterLoad()
     u32 numInstancesUsed = _instanceIndex.load();
     _instanceDatas.Resize(numInstancesUsed);
     _instanceMatrices.Resize(numInstancesUsed);
+    _instanceIDToOpaqueDrawCallOffset.resize(numInstancesUsed);
+    _instanceIDToTransparentDrawCallOffset.resize(numInstancesUsed);
 
     u32 numTextureUnitsUsed = _textureUnitIndex.load();
     _textureUnits.Resize(numTextureUnitsUsed);
@@ -708,6 +910,9 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     _opaqueCullingResources.FitBuffersAfterLoad();
     _transparentCullingResources.FitBuffersAfterLoad();
+
+    _opaqueSkyboxCullingResources.FitBuffersAfterLoad();
+    _transparentSkyboxCullingResources.FitBuffersAfterLoad();
 
     u32 numUniqueOpaqueDrawCalls = _modelOpaqueDrawCallTemplateIndex.load();
     _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls);
@@ -791,11 +996,9 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     {
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
         modelManifest.opaqueDrawCallTemplateOffset = _modelOpaqueDrawCallTemplateIndex.fetch_add(modelManifest.numOpaqueDrawCalls);
-        modelManifest.opaqueDrawCallOffset = 0;
 
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
         modelManifest.transparentDrawCallTemplateOffset = _modelTransparentDrawCallTemplateIndex.fetch_add(modelManifest.numTransparentDrawCalls);
-        modelManifest.transparentDrawCallOffset = 0;
 
         u32 numAddedIndices = 0;
 
@@ -840,12 +1043,12 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
                     {
-                        static const u32 defaultSkinHash = "textures\\bakednpctextures\\creaturedisplayextra-00872.dds"_h;
+                        static const u32 defaultSkinHash = "textures/bakednpctextures/creaturedisplayextra-00872.dds"_h;
                         textureDesc.path = textureSingleton.textureHashToPath[defaultSkinHash];
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
                     {
-                        static const u32 defaultHairHash = "character\\human\\female\\humanfemalehairlongwavy.dds"_h;
+                        static const u32 defaultHairHash = "character/human/female/humanfemalehairlongwavy.dds"_h;
                         textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
                     }
 
@@ -955,17 +1158,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelManifestIndex;
 }
 
-u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& placement)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, const Terrain::Placement& placement)
 {
     vec3 scale = vec3(placement.scale) / 1024.0f;
 
     // Add Instance matrix
-
     mat4x4 rotationMatrix = glm::toMat4(placement.rotation);
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
     mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
 
-    u32 instanceID = AddInstance(modelID, instanceMatrix);
+    u32 instanceID = AddInstance(entityID, modelID, instanceMatrix);
 
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -1005,8 +1207,11 @@ u32 ModelRenderer::AddPlacementInstance(u32 modelID, const Terrain::Placement& p
     return instanceID;
 }
 
-u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
+u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, const mat4x4& transformMatrix)
 {
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    bool isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+
     ModelManifest& manifest = _modelManifests[modelID];
 
     u32 modelInstanceIndex = 0;
@@ -1044,10 +1249,13 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     // Set up Opaque DrawCalls and DrawCallDatas
     if (manifest.numOpaqueDrawCalls > 0)
     {
-        std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas().Get();
+        CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
 
-        u32 opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+        std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
+        std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+
+        u32 opaqueDrawCallOffset = opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+        _instanceIDToOpaqueDrawCallOffset[instanceID] = opaqueDrawCallOffset;
 
         // Copy DrawCalls
         {
@@ -1082,10 +1290,13 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     // Set up Transparent DrawCalls and DrawCallDatas
     if (manifest.numTransparentDrawCalls > 0)
     {
-        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas().Get();
+        CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
 
-        u32 transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
+        std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+
+        u32 transparentDrawCallOffset = transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+        _instanceIDToTransparentDrawCallOffset[instanceID] = transparentDrawCallOffset;
 
         // Copy DrawCalls
         {
@@ -1120,7 +1331,7 @@ u32 ModelRenderer::AddInstance(u32 modelID, const mat4x4& transformMatrix)
     return instanceID;
 }
 
-void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& transformMatrix)
+void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, const mat4x4& transformMatrix)
 {
     InstanceData& instanceData = _instanceDatas.Get()[instanceID];
 
@@ -1129,100 +1340,158 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& tr
     if (modelID == oldModelID)
         return;
 
-    ModelManifest& manifest = _modelManifests[modelID];
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    bool isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
 
     u32 oldOpaqueNumDrawCalls = std::numeric_limits<u32>().max();
     u32 oldOpaqueBaseIndex = std::numeric_limits<u32>().max();
     u32 oldTransparentNumDrawCalls = std::numeric_limits<u32>().max();
     u32 oldTransparentBaseIndex = std::numeric_limits<u32>().max();
 
-    u32 modelInstanceIndex = 0;
+    if (oldModelID != std::numeric_limits<u32>().max())
     {
         std::scoped_lock lock(_modelIDToNumInstancesMutex);
 
-        modelInstanceIndex = _modelIDToNumInstances[modelID]++;
+        ModelManifest& oldManifest = _modelManifests[oldModelID];
 
-        if (oldModelID != std::numeric_limits<u32>().max())
-        {
-            ModelManifest& oldManifest = _modelManifests[oldModelID];
-
-            _modelIDToNumInstances[oldModelID]--;
-            oldOpaqueNumDrawCalls = oldManifest.numOpaqueDrawCalls;
-            oldOpaqueBaseIndex = oldManifest.opaqueDrawCallOffset;
-            oldTransparentNumDrawCalls = oldManifest.numTransparentDrawCalls;
-            oldTransparentBaseIndex = oldManifest.transparentDrawCallOffset;
-        }
+        _modelIDToNumInstances[oldModelID]--;
+        oldOpaqueNumDrawCalls = oldManifest.numOpaqueDrawCalls;
+        oldOpaqueBaseIndex = _instanceIDToOpaqueDrawCallOffset[instanceID];
+        oldTransparentNumDrawCalls = oldManifest.numTransparentDrawCalls;
+        oldTransparentBaseIndex = _instanceIDToTransparentDrawCallOffset[instanceID];
     }
 
-    // Modify InstanceData
-    {
-        instanceData.modelID = modelID;
-        instanceData.modelVertexOffset = manifest.vertexOffset;
+    // Get the correct culling resources
+    CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
 
-        if (manifest.isAnimated)
+    std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
+    std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+
+    CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
+
+    std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
+    std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+
+    // Update the instancedatas modelID
+    instanceData.modelID = modelID;
+
+    // Set up new drawcalls if the modelID is valid
+    if (modelID != std::numeric_limits<u32>().max())
+    {
+        ModelManifest& manifest = _modelManifests[modelID];
+
+        u32 modelInstanceIndex = 0;
         {
-            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
-            if (animationSystemEnabled && *animationSystemEnabled == 1)
+            std::scoped_lock lock(_modelIDToNumInstancesMutex);
+            modelInstanceIndex = _modelIDToNumInstances[modelID]++;
+        }
+
+        // Modify InstanceData
+        {
+            instanceData.modelVertexOffset = manifest.vertexOffset;
+
+            if (manifest.isAnimated)
             {
-                u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
-                instanceData.animatedVertexOffset = animatedVertexOffset;
+                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
+                if (animationSystemEnabled && *animationSystemEnabled == 1)
+                {
+                    u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
+                    instanceData.animatedVertexOffset = animatedVertexOffset;
+                }
+            }
+            else
+            {
+                instanceData.animatedVertexOffset = std::numeric_limits<u32>().max();
+            }
+
+            _instanceDatas.SetDirtyElement(instanceID);
+        }
+
+        // Setup Instance matrix
+        {
+            mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
+            instanceMatrix = transformMatrix;
+
+            _instanceMatrices.SetDirtyElement(instanceID);
+        }
+
+        // Set up Opaque DrawCalls and DrawCallDatas
+        if (manifest.numOpaqueDrawCalls > 0)
+        {
+            u32 opaqueDrawCallOffset = opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
+            _instanceIDToOpaqueDrawCallOffset[instanceID] = opaqueDrawCallOffset;
+
+            // Copy DrawCalls
+            {
+                Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
+                Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
+                size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+                memcpy(dst, src, size);
+            }
+
+            // Copy DrawCallDatas
+            {
+                DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
+                DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
+                size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
+                memcpy(dst, src, size);
+            }
+
+            // Modify the per-instance data
+            for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
+            {
+                u32 opaqueIndex = opaqueDrawCallOffset + i;
+
+                Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
+                drawCall.firstInstance = opaqueIndex;
+
+                DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
+                drawCallData.instanceID = instanceID;
+                drawCallData.modelID = modelID;
             }
         }
-        else
-        {
-            instanceData.animatedVertexOffset = std::numeric_limits<u32>().max();
-        }
 
-        _instanceDatas.SetDirtyElement(instanceID);
+        // Set up Transparent DrawCalls and DrawCallDatas
+        if (manifest.numTransparentDrawCalls > 0)
+        {
+            u32 transparentDrawCallOffset = transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
+            _instanceIDToTransparentDrawCallOffset[instanceID] = transparentDrawCallOffset;
+
+            // Copy DrawCalls
+            {
+                Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
+                Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
+                size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
+                memcpy(dst, src, size);
+            }
+
+            // Copy DrawCallDatas
+            {
+                DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
+                DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
+                size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
+                memcpy(dst, src, size);
+            }
+
+            // Modify the per-instance data
+            for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
+            {
+                u32 transparentIndex = transparentDrawCallOffset + i;
+
+                Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
+                drawCall.firstInstance = transparentIndex;
+
+                DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
+                drawCallData.instanceID = instanceID;
+                drawCallData.modelID = modelID;
+            }
+        }
     }
 
-    // Setup Instance matrix
+    // Modify the old per-instance data
+    if (oldModelID != std::numeric_limits<u32>().max())
     {
-        mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
-        instanceMatrix = transformMatrix;
-
-        _instanceMatrices.SetDirtyElement(instanceID);
-    }
-
-    // Set up Opaque DrawCalls and DrawCallDatas
-    if (manifest.numOpaqueDrawCalls > 0)
-    {
-        std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas().Get();
-
-        u32 opaqueDrawCallOffset = _opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
-
-        // Copy DrawCalls
-        {
-            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
-            Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
-            size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-            memcpy(dst, src, size);
-        }
-
-        // Copy DrawCallDatas
-        {
-            DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
-            DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
-            size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
-            memcpy(dst, src, size);
-        }
-
-        // Modify the per-instance data
-        for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
-        {
-            u32 opaqueIndex = opaqueDrawCallOffset + i;
-
-            Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
-            drawCall.firstInstance = opaqueIndex;
-
-            DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
-            drawCallData.instanceID = instanceID;
-            drawCallData.modelID = modelID;
-        }
-
-        // Modify the old per-instance data
-        if (oldModelID != std::numeric_limits<u32>().max())
+        if (oldOpaqueNumDrawCalls > 0)
         {
             for (u32 i = 0; i < oldOpaqueNumDrawCalls; i++)
             {
@@ -1235,50 +1504,12 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& tr
                 drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
-            _opaqueCullingResources.GetDrawCalls().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
-            _opaqueCullingResources.GetDrawCallDatas().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
-        }
-    }
-
-    // Set up Transparent DrawCalls and DrawCallDatas
-    if (manifest.numTransparentDrawCalls > 0)
-    {
-        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas().Get();
-
-        u32 transparentDrawCallOffset = _transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
-
-        // Copy DrawCalls
-        {
-            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
-            Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
-            size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-            memcpy(dst, src, size);
-        }
-
-        // Copy DrawCallDatas
-        {
-            DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
-            DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
-            size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
-            memcpy(dst, src, size);
-        }
-
-        // Modify the per-instance data
-        for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
-        {
-            u32 transparentIndex = transparentDrawCallOffset + i;
-
-            Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
-            drawCall.firstInstance = transparentIndex;
-
-            DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
-            drawCallData.instanceID = instanceID;
-            drawCallData.modelID = modelID;
+            opaqueCullingResources.GetDrawCalls().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
+            opaqueCullingResources.GetDrawCallDatas().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
         }
 
         // Modify the old per-instance data
-        if (oldModelID != std::numeric_limits<u32>().max())
+        if (oldTransparentNumDrawCalls > 0)
         {
             for (u32 i = 0; i < oldTransparentNumDrawCalls; i++)
             {
@@ -1291,8 +1522,8 @@ void ModelRenderer::ModifyInstance(u32 instanceID, u32 modelID, const mat4x4& tr
                 drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
-            _transparentCullingResources.GetDrawCalls().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
-            _transparentCullingResources.GetDrawCallDatas().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
+            transparentCullingResources.GetDrawCalls().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
+            transparentCullingResources.GetDrawCallDatas().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
         }
     }
 }
@@ -1323,6 +1554,7 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 
     return true;
 }
+
 bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
 {
     std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
@@ -1371,6 +1603,8 @@ void ModelRenderer::CreatePermanentResources()
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
     _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
     _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
+    _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
+    _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
     _materialPassDescriptorSet.Bind("_modelTextures"_h, _textures);
 
     Renderer::DataTextureDesc dataTextureDesc;
@@ -1399,6 +1633,8 @@ void ModelRenderer::CreatePermanentResources()
     _sampler = _renderer->CreateSampler(samplerDesc);
     _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
     _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
+    _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
+    _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
 
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
@@ -1411,6 +1647,16 @@ void ModelRenderer::CreatePermanentResources()
     initParams.materialPassDescriptorSet = nullptr;
     initParams.enableTwoStepCulling = false;
     _transparentCullingResources.Init(initParams);
+
+    initParams.bufferNamePrefix = "OpaqueSkyboxModels";
+    initParams.materialPassDescriptorSet = nullptr;
+    initParams.enableTwoStepCulling = false;
+    _opaqueSkyboxCullingResources.Init(initParams);
+
+    initParams.bufferNamePrefix = "TransparentSkyboxModels";
+    initParams.materialPassDescriptorSet = nullptr;
+    initParams.enableTwoStepCulling = false;
+    _transparentSkyboxCullingResources.Init(initParams);
 }
 
 void ModelRenderer::SyncToGPU()
@@ -1425,6 +1671,8 @@ void ModelRenderer::SyncToGPU()
         {
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
             _materialPassDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
         }
     }
@@ -1447,6 +1695,8 @@ void ModelRenderer::SyncToGPU()
         {
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
             _materialPassDescriptorSet.Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
         }
     }
@@ -1460,6 +1710,8 @@ void ModelRenderer::SyncToGPU()
         {
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
         }
     }
@@ -1472,6 +1724,8 @@ void ModelRenderer::SyncToGPU()
         {
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
         }
     }
@@ -1487,6 +1741,9 @@ void ModelRenderer::SyncToGPU()
 
             _transparentCullingResources.GetCullingDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
 
             _materialPassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
         }
@@ -1504,6 +1761,8 @@ void ModelRenderer::SyncToGPU()
 
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
             _materialPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
         }
     }
@@ -1518,15 +1777,21 @@ void ModelRenderer::SyncToGPU()
 
             _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
             _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
             _materialPassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
         }
     }
 
     _opaqueCullingResources.SyncToGPU();
     _transparentCullingResources.SyncToGPU();
+    _opaqueSkyboxCullingResources.SyncToGPU();
+    _transparentSkyboxCullingResources.SyncToGPU();
 
-    SetupCullingResource(_opaqueCullingResources);
-    SetupCullingResource(_transparentCullingResources);
+    BindCullingResource(_opaqueCullingResources);
+    BindCullingResource(_transparentCullingResources);
+    BindCullingResource(_opaqueSkyboxCullingResources);
+    BindCullingResource(_transparentSkyboxCullingResources);
 }
 
 void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
@@ -1659,6 +1924,71 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
     {
         pipelineDesc.renderTargets[1] = params.rt1;
     }
+    pipelineDesc.depthStencil = params.depth;
+
+    // Draw
+    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    commandList.BeginPipeline(pipeline);
+
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
+
+    commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
+
+    if (params.cullingEnabled)
+    {
+        u32 drawCountBufferOffset = params.drawCountIndex * sizeof(u32);
+        commandList.DrawIndexedIndirectCount(params.argumentBuffer, 0, params.drawCountBuffer, drawCountBufferOffset, params.numMaxDrawCalls);
+    }
+    else
+    {
+        commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
+    }
+
+    commandList.EndPipeline(pipeline);
+}
+
+void ModelRenderer::DrawSkybox(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params, bool isTransparent)
+{
+    Renderer::GraphicsPipelineDesc pipelineDesc;
+    graphResources.InitializePipelineDesc(pipelineDesc);
+
+    // Shaders
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.path = "Model/DrawSkybox.vs.hlsl";
+    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.path = "Model/DrawSkybox.ps.hlsl";
+    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+    pipelineDesc.states.depthStencilState.depthWriteEnable = !isTransparent;
+
+    // Blend state
+    if (isTransparent)
+    {
+        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+    }
+
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+    // Render targets
+    pipelineDesc.renderTargets[0] = params.rt0;
     pipelineDesc.depthStencil = params.depth;
 
     // Draw

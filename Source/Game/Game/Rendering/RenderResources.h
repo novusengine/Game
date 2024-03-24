@@ -16,6 +16,7 @@ public:
     Renderer::GPUVector<Camera> cameras;
 
     Renderer::ImageID visibilityBuffer;
+    Renderer::ImageID skyboxColor;
     Renderer::ImageID sceneColor;
     Renderer::ImageID finalColor;
 
@@ -25,6 +26,7 @@ public:
     Renderer::ImageID depthPyramid;
     Renderer::DepthImageID depth;
     Renderer::ImageID depthColorCopy;
+    Renderer::DepthImageID skyboxDepth;
 
     Renderer::DepthImageID debugRendererDepth;
 
