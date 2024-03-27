@@ -1430,15 +1430,6 @@ namespace Animation
     };
     static char* BoneNames[(i16)Bone::Count] = { };
 
-    struct BoneSetInfo
-    {
-    public:
-        i16 boneDataID;
-        i16 boneSetParentID;
-        i16 boneSetAlternativeID;
-        u8 numBones;
-    };
-
     enum class BlendOverride
     {
         Auto,
@@ -1471,10 +1462,11 @@ namespace Animation
     {
     public:
         Model::ComplexModel::Bone info;
-
-        robin_hood::unordered_map<u16, u16> sequenceTranslationIDToTrackIndex;
-        robin_hood::unordered_map<u16, u16> sequenceRotationIDToTrackIndex;
-        robin_hood::unordered_map<u16, u16> sequenceScaleIDToTrackIndex;
+    };
+    struct AnimationSkeletonTextureTransform
+    {
+    public:
+        Model::ComplexModel::TextureTransform info;
     };
     struct AnimationSkeleton
     {
@@ -1483,9 +1475,10 @@ namespace Animation
 
         u32 modelID = InvalidID;
 
+        std::vector<u32> globalLoops;
         std::vector<Model::ComplexModel::AnimationSequence> sequences;
-        std::vector<Model::ComplexModel::TextureTransform> textureTransforms;
         std::vector<AnimationSkeletonBone> bones;
+        std::vector<AnimationSkeletonTextureTransform> textureTransforms;
 
         robin_hood::unordered_map<Type, u16> animationIDToFirstSequenceID;
         robin_hood::unordered_map<u16, i16> keyBoneIDToBoneID;
@@ -1523,6 +1516,12 @@ namespace Animation
         f32 transitionDuration = 0.0f;
     };
 
+    struct AnimationGlobalLoopInstance
+    {
+    public:
+        f32 currentTime = 0;
+        f32 duration = 0;
+    };
     struct AnimationInstance
     {
     public:
@@ -1532,7 +1531,9 @@ namespace Animation
         InstanceID instanceID = InvalidID;
 
         u32 boneMatrixOffset = InvalidID;
+        u32 textureTransformMatrixOffset = InvalidID;
 
+        std::vector<AnimationGlobalLoopInstance> globalLoops;
         std::vector<AnimationBoneInstance> bones;
     };
 
@@ -1550,6 +1551,9 @@ namespace Animation
 
         std::atomic<u32> boneMatrixIndex;
         std::vector<mat4x4> boneMatrices;
+
+        std::atomic<u32> textureTransformMatrixIndex;
+        std::vector<mat4x4> textureTransformMatrices;
     };
 
     class AnimationSystem
@@ -1576,14 +1580,15 @@ namespace Animation
 
         void Update(f32 deltaTime);
 
-        void Reserve(u32 numSkeletons, u32 numInstances, u32 numBones);
+        void Reserve(u32 numSkeletons, u32 numInstances, u32 numBones, u32 numTextureTransforms);
         void FitToBuffersAfterLoad();
         void Clear();
 
     private:
-        mat4x4 GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationSkeletonBone& bone, const AnimationBoneInstance& instance);
-        mat4x4 HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime);
-
+        mat4x4 GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, const AnimationBoneInstance& boneInstance);
+        void HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime);
+        mat4x4 GetTextureTransformMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationBoneInstance& boneInstance, const AnimationSkeletonTextureTransform& textureTransform);
+        
         bool HasModelRenderer() { return _modelRenderer != nullptr; }
 
     private:

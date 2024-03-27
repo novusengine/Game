@@ -217,11 +217,12 @@ namespace Animation
             return false;
         }
 
+        u32 numGlobalLoops = static_cast<u32>(model.globalLoops.size());
+        u32 numSequences = static_cast<u32>(model.sequences.size());
         u32 numBones = static_cast<u32>(model.bones.size());
         u32 numTextureTransforms = static_cast<u32>(model.textureTransforms.size());
-        u32 numSequences = static_cast<u32>(model.sequences.size());
 
-        bool hasAnimations = numBones > 0 || numTextureTransforms > 0 || numSequences > 0;
+        bool hasAnimations = (numSequences > 0 && numBones > 0);
         if (!hasAnimations)
         {
             return false;
@@ -230,10 +231,10 @@ namespace Animation
         AnimationSkeleton& skeleton = _storage.skeletons[modelID];
         skeleton.modelID = modelID;
 
-        if (numTextureTransforms)
+        if (numGlobalLoops)
         {
-            skeleton.textureTransforms.resize(numTextureTransforms);
-            memcpy(skeleton.textureTransforms.data(), model.textureTransforms.data(), numTextureTransforms * sizeof(Model::ComplexModel::TextureTransform));
+            skeleton.globalLoops.resize(numGlobalLoops);
+            memcpy(skeleton.globalLoops.data(), model.globalLoops.data(), numGlobalLoops * sizeof(u32));
         }
 
         if (numSequences)
@@ -248,7 +249,7 @@ namespace Animation
                 const Model::ComplexModel::AnimationSequence& sequence = skeleton.sequences[i];
 
                 // Ignore sequences that are aliases or always playing
-                if (sequence.flags.isAlias || sequence.flags.isAlwaysPlaying)
+                if (sequence.flags.isAlias)
                     continue;
 
                 if (sequence.subID != 0)
@@ -287,37 +288,22 @@ namespace Animation
                     u32 keyBoneValue = model.keyBoneIDToBoneIndex[bone.keyBoneID];
                     skeleton.keyBoneIDToBoneID[keyBoneValue] = i;
                 }
-
-                animBone.sequenceTranslationIDToTrackIndex.reserve(numSequences);
-                animBone.sequenceRotationIDToTrackIndex.reserve(numSequences);
-                animBone.sequenceScaleIDToTrackIndex.reserve(numSequences);
-
-                u32 numTranslationTracks = static_cast<u32>(bone.translation.tracks.size());
-                u32 translationIndex = InvalidSequenceID;
-                for (u32 j = 0; j < numTranslationTracks; j++)
-                {
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.translation.tracks[j];
-                    animBone.sequenceTranslationIDToTrackIndex[track.sequenceID] = j;
-                }
-
-                u32 numRotationTracks = static_cast<u32>(bone.rotation.tracks.size());
-                u32 rotationIndex = InvalidSequenceID;
-                for (u32 j = 0; j < numRotationTracks; j++)
-                {
-                    const Model::ComplexModel::AnimationTrack<quat>& track = bone.rotation.tracks[j];
-                    animBone.sequenceRotationIDToTrackIndex[track.sequenceID] = j;
-                }
-
-                u32 numScaleTracks = static_cast<u32>(bone.scale.tracks.size());
-                u32 scaleIndex = InvalidSequenceID;
-                for (u32 j = 0; j < numScaleTracks; j++)
-                {
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.scale.tracks[j];
-                    animBone.sequenceScaleIDToTrackIndex[track.sequenceID] = j;
-                }
             }
 
             skeleton.keyBoneIDToBoneID = model.keyBoneIDToBoneIndex;
+        }
+
+        if (numTextureTransforms)
+        {
+            skeleton.textureTransforms.resize(numTextureTransforms);
+
+            for (u32 i = 0; i < numTextureTransforms; i++)
+            {
+                const Model::ComplexModel::TextureTransform& textureTransform = model.textureTransforms[i];
+                AnimationSkeletonTextureTransform& animTextureTransform = skeleton.textureTransforms[i];
+
+                animTextureTransform.info = textureTransform;
+            }
         }
 
         return true;
@@ -330,25 +316,38 @@ namespace Animation
             return false;
         }
 
-        if (HasInstance(instanceID))
-        {
-            return false;
-        }
-
         if (!HasSkeleton(modelID))
         {
             return false;
         }
 
+        bool instanceAlreadyExists = HasInstance(instanceID);
+
         const AnimationSkeleton& skeleton = _storage.skeletons[modelID];
+        u32 numGlobalLoops = static_cast<u32>(skeleton.globalLoops.size());
         u32 numBones = static_cast<u32>(skeleton.bones.size());
+        u32 numTextureTransforms = static_cast<u32>(skeleton.textureTransforms.size());
 
         AnimationInstance& instance = _storage.instanceIDToData[instanceID];
         instance.modelID = modelID;
         instance.instanceID = instanceID;
         instance.boneMatrixOffset = _storage.boneMatrixIndex.fetch_add(numBones);
-        instance.bones.resize(numBones);
 
+        if (numTextureTransforms > 0)
+        {
+            instance.textureTransformMatrixOffset = _storage.textureTransformMatrixIndex.fetch_add(numTextureTransforms);
+        }
+        
+        instance.globalLoops.resize(numGlobalLoops);
+        for (u32 i = 0; i < numGlobalLoops; i++)
+        {
+            AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[i];
+
+            globalLoop.currentTime = 0.0f;
+            globalLoop.duration = static_cast<f32>(skeleton.globalLoops[i]) / 1000.0f;
+        }
+
+        instance.bones.resize(numBones);
         for (u32 i = 0; i < numBones; i++)
         {
             const AnimationSkeletonBone& skeletonBone = skeleton.bones[i];
@@ -359,8 +358,11 @@ namespace Animation
             boneInstance.parent = &instance.bones[skeletonBone.info.parentBoneID];
         }
 
-        u32 instanceIndex = _storage.instancesIndex.fetch_add(1);
-        _storage.instanceIDs[instanceIndex] = instanceID;
+        if (!instanceAlreadyExists)
+        {
+            u32 instanceIndex = _storage.instancesIndex.fetch_add(1);
+            _storage.instanceIDs[instanceIndex] = instanceID;
+        }
 
         if (HasModelRenderer())
         {
@@ -538,9 +540,14 @@ namespace Animation
         if (sequenceID == InvalidSequenceID)
             return false;
 
-        i16 boneIndex = GetBoneIndexFromKeyBoneID(instance.modelID, bone);
-        if (boneIndex == -1)
-            return false;
+        i16 boneIndex = 0;
+
+        if (bone != Bone::Default)
+        {
+            boneIndex = GetBoneIndexFromKeyBoneID(instance.modelID, bone);
+            if (boneIndex == -1)
+                return false;
+        }
 
         const Model::ComplexModel::AnimationSequence& sequenceInfo = skeleton.sequences[sequenceID];
         AnimationBoneInstance& boneInstance = instance.bones[boneIndex];
@@ -639,20 +646,32 @@ namespace Animation
                 const AnimationSkeleton& skeleton = _storage.skeletons[instance.modelID];
 
                 bool isInstanceDirty = false;
-                u32 numBones = static_cast<u32>(skeleton.bones.size());
 
-                const mat4x4& instanceMatrix = _modelRenderer->GetInstanceMatrices().Get()[instanceID];
+                u32 numGlobalLoops = static_cast<u32>(instance.globalLoops.size());
+                for (u32 globalLoopIndex = 0; globalLoopIndex < numGlobalLoops; globalLoopIndex++)
+                {
+                    AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[globalLoopIndex];
+                    globalLoop.currentTime = fmod((globalLoop.currentTime + adjustedDeltaTime), globalLoop.duration);
+
+                    if (globalLoop.currentTime >= globalLoop.duration)
+                    {
+                        globalLoop.currentTime = 0.0f;
+                    }
+                }
+
+                u32 numBones = static_cast<u32>(skeleton.bones.size());
                 for (u32 boneIndex = 0; boneIndex < numBones; boneIndex++)
                 {
                     const AnimationSkeletonBone& bone = skeleton.bones[boneIndex];
+                    AnimationBoneInstance& boneInstance = instance.bones[boneIndex];
+
+                    HandleBoneAnimation(skeleton, instance, bone, boneInstance, adjustedDeltaTime);
 
                     if (!bone.info.flags.Transformed)
                         continue;
 
-                    AnimationBoneInstance& boneInstance = instance.bones[boneIndex];
-
                     const mat4x4& originalMatrix = _storage.boneMatrices[instance.boneMatrixOffset + boneIndex];
-                    mat4x4 boneMatrix = HandleBoneAnimation(skeleton, instance, bone, boneInstance, adjustedDeltaTime);
+                    mat4x4 boneMatrix = GetBoneMatrix(skeleton, instance, bone, boneInstance);
 
                     // Apply parent's transformation
                     if (bone.info.parentBoneID != -1)
@@ -667,6 +686,26 @@ namespace Animation
                         // Store final transformation
                         isInstanceDirty = true;
                         _storage.boneMatrices[instance.boneMatrixOffset + boneIndex] = boneMatrix;
+                    }
+                }
+
+                if (numBones > 0)
+                {
+                    const AnimationBoneInstance& boneInstance = instance.bones[0];
+                
+                    u32 numTextureTransforms = static_cast<u32>(skeleton.textureTransforms.size());
+                    for (u32 textureTransformIndex = 0; textureTransformIndex < numTextureTransforms; textureTransformIndex++)
+                    {
+                        const AnimationSkeletonTextureTransform& textureTransform = skeleton.textureTransforms[textureTransformIndex];
+                        mat4x4 textureTransformMatrix = GetTextureTransformMatrix(skeleton, instance, boneInstance, textureTransform);
+                
+                        const mat4x4& originalMatrix = _storage.textureTransformMatrices[instance.textureTransformMatrixOffset + textureTransformIndex];
+                        bool isDirty = originalMatrix != textureTransformMatrix;
+                        if (isDirty)
+                        {
+                            isInstanceDirty = true;
+                            _storage.textureTransformMatrices[instance.textureTransformMatrixOffset + textureTransformIndex] = textureTransformMatrix;
+                        }
                     }
                 }
 
@@ -696,14 +735,23 @@ namespace Animation
                 const AnimationSkeleton& skeleton = _storage.skeletons[instance.modelID];
 
                 u32 numBones = static_cast<u32>(skeleton.bones.size());
-                _modelRenderer->SetBoneMatricesAsDirty(instanceID, 0, numBones, &_storage.boneMatrices[instance.boneMatrixOffset]);
+                if (numBones > 0)
+                {
+                    _modelRenderer->SetBoneMatricesAsDirty(instanceID, 0, numBones, &_storage.boneMatrices[instance.boneMatrixOffset]);
+                }
+
+                u32 numTextureTransforms = static_cast<u32>(skeleton.textureTransforms.size());
+                if (numTextureTransforms > 0)
+                {
+                    _modelRenderer->SetTextureTransformMatricesAsDirty(instanceID, 0, numTextureTransforms, &_storage.textureTransformMatrices[instance.textureTransformMatrixOffset]);
+                }
             }
         }
 
         _storage.dirtyInstancesIndex.store(0);
     }
 
-    void AnimationSystem::Reserve(u32 numSkeletons, u32 numInstances, u32 numBones)
+    void AnimationSystem::Reserve(u32 numSkeletons, u32 numInstances, u32 numBones, u32 numTextureTransforms)
     {
         bool isEnabled = CVAR_AnimationSystemEnabled.Get();
         if (!isEnabled)
@@ -721,6 +769,19 @@ namespace Animation
 
         u32 currentNumBones = static_cast<u32>(_storage.boneMatrices.size());
         _storage.boneMatrices.resize(currentNumBones + numBones);
+
+        for (u32 i = 0; i < numBones; i++)
+        {
+            _storage.boneMatrices[currentNumBones + i] = mat4x4(1.0f);
+        }
+
+        u32 currentNumTextureTransforms = static_cast<u32>(_storage.textureTransformMatrices.size());
+        _storage.textureTransformMatrices.resize(currentNumTextureTransforms + numTextureTransforms);
+
+        for (u32 i = 0; i < numTextureTransforms; i++)
+        {
+            _storage.textureTransformMatrices[currentNumTextureTransforms + i] = mat4x4(1.0f);
+        }
     }
     void AnimationSystem::FitToBuffersAfterLoad()
     {
@@ -754,98 +815,196 @@ namespace Animation
 
         _storage.boneMatrixIndex.store(0);
         _storage.boneMatrices.clear();
+
+        _storage.textureTransformMatrixIndex.store(0);
+        _storage.textureTransformMatrices.clear();
     }
 
-    mat4x4 AnimationSystem::GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationSkeletonBone& bone, const AnimationBoneInstance& instance)
+    mat4x4 AnimationSystem::GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, const AnimationBoneInstance& boneInstance)
     {
-        mat4x4 boneMatrix = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+        mat4x4 boneMatrix = mat4x4(1.0f);
         vec3 translationValue = vec3(0.0f, 0.0f, 0.0f);
         quat rotationValue = quat(1.0f, 0.0f, 0.0f, 0.0f);
         vec3 scaleValue = vec3(1.0f, 1.0f, 1.0f);
 
+        const AnimationBoneInstance* translationBoneInstance = nullptr;
+        const AnimationBoneInstance* rotationBoneInstance = nullptr;
+        const AnimationBoneInstance* scaleBoneInstance = nullptr;
+
         // Primary Sequence
         {
-            const AnimationSequenceState* sequenceState = GetSequenceStateForBone(instance);
-            if (sequenceState)
+            const AnimationBoneInstance& rootBoneInstance = instance.bones[0];
+
+            // Handle Translation
             {
-                u32 sequenceID = sequenceState->sequenceID;
-                f32 progress = sequenceState->progress;
+                bool isGlobalLoop = bone.info.translation.globalLoopIndex != -1;
+                translationBoneInstance = &boneInstance;
 
-                if (bone.sequenceTranslationIDToTrackIndex.contains(sequenceID))
+                if (isGlobalLoop || translationBoneInstance->currentAnimation.animation == Type::Invalid && translationBoneInstance->nextAnimation.animation == Type::Invalid)
                 {
-                    u32 translationIndex = bone.sequenceTranslationIDToTrackIndex.at(sequenceID);
-
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.translation.tracks[translationIndex];
-                    translationValue = InterpolateKeyframe(track, progress);
+                    translationBoneInstance = &rootBoneInstance;
                 }
 
-                if (bone.sequenceRotationIDToTrackIndex.contains(sequenceID))
+                u32 sequenceID = translationBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < bone.info.translation.tracks.size())
                 {
-                    u32 rotationIndex = bone.sequenceRotationIDToTrackIndex.at(sequenceID);
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.translation.tracks[sequenceID];
 
-                    const Model::ComplexModel::AnimationTrack<quat>& track = bone.info.rotation.tracks[rotationIndex];
-                    rotationValue = InterpolateKeyframe(track, progress);
+                    f32 progress = translationBoneInstance->currentAnimation.progress;
+
+                    if (bone.info.translation.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.translation.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        translationValue = InterpolateKeyframe(track, progress);
+                }
+            }
+
+            // Handle Rotation
+            {
+                bool isGlobalLoop = bone.info.rotation.globalLoopIndex != -1;
+                rotationBoneInstance = &boneInstance;
+
+                if (isGlobalLoop || rotationBoneInstance->currentAnimation.animation == Type::Invalid && rotationBoneInstance->nextAnimation.animation == Type::Invalid)
+                {
+                    rotationBoneInstance = &rootBoneInstance;
                 }
 
-                if (bone.sequenceScaleIDToTrackIndex.contains(sequenceID))
+                u32 sequenceID = rotationBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < bone.info.rotation.tracks.size())
                 {
-                    u32 scaleIndex = bone.sequenceScaleIDToTrackIndex.at(sequenceID);
+                    const Model::ComplexModel::AnimationTrack<quat>& track = bone.info.rotation.tracks[sequenceID];
 
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.scale.tracks[scaleIndex];
-                    scaleValue = InterpolateKeyframe(track, progress);
+                    f32 progress = rotationBoneInstance->currentAnimation.progress;
+
+                    if (bone.info.rotation.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.rotation.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        rotationValue = InterpolateKeyframe(track, progress);
+                }
+            }
+
+            // Handle Scale
+            {
+                bool isGlobalLoop = bone.info.scale.globalLoopIndex != -1;
+                scaleBoneInstance = &boneInstance;
+
+                if (isGlobalLoop || scaleBoneInstance->currentAnimation.animation == Type::Invalid && scaleBoneInstance->nextAnimation.animation == Type::Invalid)
+                {
+                    scaleBoneInstance = &rootBoneInstance;
+                }
+
+                u32 sequenceID = scaleBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < bone.info.scale.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.scale.tracks[sequenceID];
+
+                    f32 progress = scaleBoneInstance->currentAnimation.progress;
+
+                    if (bone.info.scale.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.scale.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        scaleValue = InterpolateKeyframe(track, progress);
                 }
             }
         }
 
         // Transition Sequence
         {
-            f32 timeToTransition = 0.0f;
-            f32 transitionDuration = 0.0f;
-            const AnimationSequenceState* sequenceState = GetDeferredSequenceStateForBone(instance, timeToTransition, transitionDuration);
-            if (sequenceState)
+            if (translationBoneInstance)
             {
-                u32 sequenceID = sequenceState->sequenceID;
-                f32 progress = sequenceState->progress;
-                f32 transitionProgress = 1.0f;
+                f32 timeToTransition = translationBoneInstance->timeToTransition;
+                f32 transitionDuration = translationBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
 
-                if (timeToTransition > 0.0f)
+                u32 sequenceID = translationBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < bone.info.translation.tracks.size())
                 {
-                    transitionProgress = glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f);
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.translation.tracks[sequenceID];
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = translationBoneInstance->nextAnimation.progress;
+
+                        if (bone.info.translation.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.translation.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
+
+                        vec3 translation = InterpolateKeyframe(track, progress);
+                        translationValue = glm::mix(translationValue, translation, transitionProgress);
+                    }
                 }
+            }
 
-                if (bone.sequenceTranslationIDToTrackIndex.contains(sequenceID))
+            if (rotationBoneInstance)
+            {
+                f32 timeToTransition = rotationBoneInstance->timeToTransition;
+                f32 transitionDuration = rotationBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
+
+                u32 sequenceID = rotationBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < bone.info.rotation.tracks.size())
                 {
-                    u32 translationIndex = bone.sequenceTranslationIDToTrackIndex.at(sequenceID);
+                    const Model::ComplexModel::AnimationTrack<quat>& track = bone.info.rotation.tracks[sequenceID];
 
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.translation.tracks[translationIndex];
-                    vec3 translation = InterpolateKeyframe(track, progress);
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = rotationBoneInstance->nextAnimation.progress;
 
-                    translationValue = glm::mix(translationValue, translation, transitionProgress);
+                        if (bone.info.rotation.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.rotation.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
+
+                        quat rotation = InterpolateKeyframe(track, progress);
+                        rotationValue = glm::mix(rotationValue, rotation, transitionProgress);
+                    }
                 }
+            }
 
-                if (bone.sequenceRotationIDToTrackIndex.contains(sequenceID))
+            if (scaleBoneInstance)
+            {
+                f32 timeToTransition = scaleBoneInstance->timeToTransition;
+                f32 transitionDuration = scaleBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
+
+                u32 sequenceID = scaleBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < bone.info.scale.tracks.size())
                 {
-                    u32 rotationIndex = bone.sequenceRotationIDToTrackIndex.at(sequenceID);
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.scale.tracks[sequenceID];
 
-                    const Model::ComplexModel::AnimationTrack<quat>& track = bone.info.rotation.tracks[rotationIndex];
-                    quat rotation = InterpolateKeyframe(track, progress);
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = scaleBoneInstance->nextAnimation.progress;
 
-                    rotationValue = glm::mix(rotationValue, rotation, transitionProgress);
-                }
+                        if (bone.info.scale.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[bone.info.scale.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
 
-                if (bone.sequenceScaleIDToTrackIndex.contains(sequenceID))
-                {
-                    u32 scaleIndex = bone.sequenceScaleIDToTrackIndex.at(sequenceID);
-
-                    const Model::ComplexModel::AnimationTrack<vec3>& track = bone.info.scale.tracks[scaleIndex];
-                    vec3 scale = InterpolateKeyframe(track, progress);
-
-                    scaleValue = glm::mix(scaleValue, scale, transitionProgress);
+                        vec3 scale = InterpolateKeyframe(track, progress);
+                        scaleValue = glm::mix(scaleValue, scale, transitionProgress);
+                    }
                 }
             }
         }
 
-        rotationValue = glm::normalize(instance.rotationOffset * rotationValue);
+        rotationValue = glm::normalize(boneInstance.rotationOffset * rotationValue);
 
         const vec3& pivot = bone.info.pivot;
         boneMatrix = mul(glm::translate(mat4x4(1.0f), pivot), boneMatrix);
@@ -862,7 +1021,7 @@ namespace Animation
 
         return boneMatrix;
     }
-    mat4x4 AnimationSystem::HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime)
+    void AnimationSystem::HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime)
     {
         auto HandleCurrentAnimation = [this](const AnimationSkeleton& skeleton, const AnimationInstance& instance, AnimationBoneInstance& boneInstance, f32 deltaTime)
         {
@@ -995,8 +1154,207 @@ namespace Animation
                 boneInstance.timeToTransition -= glm::clamp(deltaTime, 0.0f, boneInstance.timeToTransition);
             }
         }
+    }
+    mat4x4 AnimationSystem::GetTextureTransformMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationBoneInstance& boneInstance, const AnimationSkeletonTextureTransform& textureTransform)
+    {
+        mat4x4 matrix = mat4x4(1.0f);
+        vec3 translationValue = vec3(0.0f, 0.0f, 0.0f);
+        quat rotationValue = quat(1.0f, 0.0f, 0.0f, 0.0f);
+        vec3 scaleValue = vec3(1.0f, 1.0f, 1.0f);
 
-        mat4x4 boneMatrix = GetBoneMatrix(skeleton, bone, boneInstance);
-        return boneMatrix;
+        const AnimationBoneInstance* translationBoneInstance = nullptr;
+        const AnimationBoneInstance* rotationBoneInstance = nullptr;
+        const AnimationBoneInstance* scaleBoneInstance = nullptr;
+
+        // Primary Sequence
+        {
+            const AnimationBoneInstance& rootBoneInstance = instance.bones[0];
+
+            // Handle Translation
+            {
+                bool isGlobalLoop = textureTransform.info.translation.globalLoopIndex != -1;
+                translationBoneInstance = &boneInstance;
+
+                if (isGlobalLoop || translationBoneInstance->currentAnimation.animation == Type::Invalid && translationBoneInstance->nextAnimation.animation == Type::Invalid)
+                {
+                    translationBoneInstance = &rootBoneInstance;
+                }
+
+                u32 sequenceID = translationBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.translation.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = textureTransform.info.translation.tracks[sequenceID];
+
+                    f32 progress = translationBoneInstance->currentAnimation.progress;
+
+                    if (textureTransform.info.translation.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.translation.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        translationValue = InterpolateKeyframe(track, progress);
+                }
+            }
+
+            // Handle Rotation
+            {
+                bool isGlobalLoop = textureTransform.info.rotation.globalLoopIndex != -1;
+                rotationBoneInstance = &boneInstance;
+
+                if (isGlobalLoop || rotationBoneInstance->currentAnimation.animation == Type::Invalid && rotationBoneInstance->nextAnimation.animation == Type::Invalid)
+                {
+                    rotationBoneInstance = &rootBoneInstance;
+                }
+
+                u32 sequenceID = rotationBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.rotation.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<quat>& track = textureTransform.info.rotation.tracks[sequenceID];
+
+                    f32 progress = rotationBoneInstance->currentAnimation.progress;
+
+                    if (textureTransform.info.rotation.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.rotation.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        rotationValue = InterpolateKeyframe(track, progress);
+                }
+            }
+
+            // Handle Scale
+            {
+                bool isGlobalLoop = textureTransform.info.scale.globalLoopIndex != -1;
+                scaleBoneInstance = &boneInstance;
+
+                if (isGlobalLoop || scaleBoneInstance->currentAnimation.animation == Type::Invalid && scaleBoneInstance->nextAnimation.animation == Type::Invalid)
+                {
+                    scaleBoneInstance = &rootBoneInstance;
+                }
+
+                u32 sequenceID = scaleBoneInstance->currentAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.scale.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = textureTransform.info.scale.tracks[sequenceID];
+
+                    f32 progress = scaleBoneInstance->currentAnimation.progress;
+
+                    if (textureTransform.info.scale.globalLoopIndex != -1)
+                    {
+                        const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.scale.globalLoopIndex];
+                        progress = globalLoop.currentTime;
+                    }
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                        scaleValue = InterpolateKeyframe(track, progress);
+                }
+            }
+        }
+
+        // Transition Sequence
+        {
+
+            if (translationBoneInstance)
+            {
+                f32 timeToTransition = translationBoneInstance->timeToTransition;
+                f32 transitionDuration = translationBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
+
+                u32 sequenceID = translationBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.translation.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = textureTransform.info.translation.tracks[sequenceID];
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = translationBoneInstance->nextAnimation.progress;
+
+                        if (textureTransform.info.translation.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.translation.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
+
+                        vec3 translation = InterpolateKeyframe(track, progress);
+                        translationValue = glm::mix(translationValue, translation, transitionProgress);
+                    }
+                }
+            }
+
+            if (rotationBoneInstance)
+            {
+                f32 timeToTransition = rotationBoneInstance->timeToTransition;
+                f32 transitionDuration = rotationBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
+
+                u32 sequenceID = rotationBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.rotation.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<quat>& track = textureTransform.info.rotation.tracks[sequenceID];
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = rotationBoneInstance->nextAnimation.progress;
+
+                        if (textureTransform.info.rotation.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.rotation.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
+
+                        quat rotation = InterpolateKeyframe(track, progress);
+                        rotationValue = glm::mix(rotationValue, rotation, transitionProgress);
+                    }
+                }
+            }
+
+            if (scaleBoneInstance)
+            {
+                f32 timeToTransition = scaleBoneInstance->timeToTransition;
+                f32 transitionDuration = scaleBoneInstance->transitionDuration;
+                f32 transitionProgress = timeToTransition ? glm::clamp(1.0f - (timeToTransition / transitionDuration), 0.0f, 1.0f) : 1.0f;
+
+                u32 sequenceID = scaleBoneInstance->nextAnimation.sequenceID;
+                if (sequenceID < textureTransform.info.scale.tracks.size())
+                {
+                    const Model::ComplexModel::AnimationTrack<vec3>& track = textureTransform.info.scale.tracks[sequenceID];
+
+                    if (track.values.size() > 0 && track.timestamps.size() > 0)
+                    {
+                        f32 progress = scaleBoneInstance->nextAnimation.progress;
+
+                        if (textureTransform.info.scale.globalLoopIndex != -1)
+                        {
+                            const AnimationGlobalLoopInstance& globalLoop = instance.globalLoops[textureTransform.info.scale.globalLoopIndex];
+                            progress = globalLoop.currentTime;
+                        }
+
+                        vec3 scale = InterpolateKeyframe(track, progress);
+                        scaleValue = glm::mix(scaleValue, scale, transitionProgress);
+                    }
+                }
+            }
+        }
+
+        rotationValue = glm::normalize(boneInstance.rotationOffset * rotationValue);
+
+        const vec3 pivot = vec3(0.5f, 0.5f, 0.5f);
+        matrix = mul(glm::translate(mat4x4(1.0f), pivot), matrix);
+
+        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), translationValue);
+        mat4x4 rotationMatrix = glm::toMat4(glm::normalize(rotationValue));
+        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scaleValue);
+
+        matrix = mul(translationMatrix, matrix);
+        matrix = mul(rotationMatrix, matrix);
+        matrix = mul(scaleMatrix, matrix);
+
+        matrix = mul(glm::translate(mat4x4(1.0f), -pivot), matrix);
+
+        return matrix;
     }
 }

@@ -56,6 +56,7 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugR
         _instanceMatrices.SetValidation(true);
         _textureUnits.SetValidation(true);
         _boneMatrices.SetValidation(true);
+        _textureTransformMatrices.SetValidation(true);
 
         _cullingDatas.SetValidation(true);
 
@@ -133,6 +134,9 @@ void ModelRenderer::Clear()
     _boneMatrices.Clear();
     _boneMatrixIndex.store(0);
 
+    _textureTransformMatrices.Clear();
+    _textureTransformMatrixIndex.store(0);
+
     _animatedVertices.Clear(false);
     _animatedVerticesIndex.store(0);
 
@@ -201,6 +205,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             OccluderPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
@@ -385,6 +390,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
@@ -572,6 +578,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -665,6 +672,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
                 builder.Read(_opaqueSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -751,6 +759,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
                 builder.Read(_transparentSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -817,6 +826,7 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_boneMatrices.GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Write(_animatedVertices.GetBuffer(), BufferUsage::COMPUTE);
 }
 
@@ -856,6 +866,15 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     for (u32 i = numBoneMatrices; i < reserveInfo.numBones; ++i)
     {
         boneMatrices[i] = glm::mat4(1.0f);
+    }
+
+    u32 numTextureTransformMatrices = static_cast<u32>(_textureTransformMatrices.Size());
+    _textureTransformMatrices.Grow(reserveInfo.numTextureTransforms);
+
+    std::vector<glm::mat4>& textureTransformMatrices = _textureTransformMatrices.Get();
+    for (u32 i = numTextureTransformMatrices; i < reserveInfo.numTextureTransforms; ++i)
+    {
+        textureTransformMatrices[i] = glm::mat4(1.0f);
     }
 
     u32 numDecorationSets = static_cast<u32>(_modelDecorationSets.size());
@@ -901,6 +920,9 @@ void ModelRenderer::FitBuffersAfterLoad()
 
     u32 numBoneMatricesUsed = _boneMatrixIndex.load();
     _boneMatrices.Resize(numBoneMatricesUsed);
+
+    u32 numTextureTransformMatricesUsed = _textureTransformMatrixIndex.load();
+    _textureTransformMatrices.Resize(numTextureTransformMatricesUsed);
 
     u32 numDecorationSetsUsed = _modelDecorationSetsIndex.load();
     _modelDecorationSets.resize(numDecorationSetsUsed);
@@ -1005,6 +1027,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         u32 numAddedOpaqueDrawCalls = 0;
         u32 numAddedTransparentDrawCalls = 0;
 
+        u32 textureTransformLookupTableSize = static_cast<u32>(model.textureTransformLookupTable.size());
+
         for (auto& renderBatch : model.modelData.renderBatches)
         {
             u32 textureUnitBaseIndex = _textureUnitIndex.fetch_add(static_cast<u32>(renderBatch.textureUnits.size()));
@@ -1023,8 +1047,18 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
                 textureUnit.data = static_cast<u16>(cTextureUnit.flags.IsProjectedTexture) | materialFlag | blendingMode;
                 textureUnit.materialType = cTextureUnit.shaderID;
-                textureUnit.textureTransformIds[0] = MODEL_INVALID_TEXTURE_TRANSFORM_ID; // complexTextureUnit.textureTransformIndices[0];
-                textureUnit.textureTransformIds[1] = MODEL_INVALID_TEXTURE_TRANSFORM_ID; // complexTextureUnit.textureTransformIndices[1];
+
+                u16 textureTransformID1 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
+                if (cTextureUnit.textureTransformIndexStart < textureTransformLookupTableSize)
+                    textureTransformID1 = model.textureTransformLookupTable[cTextureUnit.textureTransformIndexStart];
+
+                u16 textureTransformID2 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
+                if (cTextureUnit.textureCount > 1)
+                    if (cTextureUnit.textureTransformIndexStart + 1 < textureTransformLookupTableSize)
+                        textureTransformID2 = model.textureTransformLookupTable[cTextureUnit.textureTransformIndexStart + 1];
+
+                textureUnit.textureTransformIds[0] = textureTransformID1;
+                textureUnit.textureTransformIds[1] = textureTransformID2;
 
                 numUnlitTextureUnits += (materialFlag & 0x2) > 0;
 
@@ -1072,21 +1106,21 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             switch (renderBatch.groupID)
             {
-            case 0: // Base
-            case 2: // Bald Head
-            case 401: // Gloves
-            case 501: // Boots
-            case 702: // Ears
-            case 1301: // Legs
-            case 1501: // Upper Back
+                case 0: // Base
+                case 2: // Bald Head
+                case 401: // Gloves
+                case 501: // Boots
+                case 702: // Ears
+                case 1301: // Legs
+                case 1501: // Upper Back
                 //case 1703: // DK Eye Glow (Needs further support to be animated)
-                break;
+                    break;
 
-            default:
-            {
-                isAllowedGroupID = false;
-                break;
-            }
+                default:
+                {
+                    isAllowedGroupID = false;
+                    break;
+                }
             }
 
             Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
@@ -1539,18 +1573,16 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 
     InstanceData& instanceData = instanceDatas[instanceID];
 
-    if (instanceData.animatedVertexOffset == InstanceData::InvalidID)
-    {
-        return false;
-    }
-
-    if (instanceData.boneMatrixOffset != InstanceData::InvalidID)
-    {
-        return false;
-    }
-
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
-    instanceData.boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
+    if (modelManifest.numBones > 0)
+    {
+        instanceData.boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
+    }
+
+    if (modelManifest.numTextureTransforms > 0)
+    {
+        instanceData.textureTransformMatrixOffset = _textureTransformMatrixIndex.fetch_add(modelManifest.numTextureTransforms);
+    }
 
     return true;
 }
@@ -1589,6 +1621,45 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
     {
         memcpy(&_boneMatrices.Get()[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
         _boneMatrices.SetDirtyElements(globalBoneIndex, count);
+    }
+
+    return true;
+}
+
+bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, mat4x4* boneMatrixArray)
+{
+    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
+    if (instanceID >= instanceDatas.size())
+    {
+        return false;
+    }
+
+    InstanceData& instanceData = instanceDatas[instanceID];
+    if (instanceData.textureTransformMatrixOffset == InstanceData::InvalidID)
+    {
+        return false;
+    }
+
+    const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
+
+    u32 globalTextureTransformMatrixIndex = instanceData.textureTransformMatrixOffset + localTextureTransformIndex;
+    u32 endGlobalTextureTransformMatrixIndex = globalTextureTransformMatrixIndex + (count - 1);
+
+    // Check if the bone range is valid
+    if (endGlobalTextureTransformMatrixIndex > instanceData.textureTransformMatrixOffset + modelManifest.numTextureTransforms)
+    {
+        return false;
+    }
+
+    if (count == 1)
+    {
+        _textureTransformMatrices.Get()[globalTextureTransformMatrixIndex] = *boneMatrixArray;
+        _textureTransformMatrices.SetDirtyElement(globalTextureTransformMatrixIndex);
+    }
+    else
+    {
+        memcpy(&_textureTransformMatrices.Get()[globalTextureTransformMatrixIndex], boneMatrixArray, count * sizeof(mat4x4));
+        _textureTransformMatrices.SetDirtyElements(globalTextureTransformMatrixIndex, count);
     }
 
     return true;
@@ -1780,6 +1851,22 @@ void ModelRenderer::SyncToGPU()
             _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
             _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
             _materialPassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+        }
+    }
+
+    // Sync TextureTransformMatrices buffer to GPU
+    {
+        _textureTransformMatrices.SetDebugName("ModelInstanceTextureTransformMatrices");
+        _textureTransformMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        if (_textureTransformMatrices.SyncToGPU(_renderer))
+        {
+            //_animationPrepassDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+
+            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+            _materialPassDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
         }
     }
 

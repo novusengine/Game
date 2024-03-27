@@ -53,6 +53,7 @@ public:
         u32 numTextureUnits = 0;
 
         u32 numBones = 0;
+        u32 numTextureTransforms = 0;
 
         u32 numDecorationSets = 0;
         u32 numDecorations = 0;
@@ -105,7 +106,7 @@ public:
         u32 modelID = 0;
         u32 boneMatrixOffset = InvalidID;
         u32 boneInstanceDataOffset = InvalidID;
-        u32 textureTransformDeformOffset = InvalidID;
+        u32 textureTransformMatrixOffset = InvalidID;
         u32 textureTransformInstanceDataOffset = InvalidID;
         u32 modelVertexOffset = InvalidID;
         u32 animatedVertexOffset = InvalidID;
@@ -149,6 +150,7 @@ public:
 
     bool AddAnimationInstance(u32 instanceID);
     bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
+    bool SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, mat4x4* boneMatrixArray);
 
     void AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
@@ -228,6 +230,9 @@ private:
 
     Renderer::GPUVector<mat4x4> _boneMatrices;
     std::atomic<u32> _boneMatrixIndex = 0;
+
+    Renderer::GPUVector<mat4x4> _textureTransformMatrices;
+    std::atomic<u32> _textureTransformMatrixIndex = 0;
 
     std::vector<Renderer::IndexedIndirectDraw> _modelOpaqueDrawCallTemplates;
     std::vector<DrawCallData> _modelOpaqueDrawCallDataTemplates;
