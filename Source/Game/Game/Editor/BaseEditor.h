@@ -14,6 +14,7 @@ namespace Editor
 		virtual void Show();
 
 		virtual void Update(f32 deltaTime) {};
+		virtual void UpdateMode(bool mode) {};
 
 		virtual void BeginImGui() {};
 

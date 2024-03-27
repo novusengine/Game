@@ -15,6 +15,7 @@ namespace Editor
 
 		virtual const char* GetName() override { return "Hierarchy"; }
 
+		virtual void UpdateMode(bool mode) override;
 		virtual void DrawImGui() override;
 
 		void SelectEntity(entt::entity entity);

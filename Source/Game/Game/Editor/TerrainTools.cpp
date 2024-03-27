@@ -10,6 +10,11 @@ namespace Editor
 
 	}
 
+	void TerrainTools::UpdateMode(bool mode)
+	{
+		SetIsVisible(mode);
+	}
+
 	void TerrainTools::DrawImGui()
 	{
 		if (ImGui::Begin(GetName()))

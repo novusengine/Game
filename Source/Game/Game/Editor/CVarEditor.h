@@ -12,6 +12,7 @@ namespace Editor
 
 		virtual const char* GetName() override { return "CVars"; }
 
+		virtual void UpdateMode(bool mode) override;
 		virtual void DrawImGuiSubMenuBar() override;
 		virtual void DrawImGui() override;
 

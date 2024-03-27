@@ -43,6 +43,11 @@ namespace Editor
 			});
 	}
 
+	void ActionStackEditor::UpdateMode(bool mode)
+	{
+		SetIsVisible(mode);
+	}
+
 	void ActionStackEditor::DrawImGui()
 	{
 		if (ImGui::Begin(GetName(), &IsVisible()))

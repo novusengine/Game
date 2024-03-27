@@ -241,6 +241,11 @@ namespace Editor
         }
     }
 
+    void AssetBrowser::UpdateMode(bool mode)
+    {
+        SetIsVisible(mode);
+    }
+
     void AssetBrowser::CalculateAverageFontWidth()
     {
         const ImWchar* glyphRanges = ImGui::GetIO().Fonts->GetGlyphRangesDefault();

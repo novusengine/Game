@@ -40,6 +40,11 @@ namespace Editor
 		return -1;
 	}
 
+	void Hierarchy::UpdateMode(bool mode)
+	{
+		SetIsVisible(mode);
+	}
+
 	void Hierarchy::DrawImGui()
 	{
 		entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;

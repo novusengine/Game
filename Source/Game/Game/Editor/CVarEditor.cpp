@@ -12,12 +12,17 @@
 namespace Editor
 {
 	CVarEditor::CVarEditor()
-        : BaseEditor(GetName(), false)
+        : BaseEditor(GetName(), true)
 	{
 
 	}
 
-	void CVarEditor::DrawImGuiSubMenuBar()
+    void CVarEditor::UpdateMode(bool mode)
+    {
+        //SetIsVisible(true);
+    }
+
+    void CVarEditor::DrawImGuiSubMenuBar()
 	{
         if (ImGui::BeginMenu(GetName()))
         {

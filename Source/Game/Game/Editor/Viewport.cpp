@@ -107,6 +107,11 @@ namespace Editor
 		ImGui::End();
 	}
 
+	void Viewport::UpdateMode(bool mode)
+	{
+		SetIsVisible(mode);
+	}
+
 	void Viewport::DrawImGui()
 	{
 		if (!IsEditorMode())
