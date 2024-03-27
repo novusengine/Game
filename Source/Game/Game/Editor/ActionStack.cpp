@@ -43,7 +43,7 @@ namespace Editor
 			});
 	}
 
-	void ActionStackEditor::UpdateMode(bool mode)
+	void ActionStackEditor::OnModeUpdate(bool mode)
 	{
 		SetIsVisible(mode);
 	}

@@ -17,11 +17,6 @@ namespace Editor
 
 	}
 
-    void CVarEditor::UpdateMode(bool mode)
-    {
-        //SetIsVisible(true);
-    }
-
     void CVarEditor::DrawImGuiSubMenuBar()
 	{
         if (ImGui::BeginMenu(GetName()))

@@ -24,7 +24,7 @@ namespace Editor
 
 		virtual const char* GetName() override { return "Action Stack"; }
 
-		virtual void UpdateMode(bool mode) override;
+		virtual void OnModeUpdate(bool mode) override;
 		virtual void DrawImGui() override;
 
 		void AddAction(BaseAction* action);

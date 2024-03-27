@@ -186,7 +186,7 @@ namespace Editor
         }
     }
 
-    void Inspector::UpdateMode(bool mode)
+    void Inspector::OnModeUpdate(bool mode)
     {
         SetIsVisible(mode);
     }

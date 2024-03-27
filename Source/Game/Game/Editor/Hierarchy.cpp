@@ -40,7 +40,7 @@ namespace Editor
 		return -1;
 	}
 
-	void Hierarchy::UpdateMode(bool mode)
+	void Hierarchy::OnModeUpdate(bool mode)
 	{
 		SetIsVisible(mode);
 	}

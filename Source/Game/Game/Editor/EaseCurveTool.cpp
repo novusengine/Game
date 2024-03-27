@@ -91,7 +91,7 @@ namespace Editor
         }
     }
 
-    void EaseCurveTool::UpdateMode(bool mode)
+    void EaseCurveTool::OnModeUpdate(bool mode)
     {
         SetIsVisible(mode);
     }

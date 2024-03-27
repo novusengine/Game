@@ -10,7 +10,7 @@ namespace Editor
 
 	}
 
-	void TerrainTools::UpdateMode(bool mode)
+	void TerrainTools::OnModeUpdate(bool mode)
 	{
 		SetIsVisible(mode);
 	}

@@ -241,7 +241,7 @@ namespace Editor
         }
     }
 
-    void AssetBrowser::UpdateMode(bool mode)
+    void AssetBrowser::OnModeUpdate(bool mode)
     {
         SetIsVisible(mode);
     }

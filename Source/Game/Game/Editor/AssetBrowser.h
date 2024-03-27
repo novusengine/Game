@@ -62,7 +62,7 @@ namespace Editor
         virtual void DrawImGui() override;
 
     private:
-        virtual void UpdateMode(bool mode) override;
+        virtual void OnModeUpdate(bool mode) override;
 
         void CalculateAverageFontWidth();
         void ProcessTree(TreeNode* sourceProcess);

@@ -16,7 +16,7 @@ namespace Editor
 		virtual const char* GetName() override { return "Viewport"; }
 
 		virtual void Update(f32 deltaTime) override;
-		virtual void UpdateMode(bool mode) override;
+		virtual void OnModeUpdate(bool mode) override;
 		virtual void DrawImGui() override;
 
 		void SetIsEditorMode(bool isEditorMode);
