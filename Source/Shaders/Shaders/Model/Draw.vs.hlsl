@@ -69,32 +69,31 @@ VSOutput main(VSInput input)
     output.drawCallID = drawCallID;
 
     float4 UVs = vertex.uv01;
-    /* TODO: Texture animations
-    if (instanceData.textureTransformDeformOffset != 4294967295)
+
+    if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
-        CModelDrawCallData drawCallData = LoadCModelDrawCallData(drawCallID);
         uint numTextureUnits = drawCallData.numTextureUnits;
 
         if (numTextureUnits > 0)
         {
             uint textureUnitIndex = drawCallData.textureUnitOffset;
-            CModelTextureUnit textureUnit = _cModelTextureUnits[textureUnitIndex];
+            ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
             uint textureTransformID1 = textureUnit.packedTextureTransformIDs & 0xFFFF;
             uint textureTransformID2 = (textureUnit.packedTextureTransformIDs >> 16) & 0xFFFF;
 
             if (textureTransformID1 != 65535)
             {
-                const float4x4 textureTransform1Matrix = _cModelAnimationBoneDeformMatrices[instanceData.textureTransformDeformOffset + textureTransformID1];
+                const float4x4 textureTransform1Matrix = _instanceTextureTransformMatrices[instanceData.textureTransformMatrixOffset + textureTransformID1];
                 UVs.xy = mul(float4(UVs.xy, 0.0f, 1.0f), textureTransform1Matrix).xy;
             }
 
             if (textureTransformID2 != 65535)
             {
-                const float4x4 textureTransform2Matrix = _cModelAnimationBoneDeformMatrices[instanceData.textureTransformDeformOffset + textureTransformID2];
+                const float4x4 textureTransform2Matrix = _instanceTextureTransformMatrices[instanceData.textureTransformMatrixOffset + textureTransformID2];
                 UVs.zw = mul(float4(UVs.zw, 0.0f, 1.0f), textureTransform2Matrix).xy;
             }
         }
-    }*/
+    }
 
     output.uv01 = UVs;
 #endif

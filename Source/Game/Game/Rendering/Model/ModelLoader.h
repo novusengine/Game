@@ -99,6 +99,7 @@ private:
     std::mutex _instanceIDToModelIDMutex;
 
     robin_hood::unordered_map<u32, u32> _modelIDToNameHash;
+    robin_hood::unordered_map<u32, Model::ComplexModel*> _modelIDToComplexModel;
     robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;
 
     std::vector<entt::entity> _createdEntities;

@@ -155,7 +155,6 @@ void ModelLoader::Clear()
 
     _nameHashToLoadState.clear();
     _nameHashToModelID.clear();
-    _nameHashToJoltShape.clear();
 
     for (auto& it : _nameHashToLoadingMutex)
     {
@@ -165,6 +164,7 @@ void ModelLoader::Clear()
             it.second = nullptr;
         }
     }
+    _nameHashToLoadingMutex.clear();
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
@@ -187,17 +187,24 @@ void ModelLoader::Clear()
     {
         pair.second = nullptr;
     }
-
-    _nameHashToLoadingMutex.clear();
+    _nameHashToJoltShape.clear();
 
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
-    _instanceIDToBodyID.clear();
     _instanceIDToEntityID.clear();
     _modelIDToNameHash.clear();
 
-    _modelRenderer->Clear();
+    for (auto& it : _modelIDToComplexModel)
+    {
+        if (it.second != nullptr)
+        {
+            delete it.second;
+            it.second = nullptr;
+        }
+    }
+    _modelIDToComplexModel.clear();
 
+    _modelRenderer->Clear();
 
     auto view = registry->view<ECS::Components::Model>();
     view.each([&](ECS::Components::Model& model)
@@ -249,6 +256,7 @@ void ModelLoader::Update(f32 deltaTime)
                     reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
                     reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
                     reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
+                    reserveInfo.numTextureTransforms += discoveredModel.modelHeader.numTextureTransforms * isSupported;
                 }
 
                 if (!_nameHashToLoadState.contains(nameHash))
@@ -271,6 +279,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Prepare lookup tables
             _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
+            _modelIDToComplexModel.reserve(_modelIDToComplexModel.size() + reserveInfo.numModels);
             _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
@@ -284,7 +293,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
+            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones, reserveInfo.numTextureTransforms);
 
             // Create entt entities
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -399,6 +408,7 @@ void ModelLoader::Update(f32 deltaTime)
                     reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
                     reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
                     reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
+                    reserveInfo.numTextureTransforms += discoveredModel.modelHeader.numTextureTransforms * isSupported;
                 }
 
                 if (!_nameHashToLoadState.contains(nameHash))
@@ -420,6 +430,7 @@ void ModelLoader::Update(f32 deltaTime)
             // Prepare lookup tables
             _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
             _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
+            _modelIDToComplexModel.reserve(_modelIDToComplexModel.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
             _nameHashToLoadingMutex.reserve(_nameHashToLoadingMutex.size() + reserveInfo.numModels);
@@ -432,7 +443,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones);
+            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones, reserveInfo.numTextureTransforms);
 
             for (u32 i = 0; i < numDequeued; i++)
             {
@@ -635,35 +646,36 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     cModelFile.Close();
 
     // Extract the ComplexModel from the file
-    Model::ComplexModel model;
-    Model::ComplexModel::Read(cModelBuffer, model);
+    Model::ComplexModel* model = new Model::ComplexModel();
+    Model::ComplexModel::Read(cModelBuffer, *model);
 
-    if (model.modelHeader.numVertices == 0)
+    if (model->modelHeader.numVertices == 0)
     {
         DebugHandler::PrintError("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
         return false;
     }
 
-    assert(discoveredModel.modelHeader.numVertices == model.vertices.size());
+    assert(discoveredModel.modelHeader.numVertices == model->vertices.size());
 
-    u32 modelID = _modelRenderer->LoadModel(path.string(), model);
+    u32 modelID = _modelRenderer->LoadModel(path.string(), *model);
     _nameHashToModelID[request.placement.nameHash] = modelID;
 
+    _modelIDToComplexModel[modelID] = model;
     _modelIDToNameHash[modelID] = request.placement.nameHash;
 
     ECS::Components::AABB& aabb = _modelIDToAABB[modelID];
-    aabb.centerPos = model.aabbCenter;
-    aabb.extents = model.aabbExtents;
+    aabb.centerPos = model->aabbCenter;
+    aabb.extents = model->aabbExtents;
 
     // Generate Jolt Shape
     {
         // Disabled on purpose for now
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
-        u32 numPhysicsBytes = static_cast<u32>(model.physicsData.size());
+        u32 numPhysicsBytes = static_cast<u32>(model->physicsData.size());
 
         if (physicsEnabled && numPhysicsBytes > 0)
         {
-            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(model.physicsData.data(), numPhysicsBytes);
+            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(model->physicsData.data(), numPhysicsBytes);
             JoltStreamIn streamIn(physicsBuffer);
 
             JPH::Shape::IDToShapeMap shapeMap;
@@ -678,7 +690,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     }
 
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-    animationSystem->AddSkeleton(modelID, model);
+    animationSystem->AddSkeleton(modelID, *model);
 
     return true;
 }
@@ -753,11 +765,14 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     }
 
     /* Commented out on purpose to be dealt with at a later date when we have reimplemented GPU side animations */
-    //Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-    //if (animationSystem->AddInstance(modelID, instanceID))
-    //{
-    //	animationSystem->PlayAnimation(instanceID, Animation::Type::Stand, true, true);
-    //}
+    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+    if (animationSystem->AddInstance(modelID, instanceID))
+    {
+        if (!animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop))
+        {
+            animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Closed, Animation::Flag::Loop);
+        }
+    }
 }
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)

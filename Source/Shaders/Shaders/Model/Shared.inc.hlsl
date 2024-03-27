@@ -7,7 +7,7 @@ struct ModelInstanceData
     uint modelID;
     uint boneMatrixOffset;
     uint boneInstanceDataOffset;
-    uint textureTransformDeformOffset;
+    uint textureTransformMatrixOffset;
     uint textureTransformInstanceDataOffset;
     uint modelVertexOffset;
     uint animatedVertexOffset;
@@ -150,13 +150,14 @@ ModelVertex LoadModelVertex(uint vertexID)
 [[vk::binding(2, MODEL)]] StructuredBuffer<ModelInstanceData> _modelInstanceDatas;
 [[vk::binding(3, MODEL)]] StructuredBuffer<float4x4> _modelInstanceMatrices;
 [[vk::binding(4, MODEL)]] StructuredBuffer<float4x4> _instanceBoneMatrices;
+[[vk::binding(5, MODEL)]] StructuredBuffer<float4x4> _instanceTextureTransformMatrices;
 
 struct PackedAnimatedVertexPosition
 {
     uint packed0; // half2 position.xy
     uint packed1; // half position.z, padding
 };
-[[vk::binding(5, MODEL)]] RWStructuredBuffer<PackedAnimatedVertexPosition> _animatedModelVertexPositions;
+[[vk::binding(6, MODEL)]] RWStructuredBuffer<PackedAnimatedVertexPosition> _animatedModelVertexPositions;
 
 void StoreAnimatedVertexPosition(uint animatedVertexID, float3 position)
 {
@@ -197,8 +198,8 @@ float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVert
     return boneTransformMatrix;
 }
 
-[[vk::binding(6, MODEL)]] StructuredBuffer<IndexedDraw> _modelDraws;
-[[vk::binding(7, MODEL)]] StructuredBuffer<uint> _modelIndices;
+[[vk::binding(7, MODEL)]] StructuredBuffer<IndexedDraw> _modelDraws;
+[[vk::binding(8, MODEL)]] StructuredBuffer<uint> _modelIndices;
 
 struct ModelTextureUnit
 {
@@ -207,7 +208,7 @@ struct ModelTextureUnit
     uint packedTextureTransformIDs; // u16 textureTransformID[0], u16 textureTransformID[1]
 };
 
-[[vk::binding(8, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
+[[vk::binding(9, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
 [[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[MAX_TEXTURES]; // We give this index 20 because it always needs to be last in this descriptor set
 
 enum ModelPixelShaderID
