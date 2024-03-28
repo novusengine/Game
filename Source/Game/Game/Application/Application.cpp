@@ -13,7 +13,8 @@
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Util/ServiceLocator.h"
-#include "Game/Loaders/LoaderSystem.h"
+#include "Game/Loaders/ClientDB/ClientDBLoader.h"
+#include "Game/Loaders/Texture/TextureLoader.h"
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Scripting/Systems/LuaSystemBase.h"
 
@@ -237,27 +238,15 @@ bool Application::Init()
 	JPH::Factory::sInstance = new JPH::Factory();
 	JPH::RegisterTypes();
 
+	TextureLoader::Init();
+	ClientDBLoader::Init();
+
 	_gameRenderer = new GameRenderer(_inputManager);
 	_editorHandler = new Editor::EditorHandler();
 	ServiceLocator::SetEditorHandler(_editorHandler);
 
 	_ecsScheduler = new ECS::Scheduler();
 	_ecsScheduler->Init(*_registries.gameRegistry);
-
-	LoaderSystem* loaderSystem = LoaderSystem::Get();
-	loaderSystem->Init();
-
-	bool failedToLoad = false;
-	for (Loader* loader : loaderSystem->GetLoaders())
-	{
-		failedToLoad |= !loader->Init();
-
-		if (failedToLoad)
-			break;
-	}
-
-	if (failedToLoad)
-		return false;
 
 	ServiceLocator::SetGameConsole(new GameConsole());
 

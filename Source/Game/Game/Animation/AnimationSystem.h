@@ -8,6 +8,7 @@
 #include <enkiTS/TaskScheduler.h>
 
 #include <limits>
+#include <queue>
 
 namespace Model
 {
@@ -1546,8 +1547,9 @@ namespace Animation
         std::vector<InstanceID> instanceIDs;
         robin_hood::unordered_map<InstanceID, AnimationInstance> instanceIDToData;
 
-        std::atomic<u32> dirtyInstancesIndex;
-        std::vector<InstanceID> dirtyInstances;
+        std::mutex dirtyInstancesMutex;
+        std::queue<InstanceID> dirtyInstancesQueue;
+        robin_hood::unordered_set<InstanceID> dirtyInstances;
 
         std::atomic<u32> boneMatrixIndex;
         std::vector<mat4x4> boneMatrices;
