@@ -5,20 +5,20 @@ class CVarParameter;
 
 namespace Editor
 {
-	class CVarEditor : public BaseEditor
-	{
-	public:
-		CVarEditor();
+    class CVarEditor : public BaseEditor
+    {
+    public:
+        CVarEditor();
 
-		virtual const char* GetName() override { return "CVars"; }
+        virtual const char* GetName() override { return "CVars"; }
 
-		virtual void DrawImGuiSubMenuBar() override;
-		virtual void DrawImGui() override;
+        virtual void DrawImGuiSubMenuBar() override;
+        virtual void DrawImGui() override;
 
-	private:
-		void EditParameter(CVarParameter* p, float textWidth);
+    private:
+        void EditParameter(CVarParameter* p, float textWidth);
 
-	private:
-		std::vector<CVarParameter*> cachedEditParameters;
-	};
+    private:
+        std::vector<CVarParameter*> cachedEditParameters;
+    };
 }

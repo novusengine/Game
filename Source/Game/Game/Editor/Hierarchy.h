@@ -5,26 +5,27 @@
 
 namespace Editor
 {
-	class Inspector;
+    class Inspector;
 
-	class Hierarchy : public BaseEditor
-	{
-	public:
-		Hierarchy();
-		void SetInspector(Inspector* inspector);
+    class Hierarchy : public BaseEditor
+    {
+    public:
+        Hierarchy();
+        void SetInspector(Inspector* inspector);
 
-		virtual const char* GetName() override { return "Hierarchy"; }
+        virtual const char* GetName() override { return "Hierarchy"; }
 
-		virtual void DrawImGui() override;
+        virtual void OnModeUpdate(bool mode) override;
+        virtual void DrawImGui() override;
 
-		void SelectEntity(entt::entity entity);
+        void SelectEntity(entt::entity entity);
 
-	private:
-		void OnDoubleClicked(entt::registry* registry, entt::entity entity);
+    private:
+        void OnDoubleClicked(entt::registry* registry, entt::entity entity);
 
-	private:
-		Inspector* _inspector = nullptr;
-		entt::entity _selectedEntity;
-		bool _scrollToSelected = false;
-	};
+    private:
+        Inspector* _inspector = nullptr;
+        entt::entity _selectedEntity;
+        bool _scrollToSelected = false;
+    };
 }

@@ -186,6 +186,11 @@ namespace Editor
         }
     }
 
+    void Inspector::OnModeUpdate(bool mode)
+    {
+        SetIsVisible(mode);
+    }
+
     void Inspector::DrawImGui()
     {
         ZoneScoped;

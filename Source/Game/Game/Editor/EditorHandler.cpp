@@ -80,6 +80,9 @@ namespace Editor
             _editorMode = !_editorMode;
             RestoreLayout();
 
+            for (auto& editor : _editors)
+                editor->OnModeUpdate(_editorMode);
+
             ImGui::InsertNotification({ ImGuiToastType::Info, 3000, "Editor: %s", _editorMode ? "Enabled" : "Disabled" });
 
             _viewport->SetIsEditorMode(_editorMode);
@@ -180,9 +183,30 @@ namespace Editor
             {
                 for (BaseEditor* editor : _editors)
                 {
-                    if (ImGui::MenuItem(editor->GetName()))
+                    if (editor->IsVisible())
                     {
-                        editor->Show();
+                        if (ImGui::MenuItem(editor->GetName()))
+                        {
+                            editor->Show();
+                        }
+                    }
+                    else
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(170, 170, 170, 255));
+                        if (ImGui::MenuItem(editor->GetName()))
+                        {
+
+                        }
+
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::BeginTooltip();
+                            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+                            ImGui::TextUnformatted("This editor is only available in editor mode.");
+                            ImGui::PopTextWrapPos();
+                            ImGui::EndTooltip();
+                        }
+                        ImGui::PopStyleColor();
                     }
                 }
 

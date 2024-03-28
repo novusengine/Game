@@ -91,6 +91,11 @@ namespace Editor
         }
     }
 
+    void EaseCurveTool::OnModeUpdate(bool mode)
+    {
+        SetIsVisible(mode);
+    }
+
     void EaseCurveTool::DrawHeader()
     {
         ImGui::PushItemWidth(80);

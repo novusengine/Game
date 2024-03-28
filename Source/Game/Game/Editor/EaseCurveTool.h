@@ -15,6 +15,7 @@ namespace Editor
         virtual void DrawImGui() override;
 
         virtual void Update(f32 deltaTime) override;
+        virtual void OnModeUpdate(bool mode) override;
 
     private:
         f32 GetEasePoint(f32 t, i32 interpolationType, i32 interpolationName, f32 polynomialDegree = 2.0f);

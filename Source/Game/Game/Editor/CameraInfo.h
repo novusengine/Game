@@ -3,17 +3,17 @@
 
 namespace Editor
 {
-	class CameraInfo : public BaseEditor
-	{
-	public:
-		CameraInfo();
+    class CameraInfo : public BaseEditor
+    {
+    public:
+        CameraInfo();
 
-		virtual const char* GetName() override { return "Camera Info"; }
+        virtual const char* GetName() override { return "Camera Info"; }
 
-		virtual void DrawImGui() override;
+        virtual void DrawImGui() override;
 
-	private:
+    private:
 
-	private:
-	};
+    private:
+    };
 }

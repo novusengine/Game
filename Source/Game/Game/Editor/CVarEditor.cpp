@@ -11,14 +11,14 @@
 
 namespace Editor
 {
-	CVarEditor::CVarEditor()
-        : BaseEditor(GetName(), false)
-	{
+    CVarEditor::CVarEditor()
+        : BaseEditor(GetName(), true)
+    {
 
-	}
+    }
 
-	void CVarEditor::DrawImGuiSubMenuBar()
-	{
+    void CVarEditor::DrawImGuiSubMenuBar()
+    {
         if (ImGui::BeginMenu(GetName()))
         {
             CVarSystemImpl* cvarSystem = CVarSystemImpl::Get();
@@ -150,12 +150,12 @@ namespace Editor
             }
             ImGui::EndMenu();
         }
-	}
+    }
 
-	void CVarEditor::DrawImGui()
-	{
+    void CVarEditor::DrawImGui()
+    {
         
-	}
+    }
 
     void Label(const char* label, float textWidth)
     {
