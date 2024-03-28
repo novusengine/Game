@@ -13,7 +13,7 @@ Game.Init = function(self, rootDir, buildDir, binDir)
     workspace (self.name)
         location (buildDir)
         configurations { "Debug", "RelDebug", "Release" }
-        startproject "Game"
+        startproject "Game-App"
 
         filter "system:Windows"
             system "windows"

@@ -467,7 +467,7 @@ namespace Animation
             return -1;
 
         i16 boneID = skeleton.keyBoneIDToBoneID.at(keyBone);
-        if (boneID >= numBones)
+        if (boneID >= static_cast<i16>(numBones))
             return -1;
 
         return boneID;
@@ -711,8 +711,13 @@ namespace Animation
 
                 if (hasRenderer && isInstanceDirty)
                 {
-                    u32 dirtyIndex = _storage.dirtyInstancesIndex.fetch_add(1);
-                    _storage.dirtyInstances[dirtyIndex] = instanceID;
+                    _storage.dirtyInstancesMutex.lock();
+                    if (!_storage.dirtyInstances.contains(instanceID))
+                    {
+                        _storage.dirtyInstances.insert(instanceID);
+                        _storage.dirtyInstancesQueue.push(instanceID);
+                    }
+                    _storage.dirtyInstancesMutex.unlock();
                 }
             }
         });
@@ -725,12 +730,16 @@ namespace Animation
         {
             u32 throttle = CVAR_AnimationSystemThrottle.Get();
 
-            u32 numDirty = _storage.dirtyInstancesIndex.load();
+            u32 numDirty = static_cast<u32>(_storage.dirtyInstances.size());
             u32 numInstancesToUpdate = glm::min(numDirty, throttle);
+            u32 numUpdatedInstances = 0;
 
             for (u32 i = 0; i < numInstancesToUpdate; i++)
             {
-                InstanceID instanceID = _storage.dirtyInstances[i];
+                if (numUpdatedInstances >= numInstancesToUpdate)
+                    break;
+
+                InstanceID instanceID = _storage.dirtyInstancesQueue.front();
                 AnimationInstance& instance = _storage.instanceIDToData[instanceID];
                 const AnimationSkeleton& skeleton = _storage.skeletons[instance.modelID];
 
@@ -745,10 +754,11 @@ namespace Animation
                 {
                     _modelRenderer->SetTextureTransformMatricesAsDirty(instanceID, 0, numTextureTransforms, &_storage.textureTransformMatrices[instance.textureTransformMatrixOffset]);
                 }
+
+                _storage.dirtyInstancesQueue.pop();
+                _storage.dirtyInstances.erase(instanceID);
             }
         }
-
-        _storage.dirtyInstancesIndex.store(0);
     }
 
     void AnimationSystem::Reserve(u32 numSkeletons, u32 numInstances, u32 numBones, u32 numTextureTransforms)
@@ -765,7 +775,7 @@ namespace Animation
         u32 currentNumInstances = static_cast<u32>(_storage.instanceIDs.size());
         _storage.instanceIDs.resize(currentNumInstances + numInstances);
         _storage.instanceIDToData.reserve(currentNumInstances + numInstances);
-        _storage.dirtyInstances.resize(currentNumInstances + numInstances);
+        _storage.dirtyInstances.reserve(currentNumInstances + numInstances);
 
         u32 currentNumBones = static_cast<u32>(_storage.boneMatrices.size());
         _storage.boneMatrices.resize(currentNumBones + numBones);
@@ -794,7 +804,7 @@ namespace Animation
         u32 numInstances = _storage.instancesIndex.load();
 
         _storage.instanceIDs.resize(numInstances);
-        _storage.dirtyInstances.resize(numInstances);
+        _storage.dirtyInstances.reserve(numInstances);
     }
     void AnimationSystem::Clear()
     {
@@ -810,7 +820,6 @@ namespace Animation
         _storage.instanceIDs.clear();
         _storage.instanceIDToData.clear();
 
-        _storage.dirtyInstancesIndex.store(0);
         _storage.dirtyInstances.clear();
 
         _storage.boneMatrixIndex.store(0);

@@ -863,18 +863,18 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     _boneMatrices.Grow(reserveInfo.numBones);
 
     std::vector<glm::mat4>& boneMatrices = _boneMatrices.Get();
-    for (u32 i = numBoneMatrices; i < reserveInfo.numBones; ++i)
+    for (u32 i = 0; i < reserveInfo.numBones; ++i)
     {
-        boneMatrices[i] = glm::mat4(1.0f);
+        boneMatrices[numBoneMatrices + i] = glm::mat4(1.0f);
     }
 
     u32 numTextureTransformMatrices = static_cast<u32>(_textureTransformMatrices.Size());
     _textureTransformMatrices.Grow(reserveInfo.numTextureTransforms);
 
     std::vector<glm::mat4>& textureTransformMatrices = _textureTransformMatrices.Get();
-    for (u32 i = numTextureTransformMatrices; i < reserveInfo.numTextureTransforms; ++i)
+    for (u32 i = 0; i < reserveInfo.numTextureTransforms; ++i)
     {
-        textureTransformMatrices[i] = glm::mat4(1.0f);
+        textureTransformMatrices[numTextureTransformMatrices + i] = glm::mat4(1.0f);
     }
 
     u32 numDecorationSets = static_cast<u32>(_modelDecorationSets.size());
