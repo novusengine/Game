@@ -60,5 +60,5 @@ namespace Editor
         const std::vector<f32> _sectionParamHorizontal = {0.175f, 0.175f, 0.15f, 0.15f, 0.3f};
         const std::vector<f32> _sectionParamVerticalMultiColumn = {0.25f, 0.25f, 0.25f, 0.25f, 0.35f};
         const std::vector<f32> _sectionParamVertical = {0.18f, 0.18f, 0.162f, 0.18f, 0.30f};
-	};
+    };
 }

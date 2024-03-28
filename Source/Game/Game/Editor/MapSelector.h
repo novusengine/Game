@@ -5,21 +5,21 @@
 
 namespace Editor
 {
-	class MapSelector : public BaseEditor
-	{
-	public:
-		MapSelector();
+    class MapSelector : public BaseEditor
+    {
+    public:
+        MapSelector();
 
-		virtual const char* GetName() override { return "Map"; }
+        virtual const char* GetName() override { return "Map"; }
 
-		virtual void DrawImGui() override;
+        virtual void DrawImGui() override;
 
-		void ShowListViewWithIcons();
+        void ShowListViewWithIcons();
 
-	private:
-		void* _mapIcons[5] = { nullptr };
-		vec2 _mapIconSizes[5];
+    private:
+        void* _mapIcons[5] = { nullptr };
+        vec2 _mapIconSizes[5];
 
-		u32 _currentSelectedMapID = 0;
-	};
+        u32 _currentSelectedMapID = 0;
+    };
 }

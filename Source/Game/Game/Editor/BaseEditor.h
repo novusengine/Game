@@ -3,41 +3,41 @@
 
 namespace Editor
 {
-	class BaseEditor
-	{
-	public:
-		BaseEditor(const char* name, bool defaultVisible);
+    class BaseEditor
+    {
+    public:
+        BaseEditor(const char* name, bool defaultVisible);
 
-		void UpdateVisibility();
+        void UpdateVisibility();
 
-		virtual const char* GetName() = 0;
-		virtual void Show();
+        virtual const char* GetName() = 0;
+        virtual void Show();
 
-		virtual void Update(f32 deltaTime) {};
-		virtual void OnModeUpdate(bool mode) {};
+        virtual void Update(f32 deltaTime) {};
+        virtual void OnModeUpdate(bool mode) {};
 
-		virtual void BeginImGui() {};
+        virtual void BeginImGui() {};
 
-		virtual void DrawImGuiMenuBar() {};
-		virtual void DrawImGuiSubMenuBar() {};
-		virtual void DrawImGui() {};
+        virtual void DrawImGuiMenuBar() {};
+        virtual void DrawImGuiSubMenuBar() {};
+        virtual void DrawImGui() {};
 
-		virtual void EndImGui() {};
+        virtual void EndImGui() {};
 
-		bool OpenMenu(const char* title);
-		void CloseMenu();
+        bool OpenMenu(const char* title);
+        void CloseMenu();
 
-		bool OpenRightClickMenu();
-		bool IsMouseInsideWindow();
+        bool OpenRightClickMenu();
+        bool IsMouseInsideWindow();
 
-		bool IsHorizontal();
-		bool& IsVisible();
-		void SetIsVisible(bool isVisible);
-		void Reset();
+        bool IsHorizontal();
+        bool& IsVisible();
+        void SetIsVisible(bool isVisible);
+        void Reset();
 
-	protected:
-		bool _isVisible;
-		bool _lastIsVisible;
-		bool _defaultVisible;
-	};
+    protected:
+        bool _isVisible;
+        bool _lastIsVisible;
+        bool _defaultVisible;
+    };
 }

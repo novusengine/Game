@@ -4,33 +4,33 @@
 
 namespace Editor
 {
-	struct BaseAction
-	{
-		BaseAction();
+    struct BaseAction
+    {
+        BaseAction();
 
-		virtual char* GetActionName() = 0;
-		virtual void Undo() = 0;
-		virtual void Draw() = 0;
+        virtual char* GetActionName() = 0;
+        virtual void Undo() = 0;
+        virtual void Draw() = 0;
 
-		bool isOpen;
-	};
+        bool isOpen;
+    };
 
-	typedef std::deque<BaseAction*> ActionStack;
+    typedef std::deque<BaseAction*> ActionStack;
 
-	class ActionStackEditor : public BaseEditor
-	{
-	public:
-		ActionStackEditor(u32 maxSize);
+    class ActionStackEditor : public BaseEditor
+    {
+    public:
+        ActionStackEditor(u32 maxSize);
 
-		virtual const char* GetName() override { return "Action Stack"; }
+        virtual const char* GetName() override { return "Action Stack"; }
 
-		virtual void OnModeUpdate(bool mode) override;
-		virtual void DrawImGui() override;
+        virtual void OnModeUpdate(bool mode) override;
+        virtual void DrawImGui() override;
 
-		void AddAction(BaseAction* action);
+        void AddAction(BaseAction* action);
 
-	private:
-		u32 _maxSize = 0;
-		ActionStack _actionStack;
-	};
+    private:
+        u32 _maxSize = 0;
+        ActionStack _actionStack;
+    };
 }

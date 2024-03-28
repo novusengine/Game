@@ -26,8 +26,8 @@ namespace Editor
 {
     MapSelector::MapSelector()
         : BaseEditor(GetName(), true)
-	{
-	}
+    {
+    }
 
     bool DrawMapItem(ClientDB::Storage<Definitions::Map>& mapStorage, const ClientDB::Definitions::Map& map, std::string& filter, u32& selectedMapID, u32& popupMapID, void** mapIcons)
     {
@@ -315,12 +315,12 @@ namespace Editor
         }
     }
 
-	void MapSelector::DrawImGui()
-	{
+    void MapSelector::DrawImGui()
+    {
         if (ImGui::Begin(GetName()))
         {
             ShowListViewWithIcons();
         }
         ImGui::End();
-	}
+    }
 }
