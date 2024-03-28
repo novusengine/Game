@@ -73,6 +73,9 @@ namespace Editor
         _editorMode = _viewport->IsEditorMode();
         LoadLayouts();
 
+        for (auto& editor : _editors)
+            editor->OnModeUpdate(_editorMode);
+
         // Bind switch editor keys
         keybindGroup->AddKeyboardCallback("Switch Editor Mode", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Shift, [this](i32 key, KeybindAction action, KeybindModifier modifier)
         {
