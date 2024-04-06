@@ -11,7 +11,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_CameraLockCullingFrustum("camera.lockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_CameraLockCullingFrustum(CVarCategory::Client | CVarCategory::Rendering, "cameraLockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
 
 enum class FrustumPlane
 {

@@ -25,7 +25,7 @@
 #include <imgui/imgui_internal.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 
-AutoCVar_Int CVAR_IsEditorMode("editor.isEditorMode", "enable editor mode", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_IsEditorMode(CVarCategory::Client, "isEditorMode", "enable editor mode", 0, CVarFlags::EditCheckbox);
 
 namespace Editor
 {

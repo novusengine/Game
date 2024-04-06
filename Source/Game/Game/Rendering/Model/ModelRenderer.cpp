@@ -27,19 +27,19 @@
 #include <entt/entt.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
-AutoCVar_Int CVAR_ModelRendererEnabled("modelRenderer.enabled", "enable modelrendering", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ModelCullingEnabled("modelRenderer.culling", "enable model culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ModelOcclusionCullingEnabled("modelRenderer.culling.occlusion", "enable model occlusion culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelRendererEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelEnabled", "enable modelrendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelCulling", "enable model culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelOcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelOcclusionCulling", "enable model occlusion culling", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ModelDisableTwoStepCulling("modelRenderer.debug.disableTwoStepCulling", "disable two step culling and force all drawcalls into the geometry pass", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDisableTwoStepCulling(CVarCategory::Client | CVarCategory::Rendering, "modelDisableTwoStepCulling", "disable two step culling and force all drawcalls into the geometry pass", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ModelDrawOccluders("modelRenderer.debug.drawOccluders", "enable the draw command for occluders, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ModelDrawGeometry("modelRenderer.debug.drawGeometry", "enable the draw command for geometry, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDrawOccluders(CVarCategory::Client | CVarCategory::Rendering, "modelDrawOccluders", "enable the draw command for occluders, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDrawGeometry(CVarCategory::Client | CVarCategory::Rendering, "modelDrawGeometry", "enable the draw command for geometry, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ModelDrawOpaqueAABBs("modelRenderer.debug.drawOpaqueAABBs", "if enabled, the culling pass will debug draw all opaque AABBs", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ModelDrawTransparentAABBs("modelRenderer.debug.drawTransparentAABBs", "if enabled, the culling pass will debug draw all transparent AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDrawOpaqueAABBs(CVarCategory::Client | CVarCategory::Rendering, "modelDrawOpaqueAABBs", "if enabled, the culling pass will debug draw all opaque AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelDrawTransparentAABBs(CVarCategory::Client | CVarCategory::Rendering, "modelDrawTransparentAABBs", "if enabled, the culling pass will debug draw all transparent AABBs", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ModelValidateTransfers("validation.GPUVectors.modelRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "modelValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
@@ -170,7 +170,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {
@@ -266,7 +266,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {
@@ -333,7 +333,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
 
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
 
             params.modelIDIsDrawCallID = false;
@@ -431,7 +431,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             GeometryPass(params);
         });
@@ -450,7 +450,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     if (_transparentCullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {
@@ -518,7 +518,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
 
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
 
@@ -626,7 +626,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             GeometryPass(params);
         });
@@ -720,7 +720,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
 
                 params.enableDrawing = CVAR_ModelDrawGeometry.Get();
                 params.cullingEnabled = false;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
                 GeometryPass(params);
             });
@@ -807,7 +807,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
 
                 params.enableDrawing = CVAR_ModelDrawGeometry.Get();
                 params.cullingEnabled = false;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
                 GeometryPass(params);
             });
@@ -1054,7 +1054,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
                 u16 textureTransformID2 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
                 if (cTextureUnit.textureCount > 1)
-                    if (cTextureUnit.textureTransformIndexStart + 1 < textureTransformLookupTableSize)
+                    if (cTextureUnit.textureTransformIndexStart + 1u < textureTransformLookupTableSize)
                         textureTransformID2 = model.textureTransformLookupTable[cTextureUnit.textureTransformIndexStart + 1];
 
                 textureUnit.textureTransformIds[0] = textureTransformID1;
@@ -1265,7 +1265,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, const mat4x4&
 
         if (manifest.isAnimated)
         {
-            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
+            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationSystemEnabled"_h);
             if (animationSystemEnabled && *animationSystemEnabled == 1)
             {
                 u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
@@ -1426,7 +1426,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
             if (manifest.isAnimated)
             {
-                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar("animationSystem.enabled"_h);
+                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationSystemEnabled"_h);
                 if (animationSystemEnabled && *animationSystemEnabled == 1)
                 {
                     u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);

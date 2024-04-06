@@ -17,12 +17,12 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_VisibilityBufferDebugID("material.visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
-AutoCVar_ShowFlag CVAR_DrawTerrainWireframe("material.drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
-AutoCVar_ShowFlag CVAR_EnableFog("camera.enableFog", "Toggle fog", ShowFlag::DISABLED);
-AutoCVar_VecFloat CVAR_FogColor("camera.fogColor", "Change fog color", vec4(0.33f, 0.2f, 0.38f, 1.0f), CVarFlags::None);
-AutoCVar_Float CVAR_FogBeginDist("camera.fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
-AutoCVar_Float CVAR_FogEndDist("camera.fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Int CVAR_VisibilityBufferDebugID(CVarCategory::Client | CVarCategory::Rendering, "visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
+AutoCVar_ShowFlag CVAR_DrawTerrainWireframe(CVarCategory::Client | CVarCategory::Rendering, "drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
+AutoCVar_ShowFlag CVAR_EnableFog(CVarCategory::Client | CVarCategory::Rendering, "enableFog", "Toggle fog", ShowFlag::DISABLED);
+AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, "fogColor", "Change fog color", vec4(0.33f, 0.2f, 0.38f, 1.0f), CVarFlags::None);
+AutoCVar_Float CVAR_FogBeginDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_FogEndDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
 
 MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer)
     : _renderer(renderer)
@@ -93,7 +93,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             Renderer::ComputePipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);
 
-            const i32 shadowFilterMode = 0;// *CVarSystem::Get()->GetIntCVar("shadows.filter.mode");
+            const i32 shadowFilterMode = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             Renderer::ComputeShaderDesc shaderDesc;
             shaderDesc.path = "materialPass.cs.hlsl";

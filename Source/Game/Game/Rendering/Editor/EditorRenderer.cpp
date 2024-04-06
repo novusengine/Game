@@ -12,9 +12,9 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_WorldGridEnabled("editorRenderer.worldgrid.enabled", "enable world grid rendering", 1, CVarFlags::EditCheckbox);
-AutoCVar_Float CVAR_WorldGridFadeStart("editorRenderer.worldgrid.fadestart", "set the starting value from where the world grid will start fading", 80.0f);
-AutoCVar_Float CVAR_WorldGridFadeEnd("editorRenderer.worldgrid.fadeend", "set the starting value from where the world grid will stop fading", 110.0f);
+AutoCVar_Int CVAR_WorldGridEnabled(CVarCategory::Client | CVarCategory::Rendering, "worldGridEnabled", "enable world grid rendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Float CVAR_WorldGridFadeStart(CVarCategory::Client | CVarCategory::Rendering, "worldGridFadeStart", "set the starting value from where the world grid will start fading", 80.0f);
+AutoCVar_Float CVAR_WorldGridFadeEnd(CVarCategory::Client | CVarCategory::Rendering, "worldGridFadeEnd", "set the starting value from where the world grid will stop fading", 110.0f);
 
 EditorRenderer::EditorRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)

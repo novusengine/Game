@@ -1,12 +1,14 @@
 #include "CVarEditor.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
+#include <Base/Util/DebugHandler.h>
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <map>
+#include <stack>
 #include <string>
 
 namespace Editor
@@ -28,19 +30,23 @@ namespace Editor
             ImGui::InputText("Filter", &searchText);
             static bool bShowAdvanced = false;
             ImGui::Checkbox("Advanced", &bShowAdvanced);
+            static bool bShowHidden = false;
+            ImGui::Checkbox("Hidden", &bShowHidden);
 
             cachedEditParameters.clear();
+            float maxTextWidth = 0;
 
             auto addToEditList = [&](auto parameter)
             {
-                bool bHidden = ((u32)parameter->flags & (u32)CVarFlags::Noedit);
+                bool bHidden = ((u32)parameter->flags & (u32)CVarFlags::Hidden);
                 bool bIsAdvanced = ((u32)parameter->flags & (u32)CVarFlags::Advanced);
 
-                if (!bHidden)
+                if (!bHidden || bShowHidden)
                 {
                     if (!(!bShowAdvanced && bIsAdvanced) && parameter->name.find(searchText) != std::string::npos)
                     {
                         cachedEditParameters.push_back(parameter);
+                        maxTextWidth = std::max(maxTextWidth, ImGui::CalcTextSize(parameter->name.c_str()).x);
                     };
                 }
             };
@@ -70,82 +76,80 @@ namespace Editor
                 addToEditList(cvarSystem->GetCVarArray<ivec4>()->cvars[i].parameter);
             }
 
-            if (cachedEditParameters.size() > 10)
+            for (int i = 0; i < cvarSystem->GetCVarArray<ShowFlag>()->lastCVar; i++)
             {
-                std::map<std::string, std::vector<CVarParameter*>> categorizedParams;
+                addToEditList(cvarSystem->GetCVarArray<ShowFlag>()->cvars[i].parameter);
+            }
 
-                //insert all the edit parameters into the hashmap by category
-                for (auto p : cachedEditParameters)
+            //alphabetical sort
+            std::sort(cachedEditParameters.begin(), cachedEditParameters.end(), [](CVarParameter* A, CVarParameter* B)
+            {
+                if (A->category == B->category)
                 {
-                    int dotPos = -1;
-                    //find where the first dot is to categorize
-                    for (int i = 0; i < p->name.length(); i++)
+                    return A->name < B->name;
+                }
+
+                return A->category > B->category;
+            });
+            
+            std::map<std::string, std::vector<CVarParameter*>> categorizedParams;
+            std::stack<u8> closeStack; // 0 = PopID, 1 = EndMenu;
+
+            //insert all the edit parameters into the hashmap by category
+            for (auto p : cachedEditParameters)
+            {
+                DebugHandler::Assert(closeStack.size() == 0, "Stack not empty!");
+
+                u32 intCategory = static_cast<u32>(p->category);
+                if (intCategory == 0)
+                    continue;
+
+                bool displayParameter = true;
+                u32 depthLevel = 0;
+                for (u32 i = 0; i < static_cast<u32>(CVarCategory::COUNT); i++)
+                {
+                    u32 mask = (1 << i);
+                    if (intCategory & mask)
                     {
-                        if (p->name[i] == '.')
+                        depthLevel++;
+
+                        const char* categoryName = CVarCategoryToString[i];
+
+                        std::string idName = "Depth" + std::to_string(depthLevel) + categoryName;
+                        ImGui::PushID(idName.c_str());
+                        closeStack.push(0);
+
+                        if (ImGui::BeginMenu(categoryName))
                         {
-                            dotPos = i;
+                            closeStack.push(1);
+                        }
+                        else
+                        {
+                            displayParameter = false;
                             break;
                         }
                     }
-                    std::string category = "";
-                    if (dotPos != -1)
-                    {
-                        category = p->name.substr(0, dotPos);
-                    }
-
-                    auto it = categorizedParams.find(category);
-                    if (it == categorizedParams.end())
-                    {
-                        categorizedParams[category] = std::vector<CVarParameter*>();
-                        it = categorizedParams.find(category);
-                    }
-                    it->second.push_back(p);
                 }
-
-                for (auto [category, parameters] : categorizedParams)
-                {
-                    //alphabetical sort
-                    std::sort(parameters.begin(), parameters.end(), [](CVarParameter* A, CVarParameter* B)
-                    {
-                        return A->name < B->name;
-                    });
-
-                    if (ImGui::BeginMenu(category.c_str()))
-                    {
-                        float maxTextWidth = 0;
-
-                        for (auto p : parameters)
-                        {
-                            maxTextWidth = std::max(maxTextWidth, ImGui::CalcTextSize(p->name.c_str()).x);
-                        }
-
-                        for (auto p : parameters)
-                        {
-                            EditParameter(p, maxTextWidth);
-                        }
-
-                        ImGui::EndMenu();
-                    }
-                }
-            }
-            else
-            {
-                //alphabetical sort
-                std::sort(cachedEditParameters.begin(), cachedEditParameters.end(), [](CVarParameter* A, CVarParameter* B)
-                {
-                    return A->name < B->name;
-                });
-
-                float maxTextWidth = 0;
-
-                for (auto p : cachedEditParameters)
-                {
-                    maxTextWidth = std::max(maxTextWidth, ImGui::CalcTextSize(p->name.c_str()).x);
-                }
-
-                for (auto p : cachedEditParameters)
+                
+                if (displayParameter)
                 {
                     EditParameter(p, maxTextWidth);
+                }
+
+                while (!closeStack.empty())
+                {
+                    u8 command = closeStack.top();
+
+                    if (command == 0)
+                    {
+                        ImGui::PopID();
+                    }
+                    else if (command == 1)
+                    {
+                        ImGui::EndMenu();
+                    }
+
+                    closeStack.pop();
                 }
             }
             ImGui::EndMenu();

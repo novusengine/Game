@@ -17,19 +17,19 @@
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
 
-AutoCVar_ShowFlag CVAR_JoltDebugRender("joltDebugRenderer.enabled", "Render collision meshes as seen by Jolt", ShowFlag::DISABLED);
+AutoCVar_ShowFlag CVAR_JoltDebugRender(CVarCategory::Client | CVarCategory::Rendering, "joltEnabled", "Render collision meshes as seen by Jolt", ShowFlag::DISABLED);
 
 //AutoCVar_Int CVAR_JoltDebugCullingEnabled("joltDebugRenderer.culling", "enable jolt debug culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_JoltDebugOcclusionCullingEnabled("joltDebugRenderer.culling.occlusion", "enable jolt debug occlusion culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugOcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "joltOcclusionCulling", "enable jolt debug occlusion culling", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_JoltDebugDisableTwoStepCulling("joltDebugRenderer.debug.disableTwoStepCulling", "disable two step culling and force all drawcalls into the geometry pass", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugDisableTwoStepCulling(CVarCategory::Client | CVarCategory::Rendering, "joltDisableTwoStepCulling", "disable two step culling and force all drawcalls into the geometry pass", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_JoltDebugDrawOccluders("joltDebugRenderer.debug.drawOccluders", "enable the draw command for occluders, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_JoltDebugDrawGeometry("joltDebugRenderer.debug.drawGeometry", "enable the draw command for geometry, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugDrawOccluders(CVarCategory::Client | CVarCategory::Rendering, "joltDrawOccluders", "enable the draw command for occluders, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugDrawGeometry(CVarCategory::Client | CVarCategory::Rendering, "joltDrawGeometry", "enable the draw command for geometry, the culling and everything else is unaffected", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_JoltDebugDrawAABBs("joltDebugRenderer.debug.drawAABBs", "if enabled, the culling pass will debug draw AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugDrawAABBs(CVarCategory::Client | CVarCategory::Rendering, "joltDrawAABBs", "if enabled, the culling pass will debug draw AABBs", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_JoltDebugValidateTransfers("validation.GPUVectors.joltDebugRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_JoltDebugValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "joltValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
 JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, ::DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
@@ -362,7 +362,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
 
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -431,7 +431,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
 
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -530,7 +530,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
                 GeometryPass(params);
 
@@ -611,7 +611,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
                 GeometryPass(params);
 

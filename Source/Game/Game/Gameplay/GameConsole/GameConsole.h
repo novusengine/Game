@@ -24,7 +24,7 @@ public:
 
         _linesToAppend.enqueue(std::string(buffer, length));
 
-        if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
             DebugHandler::Print(string, args...);
         }
@@ -42,7 +42,7 @@ public:
         std::string result = std::string(buffer, length);
         _linesToAppend.enqueue("[Success] : " + result);
 
-        if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
             DebugHandler::Print("{0}", result);
         }
@@ -56,7 +56,7 @@ public:
 
         _linesToAppend.enqueue("[Warning] : " + std::string(buffer, length));
 
-        if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
             DebugHandler::PrintWarning(string, args...);
         }
@@ -70,7 +70,7 @@ public:
 
         _linesToAppend.enqueue("[Error] : " + std::string(buffer, length));
 
-        if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
             DebugHandler::PrintError(string, args...);
         }
@@ -84,7 +84,7 @@ public:
 
         _linesToAppend.enqueue("[Fatal] : " + std::string(buffer, length));
 
-        if (*CVarSystem::Get()->GetIntCVar("gameconsole.DuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
             DebugHandler::PrintFatal(string, args...);
         }

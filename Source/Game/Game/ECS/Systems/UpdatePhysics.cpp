@@ -29,8 +29,8 @@
 
 using namespace JPH::literals;
 
-AutoCVar_Int CVAR_PhysicsEnabled("physics.enabled", "enables the physics engine", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_PhysicsOptimizeBP("physics.optimizeBP", "enables automatically optimizing the broadphase during load", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_PhysicsEnabled(CVarCategory::Client | CVarCategory::Physics, "enabled", "enables the physics engine", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_PhysicsOptimizeBP(CVarCategory::Client | CVarCategory::Physics, "optimizeBP", "enables automatically optimizing the broadphase during load", 1, CVarFlags::EditCheckbox);
 
 namespace ECS::Systems
 {
