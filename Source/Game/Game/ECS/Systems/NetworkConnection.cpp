@@ -13,12 +13,12 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_DebugAutoConnectToGameserver("debug.autoConnectToGameserver", "Automatically connect to game server when launching client", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_DebugAutoConnectToGameserver(CVarCategory::Client | CVarCategory::Network, "autoConnectToGameserver", "Automatically connect to game server when launching client", 0, CVarFlags::EditCheckbox);
 
 namespace ECS::Systems
 {
-	bool HandleOnConnected(Network::SocketID socketID, std::shared_ptr<Network::Packet> netPacket)
-	{
+    bool HandleOnConnected(Network::SocketID socketID, std::shared_ptr<Network::Packet> netPacket)
+    {
         u8 result = 0;
         if (!netPacket->payload->GetU8(result))
             return false;
@@ -32,18 +32,18 @@ namespace ECS::Systems
             DebugHandler::Print("Network : Connected to server (Playing on character : \"{0}\")", charName);
         }
 
-		return true;
-	}
+        return true;
+    }
 
-	void NetworkConnection::Init(entt::registry& registry)
-	{
+    void NetworkConnection::Init(entt::registry& registry)
+    {
         entt::registry::context& ctx = registry.ctx();
 
-		Singletons::NetworkState& networkState = ctx.emplace<Singletons::NetworkState>();
+        Singletons::NetworkState& networkState = ctx.emplace<Singletons::NetworkState>();
 
-		// Setup NetworkState
-		{
-			networkState.client = std::make_unique<Network::Client>();
+        // Setup NetworkState
+        {
+            networkState.client = std::make_unique<Network::Client>();
 
             networkState.packetHandler = std::make_unique<Network::PacketHandler>();
             networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_CONNECTED, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 4u, 12u, &HandleOnConnected));
@@ -70,15 +70,15 @@ namespace ECS::Systems
                     DebugHandler::PrintError("Network : Failed to connect to ({0}, {1})", ipAddress, port);
                 }
             }
-		}
-	}
+        }
+    }
 
-	void NetworkConnection::Update(entt::registry& registry, f32 deltaTime)
-	{
-		entt::registry::context& ctx = registry.ctx();
+    void NetworkConnection::Update(entt::registry& registry, f32 deltaTime)
+    {
+        entt::registry::context& ctx = registry.ctx();
 
-		Singletons::NetworkState& networkState = ctx.get<Singletons::NetworkState>();
-		
+        Singletons::NetworkState& networkState = ctx.get<Singletons::NetworkState>();
+        
         static bool wasConnected = false;
         if (networkState.client->IsConnected())
         {
@@ -100,8 +100,8 @@ namespace ECS::Systems
         }
 
         Network::Socket::Result readResult = networkState.client->Read();
-		if (readResult == Network::Socket::Result::SUCCESS)
-		{
+        if (readResult == Network::Socket::Result::SUCCESS)
+        {
             std::shared_ptr<Bytebuffer>& buffer = networkState.client->GetReadBuffer();
             while (size_t activeSize = buffer->GetActiveSize())
             {
@@ -168,6 +168,6 @@ namespace ECS::Systems
                     }
                 }
             }
-		}
-	}
+        }
+    }
 }

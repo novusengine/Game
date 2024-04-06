@@ -15,7 +15,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_CameraLockSkybox("camera.lockSkybox", "Lock the skybox to not follow the camera", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_CameraLockSkybox(CVarCategory::Client | CVarCategory::Rendering, "lockSkybox", "Lock the skybox to not follow the camera", 0, CVarFlags::EditCheckbox);
 
 namespace ECS::Systems
 {

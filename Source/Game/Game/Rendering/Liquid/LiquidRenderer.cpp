@@ -17,15 +17,15 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_LiquidRendererEnabled("liquidRenderer.enabled", "enable liquidrendering", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_LiquidCullingEnabled("liquidRenderer.culling", "enable liquid culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_LiquidOcclusionCullingEnabled("liquidRenderer.culling.occlusion", "enable liquid occlusion culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidRendererEnabled(CVarCategory::Client | CVarCategory::Rendering, "liquidEnabled", "enable liquidrendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "liquidCulling", "enable liquid culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidOcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "liquidCullingOcclusion", "enable liquid occlusion culling", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_LiquidDrawAABBs("liquidRenderer.debug.drawAABBs", "if enabled, the culling pass will debug draw all AABBs", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidDrawAABBs(CVarCategory::Client | CVarCategory::Rendering, "liquidDebugDrawAABBs", "if enabled, the culling pass will debug draw all AABBs", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Float CVAR_LiquidVisibilityRange("liquidRenderer.visibilityRange", "How far under a liquid you should see", 500.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_LiquidVisibilityRange(CVarCategory::Client | CVarCategory::Rendering, "liquidVisibilityRange", "How far under a liquid you should see", 500.0f, CVarFlags::EditFloatDrag);
 
-AutoCVar_Int CVAR_LiquidValidateTransfers("validation.GPUVectors.liquidRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "liquidCalidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
 LiquidRenderer::LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
@@ -304,7 +304,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (_cullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {
@@ -372,7 +372,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
 
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
             params.occlusionCull = CVAR_LiquidOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
 
@@ -523,7 +523,7 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
 
             params.enableDrawing = true;//CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             GeometryPass(params);
         });

@@ -7,56 +7,56 @@
 
 namespace Map
 {
-	struct Chunk;
-	struct LiquidInfo;
+    struct Chunk;
+    struct LiquidInfo;
 }
 
 class LiquidRenderer;
 
 class LiquidLoader
 {
-	static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
+    static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
 
 private:
-	struct LiquidInstance
-	{
-		u16 cellID;
+    struct LiquidInstance
+    {
+        u16 cellID;
 
-		u8 typeID;
-		u8 packedData;
-		u8 packedOffset;
-		u8 packedSize;
+        u8 typeID;
+        u8 packedData;
+        u8 packedOffset;
+        u8 packedSize;
 
-		f32 height;
-		u32 bitmapDataOffset;
-		u32 vertexDataOffset;
-	};
+        f32 height;
+        u32 bitmapDataOffset;
+        u32 vertexDataOffset;
+    };
 
-	struct LoadRequestInternal
-	{
-		u16 chunkX;
-		u16 chunkY;
+    struct LoadRequestInternal
+    {
+        u16 chunkX;
+        u16 chunkY;
 
-		std::vector<LiquidInstance> instances;
-		u8* vertexData = nullptr;
-		u8* bitmapData = nullptr;
-	};
+        std::vector<LiquidInstance> instances;
+        u8* vertexData = nullptr;
+        u8* bitmapData = nullptr;
+    };
 
 public:
-	LiquidLoader(LiquidRenderer* liquidRenderer);
+    LiquidLoader(LiquidRenderer* liquidRenderer);
 
-	void Init();
-	void Clear();
-	void Update(f32 deltaTime);
+    void Init();
+    void Clear();
+    void Update(f32 deltaTime);
 
-	void LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo);
-
-private:
-	void LoadRequest(LoadRequestInternal& request);
+    void LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo);
 
 private:
-	LiquidRenderer* _liquidRenderer = nullptr;
+    void LoadRequest(LoadRequestInternal& request);
 
-	LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];
-	moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
+private:
+    LiquidRenderer* _liquidRenderer = nullptr;
+
+    LoadRequestInternal _workingRequests[MAX_LOADS_PER_FRAME];
+    moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
 };

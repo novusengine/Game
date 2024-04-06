@@ -670,7 +670,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     // Generate Jolt Shape
     {
         // Disabled on purpose for now
-        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled");
         u32 numPhysicsBytes = static_cast<u32>(model->physicsData.size());
 
         if (physicsEnabled && numPhysicsBytes > 0)
@@ -736,7 +736,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
     if (discoveredModel.hasShape)
     {
-        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
 
         if (physicsEnabled && !hasParent)
         {

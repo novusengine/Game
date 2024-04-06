@@ -74,7 +74,7 @@ namespace Editor
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-            u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+            u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             ImGui::Spacing();
 

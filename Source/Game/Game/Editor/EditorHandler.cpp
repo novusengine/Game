@@ -29,7 +29,7 @@
 
 namespace Editor
 {
-    AutoCVar_Int CVAR_EditorEnabled("editor.Enable", "enable editor mode for the client", 1, CVarFlags::EditCheckbox);
+    AutoCVar_Int CVAR_EditorEnabled(CVarCategory::Client, "editorEnable", "enable editor mode for the client", 1, CVarFlags::EditCheckbox);
 
     EditorHandler::EditorHandler()
     {

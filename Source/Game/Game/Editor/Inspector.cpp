@@ -41,10 +41,10 @@
 
 namespace Editor
 {
-    AutoCVar_Int CVAR_InspectorEnabled("editor.inspector.Enable", "enable editor mode for the client", 1, CVarFlags::EditCheckbox);
+    AutoCVar_Int CVAR_InspectorEnabled(CVarCategory::Client, "inspectorEnable", "enable editor mode for the client", 1, CVarFlags::EditCheckbox);
 
-    AutoCVar_ShowFlag CVAR_InspectorOBBShowFlag("editor.showflags.InspectorOBB", "draw OBB for selected object", ShowFlag::DISABLED);
-    AutoCVar_ShowFlag CVAR_InspectorWorldAABBShowFlag("editor.showflags.InspectorWorldAABB", "draw world AABB for selected object", ShowFlag::DISABLED);
+    AutoCVar_ShowFlag CVAR_InspectorOBBShowFlag(CVarCategory::Client | CVarCategory::Rendering, "drawInspectorOBB", "draw OBB for selected object", ShowFlag::DISABLED);
+    AutoCVar_ShowFlag CVAR_InspectorWorldAABBShowFlag(CVarCategory::Client | CVarCategory::Rendering, "drawInspectorWorldAABB", "draw world AABB for selected object", ShowFlag::DISABLED);
 
     struct MoveModelAction : public BaseAction
     {

@@ -21,15 +21,15 @@
 #include <imgui/imgui.h>
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_TerrainRendererEnabled("terrainRenderer.enabled", "enable terrainrendering", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_TerrainCullingEnabled("terrainRenderer.culling", "enable terrain culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_OcclusionCullingEnabled("terrainRenderer.occlusionculling", "enable terrain occlusion culling", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ForceDisableOccluders("terrainRenderer.forcedisableoccluders", "force disable occluders", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainRendererEnabled(CVarCategory::Client | CVarCategory::Rendering, "terrainEnabled", "enable terrainrendering", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "terrainCulling", "enable terrain culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_OcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "terrainOcclusionCulling", "enable terrain occlusion culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ForceDisableOccluders(CVarCategory::Client | CVarCategory::Rendering, "terrainForceDisableOccluders", "force disable occluders", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_TerrainOccludersEnabled("terrainRenderer.draw.occluders", "should draw occluders", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_TerrainGeometryEnabled("terrainRenderer.draw.geometry", "should draw geometry", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainOccludersEnabled(CVarCategory::Client | CVarCategory::Rendering, "terrainDrawOccluders", "should draw occluders", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainGeometryEnabled(CVarCategory::Client | CVarCategory::Rendering, "terrainDrawGeometry", "should draw geometry", 1, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_TerrainValidateTransfers("validation.GPUVectors.terrainRenderer", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_TerrainValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "terrainValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
 TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
@@ -255,7 +255,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (_instanceDatas.Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar("shadows.cascade.num");
+    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {

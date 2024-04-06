@@ -8,9 +8,9 @@
 
 #include <FileFormat/Shared.h>
 
-AutoCVar_Int CVAR_AnimationSystemEnabled("animationSystem.enabled", "Enables the Animation System", 0, CVarFlags::EditCheckbox);
-AutoCVar_Float CVAR_AnimationSystemTimeScale("animationSystem.timeScale", "Controls the global speed of all animations", 1.0f);
-AutoCVar_Int CVAR_AnimationSystemThrottle("animationSystem.throttle", "Sets the number of dirty instances that can be updated every frame", 64);
+AutoCVar_Int CVAR_AnimationSystemEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled", "Enables the Animation System", 0, CVarFlags::EditCheckbox);
+AutoCVar_Float CVAR_AnimationSystemTimeScale(CVarCategory::Client | CVarCategory::Rendering, "animationTimeScale", "Controls the global speed of all animations", 1.0f);
+AutoCVar_Int CVAR_AnimationSystemThrottle(CVarCategory::Client | CVarCategory::Rendering, "animationThrottle", "Sets the number of dirty instances that can be updated every frame", 64);
 
 namespace Animation
 {

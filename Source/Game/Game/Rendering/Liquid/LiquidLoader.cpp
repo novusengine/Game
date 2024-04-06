@@ -5,10 +5,10 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-AutoCVar_Int CVAR_LiquidLoaderEnabled("liquidLoader.enabled", "enable liquid loading", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_LiquidLoaderEnabled(CVarCategory::Client, "liquidLoaderEnabled", "enable liquid loading", 1, CVarFlags::EditCheckbox);
 
 LiquidLoader::LiquidLoader(LiquidRenderer* liquidRenderer)
-	: _liquidRenderer(liquidRenderer) { }
+    : _liquidRenderer(liquidRenderer) { }
 
 void LiquidLoader::Init()
 {
@@ -52,14 +52,14 @@ void LiquidLoader::Update(f32 deltaTime)
             u8 width = instance.packedSize & 0xF;
 
             if (width == 0 || height == 0)
-				continue;
+                continue;
 
             u32 vertexCount = (width + 1) * (height + 1);
-			reserveInfo.numVertices += vertexCount;
+            reserveInfo.numVertices += vertexCount;
 
             u32 indexCount = width * height * 6;
             reserveInfo.numIndices += indexCount;
-		}
+        }
     }
 
     // Have LiquidRenderer prepare all buffers for what we need to load
@@ -125,14 +125,14 @@ void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquid
     u32 instanceIndex = 0;
     for (u32 i = 0; i < liquidInfo->headers.size(); i++)
     {
-		Map::CellLiquidHeader& header = liquidInfo->headers[i];
+        Map::CellLiquidHeader& header = liquidInfo->headers[i];
 
         u32 cellID = i; // Directly corresponding to the header index?
         u32 numInstances = (header.packedData & 0x7F);
 
         u32 start = instanceIndex;
         u32 end = instanceIndex + numInstances;
-		
+        
         for (u32 j = start; j < end; j++)
         {
             const Map::CellLiquidInstance& instance = liquidInfo->instances[j];
@@ -149,7 +149,7 @@ void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquid
         }
 
         instanceIndex += numInstances;
-	}
+    }
 
     size_t bitmapDataSize = liquidInfo->bitmapData.size();
     if (bitmapDataSize > 0)

@@ -255,7 +255,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-    i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar("physics.enabled");
+    i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
     auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
     JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
@@ -404,7 +404,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     ECS::Systems::CharacterController::ReInitCharacterModel(*registry);
 
-    i32 physicsOptimizeBP = *CVarSystem::Get()->GetIntCVar("physics.optimizeBP");
+    i32 physicsOptimizeBP = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "optimizeBP"_h);
     if (physicsEnabled && physicsOptimizeBP)
     {
         joltState.physicsSystem.OptimizeBroadPhase();
