@@ -129,7 +129,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
     drawCallData.textureCount = 1;
     drawCallData.hasDepth = 0;
     drawCallData.liquidType = 0;
-    drawCallData.uvAnim = hvec2(0, 0);
+    drawCallData.uvAnim = hvec2(0.0f, 0.0f);
 
     // Load textures if they exist
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -182,7 +182,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
         drawCallData.textureStartIndex = textureStartIndex;
         drawCallData.textureCount = textureCount;
         drawCallData.liquidType = liquidType.soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
-        drawCallData.uvAnim = hvec2(0, 0); // TODO: Load this from Vertex format data
+        drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
     }
 
     vec3 min = vec3(100000, 100000, 100000);

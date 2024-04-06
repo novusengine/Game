@@ -12,23 +12,22 @@
 #include "Game/Util/JoltStream.h"
 #include "Game/Util/ServiceLocator.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
 #include <Base/Util/StringUtils.h>
-#include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
 #include <entt/entt.hpp>
 
-
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 
 #include <atomic>
-#include <mutex>
 #include <execution>
 #include <filesystem>
+#include <mutex>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -670,7 +669,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     // Generate Jolt Shape
     {
         // Disabled on purpose for now
-        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled");
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
         u32 numPhysicsBytes = static_cast<u32>(model->physicsData.size());
 
         if (physicsEnabled && numPhysicsBytes > 0)

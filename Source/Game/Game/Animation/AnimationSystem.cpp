@@ -10,7 +10,7 @@
 
 AutoCVar_Int CVAR_AnimationSystemEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled", "Enables the Animation System", 0, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_AnimationSystemTimeScale(CVarCategory::Client | CVarCategory::Rendering, "animationTimeScale", "Controls the global speed of all animations", 1.0f);
-AutoCVar_Int CVAR_AnimationSystemThrottle(CVarCategory::Client | CVarCategory::Rendering, "animationThrottle", "Sets the number of dirty instances that can be updated every frame", 64);
+AutoCVar_Int CVAR_AnimationSystemThrottle(CVarCategory::Client | CVarCategory::Rendering, "animationThrottle", "Sets the number of dirty instances that can be updated every frame", 1024);
 
 namespace Animation
 {
@@ -664,22 +664,22 @@ namespace Animation
                 {
                     const AnimationSkeletonBone& bone = skeleton.bones[boneIndex];
                     AnimationBoneInstance& boneInstance = instance.bones[boneIndex];
-
+                
                     HandleBoneAnimation(skeleton, instance, bone, boneInstance, adjustedDeltaTime);
-
+                
                     if (!bone.info.flags.Transformed)
                         continue;
-
+                
                     const mat4x4& originalMatrix = _storage.boneMatrices[instance.boneMatrixOffset + boneIndex];
                     mat4x4 boneMatrix = GetBoneMatrix(skeleton, instance, bone, boneInstance);
-
+                
                     // Apply parent's transformation
                     if (bone.info.parentBoneID != -1)
                     {
                         const mat4x4& parentBoneMatrix = _storage.boneMatrices[instance.boneMatrixOffset + bone.info.parentBoneID];
                         boneMatrix = mul(boneMatrix, parentBoneMatrix);
                     }
-
+                
                     bool isDirty = originalMatrix != boneMatrix;
                     if (isDirty)
                     {

@@ -679,7 +679,7 @@ namespace Animation
         FlyMountSelfFall = 649,
         Count
     };
-    static constexpr char* AnimationNames[(i32)Type::Count] =
+    static const char* AnimationNames[(i32)Type::Count] =
     {
         "Stand",
         "Death",
@@ -1429,7 +1429,7 @@ namespace Animation
         face_beard_00_M_JNT = 192,
         Count
     };
-    static char* BoneNames[(i16)Bone::Count] = { };
+    static const char* BoneNames[(i16)Bone::Count] = { };
 
     enum class BlendOverride
     {

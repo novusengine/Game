@@ -7,6 +7,7 @@
 #include <FileFormat/Shared.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
+#include <Renderer/RenderGraphBuilder.h>
 #include <Renderer/DescriptorSetResource.h>
 #include <Renderer/FrameResource.h>
 #include <Renderer/GPUVector.h>

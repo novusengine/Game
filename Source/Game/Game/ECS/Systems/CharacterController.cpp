@@ -523,17 +523,6 @@ namespace ECS::Systems
             quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.waistRotationSettings.x), 0.0f));
             animationSystem->SetBoneRotation(instanceID, Animation::Bone::Waist, rotation);
         }
-
-        //if (characterSingleton.currentOrientation != characterSingleton.targetOrientation)
-        //{
-        //    characterSingleton.timeSinceLastOrientationChange += deltaTime;
-        //    characterSingleton.timeSinceLastOrientationChange = glm::clamp(characterSingleton.timeSinceLastOrientationChange, 0.0f, characterSingleton.timetoChangeOrientation);
-        //
-        //    f32 progress = characterSingleton.timeSinceLastOrientationChange / characterSingleton.timetoChangeOrientation;
-        //    characterSingleton.currentOrientation = glm::mix(characterSingleton.currentOrientation, characterSingleton.targetOrientation, progress);
-        //
-        //    transformSystem.SetLocalRotation(characterSingleton.modelEntity, glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.currentOrientation), 0.0f)));
-        //}
     }
 
     void CharacterController::ReInitCharacterModel(entt::registry& registry)
