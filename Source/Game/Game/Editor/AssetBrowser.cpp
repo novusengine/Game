@@ -233,7 +233,7 @@ namespace Editor
                 tSystem.SetLocalTransform(entity, cameraTransform.GetWorldPosition(), quat(1.0f, 0.0f, 0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
 
                 std::string relativePath = fs::relative(item, _modelTopPath).string();
-                std::replace(relativePath.begin(), relativePath.end(), L'\\', L'/');
+                std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
 
                 u32 modelPathHash = StringUtils::fnv1a_32(relativePath.c_str(), relativePath.length());
                 _gameRenderer->GetModelLoader()->LoadModelForEntity(entity, modelPathHash);
@@ -475,12 +475,12 @@ namespace Editor
 
             if (search.size() > _searchedString.size() && !_searchedFiles.empty())
             {
-                const auto temp = _searchedFiles;
+                const std::vector<fs::path>& temp = _searchedFiles;
                 _searchedFiles.clear();
                 _searchedFiles.reserve(temp.size());
 
                 _searchedString = search;
-                for (auto& file : temp)
+                for (const fs::path& file : temp)
                 {
                     if (StringUtils::SearchString(file.filename().string(), _searchedString, true))
                     {

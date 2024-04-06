@@ -1265,7 +1265,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, const mat4x4&
 
         if (manifest.isAnimated)
         {
-            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationSystemEnabled"_h);
+            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled"_h);
             if (animationSystemEnabled && *animationSystemEnabled == 1)
             {
                 u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
@@ -1426,7 +1426,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
             if (manifest.isAnimated)
             {
-                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationSystemEnabled"_h);
+                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled"_h);
                 if (animationSystemEnabled && *animationSystemEnabled == 1)
                 {
                     u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);

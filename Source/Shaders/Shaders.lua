@@ -1,7 +1,7 @@
 local dependencies = { }
 local defines = { }
 ProjectTemplate("Shaders", "Utility", nil, Game.binDir, dependencies, defines)
-dependson ("ShaderCookerStandalone")
+dependson { "ShaderCookerStandalone" }
 
 local rootDir = path.getabsolute("Shaders/", Game.projectsDir)
 local sourceDir = path.getabsolute("Shaders/", rootDir)

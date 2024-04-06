@@ -479,7 +479,7 @@ namespace Scripting
 			}
 			else if (any.type() == typeid(LuaTable))
 			{
-				auto& val = std::any_cast<const LuaTable>(any);
+				auto& val = std::any_cast<const LuaTable&>(any);
 				SetLuaTable(key.c_str(), val, recursiveCounter + 1);
 			}
 			else if (any.type() == typeid(LuaTable&))

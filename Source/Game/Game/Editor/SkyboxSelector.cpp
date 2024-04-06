@@ -217,7 +217,7 @@ namespace Editor
                     if (ImGui::BeginPopupEx(popupContextID, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
                     {
                         const fs::path& skyboxPath = data.skyboxPaths[popupSkyboxID];
-                        std::string& skyboxName = skyboxPath.stem().string();
+                        std::string skyboxName = skyboxPath.stem().string();
 
                         ImGui::Text("Actions for %s", skyboxName.c_str());
                         ImGui::Separator();

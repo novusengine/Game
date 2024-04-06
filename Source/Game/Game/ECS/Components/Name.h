@@ -2,6 +2,8 @@
 #include <Base/Types.h>
 #include <Base/Util/Reflection.h>
 
+#include <limits>
+
 namespace ECS::Components
 {
 	struct Name
@@ -9,7 +11,7 @@ namespace ECS::Components
 	public:
 		std::string name;
 		std::string fullName;
-		u32 nameHash;
+		u32 nameHash = std::numeric_limits<u32>().max();
 	};
 }
 

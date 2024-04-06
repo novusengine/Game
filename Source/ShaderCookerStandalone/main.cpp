@@ -30,13 +30,15 @@ i32 main(int argc, char* argv[])
     const bool debugSkipCache = false;
     if (!debugSkipCache)
     {
+        std::string shaderCachePathStr = shaderCachePath.string();
+
         if (shaderCache.Load(shaderCachePath))
         {
-            DebugHandler::Print("Loaded shadercache from: {0}", shaderCachePath.string().c_str());
+            DebugHandler::Print("Loaded shadercache from: {0}", shaderCachePathStr);
         }
         else
         {
-            DebugHandler::Print("Creating shadercache at: {0}", shaderCachePath.string().c_str());
+            DebugHandler::Print("Creating shadercache at: {0}", shaderCachePathStr);
         }
     }
     else
@@ -90,7 +92,7 @@ i32 main(int argc, char* argv[])
     }
     else
     {
-        DebugHandler::PrintError("{0} shaders failed to compile.", numFailedShaders);
+        DebugHandler::PrintError("Failed to compile {0} shaders", numFailedShaders);
     }
 
     std::chrono::system_clock::time_point endTime = std::chrono::system_clock::now();

@@ -31,7 +31,7 @@
 #include <Renderer/Renderers/Vulkan/Backend/stb_image.h>
 
 #include <imgui/imgui.h>
-#include <imgui/imgui_notify.h>
+#include <imgui/ImGuiNotify.hpp>
 #include <imgui/implot.h>
 #include <imgui/imnodes.h>
 #include <imgui/ruda.h>

@@ -21,7 +21,7 @@
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
-#include <imgui/imgui_notify.h>
+#include <imgui/ImGuiNotify.hpp>
 #include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
 

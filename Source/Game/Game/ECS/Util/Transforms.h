@@ -288,7 +288,7 @@ namespace ECS::Components
         }
 
     private:
-        mat4a matrix;
+        mat4a matrix = mat4a(1.0f);
         Transform* transform{};
         entt::entity ownerEntity;
 
