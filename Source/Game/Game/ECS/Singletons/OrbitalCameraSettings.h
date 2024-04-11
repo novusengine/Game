@@ -29,10 +29,10 @@ namespace ECS::Singletons
             switch (cameraZoomLevel)
             {
                 case 0: return vec2(1.8f, 0.0f);
-                case 1: return vec2(1.8f, -1.0f);
-                case 2: return vec2(2.5f, -2.5f);
-                case 3: return vec2(3.5f, -4.0f);
-                case 4: return vec2(4.5f, -6.0f);
+                case 1: return vec2(1.8f, -2.0f);
+                case 2: return vec2(1.8f, -4.0f);
+                case 3: return vec2(1.8f, -6.0f);
+                case 4: return vec2(1.8f, -8.0f);
 
                 default: break;
             }

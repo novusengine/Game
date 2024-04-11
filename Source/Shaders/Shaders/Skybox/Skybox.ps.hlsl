@@ -26,7 +26,7 @@ PSOutput main(VertexOutput input) : SV_Target
 {
     float3 rotation = _cameras[0].eyeRotation.xyz;
 
-    float fovY = 75.0f;
+    float fovY = 90.0f;
     float halfFovY = fovY / 2.0f;
 
     float uvRotationOffset = ((1.0f - input.uv.y) * fovY) - halfFovY;

@@ -36,7 +36,8 @@ namespace ECS::Systems
         {
             if (camera.dirtyPerspective)
             {
-                camera.viewToClip = glm::perspective(glm::radians(camera.fov), camera.aspectRatio, camera.farClip, camera.nearClip);
+                f32 diagonalFov = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
+                camera.viewToClip = glm::perspective(diagonalFov, camera.aspectRatio, camera.farClip, camera.nearClip);
                 camera.clipToView = glm::inverse(camera.viewToClip);
             }
             if (camera.dirtyView)
