@@ -16,6 +16,11 @@
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 namespace ECS::Systems
 {
@@ -39,7 +44,7 @@ namespace ECS::Systems
             camera.yaw = 180.0f;
         }
 
-        settings.cameraCurrentZoomOffset = (vec3(0.0f, 1.0f, -1.0f) * vec3(1.0f, settings.GetZoomLevel()));
+        settings.cameraCurrentZoomOffset = (vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, settings.GetZoomLevel()));
         settings.cameraTargetZoomOffset = settings.cameraCurrentZoomOffset;
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -86,12 +91,31 @@ namespace ECS::Systems
             else
             {
                 settings.cameraZoomLevel = Math::Clamp(settings.cameraZoomLevel + static_cast<i8>(-yPos), 0, 4);
-                settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, -1.0f) * vec3(1.0f, settings.GetZoomLevel());
+                settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, settings.GetZoomLevel());
                 settings.cameraZoomProgress = 0.0f;
             }
 
             return true;
         });
+    }
+
+    void updateCamera(const mat4x4& characterControllerMatrix, vec3 eulerAngles, f32 heightOffset, f32 zoomDistance, vec3& resultPosition, quat& resultRotation)
+    {
+        // Height offset matrix to move the rotation point up by the specified height
+        mat4x4 heightOffsetMatrix = translate(mat4x4(1.0f), vec3(0.0f, heightOffset, 0.0f));
+
+        // Create rotation matrix from Euler angles
+        mat4x4 rotationMatrix = glm::eulerAngleYXZ(eulerAngles.y, eulerAngles.x, eulerAngles.z);
+
+        // Translation matrix to move the camera back to the correct offset
+        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, 0.0f, zoomDistance));
+
+        // Combine transformations: first rotate, then translate
+        mat4x4 cameraMatrix = characterControllerMatrix * heightOffsetMatrix * rotationMatrix * translationMatrix;
+
+        // Extract position and rotation from the transformation matrix
+        resultPosition = vec3(cameraMatrix[3]);
+        resultRotation = normalize(quat_cast(cameraMatrix));
     }
 
     void OrbitalCamera::Update(entt::registry& registry, f32 deltaTime)
@@ -110,17 +134,27 @@ namespace ECS::Systems
         Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
         Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
 
-        Components::Transform& characterTransform = registry.get<Components::Transform>(characterSingleton.entity);
-
         settings.cameraZoomProgress += settings.cameraZoomSpeed * deltaTime;
         settings.cameraZoomProgress = glm::clamp(settings.cameraZoomProgress, 0.0f, 1.0f);
         settings.cameraCurrentZoomOffset = glm::mix(settings.cameraCurrentZoomOffset, settings.cameraTargetZoomOffset, settings.cameraZoomProgress);
 
-        vec3 position = settings.cameraCurrentZoomOffset;
-        vec3 eulerAngles = vec3(camera.pitch, camera.yaw, camera.roll);
+        Components::Transform& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.entity);
+        const mat4x4& characterControllerMatrix = characterControllerTransform.GetMatrix(); // This is the point we want to rotate around
 
-        tSystem.SetLocalRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
-        tSystem.SetLocalPosition(activeCamera.entity, position);
+        vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll));
+
+        f32 cameraHeightOffset = settings.cameraCurrentZoomOffset.y;
+        f32 cameraZoomDistance = settings.cameraCurrentZoomOffset.z;
+
+        // Update the camera
+        vec3 resultPosition;
+        quat resultRotation;
+        updateCamera(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
+
+        vec3 resultRotationEuler = glm::eulerAngles(resultRotation);
+
+        tSystem.SetWorldRotation(activeCamera.entity, resultRotation);
+        tSystem.SetWorldPosition(activeCamera.entity, resultPosition);
 
         camera.dirtyView = true;
     }

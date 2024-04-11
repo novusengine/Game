@@ -65,7 +65,7 @@ namespace ECS::Util
             ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
             ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
 
-            f32 fovInRadians = glm::radians(camera.fov);
+            f32 fovInRadians = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
 
             // Compute the distance the camera should be to fit the entire bounding sphere
             f32 camDistance = (radius * 2.0f) / Math::Tan(fovInRadians / 2.0f);
