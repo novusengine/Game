@@ -10,6 +10,6 @@ namespace ECS::Systems
         static void Init(entt::registry& registry);
         static void Update(entt::registry& registry, f32 deltaTime);
 
-        static void ReInitCharacterModel(entt::registry& registry);
+        static void InitCharacterController(entt::registry& registry);
     };
 }

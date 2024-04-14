@@ -180,6 +180,8 @@ void ModelLoader::Clear()
             bodyInterface.RemoveBody(id);
             bodyInterface.DestroyBody(id);
         }
+
+        _instanceIDToBodyID.clear();
     }
 
     for (auto& pair : _nameHashToJoltShape)
@@ -756,10 +758,12 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
-
-            JPH::BodyID bodyID = body->GetID();
-            bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-            _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+            if (body)
+            {
+                JPH::BodyID bodyID = body->GetID();
+                bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+                _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+            }
         }
     }
 

@@ -2,8 +2,10 @@
 #include "TerrainRenderer.h"
 
 #include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Components/Events.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Systems/CharacterController.h"
+#include "Game/ECS/Util/EventUtil.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Editor/Inspector.h"
 #include "Game/Rendering/Debug/DebugRenderer.h"
@@ -11,6 +13,7 @@
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
 #include "Game/Rendering/Liquid/LiquidLoader.h"
+#include "Game/Gameplay/MapLoader.h"
 #include "Game/Util/JoltStream.h"
 #include "Game/Util/MapUtil.h"
 #include "Game/Util/ServiceLocator.h"
@@ -402,7 +405,8 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     taskScheduler->AddTaskSetToPipe(&loadChunksTask);
     taskScheduler->WaitforTask(&loadChunksTask);
 
-    ECS::Systems::CharacterController::ReInitCharacterModel(*registry);
+    u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+    ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
 
     i32 physicsOptimizeBP = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "optimizeBP"_h);
     if (physicsEnabled && physicsOptimizeBP)

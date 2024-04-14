@@ -36,7 +36,7 @@ namespace Scripting
 		template <typename T>
 		bool SetGlobal(const std::string& name, T& value, bool canOverride)
 		{
-			if (_globalTable.data.contains(name) && canOverride)
+			if (_globalTable.data.contains(name) && !canOverride)
 				return false;
 
 			_globalTable.data[name] = value;

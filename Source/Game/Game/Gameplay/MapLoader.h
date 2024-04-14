@@ -26,7 +26,7 @@ public:
     void UnloadMap();
     void LoadMap(u32 mapHash);
 
-    const u32 GetCurrentMapIndex() { return _currentMapIndex; }
+    const u32 GetCurrentMapID() { return _currentMapID; }
 
 private:
     void ClearRenderersForMap();
@@ -36,6 +36,6 @@ private:
     ModelLoader* _modelLoader = nullptr;
     LiquidLoader* _liquidLoader = nullptr;
 
-    u32 _currentMapIndex = std::numeric_limits<u32>().max();
+    u32 _currentMapID = std::numeric_limits<u32>().max();
     moodycamel::ConcurrentQueue<LoadDesc> _requests;
 };
