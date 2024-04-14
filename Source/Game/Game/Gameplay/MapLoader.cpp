@@ -2,8 +2,10 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Editor/Inspector.h"
+#include "Game/ECS/Components/Events.h"
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/MapDB.h"
+#include "Game/ECS/Util/EventUtil.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/Terrain/TerrainLoader.h"
@@ -39,6 +41,7 @@ void MapLoader::Update(f32 deltaTime)
     // Clear Map
     if (request.internalMapNameHash == std::numeric_limits<u32>().max())
     {
+        _currentMapID = std::numeric_limits<u32>().max();
         ClearRenderersForMap();
     }
     else
@@ -88,12 +91,16 @@ void MapLoader::Update(f32 deltaTime)
         {
             if (!_modelLoader->ContainsDiscoveredModel(mapHeader.placement.nameHash))
                 return;
+
+            _currentMapID = mapID;
         
             ClearRenderersForMap();
             _modelLoader->LoadPlacement(mapHeader.placement);
         }
         else
         {
+            _currentMapID = mapID;
+
             TerrainLoader::LoadDesc loadDesc;
             loadDesc.loadType = TerrainLoader::LoadType::Full;
             loadDesc.mapName = internalMapName;
@@ -129,4 +136,6 @@ void MapLoader::ClearRenderersForMap()
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->GetInspector()->ClearSelection();
+
+    ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
 }

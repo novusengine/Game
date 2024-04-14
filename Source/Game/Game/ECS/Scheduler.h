@@ -5,14 +5,14 @@
 
 namespace ECS
 {
-	class Scheduler
-	{
-	public:
-		Scheduler();
+    class Scheduler
+    {
+    public:
+        Scheduler();
 
-		void Init(entt::registry & registry);
-		void Update(entt::registry& registry, f32 deltaTime);
+        void Init(entt::registry & registry);
+        void Update(entt::registry& registry, f32 deltaTime);
 
-	private:
-	};
+    private:
+    };
 }

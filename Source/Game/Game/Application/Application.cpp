@@ -227,6 +227,8 @@ bool Application::Init()
     ServiceLocator::SetTaskScheduler(_taskScheduler);
 
     _registries.gameRegistry = new entt::registry();
+    _registries.eventIncomingRegistry = new entt::registry();
+    _registries.eventOutgoingRegistry = new entt::registry();
     ServiceLocator::SetEnttRegistries(&_registries);
 
     _inputManager = new InputManager();
@@ -451,6 +453,16 @@ bool Application::Tick(f32 deltaTime)
     }
 
     _ecsScheduler->Update(*_registries.gameRegistry, deltaTime);
+
+    // Handle Double Buffered Event Swap
+    {
+        _registries.eventIncomingRegistry->clear();
+
+        entt::registry* temp = _registries.eventIncomingRegistry;
+        _registries.eventIncomingRegistry = _registries.eventOutgoingRegistry;
+        _registries.eventOutgoingRegistry = temp;
+    }
+
     _animationSystem->Update(deltaTime);
 
     _editorHandler->Update(deltaTime);

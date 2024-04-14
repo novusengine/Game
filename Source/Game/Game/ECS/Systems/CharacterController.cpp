@@ -1,9 +1,9 @@
 #include "CharacterController.h"
 
 #include "Game/Animation/AnimationSystem.h"
-
 #include "Game/ECS/Components/AABB.h"
 #include "Game/ECS/Components/Camera.h"
+#include "Game/ECS/Components/Events.h"
 #include "Game/ECS/Components/Model.h"
 #include "Game/ECS/Components/Name.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
@@ -11,8 +11,9 @@
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game/ECS/Util/EventUtil.h"
 #include "Game/ECS/Util/Transforms.h"
-
+#include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
@@ -57,21 +58,7 @@ namespace ECS::Systems
         transformSystem.SetWorldPosition(characterSingleton.modelEntity, vec3(0.0f, 0.0f, 0.0f));
         transformSystem.ParentEntityTo(characterSingleton.entity, characterSingleton.modelEntity);
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
-        modelLoader->LoadModelForEntity(characterSingleton.modelEntity, modelHash);
-
-        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-        
-        JPH::CapsuleShapeSettings shapeSetting(0.8f, 0.25f);
-        JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
-
-        JPH::CharacterVirtualSettings characterSettings;
-        characterSettings.mShape = shapeResult.Get();
-        characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
-
-        characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), &joltState.physicsSystem);
-        characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.8f, 0.0f));
+        InitCharacterController(registry);
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
         characterSingleton.keybindGroup = inputManager->CreateKeybindGroup("CharacterController", 100);
@@ -187,6 +174,11 @@ namespace ECS::Systems
 
         entt::registry::context& ctx = registry.ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+
+        Util::EventUtil::OnEvent<Components::MapLoadedEvent>([&](const Components::MapLoadedEvent& event)
+        {
+            InitCharacterController(registry);
+        });
 
 #ifdef JPH_DEBUG_RENDERER
         // TODO: Fix Jolt Primitives being erased in JoltDebugRenderer causing crash when changing map
@@ -525,18 +517,47 @@ namespace ECS::Systems
         }
     }
 
-    void CharacterController::ReInitCharacterModel(entt::registry& registry)
+    void CharacterController::InitCharacterController(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
 
         auto& joltState = ctx.get<Singletons::JoltState>();
         auto& transformSystem = ctx.get<TransformSystem>();
+        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
         auto& characterSingleton = ctx.emplace<Singletons::CharacterSingleton>();
 
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
         modelLoader->LoadModelForEntity(characterSingleton.modelEntity, modelHash);
 
-        characterSingleton.character->SetPosition(JPH::Vec3(-1500.0f, 310.0f, 1250.0f));
+        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+        JPH::CapsuleShapeSettings shapeSetting(0.8f, 0.25f);
+        JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
+
+        JPH::CharacterVirtualSettings characterSettings;
+        characterSettings.mShape = shapeResult.Get();
+        characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
+
+        characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), &joltState.physicsSystem);
+        characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.8f, 0.0f));
+
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+
+        JPH::Vec3 newPosition = JPH::Vec3(-1500.0f, 310.0f, 1250.0f);
+
+        if (mapLoader->GetCurrentMapID() == std::numeric_limits<u32>().max())
+        {
+            newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
+        }
+
+        characterSingleton.character->SetPosition(newPosition);
+        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
+
+        if (activeCamera.entity == orbitalCameraSettings.entity)
+        {
+            transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
+        }
     }
 }
