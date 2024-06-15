@@ -23,7 +23,7 @@ float3 TransformToClip(float3 worldPos, float4x4 viewMat)
     return clipPoint.xyz;
 }
 
-bool IsVisible(float3 AABBMin, float3 AABBMax, float3 eye, Texture2D<float> pyramid, SamplerState samplerState, float4x4 viewMat)
+bool IsVisible(float3 AABBMin, float3 AABBMax, float3 eye, Texture2D<float> pyramid, SamplerState samplerState, float4x4 viewMat, uint2 viewportSize)
 {
     if (eye.x < AABBMax.x && eye.x > AABBMin.x)
     {
@@ -37,6 +37,7 @@ bool IsVisible(float3 AABBMin, float3 AABBMax, float3 eye, Texture2D<float> pyra
     }
 
     float3 center = TransformToClip(lerp(AABBMin, AABBMax, 0.5), viewMat);
+    center.xy = clamp(center.xy, float2(-1.0f, -1.0f), float2(1.0f, 1.0f));
 
     float2 pmin = center.xy;
     float2 pmax = center.xy;
@@ -49,8 +50,8 @@ bool IsVisible(float3 AABBMin, float3 AABBMax, float3 eye, Texture2D<float> pyra
         float pY = lerp(AABBMin.y, AABBMax.y, axis[i].y);
         float pZ = lerp(AABBMin.z, AABBMax.z, axis[i].z);
 
-
         float3 clipPoint = TransformToClip(float3(pX, pY, pZ), viewMat);
+        clipPoint.xy = clamp(clipPoint.xy, float2(-1.0f, -1.0f), float2(1.0f, 1.0f));
 
         pmin.x = min(clipPoint.x, pmin.x);
         pmin.y = min(clipPoint.y, pmin.y);
@@ -61,6 +62,11 @@ bool IsVisible(float3 AABBMin, float3 AABBMax, float3 eye, Texture2D<float> pyra
         depth.x = max(clipPoint.z, depth.x);
         depth.y = min(clipPoint.z, depth.y);
     }
+
+    //if (pmin.x == pmax.x || pmin.y == pmax.y)
+    //{
+    //    return false;
+    //}
 
     uint pyrWidth;
     uint pyrHeight;

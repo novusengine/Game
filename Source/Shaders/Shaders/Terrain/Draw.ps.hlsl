@@ -42,10 +42,14 @@ PSOutput main(PSInput input)
 	for (uint i = 0; i < 3; i++)
 	{
 		vertices[i] = LoadTerrainVertex(chunkID, cellID, globalVertexOffset, localVertexIDs[i]);
+
+		vertices[i].position = mul(float4(vertices[i].position.xyz, 1.0f), _cameras[0].worldToView).xyz;
 	}
 
 	// Calculate Barycentrics
-	float2 barycentrics = NBLCalculateBarycentrics(input.worldPosition, float3x3(vertices[0].position.xyz, vertices[1].position.xyz, vertices[2].position.xyz));
+	float3 viewPosition = mul(float4(input.worldPosition, 1.0f), _cameras[0].worldToView).xyz;
+
+	float2 barycentrics = NBLCalculateBarycentrics(viewPosition, float3x3(vertices[0].position.xyz, vertices[1].position.xyz, vertices[2].position.xyz));
 
 	float2 ddxBarycentrics = ddx(barycentrics);
 	float2 ddyBarycentrics = ddy(barycentrics);

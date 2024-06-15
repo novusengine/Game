@@ -13,18 +13,15 @@
 
 AutoCVar_Int CVAR_CameraLockCullingFrustum(CVarCategory::Client | CVarCategory::Rendering, "cameraLockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
 
-enum class FrustumPlane
-{
-    Left,
-    Right,
-    Bottom,
-    Top,
-    Near,
-    Far,
-};
-
 namespace ECS::Systems
 {
+    vec4 EncodePlane(vec3 position, vec3 normal)
+    {
+        vec3 normalizedNormal = glm::normalize(normal);
+        vec4 result = vec4(normalizedNormal, glm::dot(normalizedNormal, position));
+        return result;
+    }
+
     void CalculateCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
@@ -34,20 +31,21 @@ namespace ECS::Systems
 
         view.each([&](Components::Transform& transform, Components::Camera& camera)
         {
-            if (camera.dirtyPerspective)
+            vec2 renderSize = gameRenderer->GetRenderer()->GetRenderSize();
+            camera.aspectRatio = renderSize.x / renderSize.y;
+
             {
                 f32 diagonalFov = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
                 camera.viewToClip = glm::perspective(diagonalFov, camera.aspectRatio, camera.farClip, camera.nearClip);
                 camera.clipToView = glm::inverse(camera.viewToClip);
             }
-            if (camera.dirtyView)
+
             {
                 mat4x4 transformMatrix = transform.GetMatrix();
                 camera.viewToWorld = transformMatrix;
                 camera.worldToView = glm::inverse(transformMatrix);
             }
 
-            if (camera.dirtyPerspective || camera.dirtyView)
             {
                 camera.worldToClip = camera.viewToClip * camera.worldToView;
                 camera.clipToWorld = glm::inverse(camera.worldToView) * glm::inverse(camera.viewToClip);
@@ -74,12 +72,28 @@ namespace ECS::Systems
                 {
                     mat4x4 m = glm::transpose(camera.worldToClip);
 
-                    gpuCamera.frustum[(size_t)FrustumPlane::Left] = (m[3] + m[0]);
-                    gpuCamera.frustum[(size_t)FrustumPlane::Right] = (m[3] - m[0]);
-                    gpuCamera.frustum[(size_t)FrustumPlane::Bottom] = (m[3] + m[1]);
-                    gpuCamera.frustum[(size_t)FrustumPlane::Top] = (m[3] - m[1]);
-                    gpuCamera.frustum[(size_t)FrustumPlane::Near] = (m[3] + m[2]);
-                    gpuCamera.frustum[(size_t)FrustumPlane::Far] = (m[3] - m[2]);
+                    glm::vec3 Front = glm::vec3(0, 0, 1);
+                    glm::vec3 Right = glm::vec3(1, 0, 0);
+                    glm::vec3 Up = glm::vec3(0, 1, 0);
+
+                    vec3 position = transform.GetWorldPosition();
+                    mat4x4 transformMatrix = transform.GetMatrix();
+
+                    Front = glm::vec3(transformMatrix * glm::vec4(Front, 0.f));
+                    Right = glm::vec3(transformMatrix * glm::vec4(Right, 0.f));
+                    Up = glm::vec3(transformMatrix * glm::vec4(Up, 0.f));
+
+                    f32 fov = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
+                    const float halfVSide = camera.farClip * tanf(fov * .5f);
+                    const float halfHSide = halfVSide * camera.aspectRatio;
+                    const glm::vec3 frontMultFar = camera.farClip * Front;
+
+                    gpuCamera.frustum[(size_t)FrustumPlane::Near] = EncodePlane(position + camera.nearClip * Front, Front);
+                    gpuCamera.frustum[(size_t)FrustumPlane::Far] = EncodePlane(position + frontMultFar, -Front);
+                    gpuCamera.frustum[(size_t)FrustumPlane::Right] = EncodePlane(position,glm::cross(Up, frontMultFar - Right * halfHSide));
+                    gpuCamera.frustum[(size_t)FrustumPlane::Left] = EncodePlane(position,glm::cross(frontMultFar + Right * halfHSide, Up));
+                    gpuCamera.frustum[(size_t)FrustumPlane::Top] = EncodePlane(position,glm::cross(frontMultFar - Up * halfVSide, Right));
+                    gpuCamera.frustum[(size_t)FrustumPlane::Bottom] = EncodePlane(position,glm::cross(Right, frontMultFar + Up * halfVSide));
                 }
 
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);

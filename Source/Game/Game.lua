@@ -1,6 +1,6 @@
 local basePath = path.getabsolute("Game/", Game.projectsDir)
 
-local dependencies = { "base", "fileformat", "input", "network", "renderer", "luau-compiler", "luau-vm", "jolt", "enkiTS", "refl-cpp", "utfcpp", "base64" }
+local dependencies = { "base", "fileformat", "input", "network", "renderer", "luau-compiler", "luau-vm", "jolt", "enkiTS", "refl-cpp", "utfcpp", "base64", "fidelityfx" }
 local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX" }
 
 local shaderSourceDir = BuildSettings:Get("Shader Source Dir")

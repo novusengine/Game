@@ -7,6 +7,8 @@
 
 struct Constants
 {
+    uint viewportSizeX;
+    uint viewportSizeY;
     uint numCascades;
     uint occlusionCull;
 };
@@ -39,7 +41,7 @@ float2 ReadHeightRange(uint instanceIndex)
 
 bool SphereIsForwardPlane(float4 plane, float4 sphere)
 {
-    return dot(plane.xyz, sphere.xyz) + plane.w > -sphere.w;
+    return (dot(plane.xyz, sphere.xyz) - plane.w) > -sphere.w;
 }
 
 bool IsSphereInsideFrustum(float4 frustum[6], float4 sphere)
@@ -104,7 +106,8 @@ void CullForCamera(DrawInput drawInput,
     {
         bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, camera.worldToClip);
 
-        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip))
+        uint2 viewportSize = uint2(_constants.viewportSizeX, _constants.viewportSizeY);
+        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip, viewportSize))
         {
             isVisible = false;
         }
@@ -140,6 +143,10 @@ void CullForCamera(DrawInput drawInput,
     }
 
     // Debug draw AABB boxes
+    float3 cameraPos = _cameras[0].eyePosition.xyz;
+    float3 aabbPos = (drawInput.aabb.min + drawInput.aabb.max) / 2.0f;
+    float distanceToCamera = distance(cameraPos, aabbPos);
+
     /*if (isVisible)
     {
         DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
@@ -164,7 +171,7 @@ void main(CSInput input)
 
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;
-    sphere.w = distance(aabb.max, aabb.min);
+    sphere.w = distance(aabb.max, aabb.min) / 2.0f;
 
     DrawInput drawInput;
     drawInput.csInput = input;

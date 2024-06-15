@@ -13,6 +13,8 @@
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
 #include "Editor/EditorRenderer.h"
+#include "Effect/EffectRenderer.h"
+#include "Shadow/ShadowRenderer.h"
 #include "PixelQuery.h"
 #include "CullUtils.h"
 
@@ -151,6 +153,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
     _canvasRenderer = new CanvasRenderer(_renderer);
     _uiRenderer = new UIRenderer(_renderer);
+    _effectRenderer = new EffectRenderer(_renderer);
+    //_shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
     _pixelQuery = new PixelQuery(_renderer);
 
     CreatePermanentResources();
@@ -191,6 +195,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _editorRenderer->Update(deltaTime);
     _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
+    _effectRenderer->Update(deltaTime);
 }
 
 f32 GameRenderer::Render()
@@ -253,27 +258,23 @@ f32 GameRenderer::Render()
     {
         struct StartFramePassData
         {
-            Renderer::ImageMutableResource visibilityBuffer;
             Renderer::ImageMutableResource sceneColor;
-            Renderer::ImageMutableResource skyboxColor;
-            Renderer::ImageMutableResource finalColor;
-            Renderer::ImageMutableResource transparency;
-            Renderer::ImageMutableResource transparencyWeights;
-            Renderer::DepthImageMutableResource depth;
-            Renderer::DepthImageMutableResource skyboxDepth;
         };
 
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
             [this](StartFramePassData& data, Renderer::RenderGraphBuilder& builder) // Setup
             {
-                data.visibilityBuffer = builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 data.sceneColor = builder.Write(_resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.skyboxColor = builder.Write(_resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.finalColor = builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.transparency = builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.transparencyWeights = builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.depth = builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                data.skyboxDepth = builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+
+                builder.Write(_resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.finalColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.packedNormals, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.ssaoTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
@@ -351,6 +352,8 @@ f32 GameRenderer::Render()
     _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
+    //_shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
+
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
@@ -360,6 +363,9 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+
+    _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
+    _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
 
@@ -463,6 +469,17 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.visibilityBuffer = _renderer->CreateImage(visibilityBufferDesc);
 
+    // Normals rendertarget
+    Renderer::ImageDesc packedNormalsDesc;
+    packedNormalsDesc.debugName = "PackedNormals";
+    packedNormalsDesc.dimensions = vec2(1.0f, 1.0f);
+    packedNormalsDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    packedNormalsDesc.format = Renderer::ImageFormat::R11G11B10_UFLOAT;
+    packedNormalsDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    packedNormalsDesc.clearColor = Color(0.0f, 0.0f, 0.0f, 0.0f);
+
+    _resources.packedNormals = _renderer->CreateImage(packedNormalsDesc);
+
     // Scene color rendertarget
     Renderer::ImageDesc sceneColorDesc;
     sceneColorDesc.debugName = "SceneColor";
@@ -479,6 +496,17 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
     sceneColorDesc.clearColor = Color(0.43f, 0.50f, 0.56f, 1.0f); // Slate gray
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
+
+    // SSAO
+    Renderer::ImageDesc ssaoTargetDesc;
+    ssaoTargetDesc.debugName = "SSAOTarget";
+    ssaoTargetDesc.dimensions = vec2(1.0f, 1.0f);
+    ssaoTargetDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    ssaoTargetDesc.format = Renderer::ImageFormat::R8_UNORM;
+    ssaoTargetDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    ssaoTargetDesc.clearColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
+
+    _resources.ssaoTarget = _renderer->CreateImage(ssaoTargetDesc);
 
     // Transparency rendertarget
     Renderer::ImageDesc transparencyDesc;

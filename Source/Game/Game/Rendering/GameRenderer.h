@@ -36,6 +36,8 @@ class LiquidLoader;
 class LiquidRenderer;
 class UIRenderer;
 class PixelQuery;
+class EffectRenderer;
+class ShadowRenderer;
 
 class GameRenderer
 {
@@ -115,6 +117,8 @@ private:
 	EditorRenderer* _editorRenderer = nullptr;
 	CanvasRenderer* _canvasRenderer = nullptr;
 	UIRenderer* _uiRenderer = nullptr;
+	EffectRenderer* _effectRenderer = nullptr;
+	ShadowRenderer* _shadowRenderer = nullptr;
 
 	robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;
 };

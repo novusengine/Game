@@ -8,6 +8,8 @@ permutation USE_BITMASKS = [0, 1];
 
 struct Constants
 {
+    uint viewportSizeX;
+    uint viewportSizeY;
     uint maxDrawCount;
     uint numCascades;
     uint occlusionCull;
@@ -88,7 +90,7 @@ CullingData LoadCullingData(uint instanceIndex)
 
 bool SphereIsForwardPlane(float4 plane, float4 sphere)
 {
-    return dot(plane.xyz, sphere.xyz) + plane.w > -sphere.w;
+    return (dot(plane.xyz, sphere.xyz) - plane.w) > -sphere.w;
 }
 
 bool IsSphereInsideFrustum(float4 frustum[6], float4 sphere)
@@ -166,7 +168,8 @@ void CullForCamera(DrawInput drawInput,
             bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, mvp);
         }
 
-        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip))
+        uint2 viewportSize = uint2(_constants.viewportSizeX, _constants.viewportSizeY);
+        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip, viewportSize))
         {
             isVisible = false;
         }
@@ -271,7 +274,7 @@ void main(CSInput input)
 
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;
-    sphere.w = distance(aabb.max, aabb.min);
+    sphere.w = distance(aabb.max, aabb.min) / 2.0f;
 
     DrawInput drawInput;
     drawInput.csInput = input;

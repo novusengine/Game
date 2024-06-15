@@ -233,6 +233,137 @@ FullBary3 CalcFullBary3(Barycentrics barycentrics, float3 v0, float3 v1, float3 
 
     return result;
 }
+
+struct PixelVertexData
+{
+    uint typeID;
+    FullBary2 uv0;
+    FullBary2 uv1; // Only used for models, for terrain it's a copy of uv0
+    float3 color; // Only used for terrain, for models it's hardcoded to white
+    float3 worldNormal;
+    float3 worldPos;
+};
+
+PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+{
+    InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
+    uint globalCellID = cellInstance.globalCellID;
+
+    // Find the cell and chunk
+    uint globalVertexOffset = globalCellID * NUM_VERTICES_PER_CELL;
+    uint3 localVertexIDs = GetLocalTerrainVertexIDs(vBuffer.triangleID);
+
+    const uint cellID = cellInstance.packedChunkCellID & 0xFFFF;
+    const uint chunkID = cellInstance.packedChunkCellID >> 16;
+
+    // Get vertices
+    TerrainVertex vertices[3];
+
+    [unroll]
+    for (uint i = 0; i < 3; i++)
+    {
+        vertices[i] = LoadTerrainVertex(chunkID, cellID, globalVertexOffset, localVertexIDs[i]);
+    }
+
+    // Interpolate the pixels vertex attributes
+    PixelVertexData result;
+    result.typeID = vBuffer.typeID;
+
+    // UV
+    result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv, vertices[1].uv, vertices[2].uv); // [0..8] This is correct for terrain color textures
+    result.uv1 = result.uv0;
+
+    // Color
+    result.color = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].color, vertices[1].color, vertices[2].color);
+
+    // Normal
+    result.worldNormal = normalize(InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal));
+
+    // World Position
+    result.worldPos = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
+
+    return result;
+}
+
+PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+{
+    ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
+    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
+    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+
+    // Get the VertexIDs of the triangle we're in
+    IndexedDraw draw = _modelDraws[vBuffer.drawID];
+    uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
+
+    // Get Vertices
+    ModelVertex vertices[3];
+
+    [unroll]
+    for (uint i = 0; i < 3; i++)
+    {
+        vertices[i] = LoadModelVertex(vertexIDs[i]);
+
+        // Animate the vertex normal if we need to
+        if (instanceData.boneMatrixOffset != 4294967295)
+        {
+            // Calculate bone transform matrix
+            float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
+
+            vertices[i].position = mul(vertices[i].position, (float3x3)boneTransformMatrix);
+            vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
+        }
+    }
+
+    // Interpolate the pixels vertex attributes
+    PixelVertexData result;
+    result.typeID = vBuffer.typeID;
+
+    // UV
+    result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
+    result.uv1 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.zw, vertices[1].uv01.zw, vertices[2].uv01.zw);
+
+    // Models don't have vertex colors
+    result.color = float3(1, 1, 1);
+
+    // Normal
+    float3 vertexNormal = normalize(InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal));
+    result.worldNormal = normalize(mul(vertexNormal, (float3x3)instanceMatrix)); // Convert to world space
+
+    // World Position
+    float3 pixelVertexPosition = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
+    result.worldPos = mul(float4(pixelVertexPosition, 1.0f), instanceMatrix).xyz; // Convert to world space
+
+    return result;
+}
+
+PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+{
+    if (vBuffer.typeID == ObjectType::Terrain)
+    {
+        return GetPixelVertexDataTerrain(pixelPos, vBuffer);
+    }
+    else if (vBuffer.typeID == ObjectType::ModelOpaque)
+    {
+        return GetPixelVertexDataModel(pixelPos, vBuffer);
+    }
+
+    PixelVertexData result;
+    result.typeID = vBuffer.typeID;
+
+    result.uv0.value = float2(0, 0);
+    result.uv0.ddx = float2(0, 0);
+    result.uv0.ddy = float2(0, 0);
+
+    result.uv1.value = float2(0, 0);
+    result.uv1.ddx = float2(0, 0);
+    result.uv1.ddy = float2(0, 0);
+
+    result.color = float3(1, 1, 1);
+    result.worldNormal = float3(0, 1, 0);
+    result.worldPos = float3(0, 0, 0);
+
+    return result;
+}
 #endif // GEOMETRY_PASS
 
 #define RED_SEED 3

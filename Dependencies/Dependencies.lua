@@ -8,7 +8,7 @@ group (Game.dependencyGroup)
 
 local dependencies =
 {
-    "jolt/jolt.lua",
+    "jolt/jolt.lua"
 }
 
 for k,v in pairs(dependencies) do

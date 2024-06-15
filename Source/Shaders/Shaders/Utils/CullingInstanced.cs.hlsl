@@ -8,6 +8,8 @@ permutation USE_BITMASKS = [0, 1];
 
 struct Constants
 {
+    uint viewportSizeX;
+    uint viewportSizeY;
     uint numTotalInstances;
     uint occlusionCull;
     uint instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
@@ -171,7 +173,8 @@ void CullForCamera(DrawInput drawInput,
             bool isIntersectingNearZ = IsIntersectingNearZ(drawInput.aabb.min, drawInput.aabb.max, mvp);
         }
 
-        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip))
+        uint2 viewportSize = uint2(_constants.viewportSizeX, _constants.viewportSizeY);
+        if (!isIntersectingNearZ && !IsVisible(drawInput.aabb.min, drawInput.aabb.max, camera.eyePosition.xyz, _depthPyramid, _depthSampler, camera.worldToClip, viewportSize))
         {
             isVisible = false;
         }
