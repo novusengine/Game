@@ -315,8 +315,12 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
                 params.commandList->BeginPipeline(pipeline);
 
+                vec2 viewportSize = _renderer->GetRenderSize();
+
                 struct CullConstants
                 {
+                    u32 viewportSizeX;
+                    u32 viewportSizeY;
                     u32 numTotalInstances;
                     u32 occlusionCull;
                     u32 instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
@@ -327,7 +331,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 debugDrawColliders;
                 };
                 CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-
+                cullConstants->viewportSizeX = u32(viewportSize.x);
+                cullConstants->viewportSizeY = u32(viewportSize.y);
                 cullConstants->numTotalInstances = numInstances;
                 cullConstants->occlusionCull = params.occlusionCull;
 
@@ -437,8 +442,12 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
             params.commandList->BeginPipeline(pipeline);
 
+            vec2 viewportSize = _renderer->GetRenderSize();
+
             struct CullConstants
             {
+                u32 viewportSizeX;
+                u32 viewportSizeY;
                 u32 maxDrawCount;
                 u32 numCascades;
                 u32 occlusionCull;
@@ -450,7 +459,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 u32 debugDrawColliders;
             };
             CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-
+            cullConstants->viewportSizeX = u32(viewportSize.x);
+            cullConstants->viewportSizeY = u32(viewportSize.y);
             cullConstants->maxDrawCount = numDrawCalls;
             cullConstants->numCascades = params.numCascades;
             cullConstants->occlusionCull = params.occlusionCull;

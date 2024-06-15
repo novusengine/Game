@@ -17,8 +17,12 @@ public:
 
     Renderer::ImageID visibilityBuffer;
     Renderer::ImageID skyboxColor;
+    Renderer::ImageID packedNormals;
+
     Renderer::ImageID sceneColor;
     Renderer::ImageID finalColor;
+
+    Renderer::ImageID ssaoTarget;
 
     Renderer::ImageID transparency;
     Renderer::ImageID transparencyWeights;
@@ -28,9 +32,12 @@ public:
     Renderer::ImageID depthColorCopy;
     Renderer::DepthImageID skyboxDepth;
 
+    std::vector<Renderer::DepthImageID> shadowDepthCascades;
+
     Renderer::DepthImageID debugRendererDepth;
 
     Renderer::DescriptorSet globalDescriptorSet;
+    Renderer::DescriptorSet shadowDescriptorSet;
 
     Renderer::SemaphoreID sceneRenderedSemaphore; // This semaphore tells the present function when the scene is ready to be blitted and presented
     FrameResource<Renderer::SemaphoreID, 2> frameSyncSemaphores; // This semaphore makes sure the GPU handles frames in order

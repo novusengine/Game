@@ -158,7 +158,6 @@ namespace Editor
 
     void CVarEditor::DrawImGui()
     {
-        
     }
 
     void Label(const char* label, float textWidth)
@@ -199,7 +198,7 @@ namespace Editor
         switch (p->type)
         {
         case CVarType::INT:
-
+        {
             if (readonlyFlag)
             {
                 std::string displayFormat = p->name + "= %i";
@@ -223,9 +222,9 @@ namespace Editor
                 }
             }
             break;
-
+        }
         case CVarType::FLOAT:
-
+        {
             if (readonlyFlag)
             {
                 std::string displayFormat = p->name + "= %f";
@@ -246,23 +245,25 @@ namespace Editor
                 }
             }
             break;
-
+        }
         case CVarType::FLOATVEC:
+        {
             Label(p->name.c_str(), textWidth);
             if (ImGui::InputFloat4("", &(*cvarSystem->GetCVarArray<vec4>()->GetCurrentPtr(p->arrayIndex))[0]))
                 cvarSystem->MarkDirty();
 
             break;
-
+        }
         case CVarType::INTVEC:
+        {
             Label(p->name.c_str(), textWidth);
             if (ImGui::InputInt4("", &(*cvarSystem->GetCVarArray<ivec4>()->GetCurrentPtr(p->arrayIndex))[0]))
                 cvarSystem->MarkDirty();
 
             break;
-
+        }
         case CVarType::STRING:
-
+        {
             if (readonlyFlag)
             {
                 std::string displayFormat = p->name + "= %s";
@@ -275,7 +276,19 @@ namespace Editor
                     cvarSystem->MarkDirty();
             }
             break;
+        }
+        case CVarType::SHOWFLAG:
+        {
+            Label(p->name.c_str(), textWidth);
+            bool enabled = *cvarSystem->GetCVarArray<ShowFlag>()->GetCurrentPtr(p->arrayIndex) == ShowFlag::ENABLED;
 
+            if (ImGui::Checkbox("", &enabled))
+            {
+                *cvarSystem->GetCVarArray<ShowFlag>()->GetCurrentPtr(p->arrayIndex) = enabled ? ShowFlag::ENABLED : ShowFlag::DISABLED;
+                cvarSystem->MarkDirty();
+            }
+            break;
+        }
         default:
             break;
         }

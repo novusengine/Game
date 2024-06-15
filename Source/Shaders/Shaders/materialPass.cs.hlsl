@@ -7,11 +7,13 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "globalData.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
 #include "Include/Editor.inc.hlsl"
+#include "Include/Lighting.inc.hlsl"
 #include "Terrain/Shared.inc.hlsl"
 
 // Reenable this in C++ as well
 struct Constants
 {
+    uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights
     float4 fogColor;
     float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
     float4 mouseWorldPos;
@@ -121,8 +123,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 
     // Apply lighting
     float3 normal = normalize(pixelNormal);
-    //float ambientOcclusion = _ambientOcclusion.Load(float3(pixelPos, 0)).x;
-    //color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), normal, ambientOcclusion, true, screenUV, pixelShadowPosition, _constants.shadowFilterSize, _constants.shadowPenumbraFilterSize, shadowCascadeIndex, _constants.enabledShadows);
+    color.rgb = ApplyLighting(color.rgb, pixelNormal, screenUV, pixelPos, _constants.lightInfo);
 
 #if EDITOR_MODE == 1
     // Get settings from push constants
@@ -294,8 +295,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     }
 
     // Apply lighting
-    //float ambientOcclusion = _ambientOcclusion.Load(float3(pixelPos, 0)).x;
-    //color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), pixelNormal, ambientOcclusion, !isUnlit, screenUV, pixelShadowPosition, _constants.shadowFilterSize, _constants.shadowPenumbraFilterSize, shadowCascadeIndex, _constants.enabledShadows) + specular;
+    color.rgb = ApplyLighting(color.rgb, pixelNormal, screenUV, pixelPos, _constants.lightInfo);
     //color = float4(pixelUV0.value, 0, 1);
     return saturate(color);
 }

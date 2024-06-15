@@ -255,7 +255,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (_instanceDatas.Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+    u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
 
     struct Data
     {
@@ -263,7 +263,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
         Renderer::BufferResource prevInstanceBitMaskBuffer;
 
-        Renderer::BufferMutableResource argumentBuffer; // Wrong on purpose
+        Renderer::BufferMutableResource argumentBuffer;
         Renderer::BufferMutableResource currentInstanceBitMaskBuffer;
 
         Renderer::DescriptorSetResource debugSet;
@@ -290,6 +290,8 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.cullingSet = builder.Use(_cullingPassDescriptorSet);
+
+            _debugRenderer->RegisterCullingPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -351,11 +353,17 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             struct CullConstants
             {
+                u32 viewportSizeX;
+                u32 viewportSizeY;
                 u32 numCascades;
                 u32 occlusionEnabled;
             };
 
+            vec2 viewportSize = _renderer->GetRenderSize();
+
             CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
+            cullConstants->viewportSizeX = u32(viewportSize.x);
+            cullConstants->viewportSizeY = u32(viewportSize.y);
             cullConstants->numCascades = numCascades;
             cullConstants->occlusionEnabled = CVAR_OcclusionCullingEnabled.Get();
 

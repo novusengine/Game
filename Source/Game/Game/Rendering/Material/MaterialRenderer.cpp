@@ -39,7 +39,73 @@ MaterialRenderer::~MaterialRenderer()
 
 void MaterialRenderer::Update(f32 deltaTime)
 {
+    SyncToGPU();
+}
 
+void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    struct PreEffectsPassData
+    {
+        Renderer::ImageResource visibilityBuffer;
+        Renderer::ImageMutableResource packedNormals;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource preEffectsSet;
+        Renderer::DescriptorSetResource terrainSet;
+        Renderer::DescriptorSetResource modelSet;
+    };
+
+    renderGraph->AddPass<PreEffectsPassData>("Pre Effects",
+        [this, &resources](PreEffectsPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+            data.packedNormals = builder.Write(resources.packedNormals, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+
+            builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+
+            Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
+            Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.preEffectsSet = builder.Use(_preEffectsPassDescriptorSet);
+            data.terrainSet = builder.Use(terrainDescriptorSet);
+            data.modelSet = builder.Use(modelDescriptorSet);
+
+            _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
+            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [this, &resources, frameIndex](PreEffectsPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, PreEffectsPass);
+
+            Renderer::ComputePipelineDesc pipelineDesc;
+            graphResources.InitializePipelineDesc(pipelineDesc);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.path = "PreEffectsPass.cs.hlsl";
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+            commandList.BeginPipeline(pipeline);
+
+            data.preEffectsSet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.preEffectsSet.BindStorage("_packedNormals", data.packedNormals, 0);
+
+            // Bind descriptorset
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.preEffectsSet, frameIndex);
+
+            uvec2 outputSize = _renderer->GetImageDimensions(resources.packedNormals, 0);
+
+            uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
+            commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
+
+            commandList.EndPipeline(pipeline);
+        });
 }
 
 void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -52,6 +118,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::ImageResource transparencyWeights;
         Renderer::DepthImageResource depth;
         Renderer::ImageMutableResource resolvedColor;
+
+        Renderer::ImageResource ambientOcclusion;
 
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource materialSet;
@@ -71,7 +139,10 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
             data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
+            data.ambientOcclusion = builder.Read(resources.ssaoTarget, Renderer::PipelineType::COMPUTE);
+
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+            builder.Read(_directionalLights.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
             Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
             Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
@@ -96,7 +167,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             const i32 shadowFilterMode = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "materialPass.cs.hlsl";
+            shaderDesc.path = "MaterialPass.cs.hlsl";
             shaderDesc.AddPermutationField("DEBUG_ID", std::to_string(visibilityBufferDebugID));
             shaderDesc.AddPermutationField("SHADOW_FILTER_MODE", std::to_string(shadowFilterMode));
             shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
@@ -106,12 +177,15 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
             commandList.BeginPipeline(pipeline);
 
-            data.modelSet.Bind("_visibilityBuffer", data.visibilityBuffer);
-            data.modelSet.Bind("_skyboxColor", data.skyboxColor);
-            data.modelSet.Bind("_transparency", data.transparency);
-            data.modelSet.Bind("_transparencyWeights", data.transparencyWeights);
-            data.modelSet.Bind("_depth"_h, data.depth);
-            data.modelSet.BindStorage("_resolvedColor", data.resolvedColor, 0);
+            // For some reason, this works when we're binding to modelSet despite the GPU side being bound as PER_PASS???
+            data.materialSet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.materialSet.Bind("_skyboxColor", data.skyboxColor);
+            data.materialSet.Bind("_transparency", data.transparency);
+            data.materialSet.Bind("_transparencyWeights", data.transparencyWeights);
+            data.materialSet.Bind("_depth"_h, data.depth);
+            data.materialSet.BindStorage("_resolvedColor", data.resolvedColor, 0);
+
+            data.materialSet.Bind("_ambientOcclusion", data.ambientOcclusion);
 
             // Bind descriptorset
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
@@ -128,6 +202,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 struct Constants
                 {
+                    uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count
                     vec4 fogColor;
                     vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
                     vec4 mouseWorldPos;
@@ -140,8 +215,15 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
-                constants->mouseWorldPos = vec4(mouseWorldPosition, 1.0f);
 
+                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Size()), 0, 0, 0);
+
+                constants->fogColor = CVAR_FogColor.Get();
+                constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;
+                constants->fogSettings.y = CVAR_FogBeginDist.GetFloat();
+                constants->fogSettings.z = CVAR_FogEndDist.GetFloat();
+
+                constants->mouseWorldPos = vec4(mouseWorldPosition, 1.0f);
                 Editor::TerrainTools* terrainTools = ServiceLocator::GetEditorHandler()->GetTerrainTools();
                 constants->brushSettings.x = terrainTools->GetHardness();
                 constants->brushSettings.y = terrainTools->GetRadius();
@@ -154,11 +236,6 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->vertexColor = terrainTools->GetVertexColor();
                 constants->brushColor = terrainTools->GetBrushColor();
 
-                constants->fogColor = CVAR_FogColor.Get();
-                constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;
-                constants->fogSettings.y = CVAR_FogBeginDist.GetFloat();
-                constants->fogSettings.z = CVAR_FogEndDist.GetFloat();
-
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
 
@@ -169,6 +246,20 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             commandList.EndPipeline(pipeline);
         });
+}
+
+void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity)
+{
+    DirectionalLight light
+    {
+        .direction = vec4(direction, 0.0f),
+        .color = vec4(color, intensity),
+        .groundAmbientColor = vec4(groundAmbientColor, groundAmbientIntensity),
+        .skyAmbientColor = vec4(skyAmbientColor, skyAmbientIntensity)
+    };
+
+    std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
+    directionalLights.push_back(light);
 }
 
 void MaterialRenderer::CreatePermanentResources()
@@ -183,4 +274,29 @@ void MaterialRenderer::CreatePermanentResources()
 
     _sampler = _renderer->CreateSampler(samplerDesc);
     _materialPassDescriptorSet.Bind("_sampler"_h, _sampler);
+
+    _directionalLights.SetDebugName("Directional Lights");
+    _directionalLights.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    // Debug directional light
+    vec3 direction = glm::normalize(vec3(0.0f, -1.0f, -1.0f));
+    vec3 color = vec3(66.f/255.f, 101.f/255.f, 134.f/255.f);
+    f32 intensity = 1.0f;
+
+    vec3 ambientColor = vec3(14.f/255.f, 30.f/255.f, 52.f/255.f);
+
+    vec3 groundAmbientColor = ambientColor * 0.7f;
+    f32 groundAmbientIntensity = 1.0f;
+    vec3 skyAmbientColor = ambientColor * 1.1f;
+    f32 skyAmbientIntensity = 1.0f;
+
+    AddDirectionalLight(direction, color, intensity, groundAmbientColor, groundAmbientIntensity, skyAmbientColor, skyAmbientIntensity);
+}
+
+void MaterialRenderer::SyncToGPU()
+{
+    if (_directionalLights.SyncToGPU(_renderer))
+    {
+        _materialPassDescriptorSet.Bind("_directionalLights", _directionalLights.GetBuffer());
+    }
 }

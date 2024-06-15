@@ -34,3 +34,13 @@ namespace ECS::Components
         u32 cameraBindSlot = 0; // Which camera matrix slot this should bind to
     };
 }
+
+enum class FrustumPlane
+{
+    Left,
+    Right,
+    Bottom,
+    Top,
+    Near,
+    Far,
+};
