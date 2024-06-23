@@ -367,7 +367,16 @@ namespace Editor
 
         layout = settings;
 
-        std::string path = fmt::format("Data/config/{0}.layout", (_editorMode) ? "Editor" : "Game");
+        std::string path = "";
+        if (_editorMode)
+        {
+            path = "Data/config/Editor.layout";
+        }
+        else
+        {
+            path = "Data/config/Game.layout";
+        }
+
         std::ofstream file(path);
         if (file.is_open())
         {

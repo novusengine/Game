@@ -25,7 +25,7 @@ public:
 
     static bool Init()
     {
-        DebugHandler::Print("TextureLoader : Scanning for textures");
+        NC_LOG_INFO("TextureLoader : Scanning for textures");
 
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
 
@@ -75,13 +75,13 @@ public:
             if (textureSingleton.textureHashToPath.contains(texturePair.hash))
             {
                 const std::string& path = textureSingleton.textureHashToPath[texturePair.hash];
-                DebugHandler::PrintError("Found duplicate texture hash ({0}) for Paths (\"{1}\") - (\"{2}\")", texturePair.hash, path.c_str(), texturePair.path.c_str());
+                NC_LOG_ERROR("Found duplicate texture hash ({0}) for Paths (\"{1}\") - (\"{2}\")", texturePair.hash, path.c_str(), texturePair.path.c_str());
             }
 
             textureSingleton.textureHashToPath[texturePair.hash] = (relativeParentPath / texturePair.path).string();
         }
 
-        DebugHandler::Print("Loaded Texture {0} entries", textureSingleton.textureHashToPath.size());
+        NC_LOG_INFO("Loaded Texture {0} entries", textureSingleton.textureHashToPath.size());
 
         return true;
     }

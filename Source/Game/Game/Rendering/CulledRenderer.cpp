@@ -28,7 +28,7 @@ void CulledRenderer::Clear()
 
 void CulledRenderer::OccluderPass(OccluderPassParams& params)
 {
-    DebugHandler::Assert(params.drawCallback != nullptr, "CulledRenderer : OccluderPass got params with invalid drawCallback");
+    NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : OccluderPass got params with invalid drawCallback");
 
     // Reset the counters
     params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
@@ -275,7 +275,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
 void CulledRenderer::CullingPass(CullingPassParams& params)
 {
-    DebugHandler::Assert(params.drawCallDataSize > 0, "CulledRenderer : CullingPass params provided an invalid drawCallDataSize");
+    NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : CullingPass params provided an invalid drawCallDataSize");
 
     const u32 numDrawCalls = params.cullingResources->GetDrawCallsSize();
     u32 numInstances = params.cullingResources->GetNumInstances();
@@ -505,7 +505,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
 void CulledRenderer::GeometryPass(GeometryPassParams& params)
 {
-    DebugHandler::Assert(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
+    NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
 
     const u32 numDrawCalls = params.cullingResources->GetDrawCallsSize();
 
@@ -535,7 +535,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             if (params.culledDrawCallsBuffer == Renderer::BufferMutableResource::Invalid())
             {
-                DebugHandler::PrintFatal("Tried to draw with culling enabled but no culled draw calls buffer was provided");
+                NC_LOG_CRITICAL("Tried to draw with culling enabled but no culled draw calls buffer was provided");
             }
             drawParams.argumentBuffer = params.culledDrawCallsBuffer;
         }
@@ -543,7 +543,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             if (params.drawCallsBuffer == Renderer::BufferMutableResource::Invalid())
             {
-                DebugHandler::PrintFatal("Tried to draw with culling disabled but no draw calls buffer was provided");
+                NC_LOG_CRITICAL("Tried to draw with culling disabled but no draw calls buffer was provided");
             }
             drawParams.argumentBuffer = params.drawCallsBuffer;
         }

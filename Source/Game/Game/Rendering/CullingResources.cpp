@@ -5,7 +5,7 @@
 
 void CullingResourcesBase::Init(InitParams& params)
 {
-    DebugHandler::Assert(params.renderer != nullptr, "CullingResources : params.renderer is nullptr");
+    NC_ASSERT(params.renderer != nullptr, "CullingResources : params.renderer is nullptr");
 
     _renderer = params.renderer;
     _bufferNamePrefix = params.bufferNamePrefix;

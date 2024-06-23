@@ -9,18 +9,22 @@
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
 
-#include <Input/InputManager.h>
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
+#include <Input/InputManager.h>
 #include <Renderer/Window.h>
 
 #include <entt/entt.hpp>
-#include <imgui/imgui.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/euler_angles.hpp>
+#include <imgui/imgui.h>
+
+AutoCVar_Float CVAR_CameraZoomDistance(CVarCategory::Client, "cameraZoomDistance", "The current zoom distance for the camera", 12, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_CameraZoomMaxDistance(CVarCategory::Client, "cameraZoomMaxDistance", "The max zoom distance for the camera", 30.0f, CVarFlags::EditFloatDrag);
 
 namespace ECS::Systems
 {
@@ -44,7 +48,10 @@ namespace ECS::Systems
             camera.yaw = 180.0f;
         }
 
-        settings.cameraCurrentZoomOffset = (vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, settings.GetZoomLevel()));
+        f32 zoomDistance = Math::Clamp(CVAR_CameraZoomDistance.GetFloat(), 0.0f, CVAR_CameraZoomMaxDistance.GetFloat());
+        CVAR_CameraZoomDistance.Set(zoomDistance);
+
+        settings.cameraCurrentZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, 1.8f, -zoomDistance);
         settings.cameraTargetZoomOffset = settings.cameraCurrentZoomOffset;
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -56,21 +63,52 @@ namespace ECS::Systems
         {
             if (action == KeybindAction::Press)
             {
-                ECS::Util::CameraUtil::SetCaptureMouse(true);
+                if (!settings.mouseRightDown)
+                {
+                    ECS::Util::CameraUtil::SetCaptureMouse(true);
 
-                InputManager* inputManager = ServiceLocator::GetInputManager();
-                settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                    InputManager* inputManager = ServiceLocator::GetInputManager();
+                    settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                }
+
+                settings.mouseLeftDown = true;
             }
             else
             {
-                ECS::Util::CameraUtil::SetCaptureMouse(false);
+                if (!settings.mouseRightDown)
+                {
+                    ECS::Util::CameraUtil::SetCaptureMouse(false);
+                }
+
+                settings.mouseLeftDown = false;
             }
 
             return true;
         });
         _keybindGroup->AddKeyboardCallback("Right Mouseclick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
         {
-            // TODO : Implement rotating the entity if we are the mover of the entity we are tracking
+            if (action == KeybindAction::Press)
+            {
+                if (!settings.mouseLeftDown)
+                {
+                    ECS::Util::CameraUtil::SetCaptureMouse(true);
+
+                    InputManager* inputManager = ServiceLocator::GetInputManager();
+                    settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                }
+
+                settings.mouseRightDown = true;
+            }
+            else
+            {
+                if (!settings.mouseLeftDown)
+                {
+                    ECS::Util::CameraUtil::SetCaptureMouse(false);
+                }
+
+				settings.mouseRightDown = false;
+			}
+
             return true;
         });
         _keybindGroup->AddMousePositionCallback([&settings, &registry](f32 xPos, f32 yPos)
@@ -90,8 +128,10 @@ namespace ECS::Systems
             }
             else
             {
-                settings.cameraZoomLevel = Math::Clamp(settings.cameraZoomLevel + static_cast<i8>(-yPos), 0, 4);
-                settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, settings.GetZoomLevel());
+                f32 zoomDistance = Math::Clamp(CVAR_CameraZoomDistance.GetFloat() + static_cast<i8>(-yPos), 0.0f, CVAR_CameraZoomMaxDistance.GetFloat());
+                CVAR_CameraZoomDistance.Set(zoomDistance);
+
+                settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, 1.8f, -zoomDistance);
                 settings.cameraZoomProgress = 0.0f;
             }
 
@@ -139,6 +179,7 @@ namespace ECS::Systems
         settings.cameraCurrentZoomOffset = glm::mix(settings.cameraCurrentZoomOffset, settings.cameraTargetZoomOffset, settings.cameraZoomProgress);
 
         Components::Transform& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.entity);
+        Components::Transform& characterModelTransform = registry.get<Components::Transform>(characterSingleton.modelEntity);
         const mat4x4& characterControllerMatrix = characterControllerTransform.GetMatrix(); // This is the point we want to rotate around
 
         vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll));
@@ -152,6 +193,16 @@ namespace ECS::Systems
         updateCamera(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
 
         vec3 resultRotationEuler = glm::eulerAngles(resultRotation);
+
+        if (settings.mouseRightDown)
+        {
+            Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+
+            glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
+            f32 yaw = glm::radians(camera.yaw);
+
+            characterSingleton.yaw = yaw + glm::pi<f32>();;
+        }
 
         tSystem.SetWorldRotation(activeCamera.entity, resultRotation);
         tSystem.SetWorldPosition(activeCamera.entity, resultPosition);
@@ -177,10 +228,10 @@ namespace ECS::Systems
 
             camera.yaw += -deltaPosition.x * settings.mouseSensitivity;
 
-            if (camera.yaw > 360)
-                camera.yaw -= 360;
-            else if (camera.yaw < 0)
-                camera.yaw += 360;
+            if (camera.yaw >= 360.0f)
+                camera.yaw -= 360.0f;
+            else if (camera.yaw < 0.0f)
+                camera.yaw += 360.0f;
 
             camera.pitch = Math::Clamp(camera.pitch - (deltaPosition.y * settings.mouseSensitivity), -89.0f, 89.0f);
             camera.dirtyView = true;

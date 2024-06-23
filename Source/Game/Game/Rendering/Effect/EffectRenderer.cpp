@@ -76,7 +76,7 @@ void EffectRenderer::Update(f32 deltaTime)
         FfxErrorCode code = ffxCacaoContextCreate(_cacaoContext, &cacaoDescription);
         if (code != FfxErrorCodes::FFX_OK)
         {
-            DebugHandler::PrintFatal("Failed to create CACAO context");
+            NC_LOG_CRITICAL("Failed to create CACAO context");
             return;
         }
     }
@@ -140,7 +140,7 @@ void EffectRenderer::AddSSAOPass(Renderer::RenderGraph* renderGraph, RenderResou
                 FfxErrorCode errorCode = ffxCacaoUpdateSettings(_cacaoContext, _cacaoSettings, false);
                 if (errorCode != FfxErrorCodes::FFX_OK)
                 {
-                    DebugHandler::PrintFatal("Failed to update CACAO settings");
+                    NC_LOG_CRITICAL("Failed to update CACAO settings");
                     return;
                 }
 

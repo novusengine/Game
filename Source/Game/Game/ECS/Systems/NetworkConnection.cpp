@@ -29,7 +29,7 @@ namespace ECS::Systems
             if (!netPacket->payload->GetString(charName))
                 return false;
 
-            DebugHandler::Print("Network : Connected to server (Playing on character : \"{0}\")", charName);
+            NC_LOG_INFO("Network : Connected to server (Playing on character : \"{0}\")", charName);
         }
 
         return true;
@@ -51,7 +51,7 @@ namespace ECS::Systems
             Network::Socket::Result initResult = networkState.client->Init(Network::Socket::Mode::TCP);
             if (initResult != Network::Socket::Result::SUCCESS)
             {
-                DebugHandler::PrintError("Network : Failed to initialize Client");
+                NC_LOG_ERROR("Network : Failed to initialize Client");
                 return;
             }
 
@@ -67,7 +67,7 @@ namespace ECS::Systems
                 if (connectResult != Network::Socket::Result::SUCCESS &&
                     connectResult != Network::Socket::Result::ERROR_WOULD_BLOCK)
                 {
-                    DebugHandler::PrintError("Network : Failed to connect to ({0}, {1})", ipAddress, port);
+                    NC_LOG_ERROR("Network : Failed to connect to ({0}, {1})", ipAddress, port);
                 }
             }
         }
@@ -95,7 +95,7 @@ namespace ECS::Systems
                 // Just Disconnected
                 wasConnected = false;
 
-                DebugHandler::PrintWarning("Network : Disconnected");
+                NC_LOG_WARNING("Network : Disconnected");
             }
         }
 
@@ -117,7 +117,7 @@ namespace ECS::Systems
                 if (header->opcode == Network::Opcode::INVALID || header->opcode > Network::Opcode::MAX_COUNT)
                 {
 #ifdef NC_Debug
-                    DebugHandler::PrintError("Network : Received Invalid Opcode ({0}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode));
+                    NC_LOG_ERROR("Network : Received Invalid Opcode ({0}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode));
 #endif // NC_Debug
                     networkState.client->Close();
                     break;
@@ -126,7 +126,7 @@ namespace ECS::Systems
                 if (header->size > Network::DEFAULT_BUFFER_SIZE)
                 {
 #ifdef NC_Debug
-                    DebugHandler::PrintError("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode), header->size);
+                    NC_LOG_ERROR("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode), header->size);
 #endif // NC_Debug
                     networkState.client->Close();
                     break;

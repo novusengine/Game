@@ -3,16 +3,16 @@
 
 namespace Network
 {
-	class Client;
-	class PacketHandler;
+    class Client;
+    class PacketHandler;
 }
 
 namespace ECS::Singletons
 {
-	struct NetworkState
-	{
-	public:
-		std::unique_ptr<Network::Client> client;
-		std::unique_ptr<Network::PacketHandler> packetHandler;
-	};
+    struct NetworkState
+    {
+    public:
+        std::unique_ptr<Network::Client> client;
+        std::unique_ptr<Network::PacketHandler> packetHandler;
+    };
 }

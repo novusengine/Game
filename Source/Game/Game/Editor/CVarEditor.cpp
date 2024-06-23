@@ -98,7 +98,7 @@ namespace Editor
             //insert all the edit parameters into the hashmap by category
             for (auto p : cachedEditParameters)
             {
-                DebugHandler::Assert(closeStack.size() == 0, "Stack not empty!");
+                NC_ASSERT(closeStack.size() == 0, "Stack not empty!");
 
                 u32 intCategory = static_cast<u32>(p->category);
                 if (intCategory == 0)

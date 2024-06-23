@@ -13,12 +13,12 @@
 
 namespace ECS::Singletons
 {
-	struct MapDB
-	{
-	public:
-		MapDB() { }
+    struct MapDB
+    {
+    public:
+        MapDB() { }
 
-	public:
-		robin_hood::unordered_map<u32, u32> mapInternalNameHashToID;
-	};
+    public:
+        robin_hood::unordered_map<u32, u32> mapInternalNameHashToID;
+    };
 }

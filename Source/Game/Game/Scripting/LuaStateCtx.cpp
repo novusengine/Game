@@ -125,7 +125,7 @@ namespace Scripting
 			}
 			else
 			{
-				DebugHandler::PrintFatal("Failed to SetGlobal, invalid typeid");
+				NC_LOG_CRITICAL("Failed to SetGlobal, invalid typeid");
 			}
 		}
 	}
@@ -152,8 +152,8 @@ namespace Scripting
 		i32 result = lua_pcall(_state, numArgs, numResults, errorfunc);
 		if (result != LUA_OK)
 		{
-			DebugHandler::PrintError("[Scripting] Failed to run a script. Please check the errors below and correct them");
-			DebugHandler::PrintError("{0}", GetString("Failed to read Luau Runtime Error"));
+			NC_LOG_ERROR("[Scripting] Failed to run a script. Please check the errors below and correct them");
+			NC_LOG_ERROR("{0}", GetString("Failed to read Luau Runtime Error"));
 			Pop();
 		}
 
@@ -370,8 +370,8 @@ namespace Scripting
 
 	void LuaStateCtx::ReportError()
 	{
-		DebugHandler::PrintError("[Scripting] Please check the errors below and correct them");
-		DebugHandler::PrintError("{0}", GetString("Failed to read Luau Error"));
+		NC_LOG_ERROR("[Scripting] Please check the errors below and correct them");
+		NC_LOG_ERROR("{0}", GetString("Failed to read Luau Error"));
 		Pop();
 	}
 
@@ -489,7 +489,7 @@ namespace Scripting
 			}
 			else
 			{
-				DebugHandler::PrintFatal("Failed to SetLuaTable, invalid typeid ({0})", any.type().name());
+				NC_LOG_CRITICAL("Failed to SetLuaTable, invalid typeid ({0})", any.type().name());
 			}
 		}
 

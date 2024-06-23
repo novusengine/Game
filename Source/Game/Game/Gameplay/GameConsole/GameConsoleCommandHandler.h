@@ -33,7 +33,7 @@ private:
         if (_commandHandlers.contains(commandHash))
         {
             GameConsoleCommandEntry& command = _commandHandlers[commandHash];
-            DebugHandler::PrintWarning("[GameConsole] Attempted to register command \"{0}\" but another command \"{1]\" has already been registered with a shared hash", commandName, command.name);
+            NC_LOG_WARNING("[GameConsole] Attempted to register command \"{0}\" but another command \"{1]\" has already been registered with a shared hash", commandName, command.name);
             return false;
         }
 

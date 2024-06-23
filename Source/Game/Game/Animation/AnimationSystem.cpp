@@ -258,14 +258,14 @@ namespace Animation
                 Type animationID = static_cast<Type>(sequence.id);
                 if (animationID <= Type::Invalid || animationID >= Type::Count)
                 {
-                    DebugHandler::PrintError("Model {0} has sequences ({1}) with animationID ({2}). (This animationID is invalid, Min/Max Value : ({3}, {4}))", modelID, i, sequence.id, (i32)Type::Invalid + 1, (i32)Type::Count);
+                    NC_LOG_ERROR("Model {0} has sequences ({1}) with animationID ({2}). (This animationID is invalid, Min/Max Value : ({3}, {4}))", modelID, i, sequence.id, (i32)Type::Invalid + 1, (i32)Type::Count);
                     continue;
                 }
 
                 if (skeleton.animationIDToFirstSequenceID.contains(animationID))
                 {
                     u32 existingSequenceID = skeleton.animationIDToFirstSequenceID[animationID];
-                    DebugHandler::PrintError("Model {0} has two sequences ({1}, {2}) both referencing animationID ({3}) and SubID 0. (SubID is unique for each animationID)", modelID, existingSequenceID, i, (i32)animationID);
+                    NC_LOG_ERROR("Model {0} has two sequences ({1}, {2}) both referencing animationID ({3}) and SubID 0. (SubID is unique for each animationID)", modelID, existingSequenceID, i, (i32)animationID);
                 }
 
                 skeleton.animationIDToFirstSequenceID[animationID] = i;

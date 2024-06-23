@@ -52,14 +52,14 @@ void FakeScrollingArea::End()
 
 i32 FakeScrollingArea::GetFirstVisibleItem() const
 {
-    DebugHandler::Assert(_beginIsHandled, "FakeScrollingArea::GetFirstVisibleItem() called before Begin()");
+    NC_ASSERT(_beginIsHandled, "FakeScrollingArea::GetFirstVisibleItem() called before Begin()");
 
     return _firstVisibleItem;
 }
 
 i32 FakeScrollingArea::GetLastVisibleItem() const
 {
-    DebugHandler::Assert(_beginIsHandled, "FakeScrollingArea::GetLastVisibleItem() called before Begin()");
+    NC_ASSERT(_beginIsHandled, "FakeScrollingArea::GetLastVisibleItem() called before Begin()");
 
     return _lastVisibleItem;
 }

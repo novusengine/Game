@@ -1,10 +1,7 @@
 -- Dependencies
-Game.dependencyDir = path.getabsolute("Dependencies/", Game.rootDir)
-
-print("-- Creating Dependencies --")
-
-Game.dependencyGroup = (Game.name .. "/Dependencies")
-group (Game.dependencyGroup)
+Solution.Util.Print("-- Creating Dependencies --")
+Solution.Util.ClearFilter()
+Solution.Util.SetGroup(Solution.DependencyGroup)
 
 local dependencies =
 {
@@ -12,11 +9,9 @@ local dependencies =
 }
 
 for k,v in pairs(dependencies) do
-    filter { }
     include(v)
+    Solution.Util.ClearFilter()
 end
 
-filter { }
-group (Game.name)
-
-print("-- Finished with Dependencies --\n")
+Solution.Util.SetGroup("")
+Solution.Util.Print("-- Finished with Dependencies --\n")

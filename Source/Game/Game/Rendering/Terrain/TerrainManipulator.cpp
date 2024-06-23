@@ -225,7 +225,7 @@ void TerrainManipulator::GetVertexDatasAroundWorldPos(const vec3& worldPos, f32 
 
             if (!_terrainRenderer._packedChunkCellIDToGlobalCellID.contains(packedChunkCellID))
             {
-                DebugHandler::PrintError("Shit is bad yo");
+                NC_LOG_ERROR("Shit is bad yo");
             }
 
             u32 globalCellIndex = _terrainRenderer._packedChunkCellIDToGlobalCellID[packedChunkCellID];

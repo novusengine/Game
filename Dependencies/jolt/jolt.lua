@@ -1,12 +1,57 @@
-local function SetupLib()
-    local basePath = path.getabsolute("jolt/", Game.dependencyDir)
-    local dependencies = { }
+local dep = Solution.Util.CreateDepTable("Jolt", {})
+
+local function GetJoltDefines()
+    local additionalDefines = { "JPH_PROFILE_ENABLED", "CROSS_PLATFORM_DETERMINISTIC" }
+
+    local enableDebugRenderer = BuildSettings:Get("Jolt Enable Debug Renderer")
+    if enableDebugRenderer ~= nil and enableDebugRenderer == true then
+        table.insert(additionalDefines, "JPH_DEBUG_RENDERER")
+    end
+
+    local floatPointExceptions = BuildSettings:Get("Jolt Floating Point Exceptions")
+    if floatPointExceptions ~= nil and floatPointExceptions == true then
+        table.insert(additionalDefines, "JPH_FLOATING_POINT_EXCEPTIONS_ENABLED")
+    end
+
+    local doublePrecision = BuildSettings:Get("Jolt Double Precision")
+    if doublePrecision ~= nil and doublePrecision == true then
+        table.insert(additionalDefines, "JPH_DOUBLE_PRECISION")
+    end
+
+    local crossPlatformDeterministic = BuildSettings:Get("Jolt Cross Platform Deterministic")
+    if crossPlatformDeterministic ~= nil and crossPlatformDeterministic == true then
+        table.insert(additionalDefines, "JPH_CROSS_PLATFORM_DETERMINISTIC")
+    end
+
+    local objectLayerBits = BuildSettings:Get("Jolt Object Layer Bits")
+    if objectLayerBits ~= nil then
+        if objectLayerBits ~= 16 and objectLayerBits ~= 32 then
+            error("Jolt Object Layer Bits must be set to either 16 or 32")
+        end
+
+        table.insert(additionalDefines, "JPH_OBJECT_LAYER_BITS=" .. tostring(objectLayerBits))
+    end
+
+    local trackBroadphaseStats = BuildSettings:Get("Jolt Track Broadphase Stats")
+    if trackBroadphaseStats ~= nil and trackBroadphaseStats == true then
+        table.insert(additionalDefines, "JPH_TRACK_BROADPHASE_STATS")
+    end
+
+    local trackNarrowphaseStats = BuildSettings:Get("Jolt Track Narrowphase Stats")
+    if trackNarrowphaseStats ~= nil and trackNarrowphaseStats == true then
+        table.insert(additionalDefines, "JPH_TRACK_NARROWPHASE_STATS")
+    end
+
+    return additionalDefines
+end
+
+Solution.Util.CreateStaticLib(dep.Name, Solution.Projects.Current.BinDir, dep.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS" }
 
-    ProjectTemplate("Jolt", "StaticLib", nil, Game.binDir, dependencies, defines)
+    Solution.Util.SetLanguage("C++")
+    Solution.Util.SetCppDialect(20)
 
-    local sourceDir = path.getabsolute("Jolt", basePath)
-    local includeDir = { basePath, sourceDir }
+    local sourceDir = dep.Path .. "/Jolt"
     local files =
     {
         sourceDir .. "/AABBTree/AABBTreeBuilder.cpp",
@@ -434,113 +479,24 @@ local function SetupLib()
         sourceDir .. "/TriangleSplitter/TriangleSplitterMorton.cpp",
         sourceDir .. "/TriangleSplitter/TriangleSplitterMorton.h"
     }
-    AddFiles(files)
-
-    AddIncludeDirs(includeDir)
-
-    local enableDebugRenderer = BuildSettings:Get("Jolt Enable Debug Renderer")
-    if enableDebugRenderer ~= nil and enableDebugRenderer == true then
-        AddDefines({"JPH_DEBUG_RENDERER"})
-    end
-
-    local floatPointExceptions = BuildSettings:Get("Jolt Floating Point Exceptions")
-    if floatPointExceptions ~= nil and floatPointExceptions == true then
-        AddDefines({"JPH_FLOATING_POINT_EXCEPTIONS_ENABLED"})
-    end
-
-    local doublePrecision = BuildSettings:Get("Jolt Double Precision")
-    if doublePrecision ~= nil and doublePrecision == true then
-        AddDefines({"JPH_DOUBLE_PRECISION"})
-    end
-
-    local crossPlatformDeterministic = BuildSettings:Get("Jolt Cross Platform Deterministic")
-    if crossPlatformDeterministic ~= nil and crossPlatformDeterministic == true then
-        AddDefines({"JPH_CROSS_PLATFORM_DETERMINISTIC"})
-    end
-
-    local objectLayerBits = BuildSettings:Get("Jolt Object Layer Bits")
-    if objectLayerBits ~= nil then
-        if objectLayerBits ~= 16 and objectLayerBits ~= 32 then
-            error("Jolt Object Layer Bits must be set to either 16 or 32")
-        end
-
-        AddDefines({"JPH_OBJECT_LAYER_BITS=" .. tostring(objectLayerBits)})
-    end
-
-    local trackBroadphaseStats = BuildSettings:Get("Jolt Track Broadphase Stats")
-    if trackBroadphaseStats ~= nil and trackBroadphaseStats == true then
-        AddDefines({"JPH_TRACK_BROADPHASE_STATS"})
-    end
-
-    local trackNarrowphaseStats = BuildSettings:Get("Jolt Track Narrowphase Stats")
-    if trackNarrowphaseStats ~= nil and trackNarrowphaseStats == true then
-        AddDefines({"JPH_TRACK_NARROWPHASE_STATS"})
-    end
+    Solution.Util.SetFiles(files)
+    Solution.Util.SetIncludes({ dep.Path, sourceDir })
+    Solution.Util.SetDefines(defines)
 
     -- TODO : Support EMIT_X86_INSTRUCTION_SET_DEFINITIONS
 
-    filter "configurations:Debug"
-        AddDefines({"_DEBUG"})
+    local additionalDefines = GetJoltDefines()
+    Solution.Util.SetDefines(additionalDefines)
 
-    filter "configurations:RelDebug"
-        AddDefines({"NDEBUG"})
+    Solution.Util.SetFilter("platforms:Win64", function()
+        Solution.Util.SetLinks({ "wininet" })
+    end)
+end)
 
-    filter "configurations:Release"
-        AddDefines({"NDEBUG"})
-
-    filter { }
-    AddDefines({"JPH_PROFILE_ENABLED", "CROSS_PLATFORM_DETERMINISTIC"})
-    AddLinks("wininet")
-end
-SetupLib()
-
-local function Include()
-    local basePath = path.getabsolute("jolt/", Game.dependencyDir)
-    local includeDir = basePath
-
-    AddIncludeDirs(includeDir)
-
-    local enableDebugRenderer = BuildSettings:Get("Jolt Enable Debug Renderer")
-    if enableDebugRenderer ~= nil and enableDebugRenderer == true then
-        AddDefines({"JPH_DEBUG_RENDERER"})
-    end
-
-    local floatPointExceptions = BuildSettings:Get("Jolt Floating Point Exceptions")
-    if floatPointExceptions ~= nil and floatPointExceptions == true then
-        AddDefines({"JPH_FLOATING_POINT_EXCEPTIONS_ENABLED"})
-    end
-
-    local doublePrecision = BuildSettings:Get("Jolt Double Precision")
-    if doublePrecision ~= nil and doublePrecision == true then
-        AddDefines({"JPH_DOUBLE_PRECISION"})
-    end
-
-    local crossPlatformDeterministic = BuildSettings:Get("Jolt Cross Platform Deterministic")
-    if crossPlatformDeterministic ~= nil and crossPlatformDeterministic == true then
-        AddDefines({"JPH_CROSS_PLATFORM_DETERMINISTIC"})
-    end
-
-    local objectLayerBits = BuildSettings:Get("Jolt Object Layer Bits")
-    if objectLayerBits ~= nil then
-        if objectLayerBits ~= 16 and objectLayerBits ~= 32 then
-            error("Jolt Object Layer Bits must be set to either 16 or 32")
-        end
-
-        AddDefines({"JPH_OBJECT_LAYER_BITS=" .. tostring(objectLayerBits)})
-    end
-
-    local trackBroadphaseStats = BuildSettings:Get("Jolt Track Broadphase Stats")
-    if trackBroadphaseStats ~= nil and trackBroadphaseStats == true then
-        AddDefines({"JPH_TRACK_BROADPHASE_STATS"})
-    end
-
-    local trackNarrowphaseStats = BuildSettings:Get("Jolt Track Narrowphase Stats")
-    if trackNarrowphaseStats ~= nil and trackNarrowphaseStats == true then
-        AddDefines({"JPH_TRACK_NARROWPHASE_STATS"})
-    end
-
-    AddDefines({"JPH_PROFILE_ENABLED", "CROSS_PLATFORM_DETERMINISTIC"})
-
-    AddLinks("Jolt")
-end
-CreateDep("jolt", Include)
+Solution.Util.CreateDep(dep.NameLow, dep.Dependencies, function()
+    Solution.Util.SetIncludes(dep.Path)
+    Solution.Util.SetLinks(dep.Name)
+    
+    local additionalDefines = GetJoltDefines()
+    Solution.Util.SetDefines(additionalDefines)
+end)

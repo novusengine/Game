@@ -105,7 +105,7 @@ void TerrainLoader::Update(f32 deltaTime)
         }
         else
         {
-            DebugHandler::PrintFatal("TerrainLoader : Encountered LoadRequest with invalid LoadType");
+            NC_LOG_CRITICAL("TerrainLoader : Encountered LoadRequest with invalid LoadType");
         }
     }
 }
@@ -209,24 +209,24 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
         }
     });
 
-    DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
     taskScheduler->WaitforTask(&countValidChunksTask);
-    DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
 
     u32 numChunksToLoad = numExistingChunks.load();
     if (numChunksToLoad == 0)
     {
-        DebugHandler::PrintError("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
         return;
     }
 
     _terrainRenderer->Reserve(numChunksToLoad);
 
-    DebugHandler::Print("TerrainLoader : Started Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Started Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&loadChunksTask);
     taskScheduler->WaitforTask(&loadChunksTask);
-    DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Finished Chunk Loading");
 }
 
 void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
@@ -245,7 +245,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
     if (!fs::is_directory(absoluteMapPath))
     {
-        DebugHandler::PrintError("TerrainLoader : Failed to find '{0}' folder", absoluteMapPath.string());
+        NC_LOG_ERROR("TerrainLoader : Failed to find '{0}' folder", absoluteMapPath.string());
         return;
     }
 
@@ -371,7 +371,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
                         if (numLiquidHeaders != 0 && numLiquidHeaders != 256)
                         {
-                            DebugHandler::PrintFatal("LiquidInfo should always contain either 0 or 256 liquid headers, but it contained {0} liquid headers", numLiquidHeaders);
+                            NC_LOG_CRITICAL("LiquidInfo should always contain either 0 or 256 liquid headers, but it contained {0} liquid headers", numLiquidHeaders);
                         }
 
                         if (numLiquidHeaders == 256)
@@ -386,22 +386,22 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         return true;
     });
 
-    DebugHandler::Print("TerrainLoader : Started Preparing Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
     taskScheduler->WaitforTask(&countValidChunksTask);
-    DebugHandler::Print("TerrainLoader : Finished Preparing Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
 
     u32 numChunksToLoad = numExistingChunks.load();
     if (numChunksToLoad == 0)
     {
-        DebugHandler::PrintError("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
         return;
     }
 
     PrepareForChunks(LoadType::Full, numChunksToLoad);
     _currentMapInternalName = mapName;
 
-    DebugHandler::Print("TerrainLoader : Started Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Started Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&loadChunksTask);
     taskScheduler->WaitforTask(&loadChunksTask);
 
@@ -414,7 +414,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         joltState.physicsSystem.OptimizeBroadPhase();
     }
 
-    DebugHandler::Print("TerrainLoader : Finished Chunk Loading");
+    NC_LOG_INFO("TerrainLoader : Finished Chunk Loading");
 }
 
 void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)

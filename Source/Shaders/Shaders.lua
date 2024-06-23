@@ -1,27 +1,25 @@
-local dependencies = { }
-local defines = { }
-ProjectTemplate("Shaders", "Utility", nil, Game.binDir, dependencies, defines)
-dependson { "ShaderCookerStandalone" }
+local mod = Solution.Util.CreateModuleTable("Shaders", {})
 
-local rootDir = path.getabsolute("Shaders/", Game.projectsDir)
-local sourceDir = path.getabsolute("Shaders/", rootDir)
+Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDir, mod.Dependencies, function()
+    dependson { "ShaderCookerStandalone" }
+    
+    local sourceDir = mod.Path .. "/Shaders"
+    local files =
+    {
+        sourceDir .. "/main.cpp",
+        sourceDir .. "/**.hlsl",
+    }
+    Solution.Util.SetFiles(files)
 
-local files =
-{
-    sourceDir .. "/main.cpp",
-    sourceDir .. "/**.hlsl",
-}
+    local shaderCookerStandalonePath = (Solution.Projects.Current.BinDir .. "/%{cfg.buildcfg}/ShaderCookerStandalone.%{systemToExecutableExtensionMap[cfg.system]}")
+    local shaderOutputPath = (Solution.Projects.Current.BuildDir .. "/Data/Shaders")
+    
+    prebuildmessage ("Compiling Shaders...")
+    prebuildcommands { (shaderCookerStandalonePath) .. " " .. (sourceDir) .. " " .. (shaderOutputPath) }
+    
+    BuildSettings:Add("Shader Source Dir", sourceDir)
 
-AddFiles(files)
-
-filter("files:**.hlsl")
-    flags("ExcludeFromBuild")
-
-filter { }
-local shaderCookerStandalonePath = (Game.binDir .. "/%{cfg.buildcfg}/ShaderCookerStandalone.exe")
-local shaderOutputPath = (Game.binDir .. "/%{cfg.buildcfg}/Data/Shaders")
-
-prebuildmessage ("Compiling Shaders...")
-prebuildcommands { (shaderCookerStandalonePath) .. " " .. (sourceDir) .. " " .. (shaderOutputPath) }
-
-BuildSettings:Add("Shader Source Dir", sourceDir)
+    Solution.Util.SetFilter("files:**.hlsl", function()
+        flags("ExcludeFromBuild")
+    end)
+end)

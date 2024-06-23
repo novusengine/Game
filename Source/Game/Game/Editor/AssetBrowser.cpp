@@ -24,7 +24,8 @@ namespace Editor
         fs::path relativeDataPath = fs::absolute("Data");
         if (!fs::is_directory(relativeDataPath))
         {
-            DebugHandler::PrintError("Failed to find Data/ folder from ({0})", relativeDataPath.string());
+            std::string pathStr = relativeDataPath.string();
+            NC_LOG_ERROR("Failed to find Data/ folder from ({0})", pathStr);
             return;
         }
 

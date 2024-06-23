@@ -25,25 +25,18 @@ namespace ECS::Util
 
             auto& clientDBCollection = ctx.get<ClientDBCollection>();
             auto& mapDB = ctx.get<MapDB>();
-            auto maps = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto* maps = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
             mapDB.mapInternalNameHashToID.clear();
 
-            u32 numRecords = maps.Count();
+            u32 numRecords = maps->Count();
             mapDB.mapInternalNameHashToID.reserve(numRecords);
 
-            for (const ClientDB::Definitions::Map& map : maps)
+            maps->Each([&mapDB](auto* storage, const ClientDB::Definitions::Map* map)
             {
-                if (!maps.IsValid(map))
-                    continue;
-
-                if (!maps.HasString(map.internalName))
-                    continue;
-
-                const std::string& mapInternalName = maps.GetString(map.internalName);
-                u32 mapInternalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
-                mapDB.mapInternalNameHashToID[mapInternalNameHash] = map.GetID();
-            }
+                u32 mapInternalNameHash = StringUtils::fnv1a_32(map->internalName.c_str(), map->internalName.length());
+                mapDB.mapInternalNameHashToID[mapInternalNameHash] = map->id;
+            });
 
             return true;
         }
@@ -87,25 +80,14 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
             auto& clientDBCollection = registry->ctx().get<ClientDBCollection>();
-            auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto* mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
-            if (!mapStorage.HasString(map.name))
-                return false;
-
-            if (!mapStorage.HasString(map.internalName))
-                return false;
-
-            mapStorage.Add(map);
-
-            if (!mapStorage.IsValid(map))
-                return false;
-
-            u32 mapID = map.GetID();
-            const std::string& mapInternalName = mapStorage.GetString(map.internalName);
-            u32 mapInternalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
-
+            u32 mapID = map.id;
+            u32 mapInternalNameHash = StringUtils::fnv1a_32(map.internalName.c_str(), map.internalName.length());
             auto& mapDB = registry->ctx().get<MapDB>();
             mapDB.mapInternalNameHashToID[mapID] = mapInternalNameHash;
+
+            mapStorage->AddRow(map);
             return true;
         }
 
@@ -114,23 +96,18 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
             auto& clientDBCollection = registry->ctx().get<ClientDBCollection>();
-            auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto* mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
-            if (!mapStorage.Contains(mapID))
+            auto* map = mapStorage->GetRow(mapID);
+            if (!map)
                 return false;
 
-            const Definitions::Map& map = mapStorage.GetByID(mapID);
-            if (mapStorage.Contains(map.internalName))
-            {
-                auto& mapDB = registry->ctx().get<MapDB>();
+            u32 internalNameHash = StringUtils::fnv1a_32(map->internalName.c_str(), map->internalName.length());
 
-                const std::string& internalName = mapStorage.GetString(map.internalName);
-                u32 internalNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+            auto& mapDB = registry->ctx().get<MapDB>();
+            mapDB.mapInternalNameHashToID.erase(internalNameHash);
 
-                mapDB.mapInternalNameHashToID.erase(internalNameHash);
-            }
-
-            mapStorage.Remove(mapID);
+            mapStorage->RemoveRow(mapID);
 
             return true;
         }
@@ -146,13 +123,13 @@ namespace ECS::Util
             entt::registry::context& ctx = registry->ctx();
 
             auto& clientDBCollection = ctx.get<ClientDBCollection>();
-            auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto* mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
-            if (!mapStorage.Contains(mapID))
+            auto* map = mapStorage->GetRow(mapID);
+            if (!map)
                 return false;
 
-            Definitions::Map& map = mapStorage.GetByID(mapID);
-            map.name = mapStorage.AddString(name);
+            map->name = name;
 
             auto& mapDB = ctx.get<MapDB>();
 
@@ -168,9 +145,9 @@ namespace ECS::Util
             entt::registry::context& ctx = registry->ctx();
 
             auto& clientDBCollection = ctx.get<ClientDBCollection>();
-            auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+            auto* mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
-            mapStorage.MarkDirty();
+            mapStorage->SetDirty();
         }
 	}
 }

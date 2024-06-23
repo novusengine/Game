@@ -76,9 +76,9 @@ void Application::Stop()
     if (!_isRunning)
         return;
 
-    DebugHandler::Print("Application : Shutdown Initiated");
+    NC_LOG_INFO("Application : Shutdown Initiated");
     Cleanup();
-    DebugHandler::Print("Application : Shutdown Complete");
+    NC_LOG_INFO("Application : Shutdown Complete");
 
     MessageOutbound message(MessageOutbound::Type::Exit);
     _messagesOutbound.enqueue(message);
@@ -194,7 +194,7 @@ bool Application::Init()
     // Setup CVar Config
     {
         std::filesystem::path currentPath = std::filesystem::current_path();
-        DebugHandler::Print("Current Path : {}", currentPath.string());
+        NC_LOG_INFO("Current Path : {}", currentPath.string());
         std::filesystem::create_directories("Data/Config");
 
         nlohmann::ordered_json fallback;
@@ -282,15 +282,15 @@ bool Application::Init()
 
         // Setup Cursors
         {
-            auto cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
+            auto* cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
 
-            if (cursors.Count() == 0)
+            if (cursors->Count() == 0)
             {
                 struct CursorEntry
                 {
                 public:
                     std::string name;
-                    std::string textures;
+                    std::string texture;
                 };
             
                 std::vector<CursorEntry> cursorEntries =
@@ -370,13 +370,13 @@ bool Application::Init()
                 for (const CursorEntry& cursorEntry : cursorEntries)
                 {
                     ClientDB::Definitions::Cursor entry;
-                    entry.name = cursors.AddString(cursorEntry.name);
-                    entry.texturePath = cursors.AddString(cursorEntry.textures);
+                    entry.name = cursorEntry.name;
+                    entry.texturePath = cursorEntry.texture;
             
-                    cursors.Add(entry);
+                    cursors->AddRow(entry);
                 }
             
-                cursors.MarkDirty();
+                cursors->SetDirty();
             }
         }
     }
@@ -416,7 +416,7 @@ bool Application::Tick(f32 deltaTime)
         {
             case MessageInbound::Type::Print:
             {
-                DebugHandler::Print(message.data);
+                NC_LOG_INFO("{}", message.data);
                 break;
             }
 
@@ -425,7 +425,7 @@ bool Application::Tick(f32 deltaTime)
                 MessageOutbound pongMessage(MessageOutbound::Type::Pong);
                 _messagesOutbound.enqueue(pongMessage);
 
-                DebugHandler::Print("Main Thread -> Application Thread : Ping");
+                NC_LOG_INFO("Main Thread -> Application Thread : Ping");
                 break;
             }
 
@@ -433,7 +433,7 @@ bool Application::Tick(f32 deltaTime)
             {
                 if (!ServiceLocator::GetLuaManager()->DoString(message.data))
                 {
-                    DebugHandler::PrintError("Failed to run Lua DoString");
+                    NC_LOG_ERROR("Failed to run Lua DoString");
                 }
                 
                 break;

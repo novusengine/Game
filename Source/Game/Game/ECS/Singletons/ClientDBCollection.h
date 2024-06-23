@@ -12,129 +12,91 @@ class ClientDBLoader;
 
 namespace ECS::Singletons
 {
-	// This exist because without it, MSVC will complain about requiring a narrow conversion
-	constexpr u32 GetHash(u32 hash)
-	{
-		return hash;
-	}
+    // This exist because without it, MSVC will complain about requiring a narrow conversion
+    constexpr u32 GetHash(u32 hash)
+    {
+        return hash;
+    }
 
-	enum class ClientDBHash : u32
-	{
-		Map					= GetHash("Map.cdb"_h),
-		LiquidObject		= GetHash("LiquidObject.cdb"_h),
-		LiquidType			= GetHash("LiquidType.cdb"_h),
-		LiquidMaterial		= GetHash("LiquidMaterial.cdb"_h),
-		CinematicCamera		= GetHash("CinematicCamera.cdb"_h),
-		CinematicSequence	= GetHash("CinematicSequence.cdb"_h),
-		CameraSave			= GetHash("CameraSave.cdb"_h),
-		Cursor				= GetHash("Cursor.cdb"_h)
-	};
+    enum class ClientDBHash : u32
+    {
+        Map					= GetHash("Map.cdb"_h),
+        LiquidObject		= GetHash("LiquidObject.cdb"_h),
+        LiquidType			= GetHash("LiquidType.cdb"_h),
+        LiquidMaterial		= GetHash("LiquidMaterial.cdb"_h),
+        CinematicCamera		= GetHash("CinematicCamera.cdb"_h),
+        CinematicSequence	= GetHash("CinematicSequence.cdb"_h),
+        CameraSave			= GetHash("CameraSave.cdb"_h),
+        Cursor				= GetHash("Cursor.cdb"_h)
+    };
 
-	struct ClientDBCollection
-	{
-	public:
-		ClientDBCollection() { }
+    struct ClientDBCollection
+    {
+    public:
+        ClientDBCollection() { }
 
-		template <typename T>
-		bool Register(ClientDBHash hash, const std::string& dbName)
-		{
-			constexpr size_t STORAGE_SIZE = sizeof(T);
+        template <typename T>
+        bool Register(ClientDBHash hash, const std::string& dbName)
+        {
+            constexpr size_t STORAGE_SIZE = sizeof(T);
 
-			if (_dbHashToIndex.contains(hash))
-			{
-				u32 index = _dbHashToIndex[hash];
+            if (_dbHashToIndex.contains(hash))
+                return true;
 
-				ClientDB::StorageRaw* rawDB = _dbs[index];
-				if (!rawDB->Init(STORAGE_SIZE))
-				{
-					DebugHandler::PrintFatal("ClientDBCollection : Failed to Initialize Storage. The Register call may have passed an incorrect Type with a size of 0. Size must be greater than 0.");
-				}
+            if (dbName.length() == 0)
+            {
+                NC_LOG_ERROR("ClientDBCollection : Attempted to register ClientDB with no dbName.");
+                return false;
+            }
 
-				ClientDB::Storage<T> storage(rawDB);
+            std::string dbFileName = dbName + ClientDB::FILE_EXTENSION;
+            ClientDBHash dbFileNameHash = static_cast<ClientDBHash>(StringUtils::fnv1a_32(dbFileName.c_str(), dbFileName.size()));
 
-				u32 maxID = 0;
+            if (dbFileNameHash != hash)
+            {
+                NC_LOG_ERROR("ClientDBCollection : Attempted to register ClientDB \"{0}\" with mismatching ClientDBHash", dbName);
+                return false;
+            }
 
-				for (const T& element : storage)
-				{
-					if (!storage.IsValid(element))
-						continue;
+            auto* rawDB = new ClientDB::Storage<ClientDB::Definitions::Empty>(dbName);
 
-					maxID = glm::max(maxID, element.GetID());
-				}
+            u32 index = static_cast<u32>(_dbs.size());
 
-				rawDB->SetMaxID(maxID);
+            _dbs.push_back(rawDB);
+            _dbHashToIndex[hash] = index;
 
-				return true;
-			}
+            rawDB->SetDirty();
 
-			if (dbName.length() == 0)
-			{
-				DebugHandler::PrintError("ClientDBCollection : Attempted to register ClientDB with no dbName.");
-				return false;
-			}
+            NC_LOG_INFO("ClientDBCollection : Registered '{0}{1}'", dbName, ClientDB::FILE_EXTENSION);
+            return true;
+        }
 
-			std::string dbFileName = dbName + ClientDB::FILE_EXTENSION;
-			ClientDBHash dbFileNameHash = static_cast<ClientDBHash>(StringUtils::fnv1a_32(dbFileName.c_str(), dbFileName.size()));
+        template <typename T>
+        ClientDB::Storage<T>* Get(ClientDBHash hash)
+        {
+            if (!_dbHashToIndex.contains(hash))
+            {
+                NC_LOG_CRITICAL("ClientDBCollection : Storage does not exist in the lookup table, meaning it was not loaded.");
+            }
 
-			if (dbFileNameHash != hash)
-			{
-				DebugHandler::PrintError("ClientDBCollection : Attempted to register ClientDB \"{0}\" with mismatching ClientDBHash", dbName);
-				return false;
-			}
+            u32 index = _dbHashToIndex[hash];
+            ClientDB::Storage<T>* storage = reinterpret_cast<ClientDB::Storage<T>*>(_dbs[index]);
 
-			auto* rawDB = new ClientDB::StorageRaw(dbName);
-			if (!rawDB->Init(STORAGE_SIZE))
-			{
-				DebugHandler::PrintFatal("ClientDBCollection : Failed to Initialize Storage. The Register call may have passed an incorrect Type with a size of 0. Size must be greater than 0.");
-			}
+            return storage;
+        }
 
-			u32 index = static_cast<u32>(_dbs.size());
+    private:
+        struct Entry
+        {
+        public:
+            u32 hash;
+            std::string name;
+        };
 
-			_dbs.push_back(rawDB);
-			_dbHashToIndex[hash] = index;
+        friend class ::Application;
+        friend class ::ClientDBLoader;
 
-			rawDB->MarkDirty();
-
-			DebugHandler::Print("ClientDBCollection : Registered {0}", dbName);
-			return true;
-		}
-
-		template <typename T>
-		ClientDB::Storage<T> Get(ClientDBHash hash)
-		{
-			if (!_dbHashToIndex.contains(hash))
-			{
-				DebugHandler::PrintFatal("ClientDBCollection : Storage does not exist in the lookup table, meaning it was not loaded.");
-			}
-
-			u32 index = _dbHashToIndex[hash];
-			ClientDB::StorageRaw* storage = _dbs[index];
-
-			if (!storage->IsInitialized())
-			{
-				DebugHandler::PrintFatal("ClientDBCollection : Failed to Get Storage. The Storage was not registered with the Register function.");
-			}
-
-			if (storage->GetSizeOfElement() != sizeof(T))
-			{
-				DebugHandler::PrintFatal("ClientDBCollection : Failed to Get Storage. The Storage does not contain elements of the passed type.");
-			}
-
-			return ClientDB::Storage<T>(storage);
-		}
-
-	private:
-		struct Entry
-		{
-		public:
-			u32 hash;
-			std::string name;
-		};
-
-		friend class ::Application;
-		friend class ::ClientDBLoader;
-
-		std::vector<ClientDB::StorageRaw*> _dbs;
-		robin_hood::unordered_map<ClientDBHash, u32> _dbHashToIndex;
-	};
+        std::vector<ClientDB::Storage<ClientDB::Definitions::Empty>*> _dbs;
+        robin_hood::unordered_map<ClientDBHash, u32> _dbHashToIndex;
+    };
 }

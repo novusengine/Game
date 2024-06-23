@@ -32,7 +32,7 @@ void ConsoleCommandHandler::HandleCommand(Application& app, std::string& command
 	auto itr = _commandHashToCallbackFn.find(hashedCommand);
 	if (itr == _commandHashToCallbackFn.end())
 	{
-		DebugHandler::PrintWarning("Unhandled command: (%s)", command.c_str());
+		NC_LOG_WARNING("Unhandled command: (%s)", command.c_str());
 		return;
 	}
 

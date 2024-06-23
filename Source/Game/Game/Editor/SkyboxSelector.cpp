@@ -229,7 +229,8 @@ namespace Editor
                             u32 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
                             if (modelHash == std::numeric_limits<u32>().max())
                             {
-                                DebugHandler::PrintError("Failed to load skybox model: %s", skyboxPath.string().c_str());
+                                std::string pathStr = skyboxPath.string();
+                                NC_LOG_ERROR("Failed to load skybox model: {0}", pathStr);
                             }
                             else
                             {

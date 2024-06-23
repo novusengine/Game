@@ -3,9 +3,9 @@
 
 namespace ECS::Singletons
 {
-	struct ActiveCamera
-	{
-	public:
-		entt::entity entity;
-	};
+    struct ActiveCamera
+    {
+    public:
+        entt::entity entity;
+    };
 }

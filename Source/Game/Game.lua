@@ -1,47 +1,57 @@
-local basePath = path.getabsolute("Game/", Game.projectsDir)
+local mod = Solution.Util.CreateModuleTable("Game", { "base", "fileformat", "input", "network", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "utfcpp", "base64", "fidelityfx" })
 
-local dependencies = { "base", "fileformat", "input", "network", "renderer", "luau-compiler", "luau-vm", "jolt", "enkiTS", "refl-cpp", "utfcpp", "base64", "fidelityfx" }
-local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX" }
+Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
+    local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX" }
 
-local shaderSourceDir = BuildSettings:Get("Shader Source Dir")
-if shaderSourceDir == nil then
-  error("Failed to find Shader Source Dir, this setting is supposed to be set during the creation of the shaders project")
-end
+    Solution.Util.SetLanguage("C++")
+    Solution.Util.SetCppDialect(20)
 
-local function SetupLib()
-  ProjectTemplate("Game", "StaticLib", nil, Game.binDir, dependencies, defines)
+    local files = Solution.Util.GetFilesForCpp(mod.Path .. "/Game")
+    Solution.Util.SetFiles(files)
+    Solution.Util.SetIncludes(mod.Path)
+    Solution.Util.SetDefines(defines)
 
-  local sourceDir = path.getabsolute("Game", basePath)
-  local includeDir = { basePath }
+    local shaderSourceDir = BuildSettings:Get("Shader Source Dir")
+    if shaderSourceDir == nil then
+      Solution.Util.PrintError("Failed to find Shader Source Dir, this setting is supposed to be set during the creation of the shaders project")
+    else
+      Solution.Util.SetDefines("SHADER_SOURCE_DIR=\"" .. shaderSourceDir .. "\"")
+    end
+end)
 
-  local files =
-  {
-    sourceDir .. "/**.h",
-    sourceDir .. "/**.hpp",
-    sourceDir .. "/**.c",
-    sourceDir .. "/**.cpp"
-  }
+Solution.Util.CreateDep(mod.NameLow, mod.Dependencies, function()
+    Solution.Util.SetIncludes(mod.Path)
+    Solution.Util.SetLinks(mod.Name)
+    
+    Solution.Util.SetFilter("platforms:Win64", function()
+        Solution.Util.SetDefines({"WIN32_LEAN_AND_MEAN", "NOMINMAX"})
+    end)
+end)
 
-  AddFiles(files)
-  AddIncludeDirs(includeDir)
-  AddDefines("SHADER_SOURCE_DIR=\"" .. shaderSourceDir .. "\"")
-end
-SetupLib()
+local gameAppMod = Solution.Util.CreateModuleTable("Game-App", { "game" })
 
-local function Include()
-  local includeDir = path.getabsolute("Game/", Game.projectsDir)
-
-  AddIncludeDirs(includeDir)
-  AddDefines({"WIN32_LEAN_AND_MEAN", "NOMINMAX", ("SHADER_SOURCE_DIR=\"" .. shaderSourceDir .. "\"")})
-  AddLinks("Game")
-end
-CreateDep("game", Include, dependencies)
-
-ProjectTemplate("Game-App", "ConsoleApp", nil, Game.binDir, { "game" }, defines)
-
-AddFiles({basePath .. "/main.cpp"})
-vpaths { [""] = "**.cpp" }
-
-filter { 'system:Windows' }
-  files { 'appicon.rc', '**.ico' }
-  vpaths { ['Resources/*'] = { '*.rc', '**.ico' } }
+Solution.Util.CreateConsoleApp(gameAppMod.Name, Solution.Projects.Current.BinDir, gameAppMod.Dependencies, function()
+    local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS" }
+    
+    Solution.Util.SetLanguage("C++")
+    Solution.Util.SetCppDialect(20)
+  
+    local files =
+    {
+        mod.Path .. "/main.cpp"
+    }
+    Solution.Util.SetFiles(files)
+    Solution.Util.SetDefines(defines)
+    
+    vpaths { [""] = "**.cpp" }
+    
+    Solution.Util.SetFilter("system:Windows", function()
+        local appIconFiles =
+        {
+            "appicon.rc",
+            "**.ico"
+        }
+        Solution.Util.SetFiles(appIconFiles)
+        vpaths { ['Resources/*'] = { '*.rc', '**.ico' } }
+    end)
+end)

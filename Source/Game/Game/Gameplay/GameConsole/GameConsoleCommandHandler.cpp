@@ -36,7 +36,7 @@ bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::str
     }
     else
     {
-        gameConsole->PrintWarning("Unhandled command: " + command);
+        gameConsole->PrintWarning("Unhandled command: %s", command.c_str());
         return false;
     }
 }

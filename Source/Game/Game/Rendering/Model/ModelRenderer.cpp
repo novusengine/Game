@@ -836,7 +836,7 @@ u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
 
     if (drawCallDatas.Size() < drawCallID)
     {
-        DebugHandler::PrintFatal("ModelRenderer : Tried to get InstanceID from invalid {0} DrawCallID {1}", isOpaque ? "Opaque" : "Transparent", drawCallID);
+        NC_LOG_CRITICAL("ModelRenderer : Tried to get InstanceID from invalid {0} DrawCallID {1}", isOpaque ? "Opaque" : "Transparent", drawCallID);
     }
 
     return drawCallDatas.Get()[drawCallID].instanceID;
@@ -985,7 +985,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             if (modelManifest.vertexOffset + numModelVertices > vertices.size())
             {
-                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+                NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy vertices outside array");
             }
 
             memcpy(dst, src, size);
@@ -1007,7 +1007,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
             {
-                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy vertices outside array");
+                NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy vertices outside array");
             }
 
             memcpy(dst, src, size);
@@ -1069,6 +1069,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
                     Renderer::TextureDesc textureDesc;
                     u16 textureIndex = model.textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
+                    if (textureIndex == 65535)
+                        continue;
 
                     Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
@@ -1091,7 +1093,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                         Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
                         textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
 
-                        DebugHandler::Assert(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
+                        NC_ASSERT(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
                     }
                 }
             }
@@ -1163,7 +1165,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             if (modelManifest.decorationSetOffset + model.decorationSets.size() > decorationSets.size())
             {
-                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorationSets outside array");
+                NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy decorationSets outside array");
             }
 
             memcpy(dst, src, size);
@@ -1182,7 +1184,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             if (modelManifest.decorationOffset + model.decorations.size() > decorations.size())
             {
-                DebugHandler::PrintFatal("ModelRenderer : Tried to memcpy decorations outside array");
+                NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy decorations outside array");
             }
 
             memcpy(dst, src, size);

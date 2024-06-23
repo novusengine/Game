@@ -188,7 +188,7 @@ void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity chil
 
     if (!tfp || !tfc)
     {
-        DebugHandler::PrintError("Transform system, trying to parent entity with no transform!");
+        NC_LOG_ERROR("Transform system, trying to parent entity with no transform!");
     }
 
     // always emplace the scene-node as we need them for parenting
@@ -211,14 +211,14 @@ void ECS::TransformSystem::ClearParent(entt::entity entity)
 
     if (!transform)
     {
-        DebugHandler::PrintError("Transform system, trying to clear parent from entity with no transform!");
+        NC_LOG_ERROR("Transform system, trying to clear parent from entity with no transform!");
         assert(transform);
     }
 
     ECS::Components::SceneNode* sceneNode = owner->try_get<ECS::Components::SceneNode>(entity);
     if (!sceneNode)
     {
-        DebugHandler::PrintError("Transform system, trying to clear parent from entity with no scene node!");
+        NC_LOG_ERROR("Transform system, trying to clear parent from entity with no scene node!");
         assert(sceneNode);
     }
 

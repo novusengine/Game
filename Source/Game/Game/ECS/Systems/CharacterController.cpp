@@ -24,7 +24,7 @@
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
-#include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 
 #include <entt/entt.hpp>
@@ -180,6 +180,10 @@ namespace ECS::Systems
             InitCharacterController(registry);
         });
 
+        auto& transformSystem = ctx.get<TransformSystem>();
+        quat characterRotation = quat(vec3(characterSingleton.pitch, characterSingleton.yaw, 0.0f));
+        transformSystem.SetWorldRotation(characterSingleton.modelEntity, characterRotation);
+
 #ifdef JPH_DEBUG_RENDERER
         // TODO: Fix Jolt Primitives being erased in JoltDebugRenderer causing crash when changing map
         //Components::Transform& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
@@ -196,32 +200,38 @@ namespace ECS::Systems
         //JPH::Vec4 c4 = JPH::Vec4(modelMatrix[3][0] + shapeOffset[0], modelMatrix[3][1] + shapeOffset[1], modelMatrix[3][2] + shapeOffset[2], modelMatrix[3][3]);
         //JPH::Mat44 joltModelMatrix = JPH::Mat44(c1, c2, c3, c4);
         //JPH::Vec3 joltModelScale = JPH::Vec3(modelScale.x, modelScale.y, modelScale.z);
-        //characterSingleton.character->GetShape()->Draw(joltDebugRenderer, joltModelMatrix, joltModelScale, JPH::Color::sCyan, false, false);
+        //characterSingleton.character->GetShape()->Draw(joltDebugRenderer, joltModelMatrix, joltModelScale, JPH::Color::sCyan, true, true);
 #endif
 
         if (!keybindGroup->IsActive())
             return;
 
         auto& joltState = ctx.get<Singletons::JoltState>();
-        auto& transformSystem = ctx.get<TransformSystem>();
+        auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
 
         static JPH::Vec3 gravity = JPH::Vec3(0.0f, -9.81f, 0.0f);
         JPH::Vec3 velocity = JPH::Vec3(0.0f, 0.0f, 0.0f);
         JPH::Vec3 moveDirection = JPH::Vec3(0.0f, 0.0f, 0.0f);
 
-        bool movingForward = keybindGroup->IsKeybindPressed("Forward"_h);
+        bool movingForward = keybindGroup->IsKeybindPressed("Forward"_h) || (orbitalCameraSettings.mouseLeftDown && orbitalCameraSettings.mouseRightDown);
         bool movingBackward = keybindGroup->IsKeybindPressed("Backward"_h);
         bool movingLeft = keybindGroup->IsKeybindPressed("Left"_h);
         bool movingRight = keybindGroup->IsKeybindPressed("Right"_h);
 
         if (movingForward)
             moveDirection += JPH::Vec3(0.0f, 0.0f, -1.0f);
+
         if (movingBackward)
             moveDirection += JPH::Vec3(0.0f, 0.0f, 1.0f);
+
         if (movingLeft)
             moveDirection += JPH::Vec3(1.0f, 0.0f, 0.0f);
+
         if (movingRight)
             moveDirection += JPH::Vec3(-1.0f, 0.0f, 0.0f);
+
+        JPH::Quat virtualCharacterRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+        moveDirection = virtualCharacterRotation * moveDirection;
 
         bool moveForward = movingForward && !movingBackward;
         bool moveBackward = movingBackward && !movingForward;
@@ -531,9 +541,29 @@ namespace ECS::Systems
         u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
         modelLoader->LoadModelForEntity(characterSingleton.modelEntity, modelHash);
 
-        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+        f32 width = 0.5f;
+        f32 height = 1.6f;
+        f32 pyramidHeight = 0.25f;
 
-        JPH::CapsuleShapeSettings shapeSetting(0.8f, 0.25f);
+        JPH::Array<JPH::Vec3> points =
+        {
+            // Top of the Box
+            {-width / 2.0f, height + pyramidHeight, -width / 2.0f},
+            {-width / 2.0f, height + pyramidHeight,  width / 2.0f},
+            { width / 2.0f, height + pyramidHeight,  width / 2.0f},
+            { width / 2.0f, height + pyramidHeight, -width / 2.0f},
+
+            // Bottom of the Box
+            {-width / 2.0f, pyramidHeight, -width / 2.0f },
+            {-width / 2.0f, pyramidHeight,  width / 2.0f },
+            { width / 2.0f, pyramidHeight,  width / 2.0f },
+            { width / 2.0f, pyramidHeight, -width / 2.0f }
+        };
+
+        // Apex of the pyramid
+        points.push_back({ 0.0f, 0.0f, 0.0f });
+
+        JPH::ConvexHullShapeSettings shapeSetting = JPH::ConvexHullShapeSettings(points, 0.0f);
         JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
 
         JPH::CharacterVirtualSettings characterSettings;
@@ -541,23 +571,23 @@ namespace ECS::Systems
         characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
 
         characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), &joltState.physicsSystem);
-        characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.8f, 0.0f));
-
-        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.0f, 0.0f));
 
         JPH::Vec3 newPosition = JPH::Vec3(-1500.0f, 310.0f, 1250.0f);
 
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
         if (mapLoader->GetCurrentMapID() == std::numeric_limits<u32>().max())
         {
             newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
         }
 
         characterSingleton.character->SetPosition(newPosition);
-        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
 
         if (activeCamera.entity == orbitalCameraSettings.entity)
         {
             transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
         }
+
+        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
     }
 }

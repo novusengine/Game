@@ -3,9 +3,9 @@
 
 namespace ECS::Singletons
 {
-	struct RenderState
-	{
-	public:
-		u64 frameNumber = 0;
-	};
+    struct RenderState
+    {
+    public:
+        u64 frameNumber = 0;
+    };
 }

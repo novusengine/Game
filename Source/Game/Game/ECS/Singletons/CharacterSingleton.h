@@ -29,6 +29,9 @@ namespace ECS::Singletons
         KeybindGroup* keybindGroup = nullptr;
         KeybindGroup* cameraToggleKeybindGroup = nullptr;
 
+        f32 yaw = 0.0f;
+        f32 pitch = 0.0f;
+
         // These rotation offsets are specifically for Y axis only
         vec4 spineRotationSettings = vec4(0.0f);    // x = current, y = target, z = time to change, w = time since last change
         vec4 headRotationSettings = vec4(0.0f);	    // x = current, y = target, z = time to change, w = time since last change

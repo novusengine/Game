@@ -5,6 +5,8 @@
 #include <ShaderCooker/ShaderCompiler.h>
 #include <ShaderCooker/ShaderCache.h>
 
+#include <quill/Backend.h>
+
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -12,9 +14,15 @@
 
 i32 main(int argc, char* argv[])
 {
+    quill::Backend::start();
+
+    quill::ConsoleColours colors;
+    auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1", colors, "stderr");
+    quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime);
+
     if (argc != 3)
     {
-        DebugHandler::PrintError("Expected two parameters, got {0}. Usage: <shader_source_dir> <shader_bin_dir>", argc);
+        NC_LOG_ERROR("Expected two parameters, got {0}. Usage: <shader_source_dir> <shader_bin_dir>", argc);
         return -1;
     }
 
@@ -34,16 +42,16 @@ i32 main(int argc, char* argv[])
 
         if (shaderCache.Load(shaderCachePath))
         {
-            DebugHandler::Print("Loaded shadercache from: {0}", shaderCachePathStr);
+            NC_LOG_INFO("Loaded shadercache from: {0}", shaderCachePathStr);
         }
         else
         {
-            DebugHandler::Print("Creating shadercache at: {0}", shaderCachePathStr);
+            NC_LOG_INFO("Creating shadercache at: {0}", shaderCachePathStr);
         }
     }
     else
     {
-        DebugHandler::Print("Skipped loading shadercache due to debugSkipCache being true");
+        NC_LOG_INFO("Skipped loading shadercache due to debugSkipCache being true");
     }
 
     ShaderCooker::ShaderCompiler compiler;
@@ -92,7 +100,7 @@ i32 main(int argc, char* argv[])
     }
     else
     {
-        DebugHandler::PrintError("Failed to compile {0} shaders", numFailedShaders);
+        NC_LOG_ERROR("Failed to compile {0} shaders", numFailedShaders);
     }
 
     std::chrono::system_clock::time_point endTime = std::chrono::system_clock::now();
@@ -100,6 +108,6 @@ i32 main(int argc, char* argv[])
 
     u32 numCompiledShaders = compiler.GetNumCompiledShaders();
     u32 numSkippedShaders = numNonIncludeShaders - numCompiledShaders;
-    DebugHandler::Print("Compiled {0} shaders ({1} up to date) in {2}s", numCompiledShaders, numSkippedShaders, duration.count());
+    NC_LOG_INFO("Compiled {0} shaders ({1} up to date) in {2}s", numCompiledShaders, numSkippedShaders, duration.count());
     return 0;
 }

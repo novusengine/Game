@@ -49,7 +49,7 @@ void MapLoader::Update(f32 deltaTime)
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& clientDBCollection = registry->ctx().get<ClientDBCollection>();
         auto& mapDB = registry->ctx().get<MapDB>();
-        auto maps = clientDBCollection.Get<ClientDB::Definitions::Map>(ClientDBHash::Map);
+        auto* maps = clientDBCollection.Get<ClientDB::Definitions::Map>(ClientDBHash::Map);
 
         const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapDB.mapInternalNameHashToID;
 
@@ -57,20 +57,18 @@ void MapLoader::Update(f32 deltaTime)
             return;
 
         u32 mapID = internalNameHashToID.at(request.internalMapNameHash);
-        if (!maps.Contains(mapID))
+        if (!maps->HasRow(mapID))
             return;
 
-        const ClientDB::Definitions::Map& currentMap = maps.GetByID(mapID);
+        const ClientDB::Definitions::Map* currentMap = maps->GetRow(mapID);
         
         fs::path relativeParentPath = "Data/Map";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
-        
-        const std::string& internalMapName = maps.GetString(currentMap.internalName);
-        std::string mapFile = ((absolutePath / internalMapName / internalMapName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
+        std::string mapFile = ((absolutePath / currentMap->internalName / currentMap->internalName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
         
         if (!fs::exists(mapFile))
         {
-            DebugHandler::PrintError("MapLoader : Failed to find map file '{0}'", mapFile);
+            NC_LOG_ERROR("MapLoader : Failed to find map file '{0}'", mapFile);
             return;
         }
         
@@ -103,7 +101,7 @@ void MapLoader::Update(f32 deltaTime)
 
             TerrainLoader::LoadDesc loadDesc;
             loadDesc.loadType = TerrainLoader::LoadType::Full;
-            loadDesc.mapName = internalMapName;
+            loadDesc.mapName = currentMap->internalName;
         
             _terrainLoader->AddInstance(loadDesc);
         }

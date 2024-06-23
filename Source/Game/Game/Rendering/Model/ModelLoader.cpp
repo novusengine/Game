@@ -42,7 +42,7 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 
 void ModelLoader::Init()
 {
-    DebugHandler::Print("ModelLoader : Scanning for models");
+    NC_LOG_INFO("ModelLoader : Scanning for models");
 
     static const fs::path fileExtension = ".complexmodel";
 
@@ -65,6 +65,7 @@ void ModelLoader::Init()
         for (u32 i = range.start; i < range.end; i++)
         {
             const fs::path& path = paths[i];
+            std::string pathStr = path.string();
 
             if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
                 continue;
@@ -78,7 +79,7 @@ void ModelLoader::Init()
             FileReader cModelFile(path.string());
             if (!cModelFile.Open())
             {
-                DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
+                NC_LOG_CRITICAL("ModelLoader : Failed to open CModel file: {0}", path.string());
                 continue;
             }
 
@@ -88,7 +89,7 @@ void ModelLoader::Init()
 
             if (fileSize < HEADER_SIZE)
             {
-                DebugHandler::PrintError("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", path.string());
+                NC_LOG_ERROR("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", pathStr);
                 continue;
             }
 
@@ -101,7 +102,7 @@ void ModelLoader::Init()
             DiscoveredModel discoveredModel;
             if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
             {
-                DebugHandler::PrintError("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", path.string());
+                NC_LOG_ERROR("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", pathStr);
                 continue;
             }
 
@@ -128,13 +129,13 @@ void ModelLoader::Init()
         if (_nameHashToDiscoveredModel.contains(discoveredModel.nameHash))
         {
             const DiscoveredModel& existingDiscoveredModel = _nameHashToDiscoveredModel[discoveredModel.nameHash];
-            DebugHandler::PrintError("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name.c_str(), discoveredModel.name.c_str());
+            NC_LOG_ERROR("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name.c_str(), discoveredModel.name.c_str());
         }
 
         _nameHashToDiscoveredModel[discoveredModel.nameHash] = discoveredModel;
     }
 
-    DebugHandler::Print("Found {0} models", _nameHashToDiscoveredModel.size());
+    NC_LOG_INFO("Found {0} models", _nameHashToDiscoveredModel.size());
 
     _staticLoadRequests.resize(MAX_STATIC_LOADS_PER_FRAME);
     _dynamicLoadRequests.resize(MAX_DYNAMIC_LOADS_PER_FRAME);
@@ -244,7 +245,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                 if (!_nameHashToDiscoveredModel.contains(nameHash))
                 {
-                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
+                    NC_LOG_ERROR("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
                     continue;
                 }
 
@@ -396,7 +397,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                 if (!_nameHashToDiscoveredModel.contains(nameHash))
                 {
-                    DebugHandler::PrintError("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
+                    NC_LOG_ERROR("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
                     continue;
                 }
 
@@ -575,7 +576,7 @@ u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
 
     if (!_nameHashToDiscoveredModel.contains(nameHash))
     {
-        DebugHandler::PrintError("Failed to find DiscoveredModel for Model ({0})", modelPath);
+        NC_LOG_ERROR("Failed to find DiscoveredModel for Model ({0})", modelPath);
         return std::numeric_limits<u32>().max();
     }
 
@@ -609,13 +610,13 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 mod
 {
     if (!_modelIDToNameHash.contains(modelID))
     {
-        DebugHandler::PrintFatal("ModelLoader : Tried to access DiscoveredModel of invalid ModelID {0}", modelID);
+        NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelID {0}", modelID);
     }
 
     u32 nameHash = _modelIDToNameHash[modelID];
     if (!_nameHashToDiscoveredModel.contains(nameHash))
     {
-        DebugHandler::PrintFatal("ModelLoader : Tried to access DiscoveredModel of invalid NameHash {0}", nameHash);
+        NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid NameHash {0}", nameHash);
     }
 
     return _nameHashToDiscoveredModel[nameHash];
@@ -625,7 +626,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 {
     if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
     {
-        DebugHandler::PrintError("ModelLoader : Tried to load model nameHash ({0}) that doesn't exist", request.placement.nameHash);
+        NC_LOG_ERROR("ModelLoader : Tried to load model nameHash ({0}) that doesn't exist", request.placement.nameHash);
         return false;
     }
 
@@ -635,7 +636,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
     FileReader cModelFile(path.string());
     if (!cModelFile.Open())
     {
-        DebugHandler::PrintFatal("ModelLoader : Failed to open CModel file: {0}", path.string());
+        NC_LOG_CRITICAL("ModelLoader : Failed to open CModel file: {0}", path.string());
         return false;
     }
 
@@ -652,7 +653,7 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 
     if (model->modelHeader.numVertices == 0)
     {
-        DebugHandler::PrintError("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
+        NC_LOG_ERROR("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
         return false;
     }
 

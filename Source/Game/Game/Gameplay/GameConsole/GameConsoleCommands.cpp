@@ -52,7 +52,7 @@ bool GameConsoleCommands::HandleHelp(GameConsoleCommandHandler* commandHandler, 
         counter++;
     }
 
-    gameConsole->Print(commandList);
+    gameConsole->Print(commandList.c_str());
     return false;
 }
 

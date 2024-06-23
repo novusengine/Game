@@ -126,34 +126,27 @@ namespace Editor
                     auto& cameraSaveDB = ctx.get<CameraSaveDB>();
                     auto& clientDBCollection = ctx.get<ClientDBCollection>();
 
-                    auto cameraSaves = clientDBCollection.Get<Definitions::CameraSave>(ClientDBHash::CameraSave);
+                    auto* cameraSaves = clientDBCollection.Get<Definitions::CameraSave>(ClientDBHash::CameraSave);
 
                     ImGui::Text("Camera Save List (Names)");
 
                     if (ImGui::ListBoxHeader("##camerasavelistbox"))
                     {
-                        u32 numCameraSaves = cameraSaves.Count();
+                        u32 numCameraSaves = cameraSaves->Count();
 
-                        for (const Definitions::CameraSave& cameraSave : cameraSaves)
+                        cameraSaves->Each([](auto* storage, const Definitions::CameraSave* cameraSave)
                         {
-                            if (!cameraSaves.IsValid(cameraSave))
-                                continue;
-
-                            if (!cameraSaves.HasString(cameraSave.name))
-                                continue;
-
-                            const std::string& cameraSaveName = cameraSaves.GetString(cameraSave.name);
-                            u32 cameraSaveNameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
+                            u32 cameraSaveNameHash = StringUtils::fnv1a_32(cameraSave->name.c_str(), cameraSave->name.length());
 
                             const bool isSelected = cameraSaveNameHash == currentSelectedSaveNameHash;
-                            if (ImGui::Selectable(cameraSaveName.c_str(), isSelected))
+                            if (ImGui::Selectable(cameraSave->name.c_str(), isSelected))
                             {
                                 currentSelectedSaveNameHash = cameraSaveNameHash;
                             }
 
                             if (isSelected)
                                 ImGui::SetItemDefaultFocus();
-                        }
+                        });
 
                         ImGui::ListBoxFooter();
                     }
@@ -162,10 +155,9 @@ namespace Editor
                     if (hasSelectedCamera)
                     {
                         u32 id = cameraSaveDB.cameraSaveNameHashToID[currentSelectedSaveNameHash];
-                        const auto& cameraSave = cameraSaves.GetByID(id);
-                        const std::string& cameraSaveName = cameraSaves.GetString(cameraSave.name);
+                        const auto* cameraSave = cameraSaves->GetRow(id);
 
-                        ImGui::Text("Selected Save : %s", cameraSaveName.c_str());
+                        ImGui::Text("Selected Save : %s", cameraSave->name.c_str());
                     }
                     else
                     {
@@ -178,18 +170,15 @@ namespace Editor
                         {
                             u32 id = cameraSaveDB.cameraSaveNameHashToID[currentSelectedSaveNameHash];
 
-                            const auto& cameraSave = cameraSaves.GetByID(id);
+                            const auto* cameraSave = cameraSaves->GetRow(id);
 
-                            const std::string& cameraSaveName = cameraSaves.GetString(cameraSave.name);
-                            const std::string& cameraSaveCode = cameraSaves.GetString(cameraSave.code);
-
-                            if (Util::CameraSave::LoadSaveLocationFromBase64(cameraSaveCode))
+                            if (Util::CameraSave::LoadSaveLocationFromBase64(cameraSave->code))
                             {
-                                DebugHandler::Print("[CameraInfo] Loaded Camera Save {0}", cameraSaveName);
+                                NC_LOG_INFO("[CameraInfo] Loaded Camera Save {0}", cameraSave->name);
                             }
                             else
                             {
-                                DebugHandler::PrintError("[CameraInfo] Failed to load Camera Save {0}, the code is likely outdated or corrupt", cameraSaveName);
+                                NC_LOG_ERROR("[CameraInfo] Failed to load Camera Save {0}, the code is likely outdated or corrupt", cameraSave->name);
                             }
                         }
                     }
@@ -203,7 +192,7 @@ namespace Editor
                             u32 id = cameraSaveDB.cameraSaveNameHashToID[currentSelectedSaveNameHash];
                             cameraSaveDB.cameraSaveNameHashToID.erase(currentSelectedSaveNameHash);
 
-                            cameraSaves.Remove(id);
+                            cameraSaves->RemoveRow(id);
                         }
                     }
 
@@ -224,11 +213,11 @@ namespace Editor
                                 if (Util::CameraSave::GenerateSaveLocation(currentSaveName, saveCode))
                                 {
                                     Definitions::CameraSave cameraSave;
-                                    cameraSave.name = cameraSaves.AddString(currentSaveName);
-                                    cameraSave.code = cameraSaves.AddString(saveCode);
-                                    cameraSaves.Add(cameraSave);
+                                    cameraSave.name = currentSaveName;
+                                    cameraSave.code = saveCode;
+                                    cameraSaves->AddRow(cameraSave);
 
-                                    cameraSaveDB.cameraSaveNameHashToID[saveNameHash] = cameraSave.GetID();
+                                    cameraSaveDB.cameraSaveNameHashToID[saveNameHash] = cameraSave.id;
 
                                     currentSaveName.clear();
                                 }

@@ -29,7 +29,7 @@ namespace Editor
     {
     }
 
-    bool DrawMapItem(ClientDB::Storage<Definitions::Map>& mapStorage, const ClientDB::Definitions::Map& map, std::string& filter, u32& selectedMapID, u32& popupMapID, void** mapIcons)
+    bool DrawMapItem(const ClientDB::Storage<ClientDB::Definitions::Map>* mapStorage, const ClientDB::Definitions::Map* map, std::string& filter, u32& selectedMapID, u32& popupMapID, void** mapIcons)
     {
         static const char* InstanceTypeToName[] =
         {
@@ -40,25 +40,20 @@ namespace Editor
             "Arena"
         };
 
-        if (!mapStorage.IsValid(map))
-            return false;
-
-        const std::string& mapName = mapStorage.GetString(map.name);
-
         bool hasFilter = filter.length() > 0;
         if (hasFilter)
         {
-            std::string mapNameLowered = mapName;
+            std::string mapNameLowered = map->name;
             std::transform(mapNameLowered.begin(), mapNameLowered.end(), mapNameLowered.begin(), ::tolower);
 
             if (!StringUtils::Contains(mapNameLowered.c_str(), filter))
                 return false;
         }
 
-        ImGui::PushID(map.GetID());
+        ImGui::PushID(map->id);
         ImGui::BeginGroup(); // Start group for the whole row
 
-        u32 instanceType = map.instanceType;
+        u32 instanceType = map->instanceType;
         if (instanceType >= 5)
             instanceType = 0;
 
@@ -69,10 +64,10 @@ namespace Editor
         // Render the title and description
         ImGui::BeginGroup();
 
-        ImGui::Text("%s", mapName.c_str());
+        ImGui::Text("%s", map->name.c_str());
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f)); // Grey color for description
 
-        ImGui::TextWrapped("%u - %s", map.GetID(), InstanceTypeToName[instanceType]);
+        ImGui::TextWrapped("%u - %s", map->id, InstanceTypeToName[instanceType]);
         ImGui::PopStyleColor();
         ImGui::EndGroup();
 
@@ -82,7 +77,7 @@ namespace Editor
         ImVec2 max = ImGui::GetItemRectMax();
         max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
-        bool isSelected = selectedMapID == map.GetID();
+        bool isSelected = selectedMapID == map->id;
         bool isHovered = ImGui::IsMouseHoveringRect(min, max);
         static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
@@ -91,7 +86,7 @@ namespace Editor
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, hoveredColor);
 
             if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                selectedMapID = map.GetID();
+                selectedMapID = map->id;
         }
 
         if (isSelected)
@@ -104,8 +99,8 @@ namespace Editor
         {
             if (ImGui::IsMouseReleased(ImGuiMouseButton_Right))
             {
-                selectedMapID = map.GetID();
-                popupMapID = map.GetID();
+                selectedMapID = map->id;
+                popupMapID = map->id;
 
                 ImGuiID popupContextID = ImGui::GetCurrentWindow()->GetID("MapSelectorItemContextMenu");
                 ImGui::OpenPopupEx(popupContextID, ImGuiPopupFlags_MouseButtonRight);
@@ -177,12 +172,12 @@ namespace Editor
         entt::registry::context& ctx = registry.ctx();
 
         auto& clientDBCollection = ctx.get<ClientDBCollection>();
-        auto mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
+        auto* mapStorage = clientDBCollection.Get<Definitions::Map>(ClientDBHash::Map);
 
         // Begin a list box
         ImGui::Text("Select a map (Optionally use the filter below)");
 
-        u32 totalNumMaps = mapStorage.Count();
+        u32 totalNumMaps = mapStorage->GetNumRows();
         u32 numVisibleItems = 7; // Define number of visible items
         f32 itemHeight = 42.25f; // Estimate height of one item
         f32 heightConstraint = itemHeight * (totalNumMaps - 1u);
@@ -212,10 +207,10 @@ namespace Editor
             {
                 if (hasFilter)
                 {
-                    for (const Definitions::Map& map : mapStorage)
+                    mapStorage->Each([this](auto* storage, const Definitions::Map* map)
                     {
-                        DrawMapItem(mapStorage, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
-                    }
+                        DrawMapItem(storage, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                    });
                 }
                 else
                 {
@@ -233,13 +228,11 @@ namespace Editor
                         ImGui::Dummy(ImVec2(0.0f, firstItemToView * itemHeight));
                     }
 
-                    auto mapItr = mapStorage.begin();
-                    std::advance(mapItr, firstItemToView);
-
-                    for (u32 i = firstItemToView; i <= lastItemToView; i++, mapItr++)
+                    u32 numMapsToView = lastItemToView - firstItemToView;
+                    mapStorage->EachInRange(firstItemToView, lastItemToView, [this](auto* storage, const Definitions::Map* map)
                     {
-                        DrawMapItem(mapStorage, *mapItr, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
-                    }
+                        DrawMapItem(storage, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                    });
 
                     if (lastItemToView < maxMapEntry)
                     {
@@ -257,18 +250,16 @@ namespace Editor
 
                     if (ImGui::BeginPopupEx(popupContextID, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
                     {
-                        const Definitions::Map& map = mapStorage.GetByID(popupMapID);
-                        const std::string& mapName = mapStorage.GetString(map.name);
+                        const Definitions::Map* map = mapStorage->GetRow(popupMapID);
 
-                        ImGui::Text("Actions for %s", mapName.c_str());
+                        ImGui::Text("Actions for %s", map->name.c_str());
                         ImGui::Separator();
 
                         if (ImGui::MenuItem("Load"))
                         {
                             MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 
-                            const std::string& internalName = mapStorage.GetString(map.internalName);
-                            u32 internalMapNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+                            u32 internalMapNameHash = StringUtils::fnv1a_32(map->internalName.c_str(), map->internalName.length());
                             mapLoader->LoadMap(internalMapNameHash);
                         }
 
@@ -300,10 +291,9 @@ namespace Editor
         {
             MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 
-            const Definitions::Map& map = mapStorage.GetByID(_currentSelectedMapID);
-            const std::string& internalName = mapStorage.GetString(map.internalName);
+            const Definitions::Map* map = mapStorage->GetRow(_currentSelectedMapID);
 
-            u32 internalMapNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+            u32 internalMapNameHash = StringUtils::fnv1a_32(map->internalName.c_str(), map->internalName.length());
             mapLoader->LoadMap(internalMapNameHash);
         }
 

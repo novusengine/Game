@@ -255,7 +255,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (_instanceDatas.Size() == 0)
         return;
 
-    u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+    u32 numCascades = 0; // *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
 
     struct Data
     {
@@ -643,7 +643,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
 
     if (maxDiffuseID > Renderer::Settings::MAX_TEXTURES)
     {
-        DebugHandler::PrintFatal("This is bad!");
+        NC_LOG_CRITICAL("This is bad!");
     }
 
     return currentChunkIndex;

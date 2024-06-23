@@ -6,10 +6,17 @@
 #include <Base/Util/StringUtils.h>
 #include <Base/Util/DebugHandler.h>
 
+#include <quill/Backend.h>
+
 #include <future>
 
 i32 main()
 {
+    quill::Backend::start();
+
+    auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1");
+    quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime);
+
 	Application app;
 	app.Start(true);
 
@@ -28,13 +35,13 @@ i32 main()
             {
                 case MessageOutbound::Type::Print:
                 {
-                    DebugHandler::Print(message.data);
+                    NC_LOG_INFO("{0}", message.data);
                     break;
                 }
 
                 case MessageOutbound::Type::Pong:
                 {
-                    DebugHandler::Print("Application Thread -> Main Thread : Pong");
+                    NC_LOG_INFO("Application Thread -> Main Thread : Pong");
                     break;
                 }
 

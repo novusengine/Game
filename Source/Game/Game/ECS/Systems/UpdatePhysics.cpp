@@ -171,7 +171,7 @@ namespace ECS::Systems
 
             if (activeCamera.entity == entt::null)
             {
-                DebugHandler::PrintError("[Keybind:Debug] ActiveCamera::entity not set!");
+                NC_LOG_ERROR("[Keybind:Debug] ActiveCamera::entity not set!");
                 return false;
             }
 
