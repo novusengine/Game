@@ -201,7 +201,7 @@ namespace ECS::Systems
             glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
             f32 yaw = glm::radians(camera.yaw);
 
-            characterSingleton.yaw = yaw + glm::pi<f32>();;
+            characterSingleton.yaw = yaw + glm::pi<f32>();
         }
 
         tSystem.SetWorldRotation(activeCamera.entity, resultRotation);

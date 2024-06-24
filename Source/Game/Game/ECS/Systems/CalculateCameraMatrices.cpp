@@ -1,6 +1,7 @@
 #include "CalculateCameraMatrices.h"
 
 #include "Game/ECS/Components/Camera.h"
+#include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Util/ServiceLocator.h"
@@ -27,10 +28,18 @@ namespace ECS::Systems
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
-        auto view = registry.view<Components::Transform, Components::Camera>();
+        entt::registry::context& ctx = registry.ctx();
+        ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
-        view.each([&](Components::Transform& transform, Components::Camera& camera)
+        auto view = registry.view<Components::Transform, Components::Camera>();
+        view.each([&](entt::entity e, Components::Transform& transform, Components::Camera& camera)
         {
+            if (e != activeCamera.entity)
+            {
+                // TODO: Multiple cameras (picture-in-picture I guess?) would need to change this
+                return;
+            }
+
             vec2 renderSize = gameRenderer->GetRenderer()->GetRenderSize();
             camera.aspectRatio = renderSize.x / renderSize.y;
 

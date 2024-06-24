@@ -671,7 +671,6 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
 
     // Generate Jolt Shape
     {
-        // Disabled on purpose for now
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
         u32 numPhysicsBytes = static_cast<u32>(model->physicsData.size());
 
@@ -684,7 +683,6 @@ bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
             JPH::Shape::IDToMaterialMap materialMap;
 
             JPH::MeshShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(streamIn, shapeMap, materialMap);
-            JPH::ShapeRefC shape = shapeResult.Get();
 
             _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
             discoveredModel.hasShape = true;

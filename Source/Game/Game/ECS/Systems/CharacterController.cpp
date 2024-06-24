@@ -30,6 +30,7 @@
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
 #include <Game/ECS/Util/CameraUtil.h>
+#include <Base/CVarSystem/CVarSystem.h>
 
 namespace ECS::Systems
 {
@@ -88,6 +89,9 @@ namespace ECS::Systems
 
             if (activeCamera.entity == orbitalCameraSettings.entity)
             {
+                if (!registry->valid(freeFlyingCameraSettings.entity))
+                    return false;
+
                 ECS::Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for Orbital Camera when switching to FreeFlying Camera
                 activeCamera.entity = freeFlyingCameraSettings.entity;
 
@@ -103,6 +107,9 @@ namespace ECS::Systems
             }
             else if (activeCamera.entity == freeFlyingCameraSettings.entity)
             {
+                if (!registry->valid(orbitalCameraSettings.entity))
+                    return false;
+
                 TransformSystem& transformSystem = ctx.get<TransformSystem>();
 
                 ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(characterSingleton.entity);
@@ -123,6 +130,35 @@ namespace ECS::Systems
                 camera.dirtyView = true;
                 camera.dirtyPerspective = true;
             }
+
+            return true;
+        });
+
+        characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Move Character To Camera", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            entt::registry::context& ctx = registry->ctx();
+
+            Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
+            Singletons::FreeflyingCameraSettings& freeFlyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
+
+            if (activeCamera.entity != freeFlyingCameraSettings.entity)
+                return false;
+
+            TransformSystem& transformSystem = ctx.get<TransformSystem>();
+
+            ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(freeFlyingCameraSettings.entity);
+            ECS::Components::Transform& cameraTransform = registry->get<ECS::Components::Transform>(freeFlyingCameraSettings.entity);
+            ECS::Components::Transform& characterTransform = registry->get<ECS::Components::Transform>(characterSingleton.entity);
+
+            vec3 newPosition = cameraTransform.GetWorldPosition();
+            characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
+            characterSingleton.character->SetPosition(JPH::RVec3Arg(newPosition.x, newPosition.y, newPosition.z));
+            transformSystem.SetWorldPosition(characterSingleton.entity, newPosition);
+
+            characterSingleton.pitch = 0.0f;
+            characterSingleton.yaw = glm::pi<f32>() + glm::radians(camera.yaw);
 
             return true;
         });
@@ -246,6 +282,13 @@ namespace ECS::Systems
         JPH::CharacterVirtual::EGroundState groundState = characterSingleton.character->GetGroundState();
         bool isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
 
+        // Fix for animations bricking when turning off animations while jumping state is not None
+        bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled");
+        if (!animationsEnabled && characterSingleton.jumpState != ECS::Singletons::JumpState::None)
+        {
+            characterSingleton.jumpState = ECS::Singletons::JumpState::None;
+        }
+
         // TODO : When jumping, we need to incoporate checks from the physics system to handle if jumping ends early
         bool isJumping = false;
         bool canJump = characterSingleton.jumpState == ECS::Singletons::JumpState::None || characterSingleton.jumpState == ECS::Singletons::JumpState::End;
@@ -316,7 +359,8 @@ namespace ECS::Systems
             bool canPlay = !animationSystem->IsPlaying(instanceID, bone, animationID);
             if (canPlay)
             {
-                animationSystem->SetBoneSequence(instanceID, bone, animationID, flags, blendOverride, callback);
+                if (!animationSystem->SetBoneSequence(instanceID, bone, animationID, flags, blendOverride, callback))
+                    return false;
             }
 
             return canPlay;
@@ -570,6 +614,9 @@ namespace ECS::Systems
         characterSettings.mShape = shapeResult.Get();
         characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
 
+        if (characterSingleton.character)
+            delete characterSingleton.character;
+
         characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), &joltState.physicsSystem);
         characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.0f, 0.0f));
 
@@ -581,13 +628,16 @@ namespace ECS::Systems
             newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
         }
 
+        characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
         characterSingleton.character->SetPosition(newPosition);
 
-        if (activeCamera.entity == orbitalCameraSettings.entity)
-        {
-            transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
-        }
+        characterSingleton.speed = 7.1111f;
+        characterSingleton.jumpState = ECS::Singletons::JumpState::None;
+        characterSingleton.pitch = 0.0f;
+        characterSingleton.yaw = 0.0f;
 
+        transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
+        transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
         transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
     }
 }

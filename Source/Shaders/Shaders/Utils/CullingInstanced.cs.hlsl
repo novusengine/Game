@@ -95,7 +95,7 @@ CullingData LoadCullingData(uint instanceIndex)
 
 bool SphereIsForwardPlane(float4 plane, float4 sphere)
 {
-    return dot(plane.xyz, sphere.xyz) + plane.w > -sphere.w;
+    return (dot(plane.xyz, sphere.xyz) - plane.w) > -sphere.w;
 }
 
 bool IsSphereInsideFrustum(float4 frustum[6], float4 sphere)
@@ -298,7 +298,7 @@ void main(CSInput input)
     // Calculate bounding sphere from AABB
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;
-    sphere.w = distance(aabb.min, aabb.max);
+    sphere.w = distance(aabb.min, aabb.max) / 2.0f;
 
     // Load DrawCalls instanceCount
     uint instanceCount = GetDrawCallInstanceCount(instanceRef.drawID);
