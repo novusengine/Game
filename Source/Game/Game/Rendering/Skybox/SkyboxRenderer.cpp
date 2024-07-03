@@ -34,6 +34,8 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::ImageMutableResource skyboxColor;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferResource cameras;
+
         Renderer::DescriptorSetResource globalSet;
     };
 
@@ -45,7 +47,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             data.skyboxColor = builder.Write(resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
-            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            data.cameras = builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
 

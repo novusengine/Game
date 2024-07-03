@@ -59,9 +59,11 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         // Fill the occluders to draw
         {
-            params.commandList->PushMarker(params.passName + " Instanced Occlusion Fill", Color::White);
+            std::string debugName = params.passName + " Instanced Occlusion Fill";
+            params.commandList->PushMarker(debugName, Color::White);
 
             Renderer::ComputePipelineDesc pipelineDesc;
+            pipelineDesc.debugName = debugName;
             params.graphResources->InitializePipelineDesc(pipelineDesc);
 
             Renderer::ComputeShaderDesc shaderDesc;
@@ -107,9 +109,11 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         // Create indirect argument buffer
         {
-            params.commandList->PushMarker("Create Indirect", Color::Yellow);
+            std::string debugName = params.passName + " Create Indirect";
+            params.commandList->PushMarker(debugName, Color::Yellow);
 
             Renderer::ComputePipelineDesc cullingPipelineDesc;
+            cullingPipelineDesc.debugName = debugName;
             params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
             Renderer::ComputeShaderDesc shaderDesc;
@@ -199,9 +203,11 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         // Fill the occluders to draw
         {
-            params.commandList->PushMarker(params.passName + " Occlusion Fill", Color::White);
+            std::string debugName = params.passName + " Occlusion Fill";
+            params.commandList->PushMarker(debugName, Color::White);
 
             Renderer::ComputePipelineDesc pipelineDesc;
+            pipelineDesc.debugName = debugName;
             params.graphResources->InitializePipelineDesc(pipelineDesc);
 
             Renderer::ComputeShaderDesc shaderDesc;
@@ -301,9 +307,11 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
             // Do culling
             {
-                params.commandList->PushMarker("Instanced Culling", Color::Yellow);
+                std::string debugName = params.passName + " Instanced Culling";
+                params.commandList->PushMarker(debugName, Color::Yellow);
 
                 Renderer::ComputePipelineDesc cullingPipelineDesc;
+                cullingPipelineDesc.debugName = debugName;
                 params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
                 Renderer::ComputeShaderDesc shaderDesc;
@@ -370,9 +378,11 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
             // Create indirect argument buffer
             {
-                params.commandList->PushMarker("Create Indirect", Color::Yellow);
+                std::string debugName = params.passName + " Create Indirect";
+                params.commandList->PushMarker(debugName, Color::Yellow);
 
                 Renderer::ComputePipelineDesc cullingPipelineDesc;
+                cullingPipelineDesc.debugName = debugName;
                 params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
                 Renderer::ComputeShaderDesc shaderDesc;
@@ -420,7 +430,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
         }
         else
         {
-            params.commandList->PushMarker(params.passName + " Culling", Color::Yellow);
+            std::string debugName = params.passName + " Culling";
+            params.commandList->PushMarker(debugName, Color::Yellow);
 
             // Reset the counters
             params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32) * Renderer::Settings::MAX_VIEWS, 0);
@@ -430,6 +441,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
             Renderer::ComputePipelineDesc cullingPipelineDesc;
+            cullingPipelineDesc.debugName = debugName;
             params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
             Renderer::ComputeShaderDesc shaderDesc;

@@ -272,6 +272,7 @@ f32 GameRenderer::Render()
                 builder.Write(_resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
+                builder.Write(_resources.depthColorCopy, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.packedNormals, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.ssaoTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);

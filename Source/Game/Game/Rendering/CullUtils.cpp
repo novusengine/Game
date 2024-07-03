@@ -67,6 +67,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
     // Copy first mip
     {
         Renderer::ComputePipelineDesc blitPipelineDesc;
+        blitPipelineDesc.debugName = "Blit Depthpyramid";
         params.graphResources->InitializePipelineDesc(blitPipelineDesc);
 
         Renderer::ComputeShaderDesc shaderDesc;
@@ -103,6 +104,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
     // Downsample
     {
         Renderer::ComputePipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Downsample Depthpyramid";
         params.graphResources->InitializePipelineDesc(pipelineDesc);
 
         Renderer::ComputeShaderDesc shaderDesc;

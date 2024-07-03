@@ -82,6 +82,7 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "Blit";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -146,6 +147,7 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "DepthBlit";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -204,6 +206,7 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "Overlay";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -277,6 +280,7 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "DepthOverlay";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -348,6 +352,7 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "PictureInPicture";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -410,7 +415,7 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
 
 void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params)
 {
-    commandList.PushMarker("PictureInPicture", Color::White);
+    commandList.PushMarker("DepthPictureInPicture", Color::White);
 
     // Set viewport and scissor
     f32 width = static_cast<f32>(params.targetRegion.right) - static_cast<f32>(params.targetRegion.left);
@@ -434,6 +439,7 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "DepthPictureInPicture";
     graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
@@ -490,15 +496,16 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
 
 void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params)
 {
-    Renderer::ComputePipelineDesc queryPipelineDesc;
-    graphResources.InitializePipelineDesc(queryPipelineDesc);
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "CopyDepthToColor";
+    graphResources.InitializePipelineDesc(pipelineDesc);
 
     Renderer::ComputeShaderDesc shaderDesc;
     shaderDesc.path = "Blitting/blitDepth.cs.hlsl";
-    queryPipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
+    pipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
 
     // Do culling
-    Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(queryPipelineDesc);
+    Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
     commandList.BeginPipeline(pipeline);
 
     commandList.PushMarker("CopyDepthToColorRT", Color::White);

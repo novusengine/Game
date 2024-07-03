@@ -178,6 +178,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 commandList.PushMarker("Occlusion Fill", Color::White);
 
                 Renderer::ComputePipelineDesc pipelineDesc;
+                pipelineDesc.debugName = "Terrain Occlusion Fill";
                 graphResources.InitializePipelineDesc(pipelineDesc);
 
                 Renderer::ComputeShaderDesc shaderDesc;
@@ -304,6 +305,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
                 commandList.PushMarker("Reset indirect", Color::White);
 
                 Renderer::ComputePipelineDesc pipelineDesc;
+                pipelineDesc.debugName = "Terrain Reset indirect";
                 graphResources.InitializePipelineDesc(pipelineDesc);
 
                 Renderer::ComputeShaderDesc shaderDesc;
@@ -342,6 +344,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             // Cull instances on GPU
             Renderer::ComputePipelineDesc pipelineDesc;
+            pipelineDesc.debugName = "Terrain Culling";
             graphResources.InitializePipelineDesc(pipelineDesc);
 
             Renderer::ComputeShaderDesc shaderDesc;
