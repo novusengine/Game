@@ -41,12 +41,19 @@ public:
         Model::ComplexModel::ModelHeader modelHeader;
     };
 
+    struct UnloadRequest
+    {
+        entt::entity entity;
+        u32 instanceID;
+    };
+
 private:
     struct LoadRequestInternal
     {
     public:
         entt::entity entity;
         u32 instanceID = std::numeric_limits<u32>().max();
+        u32 displayID = std::numeric_limits<u32>().max();
         
         Terrain::Placement placement;
     };
@@ -63,8 +70,9 @@ public:
     void LoadPlacement(const Terrain::Placement& placement);
     void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
     void LoadModelForEntity(entt::entity entity, u32 modelNameHash);
+    bool LoadDisplayIDForEntity(entt::entity entity, u32 displayID = std::numeric_limits<u32>().max());
 
-    void UnloadModelForEntity(entt::entity entity, u32 modelID);
+    void UnloadModelForEntity(entt::entity entity, u32 instanceID);
 
     u32 GetModelHashFromModelPath(const std::string& modelPath);
     bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
@@ -85,6 +93,8 @@ private:
 
     std::vector<LoadRequestInternal> _dynamicLoadRequests;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _dynamicRequests;
+
+    moodycamel::ConcurrentQueue<UnloadRequest> _unloadRequests;
 
     robin_hood::unordered_map<u32, LoadState> _nameHashToLoadState;
     robin_hood::unordered_map<u32, u32> _nameHashToModelID;

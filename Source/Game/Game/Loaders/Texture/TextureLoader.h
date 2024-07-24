@@ -32,7 +32,7 @@ public:
         entt::registry* registry = registries->gameRegistry;
         entt::registry::context& ctx = registry->ctx();
 
-        ECS::Singletons::TextureSingleton& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
+        auto& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
 
         static const fs::path fileExtension = ".dds";
         fs::path relativeParentPath = "Data/Texture";

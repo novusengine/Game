@@ -9,21 +9,21 @@
 
 namespace Scripting
 {
-	GenericSystem::GenericSystem(u32 numStates) : LuaSystemBase(numStates) { }
+	GenericSystem::GenericSystem() : LuaSystemBase() { }
 
-	void GenericSystem::Prepare(f32 deltaTime)
+	void GenericSystem::Prepare(f32 deltaTime, lua_State* state)
 	{
 		LuaManager* luaManager = ServiceLocator::GetLuaManager();
 		auto gameEventHandler = luaManager->GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
 
 		LuaGameEventUpdatedData eventData;
 		eventData.deltaTime = deltaTime;
-		gameEventHandler->CallEvent(_states[0], static_cast<u32>(LuaGameEvent::Updated), &eventData);
+		gameEventHandler->CallEvent(state, static_cast<u32>(LuaGameEvent::Updated), &eventData);
 	}
 
-	void GenericSystem::Run(f32 deltaTime, u32 index)
+	void GenericSystem::Run(f32 deltaTime, lua_State* state)
 	{
-		LuaStateCtx ctx(_states[index]);
+		LuaStateCtx ctx(state);
 
 		// TODO :: Do Stuff
 	}

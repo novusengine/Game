@@ -38,8 +38,8 @@ namespace Util::CameraSave
             return false;
 
         {
-            ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera);
-            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera);
+            auto& camera = registry->get<ECS::Components::Camera>(activeCamera);
+            auto& transform = registry->get<ECS::Components::Transform>(activeCamera);
 
             vec3 position = transform.GetWorldPosition();
             if (!buffer.Put(position))
@@ -85,8 +85,8 @@ namespace Util::CameraSave
             return false;
 
         {
-            ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera);
-            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera);
+            auto& camera = registry->get<ECS::Components::Camera>(activeCamera);
+            auto& transform = registry->get<ECS::Components::Transform>(activeCamera);
 
             vec3 position;
             if (!buffer.Get(position))

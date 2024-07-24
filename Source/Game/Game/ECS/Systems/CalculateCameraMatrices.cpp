@@ -16,7 +16,7 @@ AutoCVar_Int CVAR_CameraLockCullingFrustum(CVarCategory::Client | CVarCategory::
 
 namespace ECS::Systems
 {
-    vec4 EncodePlane(vec3 position, vec3 normal)
+    inline vec4 EncodePlane(vec3 position, vec3 normal)
     {
         vec3 normalizedNormal = glm::normalize(normal);
         vec4 result = vec4(normalizedNormal, glm::dot(normalizedNormal, position));
@@ -29,7 +29,7 @@ namespace ECS::Systems
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
         entt::registry::context& ctx = registry.ctx();
-        ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+        auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
         auto view = registry.view<Components::Transform, Components::Camera>();
         view.each([&](entt::entity e, Components::Transform& transform, Components::Camera& camera)
@@ -41,11 +41,11 @@ namespace ECS::Systems
             }
 
             vec2 renderSize = gameRenderer->GetRenderer()->GetRenderSize();
-            camera.aspectRatio = renderSize.x / renderSize.y;
+            camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
 
             {
-                f32 diagonalFov = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
-                camera.viewToClip = glm::perspective(diagonalFov, camera.aspectRatio, camera.farClip, camera.nearClip);
+                f32 fov = glm::radians(camera.fov) * 0.6f;
+                camera.viewToClip = glm::perspective(fov, camera.aspectRatio, camera.farClip, camera.nearClip);
                 camera.clipToView = glm::inverse(camera.viewToClip);
             }
 
@@ -92,7 +92,7 @@ namespace ECS::Systems
                     Right = glm::vec3(transformMatrix * glm::vec4(Right, 0.f));
                     Up = glm::vec3(transformMatrix * glm::vec4(Up, 0.f));
 
-                    f32 fov = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
+                    f32 fov = glm::radians(camera.fov) * 0.6f;
                     const float halfVSide = camera.farClip * tanf(fov * .5f);
                     const float halfHSide = halfVSide * camera.aspectRatio;
                     const glm::vec3 frontMultFar = camera.farClip * Front;

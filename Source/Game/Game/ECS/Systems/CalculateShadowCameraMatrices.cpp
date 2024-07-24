@@ -24,7 +24,7 @@ AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::
 
 namespace ECS::Systems
 {
-    vec4 EncodePlane(vec3 position, vec3 normal)
+    inline vec4 EncodePlane(vec3 position, vec3 normal)
     {
         vec3 normalizedNormal = glm::normalize(normal);
         vec4 result = vec4(normalizedNormal, glm::dot(normalizedNormal, position));
@@ -68,10 +68,10 @@ namespace ECS::Systems
         // Get active render camera
         entt::registry::context& ctx = registry.ctx();
 
-        ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+		auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
-        ECS::Components::Transform& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
-        ECS::Components::Camera& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
+		auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
+		auto& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
 
         vec3 cameraPos = cameraTransform.GetWorldPosition();
         const mat4x4& cameraViewProj = camera.worldToClip;

@@ -11,23 +11,19 @@ namespace Scripting
 	class LuaSystemBase
 	{
 	public:
-		LuaSystemBase(u32 numStates);
+		LuaSystemBase();
 
 	private:
 		friend LuaManager;
 
-		void Init(u32 numStates);
-		void Update(f32 deltaTime);
+		void Init();
+		void Update(f32 deltaTime, lua_State* state);
 		void PushEvent(LuaSystemEvent systemEvent);
 
 	protected:
-		virtual void Prepare(f32 deltaTime) = 0;
-		virtual void Run(f32 deltaTime, u32 index) = 0;
+		virtual void Prepare(f32 deltaTime, lua_State* state) = 0;
+		virtual void Run(f32 deltaTime, lua_State* state) = 0;
 
-		lua_State* CreateState();
-		bool DestroyState(u32 index);
-
-		std::vector<lua_State*> _states;
 		moodycamel::ConcurrentQueue<LuaSystemEvent> _events;
 	};
 }

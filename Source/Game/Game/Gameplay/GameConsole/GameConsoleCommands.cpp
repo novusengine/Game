@@ -3,7 +3,11 @@
 #include "GameConsoleCommandHandler.h"
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Components/Camera.h"
+#include "Game/ECS/Components/CastInfo.h"
+#include "Game/ECS/Components/UnitStatsComponent.h"
 #include "Game/ECS/Util/Transforms.h"
+#include "Game/ECS/Singletons/CharacterSingleton.h"
+#include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/NetworkState.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Scripting/LuaManager.h"
@@ -14,8 +18,8 @@
 
 #include <Base/Memory/Bytebuffer.h>
 
-#include <Network/Define.h>
 #include <Network/Client.h>
+#include <Network/Define.h>
 
 #include <base64/base64.h>
 #include <entt/entt.hpp>
@@ -79,11 +83,7 @@ bool GameConsoleCommands::HandleDoString(GameConsoleCommandHandler* commandHandl
         code += subCommands[i];
     }
 
-    if (!ServiceLocator::GetLuaManager()->DoString(code))
-    {
-        gameConsole->PrintError("Failed to run Lua DoString");
-    }
-
+    ServiceLocator::GetLuaManager()->DoString(code);
     return true;
 }
 
@@ -181,4 +181,239 @@ bool GameConsoleCommands::HandleClearMap(GameConsoleCommandHandler* commandHandl
     mapLoader->UnloadMap();
 
     return false;
+}
+
+bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_REQUEST_SPELLCAST,
+            .size = sizeof(u32)
+        };
+
+        buffer->Put(header);
+        buffer->PutU32(0);
+
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.modelEntity);
+        castInfo.target = characterSingleton.targetEntity;
+        castInfo.castTime = 1.0f;
+        castInfo.duration = 0.0f;
+    }
+
+    return false;
+}
+
+bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_DAMAGE,
+            .size = sizeof(f32)
+        };
+        
+        buffer->Put(header);
+        buffer->PutF32(35);
+        
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - 25.0f, 0.0f);
+    }
+
+    return false;
+}
+
+bool GameConsoleCommands::HandleKill(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_KILL,
+            .size = 0
+        };
+        
+        buffer->Put(header);
+        
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        unitStatsComponent.currentHealth = 0.0f;
+    }
+
+    return false;
+}
+
+bool GameConsoleCommands::HandleRevive(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_RESURRECT,
+            .size = 0
+        };
+        
+        buffer->Put(header);
+        
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        unitStatsComponent.currentHealth = unitStatsComponent.maxHealth;
+    }
+
+    return false;
+}
+
+bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    const std::string morphIDAsString = subCommands[0];
+    const u32 displayID = std::stoi(morphIDAsString);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
+    auto* creatureDisplayStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+
+    if (!creatureDisplayStorage || !creatureDisplayStorage->HasRow(displayID))
+        return false;
+
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_MORPH,
+            .size = 4
+        };
+
+        buffer->Put(header);
+        buffer->Put(displayID);
+
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+        if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.modelEntity, displayID))
+            return false;
+
+        gameConsole->PrintSuccess("Morphed into : %u", displayID);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    const std::string characterName = subCommands[0];
+    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
+    {
+        gameConsole->PrintError("Failed to send Create Character, name supplied is invalid : %s", characterName.c_str());
+        return true;
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_CREATE_CHARACTER,
+            .size = static_cast<u16>(characterName.size()) + 1u
+        };
+
+        buffer->Put(header);
+        buffer->PutString(characterName);
+
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        gameConsole->PrintWarning("Fialed to send Create Character, not connected");
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    const std::string characterName = subCommands[0];
+    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
+    {
+        gameConsole->PrintError("Failed to send Delete Character, name supplied is invalid : %s", characterName.c_str());
+        return true;
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        Network::PacketHeader header =
+        {
+            .opcode = Network::Opcode::CMSG_CHEAT_DELETE_CHARACTER,
+            .size = static_cast<u16>(characterName.size()) + 1u
+        };
+
+        buffer->Put(header);
+        buffer->PutString(characterName);
+
+        networkState.client->Send(buffer);
+    }
+    else
+    {
+        gameConsole->PrintWarning("Fialed to send Delete Character, not connected");
+    }
+
+    return true;
 }

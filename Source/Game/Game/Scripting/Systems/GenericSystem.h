@@ -8,9 +8,9 @@ namespace Scripting
 	class GenericSystem : public LuaSystemBase
 	{
 	public:
-		GenericSystem(u32 numStates);
+		GenericSystem();
 
-		void Prepare(f32 deltaTime);
-		void Run(f32 deltaTime, u32 index);
+		void Prepare(f32 deltaTime, lua_State* state);
+		void Run(f32 deltaTime, lua_State* state);
 	};
 }

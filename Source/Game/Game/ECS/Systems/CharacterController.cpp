@@ -3,24 +3,35 @@
 #include "Game/Animation/AnimationSystem.h"
 #include "Game/ECS/Components/AABB.h"
 #include "Game/ECS/Components/Camera.h"
+#include "Game/ECS/Components/DisplayInfo.h"
 #include "Game/ECS/Components/Events.h"
 #include "Game/ECS/Components/Model.h"
+#include "Game/ECS/Components/MovementInfo.h"
 #include "Game/ECS/Components/Name.h"
+#include "Game/ECS/Components/NetworkedEntity.h"
+#include "Game/ECS/Components/UnitStatsComponent.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Singletons/JoltState.h"
+#include "Game/ECS/Singletons/NetworkState.h"
 #include "Game/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game/ECS/Util/EventUtil.h"
 #include "Game/ECS/Util/Transforms.h"
+#include "Game/Editor/EditorHandler.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
+#include "Game/Util/CharacterControllerUtil.h"
+#include "Game/Util/PhysicsUtil.h"
+#include "Game/Util/UnitUtil.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
+
+#include <Network/Client.h>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
@@ -55,6 +66,14 @@ namespace ECS::Systems
         registry.emplace<Components::Name>(characterSingleton.modelEntity);
         registry.emplace<Components::Model>(characterSingleton.modelEntity);
 
+        registry.emplace<Components::MovementInfo>(characterSingleton.modelEntity);
+        auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.modelEntity);
+        displayInfo.displayID = 50;
+
+        auto& unitStatsComponent = registry.emplace<Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        unitStatsComponent.currentHealth = 50.0f;
+        unitStatsComponent.maxHealth = 100.0f;
+
         transformSystem.SetWorldPosition(characterSingleton.entity, vec3(0.0f, 0.0f, 0.0f));
         transformSystem.SetWorldPosition(characterSingleton.modelEntity, vec3(0.0f, 0.0f, 0.0f));
         transformSystem.ParentEntityTo(characterSingleton.entity, characterSingleton.modelEntity);
@@ -71,16 +90,57 @@ namespace ECS::Systems
         characterSingleton.keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Any, nullptr);
+        characterSingleton.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
+            entt::entity targetEntity = entt::null;
+            if (::Util::Physics::GetEntityAtMousePosition(ServiceLocator::GetEditorHandler()->GetViewport(), targetEntity))
+            {
+                if (targetEntity != characterSingleton.entity)
+                {
+                    if (registry->valid(targetEntity) && !registry->all_of<Components::NetworkedEntity>(targetEntity))
+                    {
+                        targetEntity = entt::null;
+                    }
+                }
+            }
+
+            if (characterSingleton.targetEntity == targetEntity)
+                return false;
+
+            Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
+            if (networkState.client && networkState.client->IsConnected())
+            {
+                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                Network::PacketHeader header =
+                {
+                    .opcode = Network::Opcode::MSG_ENTITY_TARGET_UPDATE,
+                    .size = sizeof(entt::entity)
+                };
+
+                entt::entity targetNetworkID = networkState.entityToNetworkID[targetEntity];
+                buffer->Put(header);
+                buffer->Put(targetNetworkID);
+
+                networkState.client->Send(buffer);
+            }
+
+            characterSingleton.targetEntity = targetEntity;
+
+            return true;
+        });
+
+        characterSingleton.cameraToggleKeybindGroup->SetActive(true);
         characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Toggle Camera Mode", GLFW_KEY_C, KeybindAction::Press, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-            Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-            Singletons::FreeflyingCameraSettings& freeFlyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
-            Singletons::OrbitalCameraSettings& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+            auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& freeFlyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
+            auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
 
             InputManager* inputManager = ServiceLocator::GetInputManager();
 
@@ -92,16 +152,16 @@ namespace ECS::Systems
                 if (!registry->valid(freeFlyingCameraSettings.entity))
                     return false;
 
-                ECS::Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for Orbital Camera when switching to FreeFlying Camera
+                Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for Orbital Camera when switching to FreeFlying Camera
                 activeCamera.entity = freeFlyingCameraSettings.entity;
 
                 characterSingleton.keybindGroup->SetActive(false);
                 orbitalCameraKeybindGroup->SetActive(false);
 
                 freeFlyingCameraKeybindGroup->SetActive(true);
-                ECS::Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for FreeFlying Camera when switching to FreeFlying Camera
+                Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for FreeFlying Camera when switching to FreeFlying Camera
 
-                auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
+                auto& camera = registry->get<Components::Camera>(activeCamera.entity);
                 camera.dirtyView = true;
                 camera.dirtyPerspective = true;
             }
@@ -112,11 +172,11 @@ namespace ECS::Systems
 
                 TransformSystem& transformSystem = ctx.get<TransformSystem>();
 
-                ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(characterSingleton.entity);
+                auto& transform = registry->get<Components::Transform>(characterSingleton.entity);
                 transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
                 transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
 
-                ECS::Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for FreeFlyingCamera when switching to orbital camera
+                Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for FreeFlyingCamera when switching to orbital camera
                 activeCamera.entity = orbitalCameraSettings.entity;
                 orbitalCameraSettings.entityToTrack = characterSingleton.entity;
 
@@ -124,83 +184,45 @@ namespace ECS::Systems
 
                 characterSingleton.keybindGroup->SetActive(true);
                 orbitalCameraKeybindGroup->SetActive(true);
-                ECS::Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for Orbital Camera when switching to orbital camer
+                Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for Orbital Camera when switching to orbital camer
 
-                auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
+                auto& camera = registry->get<Components::Camera>(activeCamera.entity);
                 camera.dirtyView = true;
                 camera.dirtyPerspective = true;
             }
 
             return true;
         });
-
         characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Move Character To Camera", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-            Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-            Singletons::FreeflyingCameraSettings& freeFlyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
+            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+            auto& freeFlyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
             if (activeCamera.entity != freeFlyingCameraSettings.entity)
                 return false;
 
             TransformSystem& transformSystem = ctx.get<TransformSystem>();
 
-            ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(freeFlyingCameraSettings.entity);
-            ECS::Components::Transform& cameraTransform = registry->get<ECS::Components::Transform>(freeFlyingCameraSettings.entity);
-            ECS::Components::Transform& characterTransform = registry->get<ECS::Components::Transform>(characterSingleton.entity);
+            auto& camera = registry->get<Components::Camera>(freeFlyingCameraSettings.entity);
+            auto& cameraTransform = registry->get<Components::Transform>(freeFlyingCameraSettings.entity);
+            auto& characterTransform = registry->get<Components::Transform>(characterSingleton.entity);
+            auto& characterMovementInfo = registry->get<Components::MovementInfo>(characterSingleton.modelEntity);
 
             vec3 newPosition = cameraTransform.GetWorldPosition();
             characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
             characterSingleton.character->SetPosition(JPH::RVec3Arg(newPosition.x, newPosition.y, newPosition.z));
             transformSystem.SetWorldPosition(characterSingleton.entity, newPosition);
 
-            characterSingleton.pitch = 0.0f;
-            characterSingleton.yaw = glm::pi<f32>() + glm::radians(camera.yaw);
+            characterMovementInfo.pitch = 0.0f;
+            characterMovementInfo.yaw = glm::pi<f32>() + glm::radians(camera.yaw);
+            characterSingleton.positionOrRotationIsDirty = true;
 
             return true;
         });
-
-        characterSingleton.cameraToggleKeybindGroup->SetActive(true);
-    }
-
-    void OnJumpStartFinished(u32 instanceID, Animation::Type animation, Animation::Type interruptedBy)
-    {
-        if (animation != Animation::Type::JumpStart)
-            return;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
-
-        if (characterSingleton.jumpState != ECS::Singletons::JumpState::Begin)
-            return;
-
-        bool wasCancelled = interruptedBy != Animation::Type::Invalid && interruptedBy != Animation::Type::Jump && interruptedBy != Animation::Type::JumpEnd && interruptedBy != Animation::Type::JumpLandRun;
-        if (wasCancelled)
-        {
-            characterSingleton.jumpState = ECS::Singletons::JumpState::None;
-            return;
-        }
-
-        characterSingleton.jumpState = ECS::Singletons::JumpState::Fall;
-
-        Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-        animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Jump, Animation::Flag::None, Animation::BlendOverride::None);
-    }
-    void OnJumpEndFinished(u32 instanceID, Animation::Type animation, Animation::Type interruptedBy)
-    {
-        if (animation != Animation::Type::JumpEnd && animation != Animation::Type::JumpLandRun)
-            return;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
-
-        if (characterSingleton.jumpState != ECS::Singletons::JumpState::End)
-            return;
-
-        characterSingleton.jumpState = ECS::Singletons::JumpState::None;
     }
 
     void CharacterController::Update(entt::registry& registry, f32 deltaTime)
@@ -210,19 +232,18 @@ namespace ECS::Systems
 
         entt::registry::context& ctx = registry.ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& model = registry.get<Components::Model>(characterSingleton.modelEntity);
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
 
         Util::EventUtil::OnEvent<Components::MapLoadedEvent>([&](const Components::MapLoadedEvent& event)
         {
             InitCharacterController(registry);
         });
 
-        auto& transformSystem = ctx.get<TransformSystem>();
-        quat characterRotation = quat(vec3(characterSingleton.pitch, characterSingleton.yaw, 0.0f));
-        transformSystem.SetWorldRotation(characterSingleton.modelEntity, characterRotation);
 
 #ifdef JPH_DEBUG_RENDERER
         // TODO: Fix Jolt Primitives being erased in JoltDebugRenderer causing crash when changing map
-        //Components::Transform& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
+        //auto& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
         //
         //JoltDebugRenderer* joltDebugRenderer = ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer();
         //
@@ -238,108 +259,205 @@ namespace ECS::Systems
         //JPH::Vec3 joltModelScale = JPH::Vec3(modelScale.x, modelScale.y, modelScale.z);
         //characterSingleton.character->GetShape()->Draw(joltDebugRenderer, joltModelMatrix, joltModelScale, JPH::Color::sCyan, true, true);
 #endif
-
         if (!keybindGroup->IsActive())
             return;
 
+        auto& transformSystem = ctx.get<TransformSystem>();
+
         auto& joltState = ctx.get<Singletons::JoltState>();
         auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+        auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.modelEntity);
 
-        static JPH::Vec3 gravity = JPH::Vec3(0.0f, -9.81f, 0.0f);
-        JPH::Vec3 velocity = JPH::Vec3(0.0f, 0.0f, 0.0f);
+        static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
         JPH::Vec3 moveDirection = JPH::Vec3(0.0f, 0.0f, 0.0f);
 
-        bool movingForward = keybindGroup->IsKeybindPressed("Forward"_h) || (orbitalCameraSettings.mouseLeftDown && orbitalCameraSettings.mouseRightDown);
-        bool movingBackward = keybindGroup->IsKeybindPressed("Backward"_h);
-        bool movingLeft = keybindGroup->IsKeybindPressed("Left"_h);
-        bool movingRight = keybindGroup->IsKeybindPressed("Right"_h);
+        bool isInputForwardDown = keybindGroup->IsKeybindPressed("Forward"_h) || (orbitalCameraSettings.mouseLeftDown && orbitalCameraSettings.mouseRightDown);
+        bool isInputBackwardDown = keybindGroup->IsKeybindPressed("Backward"_h);
+        bool isInputLeftDown = keybindGroup->IsKeybindPressed("Left"_h);
+        bool isInputRightDown = keybindGroup->IsKeybindPressed("Right"_h);
 
-        if (movingForward)
-            moveDirection += JPH::Vec3(0.0f, 0.0f, -1.0f);
+        bool isAlive = unitStatsComponent.currentHealth > 0.0f;
+        bool isMovingForward = (isInputForwardDown && !isInputBackwardDown) * isAlive;
+        bool isMovingBackward = (isInputBackwardDown && !isInputForwardDown) * isAlive;
+        bool isMovingLeft = (isInputLeftDown && !isInputRightDown) * isAlive;
+        bool isMovingRight = (isInputRightDown && !isInputLeftDown) * isAlive;
+        bool isMoving = isInputForwardDown || isInputBackwardDown || isInputLeftDown || isInputRightDown;
 
-        if (movingBackward)
-            moveDirection += JPH::Vec3(0.0f, 0.0f, 1.0f);
+        moveDirection += isMovingForward * JPH::Vec3(0.0f, 0.0f, -1.0f);
+        moveDirection += isMovingBackward * JPH::Vec3(0.0f, 0.0f, 1.0f);
+        moveDirection += isMovingLeft * JPH::Vec3(1.0f, 0.0f, 0.0f);;
+        moveDirection += isMovingRight * JPH::Vec3(-1.0f, 0.0f, 0.0f);;;
 
-        if (movingLeft)
-            moveDirection += JPH::Vec3(1.0f, 0.0f, 0.0f);
+        quat characterRotation = quat(vec3(movementInfo.pitch, movementInfo.yaw, 0.0f));
+        if (isAlive)
+        {
+            transformSystem.SetWorldRotation(characterSingleton.modelEntity, characterRotation);
 
-        if (movingRight)
-            moveDirection += JPH::Vec3(-1.0f, 0.0f, 0.0f);
+            JPH::Quat joltRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+            characterSingleton.character->SetRotation(joltRotation);
+        }
 
-        JPH::Quat virtualCharacterRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
-        moveDirection = virtualCharacterRotation * moveDirection;
+        Components::MovementFlags previousMovementFlags = movementInfo.movementFlags;
 
-        bool moveForward = movingForward && !movingBackward;
-        bool moveBackward = movingBackward && !movingForward;
-        bool moveLeft = movingLeft && !movingRight;
-        bool moveRight = movingRight && !movingLeft;
-
-        characterSingleton.movementFlags.forward = moveForward;
-        characterSingleton.movementFlags.backward = moveBackward;
-        characterSingleton.movementFlags.left = moveLeft;
-        characterSingleton.movementFlags.right = moveRight;
+        movementInfo.movementFlags.forward = isMovingForward;
+        movementInfo.movementFlags.backward = isMovingBackward;
+        movementInfo.movementFlags.left = isMovingLeft;
+        movementInfo.movementFlags.right = isMovingRight;
+        movementInfo.movementFlags.justGrounded = false;
+        movementInfo.movementFlags.justEndedJump = false;
 
         JPH::CharacterVirtual::EGroundState groundState = characterSingleton.character->GetGroundState();
-        bool isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
 
         // Fix for animations bricking when turning off animations while jumping state is not None
         bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled");
-        if (!animationsEnabled && characterSingleton.jumpState != ECS::Singletons::JumpState::None)
+        if (!animationsEnabled && movementInfo.jumpState != Components::JumpState::None)
         {
-            characterSingleton.jumpState = ECS::Singletons::JumpState::None;
+            movementInfo.jumpState = Components::JumpState::None;
         }
 
         // TODO : When jumping, we need to incoporate checks from the physics system to handle if jumping ends early
-        bool isJumping = false;
-        bool canJump = characterSingleton.jumpState == ECS::Singletons::JumpState::None || characterSingleton.jumpState == ECS::Singletons::JumpState::End;
+        bool isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
+        bool canJump = isAlive && isGrounded && (!movementInfo.movementFlags.jumping && movementInfo.jumpState == Components::JumpState::None);
+        bool isTryingToJump = keybindGroup->IsKeybindPressed("Upwards"_h) && canJump;
 
-        if (isGrounded)
+        JPH::Quat virtualCharacterRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+        if (!moveDirection.IsNearZero())
         {
-             if (keybindGroup->IsKeybindPressed("Upwards"_h) && canJump)
-                isJumping = true;
+            moveDirection = virtualCharacterRotation * moveDirection;
+            moveDirection = moveDirection.Normalized();
+        }
 
-            if (moveDirection.LengthSq() > 0.0f)
+        f32 speed = movementInfo.speed;
+        if (isMovingBackward)
+            speed *= 0.5f;
+
+        JPH::Vec3 currentVelocity = characterSingleton.character->GetLinearVelocity();
+        JPH::Vec3 desiredVelocity = characterSingleton.character->GetGroundVelocity() + (moveDirection * speed);
+        JPH::Vec3 newVelocity = JPH::Vec3(0.0f, 0.0f, 0.0f);
+
+        if (!desiredVelocity.IsNearZero() || currentVelocity.GetY() < 0.0f || !isGrounded)
+        {
+            desiredVelocity.SetY(currentVelocity.GetY());
+        }
+
+        bool canControlInAir = isGrounded || characterSingleton.canControlInAir;
+        characterSingleton.canControlInAir = canControlInAir;
+
+        if (isGrounded || (canControlInAir && isMoving))
+        {
+            if (desiredVelocity.GetY() < 0.0f)
             {
-                moveDirection = moveDirection.Normalized();
-                moveDirection.SetY(isJumping);
-
-                f32 moveSpeed = characterSingleton.speed;
-                if (movingBackward)
-                    moveSpeed *= 0.5f;
-
-                moveDirection *= JPH::Vec3(moveSpeed, 6.0f, moveSpeed);
+                desiredVelocity.SetY(0.0f);
             }
-            else if (isJumping)
+
+            newVelocity = desiredVelocity;
+
+            if (isTryingToJump)
             {
-                moveDirection = JPH::Vec3(0.0f, 6.0f, 0.0f);
+                f32 jumpSpeed = movementInfo.jumpSpeed * movementInfo.gravityModifier;
+                newVelocity += JPH::Vec3(0.0f, jumpSpeed, 0.0f);
+
+                movementInfo.movementFlags.jumping = true;
+                movementInfo.jumpState = Components::JumpState::Begin;
             }
-
-            velocity = characterSingleton.character->GetGroundVelocity() + moveDirection;
-
-            if (groundState == JPH::CharacterVirtual::EGroundState::OnSteepGround)
+            else
             {
-                velocity += deltaTime * gravity;
+                characterSingleton.canControlInAir = false;
             }
         }
         else
         {
-            velocity = characterSingleton.character->GetLinearVelocity() + deltaTime * gravity;
+            newVelocity = currentVelocity + ((gravity * movementInfo.gravityModifier) * deltaTime);
         }
 
-        characterSingleton.character->SetLinearVelocity(velocity);
+        characterSingleton.character->SetLinearVelocity(newVelocity);
 
-        JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
+        ::Util::CharacterController::UpdateSettings updateSettings =
+        {
+            .mStickToFloorStepDown      = vec3(0.0f, -0.2f, 0.0f),
+            .mWalkStairsStepUp          = vec3(0.0f, 1.1918f, 0.0f),
+            .mWalkStairsStepDownExtra   = vec3(0.0f, 0.0f, 0.0f)
+        };
+
         JPH::DefaultBroadPhaseLayerFilter broadPhaseLayerFilter(joltState.objectVSBroadPhaseLayerFilter, Jolt::Layers::MOVING);
         JPH::DefaultObjectLayerFilter objectLayerFilter(joltState.objectVSObjectLayerFilter, Jolt::Layers::MOVING);
         JPH::BodyFilter bodyFilter;
         JPH::ShapeFilter shapeFilter;
 
-        characterSingleton.character->ExtendedUpdate(deltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
+        ::Util::CharacterController::Update(characterSingleton.character, deltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
+        
         JPH::Vec3 position = characterSingleton.character->GetPosition();
         transformSystem.SetWorldPosition(characterSingleton.entity, vec3(position.GetX(), position.GetY(), position.GetZ()));
 
-        Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-        u32 instanceID = registry.get<Components::Model>(characterSingleton.modelEntity).instanceID;
+        JPH::Vec3 linearVelocity = characterSingleton.character->GetLinearVelocity();
+        movementInfo.horizontalVelocity = vec2(linearVelocity.GetX(), linearVelocity.GetZ());
+        movementInfo.verticalVelocity = linearVelocity.GetY();
+
+        groundState = characterSingleton.character->GetGroundState();
+
+        bool wasGrounded = isGrounded;
+        isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
+
+        movementInfo.movementFlags.grounded = isGrounded;
+        if (isGrounded)
+        {
+            if (!wasGrounded)
+            {
+                characterSingleton.positionOrRotationIsDirty = true;
+                movementInfo.movementFlags.justGrounded = true;
+            }
+
+            if (movementInfo.movementFlags.jumping || movementInfo.jumpState != Components::JumpState::None)
+            {
+                movementInfo.movementFlags.jumping = false;
+                movementInfo.movementFlags.justEndedJump = true;
+                movementInfo.jumpState = Components::JumpState::None;
+            }
+        }
+
+        bool wasMoving = previousMovementFlags.forward || previousMovementFlags.backward || previousMovementFlags.left || previousMovementFlags.right;
+
+        static constexpr f32 positionOrRotationUpdateInterval = 1.0f / 60.0f;
+        if (characterSingleton.positionOrRotationUpdateTimer >= positionOrRotationUpdateInterval)
+        {
+            if (!isGrounded || isMoving || wasMoving || characterSingleton.positionOrRotationIsDirty)
+            {
+                // Just started moving
+                auto& networkState = ctx.get<Singletons::NetworkState>();
+                if (networkState.client && networkState.client->IsConnected())
+                {
+                    auto& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
+
+                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                    Network::PacketHeader header =
+                    {
+                        .opcode = Network::Opcode::MSG_ENTITY_MOVE,
+                        .size = sizeof(vec3) + sizeof(quat) + sizeof(Components::MovementFlags) + sizeof(f32)
+                    };
+
+                    buffer->Put(header);
+                    buffer->Put(transform.GetWorldPosition());
+                    buffer->Put(transform.GetWorldRotation());
+                    buffer->Put(movementInfo.movementFlags);
+                    buffer->Put(movementInfo.verticalVelocity);
+
+                    networkState.client->Send(buffer);
+                }
+
+                characterSingleton.positionOrRotationIsDirty = false;
+            }
+
+            characterSingleton.positionOrRotationUpdateTimer -= positionOrRotationUpdateInterval;
+        }
+        else
+        {
+            if ((isGrounded && !isMoving) && wasMoving)
+            {
+                characterSingleton.positionOrRotationIsDirty = true;
+            }
+
+            characterSingleton.positionOrRotationUpdateTimer += deltaTime;
+        }
 
         auto SetOrientation = [&](vec4& settings, f32 orientation)
         {
@@ -349,126 +467,54 @@ namespace ECS::Systems
 
             settings.y = orientation;
             settings.w = 0.0f;
-
-            f32 timeToChange = glm::abs(orientation - currentOrientation) / 450.0f;
-            timeToChange = glm::max(timeToChange, 0.01f);
-            settings.z = timeToChange;
-        };
-        auto TryPlayAnimation = [&animationSystem, &characterSingleton, instanceID](Animation::Bone bone, Animation::Type animationID, Animation::Flag flags = Animation::Flag::Loop, Animation::BlendOverride blendOverride = Animation::BlendOverride::Auto, Animation::AnimationCallback callback = nullptr) -> bool
-        {
-            bool canPlay = !animationSystem->IsPlaying(instanceID, bone, animationID);
-            if (canPlay)
-            {
-                if (!animationSystem->SetBoneSequence(instanceID, bone, animationID, flags, blendOverride, callback))
-                    return false;
-            }
-
-            return canPlay;
+            settings.z = 1.0f / 8.0f;
         };
 
-        if (isJumping)
         {
-            if (TryPlayAnimation(Animation::Bone::Default, Animation::Type::JumpStart, Animation::Flag::None, Animation::BlendOverride::None, OnJumpStartFinished))
-            {
-                characterSingleton.jumpState = ECS::Singletons::JumpState::Begin;
-            }
-        }
-
-        Animation::Type currentAnimation = Animation::Type::Invalid;
-        Animation::Type nextAnimation = Animation::Type::Invalid;
-        animationSystem->GetCurrentAnimation(instanceID, Animation::Bone::Default, &currentAnimation, &nextAnimation);
-
-        bool isPlayingJump = characterSingleton.jumpState == ECS::Singletons::JumpState::Begin || characterSingleton.jumpState == ECS::Singletons::JumpState::Fall;
-        if (!isPlayingJump)
-        {
-            bool canOverrideJumpEnd = true;
-            if (characterSingleton.jumpState == ECS::Singletons::JumpState::End)
-            {
-                if ((currentAnimation == Animation::Type::JumpLandRun || nextAnimation == Animation::Type::JumpLandRun) && !moveBackward)
-                {
-                    canOverrideJumpEnd = false;
-                }
-            }
-
-            if (isGrounded && canOverrideJumpEnd)
-            {
-                Animation::BlendOverride blendOverride = Animation::BlendOverride::Auto;
-                if (currentAnimation == Animation::Type::Fall || currentAnimation == Animation::Type::Jump || currentAnimation == Animation::Type::JumpEnd || currentAnimation == Animation::Type::JumpLandRun)
-                {
-                    blendOverride = Animation::BlendOverride::None;
-                }
-
-                if (moveForward)
-                {
-                    // Run Forward
-                    TryPlayAnimation(Animation::Bone::Default, Animation::Type::Run, Animation::Flag::Loop, blendOverride);
-                }
-                else if (moveBackward)
-                {
-                    // Walk Backward
-
-                    TryPlayAnimation(Animation::Bone::Default, Animation::Type::Walkbackwards, Animation::Flag::Loop, blendOverride);
-                }
-
-                if (moveLeft || moveRight)
-                {
-                    if (moveForward)
-                    {
-                        TryPlayAnimation(Animation::Bone::Default, Animation::Type::Run, Animation::Flag::Loop, blendOverride);
-                    }
-                    else if (moveBackward)
-                    {
-                        TryPlayAnimation(Animation::Bone::Default, Animation::Type::Walkbackwards, Animation::Flag::Loop, blendOverride);
-                    }
-                    else
-                    {
-                        TryPlayAnimation(Animation::Bone::Default, Animation::Type::Run, Animation::Flag::Loop, blendOverride);
-                    }
-                }
-            }
-
+            ::Util::Unit::UpdateAnimationState(registry, characterSingleton.modelEntity, model.instanceID, deltaTime);
+            if (isGrounded || (canControlInAir && isMoving))
             {
                 f32 spineOrientation = 0.0f;
                 f32 headOrientation = 0.0f;
                 f32 waistOrientation = 0.0f;
 
-                if (moveForward)
+                if (isMovingForward)
                 {
-                    if (moveRight)
+                    if (isMovingRight)
                     {
                         spineOrientation = 30.0f;
                         headOrientation = -15.0f;
                         waistOrientation = 45.0f;
                     }
-                    else if (moveLeft)
+                    else if (isMovingLeft)
                     {
                         spineOrientation = -30.0f;
                         headOrientation = 15.0f;
                         waistOrientation = -45.0f;
                     }
                 }
-                else if (moveBackward)
+                else if (isMovingBackward)
                 {
-                    if (moveRight)
+                    if (isMovingRight)
                     {
                         spineOrientation = -30.0f;
                         headOrientation = 15.0f;
                         waistOrientation = -45.0f;
                     }
-                    else if (moveLeft)
+                    else if (isMovingLeft)
                     {
                         spineOrientation = 30.0f;
                         headOrientation = -15.0f;
                         waistOrientation = 45.0f;
                     }
                 }
-                else if (moveRight)
+                else if (isMovingRight)
                 {
                     spineOrientation = 45.0f;
                     headOrientation = -30.0f;
                     waistOrientation = 90.0f;
                 }
-                else if (moveLeft)
+                else if (isMovingLeft)
                 {
                     spineOrientation = -45.0f;
                     headOrientation = 30.0f;
@@ -479,65 +525,6 @@ namespace ECS::Systems
                 SetOrientation(characterSingleton.headRotationSettings, headOrientation);
                 SetOrientation(characterSingleton.waistRotationSettings, waistOrientation);
             }
-        }
-
-        bool IsFalling = groundState == JPH::CharacterVirtual::EGroundState::OnSteepGround || groundState == JPH::CharacterVirtual::EGroundState::InAir;
-        if (isGrounded)
-        {
-            bool playJumpEnd = characterSingleton.jumpState == ECS::Singletons::JumpState::Fall || (characterSingleton.jumpState == ECS::Singletons::JumpState::End && currentAnimation != Animation::Type::JumpLandRun);
-            if (playJumpEnd)
-            {
-                bool canPlayJumpEnd = characterSingleton.jumpState == ECS::Singletons::JumpState::Fall;
-                if (canPlayJumpEnd)
-                {
-                    if (!moveBackward && (moveForward || moveRight || moveLeft))
-                    {
-                        if (TryPlayAnimation(Animation::Bone::Default, Animation::Type::JumpLandRun, Animation::Flag::Freeze, Animation::BlendOverride::None, OnJumpEndFinished))
-                        {
-                            characterSingleton.jumpState = ECS::Singletons::JumpState::End;
-                        }
-                    }
-                    else
-                    {
-                        if (moveBackward)
-                        {
-                            if (TryPlayAnimation(Animation::Bone::Default, Animation::Type::Walkbackwards, Animation::Flag::Loop, Animation::BlendOverride::Start))
-                            {
-                                characterSingleton.jumpState = ECS::Singletons::JumpState::None;
-                            }
-                        }
-                        else
-                        {
-                            if (TryPlayAnimation(Animation::Bone::Default, Animation::Type::JumpEnd, Animation::Flag::None, Animation::BlendOverride::None, OnJumpEndFinished))
-                            {
-                                characterSingleton.jumpState = ECS::Singletons::JumpState::End;
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if (!isPlayingJump && !moveForward && !moveBackward && !moveRight && !moveLeft)
-                {
-                    TryPlayAnimation(Animation::Bone::Default, Animation::Type::Stand);
-                }
-            }
-        }
-        else if (IsFalling)
-        {
-            if (characterSingleton.jumpState == ECS::Singletons::JumpState::None || characterSingleton.jumpState == ECS::Singletons::JumpState::Fall)
-            {
-                Animation::BlendOverride blendOverride = Animation::BlendOverride::None;
-
-                if (characterSingleton.jumpState == ECS::Singletons::JumpState::Fall)
-                    blendOverride = Animation::BlendOverride::Start;
-
-                TryPlayAnimation(Animation::Bone::Default, Animation::Type::Fall, Animation::Flag::Loop, blendOverride);
-            }
-        }
-        if (!isPlayingJump)
-        {
         }
 
         auto HandleUpdateOrientation = [](vec4& settings, f32 deltaTime) -> bool
@@ -554,20 +541,27 @@ namespace ECS::Systems
             return true;
         };
 
-        if (HandleUpdateOrientation(characterSingleton.spineRotationSettings, deltaTime))
         {
-            quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.spineRotationSettings.x), 0.0f));
-            animationSystem->SetBoneRotation(instanceID, Animation::Bone::SpineLow, rotation);
-        }
-        if (HandleUpdateOrientation(characterSingleton.headRotationSettings, deltaTime))
-        {
-            quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.headRotationSettings.x), 0.0f));
-            animationSystem->SetBoneRotation(instanceID, Animation::Bone::Head, rotation);
-        }
-        if (HandleUpdateOrientation(characterSingleton.waistRotationSettings, deltaTime))
-        {
-            quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.waistRotationSettings.x), 0.0f));
-            animationSystem->SetBoneRotation(instanceID, Animation::Bone::Waist, rotation);
+            Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+
+            if (model.modelID != std::numeric_limits<u32>().max() && model.instanceID != std::numeric_limits<u32>().max())
+            {
+                if (HandleUpdateOrientation(characterSingleton.spineRotationSettings, deltaTime))
+                {
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.spineRotationSettings.x), 0.0f));
+                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::SpineLow, rotation);
+                }
+                if (HandleUpdateOrientation(characterSingleton.headRotationSettings, deltaTime))
+                {
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.headRotationSettings.x), 0.0f));
+                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Head, rotation);
+                }
+                if (HandleUpdateOrientation(characterSingleton.waistRotationSettings, deltaTime))
+                {
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.waistRotationSettings.x), 0.0f));
+                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Waist, rotation);
+                }
+            }
         }
     }
 
@@ -579,14 +573,15 @@ namespace ECS::Systems
         auto& transformSystem = ctx.get<TransformSystem>();
         auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
         auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
-        auto& characterSingleton = ctx.emplace<Singletons::CharacterSingleton>();
+        auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
 
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
-        modelLoader->LoadModelForEntity(characterSingleton.modelEntity, modelHash);
+        modelLoader->LoadDisplayIDForEntity(characterSingleton.modelEntity, 50);
 
-        f32 width = 0.5f;
-        f32 height = 1.6f;
+        f32 width = 0.4166f;
+        f32 height = 1.9134f;
         f32 pyramidHeight = 0.25f;
 
         JPH::Array<JPH::Vec3> points =
@@ -610,9 +605,12 @@ namespace ECS::Systems
         JPH::ConvexHullShapeSettings shapeSetting = JPH::ConvexHullShapeSettings(points, 0.0f);
         JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
 
+        static constexpr f32 MaxWallClimbAngle = glm::radians(50.0f);
+
         JPH::CharacterVirtualSettings characterSettings;
         characterSettings.mShape = shapeResult.Get();
         characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
+        characterSettings.mMaxSlopeAngle = MaxWallClimbAngle;
 
         if (characterSingleton.character)
             delete characterSingleton.character;
@@ -628,13 +626,22 @@ namespace ECS::Systems
             newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
         }
 
+        characterSingleton.targetEntity = entt::null;
+        characterSingleton.character->SetMass(1000000.0f);
+        characterSingleton.character->SetPenetrationRecoverySpeed(0.5f);
         characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
         characterSingleton.character->SetPosition(newPosition);
 
-        characterSingleton.speed = 7.1111f;
-        characterSingleton.jumpState = ECS::Singletons::JumpState::None;
-        characterSingleton.pitch = 0.0f;
-        characterSingleton.yaw = 0.0f;
+        characterSingleton.positionOrRotationUpdateTimer = 0.0f;
+        characterSingleton.positionOrRotationIsDirty = true;
+        characterSingleton.canControlInAir = true;
+
+        movementInfo.pitch = 0.0f;
+        movementInfo.yaw = 0.0f;
+        movementInfo.speed = 7.1111f;
+        movementInfo.jumpSpeed = 7.9555f;
+        movementInfo.gravityModifier = 1.0f;
+        movementInfo.jumpState = Components::JumpState::None;
 
         transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
         transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);

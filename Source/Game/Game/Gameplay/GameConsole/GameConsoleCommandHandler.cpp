@@ -18,6 +18,13 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("savecamera", GameConsoleCommands::HandleSaveCamera);
     RegisterCommand("loadcamera", GameConsoleCommands::HandleLoadCamera);
     RegisterCommand("clearmap", GameConsoleCommands::HandleClearMap);
+    RegisterCommand("cast", GameConsoleCommands::HandleCast);
+    RegisterCommand("damage", GameConsoleCommands::HandleDamage);
+    RegisterCommand("kill", GameConsoleCommands::HandleKill);
+    RegisterCommand("revive", GameConsoleCommands::HandleRevive);
+    RegisterCommand("morph", GameConsoleCommands::HandleMorph);
+    RegisterCommand("createchar", GameConsoleCommands::HandleCreateChar);
+    RegisterCommand("deletechar", GameConsoleCommands::HandleDeleteChar);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

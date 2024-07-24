@@ -22,7 +22,7 @@ namespace ECS::Singletons
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ClientDBCollection& clientDBCollection = ctx.get<ClientDBCollection>();
+            auto& clientDBCollection = ctx.get<ClientDBCollection>();
             auto* cameraSaves = clientDBCollection.Get<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave);
 
             cameraSaveNameHashToID.clear();

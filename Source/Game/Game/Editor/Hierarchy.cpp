@@ -130,7 +130,7 @@ namespace Editor
         if (!registry->all_of<ECS::Components::WorldAABB>(entity))
             return;
 
-        ECS::Components::WorldAABB& worldAABB = registry->get<ECS::Components::WorldAABB>(entity);
+        auto& worldAABB = registry->get<ECS::Components::WorldAABB>(entity);
 
         vec3 position = (worldAABB.min + worldAABB.max) * 0.5f;	
         f32 radius = glm::distance(worldAABB.min, worldAABB.max) * 0.5f;

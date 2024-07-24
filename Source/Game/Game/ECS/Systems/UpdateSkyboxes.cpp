@@ -22,7 +22,7 @@ namespace ECS::Systems
     void UpdateSkyboxes::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
-        Singletons::Skybox& skybox = ctx.emplace<ECS::Singletons::Skybox>();
+        auto& skybox = ctx.emplace<ECS::Singletons::Skybox>();
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         ModelLoader* modelLoader = gameRenderer->GetModelLoader();
@@ -42,8 +42,8 @@ namespace ECS::Systems
         auto& transformSystem = ECS::TransformSystem::Get(registry);
 
         entt::registry::context& ctx = registry.ctx();
-        Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
-        Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
+        auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+        auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
         vec3 cameraPosition = cameraTransform.GetWorldPosition();
 
         auto view = registry.view<Components::Transform, Components::SkyboxModelTag>();

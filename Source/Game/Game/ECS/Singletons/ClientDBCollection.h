@@ -20,14 +20,19 @@ namespace ECS::Singletons
 
     enum class ClientDBHash : u32
     {
-        Map					= GetHash("Map.cdb"_h),
-        LiquidObject		= GetHash("LiquidObject.cdb"_h),
-        LiquidType			= GetHash("LiquidType.cdb"_h),
-        LiquidMaterial		= GetHash("LiquidMaterial.cdb"_h),
-        CinematicCamera		= GetHash("CinematicCamera.cdb"_h),
-        CinematicSequence	= GetHash("CinematicSequence.cdb"_h),
-        CameraSave			= GetHash("CameraSave.cdb"_h),
-        Cursor				= GetHash("Cursor.cdb"_h)
+        Map					        = GetHash("Map.cdb"_h),
+        LiquidObject		        = GetHash("LiquidObject.cdb"_h),
+        LiquidType			        = GetHash("LiquidType.cdb"_h),
+        LiquidMaterial		        = GetHash("LiquidMaterial.cdb"_h),
+        CinematicCamera		        = GetHash("CinematicCamera.cdb"_h),
+        CinematicSequence	        = GetHash("CinematicSequence.cdb"_h),
+        CameraSave			        = GetHash("CameraSave.cdb"_h),
+        Cursor				        = GetHash("Cursor.cdb"_h),
+        AnimationData		        = GetHash("AnimationData.cdb"_h),
+        CreatureDisplayInfo         = GetHash("CreatureDisplayInfo.cdb"_h),
+        CreatureDisplayInfoExtra    = GetHash("CreatureDisplayInfoExtra.cdb"_h),
+        CreatureModelData           = GetHash("CreatureModelData.cdb"_h),
+        CharSection                 = GetHash("CharSection.cdb"_h),
     };
 
     struct ClientDBCollection

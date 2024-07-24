@@ -2,6 +2,8 @@
 #define MODEL_SHARED_INCLUDED
 #include "common.inc.hlsl"
 
+#define MAX_MODEL_SAMPLERS 4
+
 struct ModelInstanceData
 {
     uint modelID;
@@ -209,6 +211,7 @@ struct ModelTextureUnit
 };
 
 [[vk::binding(9, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
+[[vk::binding(10, MODEL)]] SamplerState _samplers[MAX_MODEL_SAMPLERS];
 [[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[MAX_TEXTURES]; // We give this index 20 because it always needs to be last in this descriptor set
 
 enum ModelPixelShaderID

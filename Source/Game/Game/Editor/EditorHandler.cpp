@@ -4,6 +4,7 @@
 #include "CameraInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "MapSelector.h"
+#include "NetworkedInfo.h"
 #include "SkyboxSelector.h"
 #include "TerrainTools.h"
 #include "Inspector.h"
@@ -44,6 +45,7 @@ namespace Editor
         _editors.push_back(new CameraInfo());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
+        _editors.push_back(new NetworkedInfo());
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
 

@@ -10,6 +10,7 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Components/Model.h"
 #include "Game/ECS/Components/Tags.h"
+#include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/TextureSingleton.h"
 #include "Game/ECS/Util/Transforms.h"
 
@@ -952,7 +953,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
+    auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
     // Add ModelManifest
     u32 modelManifestIndex = _modelManifestsIndex.fetch_add(1);
@@ -1042,7 +1043,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                 Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
                 Model::ComplexModel::Material& cMaterial = model.materials[cTextureUnit.materialIndex];
 
-                u16 materialFlag = *reinterpret_cast<u16*>(&cMaterial.flags) << 1;
+                u16 materialFlag = *reinterpret_cast<u16*>(&cMaterial.flags) << 5;
                 u16 blendingMode = static_cast<u16>(cMaterial.blendingMode) << 11;
 
                 textureUnit.data = static_cast<u16>(cTextureUnit.flags.IsProjectedTexture) | materialFlag | blendingMode;
@@ -1077,15 +1078,9 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                     {
                         textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
                     }
-                    else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
+                    else
                     {
-                        static const u32 defaultSkinHash = "textures/bakednpctextures/creaturedisplayextra-00872.dds"_h;
-                        textureDesc.path = textureSingleton.textureHashToPath[defaultSkinHash];
-                    }
-                    else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
-                    {
-                        static const u32 defaultHairHash = "character/human/female/humanfemalehairlongwavy.dds"_h;
-                        textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
+                        continue;
                     }
 
                     if (textureDesc.path.size() > 0)
@@ -1095,6 +1090,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
                         NC_ASSERT(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
                     }
+
+                    u8 textureSamplerIndex = 0;
+
+                    if (cTexture.flags.wrapX)
+                        textureSamplerIndex |= 0x1;
+                    
+                    if (cTexture.flags.wrapY)
+                        textureSamplerIndex |= 0x2;
+
+                    textureUnit.data |= textureSamplerIndex << (1 + (j * 2));
                 }
             }
 
@@ -1109,12 +1114,15 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             switch (renderBatch.groupID)
             {
                 case 0: // Base
-                case 2: // Bald Head
+                case 1: // Bald Head
+                case 101: // Beard
+                case 201: // Sideburns
+                case 301: // Moustache
                 case 401: // Gloves
                 case 501: // Boots
                 case 702: // Ears
                 case 1301: // Legs
-                case 1501: // Upper Back
+                case 1501: // Cloak
                 //case 1703: // DK Eye Glow (Needs further support to be animated)
                     break;
 
@@ -1194,7 +1202,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelManifestIndex;
 }
 
-u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, const Terrain::Placement& placement)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement)
 {
     vec3 scale = vec3(placement.scale) / 1024.0f;
 
@@ -1203,7 +1211,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, cons
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
     mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
 
-    u32 instanceID = AddInstance(entityID, modelID, instanceMatrix);
+    u32 instanceID = AddInstance(entityID, modelID, model, instanceMatrix);
 
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -1243,7 +1251,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, cons
     return instanceID;
 }
 
-u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, const mat4x4& transformMatrix)
+u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     bool isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
@@ -1364,16 +1372,21 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, const mat4x4&
         }
     }
 
+    if (model && displayID != std::numeric_limits<u32>().max())
+    {
+        ReplaceTextureUnits(modelID, model, instanceID, displayID);
+    }
+
     return instanceID;
 }
 
-void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, const mat4x4& transformMatrix)
+void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
 {
     InstanceData& instanceData = _instanceDatas.Get()[instanceID];
 
     u32 oldModelID = instanceData.modelID;
 
-    if (modelID == oldModelID)
+    if (modelID == oldModelID && displayID == std::numeric_limits<u32>().max())
         return;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1562,6 +1575,391 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
             transparentCullingResources.GetDrawCallDatas().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
         }
     }
+
+    if (model && displayID != std::numeric_limits<u32>().max())
+    {
+        ReplaceTextureUnits(modelID, model, instanceID, displayID);
+    }
+}
+
+void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayID)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
+    auto& textureSingleton = registry->ctx().get<ECS::Singletons::TextureSingleton>();
+    auto* creatureDisplayStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+
+    ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
+    ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
+    if (creatureDisplayStorage)
+    {
+        creatureDisplayInfo = creatureDisplayStorage->GetRow(displayID);
+
+        if (creatureDisplayInfo->extendedDisplayInfoID != 0)
+        {
+            if (auto* creatureDisplayInfoExtraStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(ECS::Singletons::ClientDBHash::CreatureDisplayInfoExtra))
+            {
+                creatureDisplayInfoExtra = creatureDisplayInfoExtraStorage->GetRow(creatureDisplayInfo->extendedDisplayInfoID);
+            }
+        }
+    }
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    bool hasDynamicTextureUnits = false;
+
+    u32 numTextureUnits = 0;
+    for (auto& renderBatch : model->modelData.renderBatches)
+    {
+        numTextureUnits += static_cast<u32>(renderBatch.textureUnits.size());
+
+        if (hasDynamicTextureUnits)
+            continue;
+
+        for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
+        {
+            Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
+
+            for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
+            {
+                u16 textureIndex = model->textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
+                if (textureIndex == 65535)
+                    continue;
+
+                Model::ComplexModel::Texture& cTexture = model->textures[textureIndex];
+
+                switch (cTexture.type)
+                {
+                    case Model::ComplexModel::Texture::Type::Skin:
+                    case Model::ComplexModel::Texture::Type::ObjectSkin:
+                    case Model::ComplexModel::Texture::Type::CharacterHair:
+                    case Model::ComplexModel::Texture::Type::CharacterFacialHair:
+                    case Model::ComplexModel::Texture::Type::SkinExtra:
+                    case Model::ComplexModel::Texture::Type::MonsterSkin1:
+                    case Model::ComplexModel::Texture::Type::MonsterSkin2:
+                    case Model::ComplexModel::Texture::Type::MonsterSkin3:
+                    {
+                        hasDynamicTextureUnits = true;
+                        break;
+                    }
+
+                    default: break;
+                }
+
+                if (hasDynamicTextureUnits)
+                    break;
+            }
+
+            if (hasDynamicTextureUnits)
+                break;
+        }
+    }
+
+    if (!hasDynamicTextureUnits)
+        return;
+
+    u32 numRenderBatches = static_cast<u32>(model->modelData.renderBatches.size());
+    u32 textureTransformLookupTableSize = static_cast<u32>(model->textureTransformLookupTable.size());
+
+    u32 opaqueDrawCallOffset = _instanceIDToOpaqueDrawCallOffset[instanceID];
+    u32 transparentDrawCallOffset = _instanceIDToTransparentDrawCallOffset[instanceID];
+
+    u32 numIteratedOpaqueDrawCalls = 0;
+    u32 numIteratedTransparentDrawCalls = 0;
+
+    // Get the correct culling resources
+    CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = _opaqueCullingResources;
+
+    std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
+    std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+
+    CullingResourcesIndexed<DrawCallData>& transparentCullingResources = _transparentCullingResources;
+
+    std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
+    std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+
+    for (u32 renderBatchIndex = 0; renderBatchIndex < numRenderBatches; renderBatchIndex++)
+    {
+        Model::ComplexModel::RenderBatch& renderBatch = model->modelData.renderBatches[renderBatchIndex];
+
+        u32 textureUnitBaseIndex = _textureUnitIndex.fetch_add(static_cast<u32>(renderBatch.textureUnits.size()));
+        u16 numUnlitTextureUnits = 0;
+
+        for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
+        {
+            // Texture Unit
+            TextureUnit& textureUnit = _textureUnits.Get()[textureUnitBaseIndex + i];
+
+            Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
+            Model::ComplexModel::Material& cMaterial = model->materials[cTextureUnit.materialIndex];
+
+            u16 materialFlag = *reinterpret_cast<u16*>(&cMaterial.flags) << 5;
+            u16 blendingMode = static_cast<u16>(cMaterial.blendingMode) << 11;
+
+            textureUnit.data = static_cast<u16>(cTextureUnit.flags.IsProjectedTexture) | materialFlag | blendingMode;
+            textureUnit.materialType = cTextureUnit.shaderID;
+
+            u16 textureTransformID1 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
+            if (cTextureUnit.textureTransformIndexStart < textureTransformLookupTableSize)
+                textureTransformID1 = model->textureTransformLookupTable[cTextureUnit.textureTransformIndexStart];
+
+            u16 textureTransformID2 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
+            if (cTextureUnit.textureCount > 1)
+                if (cTextureUnit.textureTransformIndexStart + 1u < textureTransformLookupTableSize)
+                    textureTransformID2 = model->textureTransformLookupTable[cTextureUnit.textureTransformIndexStart + 1];
+
+            textureUnit.textureTransformIds[0] = textureTransformID1;
+            textureUnit.textureTransformIds[1] = textureTransformID2;
+
+            numUnlitTextureUnits += (materialFlag & 0x2) > 0;
+
+            // Textures
+            for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
+            {
+                std::scoped_lock lock(_textureLoadMutex);
+
+                Renderer::TextureDesc textureDesc;
+                u16 textureIndex = model->textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
+                if (textureIndex == 65535)
+                    continue;
+
+                Model::ComplexModel::Texture& cTexture = model->textures[textureIndex];
+                u32 textureHash = cTexture.textureHash;
+
+                static auto GetRaceSkinTextureForDisplayID = [](u32 displayID) -> u32
+                {
+                    switch (displayID)
+                    {
+                        case 49: // Human Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
+                        }
+                        case 50: // Human Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-154629.dds"_h;
+                        }
+                        case 51: // Orc Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00111.dds"_h;
+                        }
+                        case 52: // Orc Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00102.dds"_h;
+                        }
+                        case 53: // Dwarf Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-156637.dds"_h;
+                        }
+                        case 54: // Dwarf Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-156636.dds"_h;
+                        }
+                        case 55: // Night Elf Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00405.dds"_h;
+                        }
+                        case 56: // Night Elf Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00404.dds"_h;
+                        }
+                        case 57: // Undead Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00046.dds"_h;
+                        }
+                        case 58: // Undead Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00262.dds"_h;
+                        }
+                        case 59: // Tauren Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-00382.dds"_h;
+                        }
+                        case 60: // Tauren Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-02034.dds"_h;
+                        }
+                        case 1563: // Gnome Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-01202.dds"_h;
+                        }
+                        case 1564: // Gnome Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-01822.dds"_h;
+                        }
+                        case 1478: // Troll Male
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-02639.dds"_h;
+                        }
+                        case 1479: // Troll Female
+                        {
+                            return "textures/bakednpctextures/creaturedisplayextra-01118.dds"_h;
+                        }
+
+                        default: return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
+                    }
+                };
+                static auto GetRaceHairTextureForDisplayID = [](u32 displayID) -> u32
+                {
+                    switch (displayID)
+                    {
+                        case 49: // Human Male
+                        {
+                            return "character/human/hair00_01.dds"_h;
+                        }
+                        case 50: // Human Female
+                        {
+                            return "character/human/hair00_01.dds"_h;
+                        }
+                        case 51: // Orc Male
+                        {
+                            return "character/orc/hair00_00.dds"_h;
+                        }
+                        case 52: // Orc Female
+                        {
+                            return "character/orc/hair00_00.dds"_h;
+                        }
+                        case 53: // Dwarf Male
+                        {
+                            return "character/dwarf/hair00_05.dds"_h;
+                        }
+                        case 54: // Dwarf Female
+                        {
+                            return "character/dwarf/hair00_05.dds"_h;
+                        }
+                        case 55: // Night Elf Male
+                        {
+                            return "character/nightelf/hair00_06.dds"_h;
+                        }
+                        case 56: // Night Elf Female
+                        {
+                            return "character/nightelf/hair00_06.dds"_h;
+                        }
+                        case 57: // Undead Male
+                        {
+                            return "character/scourge/hair00_05.dds"_h;
+                        }
+                        case 58: // Undead Female
+                        {
+                            return "character/scourge/hair00_05.dds"_h;
+                        }
+                        case 59: // Tauren Male
+                        {
+                            return "character/tauren/scalplowerhair00_00.dds"_h;
+                        }
+                        case 60: // Tauren Female
+                        {
+                            return "character/tauren/scalplowerhair00_00.dds"_h;
+                        }
+                        case 1563: // Gnome Male
+                        {
+                            return "character/gnome/hair00_00.dds"_h;
+                        }
+                        case 1564: // Gnome Female
+                        {
+                            return "character/gnome/hair00_00.dds"_h;
+                        }
+                        case 1478: // Troll Male
+                        {
+                            return "character/troll/hair00_07.dds"_h;
+                        }
+                        case 1479: // Troll Female
+                        {
+                            return "character/troll/hair00_07.dds"_h;
+                        }
+
+                        default: return "character/human/hair00_01.dds"_h;
+                    }
+                };
+
+                if (cTexture.type == Model::ComplexModel::Texture::Type::None)
+                {
+                    textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
+                {
+                    u32 skinHash = cTexture.textureHash;
+                    if (creatureDisplayInfoExtra)
+                    {
+                        skinHash = creatureDisplayInfoExtra->bakedTextureHash;
+                    }
+                    else
+                    {
+                        skinHash = GetRaceSkinTextureForDisplayID(displayID);
+                    }
+
+                    textureDesc.path = textureSingleton.textureHashToPath[skinHash];
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
+                {
+                    u32 defaultHairHash = GetRaceHairTextureForDisplayID(displayID);
+                    textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin1)
+                {
+                    if (creatureDisplayInfo)
+                    {
+                        textureHash = creatureDisplayInfo->textureVariations[0];
+                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
+                    }
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin2)
+                {
+                    if (creatureDisplayInfo)
+                    {
+                        textureHash = creatureDisplayInfo->textureVariations[1];
+                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
+                    }
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin3)
+                {
+                    if (creatureDisplayInfo)
+                    {
+                        textureHash = creatureDisplayInfo->textureVariations[2];
+                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
+                    }
+                }
+
+                if (textureDesc.path.size() > 0)
+                {
+                    Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
+                    textureSingleton.textureHashToTextureID[textureHash] = static_cast<Renderer::TextureID::type>(textureID);
+
+                    NC_ASSERT(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : ReplaceTextureUnits overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
+                }
+
+                u8 textureSamplerIndex = 0;
+
+                if (cTexture.flags.wrapX)
+                    textureSamplerIndex |= 0x1;
+
+                if (cTexture.flags.wrapY)
+                    textureSamplerIndex |= 0x2;
+
+                textureUnit.data |= textureSamplerIndex << (1 + (j * 2));
+            }
+        }
+
+        u32& numHandledDrawCalls = (renderBatch.isTransparent) ? numIteratedTransparentDrawCalls : numIteratedOpaqueDrawCalls;
+        u32& drawCallOffset = (renderBatch.isTransparent) ? transparentDrawCallOffset : opaqueDrawCallOffset;
+
+        u32 curDrawCallOffset = drawCallOffset + numHandledDrawCalls;
+
+        DrawCallData& drawCallData = (renderBatch.isTransparent) ? transparentDrawCallDatas[curDrawCallOffset] : opaqueDrawCallDatas[curDrawCallOffset];
+        drawCallData.textureUnitOffset = textureUnitBaseIndex;
+        drawCallData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
+        drawCallData.numUnlitTextureUnits = numUnlitTextureUnits;
+
+        if (renderBatch.isTransparent)
+        {
+            transparentCullingResources.GetDrawCallDatas().SetDirtyElement(curDrawCallOffset);
+        }
+        else
+        {
+            opaqueCullingResources.GetDrawCallDatas().SetDirtyElement(curDrawCallOffset);
+        }
+
+        numHandledDrawCalls++;
+    }
 }
 
 bool ModelRenderer::AddAnimationInstance(u32 instanceID)
@@ -1695,19 +2093,73 @@ void ModelRenderer::CreatePermanentResources()
 
     _renderer->LoadTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
 
-    Renderer::SamplerDesc samplerDesc;
-    samplerDesc.enabled = true;
-    samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
-    samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
-    samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
-    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+    static constexpr u32 NumSamplers = 4;
+    _samplers.reserve(NumSamplers);
 
-    _sampler = _renderer->CreateSampler(samplerDesc);
-    _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
-    _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
-    _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
-    _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_sampler"_h, _sampler);
+    // Sampler Clamp, Clamp
+    {
+        Renderer::SamplerDesc samplerDesc;
+        samplerDesc.enabled = true;
+        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+
+        Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
+        _samplers.push_back(samplerID);
+    }
+
+    // Sampler Wrap, Clamp
+    {
+        Renderer::SamplerDesc samplerDesc;
+        samplerDesc.enabled = true;
+        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
+        samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+
+        Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
+        _samplers.push_back(samplerID);
+    }
+
+    // Sampler Clamp, Wrap
+    {
+        Renderer::SamplerDesc samplerDesc;
+        samplerDesc.enabled = true;
+        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
+        samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+
+        Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
+        _samplers.push_back(samplerID);
+    }
+
+    // Sampler Wrap, Wrap
+    {
+        Renderer::SamplerDesc samplerDesc;
+        samplerDesc.enabled = true;
+        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
+        samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
+        samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+        samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+
+        Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
+        _samplers.push_back(samplerID);
+    }
+
+    for (u32 i = 0; i < NumSamplers; i++)
+    {
+        _opaqueCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
+        _transparentCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
+        _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
+        _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
+        _materialPassDescriptorSet.BindArray("_samplers"_h, _samplers[i], i);
+    }
 
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;

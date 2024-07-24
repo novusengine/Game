@@ -9,6 +9,7 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Include/Editor.inc.hlsl"
 #include "Include/Lighting.inc.hlsl"
 #include "Terrain/Shared.inc.hlsl"
+#include "Model/Shared.inc.hlsl"
 
 // Reenable this in C++ as well
 struct Constants
@@ -269,7 +270,9 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 
         uint isProjectedTexture = textureUnit.data1 & 0x1;
-        uint materialFlags = (textureUnit.data1 >> 1) & 0x3FF;
+        uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
+        uint texture1SamplerIndex = (textureUnit.data1 >> 3) & 0x3;
+        uint materialFlags = (textureUnit.data1 >> 5) & 0x3F;
         uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
 
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
@@ -279,13 +282,13 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         if (materialType == 0x8000)
             continue;
 
-        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_sampler, pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
+        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_samplers[texture0SamplerIndex], pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
         float4 texture1Color = float4(0, 0, 0, 0);
 
         if (vertexShaderId >= 2)
         {
             // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_sampler, pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
+            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
         }
 
         isUnlit |= (materialFlags & 0x1);
@@ -297,6 +300,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Apply lighting
     color.rgb = ApplyLighting(color.rgb, pixelNormal, screenUV, pixelPos, _constants.lightInfo);
     //color = float4(pixelUV0.value, 0, 1);
+    
     return saturate(color);
 }
 

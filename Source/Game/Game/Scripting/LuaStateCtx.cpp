@@ -73,52 +73,53 @@ namespace Scripting
 			const std::any& value = pair.second;
 
 			auto& type = value.type();
-			if (value.type() == typeid(bool))
+
+			if (type == typeid(bool))
 			{
 				auto val = std::any_cast<bool>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(i32))
+			else if (type == typeid(i32))
 			{
 				auto val = std::any_cast<i32>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(u32))
+			else if (type == typeid(u32))
 			{
 				auto val = std::any_cast<u32>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(f32))
+			else if (type == typeid(f32))
 			{
 				auto val = std::any_cast<f32>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(f64))
+			else if (type == typeid(f64))
 			{
 				auto val = std::any_cast<f64>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(vec3))
+			else if (type == typeid(vec3))
 			{
 				auto val = std::any_cast<vec3>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(char*))
+			else if (type == typeid(char*))
 			{
 				auto val = std::any_cast<char*>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(std::string))
+			else if (type == typeid(std::string))
 			{
 				auto val = std::any_cast<std::string>(value);
 				SetGlobal(key.c_str(), val.c_str());
 			}
-			else if (value.type() == typeid(lua_CFunction))
+			else if (type == typeid(lua_CFunction))
 			{
 				auto val = std::any_cast<lua_CFunction>(value);
 				SetGlobal(key.c_str(), val);
 			}
-			else if (value.type() == typeid(LuaTable))
+			else if (type == typeid(LuaTable))
 			{
 				const auto& val = std::any_cast<LuaTable>(value);
 				SetGlobal(key.c_str(), val);
@@ -145,7 +146,7 @@ namespace Scripting
 		return lua_status(_state);
 	}
 
-	void LuaStateCtx::PCall(i32 numResults /*= 0*/, i32 errorfunc /*= 0*/)
+	bool LuaStateCtx::PCall(i32 numResults /*= 0*/, i32 errorfunc /*= 0*/)
 	{
 		u32 numArgs = _pushCounter;
 
@@ -158,6 +159,7 @@ namespace Scripting
 		}
 
 		_pushCounter = 0;
+		return result == LUA_OK;
 	}
 
 	void LuaStateCtx::PushNil(bool incrementPushCounter /*= true*/)
@@ -358,7 +360,7 @@ namespace Scripting
 		return luau_load(_state, chunkName.c_str(), bytecode.c_str(), bytecode.size(), env);
 	}
 
-	i32 LuaStateCtx::Resume(i32 index, lua_State* from)
+	i32 LuaStateCtx::Resume(lua_State* from, i32 index)
 	{
 		return lua_resume(_state, from, index);
 	}

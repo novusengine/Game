@@ -184,6 +184,86 @@ public:
                     break;
                 }
 
+                case ClientDBHash::AnimationData:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::AnimationData>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::CreatureDisplayInfo:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::CreatureDisplayInfo>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::CreatureDisplayInfoExtra:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::CreatureDisplayInfoExtra>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::CreatureModelData:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::CreatureModelData>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::CharSection:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::CharSection>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
                 case ClientDBHash::CameraSave:
                 {
                     auto* db = new ClientDB::Storage<ClientDB::Definitions::CameraSave>(clientDBPair.fileName);

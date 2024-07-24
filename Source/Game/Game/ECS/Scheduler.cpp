@@ -11,6 +11,7 @@
 #include "Game/ECS/Systems/FreeflyingCamera.h"
 #include "Game/ECS/Systems/OrbitalCamera.h"
 #include "Game/ECS/Systems/NetworkConnection.h"
+#include "Game/ECS/Systems/UpdateNetworkedEntity.h"
 #include "Game/ECS/Systems/UpdatePhysics.h"
 #include "Game/ECS/Systems/UpdateScripts.h"
 #include <Game/ECS/Systems/UpdateSkyboxes.h>
@@ -32,6 +33,7 @@ namespace ECS
     void Scheduler::Init(entt::registry& registry)
     {
         Systems::NetworkConnection::Init(registry);
+        Systems::UpdateNetworkedEntity::Init(registry);
         Systems::UpdatePhysics::Init(registry);
         Systems::DrawDebugMesh::Init(registry);
         Systems::FreeflyingCamera::Init(registry);
@@ -51,6 +53,7 @@ namespace ECS
 
         Systems::UpdateAABBs::Update(registry, deltaTime);
         Systems::NetworkConnection::Update(registry, deltaTime);
+        Systems::UpdateNetworkedEntity::Update(registry, deltaTime);
         Systems::CharacterController::Update(registry, deltaTime);
         Systems::FreeflyingCamera::Update(registry, deltaTime);
         Systems::OrbitalCamera::Update(registry, deltaTime);

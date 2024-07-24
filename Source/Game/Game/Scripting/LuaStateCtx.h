@@ -31,7 +31,7 @@ namespace Scripting
 
 		i32 GetStatus();
 
-		void PCall(i32 numResults = 0, i32 errorfunc = 0);
+		bool PCall(i32 numResults = 0, i32 errorfunc = 0);
 
 		void PushNil(bool incrementPushCounter = true);
 		void PushBool(bool value, bool incrementPushCounter = true);
@@ -90,7 +90,7 @@ namespace Scripting
 		void SetTable(const char* key, LuaTable& value, i32 index = -3);
 
 		i32 LoadBytecode(const std::string& chunkName, const std::string& bytecode, i32 env = 0);
-		i32 Resume(i32 index = 0, lua_State* from = nullptr);
+		i32 Resume(lua_State* from = nullptr, i32 index = 0);
 		void MakeReadOnly();
 		void ReportError();
 		void Close();

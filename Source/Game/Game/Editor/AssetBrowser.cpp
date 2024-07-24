@@ -218,12 +218,12 @@ namespace Editor
                 entt::registry::context& ctx = registry.ctx();
 
                 auto& tSystem = ECS::TransformSystem::Get(registry);
-                ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+                auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
                 if (activeCamera.entity == entt::null)
                     return;
 
-                ECS::Components::Transform& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
+                auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
 
                 entt::entity entity = registry.create();
                 registry.emplace<ECS::Components::Name>(entity);

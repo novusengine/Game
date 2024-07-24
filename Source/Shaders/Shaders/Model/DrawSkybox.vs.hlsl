@@ -25,8 +25,20 @@ VSOutput main(VSInput input)
     ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
     ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
     float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+    
+    // Skin this vertex
+    float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertex);
+    float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
 
-    float4 position = float4(vertex.position, 1.0f);
+    // Save the skinned vertex position (in model-space) if this vertex was animated
+    if (instanceData.boneMatrixOffset != 4294967295)
+    {
+        uint localVertexID = input.vertexID - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
+        uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
+
+        StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
+    }
+    
     position = mul(position, instanceMatrix);
 
     float4 UVs = vertex.uv01;

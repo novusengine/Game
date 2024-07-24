@@ -144,9 +144,10 @@ public:
     void Reserve(const ReserveInfo& reserveInfo);
     void FitBuffersAfterLoad();
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, const Terrain::Placement& placement);
-    u32 AddInstance(entt::entity entityID, u32 modelID, const mat4x4& transformMatrix);
-    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, const mat4x4& transformMatrix);
+    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement);
+    u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
+    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
+    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayID);
 
     bool AddAnimationInstance(u32 instanceID);
     bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
@@ -257,7 +258,7 @@ private:
 
     Renderer::TextureArrayID _textures;
 
-    Renderer::SamplerID _sampler;
+    std::vector<Renderer::SamplerID> _samplers;
     Renderer::SamplerID _occlusionSampler;
 
     Renderer::DescriptorSet _materialPassDescriptorSet;

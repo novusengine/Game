@@ -515,7 +515,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     entt::registry* registry = registries->gameRegistry;
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::TextureSingleton& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
+    auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
     ChunkData& chunkData = _chunkDatas.Get()[currentChunkIndex];
 

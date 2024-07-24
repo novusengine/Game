@@ -40,16 +40,15 @@ namespace Editor
         entt::registry& registry = *registries->gameRegistry;
         entt::registry::context& ctx = registry.ctx();
 
-        ActiveCamera& activeCamera = ctx.get<ActiveCamera>();
-        FreeflyingCameraSettings& settings = ctx.get<FreeflyingCameraSettings>();
+        auto& activeCamera = ctx.get<ActiveCamera>();
+        auto& settings = ctx.get<FreeflyingCameraSettings>();
 
-        // Print position
         if (ImGui::Begin(GetName()))
         {
             if (activeCamera.entity != entt::null)
             {
-                ECS::Components::Transform& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
-                ECS::Components::Camera& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
+                auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
+                auto& camera = registry.get<ECS::Components::Camera>(activeCamera.entity);
 
                 quat rotQuat = quat(vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll)));
 

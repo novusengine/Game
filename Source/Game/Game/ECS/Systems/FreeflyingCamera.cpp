@@ -24,8 +24,8 @@ namespace ECS::Systems
     void FreeflyingCamera::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
-        Singletons::ActiveCamera& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.emplace<Singletons::FreeflyingCameraSettings>();
+        auto& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
+        auto& settings = ctx.emplace<Singletons::FreeflyingCameraSettings>();
 
         // Temporarily create a camera here for debugging
         {
@@ -33,10 +33,10 @@ namespace ECS::Systems
             activeCamera.entity = cameraEntity;
             settings.entity = cameraEntity;
 
-            Components::Transform& transform = registry.emplace<Components::Transform>(cameraEntity);
+            auto& transform = registry.emplace<Components::Transform>(cameraEntity);
             TransformSystem::Get(registry).SetLocalPosition(cameraEntity, vec3(0, 10, -10));
 
-            Components::Camera& camera = registry.emplace<Components::Camera>(cameraEntity);
+            auto& camera = registry.emplace<Components::Camera>(cameraEntity);
             camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
             camera.pitch = 30.0f;
         }
@@ -95,16 +95,16 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
+        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        auto& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         if (activeCamera.entity != settings.entity)
             return;
 
         auto& tSystem = ECS::TransformSystem::Get(registry);
 
-        Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
-        Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
+        auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
+        auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
         vec3 cameraOffset = vec3(0.0f, 0.0f, 0.0f);
         // Input
@@ -154,10 +154,10 @@ namespace ECS::Systems
 
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
+        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        auto& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
-        Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
+        auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
         if (settings.captureMouseHasMoved)
         {
@@ -182,7 +182,7 @@ namespace ECS::Systems
     void FreeflyingCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)
     {
         entt::registry::context& ctx = registry.ctx();
-        Singletons::FreeflyingCameraSettings& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
+        auto& settings = ctx.get<Singletons::FreeflyingCameraSettings>();
 
         f32 speed = settings.cameraSpeed;
         speed = speed + ((speed / 10.0f) * position.y);

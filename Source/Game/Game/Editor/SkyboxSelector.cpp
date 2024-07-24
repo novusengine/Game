@@ -127,10 +127,10 @@ namespace Editor
         entt::registry& registry = *registries->gameRegistry;
 
         entt::registry::context& ctx = registry.ctx();
-        ECS::Singletons::Skybox& skybox = ctx.get<ECS::Singletons::Skybox>();
+        auto& skybox = ctx.get<ECS::Singletons::Skybox>();
         std::string loadedSkyboxPath = "NONE";
 
-        ECS::Components::Name& name = registry.get<ECS::Components::Name>(skybox.entity);
+        auto& name = registry.get<ECS::Components::Name>(skybox.entity);
         if (name.fullName != "")
         {
             loadedSkyboxPath = name.fullName;
@@ -242,7 +242,7 @@ namespace Editor
                         {
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-                            ECS::Components::Model& model = registry.get<ECS::Components::Model>(skybox.entity);
+                            auto& model = registry.get<ECS::Components::Model>(skybox.entity);
                             modelLoader->UnloadModelForEntity(skybox.entity, model.modelID);
                         }
 

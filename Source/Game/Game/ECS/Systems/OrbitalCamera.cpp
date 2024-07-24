@@ -1,5 +1,6 @@
 #include "OrbitalCamera.h"
 
+#include "Game/ECS/Components/MovementInfo.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
@@ -33,8 +34,8 @@ namespace ECS::Systems
     void OrbitalCamera::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
-        Singletons::ActiveCamera& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
-        Singletons::OrbitalCameraSettings& settings = ctx.emplace<Singletons::OrbitalCameraSettings>();
+        auto& activeCamera = ctx.emplace<Singletons::ActiveCamera>();
+        auto& settings = ctx.emplace<Singletons::OrbitalCameraSettings>();
 
         // Temporarily create a camera here for debugging
         {
@@ -162,8 +163,8 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-        Singletons::OrbitalCameraSettings& settings = ctx.get<Singletons::OrbitalCameraSettings>();
+        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        auto& settings = ctx.get<Singletons::OrbitalCameraSettings>();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
 
         if (activeCamera.entity != settings.entity)
@@ -171,15 +172,15 @@ namespace ECS::Systems
 
         auto& tSystem = ECS::TransformSystem::Get(registry);
 
-        Components::Transform& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
-        Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
+        auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
+        auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
         settings.cameraZoomProgress += settings.cameraZoomSpeed * deltaTime;
         settings.cameraZoomProgress = glm::clamp(settings.cameraZoomProgress, 0.0f, 1.0f);
         settings.cameraCurrentZoomOffset = glm::mix(settings.cameraCurrentZoomOffset, settings.cameraTargetZoomOffset, settings.cameraZoomProgress);
 
-        Components::Transform& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.entity);
-        Components::Transform& characterModelTransform = registry.get<Components::Transform>(characterSingleton.modelEntity);
+        auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.entity);
+        auto& characterModelTransform = registry.get<Components::Transform>(characterSingleton.modelEntity);
         const mat4x4& characterControllerMatrix = characterControllerTransform.GetMatrix(); // This is the point we want to rotate around
 
         vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll));
@@ -196,12 +197,14 @@ namespace ECS::Systems
 
         if (settings.mouseRightDown)
         {
-            Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
 
             glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
             f32 yaw = glm::radians(camera.yaw);
 
-            characterSingleton.yaw = yaw + glm::pi<f32>();
+            movementInfo.yaw = yaw + glm::pi<f32>();
+            characterSingleton.positionOrRotationIsDirty = true;
         }
 
         tSystem.SetWorldRotation(activeCamera.entity, resultRotation);
@@ -217,10 +220,10 @@ namespace ECS::Systems
 
         entt::registry::context& ctx = registry.ctx();
 
-        Singletons::ActiveCamera& activeCamera = ctx.get<Singletons::ActiveCamera>();
-        Singletons::OrbitalCameraSettings& settings = ctx.get<Singletons::OrbitalCameraSettings>();
+        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+        auto& settings = ctx.get<Singletons::OrbitalCameraSettings>();
 
-        Components::Camera& camera = registry.get<Components::Camera>(activeCamera.entity);
+        auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
         if (settings.captureMouseHasMoved)
         {
@@ -245,11 +248,12 @@ namespace ECS::Systems
     void OrbitalCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)
     {
         entt::registry::context& ctx = registry.ctx();
-        Singletons::CharacterSingleton& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
 
-        f32 speed = characterSingleton.speed;
+        f32 speed = movementInfo.speed;
         speed = speed + ((speed / 20.0f) * position.y);
         speed = glm::max(speed, 7.1111f);
-        characterSingleton.speed = speed;
+        movementInfo.speed = speed;
     }
 }

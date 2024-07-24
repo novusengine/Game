@@ -10,6 +10,7 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Memory/FileReader.h>
+#include <Base/Util/DebugHandler.h>
 
 #include <Luau/Compiler.h>
 #include <lualib.h>
@@ -25,7 +26,7 @@ AutoCVar_String CVAR_ScriptMotd(CVarCategory::Client, "scriptingMotd", "defines 
 
 namespace Scripting
 {
-    LuaManager::LuaManager() : _state(nullptr)
+    LuaManager::LuaManager() : _internalState(nullptr), _publicState(nullptr)
     {
         _luaHandlers.reserve(16);
         _luaSystems.reserve(16);
@@ -41,13 +42,13 @@ namespace Scripting
 
         if (LoadScripts())
         {
-            RegisterLuaSystem(new GenericSystem(2));
+            RegisterLuaSystem(new GenericSystem());
 
             LuaGameEventLoadedData eventData;
             eventData.motd = CVAR_ScriptMotd.Get();
 
             auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-            gameEventHandler->CallEvent(_state, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
+            gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
         }
     }
 
@@ -66,7 +67,7 @@ namespace Scripting
                 eventData.motd = CVAR_ScriptMotd.Get();
 
                 auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-                gameEventHandler->CallEvent(_state, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
+                gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
             }
 
             isDirty = result;
@@ -78,43 +79,28 @@ namespace Scripting
         {
             LuaSystemBase* luaSystem = _luaSystems[i];
 
-            u32 numStates = static_cast<u32>(luaSystem->_states.size());
-            if (numStates == 0)
-                continue;
-
             if (isDirty)
             {
                 luaSystem->PushEvent(LuaSystemEvent::Reload);
             }
 
-            luaSystem->Update(deltaTime);
-            luaSystem->Prepare(deltaTime);
+            luaSystem->Prepare(deltaTime, _internalState);
+            luaSystem->Update(deltaTime, _internalState);
 
             scheduler->WaitforAll();
 
-            for (u32 j = 0; j < numStates; j++)
+            u32 numTasks = static_cast<u32>(_tasks.size());
+
+            for (enki::TaskSet* task : _tasks)
             {
-                if (_tasks.size() <= j)
-                {
-                    _tasks.push_back(new enki::TaskSet(nullptr));
-                }
-
-                enki::TaskSet* task = task = _tasks[j];
-                task->m_Function = [&luaSystem, deltaTime, j](enki::TaskSetPartition range, uint32_t threadNum)
-                {
-                    luaSystem->Run(deltaTime, j);
-                };
-
-                scheduler->AddTaskSetToPipe(task);
+                luaSystem->Run(deltaTime, _internalState);
             }
         }
-
-        scheduler->WaitforAll();
     }
 
     bool LuaManager::DoString(const std::string& code)
     {
-        LuaStateCtx ctx(_state);
+        LuaStateCtx ctx(_internalState);
 
         Luau::CompileOptions compileOptions;
         {
@@ -132,14 +118,10 @@ namespace Scripting
         if (result != LUA_OK)
         {
             ctx.ReportError();
+            return false;
         }
         
-        result = ctx.Resume();
-        if (result != LUA_OK)
-        {
-            ctx.ReportError();
-        }
-
+        result = ctx.PCall(0, 0);
         return result == LUA_OK;
     }
 
@@ -264,15 +246,15 @@ namespace Scripting
 
         if (!didFail)
         {
-            if (_state != nullptr)
+            if (_internalState != nullptr)
             {
-                gameEventHandler->ClearEvents(_state);
+                gameEventHandler->ClearEvents(_internalState);
 
-                LuaStateCtx oldCtx(_state);
+                LuaStateCtx oldCtx(_internalState);
                 oldCtx.Close();
             }
 
-            _state = ctx.GetState();
+            _internalState = ctx.GetState();
         }
         else
         {

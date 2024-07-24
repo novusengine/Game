@@ -72,7 +72,8 @@ namespace Scripting
 		const LuaTable& GetGlobalTable() { return _globalTable; }
 
 	private:
-		lua_State* _state;
+		lua_State* _internalState;
+		lua_State* _publicState;
 
 		std::vector<LuaHandlerBase*> _luaHandlers;
 		std::vector<LuaSystemBase*> _luaSystems;

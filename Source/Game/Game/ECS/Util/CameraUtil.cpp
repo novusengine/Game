@@ -22,9 +22,9 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
-            ECS::Singletons::FreeflyingCameraSettings& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
-            ECS::Singletons::OrbitalCameraSettings& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
+            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+            auto& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+            auto& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
 
             if (activeCamera.entity == freeFlyingCameraSettings.entity)
             {
@@ -57,13 +57,13 @@ namespace ECS::Util
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
-            ECS::Singletons::ActiveCamera& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
             if (activeCamera.entity == entt::null)
                 return;
 
-            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
-            ECS::Components::Camera& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
+            auto& transform = registry->get<ECS::Components::Transform>(activeCamera.entity);
+            auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
 
             f32 fovInRadians = glm::radians(camera.fov) / sqrt(1.0f + (camera.aspectRatio * camera.aspectRatio));
 

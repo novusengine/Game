@@ -4,6 +4,7 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Components/Name.h"
+#include "Game/ECS/Components/NetworkedEntity.h"
 #include "Game/ECS/Components/Model.h"
 #include "Game/ECS/Singletons/Skybox.h"
 #include "Game/ECS/Util/Transforms.h"
@@ -29,6 +30,7 @@
 #include <filesystem>
 #include <mutex>
 #include <vector>
+#include <Game/ECS/Singletons/ClientDBCollection.h>
 
 namespace fs = std::filesystem;
 
@@ -129,7 +131,7 @@ void ModelLoader::Init()
         if (_nameHashToDiscoveredModel.contains(discoveredModel.nameHash))
         {
             const DiscoveredModel& existingDiscoveredModel = _nameHashToDiscoveredModel[discoveredModel.nameHash];
-            NC_LOG_ERROR("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name.c_str(), discoveredModel.name.c_str());
+            NC_LOG_ERROR("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name, discoveredModel.name);
         }
 
         _nameHashToDiscoveredModel[discoveredModel.nameHash] = discoveredModel;
@@ -221,7 +223,7 @@ void ModelLoader::Clear()
     _createdEntities.clear();
 
     entt::registry::context& ctx = registry->ctx();
-    ECS::Singletons::Skybox& skybox = ctx.get<ECS::Singletons::Skybox>();
+    auto& skybox = ctx.get<ECS::Singletons::Skybox>();
     registry->get<ECS::Components::Model>(skybox.entity).instanceID = std::numeric_limits<u32>::max();
 }
 
@@ -413,6 +415,8 @@ void ModelLoader::Update(f32 deltaTime)
                     reserveInfo.numTextureTransforms += discoveredModel.modelHeader.numTextureTransforms * isSupported;
                 }
 
+                bool hasDisplayID = request.displayID != std::numeric_limits<u32>().max();
+
                 if (!_nameHashToLoadState.contains(nameHash))
                 {
                     _nameHashToLoadState[nameHash] = LoadState::Received;
@@ -422,10 +426,16 @@ void ModelLoader::Update(f32 deltaTime)
                     reserveInfo.numModels++;
                     reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
                     reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
-                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
+                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits + (discoveredModel.modelHeader.numTextureUnits * hasDisplayID) * isSupported;
+                    reserveInfo.numDecorationSets += discoveredModel.modelHeader.numDecorationSets * isSupported;
+                    reserveInfo.numDecorations += discoveredModel.modelHeader.numDecorations * isSupported;
 
                     reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
                     reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+                }
+                else
+                {
+                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported * hasDisplayID;
                 }
             }
 
@@ -486,24 +496,22 @@ void ModelLoader::Update(f32 deltaTime)
                 AddDynamicInstance(request.entity, request);
             }
 
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            mat4x4 identity = mat4x4(1.0f);
-
-            for (u32 dynamicRequestID : unloadRequests)
-            {
-                LoadRequestInternal& request = _dynamicLoadRequests[dynamicRequestID];
-
-                ECS::Components::Model& model = registry->get<ECS::Components::Model>(request.entity);
-
-                if (model.modelID != request.placement.uniqueID)
-                    continue;
-
-                _modelRenderer->ModifyInstance(request.entity, model.instanceID, std::numeric_limits<u32>().max(), identity);
-            }
-
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
             animationSystem->FitToBuffersAfterLoad();
+        }
+    }
+
+    size_t unloadRequests = _unloadRequests.size_approx();
+    if (unloadRequests)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        mat4x4 identity = mat4x4(1.0f);
+
+        UnloadRequest unloadRequest;
+        while (_unloadRequests.try_dequeue(unloadRequest))
+        {
+            _modelRenderer->ModifyInstance(unloadRequest.entity, unloadRequest.instanceID, std::numeric_limits<u32>().max(), nullptr, identity);
         }
     }
 }
@@ -560,14 +568,42 @@ void ModelLoader::LoadModelForEntity(entt::entity entity, u32 modelNameHash)
     _dynamicRequests.enqueue(loadRequest);
 }
 
-void ModelLoader::UnloadModelForEntity(entt::entity entity, u32 modelID)
+bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, u32 displayID)
 {
     LoadRequestInternal loadRequest;
     loadRequest.entity = entity;
-    loadRequest.placement.uniqueID = modelID;
-    loadRequest.placement.nameHash = std::numeric_limits<u32>().max();
+    loadRequest.displayID = displayID;
 
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
+    auto* creatureDisplayInfoStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+    auto* creatureModelDataStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureModelData>(ECS::Singletons::ClientDBHash::CreatureModelData);
+
+    if (!creatureDisplayInfoStorage || !creatureModelDataStorage)
+        return false;
+
+    const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = creatureDisplayInfoStorage->GetRow(displayID);
+    if (!creatureDisplayInfo)
+        return false;
+
+    const ClientDB::Definitions::CreatureModelData* creatureModelData = creatureModelDataStorage->GetRow(creatureDisplayInfo->modelID);
+    if (!creatureModelData)
+        return false;
+
+    loadRequest.placement.nameHash = creatureModelData->modelHash;
     _dynamicRequests.enqueue(loadRequest);
+    return true;
+}
+
+void ModelLoader::UnloadModelForEntity(entt::entity entity, u32 instanceID)
+{
+    UnloadRequest unloadRequest =
+    {
+        .entity = entity,
+        .instanceID = instanceID
+    };
+
+    _unloadRequests.enqueue(unloadRequest);
 }
 
 u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
@@ -703,22 +739,22 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
     tSystem.SetLocalTransform(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));
 
-    ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
+    auto& name = registry->get<ECS::Components::Name>(entityID);
     DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
     name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
     name.fullName = discoveredModel.name;
     name.nameHash = discoveredModel.nameHash;
 
     u32 modelID = _nameHashToModelID[request.placement.nameHash];
-    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, request.placement);
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.placement);
 
-    ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
+    auto& model = registry->get<ECS::Components::Model>(entityID);
     model.modelID = modelID;
     model.instanceID = instanceID;
 
     const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
 
-    ECS::Components::AABB& aabb = registry->get<ECS::Components::AABB>(entityID);
+    auto& aabb = registry->get<ECS::Components::AABB>(entityID);
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
@@ -738,7 +774,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
 
-        if (physicsEnabled && !hasParent)
+        if (physicsEnabled)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
@@ -748,7 +784,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
             // TODO: We need to scale the shape
 
-            ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+            auto& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
             const quat& rotation = transform.GetWorldRotation();
 
@@ -760,13 +796,16 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
+
+                // Store the entity ID in the body so we can look it up later
+                body->SetUserData(static_cast<JPH::uint64>(entityID));
+
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
                 _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
             }
         }
     }
 
-    /* Commented out on purpose to be dealt with at a later date when we have reimplemented GPU side animations */
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     if (animationSystem->AddInstance(modelID, instanceID))
     {
@@ -779,34 +818,37 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
+    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
-    ECS::Components::Name& name = registry->get<ECS::Components::Name>(entityID);
+    auto& name = registry->get<ECS::Components::Name>(entityID);
     name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
     name.fullName = discoveredModel.name;
     name.nameHash = discoveredModel.nameHash;
 
-    ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
+    auto& model = registry->get<ECS::Components::Model>(entityID);
 
     u32 modelID = _nameHashToModelID[request.placement.nameHash];
+    Model::ComplexModel* complexModel = _modelIDToComplexModel[modelID];
     u32 instanceID = model.instanceID;
 
-    ECS::Components::Transform& transform = registry->get<ECS::Components::Transform>(entityID);
+    auto& transform = registry->get<ECS::Components::Transform>(entityID);
     if (instanceID == std::numeric_limits<u32>().max())
     {
-        instanceID = _modelRenderer->AddInstance(entityID, modelID, transform.GetMatrix());
+        instanceID = _modelRenderer->AddInstance(entityID, modelID, complexModel, transform.GetMatrix(), request.displayID);
     }
     else
     {
-        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, transform.GetMatrix());
+        animationSystem->RemoveInstance(instanceID);
+        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, complexModel, transform.GetMatrix(), request.displayID);
     }
 
     model.modelID = modelID;
     model.instanceID = instanceID;
 
     const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
-    ECS::Components::AABB& aabb = registry->get<ECS::Components::AABB>(entityID);
+    auto& aabb = registry->get<ECS::Components::AABB>(entityID);
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
@@ -814,7 +856,49 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     _instanceIDToModelID[instanceID] = modelID;
     _instanceIDToEntityID[instanceID] = entityID;
 
-    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+    if (discoveredModel.hasShape)
+    {
+        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
+
+        if (physicsEnabled && registry->all_of<ECS::Components::NetworkedEntity>(entityID))
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+            JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+
+            const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
+
+            // TODO: We need to scale the shape
+
+            auto& transform = registry->get<ECS::Components::Transform>(entityID);
+            vec3 position = transform.GetWorldPosition();
+            const quat& rotation = transform.GetWorldRotation();
+
+            // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
+            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3(2.0f, 1.0f, 0.5f)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Kinematic, Jolt::Layers::NON_MOVING);
+            bodySettings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
+            bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
+            bodySettings.mMassPropertiesOverride.mMass = 1000.0f;
+            bodySettings.mIsSensor = true;
+
+            // Create the actual rigid body
+            JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            if (body)
+            {
+                JPH::BodyID bodyID = body->GetID();
+
+                auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(entityID);
+                networkedEntity.bodyID = bodyID.GetIndexAndSequenceNumber();
+
+                // Store the entity ID in the body so we can look it up later
+                body->SetUserData(static_cast<JPH::uint64>(entityID));
+
+                bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+                _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+            }
+        }
+    }
+
     if (animationSystem->AddInstance(modelID, instanceID))
     {
         animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop);

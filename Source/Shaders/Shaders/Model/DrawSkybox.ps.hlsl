@@ -4,8 +4,7 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
 #include "Model/Shared.inc.hlsl"
-
-[[vk::binding(10, MODEL)]] SamplerState _sampler;
+#include "Include/OIT.inc.hlsl"
 
 struct PSInput
 {
@@ -16,7 +15,8 @@ struct PSInput
 
 struct PSOutput
 {
-    float4 color : SV_Target0;
+    float4 transparency : SV_Target0;
+    float4 transparencyWeight : SV_Target1;
 };
 
 PSOutput main(PSInput input)
@@ -35,6 +35,8 @@ PSOutput main(PSInput input)
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 
         uint isProjectedTexture = textureUnit.data1 & 0x1;
+        uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
+        uint texture1SamplerIndex = (textureUnit.data1 >> 3) & 0x3;
         uint materialFlags = (textureUnit.data1 >> 1) & 0x3FF;
         uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
 
@@ -45,13 +47,13 @@ PSOutput main(PSInput input)
         if (materialType == 0x8000)
             continue;
 
-        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_sampler, input.uv01.xy);
+        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_samplers[texture0SamplerIndex], input.uv01.xy);
         float4 texture1Color = float4(1, 1, 1, 1);
 
         if (vertexShaderId > 2)
         {
             // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_sampler, input.uv01.zw);
+            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_samplers[texture1SamplerIndex], input.uv01.zw);
         }
 
         float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
@@ -75,9 +77,13 @@ PSOutput main(PSInput input)
 
     float biggestComponent = max(color.x, max(color.y, color.z));
     color.a = biggestComponent * (blendingMode == 4) + color.a * (blendingMode != 4);
-
+    
+    float oitDepth = input.position.z / input.position.w;
+    float oitWeight = CalculateOITWeight(color, oitDepth);
+    
     PSOutput output;
-    output.color = color;
+    output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;
+    output.transparencyWeight.a = color.a;
 
     return output;
 }

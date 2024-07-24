@@ -6,7 +6,9 @@
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/EngineStats.h"
 #include "Game/ECS/Singletons/MapDB.h"
+#include "Game/ECS/Singletons/NetworkState.h"
 #include "Game/ECS/Singletons/RenderState.h"
+#include "Game/ECS/Util/CharSectionUtil.h"
 #include "Game/ECS/Util/MapUtil.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Gameplay/GameConsole/GameConsole.h"
@@ -24,6 +26,8 @@
 #include <Base/Util/JsonUtils.h>
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/CPUInfo.h>
+
+#include <Network/Client.h>
 
 #include <enkiTS/TaskScheduler.h>
 #include <entt/entt.hpp>
@@ -86,6 +90,14 @@ void Application::Stop()
 
 void Application::Cleanup()
 {
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry::context& ctx = registry->ctx();
+    auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        networkState.client->Close();
+    }
+
     i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
     if (clientDBSaveMethod == 2)
     {
@@ -117,10 +129,10 @@ void Application::Run()
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::registry::context& ctx = registry->ctx();
 
-        ECS::Singletons::RenderState& renderState = ctx.get<ECS::Singletons::RenderState>();
-        ECS::Singletons::EngineStats& engineStats = ctx.get<ECS::Singletons::EngineStats>();
+        auto& renderState = ctx.get<ECS::Singletons::RenderState>();
+        auto& engineStats = ctx.get<ECS::Singletons::EngineStats>();
 
-        ECS::Singletons::FrameTimes timings;		
+        ECS::Singletons::FrameTimes timings;
         while (true)
         {
             f32 deltaTime = timer.GetDeltaTime();
@@ -263,7 +275,7 @@ bool Application::Init()
         using namespace ECS::Singletons;
 
         entt::registry::context& ctx = _registries.gameRegistry->ctx();
-        ClientDBCollection& clientDBCollection = ctx.get<ClientDBCollection>();
+        auto& clientDBCollection = ctx.get<ClientDBCollection>();
 
         clientDBCollection.Register<ClientDB::Definitions::Map>(ClientDBHash::Map, "Map");
         clientDBCollection.Register<ClientDB::Definitions::LiquidObject>(ClientDBHash::LiquidObject, "LiquidObject");
@@ -273,6 +285,11 @@ bool Application::Init()
         clientDBCollection.Register<ClientDB::Definitions::CinematicSequence>(ClientDBHash::CinematicSequence, "CinematicSequence");
         clientDBCollection.Register<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave, "CameraSave");
         clientDBCollection.Register<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor, "Cursor");
+        clientDBCollection.Register<ClientDB::Definitions::AnimationData>(ClientDBHash::AnimationData, "AnimationData");
+        clientDBCollection.Register<ClientDB::Definitions::CreatureDisplayInfo>(ClientDBHash::CreatureDisplayInfo, "CreatureDisplayInfo");
+        clientDBCollection.Register<ClientDB::Definitions::CreatureDisplayInfoExtra>(ClientDBHash::CreatureDisplayInfoExtra, "CreatureDisplayInfoExtra");
+        clientDBCollection.Register<ClientDB::Definitions::CreatureModelData>(ClientDBHash::CreatureModelData, "CreatureModelData");
+        clientDBCollection.Register<ClientDB::Definitions::CharSection>(ClientDBHash::CharSection, "CharSection");
 
         _registries.gameRegistry->ctx().emplace<MapDB>();
         ECS::Util::Map::Refresh();
@@ -379,6 +396,8 @@ bool Application::Init()
                 cursors->SetDirty();
             }
         }
+
+        ECS::Util::CharSection::RefreshData(*_registries.gameRegistry);
     }
 
     // Init AnimationSystem

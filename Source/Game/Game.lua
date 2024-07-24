@@ -52,6 +52,6 @@ Solution.Util.CreateConsoleApp(gameAppMod.Name, Solution.Projects.Current.BinDir
             "**.ico"
         }
         Solution.Util.SetFiles(appIconFiles)
-        vpaths { ['Resources/*'] = { '*.rc', '**.ico' } }
+        vpaths { ['Resources/**'] = { '*.rc', '**.ico' } }
     end)
 end)

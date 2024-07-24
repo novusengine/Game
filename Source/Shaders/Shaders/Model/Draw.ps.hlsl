@@ -7,8 +7,6 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "Model/Shared.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
 
-[[vk::binding(10, MODEL)]] SamplerState _sampler;
-
 struct PSInput
 {
     uint drawID : TEXCOORD0;
@@ -41,20 +39,22 @@ PSOutput main(PSInput input)
 
         if (blendingMode != 1) // ALPHA KEY
             continue;
-
+        
+        uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
+        uint texture1SamplerIndex = (textureUnit.data1 >> 3) & 0x3;
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
 
         if (materialType == 0x8000)
             continue;
 
-        float4 texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_sampler, input.uv01.xy);
+        float4 texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_samplers[texture0SamplerIndex], input.uv01.xy);
         float4 texture2 = float4(1, 1, 1, 1);
 
         uint vertexShaderId = materialType & 0xFF;
         if (vertexShaderId > 2)
         {
             // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture2 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_sampler, input.uv01.zw);
+            texture2 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_samplers[texture1SamplerIndex], input.uv01.zw);
         }
 
         // Experimental alphakey discard without shading, if this has issues check github history for cModel.ps.hlsl

@@ -1482,7 +1482,7 @@ namespace Animation
         std::vector<AnimationSkeletonTextureTransform> textureTransforms;
 
         robin_hood::unordered_map<Type, u16> animationIDToFirstSequenceID;
-        robin_hood::unordered_map<u16, i16> keyBoneIDToBoneID;
+        robin_hood::unordered_map<u16, i16> keyBoneIDToBoneIndex;
     };
 
     enum class AnimationPlayState : u32
@@ -1562,14 +1562,17 @@ namespace Animation
     {
     public:
         AnimationSystem(ModelRenderer* modelRenderer);
+        
+        bool IsEnabled();
 
         bool HasSkeleton(ModelID modelID) { return _storage.skeletons.contains(modelID); }
         bool AddSkeleton(ModelID modelID, Model::ComplexModel& model);
 
         bool HasInstance(InstanceID instanceID) { return _storage.instanceIDToData.contains(instanceID); }
         bool AddInstance(ModelID modelID, InstanceID instanceID);
+        bool RemoveInstance(InstanceID instanceID);
 
-        bool GetCurrentAnimation(InstanceID instanceID, Bone bone, Type* primary, Type* sequence = nullptr);
+        bool GetCurrentAnimation(InstanceID instanceID, Bone bone, AnimationSequenceState* primary, AnimationSequenceState* sequence = nullptr);
         bool IsPlaying(InstanceID instanceID, Bone bone, Type animationID);
         u32 GetSequenceIDForAnimationID(ModelID modelID, Type animationID);
 

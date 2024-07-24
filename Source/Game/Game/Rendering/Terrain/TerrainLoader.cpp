@@ -328,11 +328,17 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
                     // Create the actual rigid body
                     JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
-                    body->SetFriction(0.8f);
 
-                    JPH::BodyID bodyID = body->GetID();
-                    bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-                    _chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
+                    if (body)
+                    {
+                        body->SetUserData(std::numeric_limits<JPH::uint64>().max());
+                        body->SetFriction(0.8f);
+
+                        JPH::BodyID bodyID = body->GetID();
+
+                        bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
+                        _chunkIDToBodyID[chunkID] = bodyID.GetIndexAndSequenceNumber();
+                    }
                 }
 
                 // Load into Terrain Renderer
