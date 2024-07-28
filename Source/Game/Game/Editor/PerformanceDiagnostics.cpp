@@ -74,7 +74,7 @@ namespace Editor
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-            u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
 
             ImGui::Spacing();
 
@@ -586,9 +586,10 @@ namespace Editor
         u32 viewDrawCalls = 0;
         u32 viewDrawCallsSurvived = 0;
 
-        bool viewSupportsOcclusionCulling = viewID == 0; // Only main view supports occlusion culling so far
+        bool viewSupportsTerrainOcclusionCulling = true;
+        bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
-        bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
+        bool viewRendersTerrainCulling = true;
         bool viewRendersOpaqueModelsCulling = true;
         bool viewRendersTransparentModelsCulling = viewID == 0; // Only main view supports transparent cmodel culling so far
         bool viewRendersLiquidCulling = viewID == 0; // Only main view supports mapObjectgs culling so far
@@ -601,9 +602,9 @@ namespace Editor
             viewDrawCalls += drawCalls;
 
             // Occluders
-            if (viewSupportsOcclusionCulling)
+            if (viewSupportsTerrainOcclusionCulling)
             {
-                u32 drawCallsSurvived = terrainRenderer->GetNumOccluderDrawCalls();
+                u32 drawCallsSurvived = terrainRenderer->GetNumOccluderDrawCalls(viewID);
                 DrawCullingStatsEntry("Terrain Occluders", drawCalls, drawCallsSurvived);
                 viewDrawCallsSurvived += drawCallsSurvived;
             }
@@ -620,33 +621,35 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Model (O)", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // Transparent Models
         if (viewRendersTransparentModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // Liquid
         if (viewRendersLiquidCulling)
         {
             CullingResourcesBase& cullingResources = liquidRenderer->GetCullingResources();
-            DrawCullingResourcesDrawCalls("Liquid", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Liquid", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
         // Jolt Debug
         if (viewRendersJoltDebug)
         {
             CullingResourcesBase& indexedCullingResources = joltDebugRenderer->GetIndexedCullingResources();
-            DrawCullingResourcesDrawCalls("Jolt Debug Indexed", viewID, indexedCullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Jolt Debug Indexed", viewID, indexedCullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
 
             CullingResourcesBase& cullingResources = joltDebugRenderer->GetCullingResources();
-            DrawCullingResourcesDrawCalls("Jolt Debug", viewID, cullingResources, viewSupportsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
+            DrawCullingResourcesDrawCalls("Jolt Debug", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
+        ImGui::Separator();
+        ImGui::Separator();
 
         // If showDrawcalls we always want to draw Total, if we are collapsed it will go on the collapsable header
         //DrawCullingStatsEntry("View Total", viewDrawCalls, viewDrawCallsSurvived, !showView);
@@ -692,7 +695,8 @@ namespace Editor
         u32 viewTriangles = 0;
         u32 viewTrianglesSurvived = 0;
 
-        bool viewSupportsOcclusionCulling = viewID == 0; // Only main view supports occlusion culling so far
+        bool viewSupportsTerrainOcclusionCulling = true;
+        bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far
         bool viewRendersOpaqueModelsCulling = true;
@@ -707,9 +711,9 @@ namespace Editor
             viewTriangles += triangles;
 
             // Occluders
-            if (viewSupportsOcclusionCulling)
+            if (viewSupportsTerrainOcclusionCulling)
             {
-                u32 trianglesSurvived = terrainRenderer->GetNumOccluderTriangles();
+                u32 trianglesSurvived = terrainRenderer->GetNumOccluderTriangles(viewID);
                 DrawCullingStatsEntry("Terrain Occluders", triangles, trianglesSurvived);
                 viewTrianglesSurvived += trianglesSurvived;
             }
@@ -726,31 +730,31 @@ namespace Editor
         if (viewRendersOpaqueModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetOpaqueCullingResources();
-            DrawCullingResourcesTriangle("Model (O)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (O)", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Transparent Models
         if (viewRendersTransparentModelsCulling)
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
-            DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Liquid
         if (viewRendersLiquidCulling)
         {
             CullingResourcesBase& cullingResources = liquidRenderer->GetCullingResources();
-            DrawCullingResourcesTriangle("Liquid", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Liquid", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // Jolt Debug
         if (viewRendersJoltDebug)
         {
             CullingResourcesBase& indexedCullingResources = joltDebugRenderer->GetIndexedCullingResources();
-            DrawCullingResourcesTriangle("Jolt Debug Indexed", viewID, indexedCullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Jolt Debug Indexed", viewID, indexedCullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
 
             CullingResourcesBase& cullingResources = joltDebugRenderer->GetCullingResources();
-            DrawCullingResourcesTriangle("Jolt Debug", viewID, cullingResources, true, viewSupportsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+            DrawCullingResourcesTriangle("Jolt Debug", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
         }
 
         // If showTriangles we always want to draw Total, if we are collapsed it will go on the collapsable header

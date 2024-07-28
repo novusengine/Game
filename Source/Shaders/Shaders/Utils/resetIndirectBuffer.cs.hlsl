@@ -9,7 +9,7 @@ struct IndirectArguments
 
 struct Constants
 {
-    bool moveCountToFirst;
+    uint moveCountToFirst;
 };
 
 [[vk::push_constant]] Constants _constants;

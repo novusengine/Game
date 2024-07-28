@@ -14,6 +14,8 @@
 
 AutoCVar_Int CVAR_CameraLockCullingFrustum(CVarCategory::Client | CVarCategory::Rendering, "cameraLockCullingFrustum", "Lock the frustum used for culling", 0, CVarFlags::EditCheckbox);
 
+AutoCVar_Float CVAR_CameraFarClip(CVarCategory::Client | CVarCategory::Rendering, "cameraFarClip", "The far clip distance of the camera", 2500.0f);
+
 namespace ECS::Systems
 {
     inline vec4 EncodePlane(vec3 position, vec3 normal)
@@ -34,6 +36,7 @@ namespace ECS::Systems
         auto view = registry.view<Components::Transform, Components::Camera>();
         view.each([&](entt::entity e, Components::Transform& transform, Components::Camera& camera)
         {
+            camera.farClip = CVAR_CameraFarClip.GetFloat();
             if (e != activeCamera.entity)
             {
                 // TODO: Multiple cameras (picture-in-picture I guess?) would need to change this

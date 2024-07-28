@@ -49,12 +49,12 @@ public:
 
 	// Drawcall stats
 	u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded; }
-	u32 GetNumOccluderDrawCalls() { return _numOccluderDrawCalls; }
+	u32 GetNumOccluderDrawCalls(u32 viewID) { return _numOccluderDrawCalls[viewID]; }
 	u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
 
 	// Triangle stats
 	u32 GetNumTriangles() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded * Terrain::CELL_NUM_TRIANGLES; }
-	u32 GetNumOccluderTriangles() { return _numOccluderDrawCalls * Terrain::CELL_NUM_TRIANGLES; }
+	u32 GetNumOccluderTriangles(u32 viewID) { return _numOccluderDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
 	u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return _numSurvivingDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
 
 private:
@@ -65,7 +65,7 @@ private:
 	struct DrawParams
 	{
 		bool shadowPass = false;
-		u32 shadowCascade = 0;
+		u32 viewIndex = 0;
 		bool cullingEnabled = false;
 
 		Renderer::ImageMutableResource visibilityBuffer;
@@ -80,6 +80,21 @@ private:
 		u32 argumentsIndex = 0;
 	};
 	void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, DrawParams& params);
+
+	struct FillDrawCallsParams
+	{
+		std::string passName;
+
+		u32 cellCount;
+		u32 viewIndex;
+		bool diffAgainstPrev = false;
+
+		Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
+		Renderer::BufferMutableResource prevCulledInstanceBitMaskBuffer;
+
+		Renderer::DescriptorSetResource fillSet;
+	};
+	void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);
 
 private:
 	PRAGMA_NO_PADDING_START
@@ -136,7 +151,8 @@ private:
 	Renderer::BufferID _drawCountReadBackBuffer;
 	
 	FrameResource<Renderer::BufferID, 2> _culledInstanceBitMaskBuffer;
-	Renderer::BufferID _culledInstanceBuffer[Renderer::Settings::MAX_VIEWS];
+	u32 _culledInstanceBitMaskBufferSizePerView = 0;
+	Renderer::BufferID _culledInstanceBuffer;
 
 	Renderer::TextureArrayID _textures;
 	Renderer::TextureArrayID _alphaTextures;
@@ -145,7 +161,7 @@ private:
 	Renderer::SamplerID _alphaSampler;
 	Renderer::SamplerID _occlusionSampler;
 
-	Renderer::DescriptorSet _occluderFillPassDescriptorSet;
+	Renderer::DescriptorSet _fillPassDescriptorSet;
 	Renderer::DescriptorSet _cullingPassDescriptorSet;
 	Renderer::DescriptorSet _geometryPassDescriptorSet;
 	Renderer::DescriptorSet _materialPassDescriptorSet;
@@ -155,7 +171,7 @@ private:
 
 	std::atomic<u32> _numChunksLoaded = 0;
 
-	u32 _numOccluderDrawCalls = 0;
+	u32 _numOccluderDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
 	u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
 	
 	std::shared_mutex _packedChunkCellIDToGlobalCellIDMutex;

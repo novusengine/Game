@@ -1,6 +1,6 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "Include/VisibilityBuffers.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
 {

@@ -17,10 +17,12 @@
 
 AutoCVar_Int CVAR_ShadowsStable(CVarCategory::Client | CVarCategory::Rendering, "shadowStable", "stable shadows", 1, CVarFlags::EditCheckbox);
 
-//AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
+AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
 AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.5f);
 
 AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side)", 4096);
+
+AutoCVar_VecFloat CVAR_DirectionalLightDirection(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection", "direction of the directional light", glm::vec4(0.0f, 1.0f, -1.0f, 0.0f));
 
 namespace ECS::Systems
 {
@@ -38,32 +40,38 @@ namespace ECS::Systems
 
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
-		u32 numCascades = 0;// CVAR_ShadowCascadeNum.GetU32();
+		std::vector<Camera>& gpuCameras = renderResources.cameras.Get();
+
+        u32 numCascades = CVAR_ShadowCascadeNum.GetU32();
         i32 cascadeTextureSize = CVAR_ShadowCascadeTextureSize.Get();
 		bool stableShadows = CVAR_ShadowsStable.Get() == 1;
 
         // Initialize any new shadow cascades
-        while (numCascades > renderResources.shadowDepthCascades.size())
-        {
-            u32 cascadeIndex = static_cast<u32>(renderResources.shadowDepthCascades.size());
+		if (numCascades != renderResources.shadowDepthCascades.size())
+		{
+			gpuCameras.resize(numCascades + 1); // + 1 because of main camera
 
-            // Shadow depth rendertarget
-            Renderer::DepthImageDesc shadowDepthDesc;
-            shadowDepthDesc.dimensions = vec2(cascadeTextureSize, cascadeTextureSize);
-            shadowDepthDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
-            shadowDepthDesc.format = Renderer::DepthImageFormat::D32_FLOAT;
-            shadowDepthDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
-            shadowDepthDesc.depthClearValue = 0.0f;
-            shadowDepthDesc.debugName = "ShadowDepthCascade" + std::to_string(cascadeIndex);
+			while (numCascades > renderResources.shadowDepthCascades.size())
+			{
+				u32 cascadeIndex = static_cast<u32>(renderResources.shadowDepthCascades.size());
 
-            Renderer::DepthImageID cascadeDepthImage = renderer->CreateDepthImage(shadowDepthDesc);
-            renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
+				// Shadow depth rendertarget
+				Renderer::DepthImageDesc shadowDepthDesc;
+				shadowDepthDesc.dimensions = vec2(cascadeTextureSize, cascadeTextureSize);
+				shadowDepthDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
+				shadowDepthDesc.format = Renderer::DepthImageFormat::D32_FLOAT;
+				shadowDepthDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+				shadowDepthDesc.depthClearValue = 0.0f;
+				shadowDepthDesc.debugName = "ShadowDepthCascade" + std::to_string(cascadeIndex);
 
-            //renderResources.shadowDescriptorSet.BindArray("_shadowCascadeRTs", cascadeDepthImage, cascadeIndex); // TODO: This needs to be bound in the rendergraph I guess
-        }
+				Renderer::DepthImageID cascadeDepthImage = renderer->CreateDepthImage(shadowDepthDesc);
+				renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
+			}
+		}
 
 		// Get light settings
-		vec3 lightDirection = vec3(0.0f, -1.0f, 0.0f); // TODO
+		vec3 lightDirection = glm::normalize(vec3(CVAR_DirectionalLightDirection.Get()));
+		lightDirection.y = -lightDirection.y;
 
         // Get active render camera
         entt::registry::context& ctx = registry.ctx();
@@ -212,8 +220,7 @@ namespace ECS::Systems
 			f32 nearPlane = minExtents.z;
 
 			// Come up with a new orthographic projection matrix for the shadow caster
-			mat4x4 projMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, farPlane - nearPlane, -250.0f); // TODO: I had to use this one to fix issues
-			//mat4x4 projMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, cascadeExtents.z, 0.0f); // TODO: This was the original, but I have flipped min and max Z because of inversed Z
+			mat4x4 projMatrix = glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, farPlane - nearPlane, 0.0f);
 			mat4x4 viewMatrix = glm::lookAt(shadowCameraPos, frustumCenter, upDir);
 
 			if (stableShadows)
@@ -234,7 +241,6 @@ namespace ECS::Systems
 			}
 
 			// Store split distance and matrix in cascade camera
-			std::vector<Camera> gpuCameras = renderResources.cameras.Get();
 			Camera& cascadeCamera = gpuCameras[i + 1]; // +1 because the first camera is the main camera
 
 			cascadeCamera.worldToView = viewMatrix;
@@ -246,7 +252,7 @@ namespace ECS::Systems
 			cascadeCamera.worldToClip = cascadeCamera.viewToClip * cascadeCamera.worldToView;
 			cascadeCamera.clipToWorld = cascadeCamera.viewToWorld * cascadeCamera.clipToView;
 
-			f32 splitDepth = (farClip - (nearClip + splitDist * clipRange)) * -1.0f;
+			f32 splitDepth = (farClip - (nearClip + splitDist * clipRange));// *-1.0f;
 			cascadeCamera.eyePosition = vec4(shadowCameraPos, splitDepth); // w holds split depth
 
 			vec3 scale;

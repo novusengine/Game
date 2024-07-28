@@ -1,5 +1,5 @@
 /*#include "globalData.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct PackedTerrainVertex
 {

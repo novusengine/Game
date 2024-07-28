@@ -362,7 +362,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
 
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+                params.numCascades = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -431,7 +431,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
 
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+                params.numCascades = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -530,7 +530,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+                params.numCascades = 0;
 
                 GeometryPass(params);
 
@@ -611,7 +611,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
-                params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+                params.numCascades = 0;
 
                 GeometryPass(params);
 

@@ -110,6 +110,13 @@ public:
         return numBytesNeeded;
     }
 
+    static u32 CalcCullingBitmaskUints(size_t numObjects)
+    {
+        u32 numUintsNeeded = static_cast<u32>(((numObjects + 31) / 32));
+
+        return numUintsNeeded;
+    }
+
     static u32 GetGroupCount(u32 threadCount, u32 localSize)
     {
         return (threadCount + localSize - 1) / localSize;

@@ -19,13 +19,13 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_ShadowsEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ShadowsFrozen(CVarCategory::Client | CVarCategory::Rendering, "shadowFreeze", "freeze shadows", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ShadowFrozen(CVarCategory::Client | CVarCategory::Rendering, "shadowFreeze", "freeze shadows", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of cascades", 0);
+AutoCVar_Int CVAR_ShadowDebugMatrices(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatrices", "debug shadow matrices by applying them to the camera", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ShadowDebugMatrixIndex(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatricesIndex", "index of the cascade to debug", 0);
 
-AutoCVar_Int CVAR_ShadowsDebugMatrices(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatrices", "debug shadow matrices by applying them to the camera", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ShadowsDebugMatrixIndex(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatricesIndex", "index of the cascade to debug", 0);
+AutoCVar_Int CVAR_ShadowDrawMatrices(CVarCategory::Client | CVarCategory::Rendering, "shadowDrawMatrices", "debug shadow matrices by debug drawing them", 0, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_ShadowFilterMode(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode", "0: No filtering, 1: Percentage Closer Filtering, 2: Percentage Closer Soft Shadows", 1);
 AutoCVar_Float CVAR_ShadowFilterSize(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterSize", "size of the filter used for shadow sampling", 3.0f);
@@ -55,78 +55,50 @@ ShadowRenderer::~ShadowRenderer()
 
 void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
-	/*Camera* camera = ServiceLocator::GetCamera();
+	CVarSystem* cvarSystem = CVarSystem::Get();
+	const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
 
-	const u32 numCascades = CVAR_ShadowCascadeNum.Get();
-
-	u32 colors[4] = {
-		0xff0000ff, // R
-		0xff00ff00, // G
-		0xffff0000, // B
-		0xff00ffff // Yellow
-	};
-
-	const u32 debugMatrixIndex = CVAR_ShadowsDebugMatrixIndex.Get();
-	for (u32 i = 0; i < numCascades; i++)
+	const bool debugMatrices = CVAR_ShadowDebugMatrices.Get();
+	const i32 debugMatrixIndex = CVAR_ShadowDebugMatrixIndex.Get();
+	if (debugMatrices && debugMatrixIndex >= 0 && debugMatrixIndex < static_cast<i32>(numCascades))
 	{
-		//const u32 debugMatrixIndex = i;
+		std::vector<Camera>& gpuCameras = resources.cameras.Get();
+		const Camera& debugCascadeCamera = gpuCameras[debugMatrixIndex + 1]; // +1 because the first camera is the main camera
 
-		const vec3& near0 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[0];
-		const vec3& near1 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[1];
-		const vec3& near2 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[2];
-		const vec3& near3 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[3];
+		Camera& mainCamera = gpuCameras[0];
 
-		const vec3& far0 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[4];
-		const vec3& far1 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[5];
-		const vec3& far2 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[6];
-		const vec3& far3 = _cascadeDebugInformation[debugMatrixIndex].frustumCorners[7];
+		mainCamera = debugCascadeCamera;
+		resources.cameras.SetDirtyElement(0);
+	}
 
-		// Near plane
-		_debugRenderer->DrawLine3D(near0, near1, colors[i]);
-		_debugRenderer->DrawLine3D(near1, near2, colors[i]);
-		_debugRenderer->DrawLine3D(near2, near3, colors[i]);
-		_debugRenderer->DrawLine3D(near3, near0, colors[i]);
-
-		// Far plane
-		_debugRenderer->DrawLine3D(far0, far1, colors[i]);
-		_debugRenderer->DrawLine3D(far1, far2, colors[i]);
-		_debugRenderer->DrawLine3D(far2, far3, colors[i]);
-		_debugRenderer->DrawLine3D(far3, far0, colors[i]);
-
-		// Edges
-		_debugRenderer->DrawLine3D(near0, far0, colors[i]);
-		_debugRenderer->DrawLine3D(near1, far1, colors[i]);
-		_debugRenderer->DrawLine3D(near2, far2, colors[i]);
-		_debugRenderer->DrawLine3D(near3, far3, colors[i]);
-
-		// Draw cascade culling plane normals
-		f32 scale = 10000.0f;*/
-
-		/*if (i == debugMatrixIndex)
+	if (CVAR_ShadowDrawMatrices.Get())
+	{
+		std::vector<Camera>& gpuCameras = resources.cameras.Get();
+		
+		Color colors[] = 
 		{
-			vec3 pos = _cascadeDebugInformation[i].frustumPlanePos;
+			Color::Red,
+			Color::Green,
+			Color::Blue,
+			Color::Yellow,
+			Color::Magenta,
+			Color::Cyan,
+			Color::PastelOrange,
+			Color::PastelGreen
+		};
 
-			vec3 left = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Left]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Left].w * scale;
-			vec3 right = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Right]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Right].w * scale;
-			vec3 bottom = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Bottom]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Bottom].w * scale;
-			vec3 top = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Top]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Top].w * scale;
-			vec3 near = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Near]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Near].w * scale;
-			vec3 far = vec3(_cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Far]) * _cascadeDebugInformation[i].frustumPlanes[(size_t)FrustumPlane::Far].w * scale;
-
-			_debugRenderer->DrawLine3D(pos, pos + left, 0xFF0000FF);
-			_debugRenderer->DrawLine3D(pos, pos + right, 0xFF000080);
-			_debugRenderer->DrawLine3D(pos, pos + bottom, 0xFF00FF00);
-			_debugRenderer->DrawLine3D(pos, pos + top, 0xFF008000);
-			_debugRenderer->DrawLine3D(pos, pos + near, 0xFFFF0000);
-			_debugRenderer->DrawLine3D(pos, pos + far, 0xFF800000);
+		for (u32 i = 0; i < numCascades; i++)
+		{
+			const Camera& debugCascadeCamera = gpuCameras[i + 1]; // +1 because the first camera is the main camera
+			_debugRenderer->DrawFrustum(debugCascadeCamera.worldToClip, colors[i]);
 		}
-	}*/
+	}
 }
 
 void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-	const bool shadowsFrozen = CVAR_ShadowsFrozen.Get();
-	if (shadowsFrozen)
+	const bool shadowFrozen = CVAR_ShadowFrozen.Get();
+	if (shadowFrozen)
 		return;
 
 	struct ShadowPassData
@@ -137,64 +109,33 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
 	};
 
 	CVarSystem* cvarSystem = CVarSystem::Get();
-	const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
+	u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
+	numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
 
 	if (numCascades == 0)
 		return;
 
-	const bool shadowsEnabled = CVAR_ShadowsEnabled.Get();
-	if (!shadowsEnabled)
-	{
-		renderGraph->AddPass<ShadowPassData>("Shadows Pass",
-			[=](ShadowPassData& data, Renderer::RenderGraphBuilder& builder)
-			{
-				for (u32 i = 0; i < numCascades; i++)
-				{
-					data.shadowDepthCascades[i] = builder.Write(resources.shadowDepthCascades[i], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-				}
+	const bool shadowEnabled = CVAR_ShadowEnabled.Get();
 
-				return true; // Return true from setup to enable this pass, return false to disable it
-			},
-			[=](ShadowPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
-			{
-				// This is literally just here to clear the shadowDepth...
-			});
-
-		return;
-	}
-
-	const bool debugMatrices = CVAR_ShadowsDebugMatrices.Get();
-	if (debugMatrices)
-	{
-		const u32 debugMatrixIndex = CVAR_ShadowsDebugMatrixIndex.Get();
-
-		//const ViewData& shadowCascadeViewData = _shadowCascadeViewDatas[frameIndex].ReadGet(debugMatrixIndex);
-
-		//resources.viewConstantBuffer->resource = shadowCascadeViewData;
-		//resources.viewConstantBuffer->Apply(frameIndex);
-	}
-
-	const bool terrainCastShadows = CVAR_TerrainCastShadow.Get();
-	const bool modelsCastShadows = CVAR_ModelsCastShadow.Get();
-
-	renderGraph->AddPass<ShadowPassData>("Shadows Pass",
-		[this, &resources, numCascades](ShadowPassData& data, Renderer::RenderGraphBuilder& builder)
+	renderGraph->AddPass<ShadowPassData>("Shadow Pass",
+		[=, &resources](ShadowPassData& data, Renderer::RenderGraphBuilder& builder)
 		{
-#if TIMESLICED_CASCADES
-			data.shadowDepthCascades[_currentCascade] = builder.Write(resources.shadowDepthCascades[_currentCascade], Renderer::PipelineType::GRAPHICS, Renderer::RenderGraphBuilder::LoadMode::CLEAR);
-#else
 			for (u32 i = 0; i < numCascades; i++)
 			{
 				data.shadowDepthCascades[i] = builder.Write(resources.shadowDepthCascades[i], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
 			}
-#endif
+
 			data.shadowDescriptorSet = builder.Use(resources.shadowDescriptorSet);
 
 			return true; // Return true from setup to enable this pass, return false to disable it
 		},
 		[=](ShadowPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
 		{
-			commandList.PushMarker("Init", Color::White);
+			f32 biasConstantFactor = CVAR_ShadowDepthBiasConstantFactor.GetFloat();
+			f32 biasClamp = CVAR_ShadowDepthBiasClamp.GetFloat();
+			f32 biasSlopeFactor = CVAR_ShadowDepthBiasSlopeFactor.GetFloat();
+
+			commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
 
 			Renderer::DepthImageMutableResource cascadeDepthResource;
 			for (u32 i = 0; i < Renderer::Settings::MAX_SHADOW_CASCADES; i++)
@@ -206,100 +147,6 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 				data.shadowDescriptorSet.BindArray("_shadowCascadeRTs", cascadeDepthResource, i);
 			}
-
-			uvec2 shadowDepthDimensions = _renderer->GetImageDimensions(resources.shadowDepthCascades[0]);
-
-			f32 biasConstantFactor = CVAR_ShadowDepthBiasConstantFactor.GetFloat();
-			f32 biasClamp = CVAR_ShadowDepthBiasClamp.GetFloat();
-			f32 biasSlopeFactor = CVAR_ShadowDepthBiasSlopeFactor.GetFloat();
-
-			commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-			commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-			commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
-
-			commandList.PopMarker();
-
-			if (terrainCastShadows)
-			{
-				/*const u32 numDrawCalls = _terrainRenderer->GetNumDrawCalls();
-				commandList.PushMarker("Terrain Draw " + std::to_string(numDrawCalls), Color::White);
-
-				const bool cullingEnabled = *CVarSystem::Get()->GetIntCVar("terrain.culling.Enable") == 1;
-
-				TerrainRenderer::DrawParams drawParams;
-				drawParams.shadowPass = true;
-				drawParams.cullingEnabled = cullingEnabled;
-				drawParams.argumentBuffer = _terrainRenderer->_argumentBuffer;
-
-#if TIMESLICED_CASCADES
-				commandList.PushMarker("Cascade " + std::to_string(_currentCascade), Color::White);
-				drawParams.depth = data.shadowDepthCascades[_currentCascade];
-				drawParams.shadowCascade = _currentCascade;
-
-				_terrainRenderer->Draw(resources, frameIndex, graphResources, commandList, drawParams);
-				commandList.PopMarker();
-#else
-				for (u32 i = 0; i < numCascades; i++)
-				{
-					commandList.PushMarker("Cascade " + std::to_string(i), Color::White);
-					drawParams.instanceBuffer = cullingEnabled ? _terrainRenderer->_culledInstanceBuffer[i + 1] : _terrainRenderer->_instances.GetBuffer();
-					drawParams.depth = data.shadowDepthCascades[i];
-					drawParams.shadowCascade = i;
-					drawParams.argumentsIndex = i + 1;
-
-					_terrainRenderer->Draw(resources, frameIndex, graphResources, commandList, drawParams);
-					commandList.PopMarker();
-				}
-#endif
-
-				commandList.PopMarker();*/
-			}
-
-			if (modelsCastShadows)
-			{
-				/*const u32 numDrawCalls = _mapObjectRenderer->GetNumDrawCalls();
-				commandList.PushMarker("MapObject Draw " + std::to_string(numDrawCalls), Color::White);
-
-				const bool cullingEnabled = *CVarSystem::Get()->GetIntCVar("mapObjects.cullEnable") == 1;
-				const bool deterministicOrder = *CVarSystem::Get()->GetIntCVar("mapObjects.deterministicOrder") == 1;
-
-				MapObjectRenderer::DrawParams drawParams;
-				drawParams.shadowPass = true;
-				drawParams.drawCountBuffer = _mapObjectRenderer->_drawCountBuffer;
-				drawParams.numMaxDrawCalls = numDrawCalls;
-
-#if TIMESLICED_CASCADES
-				commandList.PushMarker("Cascade " + std::to_string(_currentCascade), Color::White);
-				drawParams.depth = data.shadowDepthCascades[_currentCascade];
-				drawParams.shadowCascade = _currentCascade;
-
-				_mapObjectRenderer->Draw(resources, frameIndex, graphResources, commandList, drawParams);
-				commandList.PopMarker();
-#else
-				for (u32 i = 0; i < numCascades; i++)
-				{
-					commandList.PushMarker("Cascade " + std::to_string(i), Color::White);
-
-					drawParams.depth = data.shadowDepthCascades[i];
-					drawParams.argumentBuffer = (cullingEnabled) ? _mapObjectRenderer->_culledDrawCallBuffer[i + 1] : _mapObjectRenderer->_drawCalls.GetBuffer();
-					drawParams.shadowCascade = i;
-					drawParams.drawCountIndex = i + 1;
-
-					_mapObjectRenderer->Draw(resources, frameIndex, graphResources, commandList, drawParams);
-					commandList.PopMarker();
-				}
-#endif
-
-				commandList.PopMarker();*/
-			}
-
-			// Finish by resetting the viewport, scissor and depth bias
-			vec2 renderSize = _renderer->GetRenderSize();
-			commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
-			commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-			commandList.SetDepthBias(0, 0, 0);
-
-			_currentCascade = (_currentCascade + 1) % numCascades;
 		});
 }
 

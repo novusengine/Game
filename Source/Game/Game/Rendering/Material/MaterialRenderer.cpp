@@ -122,6 +122,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::ImageResource ambientOcclusion;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource shadowSet;
         Renderer::DescriptorSetResource materialSet;
         Renderer::DescriptorSetResource terrainSet;
         Renderer::DescriptorSetResource modelSet;
@@ -148,6 +149,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.shadowSet = builder.Use(resources.shadowDescriptorSet);
             data.materialSet = builder.Use(_materialPassDescriptorSet);
             data.terrainSet = builder.Use(terrainDescriptorSet);
             data.modelSet = builder.Use(modelDescriptorSet);
@@ -164,7 +166,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             Renderer::ComputePipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);
 
-            const i32 shadowFilterMode = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            const i32 shadowFilterMode = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h);
 
             Renderer::ComputeShaderDesc shaderDesc;
             shaderDesc.path = "MaterialPass.cs.hlsl";
@@ -189,6 +191,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             // Bind descriptorset
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, data.shadowSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
@@ -202,7 +205,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 struct Constants
                 {
-                    uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count
+                    uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count, Z = Cascade Count, W = Shadows Enabled
                     vec4 fogColor;
                     vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
                     vec4 mouseWorldPos;
@@ -216,7 +219,10 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 Constants* constants = graphResources.FrameNew<Constants>();
 
-                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Size()), 0, 0, 0);
+                CVarSystem* cvarSystem = CVarSystem::Get();
+                const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
+                const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"));
+                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Size()), 0, numCascades, shadowEnabled);
 
                 constants->fogColor = CVAR_FogColor.Get();
                 constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;
@@ -279,7 +285,7 @@ void MaterialRenderer::CreatePermanentResources()
     _directionalLights.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
     // Debug directional light
-    vec3 direction = glm::normalize(vec3(0.0f, -1.0f, -1.0f));
+    vec3 direction = glm::normalize(vec3(*CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection"_h)));
     vec3 color = vec3(66.f/255.f, 101.f/255.f, 134.f/255.f);
     f32 intensity = 1.0f;
 

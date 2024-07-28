@@ -8,13 +8,13 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Include/VisibilityBuffers.inc.hlsl"
 #include "Include/Editor.inc.hlsl"
 #include "Include/Lighting.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
-#include "Model/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
 
 // Reenable this in C++ as well
 struct Constants
 {
-    uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights
+    uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights, z = Num Cascades, w = Shadows Enabled
     float4 fogColor;
     float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
     float4 mouseWorldPos;
@@ -36,45 +36,12 @@ struct Constants
 
 float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
+    // Get the interpolated vertex data from the visibility buffer
+    PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0);
+
     InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
     uint globalCellID = cellInstance.globalCellID;
-
-    // Terrain code
-    uint globalVertexOffset = globalCellID * NUM_VERTICES_PER_CELL;
-    uint3 localVertexIDs = GetLocalTerrainVertexIDs(vBuffer.triangleID);
-
     const uint cellID = cellInstance.packedChunkCellID & 0xFFFF;
-    const uint chunkID = cellInstance.packedChunkCellID >> 16;
-
-    // Get vertices
-    TerrainVertex vertices[3];
-
-    [unroll]
-    for (uint i = 0; i < 3; i++)
-    {
-        vertices[i] = LoadTerrainVertex(chunkID, cellID, globalVertexOffset, localVertexIDs[i]);
-    }
-
-    // Interpolate vertex attributes
-    FullBary2 pixelUV = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv, vertices[1].uv, vertices[2].uv); // [0..8] This is correct for terrain color textures
-    FullBary3 pixelWorldPosition = CalcFullBary3(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
-
-    outPixelWorldPos = pixelWorldPosition.value;
-    
-    //Camera mainCamera = _cameras[0];
-    //float4 pixelViewPosition = mul(float4(pixelWorldPosition.value, 1.0f), mainCamera.worldToView);
-    uint shadowCascadeIndex = 0;// GetShadowCascadeIndexFromDepth(pixelViewPosition.z, _constants.numCascades);
-#if DEBUG_ID == 4
-    return float4(IDToColor3(shadowCascadeIndex + 1), 1.0f);
-#endif
-    //ViewData shadowCascadeViewData = _shadowCascadeViewDatas[shadowCascadeIndex];
-
-    //float4 pixelShadowPosition = mul(float4(pixelWorldPosition.value, 1.0f), shadowCascadeViewData.viewProjectionMatrix);
-    float4 pixelShadowPosition = float4(0.0f, 0.0f, 0.0f, 0.0f);
-
-    float3 pixelColor = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].color, vertices[1].color, vertices[2].color);
-    float3 pixelNormal = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal);
-    float3 pixelAlphaUV = float3(saturate(pixelUV.value / 8.0f), float(cellID)); // However the alpha needs to be between 0 and 1, and load from the correct layer
 
     // Get CellData and ChunkData
     const CellData cellData = LoadCellData(globalCellID);
@@ -95,6 +62,9 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     uint diffuse3ID = cellData.diffuseIDs.w;
     uint alphaID = chunkData.alphaID;
 
+    FullBary2 pixelUV = pixelVertexData.uv0;
+    float3 pixelAlphaUV = float3(saturate(pixelUV.value / 8.0f), float(cellID)); // The alpha needs to be between 0 and 1, and load from the correct layer
+
     float3 alpha = _terrainAlphaTextures[NonUniformResourceIndex(alphaID)].SampleGrad(_alphaSampler, pixelAlphaUV, pixelUV.ddx, pixelUV.ddy).rgb;
     float minusAlphaBlendSum = (1.0 - clamp(alpha.x + alpha.y + alpha.z, 0.0, 1.0));
     float4 weightsVector = float4(minusAlphaBlendSum, alpha);
@@ -113,20 +83,25 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     float3 diffuse3 = _terrainColorTextures[NonUniformResourceIndex(diffuse3ID)].SampleGrad(_sampler, pixelUV.value, pixelUV.ddx, pixelUV.ddy).xyz * weightsVector.w;
     color.rgb += diffuse3;
 
-    // Apply Vertex Color
-    color.rgb *= pixelColor;
+    // Apply vertex color
+    color.rgb *= pixelVertexData.color;
 
-    /*if (_constants.numTextureDecals + _constants.numProceduralDecals > 0)
-    {
-        // Apply decals
-        ApplyDecals(pixelWorldPosition, color, pixelNormal, _constants.numTextureDecals, _constants.numProceduralDecals, _constants.mouseWorldPos.xyz);
-    }*/
+    //if (_constants.numTextureDecals + _constants.numProceduralDecals > 0)
+    //{
+    //    // Apply decals
+    //    ApplyDecals(pixelWorldPosition, color, pixelNormal, _constants.numTextureDecals, _constants.numProceduralDecals, _constants.mouseWorldPos.xyz);
+    //}
+
+    // TODO: Don't hardcode this
+    ShadowSettings shadowSettings;
+    shadowSettings.enableShadows = _constants.lightInfo.w == 1;
+    shadowSettings.filterSize = 3.0f;
+    shadowSettings.penumbraFilterSize = 3.0f;
 
     // Apply lighting
-    float3 normal = normalize(pixelNormal);
-    color.rgb = ApplyLighting(color.rgb, pixelNormal, screenUV, pixelPos, _constants.lightInfo);
+    color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
 
-#if EDITOR_MODE == 1
+/*#if EDITOR_MODE == 1
     // Get settings from push constants
     const float brushHardness = _constants.brushSettings.x;
     const float brushRadius = _constants.brushSettings.y;
@@ -137,7 +112,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     const float wireframeFalloffDistance = 100.0f;
 
     // Wireframes
-    float4 pixelClipSpacePosition = mul(float4(pixelWorldPosition.value, 1.0f), _cameras[0].worldToClip);
+    float4 pixelClipSpacePosition = mul(float4(pixelVertexData.worldPos.value, 1.0f), _cameras[0].worldToClip);
     pixelClipSpacePosition.xyz /= pixelClipSpacePosition.w;
 
     float4 verticesClipSpacePosition[3];
@@ -169,11 +144,11 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     bool isRightChunkEdge = cellID % 16 == 15;
     bool isTopChunkEdge = cellID < 16;
     bool isBottomChunkEdge = cellID >= 240;
-    
+
     bool isChunkEdge = (isLeftChunkEdge && isLeftCellEdge) ||
-                        (isRightChunkEdge && isRightCellEdge) ||
-                        (isTopChunkEdge && isTopCellEdge) ||
-                        (isBottomChunkEdge && isBottomCellEdge);
+        (isRightChunkEdge && isRightCellEdge) ||
+        (isTopChunkEdge && isTopCellEdge) ||
+        (isBottomChunkEdge && isBottomCellEdge);
 
     if (isChunkEdge)
     {
@@ -204,61 +179,18 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     float brush = EditorCircleBrush(_constants.mouseWorldPos.xyz, pixelWorldPosition.value.xyz, brushRadius, brushFalloff, vBuffer.barycentrics);
 
     color.rgb = lerp(_constants.brushColor.rgb, color.rgb, brush);
-#endif
+#endif*/
 
+    outPixelWorldPos = pixelVertexData.worldPos;
     return saturate(color);
 }
 
 float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
+    // Get the interpolated vertex data from the visibility buffer
+    PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0);
+
     ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
-    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
-
-    // Get the VertexIDs of the triangle we're in
-    IndexedDraw draw = _modelDraws[vBuffer.drawID];
-    uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
-
-    // Get Vertices
-    ModelVertex vertices[3];
-
-    [unroll]
-    for (uint i = 0; i < 3; i++)
-    {
-        vertices[i] = LoadModelVertex(vertexIDs[i]);
-
-        // Animate the vertex normal if we need to
-        if (instanceData.boneMatrixOffset != 4294967295)
-        {
-            // Calculate bone transform matrix
-            float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
-            vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
-        }
-
-        // Convert normals to world normals
-        vertices[i].normal = mul(vertices[i].normal, (float3x3)instanceMatrix);
-    }
-
-    // Interpolate vertex attributes
-    FullBary2 pixelUV0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
-    FullBary2 pixelUV1 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.zw, vertices[1].uv01.zw, vertices[2].uv01.zw);
-
-    float3 pixelVertexPosition = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
-    float3 pixelWorldPosition = mul(float4(pixelVertexPosition, 1.0f), instanceMatrix).xyz;
-
-    outPixelWorldPos = pixelWorldPosition;
-    
-    float4 pixelViewPosition = mul(float4(pixelWorldPosition, 1.0f), _cameras[0].worldToView);
-    uint shadowCascadeIndex = 0;// GetShadowCascadeIndexFromDepth(pixelViewPosition.z, _constants.numCascades);
-#if DEBUG_ID == 4
-    return float4(IDToColor3(shadowCascadeIndex + 1), 1.0f);
-#endif
-    //ViewData shadowCascadeViewData = _shadowCascadeViewDatas[shadowCascadeIndex];
-
-    //float4 pixelShadowPosition = mul(float4(pixelWorldPosition, 1.0f), shadowCascadeViewData.viewProjectionMatrix);
-    float4 pixelShadowPosition = float4(0, 0, 0, 0);
-
-    float3 pixelNormal = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal);
 
     // Shade
     float4 color = float4(0, 0, 0, 0);
@@ -282,13 +214,13 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         if (materialType == 0x8000)
             continue;
 
-        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_samplers[texture0SamplerIndex], pixelUV0.value, pixelUV0.ddx, pixelUV0.ddy);
+        float4 texture0Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].SampleGrad(_samplers[texture0SamplerIndex], pixelVertexData.uv0.value, pixelVertexData.uv0.ddx, pixelVertexData.uv0.ddy);
         float4 texture1Color = float4(0, 0, 0, 0);
 
         if (vertexShaderId >= 2)
         {
             // ENV uses generated UVCoords based on camera pos + geometry normal in frame space
-            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelUV1.value, pixelUV1.ddx, pixelUV1.ddy);
+            texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelVertexData.uv1.value, pixelVertexData.uv1.ddx, pixelVertexData.uv1.ddy);
         }
 
         isUnlit |= (materialFlags & 0x1);
@@ -297,10 +229,16 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         color = BlendModel(blendingMode, color, shadedColor);
     }
 
+    // TODO: Don't hardcode this
+    ShadowSettings shadowSettings;
+    shadowSettings.enableShadows = _constants.lightInfo.w == 1;
+    shadowSettings.filterSize = 3.0f;
+    shadowSettings.penumbraFilterSize = 3.0f;
+
     // Apply lighting
-    color.rgb = ApplyLighting(color.rgb, pixelNormal, screenUV, pixelPos, _constants.lightInfo);
-    //color = float4(pixelUV0.value, 0, 1);
-    
+    color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
+
+    outPixelWorldPos = pixelVertexData.worldPos;
     return saturate(color);
 }
 
@@ -339,6 +277,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 #elif DEBUG_ID == 3 // TriangleID   
     float3 debugColor = IDToColor3(vBuffer.triangleID);
     _resolvedColor[pixelPos] = float4(debugColor, 1);
+    return;
+#elif DEBUG_ID == 4 // CascadeID
+    uint numCascades = _constants.lightInfo.z;
+    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0);
+    uint cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
+    _resolvedColor[pixelPos] = float4(CascadeIDToColor(cascadeIndex), 1);
     return;
 #endif
 

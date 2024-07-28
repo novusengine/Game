@@ -3,14 +3,15 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 
 #include "common.inc.hlsl"
 #include "globalData.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
 
 struct PSInput
 {
 	uint triangleID : SV_PrimitiveID;
 	uint instanceID : TEXCOORD0;
-	float3 worldPosition : TEXCOORD1;
+	uint culledInstanceID : TEXCOORD1;
+	float3 worldPosition : TEXCOORD2;
 };
 
 struct PSOutput
@@ -25,7 +26,7 @@ PSOutput main(PSInput input)
 	const uint padding = 0;
 
 	// Get the vertexIDs of the triangle we're in
-	InstanceData instanceData = _instanceDatas[input.instanceID];
+	InstanceData instanceData = _instanceDatas[input.culledInstanceID];
 
 	// Get the cellID and chunkID
 	const uint cellID = instanceData.packedChunkCellID & 0xFFFF;

@@ -3,7 +3,7 @@
 #include "Include/PyramidCulling.inc.hlsl"
 #include "Include/Debug.inc.hlsl"
 #include "globalData.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
 {
@@ -11,6 +11,7 @@ struct Constants
     uint viewportSizeY;
     uint numCascades;
     uint occlusionCull;
+    uint bitMaskBufferSizePerView;
 };
 
 struct HeightRange
@@ -79,6 +80,7 @@ struct DrawInput
 struct BitmaskInput
 {
     bool useBitmasks;
+    uint bitmaskOffset;
     StructuredBuffer<uint> prevCulledInstancesBitMask;
     RWStructuredBuffer<uint> outCulledInstancesBitMask;
 };
@@ -93,8 +95,7 @@ struct CullOutput
 
 void CullForCamera(DrawInput drawInput,
     Camera camera,
-    BitmaskInput bitmaskInput,
-    CullOutput cullOutput)
+    BitmaskInput bitmaskInput)
 {
     bool isVisible = true;
 
@@ -113,7 +114,6 @@ void CullForCamera(DrawInput drawInput,
         }
     }
 
-    bool shouldRender = isVisible;
     if (bitmaskInput.useBitmasks)
     {
         uint bitMask = WaveActiveBallot(isVisible).x;
@@ -121,33 +121,17 @@ void CullForCamera(DrawInput drawInput,
         // The first thread writes the bitmask
         if (drawInput.csInput.groupThreadID.x == 0)
         {
-            bitmaskInput.outCulledInstancesBitMask[drawInput.csInput.groupID.x] = bitMask;
+            uint bitMaskIndex = drawInput.csInput.groupID.x + bitmaskInput.bitmaskOffset;
+            bitmaskInput.outCulledInstancesBitMask[bitMaskIndex] = bitMask;
         }
-
-        uint occluderBitMask = bitmaskInput.prevCulledInstancesBitMask[drawInput.csInput.groupID.x];
-        uint renderBitMask = bitMask & ~occluderBitMask; // This should give us all currently visible objects that were not occluders
-
-        // We only want to render objects that are visible and not occluders since they were already rendered this frame
-        shouldRender = renderBitMask & (1u << drawInput.csInput.groupThreadID.x);
-    }
-
-    if (shouldRender)
-    {
-        uint argumentByteOffset = cullOutput.argumentIndex * (sizeof(uint) * 5); // VkDrawIndexedIndirectCommand
-
-        uint culledInstanceIndex;
-        cullOutput.argumentBuffer.InterlockedAdd(argumentByteOffset + 4, 1, culledInstanceIndex);
-
-        uint firstInstanceOffset = cullOutput.argumentBuffer.Load(argumentByteOffset + 16);
-        WriteCellInstanceToByteAdressBuffer(cullOutput.instanceBuffer, firstInstanceOffset + culledInstanceIndex, drawInput.instance);
     }
 
     // Debug draw AABB boxes
-    float3 cameraPos = _cameras[0].eyePosition.xyz;
+    /*float3 cameraPos = _cameras[0].eyePosition.xyz;
     float3 aabbPos = (drawInput.aabb.min + drawInput.aabb.max) / 2.0f;
     float distanceToCamera = distance(cameraPos, aabbPos);
 
-    /*if (isVisible)
+    if (isVisible)
     {
         DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
     }
@@ -183,16 +167,24 @@ void main(CSInput input)
 
     BitmaskInput bitmaskInput;
     bitmaskInput.useBitmasks = true;
+    bitmaskInput.bitmaskOffset = 0;
     bitmaskInput.prevCulledInstancesBitMask = _prevCulledInstancesBitMask;
     bitmaskInput.outCulledInstancesBitMask = _culledInstancesBitMask;
 
-    CullOutput cullOutput;
-    cullOutput.instanceBuffer = _culledInstances;
-    cullOutput.argumentIndex = 0;
-    cullOutput.argumentBuffer = _arguments;
-
     // Main camera view
     {
-        CullForCamera(drawInput, _cameras[0], bitmaskInput, cullOutput);
+        CullForCamera(drawInput, _cameras[0], bitmaskInput);
+    }
+
+    // Shadow cascades
+    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    {
+        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
+
+        bitmaskInput.bitmaskOffset = _constants.bitMaskBufferSizePerView * i;
+
+        CullForCamera(drawInput,
+            _cameras[i],
+            bitmaskInput);
     }
 }

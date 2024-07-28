@@ -1,6 +1,9 @@
 #ifndef LIGHTING_INCLUDED
 #define LIGHTING_INCLUDED
 
+#include "Include/Shadows.inc.hlsl"
+#include "Include/VisibilityBuffers.inc.hlsl"
+
 struct DirectionalLight
 {
     float4 direction;
@@ -21,14 +24,15 @@ DirectionalLight LoadDirectionalLight(uint index)
     return light;
 }
 
-float3 ApplyLighting(float3 materialColor, float3 normal, float2 uv, float2 pixelPos, uint4 lightInfo)
+float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
 {
     uint numDirectionalLights = lightInfo.x;
+    uint numCascades = lightInfo.z;
 
     float3 ambientColor = float3(0.0f, 0.0f, 0.0f);
     float3 directionalColor = float3(0.0f, 0.0f, 0.0f);
 
-    float ambientOcclusion = _ambientOcclusion.Load(int3(pixelPos, 0)).r;
+    float ambientOcclusion = _ambientOcclusion.Load(int3(pixelVertexData.pixelPos, 0)).r;
 
     for (uint i = 0; i < numDirectionalLights; i++)
     {
@@ -38,20 +42,32 @@ float3 ApplyLighting(float3 materialColor, float3 normal, float2 uv, float2 pixe
         light.skyAmbientColor.rgb = float3(0.4f, 0.4f, 0.4f);
 
         // Ambient Light
-        float nDotUp = saturate(dot(normal, float3(0.0f, 1.0f, 0.0f))); // Dot product between normal and up direction
+        float nDotUp = saturate(dot(pixelVertexData.worldNormal, float3(0.0f, 1.0f, 0.0f))); // Dot product between normal and up direction
         float4 lightAmbientColor = lerp(light.groundAmbientColor, light.skyAmbientColor, nDotUp); // Ambient color based on normal
-        ambientColor += lightAmbientColor.rgb * lightAmbientColor.a; // Intensity in alpha channel
+        lightAmbientColor.rgb *= lightAmbientColor.a; // Intensity in alpha channel
 
         // Ambient Occlusion
-        ambientColor *= ambientOcclusion;
+        lightAmbientColor.rgb *= ambientOcclusion;
+        ambientColor += lightAmbientColor.rgb;
 
         // Directional Light
-        float nDotL = saturate(dot(normal, -light.direction.xyz)); // Dot product between normal and light direction
+        float nDotL = saturate(dot(pixelVertexData.worldNormal, -light.direction.xyz)); // Dot product between normal and light direction
         float3 lightColor = lerp(light.color.rgb, float3(1.0f, 1.0f, 1.0f), nDotL); // Light color based on normal
-        directionalColor += lightColor.rgb * light.color.a; // Intensity in alpha channel
-
+        lightColor *= light.color.a; // Intensity in alpha channel
+        
         // Directional Light Shadows
-        // TODO
+        if (shadowSettings.enableShadows)
+        {
+            shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
+            Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera
+            
+            float4 shadowPosition = mul(float4(pixelVertexData.worldPos, 1.0f), cascadeCamera.worldToClip);
+            
+            float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
+            lightColor *= shadowFactor;
+        }
+
+        directionalColor += lightColor;
     }
     
     // Point Lights

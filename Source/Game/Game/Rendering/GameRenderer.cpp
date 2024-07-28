@@ -154,7 +154,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _canvasRenderer = new CanvasRenderer(_renderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer);
-    //_shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
+    _shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
     _pixelQuery = new PixelQuery(_renderer);
 
     CreatePermanentResources();
@@ -196,6 +196,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
+    _shadowRenderer->Update(deltaTime, _resources);
 }
 
 f32 GameRenderer::Render()
@@ -296,6 +297,8 @@ f32 GameRenderer::Render()
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
+    _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
+
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
@@ -352,8 +355,6 @@ f32 GameRenderer::Render()
     
     _modelRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
-
-    //_shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
 
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
