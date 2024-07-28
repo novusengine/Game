@@ -7,6 +7,7 @@
 #include "Game/ECS/Components/Camera.h"
 
 #include "Game/ECS/Systems/CalculateCameraMatrices.h"
+#include "Game/ECS/Systems/CalculateShadowCameraMatrices.h"
 #include "Game/ECS/Systems/DrawDebugMesh.h"
 #include "Game/ECS/Systems/FreeflyingCamera.h"
 #include "Game/ECS/Systems/OrbitalCamera.h"
@@ -58,6 +59,7 @@ namespace ECS
         Systems::FreeflyingCamera::Update(registry, deltaTime);
         Systems::OrbitalCamera::Update(registry, deltaTime);
         Systems::CalculateCameraMatrices::Update(registry, deltaTime);
+        Systems::CalculateShadowCameraMatrices::Update(registry, deltaTime);
         Systems::UpdateSkyboxes::Update(registry, deltaTime);
         Systems::CalculateTransformMatrices::Update(registry, deltaTime);
         Systems::UpdatePhysics::Update(registry, deltaTime);

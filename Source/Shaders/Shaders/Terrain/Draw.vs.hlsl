@@ -4,11 +4,11 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "globalData.inc.hlsl"
-#include "Terrain/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
 {
-    uint cascadeIndex;
+    uint viewIndex;
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -16,7 +16,7 @@ struct Constants
 struct VSInput
 {
     uint vertexID : SV_VertexID;
-    uint instanceID : SV_InstanceID;
+    uint culledInstanceID : SV_InstanceID;
 };
 
 struct VSOutput
@@ -24,13 +24,14 @@ struct VSOutput
     float4 position : SV_Position;
 #if !EDITOR_PASS && !SHADOW_PASS
     uint instanceID : TEXCOORD0;
-    float3 worldPosition : TEXCOORD1;
+    uint culledInstanceID : TEXCOORD1;
+    float3 worldPosition : TEXCOORD2;
 #endif
 };
 
 VSOutput main(VSInput input)
 {
-    InstanceData instanceData = _instanceDatas[input.instanceID];
+    InstanceData instanceData = _instanceDatas[input.culledInstanceID];
 
     VSOutput output;
 
@@ -48,14 +49,11 @@ VSOutput main(VSInput input)
     uint vertexBaseOffset = instanceData.globalCellID * NUM_VERTICES_PER_CELL;
     TerrainVertex vertex = LoadTerrainVertex(chunkID, cellID, vertexBaseOffset, input.vertexID);
 
-#if SHADOW_PASS
-    output.position = float4(0, 0, 0, 1);// mul(float4(vertex.position, 1.0f), GetShadowViewProjectionMatrix(_constants.cascadeIndex));
-#else
-    output.position = mul(float4(vertex.position, 1.0f), _cameras[0].worldToClip);
-#endif
+    output.position = mul(float4(vertex.position, 1.0f), _cameras[_constants.viewIndex].worldToClip);
 
 #if !EDITOR_PASS && !SHADOW_PASS
-    output.instanceID = input.instanceID;
+    output.instanceID = instanceData.globalCellID;
+    output.culledInstanceID = input.culledInstanceID;
     output.worldPosition = vertex.position;
 #endif
 

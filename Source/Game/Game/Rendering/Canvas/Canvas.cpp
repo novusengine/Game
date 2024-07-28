@@ -227,6 +227,7 @@ void Canvas::Draw(DrawParams& params)
 	Renderer::GraphicsPipelineID texturesPipeline = Renderer::GraphicsPipelineID::Invalid();
 	{
 		Renderer::GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.debugName = "CanvasTextures";
 		params.graphResources.InitializePipelineDesc(pipelineDesc);
 
 		// Rasterizer state
@@ -252,6 +253,7 @@ void Canvas::Draw(DrawParams& params)
 	Renderer::GraphicsPipelineID textPipeline = Renderer::GraphicsPipelineID::Invalid();
 	{
 		Renderer::GraphicsPipelineDesc pipelineDesc;
+		pipelineDesc.debugName = "CanvasText";
 		params.graphResources.InitializePipelineDesc(pipelineDesc);
 
 		// Rasterizer state

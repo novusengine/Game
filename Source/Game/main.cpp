@@ -15,7 +15,7 @@ i32 main()
     quill::Backend::start();
 
     auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1");
-    quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime);
+    quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime, quill::ClockSourceType::System);
 
 	Application app;
 	app.Start(true);

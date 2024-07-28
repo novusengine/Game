@@ -1,4 +1,4 @@
-#include "Model/Shared.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
 
 
 struct CSInput

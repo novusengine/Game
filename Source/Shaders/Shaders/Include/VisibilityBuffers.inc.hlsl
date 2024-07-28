@@ -1,8 +1,9 @@
 #ifndef VISIBILITYBUFFERS_INCLUDED
 #define VISIBILITYBUFFERS_INCLUDED
 
-#include "Terrain/Shared.inc.hlsl"
-#include "Model/Shared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
+#include "globalData.inc.hlsl"
 
 #if GEOMETRY_PASS
 uint4 PackVisibilityBuffer(uint typeID, uint drawID, uint triangleID, float2 barycentrics, float2 ddxBarycentrics, float2 ddyBarycentrics)
@@ -242,9 +243,11 @@ struct PixelVertexData
     float3 color; // Only used for terrain, for models it's hardcoded to white
     float3 worldNormal;
     float3 worldPos;
+    float4 viewPos;
+    float2 pixelPos;
 };
 
-PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex)
 {
     InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
     uint globalCellID = cellInstance.globalCellID;
@@ -279,13 +282,15 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     // Normal
     result.worldNormal = normalize(InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal));
 
-    // World Position
+    // Position
     result.worldPos = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
+    result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
+    result.pixelPos = pixelPos;
 
     return result;
 }
 
-PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex)
 {
     ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
     ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
@@ -332,19 +337,21 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     // World Position
     float3 pixelVertexPosition = InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].position, vertices[1].position, vertices[2].position);
     result.worldPos = mul(float4(pixelVertexPosition, 1.0f), instanceMatrix).xyz; // Convert to world space
+    result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
+    result.pixelPos = pixelPos;
 
     return result;
 }
 
-PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer vBuffer)
+PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer vBuffer, uint cameraIndex)
 {
     if (vBuffer.typeID == ObjectType::Terrain)
     {
-        return GetPixelVertexDataTerrain(pixelPos, vBuffer);
+        return GetPixelVertexDataTerrain(pixelPos, vBuffer, cameraIndex);
     }
     else if (vBuffer.typeID == ObjectType::ModelOpaque)
     {
-        return GetPixelVertexDataModel(pixelPos, vBuffer);
+        return GetPixelVertexDataModel(pixelPos, vBuffer, cameraIndex);
     }
 
     PixelVertexData result;
@@ -361,6 +368,8 @@ PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer 
     result.color = float3(1, 1, 1);
     result.worldNormal = float3(0, 1, 0);
     result.worldPos = float3(0, 0, 0);
+    result.viewPos = float4(0, 0, 0, 1);
+    result.pixelPos = pixelPos;
 
     return result;
 }
@@ -397,6 +406,24 @@ float3 IDToColor3(uint ID)
     color.z = IDToColor(ID, BLUE_SEED);
 
     return color;
+}
+
+float3 CascadeIDToColor(uint cascadeID)
+{
+    const uint cascadeCount = 8;
+    static float3 cascadeColors[cascadeCount] =
+    {
+        float3(1.0f, 0.0f, 0.0f), // Red
+        float3(0.0f, 1.0f, 0.0f), // Green
+        float3(0.0f, 0.0f, 1.0f), // Blue
+        float3(1.0f, 1.0f, 0.0f), // Yellow
+        float3(1.0f, 0.0f, 1.0f), // Purple
+        float3(0.0f, 1.0f, 1.0f), // Cyan
+        float3(1.0f, 0.5f, 0.0f), // Orange
+        float3(0.0f, 0.5f, 1.0f)  // Light Blue
+    };
+
+    return cascadeColors[cascadeID % cascadeCount];
 }
 
 #endif // VISIBILITYBUFFERS_INCLUDED

@@ -22,7 +22,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint4 vBufferData = LoadVisibilityBuffer(pixelPos);
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
-    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer);
+    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0);
 
     float3 normal = pixelVertexData.worldNormal;
 
