@@ -9,7 +9,9 @@ jobs:
     
     strategy:
       fail-fast: false
-      
+      matrix:
+        build-type: [Release, Debug]
+    
     steps:
     - uses: actions/checkout@v4
       with:
@@ -26,12 +28,12 @@ jobs:
 
     - name: Build
       run: |
-        msbuild /m /p:Configuration=Debug Build/Game.sln
+        msbuild /m /p:Configuration=${{ matrix.build-type }} Build/Game.sln
 
     - name: Upload Game App artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Game-App
+        name: Game-App_${{ matrix.build-type }}
         path: |
-          Build/Bin/Game/Debug/Game-App.exe
-          Build/Bin/Game/Debug/dxcompiler.dll
+          Build/Bin/Game/${{ matrix.build-type }}/Game-App.exe
+          Build/Bin/Game/${{ matrix.build-type }}/dxcompiler.dll
