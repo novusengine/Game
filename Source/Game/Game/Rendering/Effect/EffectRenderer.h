@@ -13,8 +13,8 @@ namespace Renderer
 }
 
 struct RenderResources;
-struct FfxCacaoContext;
-struct FfxCacaoSettings;
+//struct FfxCacaoContext;
+//struct FfxCacaoSettings;
 
 class EffectRenderer
 {
@@ -32,8 +32,8 @@ private:
 private:
     Renderer::Renderer* _renderer;
 
-    FfxCacaoContext* _cacaoContext = nullptr;
-    FfxCacaoSettings* _cacaoSettings = nullptr;
+    //FfxCacaoContext* _cacaoContext = nullptr;
+    //FfxCacaoSettings* _cacaoSettings = nullptr;
 
     mat4x4 _proj;
     mat4x4 _normalsWorldToView;

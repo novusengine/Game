@@ -12,7 +12,6 @@
 #include <Renderer/RenderGraph.h>
 
 #include <entt/entt.hpp>
-#include <FidelityFX/host/ffx_cacao.h>
 
 AutoCVar_ShowFlag CVAR_EnablePostProcessing(CVarCategory::Client | CVarCategory::Rendering, "enablePostProcessing", "Enable post processing effects", ShowFlag::ENABLED, CVarFlags::None);
 
@@ -48,7 +47,7 @@ EffectRenderer::~EffectRenderer()
 
 void EffectRenderer::Update(f32 deltaTime)
 {
-    vec2 renderSize = _renderer->GetRenderSize();
+    /*vec2 renderSize = _renderer->GetRenderSize();
     if (_lastRenderSize != renderSize)
     {
         _lastRenderSize = renderSize;
@@ -96,12 +95,12 @@ void EffectRenderer::Update(f32 deltaTime)
     _cacaoSettings->temporalSupersamplingRadiusOffset = CVAR_SsaoTemporalSupersamplingRadiusOffset.GetFloat();
     _cacaoSettings->detailShadowStrength = CVAR_SsaoDetailShadowStrength.GetFloat();
     _cacaoSettings->bilateralSigmaSquared = CVAR_SsaoBilateralSigmaSquared.GetFloat();
-    _cacaoSettings->bilateralSimilarityDistanceSigma = CVAR_SsaoBilateralSimilarityDistanceSigma.GetFloat();
+    _cacaoSettings->bilateralSimilarityDistanceSigma = CVAR_SsaoBilateralSimilarityDistanceSigma.GetFloat();*/
 }
 
 void EffectRenderer::AddSSAOPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    if (CVAR_EnablePostProcessing.Get() == ShowFlag::DISABLED)
+    /*if (CVAR_EnablePostProcessing.Get() == ShowFlag::DISABLED)
         return;
 
     bool enableSSAO = CVAR_EnableSSAO.Get() == ShowFlag::ENABLED && _cacaoContext != nullptr;
@@ -149,13 +148,13 @@ void EffectRenderer::AddSSAOPass(Renderer::RenderGraph* renderGraph, RenderResou
                 const f32 normalUnpackAdd = -1.0f;
                 commandList.DispatchCacao(_cacaoContext, data.depth, data.packedNormals, data.output, &_proj, &_normalsWorldToView, normalUnpackMul, normalUnpackAdd);
             });
-    }
+    }*/
     
 }
 
 void EffectRenderer::CreatePermanentResources()
 {
-    _cacaoSettings = new FfxCacaoSettings();
+    /*_cacaoSettings = new FfxCacaoSettings();
     memcpy(_cacaoSettings, &FFX_CACAO_DEFAULT_SETTINGS, sizeof(FfxCacaoSettings));
-    _cacaoSettings->generateNormals = false;
+    _cacaoSettings->generateNormals = false;*/
 }
