@@ -78,7 +78,6 @@ PSOutput main(PSInput input)
 
     float biggestComponent = max(color.x, max(color.y, color.z));
     color.a = biggestComponent * (blendingMode == 4) + color.a * (blendingMode != 4);
-    float alpha = color.a;
 
     float clipSpaceDepth = input.position.z / input.position.w;
     float viewSpaceDepth = input.posViewSpace.z;
