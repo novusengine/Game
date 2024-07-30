@@ -61,6 +61,7 @@ struct PSInput
     float4 pixelPos : SV_Position;
     float2 textureUV : TEXCOORD0;
     uint drawCallID : TEXCOORD1;
+    float3 posViewSpace : TEXCOORD2;
 };
 
 struct PSOutput
@@ -122,7 +123,9 @@ PSOutput main(PSInput input)
     }
 
     // Calculate OIT weight and output
-    float oitWeight = CalculateOITWeight(color, liquidDepth);
+    float clipSpaceDepth = liquidDepth;
+    float viewSpaceDepth = input.posViewSpace.z;
+    float oitWeight = CalculateOITWeight(color, clipSpaceDepth, viewSpaceDepth);
 
     PSOutput output;
     output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;

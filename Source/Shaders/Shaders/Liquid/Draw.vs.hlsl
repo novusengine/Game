@@ -83,6 +83,7 @@ struct VSOutput
     float4 position : SV_Position;
     float2 textureUV : TEXCOORD0;
     uint drawCallID : TEXCOORD1;
+    float3 posViewSpace : TEXCOORD2;
 };
 
 VSOutput main(VSInput input)
@@ -96,6 +97,7 @@ VSOutput main(VSInput input)
     output.position = mul(float4(vertex.position.xyz, 1.0f), _cameras[0].worldToClip);
     output.textureUV = uv;
     output.drawCallID = input.instanceID;
+    output.posViewSpace = mul(float4(vertex.position.xyz, 1.0f), _cameras[0].worldToView).xyz;
 
     return output;
 }
