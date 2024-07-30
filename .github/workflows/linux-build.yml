@@ -40,6 +40,7 @@ jobs:
     - name: Run Premake
       run: |
         export VULKAN_SDK=/usr/include/vulkan
+        export LD_LIBRARY_PATH=/home/runner/work/Game/Game/Submodules/Engine/Dependencies/dxcompiler/lib/linux:$LD_LIBRARY_PATH
         premake5 gmake2
 
     - name: Build
