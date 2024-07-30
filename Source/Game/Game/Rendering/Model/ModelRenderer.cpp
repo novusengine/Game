@@ -731,7 +731,8 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
     {
         struct Data
         {
-            Renderer::ImageMutableResource color;
+            Renderer::ImageMutableResource transparency;
+            Renderer::ImageMutableResource transparencyWeights;
             Renderer::DepthImageMutableResource depth;
 
             Renderer::BufferMutableResource drawCallsBuffer;
@@ -750,7 +751,8 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
             {
                 using BufferUsage = Renderer::BufferPassUsage;
 
-                data.color = builder.Write(resources.skyboxColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.transparency = builder.Write(resources.transparency, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.transparencyWeights = builder.Write(resources.transparencyWeights, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
                 data.depth = builder.Write(resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
                 builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
@@ -788,7 +790,8 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 params.cullingResources = &_transparentSkyboxCullingResources;
 
                 params.frameIndex = frameIndex;
-                params.rt0 = data.color;
+                params.rt0 = data.transparency;
+                params.rt1 = data.transparencyWeights;
                 params.depth = data.depth;
 
                 params.drawCallsBuffer = data.drawCallsBuffer;
@@ -2504,24 +2507,35 @@ void ModelRenderer::DrawSkybox(const RenderResources& resources, u8 frameIndex, 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Model/DrawSkybox.ps.hlsl";
     pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
+    pixelShaderDesc.AddPermutationField("TRANSPARENCY", isTransparent ? "1" : "0");
 
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthEnable = !isTransparent;
     pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
     pipelineDesc.states.depthStencilState.depthWriteEnable = !isTransparent;
 
     // Blend state
     if (isTransparent)
     {
+        pipelineDesc.states.blendState.independentBlendEnable = true;
+
         pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
         pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
         pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
         pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
         pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+
+        pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
     }
 
     // Rasterizer state
@@ -2530,6 +2544,10 @@ void ModelRenderer::DrawSkybox(const RenderResources& resources, u8 frameIndex, 
 
     // Render targets
     pipelineDesc.renderTargets[0] = params.rt0;
+    if (isTransparent)
+    {
+        pipelineDesc.renderTargets[1] = params.rt1;
+    }
     pipelineDesc.depthStencil = params.depth;
 
     // Draw

@@ -11,6 +11,7 @@ struct PSInput
     float4 position : SV_Position;
     uint drawID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
+    float3 posViewSpace : TEXCOORD2;
     //float3 normal : TEXCOORD2;
 };
 
@@ -77,9 +78,11 @@ PSOutput main(PSInput input)
 
     float biggestComponent = max(color.x, max(color.y, color.z));
     color.a = biggestComponent * (blendingMode == 4) + color.a * (blendingMode != 4);
+    float alpha = color.a;
 
-    float oitDepth = input.position.z / input.position.w;
-    float oitWeight = CalculateOITWeight(color, oitDepth);
+    float clipSpaceDepth = input.position.z / input.position.w;
+    float viewSpaceDepth = input.posViewSpace.z;
+    float oitWeight = CalculateOITWeight(color, clipSpaceDepth, viewSpaceDepth);
 
     PSOutput output;
     output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;

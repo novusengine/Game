@@ -15,7 +15,7 @@ struct VSOutput
 
     nointerpolation uint drawCallID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
-    //float3 normal : TEXCOORD2;
+    float3 posViewSpace : TEXCOORD2;
 };
 
 VSOutput main(VSInput input)
@@ -74,7 +74,7 @@ VSOutput main(VSInput input)
     output.position = mul(position, _cameras[0].worldToClip);
     output.drawCallID = drawCallID;
     output.uv01 = UVs;
-    //output.normal = mul(vertex.normal, (float3x3)instanceMatrix);
+    output.posViewSpace = mul(position, _cameras[0].worldToView).xyz;
 
     return output;
 }

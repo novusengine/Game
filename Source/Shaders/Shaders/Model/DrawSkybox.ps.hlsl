@@ -1,4 +1,5 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
+permutation TRANSPARENCY = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "common.inc.hlsl"
@@ -11,12 +12,17 @@ struct PSInput
     float4 position : SV_Position;
     uint drawID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
+    float3 posViewSpace : TEXCOORD2;
 };
 
 struct PSOutput
 {
+#if TRANSPARENCY
     float4 transparency : SV_Target0;
     float4 transparencyWeight : SV_Target1;
+#else
+    float4 color : SV_Target0;
+#endif
 };
 
 PSOutput main(PSInput input)
@@ -70,7 +76,9 @@ PSOutput main(PSInput input)
 
     //color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), input.normal, 1.0f, !isUnlit) + specular;
     color = saturate(color);
-
+    
+    PSOutput output;
+#if TRANSPARENCY
     // Premultiply alpha
     ModelTextureUnit firstTextureUnit = _modelTextureUnits[drawCallData.textureUnitOffset];
     uint blendingMode = (firstTextureUnit.data1 >> 11) & 0x7;
@@ -78,12 +86,15 @@ PSOutput main(PSInput input)
     float biggestComponent = max(color.x, max(color.y, color.z));
     color.a = biggestComponent * (blendingMode == 4) + color.a * (blendingMode != 4);
     
-    float oitDepth = input.position.z / input.position.w;
-    float oitWeight = CalculateOITWeight(color, oitDepth);
+    float clipSpaceDepth = input.position.z / input.position.w;
+    float viewSpaceDepth = input.posViewSpace.z;
+    float oitWeight = CalculateOITWeight(color, clipSpaceDepth, viewSpaceDepth);
     
-    PSOutput output;
     output.transparency = float4(color.rgb * color.a, color.a) * oitWeight;
     output.transparencyWeight.a = color.a;
+#else
+    output.color = color;
+#endif
 
     return output;
 }
