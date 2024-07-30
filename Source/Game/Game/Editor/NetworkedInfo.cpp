@@ -20,6 +20,8 @@
 
 #include <FileFormat/Shared.h>
 
+#include <Gameplay/Network/Opcode.h>
+
 #include <Network/Client.h>
 
 #include <entt/entt.hpp>
@@ -28,6 +30,10 @@
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <string>
+
+
+AutoCVar_String CVAR_NetworkConnectIP(CVarCategory::Network, "connectIP", "Sets the connection IP", "127.0.0.1");
+AutoCVar_String CVAR_NetworkCharacterName(CVarCategory::Network, "characterName", "Sets the character name", "dev");
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
@@ -177,19 +183,21 @@ namespace Editor
                 }
                 else
                 {
+                    const char* characterName = CVAR_NetworkCharacterName.Get();
+                    size_t characterNameLength = strlen(characterName);
+
                     ImGui::Text("Not connected to server");
-                    ImGui::Text("Character Name");
-                    ImGui::InputText("##CharacterNameInputField", &networkState.characterName);
+                    ImGui::Text("Character Name: %s", characterName);
 
                     if (ImGui::Button("Connect"))
                     {
-                        if (networkState.client && !networkState.characterName.empty())
+                        if (networkState.client && characterNameLength > 0)
                         {
                             Network::Socket::Result initResult = networkState.client->Init(Network::Socket::Mode::TCP);
                             if (initResult == Network::Socket::Result::SUCCESS)
                             {
                                 // Connect to IP/Port
-                                std::string ipAddress = "127.0.0.1";
+                                const char* ipAddress = CVAR_NetworkConnectIP.Get();
                                 u16 port = 4000;
 
                                 Network::Socket::Result connectResult = networkState.client->Connect(ipAddress, port);
@@ -206,12 +214,12 @@ namespace Editor
                                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
                                     Network::PacketHeader header =
                                     {
-                                        .opcode = Network::Opcode::CMSG_CONNECTED,
-                                        .size = static_cast<u16>(networkState.characterName.size()) + 1u
+                                        .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_Connect),
+                                        .size = static_cast<u16>(characterNameLength) + 1u
                                     };
 
                                     buffer->Put(header);
-                                    buffer->PutString(networkState.characterName);
+                                    buffer->PutString(characterName);
 
                                     networkState.client->Send(buffer);
                                 }

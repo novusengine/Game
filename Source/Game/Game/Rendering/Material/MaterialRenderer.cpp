@@ -268,6 +268,26 @@ void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& co
     directionalLights.push_back(light);
 }
 
+bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity)
+{
+    std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
+
+    u32 numDirectionalLights = static_cast<u32>(directionalLights.size());
+    if (index >= numDirectionalLights)
+        return false;
+
+    DirectionalLight& light = directionalLights[index];
+
+    light.direction = vec4(direction, 0.0f);
+    light.color = vec4(color, intensity);
+    light.groundAmbientColor = vec4(groundAmbientColor, groundAmbientIntensity);
+    light.skyAmbientColor = vec4(skyAmbientColor, skyAmbientIntensity);
+
+    _directionalLights.SetDirtyElement(index);
+
+    return true;
+}
+
 void MaterialRenderer::CreatePermanentResources()
 {
     Renderer::SamplerDesc samplerDesc;

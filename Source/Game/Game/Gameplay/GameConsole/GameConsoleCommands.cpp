@@ -18,6 +18,8 @@
 
 #include <Base/Memory/Bytebuffer.h>
 
+#include <Gameplay/Network/Opcode.h>
+
 #include <Network/Client.h>
 #include <Network/Define.h>
 
@@ -97,7 +99,7 @@ bool GameConsoleCommands::HandleLogin(GameConsoleCommandHandler* commandHandler,
         return false;
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-    buffer->Put(Network::Opcode::CMSG_CONNECTED);
+    buffer->Put(Network::GameOpcode::Client_Connect);
     buffer->PutU16(static_cast<u16>(characterName.size()) + 1);
     buffer->PutString(characterName);
 
@@ -194,7 +196,7 @@ bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_REQUEST_SPELLCAST,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_LocalRequestSpellCast),
             .size = sizeof(u32)
         };
 
@@ -225,7 +227,7 @@ bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_DAMAGE,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = sizeof(f32)
         };
         
@@ -254,7 +256,7 @@ bool GameConsoleCommands::HandleKill(GameConsoleCommandHandler* commandHandler, 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_KILL,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = 0
         };
         
@@ -282,7 +284,7 @@ bool GameConsoleCommands::HandleRevive(GameConsoleCommandHandler* commandHandler
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_RESURRECT,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = 0
         };
         
@@ -321,7 +323,7 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_MORPH,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = 4
         };
 
@@ -364,7 +366,7 @@ bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHan
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_CREATE_CHARACTER,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = static_cast<u16>(characterName.size()) + 1u
         };
 
@@ -401,7 +403,7 @@ bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHan
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         Network::PacketHeader header =
         {
-            .opcode = Network::Opcode::CMSG_CHEAT_DELETE_CHARACTER,
+            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
             .size = static_cast<u16>(characterName.size()) + 1u
         };
 

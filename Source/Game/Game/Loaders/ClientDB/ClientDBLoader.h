@@ -264,6 +264,70 @@ public:
                     break;
                 }
 
+                case ClientDBHash::Light:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::Light>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::LightData:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::LightData>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::LightParams:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::LightParam>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
+                case ClientDBHash::LightSkybox:
+                {
+                    auto* db = new ClientDB::Storage<ClientDB::Definitions::LightSkybox>(clientDBPair.fileName);
+                    if (!db->Read(buffer))
+                    {
+                        NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", clientDBPair.fileName);
+                        break;
+                    }
+
+                    auto* rawDB = reinterpret_cast<ClientDB::Storage<ClientDB::Definitions::Empty>*>(db);
+                    clientDBCollection._dbs.push_back(rawDB);
+                    clientDBCollection._dbHashToIndex[hash] = index;
+                    numLoadedClientDBs++;
+                    break;
+                }
+
                 case ClientDBHash::CameraSave:
                 {
                     auto* db = new ClientDB::Storage<ClientDB::Definitions::CameraSave>(clientDBPair.fileName);

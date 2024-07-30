@@ -97,6 +97,15 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
         });
 }
 
+void SkyboxRenderer::SetSkybandColors(const vec3& skyTopColor, const vec3& skyMiddleColor, const vec3& skyBottomColor, const vec3& skyAboveHorizonColor, const vec3& skyHorizonColor)
+{
+    _skybandColors.top = vec4(skyTopColor, 0.0f);
+    _skybandColors.middle = vec4(skyMiddleColor, 0.0f);
+    _skybandColors.bottom = vec4(skyBottomColor, 0.0f);
+    _skybandColors.aboveHorizon = vec4(skyAboveHorizonColor, 0.0f);
+    _skybandColors.horizon = vec4(skyHorizonColor, 0.0f);
+}
+
 void SkyboxRenderer::CreatePermanentResources()
 {
 

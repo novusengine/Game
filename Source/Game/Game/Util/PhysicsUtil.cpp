@@ -114,5 +114,15 @@ namespace Util
 
             return false;
         }
+
+        bool CastRay(JPH::PhysicsSystem& physicsSystem, vec3& start, vec3& direction, JPH::RayCastResult& result)
+        {
+            JPH::Vec3 joltStart = JPH::Vec3(start.x, start.y, start.z);
+            JPH::Vec3 joltDirection = JPH::Vec3(direction.x, direction.y, direction.z);
+
+            JPH::RRayCast ray(joltStart, joltDirection);
+
+            return physicsSystem.GetNarrowPhaseQuery().CastRay(ray, result);
+        }
     }
 }

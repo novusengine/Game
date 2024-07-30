@@ -6,7 +6,7 @@
 namespace Network
 {
     class Client;
-    class PacketHandler;
+    class GameMessageRouter;
 }
 
 namespace ECS::Singletons
@@ -14,10 +14,8 @@ namespace ECS::Singletons
     struct NetworkState
     {
     public:
-        std::string characterName = "dev";
-
         std::unique_ptr<Network::Client> client;
-        std::unique_ptr<Network::PacketHandler> packetHandler;
+        std::unique_ptr<Network::GameMessageRouter> gameMessageRouter;
 
         robin_hood::unordered_map<entt::entity, entt::entity> networkIDToEntity;
         robin_hood::unordered_map<entt::entity, entt::entity> entityToNetworkID;

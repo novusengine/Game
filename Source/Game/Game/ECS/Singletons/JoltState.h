@@ -173,7 +173,5 @@ namespace ECS::Singletons
         Jolt::ObjectLayerPairFilterImpl objectVSObjectLayerFilter;
         Jolt::MyBodyActivationListener bodyActivationListener;
         Jolt::MyContactListener contactListener;
-
-        JPH::BodyID floorID;
     };
 }

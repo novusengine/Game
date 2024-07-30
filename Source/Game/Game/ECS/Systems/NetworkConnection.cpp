@@ -19,9 +19,10 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
 
+#include <Gameplay/Network/GameMessageRouter.h>
+
 #include <Network/Client.h>
 #include <Network/Define.h>
-#include <Network/PacketHandler.h>
 
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
@@ -625,19 +626,19 @@ namespace ECS::Systems
             networkState.networkIDToEntity.reserve(1024);
             networkState.entityToNetworkID.reserve(1024);
 
-            networkState.packetHandler = std::make_unique<Network::PacketHandler>();
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_CONNECTED, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 8u, 64u, &HandleOnConnected));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_ENTITY_RESOURCES_UPDATE, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 20u, 20u, &HandleOnResourceUpdate));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_ENTITY_CREATE, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 48u, 48u, &HandleOnEntityCreate));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_ENTITY_DESTROY, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 4u, 4u, &HandleOnEntityDestroy));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::MSG_ENTITY_MOVE, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 40u, 40u, &HandleOnEntityMove));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::MSG_ENTITY_TARGET_UPDATE, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 8u, 8u, &HandleOnEntityTargetUpdate));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_SEND_SPELLCAST_RESULT, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 9u, 65u, &HandleOnSpellCastResult));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_ENTITY_CAST_SPELL, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 12u, 12u, &HandleOnEntityCastSpell));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_COMBAT_EVENT, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 6u, 22u, &HandleOnCombatEvent));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_ENTITY_DISPLAYINFO_UPDATE, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 8u, 8u, &HandleOnEntityDisplayInfoUpdate));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_CHEAT_CREATE_CHARACTER_RESULT, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 2u, 53u, &HandleOnCheatCreateCharacterResult));
-            networkState.packetHandler->SetMessageHandler(Network::Opcode::SMSG_CHEAT_DELETE_CHARACTER_RESULT, Network::OpcodeHandler(Network::ConnectionStatus::AUTH_NONE, 2u, 55u, &HandleOnCheatDeleteCharacterResult));
+            networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Connected, Network::GameMessageHandler(Network::ConnectionStatus::None, 8u, 64u, &HandleOnConnected));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityResourcesUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 20u, &HandleOnResourceUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCreate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 48u, &HandleOnEntityCreate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDestroy, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 4u, &HandleOnEntityDestroy));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityMove, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 40u, &HandleOnEntityMove));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityTargetUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 8u, &HandleOnEntityTargetUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 9u, 65u, &HandleOnSpellCastResult));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCastSpell, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 12u, &HandleOnEntityCastSpell));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCombatEvent, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 6u, 22u, &HandleOnCombatEvent));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDisplayInfoUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 8u, &HandleOnEntityDisplayInfoUpdate));
+            //networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 2u, 53u, &HandleOnCheatCreateCharacterResult));
+            //networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 2u, 55u, &HandleOnCheatDeleteCharacterResult));
         }
     }
 
@@ -682,19 +683,10 @@ namespace ECS::Systems
 
                 Network::PacketHeader* header = reinterpret_cast<Network::PacketHeader*>(buffer->GetReadPointer());
 
-                if (header->opcode == Network::Opcode::INVALID || header->opcode > Network::Opcode::MAX_COUNT)
-                {
-#ifdef NC_DEBUG
-                    NC_LOG_ERROR("Network : Received Invalid Opcode ({0}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode));
-#endif // NC_DEBUG
-                    networkState.client->Close();
-                    break;
-                }
-
                 if (header->size > Network::DEFAULT_BUFFER_SIZE)
                 {
 #ifdef NC_DEBUG
-                    NC_LOG_ERROR("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<std::underlying_type<Network::Opcode>::type>(header->opcode), header->size);
+                    NC_LOG_ERROR("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<Network::OpcodeType>(header->opcode), header->size);
 #endif // NC_DEBUG
                     networkState.client->Close();
                     break;
@@ -725,7 +717,7 @@ namespace ECS::Systems
                         }
                     }
 
-                    if (!networkState.packetHandler->CallHandler(Network::SOCKET_ID_INVALID, messageBuffer))
+                    if (!networkState.gameMessageRouter->CallHandler(Network::SOCKET_ID_INVALID, messageBuffer))
                     {
                         networkState.client->Close();
                     }

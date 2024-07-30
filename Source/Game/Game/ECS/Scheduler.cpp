@@ -1,13 +1,17 @@
 #include "Scheduler.h"
 
 #include "Game/ECS/Singletons/ActiveCamera.h"
+#include "Game/ECS/Singletons/AreaLightInfo.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
+#include "Game/ECS/Singletons/DayNightCycle.h"
 #include "Game/ECS/Singletons/EngineStats.h"
 #include "Game/ECS/Singletons/RenderState.h"
 #include "Game/ECS/Components/Camera.h"
 
+#include "Game/ECS/Systems/UpdateAreaLights.h"
 #include "Game/ECS/Systems/CalculateCameraMatrices.h"
 #include "Game/ECS/Systems/CalculateShadowCameraMatrices.h"
+#include "Game/ECS/Systems/UpdateDayNightCycle.h"
 #include "Game/ECS/Systems/DrawDebugMesh.h"
 #include "Game/ECS/Systems/FreeflyingCamera.h"
 #include "Game/ECS/Systems/OrbitalCamera.h"
@@ -41,6 +45,8 @@ namespace ECS
         Systems::OrbitalCamera::Init(registry);
         Systems::CharacterController::Init(registry);
         Systems::UpdateScripts::Init(registry);
+        Systems::UpdateDayNightCycle::Init(registry);
+        Systems::UpdateAreaLights::Init(registry);
         Systems::UpdateSkyboxes::Init(registry);
 
         entt::registry::context& ctx = registry.ctx();
@@ -52,18 +58,23 @@ namespace ECS
     {
         // TODO: You know, actually scheduling stuff and multithreading (enkiTS tasks?)
 
-        Systems::UpdateAABBs::Update(registry, deltaTime);
+        Systems::UpdateDayNightCycle::Update(registry, deltaTime);
         Systems::NetworkConnection::Update(registry, deltaTime);
-        Systems::UpdateNetworkedEntity::Update(registry, deltaTime);
+        Systems::DrawDebugMesh::Update(registry, deltaTime);
+
         Systems::CharacterController::Update(registry, deltaTime);
+        Systems::UpdateNetworkedEntity::Update(registry, deltaTime);
+
         Systems::FreeflyingCamera::Update(registry, deltaTime);
         Systems::OrbitalCamera::Update(registry, deltaTime);
         Systems::CalculateCameraMatrices::Update(registry, deltaTime);
         Systems::CalculateShadowCameraMatrices::Update(registry, deltaTime);
+
         Systems::UpdateSkyboxes::Update(registry, deltaTime);
+        Systems::UpdateAreaLights::Update(registry, deltaTime);
         Systems::CalculateTransformMatrices::Update(registry, deltaTime);
+        Systems::UpdateAABBs::Update(registry, deltaTime);
         Systems::UpdatePhysics::Update(registry, deltaTime);
-        Systems::DrawDebugMesh::Update(registry, deltaTime);
 
         // Note: For now UpdateScripts should always be run last
         Systems::UpdateScripts::Update(registry, deltaTime);

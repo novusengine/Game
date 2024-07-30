@@ -33,6 +33,10 @@ namespace ECS::Singletons
         CreatureDisplayInfoExtra    = GetHash("CreatureDisplayInfoExtra.cdb"_h),
         CreatureModelData           = GetHash("CreatureModelData.cdb"_h),
         CharSection                 = GetHash("CharSection.cdb"_h),
+        Light                       = GetHash("Light.cdb"_h),
+        LightData                   = GetHash("LightData.cdb"_h),
+        LightParams                 = GetHash("LightParams.cdb"_h),
+        LightSkybox                 = GetHash("LightSkybox.cdb"_h)
     };
 
     struct ClientDBCollection
