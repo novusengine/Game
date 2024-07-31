@@ -40,7 +40,7 @@ jobs:
     - name: Copy dxcompiler library to system
       run: |
         sudo cp /home/runner/work/Game/Game/Submodules/Engine/Dependencies/dxcompiler/lib/linux/libdxcompiler.so /usr/local/lib
-        sudo ldconfig
+        sudo ldconfig /usr/local/lib
 
     - name: Run Premake
       run: |
