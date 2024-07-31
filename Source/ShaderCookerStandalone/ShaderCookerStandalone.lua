@@ -1,4 +1,4 @@
-local mod = Solution.Util.CreateModuleTable("ShaderCookerStandalone", { "base", "shadercooker" })
+local mod = Solution.Util.CreateModuleTable("ShaderCookerStandalone", { "base", "shadercooker", "dxcompiler" })
 
 Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local dxCompilerLibPath = BuildSettings:Get("DXCompiler Dynamic Lib Path")
