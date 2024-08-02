@@ -222,6 +222,10 @@ namespace ECS::Systems
 
                 for (auto bodyID : activeBodyIDs)
                 {
+                    JPH::Body* body = joltState.physicsSystem.GetBodyLockInterfaceNoLock().TryGetBody(bodyID);
+                    if (body->IsSensor())
+                        continue;
+
                     u32 userData = static_cast<u32>(bodyInterface.GetUserData(bodyID));
                     auto entityID = static_cast<entt::entity>(userData);
 

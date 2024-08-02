@@ -3,6 +3,7 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Components/MovementInfo.h"
+#include "Game/ECS/Components/NetworkedEntity.h"
 #include "Game/ECS/Components/UnitStatsComponent.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Singletons/CameraSaveDB.h"
@@ -10,6 +11,7 @@
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Singletons/NetworkState.h"
+#include "Game/ECS/Util/MessageBuilderUtil.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Util/CameraSaveUtil.h"
 #include "Game/Util/CameraSaveUtil.h"
@@ -63,10 +65,10 @@ namespace Editor
             ImGui::NewLine();
             ImGui::Separator();
 
-            if (characterSingleton.entity != entt::null)
+            if (characterSingleton.moverEntity != entt::null)
             {
-                auto& characterTransform = registry.get<ECS::Components::Transform>(characterSingleton.entity);
-                auto& movementInfo = registry.get<ECS::Components::MovementInfo>(characterSingleton.modelEntity);
+                auto& characterTransform = registry.get<ECS::Components::Transform>(characterSingleton.moverEntity);
+                auto& movementInfo = registry.get<ECS::Components::MovementInfo>(characterSingleton.moverEntity);
 
                 glm::vec3 worldPos = characterTransform.GetWorldPosition();
                 const vec3 characterForward = characterTransform.GetLocalForward();
@@ -89,9 +91,11 @@ namespace Editor
 
                 if (networkState.client->IsConnected())
                 {
+                    auto& networkedEntity = registry.get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
+
                     if (ImGui::CollapsingHeader("Basic Info"))
                     {
-                        auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+                        auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
                         ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
 
                         for (u32 i = 0; i < (u32)ECS::Components::PowerType::Count; i++)
@@ -131,11 +135,11 @@ namespace Editor
                         ImGui::Separator();
                     }
 
-                    if (characterSingleton.targetEntity != entt::null && registry.valid(characterSingleton.targetEntity))
+                    if (networkedEntity.targetEntity != entt::null && registry.valid(networkedEntity.targetEntity))
                     {
                         if (ImGui::CollapsingHeader("Target Info"))
                         {
-                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.targetEntity);
+                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(networkedEntity.targetEntity);
                             ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
 
                             for (u32 i = 0; i < (u32)ECS::Components::PowerType::Count; i++)
@@ -212,16 +216,10 @@ namespace Editor
                                     networkState.client->GetSocket()->SetBlockingState(false);
 
                                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                                    Network::PacketHeader header =
+                                    if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
                                     {
-                                        .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_Connect),
-                                        .size = static_cast<u16>(characterNameLength) + 1u
-                                    };
-
-                                    buffer->Put(header);
-                                    buffer->PutString(characterName);
-
-                                    networkState.client->Send(buffer);
+                                        networkState.client->Send(buffer);
+                                    }
                                 }
                             }
                         }
@@ -231,6 +229,11 @@ namespace Editor
             else
             {
                 ImGui::Text("No active character");
+
+                if (ImGui::Button("Disconnect"))
+                {
+                    networkState.client->Close();
+                }
             }
         }
         ImGui::End();

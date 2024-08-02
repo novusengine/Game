@@ -23,6 +23,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("kill", GameConsoleCommands::HandleKill);
     RegisterCommand("revive", GameConsoleCommands::HandleRevive);
     RegisterCommand("morph", GameConsoleCommands::HandleMorph);
+    RegisterCommand("demorph", GameConsoleCommands::HandleDemorph);
     RegisterCommand("createchar", GameConsoleCommands::HandleCreateChar);
     RegisterCommand("deletechar", GameConsoleCommands::HandleDeleteChar);
 }
