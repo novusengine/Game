@@ -8,7 +8,6 @@ namespace ECS::Singletons
     {
     public:
         entt::entity entity;
-        entt::entity entityToTrack;
 
         bool captureMouse;
         bool captureMouseHasMoved;

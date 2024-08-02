@@ -17,6 +17,7 @@
 #include "Game/ECS/Singletons/NetworkState.h"
 #include "Game/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game/ECS/Util/EventUtil.h"
+#include "Game/ECS/Util/MessageBuilderUtil.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Editor/EditorHandler.h"
 #include "Game/Gameplay/MapLoader.h"
@@ -60,32 +61,16 @@ namespace ECS::Systems
         auto& transformSystem = ctx.get<TransformSystem>();
         auto& characterSingleton = ctx.emplace<Singletons::CharacterSingleton>();
 
-        characterSingleton.entity = registry.create();
-        auto& name = registry.emplace<Components::Name>(characterSingleton.entity);
+        characterSingleton.controllerEntity = registry.create();
+        auto& name = registry.emplace<Components::Name>(characterSingleton.controllerEntity);
         name.fullName = "CharacterController";
         name.name = "CharacterController";
         name.nameHash = StringUtils::fnv1a_32(name.name.c_str(), name.name.size());
-        registry.emplace<Components::Transform>(characterSingleton.entity);
+        registry.emplace<Components::Transform>(characterSingleton.controllerEntity);
 
-        characterSingleton.modelEntity = registry.create();
-        registry.emplace<Components::AABB>(characterSingleton.modelEntity);
-        registry.emplace<Components::Transform>(characterSingleton.modelEntity);
-        registry.emplace<Components::Name>(characterSingleton.modelEntity);
-        registry.emplace<Components::Model>(characterSingleton.modelEntity);
+        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(0.0f, 0.0f, 0.0f));
 
-        registry.emplace<Components::MovementInfo>(characterSingleton.modelEntity);
-        auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.modelEntity);
-        displayInfo.displayID = 50;
-
-        auto& unitStatsComponent = registry.emplace<Components::UnitStatsComponent>(characterSingleton.modelEntity);
-        unitStatsComponent.currentHealth = 50.0f;
-        unitStatsComponent.maxHealth = 100.0f;
-
-        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(0.0f, 0.0f, 0.0f));
-        transformSystem.SetWorldPosition(characterSingleton.modelEntity, vec3(0.0f, 0.0f, 0.0f));
-        transformSystem.ParentEntityTo(characterSingleton.entity, characterSingleton.modelEntity);
-
-        InitCharacterController(registry);
+        InitCharacterController(registry, true);
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
         characterSingleton.keybindGroup = inputManager->CreateKeybindGroup("CharacterController", 100);
@@ -97,14 +82,19 @@ namespace ECS::Systems
         characterSingleton.keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        characterSingleton.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        characterSingleton.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            entt::registry::context& ctx = registry->ctx();
+            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+
+            if (characterSingleton.moverEntity == entt::null)
+                return false;
 
             entt::entity targetEntity = entt::null;
             if (::Util::Physics::GetEntityAtMousePosition(ServiceLocator::GetEditorHandler()->GetViewport(), targetEntity))
             {
-                if (targetEntity != characterSingleton.entity)
+                if (targetEntity != characterSingleton.moverEntity)
                 {
                     if (registry->valid(targetEntity) && !registry->all_of<Components::NetworkedEntity>(targetEntity))
                     {
@@ -113,28 +103,26 @@ namespace ECS::Systems
                 }
             }
 
-            if (characterSingleton.targetEntity == targetEntity)
+            auto& networkedEntity = registry->get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            if (networkedEntity.targetEntity == targetEntity)
                 return false;
 
-            Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
+            Singletons::NetworkState& networkState = ctx.get<Singletons::NetworkState>();
+            if (!networkState.entityToNetworkID.contains(targetEntity))
+                return false;
+
             if (networkState.client && networkState.client->IsConnected())
             {
                 std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                Network::PacketHeader header =
-                {
-                    .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Shared_EntityTargetUpdate),
-                    .size = sizeof(entt::entity)
-                };
-
                 entt::entity targetNetworkID = networkState.entityToNetworkID[targetEntity];
-                buffer->Put(header);
-                buffer->Put(targetNetworkID);
 
-                networkState.client->Send(buffer);
+                if (Util::MessageBuilder::Entity::BuildTargetUpdateMessage(buffer, targetNetworkID))
+                {
+                    networkState.client->Send(buffer);
+                }
             }
 
-            characterSingleton.targetEntity = targetEntity;
-
+            networkedEntity.targetEntity = targetEntity;
             return true;
         });
 
@@ -179,13 +167,11 @@ namespace ECS::Systems
 
                 TransformSystem& transformSystem = ctx.get<TransformSystem>();
 
-                auto& transform = registry->get<Components::Transform>(characterSingleton.entity);
-                transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
+                transformSystem.ParentEntityTo(characterSingleton.controllerEntity, orbitalCameraSettings.entity);
                 transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
 
                 Util::CameraUtil::SetCaptureMouse(false); // Uncapture mouse for FreeFlyingCamera when switching to orbital camera
                 activeCamera.entity = orbitalCameraSettings.entity;
-                orbitalCameraSettings.entityToTrack = characterSingleton.entity;
 
                 freeFlyingCameraKeybindGroup->SetActive(false);
 
@@ -216,7 +202,8 @@ namespace ECS::Systems
 
             auto& camera = registry->get<Components::Camera>(freeFlyingCameraSettings.entity);
             auto& cameraTransform = registry->get<Components::Transform>(freeFlyingCameraSettings.entity);
-            auto& characterMovementInfo = registry->get<Components::MovementInfo>(characterSingleton.modelEntity);
+            auto& characterMovementInfo = registry->get<Components::MovementInfo>(characterSingleton.moverEntity);
+            auto& characterNetworkedEntity = registry->get<Components::NetworkedEntity>(characterSingleton.moverEntity);
 
             vec3 newPosition = cameraTransform.GetWorldPosition();
             if (characterSingleton.character)
@@ -224,11 +211,11 @@ namespace ECS::Systems
                 characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
                 characterSingleton.character->SetPosition(JPH::RVec3Arg(newPosition.x, newPosition.y, newPosition.z));
             }
-            transformSystem.SetWorldPosition(characterSingleton.entity, newPosition);
+            transformSystem.SetWorldPosition(characterSingleton.controllerEntity, newPosition);
 
             characterMovementInfo.pitch = 0.0f;
             characterMovementInfo.yaw = glm::pi<f32>() + glm::radians(camera.yaw);
-            characterSingleton.positionOrRotationIsDirty = true;
+            characterNetworkedEntity.positionOrRotationIsDirty = true;
 
             return true;
         });
@@ -415,6 +402,7 @@ namespace ECS::Systems
         transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
         transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
     }
+
 #else
     void CharacterController::Update(entt::registry& registry, f32 deltaTime)
     {
@@ -423,12 +411,12 @@ namespace ECS::Systems
 
         entt::registry::context& ctx = registry.ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-        auto& model = registry.get<Components::Model>(characterSingleton.modelEntity);
-        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
+        auto& networkState = ctx.get<Singletons::NetworkState>();
 
         Util::EventUtil::OnEvent<Components::MapLoadedEvent>([&](const Components::MapLoadedEvent& event)
         {
-            InitCharacterController(registry);
+            bool isLocal = !networkState.client || (networkState.client && !networkState.client->IsConnected());
+            InitCharacterController(registry, isLocal);
         });
 
 //#ifdef JPH_DEBUG_RENDERER
@@ -441,14 +429,17 @@ namespace ECS::Systems
 //        characterSingleton.character->GetShape()->Draw(joltDebugRenderer, characterSingleton.character->GetWorldTransform(), JPH::Vec3(modelScale.x, modelScale.y, modelScale.z), JPH::Color::sCyan, true, true);
 //#endif
 
-        if (!keybindGroup->IsActive())
+        if (!keybindGroup->IsActive() || characterSingleton.moverEntity == entt::null)
             return;
 
         auto& transformSystem = ctx.get<TransformSystem>();
 
         auto& joltState = ctx.get<Singletons::JoltState>();
         auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
-        auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
+        auto& networkedEntity = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+        auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.moverEntity);
 
         static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
         JPH::Vec3 moveDirection = JPH::Vec3(0.0f, 0.0f, 0.0f);
@@ -468,12 +459,12 @@ namespace ECS::Systems
         moveDirection += isMovingForward * JPH::Vec3(0.0f, 0.0f, -1.0f);
         moveDirection += isMovingBackward * JPH::Vec3(0.0f, 0.0f, 1.0f);
         moveDirection += isMovingLeft * JPH::Vec3(1.0f, 0.0f, 0.0f);;
-        moveDirection += isMovingRight * JPH::Vec3(-1.0f, 0.0f, 0.0f);;;
+        moveDirection += isMovingRight * JPH::Vec3(-1.0f, 0.0f, 0.0f);
 
         quat characterRotation = quat(vec3(movementInfo.pitch, movementInfo.yaw, 0.0f));
         if (isAlive)
         {
-            transformSystem.SetWorldRotation(characterSingleton.modelEntity, characterRotation);
+            transformSystem.SetWorldRotation(characterSingleton.moverEntity, characterRotation);
 
             JPH::Quat joltRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
             characterSingleton.character->SetRotation(joltRotation);
@@ -527,7 +518,7 @@ namespace ECS::Systems
 
         if (isGrounded || (canControlInAir && isMoving))
         {
-            if (desiredVelocity.GetY() < 0.0f)
+            if (isGrounded && desiredVelocity.GetY() < 0.0f)
             {
                 desiredVelocity.SetY(0.0f);
             }
@@ -569,7 +560,7 @@ namespace ECS::Systems
         ::Util::CharacterController::Update(characterSingleton.character, deltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
         
         JPH::Vec3 position = characterSingleton.character->GetPosition();
-        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(position.GetX(), position.GetY(), position.GetZ()));
+        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(position.GetX(), position.GetY(), position.GetZ()));
 
         JPH::Vec3 linearVelocity = characterSingleton.character->GetLinearVelocity();
         movementInfo.horizontalVelocity = vec2(linearVelocity.GetX(), linearVelocity.GetZ());
@@ -585,7 +576,7 @@ namespace ECS::Systems
         {
             if (!wasGrounded)
             {
-                characterSingleton.positionOrRotationIsDirty = true;
+                networkedEntity.positionOrRotationIsDirty = true;
                 movementInfo.movementFlags.justGrounded = true;
             }
 
@@ -602,31 +593,21 @@ namespace ECS::Systems
         static constexpr f32 positionOrRotationUpdateInterval = 1.0f / 60.0f;
         if (characterSingleton.positionOrRotationUpdateTimer >= positionOrRotationUpdateInterval)
         {
-            if (!isGrounded || isMoving || wasMoving || characterSingleton.positionOrRotationIsDirty)
+            if (!isGrounded || isMoving || wasMoving || networkedEntity.positionOrRotationIsDirty)
             {
                 // Just started moving
                 auto& networkState = ctx.get<Singletons::NetworkState>();
                 if (networkState.client && networkState.client->IsConnected())
                 {
-                    auto& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
-
+                    auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                    Network::PacketHeader header =
+                    if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
                     {
-                        .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Shared_EntityMove),
-                        .size = sizeof(vec3) + sizeof(quat) + sizeof(Components::MovementFlags) + sizeof(f32)
-                    };
-
-                    buffer->Put(header);
-                    buffer->Put(transform.GetWorldPosition());
-                    buffer->Put(transform.GetWorldRotation());
-                    buffer->Put(movementInfo.movementFlags);
-                    buffer->Put(movementInfo.verticalVelocity);
-
-                    networkState.client->Send(buffer);
+                        networkState.client->Send(buffer);
+                    }
                 }
 
-                characterSingleton.positionOrRotationIsDirty = false;
+                networkedEntity.positionOrRotationIsDirty = false;
             }
 
             characterSingleton.positionOrRotationUpdateTimer -= positionOrRotationUpdateInterval;
@@ -635,7 +616,7 @@ namespace ECS::Systems
         {
             if ((isGrounded && !isMoving) && wasMoving)
             {
-                characterSingleton.positionOrRotationIsDirty = true;
+                networkedEntity.positionOrRotationIsDirty = true;
             }
 
             characterSingleton.positionOrRotationUpdateTimer += deltaTime;
@@ -653,7 +634,7 @@ namespace ECS::Systems
         };
 
         {
-            ::Util::Unit::UpdateAnimationState(registry, characterSingleton.modelEntity, model.instanceID, deltaTime);
+            ::Util::Unit::UpdateAnimationState(registry, characterSingleton.moverEntity, model.instanceID, deltaTime);
             if (isGrounded || (canControlInAir && isMoving))
             {
                 f32 spineOrientation = 0.0f;
@@ -703,9 +684,9 @@ namespace ECS::Systems
                     waistOrientation = -90.0f;
                 }
 
-                SetOrientation(characterSingleton.spineRotationSettings, spineOrientation);
-                SetOrientation(characterSingleton.headRotationSettings, headOrientation);
-                SetOrientation(characterSingleton.waistRotationSettings, waistOrientation);
+                SetOrientation(movementInfo.spineRotationSettings, spineOrientation);
+                SetOrientation(movementInfo.headRotationSettings, headOrientation);
+                SetOrientation(movementInfo.waistRotationSettings, waistOrientation);
             }
         }
 
@@ -728,26 +709,26 @@ namespace ECS::Systems
 
             if (model.modelID != std::numeric_limits<u32>().max() && model.instanceID != std::numeric_limits<u32>().max())
             {
-                if (HandleUpdateOrientation(characterSingleton.spineRotationSettings, deltaTime))
+                if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
                 {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.spineRotationSettings.x), 0.0f));
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
                     animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::SpineLow, rotation);
                 }
-                if (HandleUpdateOrientation(characterSingleton.headRotationSettings, deltaTime))
+                if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
                 {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.headRotationSettings.x), 0.0f));
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
                     animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Head, rotation);
                 }
-                if (HandleUpdateOrientation(characterSingleton.waistRotationSettings, deltaTime))
+                if (HandleUpdateOrientation(movementInfo.waistRotationSettings, deltaTime))
                 {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(characterSingleton.waistRotationSettings.x), 0.0f));
+                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.waistRotationSettings.x), 0.0f));
                     animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Waist, rotation);
                 }
             }
         }
     }
 
-    void CharacterController::InitCharacterController(entt::registry& registry)
+    void CharacterController::InitCharacterController(entt::registry& registry, bool isLocal)
     {
         entt::registry::context& ctx = registry.ctx();
 
@@ -756,11 +737,28 @@ namespace ECS::Systems
         auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
         auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
-        modelLoader->LoadDisplayIDForEntity(characterSingleton.modelEntity, 50);
+        if (isLocal)
+        {
+            characterSingleton.moverEntity = registry.create();
+            registry.emplace<Components::Name>(characterSingleton.moverEntity);
+            registry.emplace<Components::AABB>(characterSingleton.moverEntity);
+            registry.emplace<Components::Transform>(characterSingleton.moverEntity);
+            registry.emplace<Components::Model>(characterSingleton.moverEntity);
+            registry.emplace<Components::MovementInfo>(characterSingleton.moverEntity);
+            registry.emplace<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
+            displayInfo.displayID = 50;
+
+            auto& unitStatsComponent = registry.emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
+            unitStatsComponent.currentHealth = 50.0f;
+            unitStatsComponent.maxHealth = 100.0f;
+            transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
+
+            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+            u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
+            modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, 50);
+        }
 
         f32 width = 0.4166f;
         f32 height = 1.9134f;
@@ -808,16 +806,17 @@ namespace ECS::Systems
             newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
         }
 
-        characterSingleton.targetEntity = entt::null;
         characterSingleton.character->SetMass(1000000.0f);
         characterSingleton.character->SetPenetrationRecoverySpeed(0.5f);
         characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
         characterSingleton.character->SetPosition(newPosition);
 
+        auto& networkedInfo = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+        networkedInfo.positionOrRotationIsDirty = true;
         characterSingleton.positionOrRotationUpdateTimer = 0.0f;
-        characterSingleton.positionOrRotationIsDirty = true;
         characterSingleton.canControlInAir = true;
 
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
         movementInfo.pitch = 0.0f;
         movementInfo.yaw = 0.0f;
         movementInfo.speed = 7.1111f;
@@ -825,9 +824,39 @@ namespace ECS::Systems
         movementInfo.gravityModifier = 1.0f;
         movementInfo.jumpState = Components::JumpState::None;
 
-        transformSystem.ParentEntityTo(characterSingleton.entity, orbitalCameraSettings.entity);
+        transformSystem.ParentEntityTo(characterSingleton.controllerEntity, characterSingleton.moverEntity);
+        transformSystem.SetLocalPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
+
+        transformSystem.ParentEntityTo(characterSingleton.controllerEntity, orbitalCameraSettings.entity);
         transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
-        transformSystem.SetWorldPosition(characterSingleton.entity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
+
+        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
+    }
+    void CharacterController::DeleteCharacterController(entt::registry& registry)
+    {
+        entt::registry::context& ctx = registry.ctx();
+
+        auto& transformSystem = ctx.get<TransformSystem>();
+        auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+
+        if (characterSingleton.moverEntity != entt::null)
+        {
+            if (auto* model = registry.try_get<Components::Model>(characterSingleton.moverEntity))
+            {
+                if (model->instanceID != std::numeric_limits<u32>().max())
+                {
+                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                    modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, model->instanceID);
+
+                    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+                    animationSystem->RemoveInstance(model->instanceID);
+                }
+            }
+
+            registry.destroy(characterSingleton.moverEntity);
+            characterSingleton.moverEntity = entt::null;
+        }
     }
 #endif
 }

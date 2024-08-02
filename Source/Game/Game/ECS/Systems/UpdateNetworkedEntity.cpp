@@ -5,6 +5,7 @@
 #include "Game/ECS/Components/MovementInfo.h"
 #include "Game/ECS/Components/NetworkedEntity.h"
 #include "Game/ECS/Components/UnitStatsComponent.h"
+#include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Util/ServiceLocator.h"
@@ -42,10 +43,16 @@ namespace ECS::Systems
 
     void UpdateNetworkedEntity::Update(entt::registry& registry, f32 deltaTime)
     {
+        auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
+        entt::entity characterEntity = characterSingleton.moverEntity;
+
         auto view = registry.view<Components::Transform, Components::MovementInfo, Components::NetworkedEntity>();
 
-        view.each([&](entt::entity entity, Components::Transform& transform, Components::MovementInfo& movementInfo, Components::NetworkedEntity& networkedEntity)
+        view.each([&, characterEntity](entt::entity entity, Components::Transform& transform, Components::MovementInfo& movementInfo, Components::NetworkedEntity& networkedEntity)
         {
+            if (entity == characterEntity)
+                return;
+
             if (networkedEntity.positionProgress != -1.0f)
             {
                 networkedEntity.positionProgress += 10.0f * deltaTime;
@@ -93,8 +100,6 @@ namespace ECS::Systems
                 TransformSystem& transformSystem = TransformSystem::Get(registry);
                 transformSystem.SetWorldPosition(entity, newPosition);
 
-                networkedEntity.positionOrRotationChanged = true;
-
                 if (networkedEntity.positionProgress >= 1.0f)
                 {
                     networkedEntity.positionProgress = -1.0f;
@@ -126,8 +131,6 @@ namespace ECS::Systems
                     Singletons::JoltState& joltState = registry.ctx().get<Singletons::JoltState>();
 
                     JPH::BodyID bodyID = JPH::BodyID(networkedEntity.bodyID);
-                    
-                        
                 }
 
                 ::Util::Unit::UpdateAnimationState(registry, entity, instanceID, deltaTime);
@@ -190,9 +193,9 @@ namespace ECS::Systems
                             waistOrientation = -90.0f;
                         }
 
-                        SetOrientation(networkedEntity.spineRotationSettings, spineOrientation);
-                        SetOrientation(networkedEntity.headRotationSettings, headOrientation);
-                        SetOrientation(networkedEntity.waistRotationSettings, waistOrientation);
+                        SetOrientation(movementInfo.spineRotationSettings, spineOrientation);
+                        SetOrientation(movementInfo.headRotationSettings, headOrientation);
+                        SetOrientation(movementInfo.waistRotationSettings, waistOrientation);
                     }
 
                     auto HandleUpdateOrientation = [](vec4& settings, f32 deltaTime) -> bool
@@ -209,19 +212,19 @@ namespace ECS::Systems
                         return true;
                     };
 
-                    if (HandleUpdateOrientation(networkedEntity.spineRotationSettings, deltaTime))
+                    if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
                     {
-                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(networkedEntity.spineRotationSettings.x), 0.0f));
+                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
                         animationSystem->SetBoneRotation(instanceID, Animation::Bone::SpineLow, rotation);
                     }
-                    if (HandleUpdateOrientation(networkedEntity.headRotationSettings, deltaTime))
+                    if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
                     {
-                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(networkedEntity.headRotationSettings.x), 0.0f));
+                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
                         animationSystem->SetBoneRotation(instanceID, Animation::Bone::Head, rotation);
                     }
-                    if (HandleUpdateOrientation(networkedEntity.waistRotationSettings, deltaTime))
+                    if (HandleUpdateOrientation(movementInfo.waistRotationSettings, deltaTime))
                     {
-                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(networkedEntity.waistRotationSettings.x), 0.0f));
+                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.waistRotationSettings.x), 0.0f));
                         animationSystem->SetBoneRotation(instanceID, Animation::Bone::Waist, rotation);
                     }
                 }

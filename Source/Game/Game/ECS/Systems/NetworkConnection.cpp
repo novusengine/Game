@@ -1,4 +1,5 @@
 #include "NetworkConnection.h"
+#include "CharacterController.h"
 
 #include "Game/Animation/AnimationSystem.h"
 #include "Game/ECS/Components/AABB.h"
@@ -31,42 +32,245 @@ namespace ECS::Systems
 {
     bool HandleOnConnected(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
     {
+        Network::ConnectResult result = Network::ConnectResult::None;
+        if (!recvPacket->Get(result))
+            return false;
+
+        if (result != Network::ConnectResult::Success)
+        {
+            NC_LOG_WARNING("Network : Failed to login to character");
+            return false;
+        }
+
+        NC_LOG_INFO("Network : Logged in to character");
+        return true;
+    }
+    
+    bool HandleOnCheatCommandResult(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
         u8 result = 0;
+        std::string resultText = "";
+
         if (!recvPacket->GetU8(result))
+            return false;
+
+        if (!recvPacket->GetString(resultText))
             return false;
 
         if (result != 0)
         {
-            std::string errorText = "";
+            NC_LOG_WARNING("Network : ({0})", resultText);
+            return true;
+        }
+        else
+        {
+            NC_LOG_INFO("Network : ({0})", resultText);
+            return true;
+        }
+    }
 
-            if (!recvPacket->GetString(errorText))
-                return false;
-
-            NC_LOG_WARNING("Network : Failed to connect to server ({0})", errorText);
+    bool HandleOnSetMover(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        entt::entity networkID = entt::null;
+        if (!recvPacket->Get(networkID))
             return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received SetMover for non-existent entity ({0})", entt::to_integral(networkID));
+            return true;
         }
 
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+        entt::entity entity = networkState.networkIDToEntity[networkID];
+
+        characterSingleton.moverEntity = entity;
+        CharacterController::InitCharacterController(*registry, false);
+
+        return true;
+    }
+    bool HandleOnEntityCreate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
         entt::entity networkID = entt::null;
-        std::string charName = "";
+        vec3 position = vec3(0.0f);
+        quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
+        vec3 scale = vec3(1.0f);
 
         if (!recvPacket->Get(networkID))
             return false;
 
-        if (!recvPacket->GetString(charName))
+        if (!recvPacket->Get(position))
+            return false;
+
+        if (!recvPacket->Get(rotation))
+            return false;
+
+        if (!recvPacket->Get(scale))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
-        networkState.networkIDToEntity[networkID] = characterSingleton.modelEntity;
-        networkState.entityToNetworkID[characterSingleton.modelEntity] = networkID;
+        if (networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Create Entity for already existing entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
 
-        NC_LOG_INFO("Network : Connected to server (Playing on character : \"{0}\")", charName);
+        entt::entity newEntity = registry->create();
+        registry->emplace<Components::AABB>(newEntity);
+        registry->emplace<Components::Transform>(newEntity);
+        registry->emplace<Components::Name>(newEntity);
+        registry->emplace<Components::Model>(newEntity);
+        registry->emplace<Components::MovementInfo>(newEntity);
+        registry->emplace<Components::UnitStatsComponent>(newEntity);
+        auto& displayInfo = registry->emplace<Components::DisplayInfo>(newEntity);
+        displayInfo.displayID = 0;
+
+        auto& networkedEntity = registry->emplace<Components::NetworkedEntity>(newEntity);
+        networkedEntity.networkID = networkID;
+        networkedEntity.targetEntity = entt::null;
+
+        TransformSystem& transformSystem = TransformSystem::Get(*registry);
+        transformSystem.SetWorldPosition(newEntity, position);
+        transformSystem.SetWorldRotation(newEntity, rotation);
+        transformSystem.SetLocalScale(newEntity, scale);
+
+        networkState.networkIDToEntity[networkID] = newEntity;
+        networkState.entityToNetworkID[newEntity] = networkID;
 
         return true;
     }
+    bool HandleOnEntityDestroy(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        entt::entity networkID = entt::null;
 
+        if (!recvPacket->Get(networkID))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Delete Entity for unknown entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        entt::entity entity = networkState.networkIDToEntity[networkID];
+
+        if (registry->any_of<Components::Model>(entity))
+        {
+            Animation::AnimationSystem* AnimationSystem = ServiceLocator::GetAnimationSystem();
+            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+            auto& model = registry->get<Components::Model>(entity);
+            AnimationSystem->RemoveInstance(model.instanceID);
+            modelLoader->UnloadModelForEntity(entity, model.instanceID);
+        }
+
+        networkState.networkIDToEntity.erase(networkID);
+        networkState.entityToNetworkID.erase(entity);
+
+        registry->destroy(entity);
+
+        return true;
+    }
+    bool HandleOnEntityDisplayInfoUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        entt::entity networkID = entt::null;
+        u32 displayID = 0;
+
+        if (!recvPacket->Get(networkID))
+            return false;
+
+        if (!recvPacket->GetU32(displayID))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        entt::entity entity = networkState.networkIDToEntity[networkID];
+        if (!registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        if (!modelLoader->LoadDisplayIDForEntity(entity, displayID))
+        {
+            NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
+        displayInfo.displayID = displayID;
+
+        return true;
+    }
+    bool HandleOnEntityMove(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        entt::entity networkID = entt::null;
+        vec3 position = vec3(0.0f);
+        quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
+        Components::MovementFlags movementFlags = {};
+        f32 verticalVelocity = 0.0f;
+
+        if (!recvPacket->Get(networkID))
+            return false;
+
+        if (!recvPacket->Get(position))
+            return false;
+
+        if (!recvPacket->Get(rotation))
+            return false;
+
+        if (!recvPacket->Get(movementFlags))
+            return false;
+
+        if (!recvPacket->Get(verticalVelocity))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Entity Move for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        entt::entity entity = networkState.networkIDToEntity[networkID];
+
+        auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
+        auto& transform = registry->get<Components::Transform>(entity);
+        auto& movementInfo = registry->get<Components::MovementInfo>(entity);
+
+        networkedEntity.initialPosition = transform.GetWorldPosition();
+        networkedEntity.desiredPosition = position;
+        networkedEntity.positionProgress = 0.0f;
+        movementInfo.movementFlags = movementFlags;
+        movementInfo.verticalVelocity = verticalVelocity;
+
+        TransformSystem& transformSystem = TransformSystem::Get(*registry);
+        transformSystem.SetWorldRotation(entity, rotation);
+
+        return true;
+    }
+    bool HandleOnEntityMoveStop(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        return true;
+    }
     bool HandleOnResourceUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
     {
         entt::entity networkID = entt::null;
@@ -130,153 +334,6 @@ namespace ECS::Systems
 
         return true;
     }
-
-    bool HandleOnEntityCreate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        entt::entity networkID = entt::null;
-        u32 displayID = 0;
-        vec3 position = vec3(0.0f);
-        quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-        vec3 scale = vec3(1.0f);
-
-        if (!recvPacket->Get(networkID))
-            return false;
-
-        if (!recvPacket->Get(displayID))
-            return false;
-
-        if (!recvPacket->Get(position))
-            return false;
-
-        if (!recvPacket->Get(rotation))
-            return false;
-
-        if (!recvPacket->Get(scale))
-            return false;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        if (networkState.networkIDToEntity.contains(networkID))
-        {
-            NC_LOG_WARNING("Network : Received Create Entity for already existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        entt::entity newEntity = registry->create();
-        registry->emplace<Components::AABB>(newEntity);
-        registry->emplace<Components::Transform>(newEntity);
-        registry->emplace<Components::Name>(newEntity);
-        registry->emplace<Components::Model>(newEntity);
-        registry->emplace<Components::MovementInfo>(newEntity);
-        registry->emplace<Components::UnitStatsComponent>(newEntity);
-        auto& displayInfo = registry->emplace<Components::DisplayInfo>(newEntity);
-        displayInfo.displayID = displayID;
-
-        auto& networkedEntity = registry->emplace<Components::NetworkedEntity>(newEntity);
-        networkedEntity.networkID = networkID;
-
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        modelLoader->LoadDisplayIDForEntity(newEntity, displayID);
-
-        TransformSystem& transformSystem = TransformSystem::Get(*registry);
-        transformSystem.SetWorldPosition(newEntity, position);
-        transformSystem.SetWorldRotation(newEntity, rotation);
-        transformSystem.SetLocalScale(newEntity, scale);
-
-        networkState.networkIDToEntity[networkID] = newEntity;
-        networkState.entityToNetworkID[newEntity] = networkID;
-
-        return true;
-    }
-
-    bool HandleOnEntityDestroy(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        entt::entity networkID = entt::null;
-
-        if (!recvPacket->Get(networkID))
-            return false;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        if (!networkState.networkIDToEntity.contains(networkID))
-        {
-            NC_LOG_WARNING("Network : Received Delete Entity for unknown entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        entt::entity entity = networkState.networkIDToEntity[networkID];
-
-        if (registry->any_of<Components::Model>(entity))
-        {
-            Animation::AnimationSystem* AnimationSystem = ServiceLocator::GetAnimationSystem();
-            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-
-            auto& model = registry->get<Components::Model>(entity);
-            AnimationSystem->RemoveInstance(model.instanceID);
-            modelLoader->UnloadModelForEntity(entity, model.instanceID);
-        }
-
-        networkState.networkIDToEntity.erase(networkID);
-        networkState.entityToNetworkID.erase(entity);
-
-        registry->destroy(entity);
-
-        return true;
-    }
-
-    bool HandleOnEntityMove(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        entt::entity networkID = entt::null;
-        vec3 position = vec3(0.0f);
-        quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
-        Components::MovementFlags movementFlags = {};
-        f32 verticalVelocity = 0.0f;
-
-        if (!recvPacket->Get(networkID))
-            return false;
-
-        if (!recvPacket->Get(position))
-            return false;
-
-        if (!recvPacket->Get(rotation))
-            return false;
-
-        if (!recvPacket->Get(movementFlags))
-            return false;
-
-        if (!recvPacket->Get(verticalVelocity))
-            return false;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        if (!networkState.networkIDToEntity.contains(networkID))
-        {
-            NC_LOG_WARNING("Network : Received Entity Move for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        entt::entity entity = networkState.networkIDToEntity[networkID];
-
-        auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
-        auto& transform = registry->get<Components::Transform>(entity);
-        auto& movementInfo = registry->get<Components::MovementInfo>(entity);
-
-        networkedEntity.initialPosition = transform.GetWorldPosition();
-        networkedEntity.desiredPosition = position;
-        networkedEntity.positionProgress = 0.0f;
-        networkedEntity.positionOrRotationChanged = true;
-        movementInfo.movementFlags = movementFlags;
-        movementInfo.verticalVelocity = verticalVelocity;
-
-        TransformSystem& transformSystem = TransformSystem::Get(*registry);
-        transformSystem.SetWorldRotation(entity, rotation);
-
-        return true;
-    }
-
     bool HandleOnEntityTargetUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
     {
         entt::entity networkID = entt::null;
@@ -289,7 +346,7 @@ namespace ECS::Systems
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
@@ -308,15 +365,56 @@ namespace ECS::Systems
         entt::entity entity = networkState.networkIDToEntity[networkID];
         entt::entity targetEntity = networkState.networkIDToEntity[targetNetworkID];
 
-        if (entity == characterSingleton.entity)
+        auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
+        networkedEntity.targetEntity = targetEntity;
+
+        return true;
+    }
+
+    bool HandleOnEntityCastSpell(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    {
+        entt::entity networkID = entt::null;
+        f32 castTime = 0.0f;
+        f32 duration = 0.0f;
+
+        if (!recvPacket->Get(networkID))
+            return false;
+
+        if (!recvPacket->GetF32(castTime))
+            return false;
+
+        if (!recvPacket->GetF32(duration))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(networkID))
         {
-            characterSingleton.targetEntity = targetEntity;
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
         }
-        else
+
+        entt::entity entity = networkState.networkIDToEntity[networkID];
+
+        if (!registry->valid(entity))
         {
-            auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
-            networkedEntity.targetEntity = targetEntity;
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
         }
+
+        Components::NetworkedEntity* networkedEntity = registry->try_get<Components::NetworkedEntity>(entity);
+        if (!networkedEntity)
+        {
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            return true;
+        }
+
+        Components::CastInfo& castInfo = registry->emplace_or_replace<Components::CastInfo>(entity);
+
+        castInfo.target = networkedEntity->targetEntity;
+        castInfo.castTime = castTime;
+        castInfo.duration = duration;
 
         return true;
     }
@@ -351,61 +449,16 @@ namespace ECS::Systems
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
 
-            Components::CastInfo& castInfo = registry->emplace_or_replace<Components::CastInfo>(characterSingleton.modelEntity);
-            castInfo.target = characterSingleton.targetEntity;
+            auto& networkedEntity = registry->get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& castInfo = registry->emplace_or_replace<Components::CastInfo>(characterSingleton.moverEntity);
+            castInfo.target = networkedEntity.targetEntity;
             castInfo.castTime = castTime;
             castInfo.duration = duration;
         }
 
         return true;
     }
-    bool HandleOnEntityCastSpell(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        entt::entity networkID = entt::null;
-        f32 castTime = 0.0f;
-        f32 duration = 0.0f;
-
-        if (!recvPacket->Get(networkID))
-            return false;
-
-        if (!recvPacket->GetF32(castTime))
-            return false;
-
-        if (!recvPacket->GetF32(duration))
-            return false;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        if (!networkState.networkIDToEntity.contains(networkID))
-        {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        entt::entity entity = networkState.networkIDToEntity[networkID];
-
-        if (!registry->valid(entity))
-        {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        Components::NetworkedEntity* networkedEntity = registry->try_get<Components::NetworkedEntity>(entity);
-        if (!networkedEntity)
-        {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        Components::CastInfo& castInfo = registry->emplace_or_replace<Components::CastInfo>(entity);
-
-        castInfo.target = networkedEntity->targetEntity;
-        castInfo.castTime = castTime;
-        castInfo.duration = duration;
-
-        return true;
-    }
+    
     bool HandleOnCombatEvent(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
     {
         u16 eventID = 0;
@@ -418,7 +471,7 @@ namespace ECS::Systems
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         if (!networkState.networkIDToEntity.contains(sourceNetworkID))
         {
@@ -528,92 +581,6 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnEntityDisplayInfoUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        entt::entity networkID = entt::null;
-        u32 displayID = 0;
-
-        if (!recvPacket->Get(networkID))
-            return false;
-
-        if (!recvPacket->GetU32(displayID))
-            return false;
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        Singletons::NetworkState& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        if (!networkState.networkIDToEntity.contains(networkID))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        entt::entity entity = networkState.networkIDToEntity[networkID];
-        if (!registry->valid(entity))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        if (!modelLoader->LoadDisplayIDForEntity(entity, displayID))
-        {
-            NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", entt::to_integral(networkID));
-            return true;
-        }
-
-        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
-        displayInfo.displayID = displayID;
-
-        return true;
-    }
-
-    bool HandleOnCheatCreateCharacterResult(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        u8 result = 0;
-        std::string resultText = "";
-
-        if (!recvPacket->GetU8(result))
-            return false;
-
-        if (!recvPacket->GetString(resultText))
-            return false;
-
-        if (result != 0)
-        {
-            NC_LOG_WARNING("Network : ({0})", resultText);
-            return true;
-        }
-        else
-        {
-            NC_LOG_INFO("Network : ({0})", resultText);
-            return true;
-        }
-    }
-
-    bool HandleOnCheatDeleteCharacterResult(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
-    {
-        u8 result = 0;
-        std::string resultText = "";
-
-        if (!recvPacket->GetU8(result))
-            return false;
-
-        if (!recvPacket->GetString(resultText))
-            return false;
-
-        if (result != 0)
-        {
-            NC_LOG_WARNING("Network : ({0})", resultText);
-            return true;
-        }
-        else
-        {
-            NC_LOG_INFO("Network : ({0})", resultText);
-            return true;
-        }
-    }
-
     void NetworkConnection::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
@@ -627,18 +594,23 @@ namespace ECS::Systems
             networkState.entityToNetworkID.reserve(1024);
 
             networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Connected, Network::GameMessageHandler(Network::ConnectionStatus::None, 8u, 64u, &HandleOnConnected));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityResourcesUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 20u, &HandleOnResourceUpdate));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCreate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 48u, &HandleOnEntityCreate));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDestroy, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 4u, &HandleOnEntityDestroy));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityMove, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 40u, &HandleOnEntityMove));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityTargetUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 8u, &HandleOnEntityTargetUpdate));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 9u, 65u, &HandleOnSpellCastResult));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCastSpell, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 12u, &HandleOnEntityCastSpell));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCombatEvent, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 6u, 22u, &HandleOnCombatEvent));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDisplayInfoUpdate, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 8u, &HandleOnEntityDisplayInfoUpdate));
-            //networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 2u, 53u, &HandleOnCheatCreateCharacterResult));
-            //networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 2u, 55u, &HandleOnCheatDeleteCharacterResult));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Connected,                Network::GameMessageHandler(Network::ConnectionStatus::None,        0u, -1, &HandleOnConnected));
+            
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult,   Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCheatCommandResult));
+
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SetMover,                 Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnSetMover));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCreate,             Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityCreate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDestroy,            Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityDestroy));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityDisplayInfoUpdate,  Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityDisplayInfoUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityMove,               Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityMove));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityMoveStop,           Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityMoveStop));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityResourcesUpdate,    Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnResourceUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityTargetUpdate,       Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityTargetUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCastSpell,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityCastSpell));
+
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult,      Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnSpellCastResult));
+
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCombatEvent,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCombatEvent));
         }
     }
 
@@ -655,6 +627,8 @@ namespace ECS::Systems
             {
                 // Just connected
                 wasConnected = true;
+
+                CharacterController::DeleteCharacterController(registry);
             }
         }
         else
@@ -665,7 +639,12 @@ namespace ECS::Systems
                 wasConnected = false;
 
                 NC_LOG_WARNING("Network : Disconnected");
+
+                CharacterController::DeleteCharacterController(registry);
+                CharacterController::InitCharacterController(registry, true);
             }
+
+            return;
         }
 
         Network::Socket::Result readResult = networkState.client->Read();

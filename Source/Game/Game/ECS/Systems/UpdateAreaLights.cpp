@@ -287,25 +287,23 @@ namespace ECS::Systems
         areaLightInfo.finalColorData = lightColor;
 
         MaterialRenderer* materialRenderer = ServiceLocator::GetGameRenderer()->GetMaterialRenderer();
-
+        
         vec3 direction = glm::normalize(vec3(*CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection"_h)));
         const vec3& diffuseColor = glm::normalize(areaLightInfo.finalColorData.diffuseColor);
         const vec3& ambientColor = glm::normalize(areaLightInfo.finalColorData.ambientColor);
         vec3 groundAmbientColor = ambientColor * 0.7f;
         vec3 skyAmbientColor = ambientColor * 1.1f;
-
+        
         if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f))
         {
             materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f);
         }
-
+        
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
-
-        CVarSystem::Get()->SetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h, vec4(areaLightInfo.finalColorData.fogColor, 1.0f));
-
-        f32 fogBegin = areaLightInfo.finalColorData.fogEnd * areaLightInfo.finalColorData.fogScaler;
-        CVarSystem::Get()->SetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin"_h, fogBegin);
-        CVarSystem::Get()->SetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h, areaLightInfo.finalColorData.fogEnd);
+        
+        *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);     
+        *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin"_h) = areaLightInfo.finalColorData.fogEnd * areaLightInfo.finalColorData.fogScaler;
+        *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h) = areaLightInfo.finalColorData.fogEnd;
     }
 }

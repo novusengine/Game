@@ -4,11 +4,13 @@
 #include "Game/Application/EnttRegistries.h"
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Components/CastInfo.h"
+#include "Game/ECS/Components/NetworkedEntity.h"
 #include "Game/ECS/Components/UnitStatsComponent.h"
-#include "Game/ECS/Util/Transforms.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/NetworkState.h"
+#include "Game/ECS/Util/MessageBuilderUtil.h"
+#include "Game/ECS/Util/Transforms.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Util/CameraSaveUtil.h"
@@ -98,15 +100,14 @@ bool GameConsoleCommands::HandleLogin(GameConsoleCommandHandler* commandHandler,
     if (characterName.size() < 2)
         return false;
 
-    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-    buffer->Put(Network::GameOpcode::Client_Connect);
-    buffer->PutU16(static_cast<u16>(characterName.size()) + 1);
-    buffer->PutString(characterName);
-
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-    networkState.client->Send(buffer);
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
+    {
+        networkState.client->Send(buffer);
+    }
 
     return true;
 }
@@ -188,27 +189,22 @@ bool GameConsoleCommands::HandleClearMap(GameConsoleCommandHandler* commandHandl
 bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+    auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+    auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
 
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Spell::BuildLocalRequestSpellCast(buffer))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_LocalRequestSpellCast),
-            .size = sizeof(u32)
-        };
-
-        buffer->Put(header);
-        buffer->PutU32(0);
-
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.modelEntity);
-        castInfo.target = characterSingleton.targetEntity;
+        auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
+        castInfo.target = networkedEntity.targetEntity;
         castInfo.castTime = 1.0f;
         castInfo.duration = 0.0f;
     }
@@ -225,20 +221,14 @@ bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDamage(buffer, 35))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = sizeof(f32)
-        };
-        
-        buffer->Put(header);
-        buffer->PutF32(35);
-        
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
         unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - 25.0f, 0.0f);
     }
 
@@ -254,19 +244,14 @@ bool GameConsoleCommands::HandleKill(GameConsoleCommandHandler* commandHandler, 
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatKill(buffer))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = 0
-        };
-        
-        buffer->Put(header);
-        
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
         unitStatsComponent.currentHealth = 0.0f;
     }
 
@@ -282,19 +267,14 @@ bool GameConsoleCommands::HandleRevive(GameConsoleCommandHandler* commandHandler
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatResurrect(buffer))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = 0
-        };
-        
-        buffer->Put(header);
-        
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.modelEntity);
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
         unitStatsComponent.currentHealth = unitStatsComponent.maxHealth;
     }
 
@@ -321,26 +301,41 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatMorph(buffer, displayID))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = 4
-        };
-
-        buffer->Put(header);
-        buffer->Put(displayID);
-
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
         auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-        if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.modelEntity, displayID))
+        if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, displayID))
             return false;
 
         gameConsole->PrintSuccess("Morphed into : %u", displayID);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleDemorph(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDemorph(buffer))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        gameConsole->PrintWarning("Failed to demorph, not connected");
     }
 
     return true;
@@ -364,20 +359,14 @@ bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHan
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreateChar(buffer, characterName))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = static_cast<u16>(characterName.size()) + 1u
-        };
-
-        buffer->Put(header);
-        buffer->PutString(characterName);
-
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        gameConsole->PrintWarning("Fialed to send Create Character, not connected");
+        gameConsole->PrintWarning("Failed to send Create Character, not connected");
     }
 
     return true;
@@ -401,20 +390,14 @@ bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHan
     if (networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        Network::PacketHeader header =
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDeleteChar(buffer, characterName))
         {
-            .opcode = static_cast<Network::OpcodeType>(Network::GameOpcode::Client_SendCheatCommand),
-            .size = static_cast<u16>(characterName.size()) + 1u
-        };
-
-        buffer->Put(header);
-        buffer->PutString(characterName);
-
-        networkState.client->Send(buffer);
+            networkState.client->Send(buffer);
+        }
     }
     else
     {
-        gameConsole->PrintWarning("Fialed to send Delete Character, not connected");
+        gameConsole->PrintWarning("Failed to send Delete Character, not connected");
     }
 
     return true;

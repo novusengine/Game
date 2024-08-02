@@ -1257,7 +1257,12 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
 u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    bool isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+    bool isSkybox = false;
+
+    if (registry->valid(entityID))
+    {
+        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+    }
 
     ModelManifest& manifest = _modelManifests[modelID];
 

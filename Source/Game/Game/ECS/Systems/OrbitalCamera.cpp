@@ -1,6 +1,7 @@
 #include "OrbitalCamera.h"
 
 #include "Game/ECS/Components/MovementInfo.h"
+#include "Game/ECS/Components/NetworkedEntity.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
@@ -179,8 +180,7 @@ namespace ECS::Systems
         settings.cameraZoomProgress = glm::clamp(settings.cameraZoomProgress, 0.0f, 1.0f);
         settings.cameraCurrentZoomOffset = glm::mix(settings.cameraCurrentZoomOffset, settings.cameraTargetZoomOffset, settings.cameraZoomProgress);
 
-        auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.entity);
-        auto& characterModelTransform = registry.get<Components::Transform>(characterSingleton.modelEntity);
+        auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.controllerEntity);
         const mat4x4& characterControllerMatrix = characterControllerTransform.GetMatrix(); // This is the point we want to rotate around
 
         vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll));
@@ -195,16 +195,16 @@ namespace ECS::Systems
 
         vec3 resultRotationEuler = glm::eulerAngles(resultRotation);
 
-        if (settings.mouseRightDown)
+        if (settings.mouseRightDown && characterSingleton.moverEntity != entt::null)
         {
-            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-            auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
+            auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
+            auto& networkedEntity = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
 
             glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
-            f32 yaw = glm::radians(camera.yaw);
+            f32 yaw = glm::pi<f32>() + glm::radians(camera.yaw);
 
-            movementInfo.yaw = yaw + glm::pi<f32>();
-            characterSingleton.positionOrRotationIsDirty = true;
+            movementInfo.yaw = yaw;
+            networkedEntity.positionOrRotationIsDirty = true;
         }
 
         tSystem.SetWorldRotation(activeCamera.entity, resultRotation);
@@ -249,7 +249,7 @@ namespace ECS::Systems
     {
         entt::registry::context& ctx = registry.ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.modelEntity);
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
 
         f32 speed = movementInfo.speed;
         speed = speed + ((speed / 20.0f) * position.y);
