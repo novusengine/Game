@@ -2,6 +2,8 @@
 
 #include "Game/ECS/Components/Camera.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
+#include "Game/ECS/Singletons/DayNightCycle.h"
+#include "Game/ECS/Systems/UpdateAreaLights.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Util/ServiceLocator.h"
@@ -18,11 +20,9 @@
 AutoCVar_Int CVAR_ShadowsStable(CVarCategory::Client | CVarCategory::Rendering, "shadowStable", "stable shadows", 1, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
-AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.5f);
+AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.8f);
 
 AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side)", 4096);
-
-AutoCVar_VecFloat CVAR_DirectionalLightDirection(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection", "direction of the directional light", glm::vec4(0.0f, 1.0f, -1.0f, 0.0f));
 
 namespace ECS::Systems
 {
@@ -69,13 +69,13 @@ namespace ECS::Systems
             }
         }
 
+        entt::registry::context& ctx = registry.ctx();
+        auto& dayNightCycle = ctx.get<Singletons::DayNightCycle>();
+
         // Get light settings
-        vec3 lightDirection = glm::normalize(vec3(CVAR_DirectionalLightDirection.Get()));
-        lightDirection.y = -lightDirection.y;
+        vec3 lightDirection = UpdateAreaLights::GetLightDirection(dayNightCycle.timeInSeconds);
 
         // Get active render camera
-        entt::registry::context& ctx = registry.ctx();
-
         auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
         auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);

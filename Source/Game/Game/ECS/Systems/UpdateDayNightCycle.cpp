@@ -14,33 +14,39 @@ namespace ECS::Systems
 		return seconds;
 	}
 
-	void UpdateDayNightCycle::Init(entt::registry& registry)
-	{
-		entt::registry::context& context = registry.ctx();
+    void UpdateDayNightCycle::Init(entt::registry& registry)
+    {
+        entt::registry::context& context = registry.ctx();
 
-		auto& dayNightCycle = context.emplace<Singletons::DayNightCycle>();
+        auto& dayNightCycle = context.emplace<Singletons::DayNightCycle>();
 
-		f32 secondsSinceMidnightUTC = static_cast<f32>(GetSecondsSinceMidnightUTC());
-		while (secondsSinceMidnightUTC > Singletons::DayNightCycle::SecondsPerDay)
-		{
-			secondsSinceMidnightUTC -= Singletons::DayNightCycle::SecondsPerDay;
-		}
+        SetTimeToDefault(registry);
+        SetSpeedModifier(registry, 1.0f);
+    }
 
-		SetTimeAndSpeedModifier(registry, secondsSinceMidnightUTC, 1.0f);
-	}
+    void UpdateDayNightCycle::Update(entt::registry& registry, f32 deltaTime)
+    {
+        entt::registry::context& context = registry.ctx();
+        auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
 
-	void UpdateDayNightCycle::Update(entt::registry& registry, f32 deltaTime)
-	{
-		entt::registry::context& context = registry.ctx();
-		auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
+        dayNightCycle.timeInSeconds += (1.0f * dayNightCycle.speedModifier) * deltaTime;
 
-		dayNightCycle.timeInSeconds += (1.0f * dayNightCycle.speedModifier) * deltaTime;
+        while (dayNightCycle.timeInSeconds > Singletons::DayNightCycle::SecondsPerDay)
+        {
+            dayNightCycle.timeInSeconds -= Singletons::DayNightCycle::SecondsPerDay;
+        }
+    }
 
-		while (dayNightCycle.timeInSeconds > Singletons::DayNightCycle::SecondsPerDay)
-		{
-			dayNightCycle.timeInSeconds -= Singletons::DayNightCycle::SecondsPerDay;
-		}
-	}
+    void UpdateDayNightCycle::SetTimeToDefault(entt::registry& registry)
+    {
+        f32 secondsSinceMidnightUTC = static_cast<f32>(GetSecondsSinceMidnightUTC());
+        while (secondsSinceMidnightUTC > Singletons::DayNightCycle::SecondsPerDay)
+        {
+            secondsSinceMidnightUTC -= Singletons::DayNightCycle::SecondsPerDay;
+        }
+
+        SetTime(registry, secondsSinceMidnightUTC);
+    }
 
 	void UpdateDayNightCycle::SetTime(entt::registry& registry, f32 time)
 	{

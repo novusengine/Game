@@ -10,6 +10,7 @@ struct DirectionalLight
     float4 color; // a = intensity
     float4 groundAmbientColor; // a = intensity
     float4 skyAmbientColor; // a = intensity
+    float4 shadowColor;
 };
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<DirectionalLight> _directionalLights;
 
@@ -64,7 +65,7 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
             float4 shadowPosition = mul(float4(pixelVertexData.worldPos, 1.0f), cascadeCamera.worldToClip);
             
             float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
-            lightColor *= shadowFactor;
+            lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
         }
 
         directionalColor += lightColor;

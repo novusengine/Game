@@ -31,6 +31,8 @@ AutoCVar_Int CVAR_TerrainGeometryEnabled(CVarCategory::Client | CVarCategory::Re
 
 AutoCVar_Int CVAR_TerrainValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "terrainValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_TerrainCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowTerrainCastShadow", "should Terrain cast shadows", 1, CVarFlags::EditCheckbox);
+
 TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
     , _debugRenderer(debugRenderer)
@@ -65,7 +67,7 @@ void TerrainRenderer::Update(f32 deltaTime)
     //if (!CVAR_TerrainRendererEnabled.Get())
     //    return;
 
-    const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
+    const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
     // Read back from culling counters
     u32 numDrawCalls = Terrain::CHUNK_NUM_CELLS * _numChunksLoaded;
@@ -111,14 +113,19 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
     if (_instanceDatas.Size() == 0)
         return;
 
-    const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
+    const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
     if (!cullingEnabled)
         return;
 
     const bool forceDisableOccluders = CVAR_ForceDisableOccluders.Get();
 
     CVarSystem* cvarSystem = CVarSystem::Get();
-    const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
+
+    u32 numCascades = 0;
+    if (CVAR_TerrainCastShadow.Get() == 1)
+    {
+        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
+    }
 
     struct Data
     {
@@ -165,7 +172,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, numCascades, forceDisableOccluders, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex, numCascades, forceDisableOccluders, cullingEnabled, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainOccluders);
 
@@ -215,8 +222,12 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
                         commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
                         commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-                    }
 
+                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
+                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
+                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
+                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
+                    }
 
                     DrawParams drawParams;
                     drawParams.shadowPass = i != 0;
@@ -259,7 +270,8 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (!CVAR_TerrainRendererEnabled.Get())
         return;
 
-    if (!CVAR_TerrainCullingEnabled.Get())
+    const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
+    if (!cullingEnabled)
         return;
 
     if (_instanceDatas.Size() == 0)
@@ -408,10 +420,14 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
     if (_instanceDatas.Size() == 0)
         return;
 
-    const bool cullingEnabled = CVAR_TerrainCullingEnabled.Get();
+    const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
     CVarSystem* cvarSystem = CVarSystem::Get();
-    const u32 numCascades = 0;//static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum")); // Reenable this to have shadows draw in geometry pass
+    u32 numCascades = 0;
+    if (CVAR_TerrainCastShadow.Get() == 1)
+    {
+        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
+    }
 
     struct Data
     {
@@ -449,7 +465,10 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+            if (cullingEnabled)
+            {
+                builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+            }
 
             data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             data.drawCountReadBackBuffer = builder.Write(_drawCountReadBackBuffer, BufferUsage::TRANSFER);
@@ -461,7 +480,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, cullingEnabled, numCascades](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainGeometryPass);
             for (u32 i = 0; i < numCascades + 1; i++)
@@ -500,6 +519,11 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
                         commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
                         commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
+
+                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
+                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
+                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
+                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
                     }
 
                     commandList.PushMarker("Draw", Color::White);

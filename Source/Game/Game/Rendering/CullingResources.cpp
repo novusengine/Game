@@ -16,13 +16,15 @@ void CullingResourcesBase::Init(InitParams& params)
     {
         Renderer::BufferDesc desc;
         desc.name = _bufferNamePrefix + "DrawCountBuffer";
-        desc.size = sizeof(u32) * Renderer::Settings::MAX_VIEWS; // One per view
+        desc.size = sizeof(u32);
         desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::TRANSFER_SOURCE;
         _instanceCountBuffer = _renderer->CreateBuffer(_instanceCountBuffer, desc);
 
         _occluderFillDescriptorSet.Bind("_drawCount"_h, _instanceCountBuffer);
         _cullingDescriptorSet.Bind("_drawCount"_h, _instanceCountBuffer);
+        _geometryFillDescriptorSet.Bind("_drawCount"_h, _instanceCountBuffer);
 
+        desc.size = sizeof(u32) * Renderer::Settings::MAX_VIEWS;
         desc.name = _bufferNamePrefix + "DrawCountRBBuffer";
         desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
         desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
@@ -39,13 +41,15 @@ void CullingResourcesBase::Init(InitParams& params)
     {
         Renderer::BufferDesc desc;
         desc.name = _bufferNamePrefix + "TriangleCountBuffer";
-        desc.size = sizeof(u32) * Renderer::Settings::MAX_VIEWS; // One per view
+        desc.size = sizeof(u32);
         desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::TRANSFER_SOURCE;
         _triangleCountBuffer = _renderer->CreateBuffer(_triangleCountBuffer, desc);
 
         _occluderFillDescriptorSet.Bind("_triangleCount"_h, _triangleCountBuffer);
         _cullingDescriptorSet.Bind("_triangleCount"_h, _triangleCountBuffer);
+        _geometryFillDescriptorSet.Bind("_triangleCount"_h, _triangleCountBuffer);
 
+        desc.size = sizeof(u32) * Renderer::Settings::MAX_VIEWS;
         desc.name = _bufferNamePrefix + "TriangleCountRBBuffer";
         desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
         _triangleCountReadBackBuffer = _renderer->CreateBuffer(_triangleCountReadBackBuffer, desc);
@@ -129,6 +133,7 @@ bool CullingResourcesBase::SyncToGPU()
         {
             _occluderFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
             _cullingDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
             _geometryPassDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
 
             u32 numInstances = static_cast<u32>(_instanceRefs.Size());
@@ -144,23 +149,27 @@ bool CullingResourcesBase::SyncToGPU()
 
                 _occluderFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
                 _cullingDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+                _geometryFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
                 _geometryPassDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
             }
 
             // (Re)create Culled DrawCall Bitmask buffer
             if (_enableTwoStepCulling)
             {
+                _culledInstanceBitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskSize(numInstances);
+                _culledInstanceBitMaskBufferUintsPerView = RenderUtils::CalcCullingBitmaskUints(numInstances);
+
                 Renderer::BufferDesc desc;
-                desc.size = RenderUtils::CalcCullingBitmaskSize(numInstances);
+                desc.size = _culledInstanceBitMaskBufferSizePerView * Renderer::Settings::MAX_VIEWS;
                 desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
                 for (u32 i = 0; i < _culledDrawCallsBitMaskBuffer.Num; i++)
                 {
                     desc.name = _bufferNamePrefix + "CulledDrawCallsBitMaskBuffer" + std::to_string(i);
                     _culledDrawCallsBitMaskBuffer.Get(i) = _renderer->CreateAndFillBuffer(_culledDrawCallsBitMaskBuffer.Get(i), desc, [](void* mappedMemory, size_t size)
-                        {
-                            memset(mappedMemory, 0, size);
-                        });
+                    {
+                        memset(mappedMemory, 0, size);
+                    });
                 }
             }
 
@@ -224,6 +233,7 @@ bool CullingResourcesIndexedBase::SyncToGPU()
             if (_enableTwoStepCulling)
             {
                 _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+                _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
             }
             _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
             _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
@@ -243,6 +253,7 @@ bool CullingResourcesIndexedBase::SyncToGPU()
 
                 _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
                 _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+                _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
             }
 
             // CulledDrawCallBuffer, one for each view
@@ -250,16 +261,12 @@ bool CullingResourcesIndexedBase::SyncToGPU()
                 Renderer::BufferDesc desc;
                 desc.size = sizeof(Renderer::IndexedIndirectDraw) * _drawCalls.Size();
                 desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+                desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
+                _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
 
-                for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-                {
-                    desc.name = _bufferNamePrefix + "CulledDrawCallBuffer" + std::to_string(i);
-
-                    _culledDrawCallsBuffer[i] = _renderer->CreateBuffer(_culledDrawCallsBuffer[i], desc);
-
-                }
-                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
-                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
+                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+                _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
             }
 
             // (Re)create CulledDrawCallCountBuffer
@@ -348,6 +355,7 @@ bool CullingResourcesNonIndexedBase::SyncToGPU()
             if (_enableTwoStepCulling)
             {
                 _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+                _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
             }
             _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
             _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
@@ -367,22 +375,21 @@ bool CullingResourcesNonIndexedBase::SyncToGPU()
 
                 _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
                 _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+                _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
             }
 
-            // CulledDrawCallBuffer, one for each view
+            // CulledDrawCallBuffer
             {
                 Renderer::BufferDesc desc;
                 desc.size = sizeof(Renderer::IndirectDraw) * _drawCalls.Size();
                 desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+                desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
 
-                for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
-                {
-                    desc.name = _bufferNamePrefix + "CulledDrawCallBuffer" + std::to_string(i);
+                _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
 
-                    _culledDrawCallsBuffer[i] = _renderer->CreateBuffer(_culledDrawCallsBuffer[i], desc);
-                }
-                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
-                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer[0]);
+                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+                _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
             }
 
             // (Re)create CulledDrawCallCountBuffer
