@@ -254,21 +254,22 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         });
 }
 
-void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity)
+void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor)
 {
     DirectionalLight light
     {
         .direction = vec4(direction, 0.0f),
         .color = vec4(color, intensity),
         .groundAmbientColor = vec4(groundAmbientColor, groundAmbientIntensity),
-        .skyAmbientColor = vec4(skyAmbientColor, skyAmbientIntensity)
+        .skyAmbientColor = vec4(skyAmbientColor, skyAmbientIntensity),
+        .shadowColor = vec4(shadowColor, 0.0f)
     };
 
     std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
     directionalLights.push_back(light);
 }
 
-bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity)
+bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor)
 {
     std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
 
@@ -282,6 +283,7 @@ bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, con
     light.color = vec4(color, intensity);
     light.groundAmbientColor = vec4(groundAmbientColor, groundAmbientIntensity);
     light.skyAmbientColor = vec4(skyAmbientColor, skyAmbientIntensity);
+    light.shadowColor = vec4(shadowColor, 0.0f);
 
     _directionalLights.SetDirtyElement(index);
 
@@ -305,7 +307,7 @@ void MaterialRenderer::CreatePermanentResources()
     _directionalLights.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
     // Debug directional light
-    vec3 direction = glm::normalize(vec3(*CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection"_h)));
+    vec3 direction = vec3(0.0f, -1.0f, 0.0f);
     vec3 color = vec3(66.f/255.f, 101.f/255.f, 134.f/255.f);
     f32 intensity = 1.0f;
 
@@ -315,8 +317,9 @@ void MaterialRenderer::CreatePermanentResources()
     f32 groundAmbientIntensity = 1.0f;
     vec3 skyAmbientColor = ambientColor * 1.1f;
     f32 skyAmbientIntensity = 1.0f;
+    vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
 
-    AddDirectionalLight(direction, color, intensity, groundAmbientColor, groundAmbientIntensity, skyAmbientColor, skyAmbientIntensity);
+    AddDirectionalLight(direction, color, intensity, groundAmbientColor, groundAmbientIntensity, skyAmbientColor, skyAmbientIntensity, shadowColor);
 }
 
 void MaterialRenderer::SyncToGPU()

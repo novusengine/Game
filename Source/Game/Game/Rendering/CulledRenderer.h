@@ -33,7 +33,7 @@ protected:
 	{
 		bool cullingEnabled = false;
 		bool shadowPass = false;
-		u32 shadowCascade = 0;
+		u32 viewIndex = 0;
 		
 		Renderer::ImageMutableResource rt0;
 		Renderer::ImageMutableResource rt1;
@@ -72,8 +72,9 @@ protected:
 	{
 		using BufferUsage = Renderer::BufferPassUsage;
 
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -93,8 +94,9 @@ protected:
 	{
 		using BufferUsage = Renderer::BufferPassUsage;
 
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -113,11 +115,14 @@ protected:
 	{
 		Renderer::ImageMutableResource rt0;
 		Renderer::ImageMutableResource rt1;
-		Renderer::DepthImageMutableResource depth;
+		Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
 		Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
 		Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+		Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
+
 		Renderer::BufferMutableResource culledInstanceCountsBuffer;
 		
 		Renderer::BufferMutableResource drawCountBuffer;
@@ -135,6 +140,12 @@ protected:
 		u32 baseInstanceLookupOffset = 0;
 		u32 drawCallDataSize = 0;
 
+		u32 numCascades = 0;
+
+		f32 biasConstantFactor = 0.0f;
+		f32 biasClamp = 0.0f;
+		f32 biasSlopeFactor = 0.0f;
+
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool disableTwoStepCulling = false;
 		bool isIndexed = true;
@@ -149,7 +160,7 @@ protected:
 
 		data.prevCulledDrawCallsBitMask = builder.Read(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
 		data.currentCulledDrawCallsBitMask = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
 
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
@@ -169,7 +180,7 @@ protected:
 
 		data.prevCulledDrawCallsBitMask = builder.Read(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
 		data.currentCulledDrawCallsBitMask = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
 		
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
@@ -224,16 +235,20 @@ protected:
 	{
 		using BufferUsage = Renderer::BufferPassUsage;
 
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+		data.drawCallsBuffer = builder.Write(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
+		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
 		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
 		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
-		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
 		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
 
 		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+		data.fillSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
 	}
 
 	template <typename Data>
@@ -241,26 +256,34 @@ protected:
 	{
 		using BufferUsage = Renderer::BufferPassUsage;
 
-		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+		data.drawCallsBuffer = builder.Write(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+		data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
+		data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+		data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
 		data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
 		data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
 		data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
 		data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
-		builder.Read(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
 		builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
 
 		data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+		data.fillSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
 	}
 
 	struct GeometryPassParams : public PassParams
 	{
 		Renderer::ImageMutableResource rt0;
 		Renderer::ImageMutableResource rt1;
-		Renderer::DepthImageMutableResource depth;
+		Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
 		Renderer::BufferMutableResource drawCallsBuffer;
 		Renderer::BufferMutableResource culledDrawCallsBuffer;
+
+		Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+		Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
+
 		Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
 		Renderer::BufferMutableResource drawCountBuffer;
@@ -269,14 +292,21 @@ protected:
 		Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
 		Renderer::DescriptorSetResource globalDescriptorSet;
+		Renderer::DescriptorSetResource fillDescriptorSet;
 		Renderer::DescriptorSetResource drawDescriptorSet;
 
 		std::function<void(DrawParams&)> drawCallback;
 
+		u32 numCascades = 0;
+
+		f32 biasConstantFactor = 0.0f;
+		f32 biasClamp = 0.0f;
+		f32 biasSlopeFactor = 0.0f;
+
 		bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
 		bool cullingEnabled = false;
+		bool isIndexed = true;
 		bool useInstancedCulling = false;
-		u32 numCascades = 0;
 	};
 	void GeometryPass(GeometryPassParams& params);
 

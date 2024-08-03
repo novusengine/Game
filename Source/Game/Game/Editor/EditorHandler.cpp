@@ -1,17 +1,18 @@
 #include "EditorHandler.h"
-#include "Viewport.h"
-#include "CVarEditor.h"
+#include "ActionStack.h"
+#include "AssetBrowser.h"
 #include "CameraInfo.h"
-#include "PerformanceDiagnostics.h"
+#include "Clock.h"
+#include "CVarEditor.h"
+#include "EaseCurveTool.h"
+#include "Hierarchy.h"
+#include "Inspector.h"
 #include "MapSelector.h"
 #include "NetworkedInfo.h"
+#include "PerformanceDiagnostics.h"
 #include "SkyboxSelector.h"
 #include "TerrainTools.h"
-#include "Inspector.h"
-#include "Hierarchy.h"
-#include "AssetBrowser.h"
-#include "ActionStack.h"
-#include "EaseCurveTool.h"
+#include "Viewport.h"
 
 #include "Game/Util/ServiceLocator.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -43,6 +44,7 @@ namespace Editor
         _editors.push_back(_viewport);
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
+        _editors.push_back(new Clock());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
         _editors.push_back(new NetworkedInfo());

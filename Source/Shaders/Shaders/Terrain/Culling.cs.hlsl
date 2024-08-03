@@ -85,14 +85,6 @@ struct BitmaskInput
     RWStructuredBuffer<uint> outCulledInstancesBitMask;
 };
 
-struct CullOutput
-{
-    RWByteAddressBuffer instanceBuffer;
-    uint argumentIndex;
-    RWByteAddressBuffer argumentBuffer;
-    RWByteAddressBuffer triangleCount;
-};
-
 void CullForCamera(DrawInput drawInput,
     Camera camera,
     BitmaskInput bitmaskInput)

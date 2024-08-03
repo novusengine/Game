@@ -42,6 +42,8 @@ AutoCVar_Int CVAR_ModelDrawTransparentAABBs(CVarCategory::Client | CVarCategory:
 
 AutoCVar_Int CVAR_ModelValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "modelValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
+AutoCVar_Int CVAR_ModelsCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow", "should Models cast shadows", 1, CVarFlags::EditCheckbox);
+
 ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : CulledRenderer(renderer, debugRenderer)
     , _renderer(renderer)
@@ -171,15 +173,22 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+    CVarSystem* cvarSystem = CVarSystem::Get();
+
+    u32 numCascades = 0;
+    if (CVAR_ModelsCastShadow.Get() == 1)
+    {
+        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
+    }
 
     struct Data
     {
         Renderer::ImageMutableResource visibilityBuffer;
-        Renderer::DepthImageMutableResource depth;
+        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -192,12 +201,16 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     };
 
     renderGraph->AddPass<Data>("Model (O) Occluders",
-        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            for (u32 i = 1; i < numCascades + 1; i++)
+            {
+                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            }
 
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -217,7 +230,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelOccluders);
 
@@ -229,10 +242,14 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
-            params.depth = data.depth;
+            for (u32 i = 0; i < numCascades + 1; i++)
+            {
+                params.depth[i] = data.depth[i];
+            }
 
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
             params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+            params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -246,6 +263,12 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             {
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
+            
+            params.numCascades = numCascades;
+
+            params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
+            params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
+            params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
 
             params.enableDrawing = CVAR_ModelDrawOccluders.Get();
             params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
@@ -266,8 +289,6 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
     if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
         return;
-
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
 
     struct Data
     {
@@ -334,7 +355,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
 
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            params.numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
 
             params.modelIDIsDrawCallID = false;
@@ -359,32 +380,48 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
         return;
 
+    CVarSystem* cvarSystem = CVarSystem::Get();
+
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
+    u32 numCascades = 0;
+    if (CVAR_ModelsCastShadow.Get() == 1)
+    {
+        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
+    }
 
     struct Data
     {
         Renderer::ImageMutableResource visibilityBuffer;
-        Renderer::DepthImageMutableResource depth;
+        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
+        Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
+
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource fillSet;
         Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Model (O) Geometry",
-        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            for (u32 i = 1; i < numCascades + 1; i++)
+            {
+                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            }
 
-            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS  | BufferUsage::COMPUTE);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
@@ -402,7 +439,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, ModelGeometry);
 
@@ -414,15 +451,23 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.frameIndex = frameIndex;
             params.rt0 = data.visibilityBuffer;
-            params.depth = data.depth;
+            for (u32 i = 0; i < numCascades + 1; i++)
+            {
+                params.depth[i] = data.depth[i];
+            }
 
+            params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+            params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
+
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
             params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.globalDescriptorSet = data.globalSet;
+            params.fillDescriptorSet = data.fillSet;
             params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
@@ -430,9 +475,16 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
+            params.numCascades = numCascades;
+
+            params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
+            params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
+            params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
+
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            params.isIndexed = true;
+            
 
             GeometryPass(params);
         });
@@ -482,7 +534,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
-            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
             data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
             data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
             data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -553,7 +605,9 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         Renderer::ImageMutableResource transparencyWeights;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -580,12 +634,12 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
-            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+            data.drawCallsBuffer = builder.Write(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
+            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
             data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
             data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
             data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -609,9 +663,11 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             params.frameIndex = frameIndex;
             params.rt0 = data.transparency;
             params.rt1 = data.transparencyWeights;
-            params.depth = data.depth;
+            params.depth[0] = data.depth;
 
+            params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -679,7 +735,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
 
                 data.drawCallsBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
-                data.culledDrawCallsBuffer = builder.Write(_opaqueSkyboxCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+                data.culledDrawCallsBuffer = builder.Write(_opaqueSkyboxCullingResources.GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
                 data.drawCountBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.triangleCountBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.drawCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -702,7 +758,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.color;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
                 params.drawCallsBuffer = data.drawCallsBuffer;
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
@@ -768,7 +824,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
 
                 data.drawCallsBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
-                data.culledDrawCallsBuffer = builder.Write(_transparentSkyboxCullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+                data.culledDrawCallsBuffer = builder.Write(_transparentSkyboxCullingResources.GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
                 data.drawCountBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.triangleCountBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.drawCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -792,7 +848,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 params.frameIndex = frameIndex;
                 params.rt0 = data.transparency;
                 params.rt1 = data.transparencyWeights;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
                 params.drawCallsBuffer = data.drawCallsBuffer;
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
@@ -2369,7 +2425,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
 
     // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.cullMode = (params.shadowPass) ? Renderer::CullMode::NONE : Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
     pipelineDesc.states.rasterizerState.depthBiasEnabled = params.shadowPass;
     pipelineDesc.states.rasterizerState.depthClampEnabled = params.shadowPass;
@@ -2378,10 +2434,10 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     if (!params.shadowPass)
     {
         pipelineDesc.renderTargets[0] = params.rt0;
-    }
-    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-    {
-        pipelineDesc.renderTargets[1] = params.rt1;
+        if (params.rt1 != Renderer::ImageMutableResource::Invalid())
+        {
+            pipelineDesc.renderTargets[1] = params.rt1;
+        }
     }
     pipelineDesc.depthStencil = params.depth;
 
@@ -2389,19 +2445,15 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
     commandList.BeginPipeline(pipeline);
 
-    /* TODO: Shadows
-    if (params.shadowPass)
+    struct PushConstants
     {
-        struct PushConstants
-        {
-            u32 cascadeIndex;
-        };
+        u32 viewIndex;
+    };
 
-        PushConstants* constants = graphResources.FrameNew<PushConstants>();
+    PushConstants* constants = graphResources.FrameNew<PushConstants>();
 
-        constants->cascadeIndex = params.shadowCascade;
-        commandList.PushConstant(constants, 0, sizeof(PushConstants));
-    }*/
+    constants->viewIndex = params.viewIndex;
+    commandList.PushConstant(constants, 0, sizeof(PushConstants));
 
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
     //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);

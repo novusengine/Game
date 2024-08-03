@@ -8,6 +8,8 @@ permutation IS_INDEXED = [0, 1];
 struct Constants
 {
     uint numTotalDraws;
+    uint bitmaskOffset;
+    uint diffAgainstPrev;
 };
 
 #if IS_INDEXED
@@ -20,10 +22,11 @@ typedef Draw DrawType;
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<DrawType> _drawCalls;
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask;
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<uint> _prevCulledDrawCallsBitMask;
 
-[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<DrawType> _culledDrawCalls;
-[[vk::binding(3, PER_PASS)]] RWByteAddressBuffer _drawCount;
-[[vk::binding(4, PER_PASS)]] RWByteAddressBuffer _triangleCount;
+[[vk::binding(3, PER_PASS)]] RWStructuredBuffer<DrawType> _culledDrawCalls;
+[[vk::binding(4, PER_PASS)]] RWByteAddressBuffer _drawCount;
+[[vk::binding(5, PER_PASS)]] RWByteAddressBuffer _triangleCount;
 
 struct CSInput
 {
@@ -42,10 +45,16 @@ void main(CSInput input)
     if (index >= _constants.numTotalDraws)
         return;
 
-    uint bitMask = _culledDrawCallsBitMask[input.groupID.x];
+    uint bitMaskIndex = _constants.bitmaskOffset + input.groupID.x;
+    uint bitMask = _culledDrawCallsBitMask[bitMaskIndex];
+    uint prevBitMask = _prevCulledDrawCallsBitMask[bitMaskIndex];
     uint bitIndex = input.groupThreadID.x;
 
-    if (bitMask & (1u << bitIndex))
+    bool isVisible = bitMask & (1u << bitIndex);
+    bool wasAlreadyDrawn = prevBitMask & (1u << bitIndex);
+
+    bool shouldDraw = isVisible && (!wasAlreadyDrawn || !_constants.diffAgainstPrev);
+    if (shouldDraw)
     {
         DrawType drawCall = _drawCalls[index];
 

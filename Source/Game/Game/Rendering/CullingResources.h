@@ -43,10 +43,13 @@ public:
     Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
 
     Renderer::BufferID GetCulledDrawCallsBitMaskBuffer(u8 frame) { return _culledDrawCallsBitMaskBuffer.Get(frame); }
+    u32 GetBitMaskBufferSizePerView() { return _culledInstanceBitMaskBufferSizePerView; }
+    u32 GetBitMaskBufferUintsPerView() { return _culledInstanceBitMaskBufferUintsPerView; }
+
     Renderer::BufferID GetCulledInstanceCountsBuffer() { return _culledInstanceCountsBuffer; }
     Renderer::BufferID GetCulledInstanceLookupTableBuffer() { return _culledInstanceLookupTableBuffer; }
 
-    Renderer::BufferID GetCulledDrawsBuffer(u32 index) { return _culledDrawCallsBuffer[index]; }
+    Renderer::BufferID GetCulledDrawsBuffer() { return _culledDrawCallsBuffer; }
     Renderer::BufferID GetCulledDrawCallCountBuffer() { return _culledDrawCallCountBuffer; }
 
     Renderer::BufferID GetDrawCountBuffer() { return _instanceCountBuffer; }
@@ -59,6 +62,7 @@ public:
 
     Renderer::DescriptorSet& GetOccluderFillDescriptorSet() { return _occluderFillDescriptorSet; }
     Renderer::DescriptorSet& GetCullingDescriptorSet() { return _cullingDescriptorSet; }
+    Renderer::DescriptorSet& GetGeometryFillDescriptorSet() { return _geometryFillDescriptorSet; }
     Renderer::DescriptorSet& GetGeometryPassDescriptorSet() { return _geometryPassDescriptorSet; }
 
     bool HasSupportForTwoStepCulling() { return _enableTwoStepCulling; }
@@ -85,10 +89,13 @@ protected:
     Renderer::GPUVector<InstanceRef> _instanceRefs;
 
     FrameResource<Renderer::BufferID, 2> _culledDrawCallsBitMaskBuffer;
+    u32 _culledInstanceBitMaskBufferSizePerView = 0;
+    u32 _culledInstanceBitMaskBufferUintsPerView = 0;
+
     Renderer::BufferID _culledInstanceCountsBuffer;
     Renderer::BufferID _culledInstanceLookupTableBuffer;
 
-    Renderer::BufferID _culledDrawCallsBuffer[Renderer::Settings::MAX_VIEWS];
+    Renderer::BufferID _culledDrawCallsBuffer;
     Renderer::BufferID _culledDrawCallCountBuffer;
     Renderer::BufferID _instanceCountBuffer;
     Renderer::BufferID _triangleCountBuffer;
@@ -100,6 +107,7 @@ protected:
 
     Renderer::DescriptorSet _occluderFillDescriptorSet;
     Renderer::DescriptorSet _cullingDescriptorSet;
+    Renderer::DescriptorSet _geometryFillDescriptorSet;
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
 
@@ -182,6 +190,7 @@ public:
         {
             _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
             if (_materialPassDescriptorSet != nullptr)
@@ -255,6 +264,7 @@ public:
         {
             _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
             if (_materialPassDescriptorSet != nullptr)

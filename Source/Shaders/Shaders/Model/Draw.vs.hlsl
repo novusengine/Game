@@ -7,13 +7,12 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "globalData.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
 
-/* TODO: Shadows
 struct Constants
 {
-    uint cascadeIndex;
+    uint viewIndex;
 };
 
-[[vk::push_constant]] Constants _constants;*/
+[[vk::push_constant]] Constants _constants;
 
 struct VSInput
 {
@@ -59,11 +58,7 @@ VSOutput main(VSInput input)
 
     // Pass data to pixelshader
     VSOutput output;
-#if SHADOW_PASS
-    output.position = float4(0, 0, 0, 1);// mul(position, GetShadowViewProjectionMatrix(_constants.cascadeIndex));
-#else
-    output.position = mul(position, _cameras[0].worldToClip);
-#endif
+    output.position = mul(position, _cameras[_constants.viewIndex].worldToClip);
 
 #if !EDITOR_PASS
     output.drawCallID = drawCallID;
