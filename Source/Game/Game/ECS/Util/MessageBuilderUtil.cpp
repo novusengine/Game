@@ -7,12 +7,13 @@
 
 namespace ECS::Util::MessageBuilder
 {
-    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, u16 size)
+    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, Network::MessageHeader::Flags flags, u16 size)
     {
         Network::MessageHeader header =
         {
             .opcode = static_cast<Network::OpcodeType>(opcode),
-            .size = size
+            .size = size,
+            .flags = flags
         };
 
         if (buffer->GetSpace() < sizeof(Network::MessageHeader))
@@ -55,6 +56,22 @@ namespace ECS::Util::MessageBuilder
         return true;
     }
 
+    bool CreatePing(std::shared_ptr<Bytebuffer>& buffer, std::function<void()> func)
+    {
+        if (!buffer)
+            return false;
+
+        u32 headerPos = AddHeader(buffer, Network::GameOpcode::Invalid, { .isPing = 1 });
+
+        if (func)
+            func();
+
+        if (!ValidatePacket(buffer, headerPos))
+            return false;
+
+        return true;
+    }
+
     namespace Authentication
     {
         bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName)
@@ -70,11 +87,11 @@ namespace ECS::Util::MessageBuilder
 
     namespace Heartbeat
     {
-        bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u64 currentTime)
+        bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_Ping, [&]()
+            bool result = CreatePing(buffer, [&buffer, ping]()
             {
-                buffer->PutU64(currentTime);
+                buffer->PutU16(ping);
             });
 
             return result;

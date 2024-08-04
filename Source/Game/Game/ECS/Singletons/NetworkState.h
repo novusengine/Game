@@ -27,6 +27,7 @@ namespace ECS::Singletons
         u8 serverNetworkDiff = 0;
         u8 serverUpdateDiff = 0;
         std::array<u16, 6> pingHistory = { 0, 0, 0, 0, 0, 0 };
+        u8 pingHistorySize = 0;
 
         robin_hood::unordered_map<entt::entity, entt::entity> networkIDToEntity;
         robin_hood::unordered_map<entt::entity, entt::entity> entityToNetworkID;

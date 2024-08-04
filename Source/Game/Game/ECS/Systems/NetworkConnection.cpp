@@ -52,28 +52,20 @@ namespace ECS::Systems
 
     bool HandleOnPong(Network::SocketID socketID, Network::Message& message)
     {
-        u16 ping = 0;
-        if (!message.buffer->Get(ping))
-            return false;
-
-        u8 serverNetworkDiff = 0;
-        if (!message.buffer->Get(serverNetworkDiff))
-            return false;
-
-        u8 serverUpdateDiff = 0;
-        if (!message.buffer->Get(serverUpdateDiff))
-            return false;
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        f64 rtt = static_cast<f64>(currentTime) - static_cast<f64>(networkState.lastPingTime);
+        u16 ping = static_cast<u16>(rtt / 2.0f);
 
         networkState.lastPongTime = currentTime;
         
         u8 pingHistoryCounter = networkState.pingHistoryIndex + 1;
         if (pingHistoryCounter == networkState.pingHistory.size())
             pingHistoryCounter = 0;
+
+        networkState.pingHistorySize = glm::min(static_cast<u8>(networkState.pingHistorySize + 1u), static_cast<u8>(networkState.pingHistory.size()));
 
         networkState.pingHistoryIndex = pingHistoryCounter;
         networkState.pingHistory[pingHistoryCounter] = ping;
@@ -82,14 +74,29 @@ namespace ECS::Systems
         for (u16 ping : networkState.pingHistory)
             accumulatedPing += static_cast<f32>(ping);
 
-        accumulatedPing /= static_cast<f32>(networkState.pingHistory.size());
+        accumulatedPing /= networkState.pingHistorySize;
         networkState.ping = static_cast<u16>(glm::round(accumulatedPing));
-        networkState.serverNetworkDiff = serverNetworkDiff;
-        networkState.serverUpdateDiff = serverUpdateDiff;
 
         return true;
     }
-    
+
+    bool HandleOnUpdateStats(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 serverNetworkDiff = 0;
+        if (!message.buffer->Get(serverNetworkDiff))
+            return false;
+        
+        u8 serverUpdateDiff = 0;
+        if (!message.buffer->Get(serverUpdateDiff))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        networkState.serverNetworkDiff = serverNetworkDiff;
+        networkState.serverUpdateDiff = serverUpdateDiff;
+    }
+
     bool HandleOnCheatCommandResult(Network::SocketID socketID, Network::Message& message)
     {
         u8 result = 0;
@@ -639,7 +646,8 @@ namespace ECS::Systems
 
             networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Connected,                Network::GameMessageHandler(Network::ConnectionStatus::None,        0u, -1, &HandleOnConnected));
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Pong,                     Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnPong));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_Ping,                     Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnPong));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_UpdateStats,              Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnUpdateStats));
             
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult,   Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCheatCommandResult));
 
@@ -684,7 +692,7 @@ namespace ECS::Systems
                 if (timeDiff >= Singletons::NetworkState::PING_INTERVAL)
                 {
                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
-                    if (Util::MessageBuilder::Heartbeat::BuildPingMessage(buffer, currentTime))
+                    if (Util::MessageBuilder::Heartbeat::BuildPingMessage(buffer, networkState.ping))
                     {
                         networkState.client->Send(buffer);
                         networkState.lastPingTime = currentTime;
@@ -739,6 +747,7 @@ namespace ECS::Systems
                 networkState.serverUpdateDiff = 0;
                 networkState.pingHistoryIndex = 0;
                 networkState.pingHistory.fill(0);
+                networkState.pingHistorySize = 0;
                 networkState.entityToNetworkID.clear();
                 networkState.networkIDToEntity.clear();
 
@@ -754,8 +763,10 @@ namespace ECS::Systems
             std::shared_ptr<Bytebuffer>& buffer = networkState.client->GetReadBuffer();
             while (size_t activeSize = buffer->GetActiveSize())
             {
+                static constexpr u8 PacketHeaderSize = sizeof(Network::MessageHeader);
+
                 // We have received a partial header and need to read more
-                if (activeSize < sizeof(Network::MessageHeader))
+                if (activeSize < PacketHeaderSize)
                 {
                     buffer->Normalize();
                     break;

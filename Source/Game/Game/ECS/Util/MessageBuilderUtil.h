@@ -23,9 +23,10 @@ namespace ECS
 
     namespace Util::MessageBuilder
     {
-        u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, u16 size = 0);
+        u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, Network::MessageHeader::Flags flags = {}, u16 size = 0);
         bool ValidatePacket(const std::shared_ptr<Bytebuffer>& buffer, u32 headerPos);
-        bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, std::function<bool()> func);
+        bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, std::function<void()> func);
+        bool CreatePing(std::shared_ptr<Bytebuffer>& buffer, std::function<void()> func);
 
         namespace Authentication
         {
@@ -34,7 +35,7 @@ namespace ECS
 
         namespace Heartbeat
         {
-            bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u64 currentTime);
+            bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping);
         }
 
         namespace Entity

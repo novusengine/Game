@@ -1,8 +1,10 @@
 #include "UpdateAreaLights.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Singletons/AreaLightInfo.h"
+#include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/DayNightCycle.h"
+#include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -198,8 +200,10 @@ namespace ECS::Systems
         entt::registry::context& context = registry.ctx();
         auto& activeCamera = context.get<Singletons::ActiveCamera>();
         auto& areaLightInfo = context.get<Singletons::AreaLightInfo>();
+        auto& characterSingleton = context.get<Singletons::CharacterSingleton>();
         auto& clientDBCollection = context.get<Singletons::ClientDBCollection>();
         auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
+        auto& freeflyingCameraSettings = context.get<Singletons::FreeflyingCameraSettings>();
 
         MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
         auto* lightStorage = clientDBCollection.Get<ClientDB::Definitions::Light>(Singletons::ClientDBHash::Light);
@@ -215,8 +219,18 @@ namespace ECS::Systems
 
         if (!forceDefaultLight)
         {
-            auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
-            vec3 position = cameraTransform.GetWorldPosition();
+            vec3 position = vec3(0.0f);
+
+            if (activeCamera.entity == freeflyingCameraSettings.entity)
+            {
+                auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
+                position = cameraTransform.GetWorldPosition();
+            }
+            else
+            {
+                auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.controllerEntity);
+                position = characterControllerTransform.GetWorldPosition();
+            }
 
             areaLightInfo.activeAreaLights.clear();
 
