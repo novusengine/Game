@@ -4,6 +4,7 @@
 #include <Base/Types.h>
 #include <Base/Memory/Bytebuffer.h>
 
+#include "Gameplay/GameDefine.h"
 #include "Gameplay/Network/Opcode.h"
 
 #include <entt/fwd.hpp>
@@ -29,6 +30,11 @@ namespace ECS
         namespace Authentication
         {
             bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName);
+        }
+
+        namespace Heartbeat
+        {
+            bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u64 currentTime);
         }
 
         namespace Entity
@@ -57,6 +63,10 @@ namespace ECS
             bool BuildCheatTeleport(std::shared_ptr<Bytebuffer>& buffer, u32 mapID, const vec3& position);
             bool BuildCheatCreateChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
             bool BuildCheatDeleteChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
+            bool BuildCheatSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race);
+            bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender);
+            bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass);
+            bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level);
         }
     }
 }

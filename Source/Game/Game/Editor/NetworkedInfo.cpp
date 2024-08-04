@@ -62,35 +62,41 @@ namespace Editor
             bool isConnected = networkState.client->IsConnected();
 
             ImGui::Text("Connection Status : %s", isConnected ? "Connected" : "Disconnected");
-            ImGui::NewLine();
-            ImGui::Separator();
 
-            if (characterSingleton.moverEntity != entt::null)
+            if (isConnected)
             {
-                auto& characterTransform = registry.get<ECS::Components::Transform>(characterSingleton.moverEntity);
-                auto& movementInfo = registry.get<ECS::Components::MovementInfo>(characterSingleton.moverEntity);
-
-                glm::vec3 worldPos = characterTransform.GetWorldPosition();
-                const vec3 characterForward = characterTransform.GetLocalForward();
-                const vec3 characterRight = characterTransform.GetLocalRight();
-                const vec3 characterUp = characterTransform.GetLocalUp();
-
-                f32 yaw = glm::degrees(movementInfo.yaw - glm::pi<f32>());
-                ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z, yaw);
-                ImGui::Text("Speed: %.2f", movementInfo.speed);
-
-                ImGui::Separator();
-
-                ImGui::Text("Pitch, Yaw, Roll: (%.2f, %.2f, %.2f)", glm::degrees(movementInfo.pitch), yaw, 0.0f);
-                ImGui::Text("Forward: (%.2f, %.2f, %.2f)", characterForward.x, characterForward.y, characterForward.z);
-                ImGui::Text("Right: (%.2f, %.2f, %.2f)", characterRight.x, characterRight.y, characterRight.z);
-                ImGui::Text("Up: (%.2f, %.2f, %.2f)", characterUp.x, characterUp.y, characterUp.z);
-
+                ImGui::Text("Ping: %dms", networkState.ping);
+                ImGui::Text("Server Network Diff: %dms", networkState.serverNetworkDiff);
+                ImGui::Text("Server Update Diff: %dms", networkState.serverUpdateDiff);
                 ImGui::NewLine();
+
                 ImGui::Separator();
 
-                if (networkState.client->IsConnected())
+                bool hasMover = characterSingleton.moverEntity != entt::null;
+                if (hasMover)
                 {
+                    auto& characterTransform = registry.get<ECS::Components::Transform>(characterSingleton.moverEntity);
+                    auto& movementInfo = registry.get<ECS::Components::MovementInfo>(characterSingleton.moverEntity);
+
+                    glm::vec3 worldPos = characterTransform.GetWorldPosition();
+                    const vec3 characterForward = characterTransform.GetLocalForward();
+                    const vec3 characterRight = characterTransform.GetLocalRight();
+                    const vec3 characterUp = characterTransform.GetLocalUp();
+
+                    f32 yaw = glm::degrees(movementInfo.yaw - glm::pi<f32>());
+                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z, yaw);
+                    ImGui::Text("Speed: %.2f", movementInfo.speed);
+
+                    ImGui::Separator();
+
+                    ImGui::Text("Pitch, Yaw, Roll: (%.2f, %.2f, %.2f)", glm::degrees(movementInfo.pitch), yaw, 0.0f);
+                    ImGui::Text("Forward: (%.2f, %.2f, %.2f)", characterForward.x, characterForward.y, characterForward.z);
+                    ImGui::Text("Right: (%.2f, %.2f, %.2f)", characterRight.x, characterRight.y, characterRight.z);
+                    ImGui::Text("Up: (%.2f, %.2f, %.2f)", characterUp.x, characterUp.y, characterUp.z);
+
+                    ImGui::NewLine();
+                    ImGui::Separator();
+
                     auto& networkedEntity = registry.get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
 
                     if (ImGui::CollapsingHeader("Basic Info"))
@@ -104,31 +110,31 @@ namespace Editor
 
                             switch (type)
                             {
-                            case ECS::Components::PowerType::Mana:
-                            {
-                                ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                break;
-                            }
-                            case ECS::Components::PowerType::Rage:
-                            {
-                                ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                break;
-                            }
-                            case ECS::Components::PowerType::Focus:
-                            {
-                                ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                break;
-                            }
-                            case ECS::Components::PowerType::Energy:
-                            {
-                                ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                break;
-                            }
-                            case ECS::Components::PowerType::Happiness:
-                            {
-                                ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                break;
-                            }
+                                case ECS::Components::PowerType::Mana:
+                                {
+                                    ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
+                                    break;
+                                }
+                                case ECS::Components::PowerType::Rage:
+                                {
+                                    ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
+                                    break;
+                                }
+                                case ECS::Components::PowerType::Focus:
+                                {
+                                    ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
+                                    break;
+                                }
+                                case ECS::Components::PowerType::Energy:
+                                {
+                                    ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
+                                    break;
+                                }
+                                case ECS::Components::PowerType::Happiness:
+                                {
+                                    ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
+                                    break;
+                                }
                             }
                         }
 
@@ -179,60 +185,84 @@ namespace Editor
                             ImGui::Separator();
                         }
                     }
-
-                    if (ImGui::Button("Disconnect"))
-                    {
-                        networkState.client->Close();
-                    }
                 }
                 else
                 {
-                    const char* characterName = CVAR_NetworkCharacterName.Get();
-                    size_t characterNameLength = strlen(characterName);
-
-                    ImGui::Text("Not connected to server");
-                    ImGui::Text("Character Name: %s", characterName);
-
-                    if (ImGui::Button("Connect"))
-                    {
-                        if (networkState.client && characterNameLength > 0)
-                        {
-                            Network::Socket::Result initResult = networkState.client->Init(Network::Socket::Mode::TCP);
-                            if (initResult == Network::Socket::Result::SUCCESS)
-                            {
-                                // Connect to IP/Port
-                                const char* ipAddress = CVAR_NetworkConnectIP.Get();
-                                u16 port = 4000;
-
-                                Network::Socket::Result connectResult = networkState.client->Connect(ipAddress, port);
-
-                                if (connectResult != Network::Socket::Result::SUCCESS &&
-                                    connectResult != Network::Socket::Result::ERROR_WOULD_BLOCK)
-                                {
-                                    NC_LOG_ERROR("Network : Failed to connect to ({0}, {1})", ipAddress, port);
-                                }
-                                else
-                                {
-                                    networkState.client->GetSocket()->SetBlockingState(false);
-
-                                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                                    if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
-                                    {
-                                        networkState.client->Send(buffer);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    ImGui::Text("No active character");
                 }
-            }
-            else
-            {
-                ImGui::Text("No active character");
 
                 if (ImGui::Button("Disconnect"))
                 {
                     networkState.client->Close();
+                }
+                
+            }
+            else
+            {
+                ImGui::Separator();
+
+                bool hasMover = characterSingleton.moverEntity != entt::null;
+                if (hasMover)
+                {
+                    auto& characterTransform = registry.get<ECS::Components::Transform>(characterSingleton.moverEntity);
+                    auto& movementInfo = registry.get<ECS::Components::MovementInfo>(characterSingleton.moverEntity);
+
+                    glm::vec3 worldPos = characterTransform.GetWorldPosition();
+                    const vec3 characterForward = characterTransform.GetLocalForward();
+                    const vec3 characterRight = characterTransform.GetLocalRight();
+                    const vec3 characterUp = characterTransform.GetLocalUp();
+
+                    f32 yaw = glm::degrees(movementInfo.yaw - glm::pi<f32>());
+                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z, yaw);
+                    ImGui::Text("Speed: %.2f", movementInfo.speed);
+
+                    ImGui::Separator();
+
+                    ImGui::Text("Pitch, Yaw, Roll: (%.2f, %.2f, %.2f)", glm::degrees(movementInfo.pitch), yaw, 0.0f);
+                    ImGui::Text("Forward: (%.2f, %.2f, %.2f)", characterForward.x, characterForward.y, characterForward.z);
+                    ImGui::Text("Right: (%.2f, %.2f, %.2f)", characterRight.x, characterRight.y, characterRight.z);
+                    ImGui::Text("Up: (%.2f, %.2f, %.2f)", characterUp.x, characterUp.y, characterUp.z);
+
+                    ImGui::NewLine();
+                    ImGui::Separator();
+                }
+
+                const char* characterName = CVAR_NetworkCharacterName.Get();
+                size_t characterNameLength = strlen(characterName);
+
+                ImGui::Text("Not connected to server");
+                ImGui::Text("Character Name: %s", characterName);
+
+                if (ImGui::Button("Connect"))
+                {
+                    if (networkState.client && characterNameLength > 0)
+                    {
+                        Network::Socket::Result initResult = networkState.client->Init(Network::Socket::Mode::TCP);
+                        if (initResult == Network::Socket::Result::SUCCESS)
+                        {
+                            // Connect to IP/Port
+                            const char* ipAddress = CVAR_NetworkConnectIP.Get();
+                            u16 port = 4000;
+
+                            Network::Socket::Result connectResult = networkState.client->Connect(ipAddress, port);
+
+                            if (connectResult != Network::Socket::Result::SUCCESS &&
+                                connectResult != Network::Socket::Result::ERROR_WOULD_BLOCK)
+                            {
+                                NC_LOG_ERROR("Network : Failed to connect to ({0}, {1})", ipAddress, port);
+                            }
+                            else
+                            {
+                                networkState.client->GetSocket()->SetBlockingState(false);
+
+                                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                                if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
+                                {
+                                    networkState.client->Send(buffer);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -5,6 +5,7 @@
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/DayNightCycle.h"
 #include "Game/ECS/Singletons/EngineStats.h"
+#include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Singletons/RenderState.h"
 #include "Game/ECS/Components/Camera.h"
 
@@ -57,26 +58,38 @@ namespace ECS
     void Scheduler::Update(entt::registry& registry, f32 deltaTime)
     {
         // TODO: You know, actually scheduling stuff and multithreading (enkiTS tasks?)
+        entt::registry::context& ctx = registry.ctx();
+        auto& joltState = ctx.get<Singletons::JoltState>();
 
-        Systems::UpdateDayNightCycle::Update(registry, deltaTime);
-        Systems::NetworkConnection::Update(registry, deltaTime);
-        Systems::DrawDebugMesh::Update(registry, deltaTime);
+        static constexpr f32 maxDeltaTimeDiff = 1.0f / 60.0f;
+        f32 clampedDeltaTime = glm::clamp(deltaTime, 0.0f, maxDeltaTimeDiff);
 
-        Systems::CharacterController::Update(registry, deltaTime);
-        Systems::UpdateNetworkedEntity::Update(registry, deltaTime);
+        joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-        Systems::FreeflyingCamera::Update(registry, deltaTime);
-        Systems::OrbitalCamera::Update(registry, deltaTime);
-        Systems::CalculateCameraMatrices::Update(registry, deltaTime);
-        Systems::CalculateShadowCameraMatrices::Update(registry, deltaTime);
+        Systems::UpdateDayNightCycle::Update(registry, clampedDeltaTime);
+        Systems::NetworkConnection::Update(registry, clampedDeltaTime);
+        Systems::DrawDebugMesh::Update(registry, clampedDeltaTime);
 
-        Systems::UpdateSkyboxes::Update(registry, deltaTime);
-        Systems::UpdateAreaLights::Update(registry, deltaTime);
-        Systems::CalculateTransformMatrices::Update(registry, deltaTime);
-        Systems::UpdateAABBs::Update(registry, deltaTime);
-        Systems::UpdatePhysics::Update(registry, deltaTime);
+        Systems::CharacterController::Update(registry, clampedDeltaTime);
+        Systems::UpdateNetworkedEntity::Update(registry, clampedDeltaTime);
+
+        Systems::FreeflyingCamera::Update(registry, clampedDeltaTime);
+        Systems::OrbitalCamera::Update(registry, clampedDeltaTime);
+        Systems::CalculateCameraMatrices::Update(registry, clampedDeltaTime);
+        Systems::CalculateShadowCameraMatrices::Update(registry, clampedDeltaTime);
+
+        Systems::UpdateSkyboxes::Update(registry, clampedDeltaTime);
+        Systems::UpdateAreaLights::Update(registry, clampedDeltaTime);
+        Systems::CalculateTransformMatrices::Update(registry, clampedDeltaTime);
+        Systems::UpdateAABBs::Update(registry, clampedDeltaTime);
+        Systems::UpdatePhysics::Update(registry, clampedDeltaTime);
 
         // Note: For now UpdateScripts should always be run last
-        Systems::UpdateScripts::Update(registry, deltaTime);
+        Systems::UpdateScripts::Update(registry, clampedDeltaTime);
+
+        if (joltState.updateTimer >= Singletons::JoltState::FixedDeltaTime)
+        {
+            joltState.updateTimer -= Singletons::JoltState::FixedDeltaTime;
+        }
     }
 }

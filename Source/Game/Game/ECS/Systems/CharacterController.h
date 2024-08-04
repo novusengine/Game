@@ -11,6 +11,6 @@ namespace ECS::Systems
         static void Update(entt::registry& registry, f32 deltaTime);
 
         static void InitCharacterController(entt::registry& registry, bool isLocal);
-        static void DeleteCharacterController(entt::registry& registry);
+        static void DeleteCharacterController(entt::registry& registry, bool isLocal);
     };
 }

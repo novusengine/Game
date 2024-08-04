@@ -20,6 +20,7 @@
 
 #include <Base/Memory/Bytebuffer.h>
 
+#include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Opcode.h>
 
 #include <Network/Client.h>
@@ -193,7 +194,7 @@ bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, 
     auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
     auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Spell::BuildLocalRequestSpellCast(buffer))
@@ -214,14 +215,20 @@ bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, 
 
 bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
+    if (subCommands.size() == 0)
+        return false;
+
+    const std::string& damageAsString = subCommands[0];
+    const u32 damage = std::stoi(damageAsString);
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDamage(buffer, 35))
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDamage(buffer, damage))
         {
             networkState.client->Send(buffer);
         }
@@ -229,7 +236,7 @@ bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler
     else
     {
         auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - 25.0f, 0.0f);
+        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - static_cast<f32>(damage), 0.0f);
     }
 
     return false;
@@ -241,7 +248,7 @@ bool GameConsoleCommands::HandleKill(GameConsoleCommandHandler* commandHandler, 
     ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatKill(buffer))
@@ -264,7 +271,7 @@ bool GameConsoleCommands::HandleRevive(GameConsoleCommandHandler* commandHandler
     ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatResurrect(buffer))
@@ -286,7 +293,7 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
     if (subCommands.size() == 0)
         return false;
 
-    const std::string morphIDAsString = subCommands[0];
+    const std::string& morphIDAsString = subCommands[0];
     const u32 displayID = std::stoi(morphIDAsString);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -298,7 +305,7 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
 
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatMorph(buffer, displayID))
@@ -325,7 +332,7 @@ bool GameConsoleCommands::HandleDemorph(GameConsoleCommandHandler* commandHandle
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatDemorph(buffer))
@@ -346,7 +353,7 @@ bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHan
     if (subCommands.size() == 0)
         return false;
 
-    const std::string characterName = subCommands[0];
+    const std::string& characterName = subCommands[0];
     if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
     {
         gameConsole->PrintError("Failed to send Create Character, name supplied is invalid : %s", characterName.c_str());
@@ -356,7 +363,7 @@ bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHan
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreateChar(buffer, characterName))
@@ -377,7 +384,7 @@ bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHan
     if (subCommands.size() == 0)
         return false;
 
-    const std::string characterName = subCommands[0];
+    const std::string& characterName = subCommands[0];
     if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
     {
         gameConsole->PrintError("Failed to send Delete Character, name supplied is invalid : %s", characterName.c_str());
@@ -387,7 +394,7 @@ bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHan
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
 
-    if (networkState.client->IsConnected())
+    if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
         if (ECS::Util::MessageBuilder::Cheat::BuildCheatDeleteChar(buffer, characterName))
@@ -398,6 +405,183 @@ bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHan
     else
     {
         gameConsole->PrintWarning("Failed to send Delete Character, not connected");
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleSetRace(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    GameDefine::UnitRace race = GameDefine::UnitRace::None;
+    std::string& raceName = subCommands[0];
+
+    bool isSpecifiedAsID = std::isdigit(raceName[0]);
+    if (isSpecifiedAsID)
+    {
+        race = static_cast<GameDefine::UnitRace>(raceName[0] - '0');
+    }
+    else
+    {
+        std::transform(raceName.begin(), raceName.end(), raceName.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        if (raceName == "human")
+            race = GameDefine::UnitRace::Human;
+        else if (raceName == "orc")
+            race = GameDefine::UnitRace::Orc;
+        else if (raceName == "dwarf")
+            race = GameDefine::UnitRace::Dwarf;
+        else if (raceName == "nightelf")
+            race = GameDefine::UnitRace::NightElf;
+        else if (raceName == "undead")
+            race = GameDefine::UnitRace::Undead;
+        else if (raceName == "tauren")
+            race = GameDefine::UnitRace::Tauren;
+        else if (raceName == "gnome")
+            race = GameDefine::UnitRace::Gnome;
+        else if (raceName == "troll")
+            race = GameDefine::UnitRace::Troll;
+    }
+
+    if (race == GameDefine::UnitRace::None || race > GameDefine::UnitRace::Troll)
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetRace(buffer, race))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleSetGender(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    GameDefine::Gender gender = GameDefine::Gender::None;
+    std::string& genderName = subCommands[0];
+
+    bool isSpecifiedAsID = std::isdigit(genderName[0]);
+    if (isSpecifiedAsID)
+    {
+        gender = static_cast<GameDefine::Gender>(genderName[0] - '0');
+    }
+    else
+    {
+        std::transform(genderName.begin(), genderName.end(), genderName.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        if (genderName == "male")
+            gender = GameDefine::Gender::Male;
+        else if (genderName == "female")
+            gender = GameDefine::Gender::Female;
+        else if (genderName == "other")
+            gender = GameDefine::Gender::Other;
+    }
+
+    if (gender == GameDefine::Gender::None || gender > GameDefine::Gender::Other)
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetGender(buffer, gender))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleSetClass(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    GameDefine::UnitClass gameClass = GameDefine::UnitClass::None;
+    std::string& gameClassName = subCommands[0];
+
+    bool isSpecifiedAsID = std::isdigit(gameClassName[0]);
+    if (isSpecifiedAsID)
+    {
+        gameClass = static_cast<GameDefine::UnitClass>(gameClassName[0] - '0');
+    }
+    else
+    {
+        std::transform(gameClassName.begin(), gameClassName.end(), gameClassName.begin(), [](unsigned char c) { return std::tolower(c); });
+
+        if (gameClassName == "warrior")
+            gameClass = GameDefine::UnitClass::Warrior;
+        else if (gameClassName == "paladin")
+            gameClass = GameDefine::UnitClass::Paladin;
+        else if (gameClassName == "hunter")
+            gameClass = GameDefine::UnitClass::Hunter;
+        else if (gameClassName == "rogue")
+            gameClass = GameDefine::UnitClass::Rogue;
+        else if (gameClassName == "priest")
+            gameClass = GameDefine::UnitClass::Priest;
+        else if (gameClassName == "shaman")
+            gameClass = GameDefine::UnitClass::Shaman;
+        else if (gameClassName == "mage")
+            gameClass = GameDefine::UnitClass::Mage;
+        else if (gameClassName == "warlock")
+            gameClass = GameDefine::UnitClass::Warlock;
+        else if (gameClassName == "druid")
+            gameClass = GameDefine::UnitClass::Druid;
+    }
+
+    if (gameClass == GameDefine::UnitClass::None || gameClass > GameDefine::UnitClass::Druid)
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetClass(buffer, gameClass))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleSetLevel(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    const std::string& levelAsString = subCommands[0];
+    if (!StringUtils::StringIsNumeric(levelAsString))
+        return false;
+
+    u16 level = std::stoi(levelAsString);
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetLevel(buffer, level))
+    {
+        networkState.client->Send(buffer);
     }
 
     return true;

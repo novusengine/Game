@@ -199,16 +199,15 @@ namespace ECS::Systems
         auto& joltState = ctx.get<Singletons::JoltState>();
         auto& tSystem = TransformSystem::Get(registry);
 
+        if (joltState.updateTimer < joltState.FixedDeltaTime)
+            return;
+
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         DebugRenderer* debugRenderer = gameRenderer->GetDebugRenderer();
 
         // Step the world
         {
-            constexpr f32 minTimePerStep = 1 / 60.0f;
-            i32 collisionSteps = static_cast<i32>(glm::ceil(deltaTime / minTimePerStep));
-            collisionSteps = glm::clamp(collisionSteps, 1, 4);
-
-            joltState.physicsSystem.Update(deltaTime, collisionSteps, &joltState.allocator, &joltState.scheduler);
+            joltState.physicsSystem.Update(joltState.FixedDeltaTime, 1, &joltState.allocator, &joltState.scheduler);
         }
 
         // Update ECS with new Physics State

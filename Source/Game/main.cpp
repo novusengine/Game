@@ -10,8 +10,17 @@
 
 #include <future>
 
+#if WIN32
+#include <timeapi.h>
+#pragma comment(lib, "winmm.lib")
+#endif
+
 i32 main()
 {
+#if WIN32
+    timeBeginPeriod(1);
+#endif
+
     quill::Backend::start();
 
     auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1");

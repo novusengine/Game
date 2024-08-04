@@ -435,6 +435,10 @@ namespace ECS::Systems
         auto& transformSystem = ctx.get<TransformSystem>();
 
         auto& joltState = ctx.get<Singletons::JoltState>();
+        static constexpr f32 fixedDeltaTime = Singletons::JoltState::FixedDeltaTime;
+        if (joltState.updateTimer < fixedDeltaTime)
+            return;
+
         auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
         auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
         auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
@@ -540,7 +544,7 @@ namespace ECS::Systems
         }
         else
         {
-            newVelocity = currentVelocity + ((gravity * movementInfo.gravityModifier) * deltaTime);
+            newVelocity = currentVelocity + ((gravity * movementInfo.gravityModifier) * fixedDeltaTime);
         }
 
         characterSingleton.character->SetLinearVelocity(newVelocity);
@@ -557,7 +561,7 @@ namespace ECS::Systems
         JPH::BodyFilter bodyFilter;
         JPH::ShapeFilter shapeFilter;
 
-        ::Util::CharacterController::Update(characterSingleton.character, deltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
+        ::Util::CharacterController::Update(characterSingleton.character, fixedDeltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
         
         JPH::Vec3 position = characterSingleton.character->GetPosition();
         transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(position.GetX(), position.GetY(), position.GetZ()));
@@ -590,141 +594,21 @@ namespace ECS::Systems
 
         bool wasMoving = previousMovementFlags.forward || previousMovementFlags.backward || previousMovementFlags.left || previousMovementFlags.right;
 
-        static constexpr f32 positionOrRotationUpdateInterval = 1.0f / 60.0f;
-        if (characterSingleton.positionOrRotationUpdateTimer >= positionOrRotationUpdateInterval)
+        if (!isGrounded || isMoving || wasMoving || networkedEntity.positionOrRotationIsDirty)
         {
-            if (!isGrounded || isMoving || wasMoving || networkedEntity.positionOrRotationIsDirty)
+            // Just started moving
+            auto& networkState = ctx.get<Singletons::NetworkState>();
+            if (networkState.client && networkState.client->IsConnected())
             {
-                // Just started moving
-                auto& networkState = ctx.get<Singletons::NetworkState>();
-                if (networkState.client && networkState.client->IsConnected())
+                auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
+                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
                 {
-                    auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
-                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                    if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
-                    {
-                        networkState.client->Send(buffer);
-                    }
+                    networkState.client->Send(buffer);
                 }
-
-                networkedEntity.positionOrRotationIsDirty = false;
             }
 
-            characterSingleton.positionOrRotationUpdateTimer -= positionOrRotationUpdateInterval;
-        }
-        else
-        {
-            if ((isGrounded && !isMoving) && wasMoving)
-            {
-                networkedEntity.positionOrRotationIsDirty = true;
-            }
-
-            characterSingleton.positionOrRotationUpdateTimer += deltaTime;
-        }
-
-        auto SetOrientation = [&](vec4& settings, f32 orientation)
-        {
-            f32 currentOrientation = settings.x;
-            if (orientation == currentOrientation)
-                return;
-
-            settings.y = orientation;
-            settings.w = 0.0f;
-            settings.z = 1.0f / 8.0f;
-        };
-
-        {
-            ::Util::Unit::UpdateAnimationState(registry, characterSingleton.moverEntity, model.instanceID, deltaTime);
-            if (isGrounded || (canControlInAir && isMoving))
-            {
-                f32 spineOrientation = 0.0f;
-                f32 headOrientation = 0.0f;
-                f32 waistOrientation = 0.0f;
-
-                if (isMovingForward)
-                {
-                    if (isMovingRight)
-                    {
-                        spineOrientation = 30.0f;
-                        headOrientation = -15.0f;
-                        waistOrientation = 45.0f;
-                    }
-                    else if (isMovingLeft)
-                    {
-                        spineOrientation = -30.0f;
-                        headOrientation = 15.0f;
-                        waistOrientation = -45.0f;
-                    }
-                }
-                else if (isMovingBackward)
-                {
-                    if (isMovingRight)
-                    {
-                        spineOrientation = -30.0f;
-                        headOrientation = 15.0f;
-                        waistOrientation = -45.0f;
-                    }
-                    else if (isMovingLeft)
-                    {
-                        spineOrientation = 30.0f;
-                        headOrientation = -15.0f;
-                        waistOrientation = 45.0f;
-                    }
-                }
-                else if (isMovingRight)
-                {
-                    spineOrientation = 45.0f;
-                    headOrientation = -30.0f;
-                    waistOrientation = 90.0f;
-                }
-                else if (isMovingLeft)
-                {
-                    spineOrientation = -45.0f;
-                    headOrientation = 30.0f;
-                    waistOrientation = -90.0f;
-                }
-
-                SetOrientation(movementInfo.spineRotationSettings, spineOrientation);
-                SetOrientation(movementInfo.headRotationSettings, headOrientation);
-                SetOrientation(movementInfo.waistRotationSettings, waistOrientation);
-            }
-        }
-
-        auto HandleUpdateOrientation = [](vec4& settings, f32 deltaTime) -> bool
-        {
-            if (settings.x == settings.y)
-                return false;
-
-            settings.w += deltaTime;
-            settings.w = glm::clamp(settings.w, 0.0f, settings.z);
-
-            f32 progress = settings.w / settings.z;
-            settings.x = glm::mix(settings.x, settings.y, progress);
-
-            return true;
-        };
-
-        {
-            Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-
-            if (model.modelID != std::numeric_limits<u32>().max() && model.instanceID != std::numeric_limits<u32>().max())
-            {
-                if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
-                {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
-                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::SpineLow, rotation);
-                }
-                if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
-                {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
-                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Head, rotation);
-                }
-                if (HandleUpdateOrientation(movementInfo.waistRotationSettings, deltaTime))
-                {
-                    quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.waistRotationSettings.x), 0.0f));
-                    animationSystem->SetBoneRotation(model.instanceID, Animation::Bone::Waist, rotation);
-                }
-            }
+            networkedEntity.positionOrRotationIsDirty = false;
         }
     }
 
@@ -747,6 +631,7 @@ namespace ECS::Systems
             registry.emplace<Components::Model>(characterSingleton.moverEntity);
             registry.emplace<Components::MovementInfo>(characterSingleton.moverEntity);
             registry.emplace<Components::NetworkedEntity>(characterSingleton.moverEntity);
+
             auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
             displayInfo.displayID = 50;
 
@@ -756,7 +641,6 @@ namespace ECS::Systems
             transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
 
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            u32 modelHash = modelLoader->GetModelHashFromModelPath("character/human/female/humanfemale.complexmodel");
             modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, 50);
         }
 
@@ -812,8 +696,8 @@ namespace ECS::Systems
         characterSingleton.character->SetPosition(newPosition);
 
         auto& networkedInfo = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+        networkedInfo.positionProgress = -1.0f;
         networkedInfo.positionOrRotationIsDirty = true;
-        characterSingleton.positionOrRotationUpdateTimer = 0.0f;
         characterSingleton.canControlInAir = true;
 
         auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
@@ -832,29 +716,30 @@ namespace ECS::Systems
 
         transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
     }
-    void CharacterController::DeleteCharacterController(entt::registry& registry)
+    void CharacterController::DeleteCharacterController(entt::registry& registry, bool isLocal)
     {
         entt::registry::context& ctx = registry.ctx();
-
-        auto& transformSystem = ctx.get<TransformSystem>();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-        auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
 
         if (characterSingleton.moverEntity != entt::null)
         {
-            if (auto* model = registry.try_get<Components::Model>(characterSingleton.moverEntity))
+            if (isLocal)
             {
-                if (model->instanceID != std::numeric_limits<u32>().max())
+                if (auto* model = registry.try_get<Components::Model>(characterSingleton.moverEntity))
                 {
-                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                    modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, model->instanceID);
+                    if (model->instanceID != std::numeric_limits<u32>().max())
+                    {
+                        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                        modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, model->instanceID);
 
-                    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-                    animationSystem->RemoveInstance(model->instanceID);
+                        Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+                        animationSystem->RemoveInstance(model->instanceID);
+                    }
                 }
+
+                registry.destroy(characterSingleton.moverEntity);
             }
 
-            registry.destroy(characterSingleton.moverEntity);
             characterSingleton.moverEntity = entt::null;
         }
     }
