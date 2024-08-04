@@ -1,6 +1,7 @@
 #include "LuaManager.h"
 #include "LuaDefines.h"
 #include "LuaStateCtx.h"
+#include "Handlers/CanvasHandler.h"
 #include "Handlers/GameEventHandler.h"
 #include "Handlers/GlobalHandler.h"
 #include "Systems/LuaSystemBase.h"
@@ -37,6 +38,7 @@ namespace Scripting
         _luaHandlers.resize(static_cast<u32>(LuaHandlerType::Count));
         SetLuaHandler(LuaHandlerType::Global, new GlobalHandler());
         SetLuaHandler(LuaHandlerType::GameEvent, new GameEventHandler());
+        SetLuaHandler(LuaHandlerType::Canvas, new CanvasHandler());
 
         Prepare();
 
@@ -146,7 +148,6 @@ namespace Scripting
             LuaHandlerBase* base = _luaHandlers[i];
 
             base->Clear();
-            base->Register();
         }
     }
 
@@ -165,6 +166,14 @@ namespace Scripting
 
         LuaStateCtx ctx(luaL_newstate());
         ctx.RegisterDefaultLibraries();
+
+        _internalState = ctx.GetState();
+        for (u32 i = 0; i < _luaHandlers.size(); i++)
+        {
+            LuaHandlerBase* base = _luaHandlers[i];
+
+            base->Register();
+        }
         ctx.SetGlobal(table);
         ctx.MakeReadOnly();
 

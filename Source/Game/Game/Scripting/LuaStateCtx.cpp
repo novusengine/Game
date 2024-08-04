@@ -283,6 +283,24 @@ namespace Scripting
 		return vec3(vec[0], vec[1], vec[2]);
 	}
 
+	bool LuaStateCtx::GetTableField(const std::string& key, i32 index)
+	{
+		if (!lua_istable(_state, index))
+		{
+            return false;
+        }
+
+		lua_pushstring(_state, key.c_str());
+		lua_gettable(_state, index);
+
+		if (lua_isnil(_state, index+1))
+		{
+            lua_pop(_state, 1);
+            return false;
+        }
+		return true;
+	}
+
 	i32 LuaStateCtx::GetRef(i32 index)
 	{
 		return lua_ref(_state, index);

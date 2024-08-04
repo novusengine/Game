@@ -63,6 +63,7 @@ namespace Scripting
 		f64 GetF64(f64 fallback = 0.0, i32 index = -1);
 		const char* GetString(const char* fallback = nullptr, i32 index = -1);
 		vec3 GetVector(vec3 fallback = vec3(0, 0, 0), i32 index = -1);
+		bool GetTableField(const std::string& key, i32 index = -1);
 
 		template <typename T>
 		T* GetUserData(T* fallback = nullptr, i32 index = -1)

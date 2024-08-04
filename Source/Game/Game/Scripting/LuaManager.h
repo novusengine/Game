@@ -46,6 +46,8 @@ namespace Scripting
 
 		void SetDirty() { _isDirty = true; }
 
+		lua_State* GetInternalState() { return _internalState; }
+
 	private:
 		friend LuaHandlerBase;
 		friend LuaSystemBase;
