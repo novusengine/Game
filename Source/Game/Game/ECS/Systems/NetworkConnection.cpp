@@ -95,6 +95,8 @@ namespace ECS::Systems
 
         networkState.serverNetworkDiff = serverNetworkDiff;
         networkState.serverUpdateDiff = serverUpdateDiff;
+
+        return true;
     }
 
     bool HandleOnCheatCommandResult(Network::SocketID socketID, Network::Message& message)
