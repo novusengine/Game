@@ -8,7 +8,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     -- Register a default panel template
     local panelTemplate = {
         background = "interface/framegeneral/ui-background-rock.dds",
-        color = Vector3.new(0.3, 1.0, 1.0), -- TODO: Color class
+        color = vec3.new(0.3, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 3.0
     };
     UI.RegisterPanelTemplate("DefaultPanel", panelTemplate);
@@ -17,16 +17,16 @@ local function OnGameLoaded(eventID : number, motd : string)
     local textTemplate = {
         font = "Fonts/Calibri.ttf", -- Obviously we want a different font
         size = 20.0,
-        color = Vector3.new(1.0, 1.0, 1.0),
+        color = vec3.new(1.0, 1.0, 1.0),
         border = 1,
-        borderColor = Vector3.new(0.0, 0.0, 0.0),
+        borderColor = vec3.new(0.0, 0.0, 0.0),
     };
     UI.RegisterTextTemplate("DefaultText", textTemplate);
 
     -- Register a default button template
     local buttonTemplate = {
         background = "interface/framegeneral/ui-background-rock.dds",
-        color = Vector3.new(1.0, 0.5, 1.0), -- TODO: Color class
+        color = vec3.new(1.0, 0.5, 1.0), -- TODO: Color class
         cornerRadius = 5.0
     };
     UI.RegisterButtonTemplate("DefaultButton", buttonTemplate);
@@ -42,7 +42,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     local panel = canvas:Panel(0, 0, 100, 100, 0, "DefaultPanel");
 
     -- Create a text on the panel
-    local text = panel:Text("Escape Menu", 0, 0, 0, "DefaultText");
+    --local text = panel:Text("Escape Menu", 0, 0, 0, "DefaultText");
     --text:SetAnchor(0.5, 0.0); -- Center the texts placement on the Panel on the X axis
     --text:SetRelativePoint(0.5, 0.0) -- Center the buttons reference point on the X axis
 

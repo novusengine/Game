@@ -1,6 +1,6 @@
 #include "LuaManager.h"
 #include "LuaDefines.h"
-#include "LuaStateCtx.h"
+#include "LuaState.h"
 #include "Handlers/CanvasHandler.h"
 #include "Handlers/GameEventHandler.h"
 #include "Handlers/GlobalHandler.h"
@@ -102,7 +102,7 @@ namespace Scripting
 
     bool LuaManager::DoString(const std::string& code)
     {
-        LuaStateCtx ctx(_internalState);
+        LuaState ctx(_internalState);
 
         Luau::CompileOptions compileOptions;
         {
@@ -162,19 +162,16 @@ namespace Scripting
             fs::create_directories(scriptDirectory);
         }
 
-        const LuaTable& table = GetGlobalTable();
-
-        LuaStateCtx ctx(luaL_newstate());
+        lua_State* state = luaL_newstate();
+        LuaState ctx(state);
         ctx.RegisterDefaultLibraries();
 
-        _internalState = ctx.GetState();
         for (u32 i = 0; i < _luaHandlers.size(); i++)
         {
             LuaHandlerBase* base = _luaHandlers[i];
-
-            base->Register();
+            base->Register(state);
         }
-        ctx.SetGlobal(table);
+
         ctx.MakeReadOnly();
 
         // TODO : Figure out if this catches hidden folders, and if so exclude them
@@ -188,7 +185,8 @@ namespace Scripting
             compileOptions.optimizationLevel = 1;
             compileOptions.debugLevel = 2;
             compileOptions.coverageLevel = 2;
-            compileOptions.vectorLib = "Vector3";
+            compileOptions.vectorLib = "vec3";
+            compileOptions.vectorType = "vec3";
             compileOptions.vectorCtor = "new";
         }
         Luau::ParseOptions parseOptions;
@@ -235,7 +233,7 @@ namespace Scripting
         }
 
         auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-        gameEventHandler->SetupEvents(ctx.GetState());
+        gameEventHandler->SetupEvents(state);
 
         bool didFail = false;
 
@@ -258,16 +256,16 @@ namespace Scripting
             if (_internalState != nullptr)
             {
                 gameEventHandler->ClearEvents(_internalState);
-
-                LuaStateCtx oldCtx(_internalState);
+            
+                LuaState oldCtx(_internalState);
                 oldCtx.Close();
             }
-
-            _internalState = ctx.GetState();
+            
+            _internalState = state;
         }
         else
         {
-            gameEventHandler->ClearEvents(ctx.GetState());
+            gameEventHandler->ClearEvents(state);
         }
 
         _isDirty = false;

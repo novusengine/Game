@@ -14,9 +14,35 @@ AutoCVar_Int CVAR_AnimationSystemThrottle(CVarCategory::Client | CVarCategory::R
 
 namespace Animation
 {
-    glm::mat4 mul(const glm::mat4& matrix1, const glm::mat4& matrix2)
+    __forceinline void matmul4x4(const mat4x4& __restrict m1, const mat4x4& __restrict m2, mat4x4& __restrict out)
     {
-        return matrix2 * matrix1;
+        __m128  vx = _mm_load_ps(&m1[0][0]);
+        __m128  vy = _mm_load_ps(&m1[1][0]);
+        __m128  vz = _mm_load_ps(&m1[2][0]);
+        __m128  vw = _mm_load_ps(&m1[3][0]);
+
+        for (i32 i = 0; i < 4; i++)
+        {
+            __m128 col = _mm_load_ps(&m2[i][0]);
+
+            __m128 x = _mm_permute_ps(col, _MM_SHUFFLE(0, 0, 0, 0));
+            __m128 y = _mm_permute_ps(col, _MM_SHUFFLE(1, 1, 1, 1));
+            __m128 z = _mm_permute_ps(col, _MM_SHUFFLE(2, 2, 2, 2));
+            __m128 w = _mm_permute_ps(col, _MM_SHUFFLE(3, 3, 3, 3));
+
+            __m128 resA = _mm_fmadd_ps(x, vx, _mm_mul_ps(y, vy));
+            __m128 resB = _mm_fmadd_ps(z, vz, _mm_mul_ps(w, vw));
+
+            _mm_store_ps(&out[i][0], _mm_add_ps(resA, resB));
+        }
+    }
+
+    __forceinline mat4x4 mul(const mat4x4& __restrict matrix1, const mat4x4& __restrict matrix2)
+    {
+        mat4x4 result;
+        matmul4x4(matrix2, matrix1, result);
+
+        return result;
     }
 
     mat4x4 MatrixTranslate(const vec3& v)
@@ -887,6 +913,80 @@ namespace Animation
         _storage.textureTransformMatrices.clear();
     }
 
+    void AnimationSystem::HandleCurrentAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, AnimationBoneInstance& boneInstance, f32 deltaTime)
+    {
+        Type animationID = boneInstance.currentAnimation.animation;
+        u32 sequenceID = boneInstance.currentAnimation.sequenceID;
+        const Model::ComplexModel::AnimationSequence& sequenceInfo = skeleton.sequences[sequenceID];
+
+        f32 sequenceDuration = static_cast<f32>(sequenceInfo.duration / 1000.0f);
+        u32 progress = static_cast<u32>(boneInstance.currentAnimation.progress * 1000.0f);
+        bool isInTransitionPhaseBefore = boneInstance.currentAnimation.progress >= sequenceDuration - boneInstance.transitionDuration;
+        bool canLoop = HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Loop);
+
+        if (progress >= sequenceInfo.duration && !canLoop)
+        {
+            if (!HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Frozen))
+            {
+                if (boneInstance.nextAnimation.animation == Type::Invalid)
+                {
+                    auto callback = boneInstance.currentAnimation.finishedCallback;
+
+                    if (!HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Freeze))
+                    {
+                        boneInstance.currentAnimation.animation = Type::Invalid;
+                        boneInstance.currentAnimation.sequenceID = InvalidSequenceID;
+                        boneInstance.currentAnimation.finishedCallback = nullptr;
+
+                        boneInstance.currentAnimation.flags = Flag::None;
+                        boneInstance.currentAnimation.blendTimeStart = 0.0f;
+                        boneInstance.currentAnimation.blendTimeEnd = 0.0f;
+                        boneInstance.currentAnimation.progress = 0.0f;
+                    }
+                    else
+                    {
+                        boneInstance.currentAnimation.finishedCallback = nullptr;
+                        SetAnimationFlag(boneInstance.currentAnimation.flags, Flag::Frozen);
+                    }
+
+                    if (callback)
+                    {
+                        callback(instance.instanceID, animationID, Type::Invalid);
+                    }
+                }
+            }
+        }
+        else
+        {
+            boneInstance.currentAnimation.progress += deltaTime;
+
+            if (canLoop)
+            {
+                bool isInTransitionPhaseAfter = boneInstance.currentAnimation.progress >= sequenceDuration - boneInstance.transitionDuration;
+                if (!isInTransitionPhaseBefore && isInTransitionPhaseAfter)
+                {
+                    if (boneInstance.nextAnimation.animation == Type::Invalid)
+                    {
+                        u16 nextSequenceID = sequenceInfo.nextVariationID;
+
+                        if (nextSequenceID == InvalidSequenceID)
+                            nextSequenceID = GetSequenceIDForAnimationID(instance.modelID, animationID);
+
+                        Model::ComplexModel::AnimationSequence nextSequenceInfo = skeleton.sequences[nextSequenceID];
+
+                        boneInstance.nextAnimation = boneInstance.currentAnimation;
+                        boneInstance.nextAnimation.sequenceID = nextSequenceID;
+                        boneInstance.nextAnimation.progress = 0.0f;
+
+                        bool blendTransition = nextSequenceInfo.flags.blendTransition;
+                        f32 blendTimeStart = static_cast<f32>(sequenceInfo.blendTimeStart) / 1000.0f;
+                        boneInstance.timeToTransition = blendTimeStart * blendTransition;
+                        boneInstance.transitionDuration = boneInstance.timeToTransition;
+                    }
+                }
+            }
+        }
+    }
     mat4x4 AnimationSystem::GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, const AnimationBoneInstance& boneInstance)
     {
         vec3 translationValue = vec3(0.0f, 0.0f, 0.0f);
@@ -1100,81 +1200,6 @@ namespace Animation
 
     void AnimationSystem::HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime)
     {
-        auto HandleCurrentAnimation = [this](const AnimationSkeleton& skeleton, const AnimationInstance& instance, AnimationBoneInstance& boneInstance, f32 deltaTime)
-        {
-            Type animationID = boneInstance.currentAnimation.animation;
-            u32 sequenceID = boneInstance.currentAnimation.sequenceID;
-            const Model::ComplexModel::AnimationSequence& sequenceInfo = skeleton.sequences[sequenceID];
-            
-            f32 sequenceDuration = static_cast<f32>(sequenceInfo.duration / 1000.0f);
-            u32 progress = static_cast<u32>(boneInstance.currentAnimation.progress * 1000.0f);
-            bool isInTransitionPhaseBefore = boneInstance.currentAnimation.progress >= sequenceDuration - boneInstance.transitionDuration;
-            bool canLoop = HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Loop);
-            
-            if (progress >= sequenceInfo.duration && !canLoop)
-            {
-                if (!HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Frozen))
-                {
-                    if (boneInstance.nextAnimation.animation == Type::Invalid)
-                    {
-                        auto callback = boneInstance.currentAnimation.finishedCallback;
-
-                        if (!HasAnimationFlag(boneInstance.currentAnimation.flags, Flag::Freeze))
-                        {
-                            boneInstance.currentAnimation.animation = Type::Invalid;
-                            boneInstance.currentAnimation.sequenceID = InvalidSequenceID;
-                            boneInstance.currentAnimation.finishedCallback = nullptr;
-
-                            boneInstance.currentAnimation.flags = Flag::None;
-                            boneInstance.currentAnimation.blendTimeStart = 0.0f;
-                            boneInstance.currentAnimation.blendTimeEnd = 0.0f;
-                            boneInstance.currentAnimation.progress = 0.0f;
-                        }
-                        else
-                        {
-                            boneInstance.currentAnimation.finishedCallback = nullptr;
-                            SetAnimationFlag(boneInstance.currentAnimation.flags, Flag::Frozen);
-                        }
-
-                        if (callback)
-                        {
-                            callback(instance.instanceID, animationID, Type::Invalid);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                boneInstance.currentAnimation.progress += deltaTime;
-            
-                if (canLoop)
-                {
-                    bool isInTransitionPhaseAfter = boneInstance.currentAnimation.progress >= sequenceDuration - boneInstance.transitionDuration;
-                    if (!isInTransitionPhaseBefore && isInTransitionPhaseAfter)
-                    {
-                        if (boneInstance.nextAnimation.animation == Type::Invalid)
-                        {
-                            u16 nextSequenceID = sequenceInfo.nextVariationID;
-            
-                            if (nextSequenceID == InvalidSequenceID)
-                                nextSequenceID = GetSequenceIDForAnimationID(instance.modelID, animationID);
-            
-                            Model::ComplexModel::AnimationSequence nextSequenceInfo = skeleton.sequences[nextSequenceID];
-            
-                            boneInstance.nextAnimation = boneInstance.currentAnimation;
-                            boneInstance.nextAnimation.sequenceID = nextSequenceID;
-                            boneInstance.nextAnimation.progress = 0.0f;
-            
-                            bool blendTransition = nextSequenceInfo.flags.blendTransition;
-                            f32 blendTimeStart = static_cast<f32>(sequenceInfo.blendTimeStart) / 1000.0f;
-                            boneInstance.timeToTransition = blendTimeStart * blendTransition;
-                            boneInstance.transitionDuration = boneInstance.timeToTransition;
-                        }
-                    }
-                }
-            }
-        };
-
         if (boneInstance.currentAnimation.animation != Type::Invalid)
         {
             HandleCurrentAnimation(skeleton, instance, boneInstance, deltaTime);

@@ -8,22 +8,22 @@
 
 namespace Scripting
 {
-	class LuaSystemBase
-	{
-	public:
-		LuaSystemBase();
+    class LuaSystemBase
+    {
+    public:
+        LuaSystemBase();
 
-	private:
-		friend LuaManager;
+    private:
+        friend LuaManager;
 
-		void Init();
-		void Update(f32 deltaTime, lua_State* state);
-		void PushEvent(LuaSystemEvent systemEvent);
+        void Init();
+        void Update(f32 deltaTime, lua_State* state);
+        void PushEvent(LuaSystemEvent systemEvent);
 
-	protected:
-		virtual void Prepare(f32 deltaTime, lua_State* state) = 0;
-		virtual void Run(f32 deltaTime, lua_State* state) = 0;
+    protected:
+        virtual void Prepare(f32 deltaTime, lua_State* state) = 0;
+        virtual void Run(f32 deltaTime, lua_State* state) = 0;
 
-		moodycamel::ConcurrentQueue<LuaSystemEvent> _events;
-	};
+        moodycamel::ConcurrentQueue<LuaSystemEvent> _events;
+    };
 }

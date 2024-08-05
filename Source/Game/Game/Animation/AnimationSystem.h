@@ -1590,6 +1590,7 @@ namespace Animation
         void Clear();
 
     private:
+        void HandleCurrentAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, AnimationBoneInstance& boneInstance, f32 deltaTime);
         mat4x4 GetBoneMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, const AnimationBoneInstance& boneInstance);
         void HandleBoneAnimation(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationSkeletonBone& bone, AnimationBoneInstance& boneInstance, f32 deltaTime);
         mat4x4 GetTextureTransformMatrix(const AnimationSkeleton& skeleton, const AnimationInstance& instance, const AnimationBoneInstance& boneInstance, const AnimationSkeletonTextureTransform& textureTransform);
