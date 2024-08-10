@@ -49,6 +49,8 @@
 #include <Game/ECS/Util/CameraUtil.h>
 #include <Base/CVarSystem/CVarSystem.h>
 
+#include <tracy/Tracy.hpp>
+
 #define USE_CHARACTER_CONTROLLER_V2 0
 
 namespace ECS::Systems
@@ -406,6 +408,7 @@ namespace ECS::Systems
 #else
     void CharacterController::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("CharacterController::Preprocessing");
         InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("CharacterController"_h);
 
@@ -439,176 +442,188 @@ namespace ECS::Systems
         if (joltState.updateTimer < fixedDeltaTime)
             return;
 
-        auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
-        auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
-        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
-        auto& networkedEntity = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
-        auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.moverEntity);
-
-        static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
-        JPH::Vec3 moveDirection = JPH::Vec3(0.0f, 0.0f, 0.0f);
-
-        bool isInputForwardDown = keybindGroup->IsKeybindPressed("Forward"_h) || (orbitalCameraSettings.mouseLeftDown && orbitalCameraSettings.mouseRightDown);
-        bool isInputBackwardDown = keybindGroup->IsKeybindPressed("Backward"_h);
-        bool isInputLeftDown = keybindGroup->IsKeybindPressed("Left"_h);
-        bool isInputRightDown = keybindGroup->IsKeybindPressed("Right"_h);
-
-        bool isAlive = unitStatsComponent.currentHealth > 0.0f;
-        bool isMovingForward = (isInputForwardDown && !isInputBackwardDown) * isAlive;
-        bool isMovingBackward = (isInputBackwardDown && !isInputForwardDown) * isAlive;
-        bool isMovingLeft = (isInputLeftDown && !isInputRightDown) * isAlive;
-        bool isMovingRight = (isInputRightDown && !isInputLeftDown) * isAlive;
-        bool isMoving = isInputForwardDown || isInputBackwardDown || isInputLeftDown || isInputRightDown;
-
-        moveDirection += isMovingForward * JPH::Vec3(0.0f, 0.0f, -1.0f);
-        moveDirection += isMovingBackward * JPH::Vec3(0.0f, 0.0f, 1.0f);
-        moveDirection += isMovingLeft * JPH::Vec3(1.0f, 0.0f, 0.0f);;
-        moveDirection += isMovingRight * JPH::Vec3(-1.0f, 0.0f, 0.0f);
-
-        quat characterRotation = quat(vec3(movementInfo.pitch, movementInfo.yaw, 0.0f));
-        if (isAlive)
         {
-            transformSystem.SetWorldRotation(characterSingleton.moverEntity, characterRotation);
+            ZoneScopedN("CharacterController::Update - Active");
 
-            JPH::Quat joltRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
-            characterSingleton.character->SetRotation(joltRotation);
-        }
+            auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+            auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
+            auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
+            auto& networkedEntity = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.moverEntity);
 
-        Components::MovementFlags previousMovementFlags = movementInfo.movementFlags;
+            static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
+            JPH::Vec3 moveDirection = JPH::Vec3(0.0f, 0.0f, 0.0f);
 
-        movementInfo.movementFlags.forward = isMovingForward;
-        movementInfo.movementFlags.backward = isMovingBackward;
-        movementInfo.movementFlags.left = isMovingLeft;
-        movementInfo.movementFlags.right = isMovingRight;
-        movementInfo.movementFlags.justGrounded = false;
-        movementInfo.movementFlags.justEndedJump = false;
+            bool isInputForwardDown = keybindGroup->IsKeybindPressed("Forward"_h) || (orbitalCameraSettings.mouseLeftDown && orbitalCameraSettings.mouseRightDown);
+            bool isInputBackwardDown = keybindGroup->IsKeybindPressed("Backward"_h);
+            bool isInputLeftDown = keybindGroup->IsKeybindPressed("Left"_h);
+            bool isInputRightDown = keybindGroup->IsKeybindPressed("Right"_h);
 
-        JPH::CharacterVirtual::EGroundState groundState = characterSingleton.character->GetGroundState();
+            bool isAlive = unitStatsComponent.currentHealth > 0.0f;
+            bool isMovingForward = (isInputForwardDown && !isInputBackwardDown) * isAlive;
+            bool isMovingBackward = (isInputBackwardDown && !isInputForwardDown) * isAlive;
+            bool isMovingLeft = (isInputLeftDown && !isInputRightDown) * isAlive;
+            bool isMovingRight = (isInputRightDown && !isInputLeftDown) * isAlive;
+            bool isMoving = isInputForwardDown || isInputBackwardDown || isInputLeftDown || isInputRightDown;
 
-        // Fix for animations bricking when turning off animations while jumping state is not None
-        bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled");
-        if (!animationsEnabled && movementInfo.jumpState != Components::JumpState::None)
-        {
-            movementInfo.jumpState = Components::JumpState::None;
-        }
+            moveDirection += isMovingForward * JPH::Vec3(0.0f, 0.0f, -1.0f);
+            moveDirection += isMovingBackward * JPH::Vec3(0.0f, 0.0f, 1.0f);
+            moveDirection += isMovingLeft * JPH::Vec3(1.0f, 0.0f, 0.0f);;
+            moveDirection += isMovingRight * JPH::Vec3(-1.0f, 0.0f, 0.0f);
 
-        // TODO : When jumping, we need to incoporate checks from the physics system to handle if jumping ends early
-        bool isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround && movementInfo.verticalVelocity <= 0.0f;
-        bool canJump = isAlive && isGrounded && (!movementInfo.movementFlags.jumping && movementInfo.jumpState == Components::JumpState::None);
-        bool isTryingToJump = keybindGroup->IsKeybindPressed("Upwards"_h) && canJump;
-
-        JPH::Quat virtualCharacterRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
-        if (!moveDirection.IsNearZero())
-        {
-            moveDirection = virtualCharacterRotation * moveDirection;
-            moveDirection = moveDirection.Normalized();
-        }
-
-        f32 speed = movementInfo.speed;
-        if (isMovingBackward)
-            speed *= 0.5f;
-
-        JPH::Vec3 currentVelocity = characterSingleton.character->GetLinearVelocity();
-        JPH::Vec3 desiredVelocity = characterSingleton.character->GetGroundVelocity() + (moveDirection * speed);
-        JPH::Vec3 newVelocity = JPH::Vec3(0.0f, 0.0f, 0.0f);
-
-        if (!desiredVelocity.IsNearZero() || currentVelocity.GetY() < 0.0f || !isGrounded)
-        {
-            desiredVelocity.SetY(currentVelocity.GetY());
-        }
-
-        bool canControlInAir = isGrounded || characterSingleton.canControlInAir;
-        characterSingleton.canControlInAir = canControlInAir;
-
-        if (isGrounded || (canControlInAir && isMoving))
-        {
-            if (isGrounded && desiredVelocity.GetY() < 0.0f)
+            quat characterRotation = quat(vec3(movementInfo.pitch, movementInfo.yaw, 0.0f));
+            if (isAlive)
             {
-                desiredVelocity.SetY(0.0f);
+                ZoneScopedN("CharacterController::Update - UpdateRotation");
+                transformSystem.SetWorldRotation(characterSingleton.moverEntity, characterRotation);
+
+                JPH::Quat joltRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+                characterSingleton.character->SetRotation(joltRotation);
             }
 
-            newVelocity = desiredVelocity;
+            Components::MovementFlags previousMovementFlags = movementInfo.movementFlags;
 
-            if (isTryingToJump)
+            movementInfo.movementFlags.forward = isMovingForward;
+            movementInfo.movementFlags.backward = isMovingBackward;
+            movementInfo.movementFlags.left = isMovingLeft;
+            movementInfo.movementFlags.right = isMovingRight;
+            movementInfo.movementFlags.justGrounded = false;
+            movementInfo.movementFlags.justEndedJump = false;
+
+            JPH::CharacterVirtual::EGroundState groundState = characterSingleton.character->GetGroundState();
+
+            // Fix for animations bricking when turning off animations while jumping state is not None
+            bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled");
+            if (!animationsEnabled && movementInfo.jumpState != Components::JumpState::None)
             {
-                f32 jumpSpeed = movementInfo.jumpSpeed * movementInfo.gravityModifier;
-                newVelocity += JPH::Vec3(0.0f, jumpSpeed, 0.0f);
+                movementInfo.jumpState = Components::JumpState::None;
+            }
 
-                movementInfo.movementFlags.jumping = true;
-                movementInfo.jumpState = Components::JumpState::Begin;
+            // TODO : When jumping, we need to incoporate checks from the physics system to handle if jumping ends early
+            bool isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround && movementInfo.verticalVelocity <= 0.0f;
+            bool canJump = isAlive && isGrounded && (!movementInfo.movementFlags.jumping && movementInfo.jumpState == Components::JumpState::None);
+            bool isTryingToJump = keybindGroup->IsKeybindPressed("Upwards"_h) && canJump;
+
+            JPH::Quat virtualCharacterRotation = JPH::Quat(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+            if (!moveDirection.IsNearZero())
+            {
+                moveDirection = virtualCharacterRotation * moveDirection;
+                moveDirection = moveDirection.Normalized();
+            }
+
+            f32 speed = movementInfo.speed;
+            if (isMovingBackward)
+                speed *= 0.5f;
+
+            JPH::Vec3 currentVelocity = characterSingleton.character->GetLinearVelocity();
+            JPH::Vec3 desiredVelocity = characterSingleton.character->GetGroundVelocity() + (moveDirection * speed);
+            JPH::Vec3 newVelocity = JPH::Vec3(0.0f, 0.0f, 0.0f);
+
+            if (!desiredVelocity.IsNearZero() || currentVelocity.GetY() < 0.0f || !isGrounded)
+            {
+                desiredVelocity.SetY(currentVelocity.GetY());
+            }
+
+            bool canControlInAir = isGrounded || characterSingleton.canControlInAir;
+            characterSingleton.canControlInAir = canControlInAir;
+
+            if (isGrounded || (canControlInAir && isMoving))
+            {
+                ZoneScopedN("CharacterController::Update - Update Movement Velocity");
+                if (isGrounded && desiredVelocity.GetY() < 0.0f)
+                {
+                    desiredVelocity.SetY(0.0f);
+                }
+
+                newVelocity = desiredVelocity;
+
+                if (isTryingToJump)
+                {
+                    f32 jumpSpeed = movementInfo.jumpSpeed * movementInfo.gravityModifier;
+                    newVelocity += JPH::Vec3(0.0f, jumpSpeed, 0.0f);
+
+                    movementInfo.movementFlags.jumping = true;
+                    movementInfo.jumpState = Components::JumpState::Begin;
+                }
+                else
+                {
+                    characterSingleton.canControlInAir = false;
+                }
             }
             else
             {
-                characterSingleton.canControlInAir = false;
-            }
-        }
-        else
-        {
-            newVelocity = currentVelocity + ((gravity * movementInfo.gravityModifier) * fixedDeltaTime);
-        }
-
-        characterSingleton.character->SetLinearVelocity(newVelocity);
-
-        ::Util::CharacterController::UpdateSettings updateSettings =
-        {
-            .mStickToFloorStepDown      = vec3(0.0f, -0.2f, 0.0f),
-            .mWalkStairsStepUp          = vec3(0.0f, 1.1918f, 0.0f),
-            .mWalkStairsStepDownExtra   = vec3(0.0f, 0.0f, 0.0f)
-        };
-
-        JPH::DefaultBroadPhaseLayerFilter broadPhaseLayerFilter(joltState.objectVSBroadPhaseLayerFilter, Jolt::Layers::MOVING);
-        JPH::DefaultObjectLayerFilter objectLayerFilter(joltState.objectVSObjectLayerFilter, Jolt::Layers::MOVING);
-        JPH::BodyFilter bodyFilter;
-        JPH::ShapeFilter shapeFilter;
-
-        ::Util::CharacterController::Update(characterSingleton.character, fixedDeltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
-        
-        JPH::Vec3 position = characterSingleton.character->GetPosition();
-        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(position.GetX(), position.GetY(), position.GetZ()));
-
-        JPH::Vec3 linearVelocity = characterSingleton.character->GetLinearVelocity();
-        movementInfo.horizontalVelocity = vec2(linearVelocity.GetX(), linearVelocity.GetZ());
-        movementInfo.verticalVelocity = linearVelocity.GetY();
-
-        groundState = characterSingleton.character->GetGroundState();
-
-        bool wasGrounded = isGrounded;
-        isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
-
-        movementInfo.movementFlags.grounded = isGrounded;
-        if (isGrounded)
-        {
-            if (!wasGrounded)
-            {
-                networkedEntity.positionOrRotationIsDirty = true;
-                movementInfo.movementFlags.justGrounded = true;
+                ZoneScopedN("CharacterController::Update - Calculate Fall Velocity");
+                newVelocity = currentVelocity + ((gravity * movementInfo.gravityModifier) * fixedDeltaTime);
             }
 
-            if (movementInfo.movementFlags.jumping || movementInfo.jumpState != Components::JumpState::None)
+            characterSingleton.character->SetLinearVelocity(newVelocity);
+
+            ::Util::CharacterController::UpdateSettings updateSettings =
             {
-                movementInfo.movementFlags.jumping = false;
-                movementInfo.movementFlags.justEndedJump = true;
-                movementInfo.jumpState = Components::JumpState::None;
+                .mStickToFloorStepDown = vec3(0.0f, -0.2f, 0.0f),
+                .mWalkStairsStepUp = vec3(0.0f, 1.1918f, 0.0f),
+                .mWalkStairsStepDownExtra = vec3(0.0f, 0.0f, 0.0f)
+            };
+
+            JPH::DefaultBroadPhaseLayerFilter broadPhaseLayerFilter(joltState.objectVSBroadPhaseLayerFilter, Jolt::Layers::MOVING);
+            JPH::DefaultObjectLayerFilter objectLayerFilter(joltState.objectVSObjectLayerFilter, Jolt::Layers::MOVING);
+            JPH::BodyFilter bodyFilter;
+            JPH::ShapeFilter shapeFilter;
+
+            {
+                ZoneScopedN("CharacterController::Update - Physics Update");
+                ::Util::CharacterController::Update(characterSingleton.character, fixedDeltaTime, gravity, updateSettings, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
             }
-        }
+            JPH::Vec3 position = characterSingleton.character->GetPosition();
+            transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(position.GetX(), position.GetY(), position.GetZ()));
 
-        bool wasMoving = previousMovementFlags.forward || previousMovementFlags.backward || previousMovementFlags.left || previousMovementFlags.right;
+            JPH::Vec3 linearVelocity = characterSingleton.character->GetLinearVelocity();
+            movementInfo.horizontalVelocity = vec2(linearVelocity.GetX(), linearVelocity.GetZ());
+            movementInfo.verticalVelocity = linearVelocity.GetY();
 
-        if (!isGrounded || isMoving || wasMoving || networkedEntity.positionOrRotationIsDirty)
-        {
-            // Just started moving
-            auto& networkState = ctx.get<Singletons::NetworkState>();
-            if (networkState.client && networkState.client->IsConnected())
+            groundState = characterSingleton.character->GetGroundState();
+
+            bool wasGrounded = isGrounded;
+            isGrounded = groundState == JPH::CharacterVirtual::EGroundState::OnGround;
+
+            movementInfo.movementFlags.grounded = isGrounded;
+            if (isGrounded)
             {
-                auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
-                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
+                if (!wasGrounded)
                 {
-                    networkState.client->Send(buffer);
+                    networkedEntity.positionOrRotationIsDirty = true;
+                    movementInfo.movementFlags.justGrounded = true;
+                }
+
+                if (movementInfo.movementFlags.jumping || movementInfo.jumpState != Components::JumpState::None)
+                {
+                    movementInfo.movementFlags.jumping = false;
+                    movementInfo.movementFlags.justEndedJump = true;
+                    movementInfo.jumpState = Components::JumpState::None;
                 }
             }
 
-            networkedEntity.positionOrRotationIsDirty = false;
+            bool wasMoving = previousMovementFlags.forward || previousMovementFlags.backward || previousMovementFlags.left || previousMovementFlags.right;
+
+            if (!isGrounded || isMoving || wasMoving || networkedEntity.positionOrRotationIsDirty)
+            {
+                ZoneScopedN("CharacterController::Update - Network Update");
+                // Just started moving
+                auto& networkState = ctx.get<Singletons::NetworkState>();
+                if (networkState.client && networkState.client->IsConnected())
+                {
+                    ZoneScopedN("CharacterController::Update - Network Update - Building Message");
+                    auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
+                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                    if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
+                    {
+                        ZoneScopedN("CharacterController::Update - Network Update - Sending Message");
+                        networkState.client->Send(buffer);
+                    }
+                }
+
+                networkedEntity.positionOrRotationIsDirty = false;
+            }
         }
     }
 

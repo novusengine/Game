@@ -29,6 +29,8 @@
 
 #include <entt/entt.hpp>
 
+#include <tracy/Tracy.hpp>
+
 namespace ECS
 {
     Scheduler::Scheduler()
@@ -66,26 +68,74 @@ namespace ECS
 
         joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-        Systems::UpdateDayNightCycle::Update(registry, clampedDeltaTime);
-        Systems::NetworkConnection::Update(registry, clampedDeltaTime);
-        Systems::DrawDebugMesh::Update(registry, clampedDeltaTime);
+        {
+            ZoneScopedN("UpdateDayNightCycle");
+            Systems::UpdateDayNightCycle::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("NetworkConnection");
+            Systems::NetworkConnection::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("DrawDebugMesh");
+            Systems::DrawDebugMesh::Update(registry, clampedDeltaTime);
+        }
 
-        Systems::CharacterController::Update(registry, clampedDeltaTime);
-        Systems::UpdateNetworkedEntity::Update(registry, clampedDeltaTime);
+        {
+            ZoneScopedN("CharacterController");
+            Systems::CharacterController::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateNetworkedEntity");
+            Systems::UpdateNetworkedEntity::Update(registry, clampedDeltaTime);
+        }
 
-        Systems::FreeflyingCamera::Update(registry, clampedDeltaTime);
-        Systems::OrbitalCamera::Update(registry, clampedDeltaTime);
-        Systems::CalculateCameraMatrices::Update(registry, clampedDeltaTime);
-        Systems::CalculateShadowCameraMatrices::Update(registry, clampedDeltaTime);
 
-        Systems::UpdateSkyboxes::Update(registry, clampedDeltaTime);
-        Systems::UpdateAreaLights::Update(registry, clampedDeltaTime);
-        Systems::CalculateTransformMatrices::Update(registry, clampedDeltaTime);
-        Systems::UpdateAABBs::Update(registry, clampedDeltaTime);
-        Systems::UpdatePhysics::Update(registry, clampedDeltaTime);
+        {
+            ZoneScopedN("FreeflyingCamera");
+            Systems::FreeflyingCamera::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("OrbitalCamera");
+            Systems::OrbitalCamera::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateCameraMatrices");
+            Systems::CalculateCameraMatrices::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateShadowCameraMatrices");
+            Systems::CalculateShadowCameraMatrices::Update(registry, clampedDeltaTime);
+        }
+
+
+        {
+            ZoneScopedN("UpdateSkyboxes");
+            Systems::UpdateSkyboxes::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateAreaLights");
+            Systems::UpdateAreaLights::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateTransformMatrices");
+            Systems::CalculateTransformMatrices::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateAABBs");
+            Systems::UpdateAABBs::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdatePhysics");
+            Systems::UpdatePhysics::Update(registry, clampedDeltaTime);
+        }
+
 
         // Note: For now UpdateScripts should always be run last
-        Systems::UpdateScripts::Update(registry, clampedDeltaTime);
+        {
+            ZoneScopedN("UpdateScripts");
+            Systems::UpdateScripts::Update(registry, clampedDeltaTime);
+        }
 
         if (joltState.updateTimer >= Singletons::JoltState::FixedDeltaTime)
         {

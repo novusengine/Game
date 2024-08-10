@@ -82,10 +82,6 @@ namespace ECS::Systems
 
     bool HandleOnUpdateStats(Network::SocketID socketID, Network::Message& message)
     {
-        u8 serverNetworkDiff = 0;
-        if (!message.buffer->Get(serverNetworkDiff))
-            return false;
-        
         u8 serverUpdateDiff = 0;
         if (!message.buffer->Get(serverUpdateDiff))
             return false;
@@ -93,7 +89,6 @@ namespace ECS::Systems
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
-        networkState.serverNetworkDiff = serverNetworkDiff;
         networkState.serverUpdateDiff = serverUpdateDiff;
 
         return true;
@@ -363,7 +358,6 @@ namespace ECS::Systems
         }
 
         entt::entity entity = networkState.networkIDToEntity[networkID];
-
         if (!registry->valid(entity))
         {
             NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", entt::to_integral(networkID));
@@ -642,7 +636,8 @@ namespace ECS::Systems
 
         // Setup NetworkState
         {
-            networkState.client = std::make_unique<Network::Client>();
+            networkState.resolver = std::make_shared<asio::ip::tcp::resolver>(networkState.asioContext);
+            networkState.client = std::make_unique<Network::Client>(networkState.asioContext, networkState.resolver);
             networkState.networkIDToEntity.reserve(1024);
             networkState.entityToNetworkID.reserve(1024);
 
@@ -672,8 +667,25 @@ namespace ECS::Systems
     void NetworkConnection::Update(entt::registry& registry, f32 deltaTime)
     {
         entt::registry::context& ctx = registry.ctx();
-
         auto& networkState = ctx.get<Singletons::NetworkState>();
+
+        // Restart AsioThread If Needed
+        {
+            if (networkState.client && networkState.client->IsConnected())
+            {
+                if (!networkState.asioThread.joinable())
+                {
+                    
+                    networkState.asioThread = std::thread([&] 
+                    {
+                        if (networkState.asioContext.stopped())
+                            networkState.asioContext.restart();
+
+                        networkState.asioContext.run(); 
+                    });
+                }
+            }
+        }
         
         static bool wasConnected = false;
         if (networkState.client->IsConnected())
@@ -745,13 +757,16 @@ namespace ECS::Systems
                 networkState.lastPingTime = 0u;
                 networkState.lastPongTime = 0u;
                 networkState.ping = 0;
-                networkState.serverNetworkDiff = 0;
                 networkState.serverUpdateDiff = 0;
                 networkState.pingHistoryIndex = 0;
                 networkState.pingHistory.fill(0);
                 networkState.pingHistorySize = 0;
                 networkState.entityToNetworkID.clear();
                 networkState.networkIDToEntity.clear();
+                networkState.asioContext.stop();
+
+                if (networkState.asioThread.joinable())
+                    networkState.asioThread.join();
 
                 CharacterController::InitCharacterController(registry, true);
             }
@@ -759,71 +774,26 @@ namespace ECS::Systems
             return;
         }
 
-        Network::Socket::Result readResult = networkState.client->Read();
-        if (readResult == Network::Socket::Result::SUCCESS)
+        // Handle 'SocketMessageEvent'
         {
-            std::shared_ptr<Bytebuffer>& buffer = networkState.client->GetReadBuffer();
-            while (size_t activeSize = buffer->GetActiveSize())
+            moodycamel::ConcurrentQueue<Network::SocketMessageEvent>& messageEvents = networkState.client->GetMessageEvents();
+
+            Network::SocketMessageEvent messageEvent;
+            while (messageEvents.try_dequeue(messageEvent))
             {
-                static constexpr u8 PacketHeaderSize = sizeof(Network::MessageHeader);
+                auto* messageHeader = reinterpret_cast<Network::MessageHeader*>(messageEvent.message.buffer->GetDataPointer());
 
-                // We have received a partial header and need to read more
-                if (activeSize < PacketHeaderSize)
+                // Invoke MessageHandler here
+                if (networkState.gameMessageRouter->CallHandler(messageEvent.socketID, messageEvent.message))
+                    continue;
+
+                // Failed to Call Handler, Close Socket
                 {
-                    buffer->Normalize();
+                    networkState.client->Stop();
                     break;
                 }
-
-                auto* header = reinterpret_cast<Network::MessageHeader*>(buffer->GetReadPointer());
-
-                if (header->size > Network::DEFAULT_BUFFER_SIZE)
-                {
-#ifdef NC_DEBUG
-                    NC_LOG_ERROR("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<Network::OpcodeType>(header->opcode), header->size);
-#endif // NC_DEBUG
-                    networkState.client->Close();
-                    break;
-                }
-
-                size_t receivedPayloadSize = activeSize - sizeof(Network::MessageHeader);
-                if (receivedPayloadSize < header->size)
-                {
-                    buffer->Normalize();
-                    break;
-                }
-
-                buffer->SkipRead(sizeof(Network::MessageHeader));
-
-                Network::Message message;
-                message.timestampProcessed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-                message.buffer = Bytebuffer::Borrow<Network::DEFAULT_BUFFER_SIZE>();
-
-                {
-                    // Payload
-                    {
-                        message.buffer->Put(*header);
-
-                        if (header->size)
-                        {
-                            std::memcpy(message.buffer->GetWritePointer(), buffer->GetReadPointer(), header->size);
-                            message.buffer->SkipWrite(header->size);
-
-                            // Skip Payload
-                            buffer->SkipRead(header->size);
-                        }
-                    }
-
-                    if (!networkState.gameMessageRouter->CallHandler(Network::SOCKET_ID_INVALID, message))
-                    {
-                        networkState.client->Close();
-                    }
-                }
-            }
-            
-            if (buffer->GetActiveSize() == 0)
-            {
-                buffer->Reset();
             }
         }
+
     }
 }

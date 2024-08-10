@@ -1,6 +1,8 @@
 #pragma once
 #include <robinhood/robinhood.h>
 
+#include <asio/asio.hpp>
+
 #include <memory>
 
 namespace Network
@@ -16,6 +18,9 @@ namespace ECS::Singletons
     public:
         static constexpr u64 PING_INTERVAL = 5000;
 
+        std::thread asioThread;
+        asio::io_context asioContext;
+        std::shared_ptr<asio::ip::tcp::resolver> resolver;
         std::unique_ptr<Network::Client> client;
         std::unique_ptr<Network::GameMessageRouter> gameMessageRouter;
 
@@ -24,7 +29,6 @@ namespace ECS::Singletons
 
         u8 pingHistoryIndex = 0;
         u16 ping = 0;
-        u8 serverNetworkDiff = 0;
         u8 serverUpdateDiff = 0;
         std::array<u16, 6> pingHistory = { 0, 0, 0, 0, 0, 0 };
         u8 pingHistorySize = 0;

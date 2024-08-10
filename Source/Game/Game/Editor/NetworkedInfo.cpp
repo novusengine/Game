@@ -33,7 +33,6 @@
 
 #include <string>
 
-
 AutoCVar_String CVAR_NetworkConnectIP(CVarCategory::Network, "connectIP", "Sets the connection IP", "127.0.0.1");
 AutoCVar_String CVAR_NetworkCharacterName(CVarCategory::Network, "characterName", "Sets the character name", "dev");
 
@@ -66,7 +65,6 @@ namespace Editor
             if (isConnected)
             {
                 ImGui::Text("Ping: %dms", networkState.ping);
-                ImGui::Text("Server Network Diff: %dms", networkState.serverNetworkDiff);
                 ImGui::Text("Server Update Diff: %dms", networkState.serverUpdateDiff);
                 ImGui::NewLine();
 
@@ -193,9 +191,8 @@ namespace Editor
 
                 if (ImGui::Button("Disconnect"))
                 {
-                    networkState.client->Close();
+                    networkState.client->Stop();
                 }
-                
             }
             else
             {
@@ -237,29 +234,12 @@ namespace Editor
                 {
                     if (networkState.client && characterNameLength > 0)
                     {
-                        Network::Socket::Result initResult = networkState.client->Init(Network::Socket::Mode::TCP);
-                        if (initResult == Network::Socket::Result::SUCCESS)
+                        if (networkState.client->Connect(CVAR_NetworkConnectIP.Get(), 4000))
                         {
-                            // Connect to IP/Port
-                            const char* ipAddress = CVAR_NetworkConnectIP.Get();
-                            u16 port = 4000;
-
-                            Network::Socket::Result connectResult = networkState.client->Connect(ipAddress, port);
-
-                            if (connectResult != Network::Socket::Result::SUCCESS &&
-                                connectResult != Network::Socket::Result::ERROR_WOULD_BLOCK)
+                            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+                            if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
                             {
-                                NC_LOG_ERROR("Network : Failed to connect to ({0}, {1})", ipAddress, port);
-                            }
-                            else
-                            {
-                                networkState.client->GetSocket()->SetBlockingState(false);
-
-                                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                                if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
-                                {
-                                    networkState.client->Send(buffer);
-                                }
+                                networkState.client->Send(buffer);
                             }
                         }
                     }
