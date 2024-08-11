@@ -1,6 +1,6 @@
-#include "Game/Application/Application.h"
-#include "Game/Application/Message.h"
-#include "Game/Application/ConsoleCommandHandler.h"
+#include "Game-Lib/Application/Application.h"
+#include "Game-Lib/Application/Message.h"
+#include "Game-Lib/Application/ConsoleCommandHandler.h"
 
 #include <Base/Types.h>
 #include <Base/Util/StringUtils.h>
