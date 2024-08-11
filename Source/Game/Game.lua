@@ -20,6 +20,7 @@ Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.De
 end)
 
 Solution.Util.CreateDep(mod.NameLow, mod.Dependencies, function()
+    dependson (mod.Name)
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetLinks(mod.Name)
     
