@@ -6,7 +6,7 @@ Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.De
     Solution.Util.SetLanguage("C++")
     Solution.Util.SetCppDialect(20)
 
-    local files = Solution.Util.GetFilesForCpp(mod.Path .. "/Game")
+    local files = Solution.Util.GetFilesForCpp(mod.Path)
     Solution.Util.SetFiles(files)
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetDefines(defines)
