@@ -12,7 +12,8 @@ local modules =
 {
     "ShaderCookerStandalone/ShaderCookerStandalone.lua",
     "Shaders/Shaders.lua",
-    "Game/Game.lua"
+    "Game/Game.lua",
+    "Game-App/Game-App.lua"
 }
 
 for _, v in pairs(modules) do
