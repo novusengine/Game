@@ -12,7 +12,7 @@ local modules =
 {
     "ShaderCookerStandalone/ShaderCookerStandalone.lua",
     "Shaders/Shaders.lua",
-    "Game/Game.lua",
+    "Game-Lib/Game-Lib.lua",
     "Game-App/Game-App.lua"
 }
 
