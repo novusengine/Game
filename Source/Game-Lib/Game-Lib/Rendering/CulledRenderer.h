@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Rendering/CullingResources.h"
+#include "Game-Lib/Rendering/CullingResources.h"
 
 #include <Base/Types.h>
 #include <Base/Math/Geometry.h>

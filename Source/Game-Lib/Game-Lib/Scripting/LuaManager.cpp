@@ -5,7 +5,7 @@
 #include "Handlers/GlobalHandler.h"
 #include "Systems/LuaSystemBase.h"
 #include "Systems/GenericSystem.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/Bytebuffer.h>

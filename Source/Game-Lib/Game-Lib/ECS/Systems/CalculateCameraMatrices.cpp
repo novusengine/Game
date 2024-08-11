@@ -1,10 +1,10 @@
 #include "CalculateCameraMatrices.h"
 
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

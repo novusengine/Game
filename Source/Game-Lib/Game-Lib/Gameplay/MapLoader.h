@@ -1,6 +1,6 @@
 #pragma once
-#include "Game/Rendering/Terrain/TerrainLoader.h"
-#include "Game/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
 
 #include <Base/Container/ConcurrentQueue.h>
 

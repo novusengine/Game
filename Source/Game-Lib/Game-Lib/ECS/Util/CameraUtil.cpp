@@ -1,12 +1,12 @@
 #include "CameraUtil.h"
 
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/ECS/Singletons/ActiveCamera.h>
-#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
-#include <Game/ECS/Singletons/OrbitalCameraSettings.h>
-#include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Util/Transforms.h>
+#include <Game-Lib/Util/ServiceLocator.h>
+#include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/ECS/Singletons/ActiveCamera.h>
+#include <Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h>
+#include <Game-Lib/ECS/Singletons/OrbitalCameraSettings.h>
+#include <Game-Lib/ECS/Components/Camera.h>
+#include <Game-Lib/ECS/Util/Transforms.h>
 #include <Renderer/Window.h>
 
 #include <imgui/imgui.h>

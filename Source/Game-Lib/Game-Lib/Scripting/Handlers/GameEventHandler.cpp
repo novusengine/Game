@@ -1,9 +1,9 @@
 #include "GameEventHandler.h"
-#include "Game/Scripting/LuaStateCtx.h"
+#include "Game-Lib/Scripting/LuaStateCtx.h"
 
-#include "Game/Scripting/LuaManager.h"
-#include "Game/Scripting/Systems/LuaSystemBase.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <lualib.h>
 

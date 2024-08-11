@@ -1,12 +1,12 @@
 #include "UnitUtil.h"
 
-#include "Game/Animation/AnimationSystem.h"
-#include "Game/ECS/Components/CastInfo.h"
-#include "Game/ECS/Components/Model.h"
-#include "Game/ECS/Components/MovementInfo.h"
-#include "Game/ECS/Components/UnitStatsComponent.h"
-#include "Game/Util/AnimationUtil.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/ECS/Components/CastInfo.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/Util/AnimationUtil.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <FileFormat/Novus/ClientDB/Definitions.h>
 

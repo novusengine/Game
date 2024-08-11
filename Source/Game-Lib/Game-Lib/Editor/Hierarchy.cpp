@@ -1,13 +1,13 @@
 #include "Hierarchy.h"
 
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Application/EnttRegistries.h>
-#include <Game/ECS/Components/Name.h>
-#include <Game/ECS/Components/AABB.h>
-#include <Game/ECS/Util/CameraUtil.h>
-#include <Game/Util/ImguiUtil.h>
-#include <Game/Util/ImGui/FakeScrollingArea.h>
-#include <Game/Editor/Inspector.h>
+#include <Game-Lib/Util/ServiceLocator.h>
+#include <Game-Lib/Application/EnttRegistries.h>
+#include <Game-Lib/ECS/Components/Name.h>
+#include <Game-Lib/ECS/Components/AABB.h>
+#include <Game-Lib/ECS/Util/CameraUtil.h>
+#include <Game-Lib/Util/ImguiUtil.h>
+#include <Game-Lib/Util/ImGui/FakeScrollingArea.h>
+#include <Game-Lib/Editor/Inspector.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

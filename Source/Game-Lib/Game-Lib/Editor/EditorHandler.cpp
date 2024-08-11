@@ -14,8 +14,8 @@
 #include "TerrainTools.h"
 #include "Viewport.h"
 
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

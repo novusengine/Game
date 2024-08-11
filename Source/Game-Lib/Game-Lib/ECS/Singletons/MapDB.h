@@ -1,6 +1,6 @@
 #pragma once
 #include "ClientDBCollection.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
 #include <Base/Container/StringTable.h>

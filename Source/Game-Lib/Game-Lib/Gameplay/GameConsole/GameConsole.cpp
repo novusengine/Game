@@ -1,6 +1,6 @@
 #include "GameConsole.h"
 #include "GameConsoleCommandHandler.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_vulkan.h>

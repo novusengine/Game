@@ -3,15 +3,15 @@
 #include <Base/Util/CPUInfo.h>
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Game/Util/ServiceLocator.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Rendering/Model/ModelRenderer.h>
-#include <Game/Rendering/Terrain/TerrainRenderer.h>
-#include <Game/Rendering/Liquid/LiquidRenderer.h>
-#include <Game/Rendering/Debug/JoltDebugRenderer.h>
-#include <Game/Application/EnttRegistries.h>
-#include <Game/ECS/Singletons/EngineStats.h>
-#include <Game/Util/ImguiUtil.h>
+#include <Game-Lib/Util/ServiceLocator.h>
+#include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/Rendering/Model/ModelRenderer.h>
+#include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
+#include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
+#include <Game-Lib/Rendering/Debug/JoltDebugRenderer.h>
+#include <Game-Lib/Application/EnttRegistries.h>
+#include <Game-Lib/ECS/Singletons/EngineStats.h>
+#include <Game-Lib/Util/ImguiUtil.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Editor/TerrainTools.h"
+#include "Game-Lib/Editor/TerrainTools.h"
 
 #include <Base/Types.h>
 #include <Input/KeybindGroup.h>

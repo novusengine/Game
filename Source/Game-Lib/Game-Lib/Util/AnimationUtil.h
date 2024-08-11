@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Animation/AnimationSystem.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
 
 #include <Base/Types.h>
 

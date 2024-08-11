@@ -1,7 +1,7 @@
 #include "UpdateScripts.h"
 
-#include "Game/Scripting/LuaManager.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 namespace ECS::Systems
 {

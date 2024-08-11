@@ -1,6 +1,6 @@
 #include "CanvasRenderer.h"
 
-#include <Game/Rendering/RenderResources.h>
+#include <Game-Lib/Rendering/RenderResources.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/GPUVector.h>

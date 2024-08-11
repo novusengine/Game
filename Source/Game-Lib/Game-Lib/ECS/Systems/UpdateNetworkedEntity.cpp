@@ -1,15 +1,15 @@
 #include "UpdateNetworkedEntity.h"
 
-#include "Game/Animation/AnimationSystem.h"
-#include "Game/ECS/Components/Model.h"
-#include "Game/ECS/Components/MovementInfo.h"
-#include "Game/ECS/Components/NetworkedEntity.h"
-#include "Game/ECS/Components/UnitStatsComponent.h"
-#include "Game/ECS/Singletons/CharacterSingleton.h"
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Util/UnitUtil.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/UnitUtil.h"
 
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>

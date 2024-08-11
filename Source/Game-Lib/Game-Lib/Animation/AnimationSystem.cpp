@@ -1,8 +1,8 @@
 #include "AnimationSystem.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/Model/ModelRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

@@ -1,13 +1,13 @@
 #include "SkyboxSelector.h"
 
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Components/Tags.h"
-#include "Game/ECS/Components/Name.h"
-#include "Game/ECS/Components/Model.h"
-#include "Game/ECS/Singletons/Skybox.h"
-#include "Game/Rendering/Model/ModelLoader.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/Tags.h"
+#include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Singletons/Skybox.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 

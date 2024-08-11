@@ -1,10 +1,10 @@
 #include "DrawDebugMesh.h"
 
-#include "Game/ECS/Components/DebugRenderTransform.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Components/DebugRenderTransform.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <entt/entt.hpp>
 

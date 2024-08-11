@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Scripting/LuaDefines.h"
+#include "Game-Lib/Scripting/LuaDefines.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>

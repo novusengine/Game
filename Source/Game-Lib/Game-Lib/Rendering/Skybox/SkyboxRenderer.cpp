@@ -1,9 +1,9 @@
 #include "SkyboxRenderer.h"
 
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Application/EnttRegistries.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>

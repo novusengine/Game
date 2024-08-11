@@ -1,13 +1,13 @@
 #include "GlobalHandler.h"
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Util/MapUtil.h"
-#include "Game/ECS/Singletons/MapDB.h"
-#include "Game/Gameplay/MapLoader.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Scripting/LuaStateCtx.h"
-#include "Game/Scripting/LuaManager.h"
-#include "Game/Scripting/Systems/LuaSystemBase.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Util/MapUtil.h"
+#include "Game-Lib/ECS/Singletons/MapDB.h"
+#include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Scripting/LuaStateCtx.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <entt/entt.hpp>
 #include <lualib.h>

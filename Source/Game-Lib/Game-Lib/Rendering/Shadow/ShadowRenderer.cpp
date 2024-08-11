@@ -1,14 +1,14 @@
 #include "ShadowRenderer.h"
-#include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Singletons/ActiveCamera.h>
-#include <Game/ECS/Singletons/MapDB.h>
-#include <Game/ECS/Util/Transforms.h>
-#include <Game/Rendering/Debug/DebugRenderer.h>
-#include <Game/Rendering/Terrain/TerrainRenderer.h>
-#include <Game/Rendering/Model/ModelRenderer.h>
-#include <Game/Rendering/RenderResources.h>
-#include <Game/Rendering/Camera.h>
-#include <Game/Util/ServiceLocator.h>
+#include <Game-Lib/ECS/Components/Camera.h>
+#include <Game-Lib/ECS/Singletons/ActiveCamera.h>
+#include <Game-Lib/ECS/Singletons/MapDB.h>
+#include <Game-Lib/ECS/Util/Transforms.h>
+#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
+#include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
+#include <Game-Lib/Rendering/Model/ModelRenderer.h>
+#include <Game-Lib/Rendering/RenderResources.h>
+#include <Game-Lib/Rendering/Camera.h>
+#include <Game-Lib/Util/ServiceLocator.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
 

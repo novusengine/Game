@@ -1,7 +1,7 @@
 #include "AnimationUtil.h"
 
-#include "Game/ECS/Singletons/ClientDBCollection.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <FileFormat/Novus/ClientDB/Definitions.h>
 

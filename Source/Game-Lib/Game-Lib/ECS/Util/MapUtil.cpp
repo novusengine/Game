@@ -1,8 +1,8 @@
 #include "MapUtil.h"
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/ClientDBCollection.h"
-#include "Game/ECS/Singletons/MapDB.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/MapDB.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/StringUtils.h>
 

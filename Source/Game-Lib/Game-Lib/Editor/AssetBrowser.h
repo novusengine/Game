@@ -1,8 +1,8 @@
 #pragma once
 #include "BaseEditor.h"
 
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Util/ServiceLocator.h>
+#include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/Util/ServiceLocator.h>
 
 #include <entt/fwd.hpp>
 #include <imgui/imgui.h>

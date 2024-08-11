@@ -1,7 +1,7 @@
 #pragma once
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/TextureSingleton.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/TextureSingleton.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/DebugHandler.h>
 #include <Base/Container/ConcurrentQueue.h>

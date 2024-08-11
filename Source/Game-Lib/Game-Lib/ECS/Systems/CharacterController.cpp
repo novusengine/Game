@@ -1,34 +1,34 @@
 #include "CharacterController.h"
 
-#include "Game/Animation/AnimationSystem.h"
-#include "Game/ECS/Components/AABB.h"
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Components/DisplayInfo.h"
-#include "Game/ECS/Components/Events.h"
-#include "Game/ECS/Components/Model.h"
-#include "Game/ECS/Components/MovementInfo.h"
-#include "Game/ECS/Components/Name.h"
-#include "Game/ECS/Components/NetworkedEntity.h"
-#include "Game/ECS/Components/UnitStatsComponent.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Singletons/CharacterSingleton.h"
-#include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/ECS/Singletons/NetworkState.h"
-#include "Game/ECS/Singletons/OrbitalCameraSettings.h"
-#include "Game/ECS/Util/EventUtil.h"
-#include "Game/ECS/Util/MessageBuilderUtil.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Editor/EditorHandler.h"
-#include "Game/Gameplay/MapLoader.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/Debug/JoltDebugRenderer.h"
-#include "Game/Rendering/Model/ModelLoader.h"
-#include "Game/Util/CharacterControllerUtil.h"
-#include "Game/Util/PhysicsUtil.h"
-#include "Game/Util/UnitUtil.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Components/DisplayInfo.h"
+#include "Game-Lib/ECS/Components/Events.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game-Lib/ECS/Util/EventUtil.h"
+#include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/CharacterControllerUtil.h"
+#include "Game-Lib/Util/PhysicsUtil.h"
+#include "Game-Lib/Util/UnitUtil.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Gameplay/Network/Opcode.h>
 
@@ -46,7 +46,7 @@
 
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
-#include <Game/ECS/Util/CameraUtil.h>
+#include <Game-Lib/ECS/Util/CameraUtil.h>
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <tracy/Tracy.hpp>

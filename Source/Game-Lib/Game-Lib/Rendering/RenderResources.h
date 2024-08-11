@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Rendering/Camera.h"
+#include "Game-Lib/Rendering/Camera.h"
 
 #include <Renderer/RenderSettings.h>
 #include <Renderer/Buffer.h>

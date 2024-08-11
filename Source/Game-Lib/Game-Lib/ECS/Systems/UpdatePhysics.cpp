@@ -1,15 +1,15 @@
 #include "UpdatePhysics.h"
 
-#include <Game/ECS/Components/DebugRenderTransform.h>
-#include "Game/ECS/Components/DynamicMesh.h"
-#include "Game/ECS/Components/KinematicMesh.h"
-#include "Game/ECS/Components/StaticMesh.h"
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include <Game-Lib/ECS/Components/DebugRenderTransform.h>
+#include "Game-Lib/ECS/Components/DynamicMesh.h"
+#include "Game-Lib/ECS/Components/KinematicMesh.h"
+#include "Game-Lib/ECS/Components/StaticMesh.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>

@@ -1,7 +1,7 @@
 #pragma once
 #include <cassert>
 
-#include <Game/Application/EnttRegistries.h>
+#include <Game-Lib/Application/EnttRegistries.h>
 
 namespace Editor
 {

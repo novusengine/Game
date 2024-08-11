@@ -1,17 +1,17 @@
 #include "Viewport.h"
 
-#include <Game/Application/EnttRegistries.h>
-#include <Game/Rendering/GameRenderer.h>
-#include <Game/Rendering/Debug/DebugRenderer.h>
-#include <Game/Rendering/Camera.h>
-#include <Game/Util/ServiceLocator.h>
-#include <Game/ECS/Singletons/EngineStats.h>
-#include <Game/ECS/Singletons/FreeflyingCameraSettings.h>
-#include <Game/ECS/Components/Camera.h>
-#include <Game/ECS/Systems/FreeflyingCamera.h>
-#include <Game/ECS/Util/CameraUtil.h>
-#include <Game/Util/ImguiUtil.h>
-#include <Game/Editor/Inspector.h>
+#include <Game-Lib/Application/EnttRegistries.h>
+#include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
+#include <Game-Lib/Rendering/Camera.h>
+#include <Game-Lib/Util/ServiceLocator.h>
+#include <Game-Lib/ECS/Singletons/EngineStats.h>
+#include <Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h>
+#include <Game-Lib/ECS/Components/Camera.h>
+#include <Game-Lib/ECS/Systems/FreeflyingCamera.h>
+#include <Game-Lib/ECS/Util/CameraUtil.h>
+#include <Game-Lib/Util/ImguiUtil.h>
+#include <Game-Lib/Editor/Inspector.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
 

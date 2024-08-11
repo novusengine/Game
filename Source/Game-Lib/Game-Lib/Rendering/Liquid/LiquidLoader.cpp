@@ -1,6 +1,6 @@
 #include "LiquidLoader.h"
 #include "LiquidRenderer.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>

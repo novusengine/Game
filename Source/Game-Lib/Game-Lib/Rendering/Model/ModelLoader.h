@@ -1,5 +1,5 @@
 #pragma once
-#include <Game/ECS/Components/AABB.h>
+#include <Game-Lib/ECS/Components/AABB.h>
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>

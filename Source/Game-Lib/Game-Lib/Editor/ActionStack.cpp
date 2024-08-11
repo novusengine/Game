@@ -1,7 +1,7 @@
 #include "ActionStack.h"
 #include "EditorHandler.h"
 #include "Inspector.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
 

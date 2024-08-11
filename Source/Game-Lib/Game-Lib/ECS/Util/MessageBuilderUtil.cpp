@@ -1,5 +1,5 @@
 #include "MessageBuilderUtil.h"
-#include "Game/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 
 #include <Gameplay/Network/Define.h>
 

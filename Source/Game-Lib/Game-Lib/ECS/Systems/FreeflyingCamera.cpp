@@ -1,13 +1,13 @@
 #include "FreeflyingCamera.h"
 
-#include "Game/ECS/Singletons/CharacterSingleton.h"
-#include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Util/CameraUtil.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Rendering/GameRenderer.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Input/InputManager.h>
 #include <Base/Util/DebugHandler.h>

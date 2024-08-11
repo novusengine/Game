@@ -1,12 +1,12 @@
 #include "JoltDebugRenderer.h"
 
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/Rendering/CullUtils.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderUtils.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/Rendering/CullUtils.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>

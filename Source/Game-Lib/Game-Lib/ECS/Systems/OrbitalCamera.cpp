@@ -1,15 +1,15 @@
 #include "OrbitalCamera.h"
 
-#include "Game/ECS/Components/MovementInfo.h"
-#include "Game/ECS/Components/NetworkedEntity.h"
-#include "Game/ECS/Singletons/CharacterSingleton.h"
-#include "Game/ECS/Singletons/OrbitalCameraSettings.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Util/CameraUtil.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Rendering/GameRenderer.h"
+#include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>

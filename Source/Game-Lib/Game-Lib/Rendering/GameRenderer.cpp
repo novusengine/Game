@@ -18,10 +18,10 @@
 #include "PixelQuery.h"
 #include "CullUtils.h"
 
-#include "Game/Editor/EditorHandler.h"
-#include "Game/Editor/Viewport.h"
-#include "Game/Gameplay/MapLoader.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/Viewport.h"
+#include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
 #include <Renderer/Renderer.h>

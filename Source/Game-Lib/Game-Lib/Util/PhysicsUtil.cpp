@@ -1,12 +1,12 @@
 #include "PhysicsUtil.h"
 
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Components/NetworkedEntity.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Editor/Viewport.h"
-#include "Game/Rendering/GameRenderer.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Editor/Viewport.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>

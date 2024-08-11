@@ -1,5 +1,5 @@
 #include "UpdateDayNightCycle.h"
-#include "Game/ECS/Singletons/DayNightCycle.h"
+#include "Game-Lib/ECS/Singletons/DayNightCycle.h"
 
 #include <entt/entt.hpp>
 

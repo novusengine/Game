@@ -1,6 +1,6 @@
 #include "CharSectionUtil.h"
-#include "Game/ECS/Singletons/CharSectionSingleton.h"
-#include "Game/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/CharSectionSingleton.h"
+#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
 
 #include <FileFormat/Novus/ClientDB/Definitions.h>
 

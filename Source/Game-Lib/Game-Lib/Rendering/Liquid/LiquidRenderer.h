@@ -1,5 +1,5 @@
 #pragma once
-#include <Game/Rendering/CulledRenderer.h>
+#include <Game-Lib/Rendering/CulledRenderer.h>
 
 #include <Base/Types.h>
 

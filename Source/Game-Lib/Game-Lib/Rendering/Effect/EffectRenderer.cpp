@@ -1,10 +1,10 @@
 #include "EffectRenderer.h"
 
-#include "Game/Application/EnttRegistries.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Util/PhysicsUtil.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Util/PhysicsUtil.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

@@ -1,11 +1,11 @@
 #include "TerrainRenderer.h"
-#include "Game/Rendering/RenderUtils.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Util/ServiceLocator.h"
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/TextureSingleton.h"
+#include "Game-Lib/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/TextureSingleton.h"
 
 #include <Base/Util/Timer.h>
 #include <Base/CVarSystem/CVarSystem.h>

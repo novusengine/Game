@@ -1,13 +1,13 @@
 #include "TerrainManipulator.h"
 
-#include "Game/Editor/EditorHandler.h"
-#include "Game/Editor/TerrainTools.h"
-#include "Game/Editor/Viewport.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/Terrain/TerrainRenderer.h"
-#include "Game/Util/MapUtil.h"
-#include "Game/Util/PhysicsUtil.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/TerrainTools.h"
+#include "Game-Lib/Editor/Viewport.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
+#include "Game-Lib/Util/MapUtil.h"
+#include "Game-Lib/Util/PhysicsUtil.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
 

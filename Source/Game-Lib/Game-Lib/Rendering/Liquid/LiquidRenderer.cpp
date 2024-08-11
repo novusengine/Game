@@ -1,10 +1,10 @@
 #include "LiquidRenderer.h"
 
-#include "Game/ECS/Singletons/ClientDBCollection.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderUtils.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

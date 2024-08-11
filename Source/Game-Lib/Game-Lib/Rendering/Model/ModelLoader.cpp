@@ -1,17 +1,17 @@
 #include "ModelLoader.h"
 #include "ModelRenderer.h"
-#include "Game/Animation/AnimationSystem.h"
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/JoltState.h"
-#include "Game/ECS/Components/Name.h"
-#include "Game/ECS/Components/NetworkedEntity.h"
-#include "Game/ECS/Components/Model.h"
-#include "Game/ECS/Singletons/Skybox.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Util/JoltStream.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Singletons/Skybox.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Util/JoltStream.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
@@ -30,7 +30,7 @@
 #include <filesystem>
 #include <mutex>
 #include <vector>
-#include <Game/ECS/Singletons/ClientDBCollection.h>
+#include <Game-Lib/ECS/Singletons/ClientDBCollection.h>
 
 namespace fs = std::filesystem;
 

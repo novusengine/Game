@@ -1,10 +1,10 @@
 #include "CalculateTransformMatrices.h"
 
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/ECS/Singletons/RenderState.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Singletons/RenderState.h"
 
 #include <entt/entt.hpp>
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 namespace ECS::Systems
 {

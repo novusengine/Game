@@ -1,9 +1,9 @@
 #include "Clock.h"
 
-#include "Game/Application/EnttRegistries.h"
-#include "Game/ECS/Singletons/DayNightCycle.h"
-#include "Game/ECS/Systems/UpdateDayNightCycle.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/DayNightCycle.h"
+#include "Game-Lib/ECS/Systems/UpdateDayNightCycle.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

@@ -1,5 +1,5 @@
 #include "DebugRenderer.h"
-#include "Game/Rendering/RenderResources.h"
+#include "Game-Lib/Rendering/RenderResources.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

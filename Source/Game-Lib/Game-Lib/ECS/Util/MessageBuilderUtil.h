@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/MovementInfo.h"
 
 #include <Base/Types.h>
 #include <Base/Memory/Bytebuffer.h>

@@ -1,7 +1,7 @@
 #include "CulledRenderer.h"
 
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/RenderUtils.h"
 
 
 CulledRenderer::CulledRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)

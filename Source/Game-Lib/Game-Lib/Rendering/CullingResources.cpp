@@ -1,7 +1,7 @@
 #include "CullingResources.h"
 #include "CullingResources.h"
 
-#include "Game/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/RenderUtils.h"
 
 void CullingResourcesBase::Init(InitParams& params)
 {

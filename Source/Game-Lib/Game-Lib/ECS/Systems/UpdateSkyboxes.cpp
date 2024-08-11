@@ -1,13 +1,13 @@
 #include "UpdateSkyboxes.h"
 
-#include "Game/ECS/Components/Camera.h"
-#include "Game/ECS/Components/Tags.h"
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Singletons/Skybox.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/GameRenderer.h"
-#include "Game/Rendering/Model/ModelLoader.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Components/Camera.h"
+#include "Game-Lib/ECS/Components/Tags.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Singletons/Skybox.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

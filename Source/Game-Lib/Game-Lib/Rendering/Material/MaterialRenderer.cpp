@@ -1,14 +1,14 @@
 #include "MaterialRenderer.h"
 
-#include "Game/Application/EnttRegistries.h"
-#include "Game/Editor/EditorHandler.h"
-#include "Game/Editor/TerrainTools.h"
-#include "Game/Rendering/Debug/DebugRenderer.h"
-#include "Game/Rendering/Model/ModelRenderer.h"
-#include "Game/Rendering/RenderResources.h"
-#include "Game/Rendering/Terrain/TerrainRenderer.h"
-#include "Game/Util/PhysicsUtil.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/TerrainTools.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
+#include "Game-Lib/Util/PhysicsUtil.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 

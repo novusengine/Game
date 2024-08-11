@@ -1,9 +1,9 @@
 #include "AssetBrowser.h"
 
-#include "Game/ECS/Singletons/ActiveCamera.h"
-#include "Game/ECS/Util/Transforms.h"
-#include "Game/Rendering/Model/ModelLoader.h"
-#include "Game/Util/ImGui/FakeScrollingArea.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/ImGui/FakeScrollingArea.h"
 
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/StringUtils.h>
@@ -11,8 +11,8 @@
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <entt/entt.hpp>
-#include <Game/ECS/Components/Name.h>
-#include <Game/ECS/Components/Model.h>
+#include <Game-Lib/ECS/Components/Name.h>
+#include <Game-Lib/ECS/Components/Model.h>
 
 namespace Editor
 {

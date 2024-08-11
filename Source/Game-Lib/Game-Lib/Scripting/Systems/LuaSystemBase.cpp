@@ -1,15 +1,15 @@
 #include "LuaSystemBase.h"
-#include "Game/Scripting/LuaDefines.h"
-#include "Game/Scripting/LuaManager.h"
-#include "Game/Scripting/Handlers/GameEventHandler.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/Scripting/LuaDefines.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Handlers/GameEventHandler.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/DebugHandler.h>
 
 #include <lualib.h>
 
 #include <robinhood/robinhood.h>
-#include <Game/Scripting/LuaStateCtx.h>
+#include <Game-Lib/Scripting/LuaStateCtx.h>
 
 namespace Scripting
 {
