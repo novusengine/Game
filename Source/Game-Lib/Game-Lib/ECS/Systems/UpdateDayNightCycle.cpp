@@ -3,6 +3,8 @@
 
 #include <entt/entt.hpp>
 
+#include <ctime>
+
 namespace ECS::Systems
 {
 	u32 GetSecondsSinceMidnightUTC()
