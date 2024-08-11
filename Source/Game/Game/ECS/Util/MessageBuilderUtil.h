@@ -4,6 +4,7 @@
 #include <Base/Types.h>
 #include <Base/Memory/Bytebuffer.h>
 
+#include "Gameplay/GameDefine.h"
 #include "Gameplay/Network/Opcode.h"
 
 #include <entt/fwd.hpp>
@@ -22,13 +23,19 @@ namespace ECS
 
     namespace Util::MessageBuilder
     {
-        u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, u16 size = 0);
+        u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, Network::MessageHeader::Flags flags = {}, u16 size = 0);
         bool ValidatePacket(const std::shared_ptr<Bytebuffer>& buffer, u32 headerPos);
-        bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, std::function<bool()> func);
+        bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, std::function<void()> func);
+        bool CreatePing(std::shared_ptr<Bytebuffer>& buffer, std::function<void()> func);
 
         namespace Authentication
         {
             bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName);
+        }
+
+        namespace Heartbeat
+        {
+            bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping);
         }
 
         namespace Entity
@@ -57,6 +64,10 @@ namespace ECS
             bool BuildCheatTeleport(std::shared_ptr<Bytebuffer>& buffer, u32 mapID, const vec3& position);
             bool BuildCheatCreateChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
             bool BuildCheatDeleteChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
+            bool BuildCheatSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race);
+            bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender);
+            bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass);
+            bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level);
         }
     }
 }

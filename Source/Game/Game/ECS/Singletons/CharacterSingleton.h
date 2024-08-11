@@ -23,6 +23,5 @@ namespace ECS::Singletons
         KeybindGroup* cameraToggleKeybindGroup = nullptr;
 
         bool canControlInAir = true;
-        f32 positionOrRotationUpdateTimer = 0.0f;
     };
 }

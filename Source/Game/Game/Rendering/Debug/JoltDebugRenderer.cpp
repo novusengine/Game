@@ -116,7 +116,10 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
+
         Renderer::BufferMutableResource culledInstanceCountsBuffer;
 
         Renderer::BufferMutableResource drawCountBuffer;
@@ -168,11 +171,12 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
                 params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+                params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
                 params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
 
                 params.drawCountBuffer = data.drawCountBuffer;
@@ -241,11 +245,12 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
                 params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+                params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
                 params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
 
                 params.drawCountBuffer = data.drawCountBuffer;
@@ -458,8 +463,11 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
 
+        Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
+        Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
+        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
@@ -467,6 +475,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource fillSet;
         Renderer::DescriptorSetResource drawSet;
     };
 
@@ -508,10 +517,13 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
+                params.drawCallsBuffer = data.drawCallsBuffer;
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+                params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+                params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
 
                 params.drawCountBuffer = data.drawCountBuffer;
                 params.triangleCountBuffer = data.triangleCountBuffer;
@@ -589,10 +601,12 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth = data.depth;
+                params.depth[0] = data.depth;
 
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+                params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
+                params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
 
                 params.drawCountBuffer = data.drawCountBuffer;
                 params.triangleCountBuffer = data.triangleCountBuffer;
@@ -611,6 +625,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
+                params.isIndexed = false;
                 params.numCascades = 0;
 
                 GeometryPass(params);

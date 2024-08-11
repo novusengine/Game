@@ -173,5 +173,9 @@ namespace ECS::Singletons
         Jolt::ObjectLayerPairFilterImpl objectVSObjectLayerFilter;
         Jolt::MyBodyActivationListener bodyActivationListener;
         Jolt::MyContactListener contactListener;
+
+        // Should run at 30Hz but we're running at 120Hz for now
+        static constexpr f32 FixedDeltaTime = 1.0f / 120.0f;
+        f32 updateTimer = 0.0f;
     };
 }

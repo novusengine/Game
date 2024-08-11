@@ -26,6 +26,10 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("demorph", GameConsoleCommands::HandleDemorph);
     RegisterCommand("createchar", GameConsoleCommands::HandleCreateChar);
     RegisterCommand("deletechar", GameConsoleCommands::HandleDeleteChar);
+    RegisterCommand("setrace", GameConsoleCommands::HandleSetRace);
+    RegisterCommand("setgender", GameConsoleCommands::HandleSetGender);
+    RegisterCommand("setclass", GameConsoleCommands::HandleSetClass);
+    RegisterCommand("setlevel", GameConsoleCommands::HandleSetLevel);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

@@ -7,15 +7,16 @@
 
 namespace ECS::Util::MessageBuilder
 {
-    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, u16 size)
+    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, Network::MessageHeader::Flags flags, u16 size)
     {
-        Network::PacketHeader header =
+        Network::MessageHeader header =
         {
             .opcode = static_cast<Network::OpcodeType>(opcode),
-            .size = size
+            .size = size,
+            .flags = flags
         };
 
-        if (buffer->GetSpace() < sizeof(Network::PacketHeader))
+        if (buffer->GetSpace() < sizeof(Network::MessageHeader))
             return std::numeric_limits<u32>().max();
 
         u32 headerPos = static_cast<u32>(buffer->writtenData);
@@ -26,12 +27,12 @@ namespace ECS::Util::MessageBuilder
 
     bool ValidatePacket(const std::shared_ptr<Bytebuffer>& buffer, u32 headerPos)
     {
-        if (buffer->writtenData < headerPos + sizeof(Network::PacketHeader))
+        if (buffer->writtenData < headerPos + sizeof(Network::MessageHeader))
             return false;
 
-        Network::PacketHeader* header = reinterpret_cast<Network::PacketHeader*>(buffer->GetDataPointer() + headerPos);
+        Network::MessageHeader* header = reinterpret_cast<Network::MessageHeader*>(buffer->GetDataPointer() + headerPos);
 
-        u32 headerSize = static_cast<u32>(buffer->writtenData - headerPos) - sizeof(Network::PacketHeader);
+        u32 headerSize = static_cast<u32>(buffer->writtenData - headerPos) - sizeof(Network::MessageHeader);
         if (headerSize > std::numeric_limits<u16>().max())
             return false;
 
@@ -55,6 +56,22 @@ namespace ECS::Util::MessageBuilder
         return true;
     }
 
+    bool CreatePing(std::shared_ptr<Bytebuffer>& buffer, std::function<void()> func)
+    {
+        if (!buffer)
+            return false;
+
+        u32 headerPos = AddHeader(buffer, Network::GameOpcode::Invalid, { .isPing = 1 });
+
+        if (func)
+            func();
+
+        if (!ValidatePacket(buffer, headerPos))
+            return false;
+
+        return true;
+    }
+
     namespace Authentication
     {
         bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName)
@@ -65,6 +82,19 @@ namespace ECS::Util::MessageBuilder
             });
 
             return createPacketResult;
+        }
+    }
+
+    namespace Heartbeat
+    {
+        bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping)
+        {
+            bool result = CreatePing(buffer, [&buffer, ping]()
+            {
+                buffer->PutU16(ping);
+            });
+
+            return result;
         }
     }
 
@@ -197,6 +227,46 @@ namespace ECS::Util::MessageBuilder
             {
                 buffer->Put(Network::CheatCommands::DeleteCharacter);
                 buffer->PutString(name);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            {
+                buffer->Put(Network::CheatCommands::SetRace);
+                buffer->Put(race);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            {
+                buffer->Put(Network::CheatCommands::SetGender);
+                buffer->Put(gender);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            {
+                buffer->Put(Network::CheatCommands::SetClass);
+                buffer->Put(unitClass);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            {
+                buffer->Put(Network::CheatCommands::SetLevel);
+                buffer->PutU16(level);
             });
 
             return result;

@@ -3,7 +3,7 @@
 
 namespace ECS::Components
 {
-    enum class PowerType
+    enum class PowerType : i8
     {
         Health = -2, // This is strictly used for spells
         Mana = 0,

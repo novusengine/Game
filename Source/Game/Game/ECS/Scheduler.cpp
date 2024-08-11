@@ -5,6 +5,7 @@
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/DayNightCycle.h"
 #include "Game/ECS/Singletons/EngineStats.h"
+#include "Game/ECS/Singletons/JoltState.h"
 #include "Game/ECS/Singletons/RenderState.h"
 #include "Game/ECS/Components/Camera.h"
 
@@ -27,6 +28,8 @@
 #include <Renderer/RenderSettings.h>
 
 #include <entt/entt.hpp>
+
+#include <tracy/Tracy.hpp>
 
 namespace ECS
 {
@@ -57,26 +60,86 @@ namespace ECS
     void Scheduler::Update(entt::registry& registry, f32 deltaTime)
     {
         // TODO: You know, actually scheduling stuff and multithreading (enkiTS tasks?)
+        entt::registry::context& ctx = registry.ctx();
+        auto& joltState = ctx.get<Singletons::JoltState>();
 
-        Systems::UpdateDayNightCycle::Update(registry, deltaTime);
-        Systems::NetworkConnection::Update(registry, deltaTime);
-        Systems::DrawDebugMesh::Update(registry, deltaTime);
+        static constexpr f32 maxDeltaTimeDiff = 1.0f / 60.0f;
+        f32 clampedDeltaTime = glm::clamp(deltaTime, 0.0f, maxDeltaTimeDiff);
 
-        Systems::CharacterController::Update(registry, deltaTime);
-        Systems::UpdateNetworkedEntity::Update(registry, deltaTime);
+        joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-        Systems::FreeflyingCamera::Update(registry, deltaTime);
-        Systems::OrbitalCamera::Update(registry, deltaTime);
-        Systems::CalculateCameraMatrices::Update(registry, deltaTime);
-        Systems::CalculateShadowCameraMatrices::Update(registry, deltaTime);
+        {
+            ZoneScopedN("UpdateDayNightCycle");
+            Systems::UpdateDayNightCycle::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("NetworkConnection");
+            Systems::NetworkConnection::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("DrawDebugMesh");
+            Systems::DrawDebugMesh::Update(registry, clampedDeltaTime);
+        }
 
-        Systems::UpdateSkyboxes::Update(registry, deltaTime);
-        Systems::UpdateAreaLights::Update(registry, deltaTime);
-        Systems::CalculateTransformMatrices::Update(registry, deltaTime);
-        Systems::UpdateAABBs::Update(registry, deltaTime);
-        Systems::UpdatePhysics::Update(registry, deltaTime);
+        {
+            ZoneScopedN("CharacterController");
+            Systems::CharacterController::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateNetworkedEntity");
+            Systems::UpdateNetworkedEntity::Update(registry, clampedDeltaTime);
+        }
+
+
+        {
+            ZoneScopedN("FreeflyingCamera");
+            Systems::FreeflyingCamera::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("OrbitalCamera");
+            Systems::OrbitalCamera::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateCameraMatrices");
+            Systems::CalculateCameraMatrices::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateShadowCameraMatrices");
+            Systems::CalculateShadowCameraMatrices::Update(registry, clampedDeltaTime);
+        }
+
+
+        {
+            ZoneScopedN("UpdateSkyboxes");
+            Systems::UpdateSkyboxes::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateAreaLights");
+            Systems::UpdateAreaLights::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("CalculateTransformMatrices");
+            Systems::CalculateTransformMatrices::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdateAABBs");
+            Systems::UpdateAABBs::Update(registry, clampedDeltaTime);
+        }
+        {
+            ZoneScopedN("UpdatePhysics");
+            Systems::UpdatePhysics::Update(registry, clampedDeltaTime);
+        }
+
 
         // Note: For now UpdateScripts should always be run last
-        Systems::UpdateScripts::Update(registry, deltaTime);
+        {
+            ZoneScopedN("UpdateScripts");
+            Systems::UpdateScripts::Update(registry, clampedDeltaTime);
+        }
+
+        if (joltState.updateTimer >= Singletons::JoltState::FixedDeltaTime)
+        {
+            joltState.updateTimer -= Singletons::JoltState::FixedDeltaTime;
+        }
     }
 }

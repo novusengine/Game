@@ -12,6 +12,7 @@
 #include "Game/ECS/Components/UnitStatsComponent.h"
 #include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/NetworkState.h"
+#include "Game/ECS/Util/MessageBuilderUtil.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Rendering/GameRenderer.h"
 #include "Game/Rendering/Model/ModelLoader.h"
@@ -28,12 +29,15 @@
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
 
+#include <chrono>
+#include <numeric>
+
 namespace ECS::Systems
 {
-    bool HandleOnConnected(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnConnected(Network::SocketID socketID, Network::Message& message)
     {
         Network::ConnectResult result = Network::ConnectResult::None;
-        if (!recvPacket->Get(result))
+        if (!message.buffer->Get(result))
             return false;
 
         if (result != Network::ConnectResult::Success)
@@ -45,16 +49,60 @@ namespace ECS::Systems
         NC_LOG_INFO("Network : Logged in to character");
         return true;
     }
-    
-    bool HandleOnCheatCommandResult(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+
+    bool HandleOnPong(Network::SocketID socketID, Network::Message& message)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        f64 rtt = static_cast<f64>(currentTime) - static_cast<f64>(networkState.lastPingTime);
+        u16 ping = static_cast<u16>(rtt / 2.0f);
+
+        networkState.lastPongTime = currentTime;
+        
+        u8 pingHistoryCounter = networkState.pingHistoryIndex + 1;
+        if (pingHistoryCounter == networkState.pingHistory.size())
+            pingHistoryCounter = 0;
+
+        networkState.pingHistorySize = glm::min(static_cast<u8>(networkState.pingHistorySize + 1u), static_cast<u8>(networkState.pingHistory.size()));
+
+        networkState.pingHistoryIndex = pingHistoryCounter;
+        networkState.pingHistory[pingHistoryCounter] = ping;
+
+        f32 accumulatedPing = 0.0f;
+        for (u16 ping : networkState.pingHistory)
+            accumulatedPing += static_cast<f32>(ping);
+
+        accumulatedPing /= networkState.pingHistorySize;
+        networkState.ping = static_cast<u16>(glm::round(accumulatedPing));
+
+        return true;
+    }
+
+    bool HandleOnUpdateStats(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 serverUpdateDiff = 0;
+        if (!message.buffer->Get(serverUpdateDiff))
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        networkState.serverUpdateDiff = serverUpdateDiff;
+
+        return true;
+    }
+
+    bool HandleOnCheatCommandResult(Network::SocketID socketID, Network::Message& message)
     {
         u8 result = 0;
         std::string resultText = "";
 
-        if (!recvPacket->GetU8(result))
+        if (!message.buffer->GetU8(result))
             return false;
 
-        if (!recvPacket->GetString(resultText))
+        if (!message.buffer->GetString(resultText))
             return false;
 
         if (result != 0)
@@ -69,10 +117,10 @@ namespace ECS::Systems
         }
     }
 
-    bool HandleOnSetMover(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnSetMover(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -92,23 +140,23 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityCreate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityCreate(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         vec3 position = vec3(0.0f);
         quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         vec3 scale = vec3(1.0f);
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->Get(position))
+        if (!message.buffer->Get(position))
             return false;
 
-        if (!recvPacket->Get(rotation))
+        if (!message.buffer->Get(rotation))
             return false;
 
-        if (!recvPacket->Get(scale))
+        if (!message.buffer->Get(scale))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -144,11 +192,11 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityDestroy(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityDestroy(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -179,15 +227,15 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityDisplayInfoUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityDisplayInfoUpdate(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         u32 displayID = 0;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->GetU32(displayID))
+        if (!message.buffer->GetU32(displayID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -218,7 +266,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityMove(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityMove(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         vec3 position = vec3(0.0f);
@@ -226,19 +274,19 @@ namespace ECS::Systems
         Components::MovementFlags movementFlags = {};
         f32 verticalVelocity = 0.0f;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->Get(position))
+        if (!message.buffer->Get(position))
             return false;
 
-        if (!recvPacket->Get(rotation))
+        if (!message.buffer->Get(rotation))
             return false;
 
-        if (!recvPacket->Get(movementFlags))
+        if (!message.buffer->Get(movementFlags))
             return false;
 
-        if (!recvPacket->Get(verticalVelocity))
+        if (!message.buffer->Get(verticalVelocity))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -267,11 +315,11 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityMoveStop(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityMoveStop(Network::SocketID socketID, Network::Message& message)
     {
         return true;
     }
-    bool HandleOnResourceUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnResourceUpdate(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         Components::PowerType powerType = Components::PowerType::Count;
@@ -279,19 +327,19 @@ namespace ECS::Systems
         f32 powerCurrentValue = 0.0f;
         f32 powerMaxValue = 0.0f;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->Get(powerType))
+        if (!message.buffer->Get(powerType))
             return false;
 
-        if (!recvPacket->GetF32(powerBaseValue))
+        if (!message.buffer->GetF32(powerBaseValue))
             return false;
 
-        if (!recvPacket->GetF32(powerCurrentValue))
+        if (!message.buffer->GetF32(powerCurrentValue))
             return false;
 
-        if (!recvPacket->GetF32(powerMaxValue))
+        if (!message.buffer->GetF32(powerMaxValue))
             return false;
 
         if (powerType >= Components::PowerType::Count)
@@ -310,7 +358,6 @@ namespace ECS::Systems
         }
 
         entt::entity entity = networkState.networkIDToEntity[networkID];
-
         if (!registry->valid(entity))
         {
             NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", entt::to_integral(networkID));
@@ -334,15 +381,15 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnEntityTargetUpdate(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityTargetUpdate(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         entt::entity targetNetworkID = entt::null;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->Get(targetNetworkID))
+        if (!message.buffer->Get(targetNetworkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -371,19 +418,19 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnEntityCastSpell(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnEntityCastSpell(Network::SocketID socketID, Network::Message& message)
     {
         entt::entity networkID = entt::null;
         f32 castTime = 0.0f;
         f32 duration = 0.0f;
 
-        if (!recvPacket->Get(networkID))
+        if (!message.buffer->Get(networkID))
             return false;
 
-        if (!recvPacket->GetF32(castTime))
+        if (!message.buffer->GetF32(castTime))
             return false;
 
-        if (!recvPacket->GetF32(duration))
+        if (!message.buffer->GetF32(duration))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -419,18 +466,18 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnSpellCastResult(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnSpellCastResult(Network::SocketID socketID, Network::Message& message)
     {
         u8 result;
 
-        if (!recvPacket->GetU8(result))
+        if (!message.buffer->GetU8(result))
             return false;
 
         if (result != 0)
         {
             std::string errorText = "";
 
-            if (!recvPacket->GetString(errorText))
+            if (!message.buffer->GetString(errorText))
                 return false;
 
             NC_LOG_WARNING("Network : Spell Cast Failed - {0}", errorText);
@@ -440,10 +487,10 @@ namespace ECS::Systems
             f32 castTime = 0.0f;
             f32 duration = 0.0f;
 
-            if (!recvPacket->GetF32(castTime))
+            if (!message.buffer->GetF32(castTime))
                 return false;
 
-            if (!recvPacket->GetF32(duration))
+            if (!message.buffer->GetF32(duration))
                 return false;
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -459,15 +506,15 @@ namespace ECS::Systems
         return true;
     }
     
-    bool HandleOnCombatEvent(Network::SocketID socketID, std::shared_ptr<Bytebuffer>& recvPacket)
+    bool HandleOnCombatEvent(Network::SocketID socketID, Network::Message& message)
     {
         u16 eventID = 0;
         entt::entity sourceNetworkID = entt::null;
 
-        if (!recvPacket->GetU16(eventID))
+        if (!message.buffer->GetU16(eventID))
             return false;
 
-        if (!recvPacket->Get(sourceNetworkID))
+        if (!message.buffer->Get(sourceNetworkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -496,10 +543,10 @@ namespace ECS::Systems
                 entt::entity targetNetworkID = entt::null;
                 f32 value = 0.0f;
 
-                if (!recvPacket->Get(targetNetworkID))
+                if (!message.buffer->Get(targetNetworkID))
                     return false;
 
-                if (!recvPacket->GetF32(value))
+                if (!message.buffer->GetF32(value))
                     return false;
 
                 if (!networkState.networkIDToEntity.contains(targetNetworkID))
@@ -543,7 +590,7 @@ namespace ECS::Systems
             {
                 entt::entity targetNetworkID = entt::null;
 
-                if (!recvPacket->Get(targetNetworkID))
+                if (!message.buffer->Get(targetNetworkID))
                     return false;
 
                 if (!networkState.networkIDToEntity.contains(targetNetworkID))
@@ -589,12 +636,15 @@ namespace ECS::Systems
 
         // Setup NetworkState
         {
-            networkState.client = std::make_unique<Network::Client>();
+            networkState.resolver = std::make_shared<asio::ip::tcp::resolver>(networkState.asioContext);
+            networkState.client = std::make_unique<Network::Client>(networkState.asioContext, networkState.resolver);
             networkState.networkIDToEntity.reserve(1024);
             networkState.entityToNetworkID.reserve(1024);
 
             networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_Connected,                Network::GameMessageHandler(Network::ConnectionStatus::None,        0u, -1, &HandleOnConnected));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_Ping,                     Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnPong));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_UpdateStats,              Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnUpdateStats));
             
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCheatCommandResult,   Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCheatCommandResult));
 
@@ -617,18 +667,60 @@ namespace ECS::Systems
     void NetworkConnection::Update(entt::registry& registry, f32 deltaTime)
     {
         entt::registry::context& ctx = registry.ctx();
-
         auto& networkState = ctx.get<Singletons::NetworkState>();
+
+        // Restart AsioThread If Needed
+        {
+            if (networkState.client && networkState.client->IsConnected())
+            {
+                if (!networkState.asioThread.joinable())
+                {
+                    
+                    networkState.asioThread = std::thread([&] 
+                    {
+                        if (networkState.asioContext.stopped())
+                            networkState.asioContext.restart();
+
+                        networkState.asioContext.run(); 
+                    });
+                }
+            }
+        }
         
         static bool wasConnected = false;
         if (networkState.client->IsConnected())
         {
+            auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
             if (!wasConnected)
             {
                 // Just connected
                 wasConnected = true;
 
-                CharacterController::DeleteCharacterController(registry);
+                networkState.lastPingTime = currentTime;
+                CharacterController::DeleteCharacterController(registry, true);
+            }
+            else
+            {
+                u64 timeDiff = currentTime - networkState.lastPingTime;
+                if (timeDiff >= Singletons::NetworkState::PING_INTERVAL)
+                {
+                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
+                    if (Util::MessageBuilder::Heartbeat::BuildPingMessage(buffer, networkState.ping))
+                    {
+                        networkState.client->Send(buffer);
+                        networkState.lastPingTime = currentTime;
+                    }
+                }
+
+                if (networkState.lastPongTime != 0u)
+                {
+                    u64 timeDiff = currentTime - networkState.lastPongTime;
+                    if (currentTime - networkState.lastPongTime > Singletons::NetworkState::PING_INTERVAL)
+                    {
+                        networkState.ping = static_cast<u16>(timeDiff);
+                    }
+                }
             }
         }
         else
@@ -640,73 +732,68 @@ namespace ECS::Systems
 
                 NC_LOG_WARNING("Network : Disconnected");
 
-                CharacterController::DeleteCharacterController(registry);
+                CharacterController::DeleteCharacterController(registry, false);
+
+                for (auto& [entity, networkID] : networkState.entityToNetworkID)
+                {
+                    if (!registry.valid(entity))
+                        continue;
+
+                    if (auto* model = registry.try_get<Components::Model>(entity))
+                    {
+                        if (model->instanceID != std::numeric_limits<u32>().max())
+                        {
+                            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                            modelLoader->UnloadModelForEntity(entity, model->instanceID);
+
+                            Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+                            animationSystem->RemoveInstance(model->instanceID);
+                        }
+                    }
+
+                    registry.destroy(entity);
+                }
+
+                networkState.lastPingTime = 0u;
+                networkState.lastPongTime = 0u;
+                networkState.ping = 0;
+                networkState.serverUpdateDiff = 0;
+                networkState.pingHistoryIndex = 0;
+                networkState.pingHistory.fill(0);
+                networkState.pingHistorySize = 0;
+                networkState.entityToNetworkID.clear();
+                networkState.networkIDToEntity.clear();
+                networkState.asioContext.stop();
+
+                if (networkState.asioThread.joinable())
+                    networkState.asioThread.join();
+
                 CharacterController::InitCharacterController(registry, true);
             }
 
             return;
         }
 
-        Network::Socket::Result readResult = networkState.client->Read();
-        if (readResult == Network::Socket::Result::SUCCESS)
+        // Handle 'SocketMessageEvent'
         {
-            std::shared_ptr<Bytebuffer>& buffer = networkState.client->GetReadBuffer();
-            while (size_t activeSize = buffer->GetActiveSize())
+            moodycamel::ConcurrentQueue<Network::SocketMessageEvent>& messageEvents = networkState.client->GetMessageEvents();
+
+            Network::SocketMessageEvent messageEvent;
+            while (messageEvents.try_dequeue(messageEvent))
             {
-                // We have received a partial header and need to read more
-                if (activeSize < sizeof(Network::PacketHeader))
+                auto* messageHeader = reinterpret_cast<Network::MessageHeader*>(messageEvent.message.buffer->GetDataPointer());
+
+                // Invoke MessageHandler here
+                if (networkState.gameMessageRouter->CallHandler(messageEvent.socketID, messageEvent.message))
+                    continue;
+
+                // Failed to Call Handler, Close Socket
                 {
-                    buffer->Normalize();
+                    networkState.client->Stop();
                     break;
                 }
-
-                Network::PacketHeader* header = reinterpret_cast<Network::PacketHeader*>(buffer->GetReadPointer());
-
-                if (header->size > Network::DEFAULT_BUFFER_SIZE)
-                {
-#ifdef NC_DEBUG
-                    NC_LOG_ERROR("Network : Received Invalid Opcode Size ({0} : {1}) from server", static_cast<Network::OpcodeType>(header->opcode), header->size);
-#endif // NC_DEBUG
-                    networkState.client->Close();
-                    break;
-                }
-
-                size_t receivedPayloadSize = activeSize - sizeof(Network::PacketHeader);
-                if (receivedPayloadSize < header->size)
-                {
-                    buffer->Normalize();
-                    break;
-                }
-
-                buffer->SkipRead(sizeof(Network::PacketHeader));
-
-                std::shared_ptr<Bytebuffer> messageBuffer = Bytebuffer::Borrow<Network::DEFAULT_BUFFER_SIZE>();
-                {
-                    // Payload
-                    {
-                        messageBuffer->Put(*header);
-
-                        if (header->size)
-                        {
-                            std::memcpy(messageBuffer->GetWritePointer(), buffer->GetReadPointer(), header->size);
-                            messageBuffer->SkipWrite(header->size);
-
-                            // Skip Payload
-                            buffer->SkipRead(header->size);
-                        }
-                    }
-
-                    if (!networkState.gameMessageRouter->CallHandler(Network::SOCKET_ID_INVALID, messageBuffer))
-                    {
-                        networkState.client->Close();
-                    }
-                }
-            }
-            
-            if (buffer->GetActiveSize() == 0)
-            {
-                buffer->Reset();
             }
         }
+
     }
 }

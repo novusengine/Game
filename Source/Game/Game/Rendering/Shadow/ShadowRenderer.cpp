@@ -20,7 +20,6 @@
 #include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 0, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ShadowFrozen(CVarCategory::Client | CVarCategory::Rendering, "shadowFreeze", "freeze shadows", 0, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_ShadowDebugMatrices(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatrices", "debug shadow matrices by applying them to the camera", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ShadowDebugMatrixIndex(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugMatricesIndex", "index of the cascade to debug", 0);
@@ -30,9 +29,6 @@ AutoCVar_Int CVAR_ShadowDrawMatrices(CVarCategory::Client | CVarCategory::Render
 AutoCVar_Int CVAR_ShadowFilterMode(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode", "0: No filtering, 1: Percentage Closer Filtering, 2: Percentage Closer Soft Shadows", 1);
 AutoCVar_Float CVAR_ShadowFilterSize(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterSize", "size of the filter used for shadow sampling", 3.0f);
 AutoCVar_Float CVAR_ShadowFilterPenumbraSize(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterPenumbraSize", "size of the filter used for penumbra sampling", 3.0f);
-
-AutoCVar_Int CVAR_TerrainCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowTerrainCastShadow", "should Terrain cast shadows", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_ModelsCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow", "should Models cast shadows", 1, CVarFlags::EditCheckbox);
 
 AutoCVar_Float CVAR_ShadowDepthBiasConstantFactor(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant", "constant factor of depth bias to prevent shadow acne", -2.0f);
 AutoCVar_Float CVAR_ShadowDepthBiasClamp(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp", "clamp of depth bias to prevent shadow acne", 0.0f);
@@ -97,10 +93,6 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 
 void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    const bool shadowFrozen = CVAR_ShadowFrozen.Get();
-    if (shadowFrozen)
-        return;
-
     struct ShadowPassData
     {
         Renderer::DepthImageMutableResource shadowDepthCascades[Renderer::Settings::MAX_SHADOW_CASCADES];
@@ -131,12 +123,6 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
         },
         [=](ShadowPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
-            f32 biasConstantFactor = CVAR_ShadowDepthBiasConstantFactor.GetFloat();
-            f32 biasClamp = CVAR_ShadowDepthBiasClamp.GetFloat();
-            f32 biasSlopeFactor = CVAR_ShadowDepthBiasSlopeFactor.GetFloat();
-
-            commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
-
             Renderer::DepthImageMutableResource cascadeDepthResource;
             for (u32 i = 0; i < Renderer::Settings::MAX_SHADOW_CASCADES; i++)
             {

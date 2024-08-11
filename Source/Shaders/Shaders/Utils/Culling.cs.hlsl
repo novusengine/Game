@@ -19,6 +19,7 @@ struct Constants
     uint modelIDIsDrawCallID;
     uint cullingDataIsWorldspace;
     uint debugDrawColliders;
+    uint bitMaskBufferUintsPerView;
 };
 
 struct PackedCullingData
@@ -129,11 +130,11 @@ struct DrawInput
 struct BitmaskInput
 {
     bool useBitmasks;
+    uint bitmaskOffset;
     StructuredBuffer<uint> prevCulledDrawCallsBitMask;
     RWStructuredBuffer<uint> outCulledDrawCallsBitMask;
 };
-#endif
-
+#else
 struct CullOutput
 {
     //RWByteAddressBuffer visibleInstanceMask;
@@ -142,13 +143,16 @@ struct CullOutput
     RWByteAddressBuffer drawCount;
     RWByteAddressBuffer triangleCount;
 };
+#endif
 
 void CullForCamera(DrawInput drawInput,
     Camera camera,
 #if USE_BITMASKS
-    BitmaskInput bitmaskInput,
+    BitmaskInput bitmaskInput
+#else
+    CullOutput cullOutput
 #endif
-    CullOutput cullOutput)
+)
 {
     bool isVisible = drawInput.drawCall.instanceCount > 0;
     if (!IsSphereInsideFrustum(camera.frustum, drawInput.sphere))
@@ -184,16 +188,11 @@ void CullForCamera(DrawInput drawInput,
         // The first thread writes the bitmask
         if (drawInput.csInput.groupThreadID.x == 0)
         {
-            bitmaskInput.outCulledDrawCallsBitMask[drawInput.csInput.groupID.x] = bitMask;
+            uint bitMaskIndex = drawInput.csInput.groupID.x + bitmaskInput.bitmaskOffset;
+            bitmaskInput.outCulledDrawCallsBitMask[bitMaskIndex] = bitMask;
         }
-
-        uint occluderBitMask = bitmaskInput.prevCulledDrawCallsBitMask[drawInput.csInput.groupID.x];
-        uint renderBitMask = bitMask & ~occluderBitMask; // This should give us all currently visible objects that were not occluders
-
-        shouldRender = renderBitMask & (1u << drawInput.csInput.groupThreadID.x);
     }
-#endif
-
+#else
     if (shouldRender)
     {
         uint countByteOffset = cullOutput.countIndex * sizeof(uint);
@@ -207,6 +206,7 @@ void CullForCamera(DrawInput drawInput,
         cullOutput.drawCount.InterlockedAdd(countByteOffset, 1, outIndex);
         WriteDrawToByteAdressBuffer(cullOutput.drawCalls, outIndex, drawInput.drawCall);
     }
+#endif
 
     // Debug draw AABB boxes
     if (_constants.debugDrawColliders)
@@ -287,46 +287,41 @@ void main(CSInput input)
 #if USE_BITMASKS
     BitmaskInput bitmaskInput;
     bitmaskInput.useBitmasks = true;
+    bitmaskInput.bitmaskOffset = 0;
     bitmaskInput.prevCulledDrawCallsBitMask = _prevCulledDrawCallsBitMask;
     bitmaskInput.outCulledDrawCallsBitMask = _culledDrawCallsBitMask;
-#endif
-
+#else
     CullOutput cullOutput;
-    //cullOutput.visibleInstanceMask = _visibleInstanceMask;
     cullOutput.drawCalls = _culledDrawCalls;
     cullOutput.countIndex = 0;
     cullOutput.drawCount = _drawCount;
     cullOutput.triangleCount = _triangleCount;
+#endif
 
     // Main camera
     {
         CullForCamera(drawInput,
             _cameras[0],
 #if USE_BITMASKS
-            bitmaskInput,
+            bitmaskInput
+#else
+            cullOutput
 #endif
-            cullOutput);
+        );
     }
 
+    // Shadow is only supported if we USE_BITMASKS
+#if USE_BITMASKS
     // Shadow cascades
-    //[unroll]
-    /*for (uint i = 0; i < _constants.numCascades; i++)
+    for (uint i = 1; i < _constants.numCascades + 1; i++)
     {
-        Camera cascadeCamera = _cameras[i];
         drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
 
-#if USE_BITMASKS
-        bitmaskInput.useBitmasks = false;
-#endif
-
-        cullOutput.drawCalls = _culledDrawCalls[i + 1];
-        cullOutput.countIndex = i + 1;
+        bitmaskInput.bitmaskOffset = _constants.bitMaskBufferUintsPerView * i;
 
         CullForCamera(drawInput,
-            cascadeCamera,
-#if USE_BITMASKS
-            bitmaskInput,
+            _cameras[i],
+            bitmaskInput);
+    }
 #endif
-            cullOutput);
-    }*/
 }

@@ -1,8 +1,10 @@
 #include "UpdateAreaLights.h"
 #include "Game/ECS/Singletons/ActiveCamera.h"
 #include "Game/ECS/Singletons/AreaLightInfo.h"
+#include "Game/ECS/Singletons/CharacterSingleton.h"
 #include "Game/ECS/Singletons/ClientDBCollection.h"
 #include "Game/ECS/Singletons/DayNightCycle.h"
+#include "Game/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game/ECS/Util/Transforms.h"
 #include "Game/Gameplay/MapLoader.h"
 #include "Game/Rendering/GameRenderer.h"
@@ -73,6 +75,7 @@ namespace ECS::Systems
             lightColor.ambientColor = UnpackU32BGRToColor(lightData->ambientColor);
             lightColor.diffuseColor = UnpackU32BGRToColor(lightData->diffuseColor);
             lightColor.fogColor = UnpackU32BGRToColor(lightData->skyFogColor);
+            lightColor.shadowColor = UnpackU32BGRToColor(lightData->shadowColor);
             lightColor.skybandTopColor = UnpackU32BGRToColor(lightData->skyTopColor);
             lightColor.skybandMiddleColor = UnpackU32BGRToColor(lightData->skyMiddleColor);
             lightColor.skybandBottomColor = UnpackU32BGRToColor(lightData->skyBand1Color);
@@ -129,6 +132,7 @@ namespace ECS::Systems
             lightColor.ambientColor = GetBlendedColor(currentLightData->ambientColor, nextLightData->ambientColor, progressTowardsNext);
             lightColor.diffuseColor = GetBlendedColor(currentLightData->diffuseColor, nextLightData->diffuseColor, progressTowardsNext);
             lightColor.fogColor = GetBlendedColor(currentLightData->skyFogColor, nextLightData->skyFogColor, progressTowardsNext);
+            lightColor.shadowColor = GetBlendedColor(currentLightData->shadowColor, nextLightData->shadowColor, progressTowardsNext);
             lightColor.skybandTopColor = GetBlendedColor(currentLightData->skyTopColor, nextLightData->skyTopColor, progressTowardsNext);
             lightColor.skybandMiddleColor = GetBlendedColor(currentLightData->skyMiddleColor, nextLightData->skyMiddleColor, progressTowardsNext);
             lightColor.skybandBottomColor = GetBlendedColor(currentLightData->skyBand1Color, nextLightData->skyBand1Color, progressTowardsNext);
@@ -136,9 +140,6 @@ namespace ECS::Systems
             lightColor.skybandHorizonColor = GetBlendedColor(currentLightData->skySmogColor, nextLightData->skySmogColor, progressTowardsNext);
             lightColor.fogEnd = glm::mix(currentLightData->fogEnd, nextLightData->fogEnd, progressTowardsNext);
             lightColor.fogScaler = glm::mix(currentLightData->fogScaler, nextLightData->fogScaler, progressTowardsNext);
-
-            vec3 currentDiffuseColor = UnpackU32BGRToColor(currentLightData->diffuseColor);
-            vec3 nextDiffuseColor = UnpackU32BGRToColor(nextLightData->diffuseColor);
         }
 
         return lightColor;
@@ -199,8 +200,10 @@ namespace ECS::Systems
         entt::registry::context& context = registry.ctx();
         auto& activeCamera = context.get<Singletons::ActiveCamera>();
         auto& areaLightInfo = context.get<Singletons::AreaLightInfo>();
+        auto& characterSingleton = context.get<Singletons::CharacterSingleton>();
         auto& clientDBCollection = context.get<Singletons::ClientDBCollection>();
         auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
+        auto& freeflyingCameraSettings = context.get<Singletons::FreeflyingCameraSettings>();
 
         MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
         auto* lightStorage = clientDBCollection.Get<ClientDB::Definitions::Light>(Singletons::ClientDBHash::Light);
@@ -216,8 +219,18 @@ namespace ECS::Systems
 
         if (!forceDefaultLight)
         {
-            auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
-            vec3 position = cameraTransform.GetWorldPosition();
+            vec3 position = vec3(0.0f);
+
+            if (activeCamera.entity == freeflyingCameraSettings.entity)
+            {
+                auto& cameraTransform = registry.get<Components::Transform>(activeCamera.entity);
+                position = cameraTransform.GetWorldPosition();
+            }
+            else
+            {
+                auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.controllerEntity);
+                position = characterControllerTransform.GetWorldPosition();
+            }
 
             areaLightInfo.activeAreaLights.clear();
 
@@ -268,6 +281,7 @@ namespace ECS::Systems
             lightColor.ambientColor = glm::mix(lightColor.ambientColor, areaLightData.colorData.ambientColor, val);
             lightColor.diffuseColor = glm::mix(lightColor.diffuseColor, areaLightData.colorData.diffuseColor, val);
             lightColor.fogColor = glm::mix(lightColor.fogColor, areaLightData.colorData.fogColor, val);
+            lightColor.shadowColor = glm::mix(lightColor.shadowColor, areaLightData.colorData.shadowColor, val);
 
             lightColor.skybandTopColor = glm::mix(lightColor.skybandTopColor, areaLightData.colorData.skybandTopColor, val);
             lightColor.skybandMiddleColor = glm::mix(lightColor.skybandMiddleColor, areaLightData.colorData.skybandMiddleColor, val);
@@ -288,22 +302,71 @@ namespace ECS::Systems
 
         MaterialRenderer* materialRenderer = ServiceLocator::GetGameRenderer()->GetMaterialRenderer();
         
-        vec3 direction = glm::normalize(vec3(*CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "directionalLightDirection"_h)));
+        vec3 direction = GetLightDirection(dayNightCycle.timeInSeconds);
         const vec3& diffuseColor = glm::normalize(areaLightInfo.finalColorData.diffuseColor);
         const vec3& ambientColor = glm::normalize(areaLightInfo.finalColorData.ambientColor);
         vec3 groundAmbientColor = ambientColor * 0.7f;
         vec3 skyAmbientColor = ambientColor * 1.1f;
+        vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
         
-        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f))
+        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor))
         {
-            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f);
+            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor);
         }
         
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
-        
+
         *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);     
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin"_h) = areaLightInfo.finalColorData.fogEnd * areaLightInfo.finalColorData.fogScaler;
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h) = areaLightInfo.finalColorData.fogEnd;
+    }
+
+    vec3 UpdateAreaLights::GetLightDirection(f32 timeOfDay)
+    {
+        f32 phiValue = 0;
+        const f32 thetaValue = 3.926991f;
+        const f32 phiTable[4] =
+        {
+            2.2165682f,
+            1.9198623f,
+            2.2165682f,
+            1.9198623f
+        };
+
+        f32 progressDayAndNight = timeOfDay / 86400.0f;
+        u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
+        u32 nextPhiIndex = 0;
+
+        if (currentPhiIndex < 3)
+            nextPhiIndex = currentPhiIndex + 1;
+
+        // Lerp between the current value of phi and the next value of phi
+        {
+            f32 currentTimestamp = currentPhiIndex * 0.25f;
+            f32 nextTimestamp = nextPhiIndex * 0.25f;
+
+            f32 transitionTime = 0.25f;
+            f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
+
+            f32 currentPhiValue = phiTable[currentPhiIndex];
+            f32 nextPhiValue = phiTable[nextPhiIndex];
+
+            phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
+        }
+
+        // Convert from Spherical Position to Cartesian coordinates
+        f32 sinPhi = glm::sin(phiValue);
+        f32 cosPhi = glm::cos(phiValue);
+
+        f32 sinTheta = glm::sin(thetaValue);
+        f32 cosTheta = glm::cos(thetaValue);
+
+        f32 lightDirX = sinPhi * cosTheta;
+        f32 lightDirZ = sinPhi * sinTheta;
+        f32 lightDirY = cosPhi;
+
+        // Can also try (X, Z, -Y)
+        return -vec3(lightDirX, lightDirY, lightDirZ);
     }
 }

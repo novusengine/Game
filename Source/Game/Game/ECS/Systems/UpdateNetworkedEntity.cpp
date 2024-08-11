@@ -50,9 +50,6 @@ namespace ECS::Systems
 
         view.each([&, characterEntity](entt::entity entity, Components::Transform& transform, Components::MovementInfo& movementInfo, Components::NetworkedEntity& networkedEntity)
         {
-            if (entity == characterEntity)
-                return;
-
             if (networkedEntity.positionProgress != -1.0f)
             {
                 networkedEntity.positionProgress += 10.0f * deltaTime;

@@ -95,7 +95,7 @@ void Application::Cleanup()
     auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
     if (networkState.client && networkState.client->IsConnected())
     {
-        networkState.client->Close();
+        networkState.client->Stop();
     }
 
     i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();

@@ -332,7 +332,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_cullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_cullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
-            data.culledDrawCallsBuffer = builder.Write(_cullingResources.GetCulledDrawsBuffer(0), BufferUsage::COMPUTE);
+            data.culledDrawCallsBuffer = builder.Write(_cullingResources.GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
             data.drawCountBuffer = builder.Write(_cullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
             data.triangleCountBuffer = builder.Write(_cullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
             data.drawCountReadBackBuffer = builder.Write(_cullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -475,7 +475,7 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
             builder.Read(_cullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             data.drawCallsBuffer = builder.Write(_cullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
-            data.culledDrawCallsBuffer = builder.Write(_cullingResources.GetCulledDrawsBuffer(0), BufferUsage::GRAPHICS);
+            data.culledDrawCallsBuffer = builder.Write(_cullingResources.GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
             data.drawCountBuffer = builder.Write(_cullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
             data.triangleCountBuffer = builder.Write(_cullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
             data.drawCountReadBackBuffer = builder.Write(_cullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
@@ -501,7 +501,7 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
             params.frameIndex = frameIndex;
             params.rt0 = data.transparency;
             params.rt1 = data.transparencyWeights;
-            params.depth = data.depth;
+            params.depth[0] = data.depth;
 
             params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
