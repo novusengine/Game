@@ -49,4 +49,4 @@ jobs:
     - name: Build
       run: |
         cd Build
-        make -k
+        make -j$(nproc) -k
