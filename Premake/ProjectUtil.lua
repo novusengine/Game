@@ -11,11 +11,7 @@ local function PrintError(msg)
     end
 
     local callerName = debugInfo.name
-    if callerName == nil then
-        error(": " .. msg, 2)
-    else
-        error("[" .. callerName .. "]" .. " : " .. msg, 2)
-    end
+    error("[" .. callerName .. "]" .. " : " .. msg, 2)
 end
 
 --[[ DumpObject(object, [limit], [indent])   Recursively print arbitrary data. 
@@ -122,6 +118,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
     -- Default Args here --
     dependencies = dependencies or {}
 
+    local dependencyNameToIndex = { }
     local resolvedDependencies = { }
     local needToResolve = true
 
@@ -131,21 +128,29 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
             deps = {}
         }
 
-        resolvedDependencies[v] =
+        local resolvedDep =
         {
+            name = v,
             parent = projectTable.deps[v]
         }
+
+        local depIndex = #resolvedDependencies + 1
+        table.insert(resolvedDependencies, resolvedDep)
+        dependencyNameToIndex[v] = depIndex
     end
 
+    local numResolvedDependencies = 1
     while needToResolve do
         local numAddedDependencies = 0
+        local numDependenciesToResolve = #resolvedDependencies
 
-        for k, v in ipairs(resolvedDependencies) do
-            local depInternalName = "Dependency-" .. k
+        for i = numResolvedDependencies, numDependenciesToResolve, 1 do
+            local v = resolvedDependencies[i]
+            local depInternalName = "Dependency-" .. v.name
 
             local dep = _G[depInternalName]
             if (dep == nil) then
-                Solution.Util.PrintError("'" .. name .. "' use undeclared dependency '" .. k .. "'")
+                Solution.Util.PrintError("'" .. name .. "' use undeclared dependency '" .. v.name .. "'")
             end
 
             if dep.Dependencies then
@@ -159,16 +164,21 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
 
                 if deps then
                     for _, newDep in ipairs(deps) do
-                        if not resolvedDependencies[newDep] then
+                        if not dependencyNameToIndex[newDep] then
                             v.parent.deps[newDep] =
                             {
                                 deps = {}
                             }
 
-                            resolvedDependencies[newDep] =
+                            local resolvedDep =
                             {
+                                name = newDep,
                                 parent = v.parent.deps[newDep]
                             }
+
+                            local depIndex = #resolvedDependencies + 1
+                            table.insert(resolvedDependencies, resolvedDep)
+                            dependencyNameToIndex[newDep] = depIndex
 
                             numAddedDependencies = numAddedDependencies + 1
                         end
@@ -177,6 +187,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
             end
         end
 
+        numDependenciesToResolve = numResolvedDependencies
         needToResolve = numAddedDependencies > 0
     end
     
@@ -211,8 +222,8 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
 
         filter { }
 
-    for k, v in ipairs(resolvedDependencies) do
-        local depInternalName = "Dependency-" .. k
+    for _, v in ipairs(resolvedDependencies) do
+        local depInternalName = "Dependency-" .. v.name
         if (_G[depInternalName].Callback ~= nil) then
             _G[depInternalName].Callback()
             filter {}
@@ -233,10 +244,6 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
             end
         end
     end
-
-    -- START TEST ONLY START --
-    --DumpObject(projectTable)
-    -- END TEST ONLY END ---
 
     _G[internalName] = projectTable
 
