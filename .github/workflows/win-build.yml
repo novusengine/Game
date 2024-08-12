@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        build-type: [Release, Debug]
+        build-type: [RelDebug]
     
     steps:
     - uses: actions/checkout@v4
