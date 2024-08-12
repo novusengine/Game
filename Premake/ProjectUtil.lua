@@ -125,7 +125,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
     local resolvedDependencies = { }
     local needToResolve = true
 
-    for _, v in pairs(dependencies) do
+    for _, v in ipairs(dependencies) do
         projectTable.deps[v] = 
         {
             deps = {}
@@ -140,7 +140,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
     while needToResolve do
         local numAddedDependencies = 0
 
-        for k, v in pairs(resolvedDependencies) do
+        for k, v in ipairs(resolvedDependencies) do
             local depInternalName = "Dependency-" .. k
 
             local dep = _G[depInternalName]
@@ -158,7 +158,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
                 end
 
                 if deps then
-                    for _, newDep in pairs(deps) do
+                    for _, newDep in ipairs(deps) do
                         if not resolvedDependencies[newDep] then
                             v.parent.deps[newDep] =
                             {
@@ -211,7 +211,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
 
         filter { }
 
-    for k, v in pairs(resolvedDependencies) do
+    for k, v in ipairs(resolvedDependencies) do
         local depInternalName = "Dependency-" .. k
         if (_G[depInternalName].Callback ~= nil) then
             _G[depInternalName].Callback()
