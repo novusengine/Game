@@ -135,6 +135,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
         local resolvedDep =
         {
             name = v,
+            mustComeAfter = 0,
             parent = projectTable.deps[v]
         }
 
@@ -147,7 +148,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
     while needToResolve do
         local numAddedDependencies = 0
         local numDependenciesToResolve = #resolvedDependencies
-
+        
         for i = numResolvedDependencies, numDependenciesToResolve, 1 do
             local v = resolvedDependencies[i]
             local depInternalName = "Dependency-" .. v.name
@@ -177,6 +178,7 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
                             local resolvedDep =
                             {
                                 name = newDep,
+                                mustComeAfter = dependencyNameToIndex[v.name],
                                 parent = v.parent.deps[newDep]
                             }
 
@@ -185,6 +187,9 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
                             dependencyNameToIndex[newDep] = depIndex
 
                             numAddedDependencies = numAddedDependencies + 1
+                        else
+                            local depIndex = dependencyNameToIndex[newDep]
+                            resolvedDependencies[depIndex].mustComeAfter = dependencyNameToIndex[v.name]
                         end
                     end
                 end
@@ -194,6 +199,10 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
         numDependenciesToResolve = numResolvedDependencies
         needToResolve = numAddedDependencies > 0
     end
+
+    table.sort(resolvedDependencies, function(a, b)
+        return a.mustComeAfter < b.mustComeAfter
+    end)
     
     project (name)
         kind (projectType)
