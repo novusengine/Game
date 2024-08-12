@@ -1,4 +1,5 @@
-local mod = Solution.Util.CreateModuleTable("Game-Lib", { "base", "fileformat", "input", "network", "gameplay", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "utfcpp", "base64" })
+-- Dependencies are order sensitive on Linux, keep that in mind when adding new dependencies.
+local mod = Solution.Util.CreateModuleTable("Game-Lib", { "renderer", "fileformat", "gameplay", "input", "luau-compiler", "luau-vm", "enkits", "utfcpp", "base64", "jolt" }
 
 Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS"}

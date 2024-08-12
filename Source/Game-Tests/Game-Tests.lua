@@ -1,6 +1,6 @@
 if BuildSettings:Get("Build UnitTests") == false then return end
 
-local mod = Solution.Util.CreateModuleTable("Game-Tests", { "game-lib", "catch2", "catch2-withmain", "base", "fileformat", "input", "network", "gameplay", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "utfcpp", "base64" })
+local mod = Solution.Util.CreateModuleTable("Game-Tests", { "game-lib", "catch2-withmain" })
 
 Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS" }
