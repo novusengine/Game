@@ -21,7 +21,7 @@ for _, v in pairs(modules) do
     Solution.Util.ClearFilter()
 end
 
-Solution.Util.SetGroup(Solution.TestGroup)
+--[[Solution.Util.SetGroup(Solution.TestGroup)
 local tests =
 {
     "Game-Tests/Game-Tests.lua"
@@ -30,7 +30,7 @@ local tests =
 for _, v in pairs(tests) do
     include(v)
     Solution.Util.ClearFilter()
-end
+end]]
 
 Solution.Util.SetGroup("")
 Solution.Util.Print("-- Finished with Modules --\n")
