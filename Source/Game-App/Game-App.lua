@@ -1,4 +1,4 @@
-local mod = Solution.Util.CreateModuleTable("Game-App", { "game-lib" })
+local mod = Solution.Util.CreateModuleTable("Game-App", { "game-lib", "base", "fileformat", "input", "network", "gameplay", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "utfcpp", "base64" })
 
 Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS" }
