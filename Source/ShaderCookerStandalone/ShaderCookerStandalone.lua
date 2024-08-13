@@ -15,9 +15,7 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
     Solution.Util.SetFiles(files)
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetDefines(defines)
-    if os.target() == "linux" then
-        postbuildcommands { "{COPYFILE} " .. dxCompilerLibPath .. " /usr/local/lib/dxcompiler.%{systemToDynamicLibExtensionMap[cfg.system]}" }
-    else
+    if os.target() == "windows" then
         postbuildcommands { "{COPYFILE} " .. dxCompilerLibPath .. " " .. Solution.Projects.Current.BinDir .. "/%{cfg.buildcfg}/dxcompiler.%{systemToDynamicLibExtensionMap[cfg.system]}" }
     end
 end)
