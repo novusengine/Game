@@ -31,6 +31,11 @@ BuildSettings:Add("Jolt Track Broadphase Stats", false)
 BuildSettings:Add("Jolt Track Narrowphase Stats", false)
 -- TODO : Add Support for AVX, SSE etc for Jolt
 
+-- Settings for Window System on Linux
+-- These are ignored on Windows
+BuildSettings:Add("Using X11", true)
+BuildSettings:Add("Using Wayland", false)
+
 -- Custom (DO NOT TOUCH)
 local isMSVC = string.sub(_ACTION, 1, 2) == "vs"
 BuildSettings:Add("Using MSVC", isMSVC)
