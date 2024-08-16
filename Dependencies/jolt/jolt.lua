@@ -494,9 +494,14 @@ Solution.Util.CreateStaticLib(dep.Name, Solution.Projects.Current.BinDir, dep.De
 end)
 
 Solution.Util.CreateDep(dep.NameLow, dep.Dependencies, function()
+    -- get our own local cache
+    local additionalDefines = Solution.Util.GetDepCache(dep.NameLow, "cache")
+    if not additionalDefines then
+        additionalDefines = GetJoltDefines()
+        Solution.Util.SetDepCache(dep.NameLow, "cache", additionalDefines)
+    end
+
     Solution.Util.SetIncludes(dep.Path)
     Solution.Util.SetLinks(dep.Name)
-    
-    local additionalDefines = GetJoltDefines()
     Solution.Util.SetDefines(additionalDefines)
 end)
