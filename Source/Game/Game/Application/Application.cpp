@@ -239,6 +239,7 @@ bool Application::Init()
     ServiceLocator::SetTaskScheduler(_taskScheduler);
 
     _registries.gameRegistry = new entt::registry();
+    _registries.uiRegistry = new entt::registry();
     _registries.eventIncomingRegistry = new entt::registry();
     _registries.eventOutgoingRegistry = new entt::registry();
     ServiceLocator::SetEnttRegistries(&_registries);

@@ -1,130 +1,592 @@
 #include "CanvasRenderer.h"
-
-#include <Game/Rendering/RenderResources.h>
+#include "Game/ECS/Components/Name.h"
+#include "Game/ECS/Components/UI/Canvas.h"
+#include "Game/ECS/Components/UI/Panel.h"
+#include "Game/ECS/Components/UI/Text.h"
+#include "Game/ECS/Components/UI/Widget.h"
+#include "Game/ECS/Singletons/UISingleton.h"
+#include "Game/ECS/Util/Transform2D.h"
+#include "Game/ECS/Util/UIUtil.h"
+#include "Game/Rendering/RenderResources.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Renderer/Renderer.h>
 #include <Renderer/GPUVector.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Font.h>
 
-struct Data
+#include <entt/entt.hpp>
+#include <utfcpp/utf8.h>
+
+using namespace ECS::Components::UI;
+
+void CanvasRenderer::Clear()
 {
-	std::shared_mutex canvasMutex;
-	std::vector<Canvas> canvases;
+    _vertices.Clear();
+    _panelDrawDatas.Clear();
+    _charDrawDatas.Clear();
+    _textureNameHashToIndex.clear();
 
-	Renderer::TextureArrayID textures;
-
-	std::shared_mutex textureDrawMutex;
-	Renderer::GPUVector<CanvasTextureDrawData> textureDrawData;
-
-	std::shared_mutex textDrawMutex;
-	Renderer::GPUVector<CanvasTextVertex> textVertices;
-	Renderer::GPUVector<CanvasCharDrawData> charDrawData;
-
-	Renderer::Font* font = nullptr;
-};
+    _renderer->UnloadTexturesInArray(_textures, 1);
+}
 
 CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer)
-	: _renderer(renderer)
-	, _data(*new Data())
+    : _renderer(renderer)
 {
-	CreatePermanentResources();
-
-	// Usage examples
-	//_data.debugTexture = _renderer->LoadTexture(textureDesc);
-	//AddTexture(_data.debugTexture);
-	//_data.mainCanvas = &CreateCanvas(Renderer::ImageID(3));
+    CreatePermanentResources();
 }
 
 void CanvasRenderer::Update(f32 deltaTime)
 {
-	ZoneScoped;
+    ZoneScoped;
 
-	// Layer test and usage example
-	//_data.mainCanvas->DrawText(*_data.font, u8"Jalapeño", vec2(100, 100));
-	//_data.mainCanvas->DrawTexture(CanvasTextureID(0), vec2(100, 500), vec2(256, 128), uvec4(3, 3, 3, 3), 1);
-}
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
 
-CanvasTextureID CanvasRenderer::AddTexture(Renderer::TextureID textureID)
-{
-	u32 textureIndex = _renderer->AddTextureToArray(textureID, _data.textures);
-	return CanvasTextureID(textureIndex);
-}
+    ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
-Canvas& CanvasRenderer::CreateCanvas(Renderer::ImageID renderTarget)
-{
-	std::unique_lock lock(_data.canvasMutex);
-	Canvas& canvas = _data.canvases.emplace_back(_renderer, renderTarget);
+    // Dirty transforms
+    transform2DSystem.ProcessMovedEntities([&](entt::entity entity)
+    {
+        auto& widget = registry->get<Widget>(entity);
 
-	return canvas;
+        if (widget.type == WidgetType::Canvas)
+        {
+            return; // Nothing to do for canvas
+        }
+
+        auto& transform = registry->get<ECS::Components::Transform2D>(entity);
+        if (widget.type == WidgetType::Panel)
+        {
+            auto& panel = registry->get<Panel>(entity);
+
+            UpdatePanelVertices(transform, panel);
+        }
+        else if (widget.type == WidgetType::Text)
+        {
+            auto& text = registry->get<Text>(entity);
+            auto& textTemplate = uiSingleton.textTemplates[text.templateIndex];
+
+            UpdateTextVertices(transform, text, textTemplate);
+        }
+    });
+
+    // Dirty widget datas
+    registry->view<DirtyWidget>().each([&](entt::entity entity)
+    {
+        auto& widget = registry->get<Widget>(entity);
+        if (widget.type == WidgetType::Canvas)
+        {
+            //auto& canvas = registry->get<Canvas>(entity);
+            // Update canvas data
+        }
+        else if (widget.type == WidgetType::Panel)
+        {
+            ECS::Components::Transform2D& transform = registry->get<ECS::Components::Transform2D>(entity);
+            auto& panel = registry->get<Panel>(entity);
+            auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
+
+            UpdatePanelData(transform, panel, panelTemplate);
+        }
+        else if (widget.type == WidgetType::Text)
+        {
+            auto& text = registry->get<Text>(entity);
+            auto& textTemplate = uiSingleton.textTemplates[text.templateIndex];
+
+            UpdateTextData(text, textTemplate);
+        }
+    });
+
+    if (_vertices.SyncToGPU(_renderer))
+    {
+        _descriptorSet.Bind("_vertices", _vertices.GetBuffer());
+    }
+
+    if (_panelDrawDatas.SyncToGPU(_renderer))
+    {
+        _descriptorSet.Bind("_panelDrawDatas", _panelDrawDatas.GetBuffer());
+    }
+
+    if (_charDrawDatas.SyncToGPU(_renderer))
+    {
+        _descriptorSet.Bind("_charDrawDatas", _charDrawDatas.GetBuffer());
+    }
+
+    registry->clear<DirtyWidget>();
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-	struct Data
-	{
-		Renderer::DescriptorSetResource globalDescriptorSet;
-		Renderer::DescriptorSetResource textureDescriptorSet;
-		Renderer::DescriptorSetResource textDescriptorSet;
-	};
-	renderGraph->AddPass<Data>("Canvases",
-		[this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
-		{
-			using BufferUsage = Renderer::BufferPassUsage;
+    _lastRenderedWidgetType = WidgetType::None;
 
-			for (Canvas& canvas : _data.canvases)
-			{
-				canvas.Setup(builder);
-			}
+    struct Data
+    {
+        Renderer::ImageMutableResource target; // TODO: Target should be grabbed from canvases
 
-			data.globalDescriptorSet = builder.Use(resources.globalDescriptorSet);
-			data.textureDescriptorSet = builder.Use(_textureDescriptorSet);
-			data.textDescriptorSet = builder.Use(_textDescriptorSet);
+        Renderer::DescriptorSetResource globalDescriptorSet;
+        Renderer::DescriptorSetResource descriptorSet;
+    };
+    renderGraph->AddPass<Data>("Canvases",
+        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            using BufferUsage = Renderer::BufferPassUsage;
 
-			return true;// Return true from setup to enable this pass, return false to disable it
-		},
-		[this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
-		{
-			GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
+            data.target = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
-			Canvas::DrawParams params(graphResources, commandList, data.globalDescriptorSet, data.textureDescriptorSet, data.textDescriptorSet, frameIndex);
-			for (Canvas& canvas : _data.canvases)
-			{
-				canvas.Draw(params);
-			}
-		});
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+
+            builder.Read(_panelDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_charDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
+
+            data.globalDescriptorSet = builder.Use(resources.globalDescriptorSet);
+            data.descriptorSet = builder.Use(_descriptorSet);
+
+            return true;// Return true from setup to enable this pass, return false to disable it
+        },
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
+
+            // Set up pipelines
+            Renderer::GraphicsPipelineID panelPipeline;
+            {
+                Renderer::GraphicsPipelineDesc desc;
+                graphResources.InitializePipelineDesc(desc);
+
+                // Rasterizer state
+                desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+
+                // Render targets.
+                desc.renderTargets[0] = data.target;
+
+                // Shader
+                Renderer::VertexShaderDesc vertexShaderDesc;
+                vertexShaderDesc.path = "UI/Panel.vs.hlsl";
+
+                Renderer::PixelShaderDesc pixelShaderDesc;
+                pixelShaderDesc.path = "UI/Panel.ps.hlsl";
+
+                desc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+                desc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+                // Blending
+                desc.states.blendState.renderTargets[0].blendEnable = true;
+                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+                desc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
+                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+
+                panelPipeline = _renderer->CreatePipeline(desc);
+            }
+
+            Renderer::GraphicsPipelineID textPipeline;
+            {
+                Renderer::GraphicsPipelineDesc desc;
+                graphResources.InitializePipelineDesc(desc);
+
+                // Rasterizer state
+                desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+
+                // Render targets.
+                desc.renderTargets[0] = data.target;
+
+                // Shader
+                Renderer::VertexShaderDesc vertexShaderDesc;
+                vertexShaderDesc.path = "UI/Text.vs.hlsl";
+
+                Renderer::PixelShaderDesc pixelShaderDesc;
+                pixelShaderDesc.path = "UI/Text.ps.hlsl";
+
+                desc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+                desc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+                // Blending
+                desc.states.blendState.renderTargets[0].blendEnable = true;
+                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+                desc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
+                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+
+                textPipeline = _renderer->CreatePipeline(desc);
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
+
+            //NC_LOG_INFO("-- START CANVAS RENDERING --");
+
+            Renderer::GraphicsPipelineID currentPipeline;
+
+            // Loop over widget roots
+            registry->view<Widget, WidgetRoot>().each([&](auto entity, auto& widget)
+            {
+                // Loop over children recursively (depth first)
+                transform2DSystem.IterateChildrenRecursiveDepth(entity, [&, registry](auto childEntity)
+                {
+                    auto& transform = registry->get<ECS::Components::Transform2D>(childEntity);
+                    auto& childWidget = registry->get<Widget>(childEntity);
+
+                    if (childWidget.type == WidgetType::Canvas)
+                    {
+                        //NC_LOG_INFO("Canvas");
+                        return; // There is nothing to draw for a canvas
+                    }
+
+                    if (_lastRenderedWidgetType != childWidget.type)
+                    {
+                        if (_lastRenderedWidgetType != WidgetType::None)
+                        {
+                            commandList.EndPipeline(currentPipeline);
+                        }
+
+                        _lastRenderedWidgetType = childWidget.type;
+                        
+                        if (childWidget.type == WidgetType::Panel)
+                        {
+                            currentPipeline = panelPipeline;
+                        }
+                        else
+                        {
+                            currentPipeline = textPipeline;
+                        }
+
+                        commandList.BeginPipeline(currentPipeline);
+                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
+                    }
+
+                    if (childWidget.type == WidgetType::Panel)
+                    {
+                        //NC_LOG_INFO("Panel");
+
+                        auto& panel = registry->get<Panel>(childEntity);
+                        RenderPanel(commandList, transform, childWidget, panel);
+                    }
+                    else if (childWidget.type == WidgetType::Text)
+                    {
+                        //NC_LOG_INFO("Text");
+
+                        auto& text = registry->get<Text>(childEntity);
+                        RenderText(commandList, transform, childWidget, text);
+                    }
+                });
+            });
+
+            if (_lastRenderedWidgetType != WidgetType::None)
+            {
+                commandList.EndPipeline(currentPipeline);
+            }
+
+            //NC_LOG_INFO("-- END CANVAS RENDERING --");
+        });
 }
 
 void CanvasRenderer::CreatePermanentResources()
 {
-	Renderer::TextureArrayDesc textureArrayDesc;
-	textureArrayDesc.size = 4096;
+    Renderer::TextureArrayDesc textureArrayDesc;
+    textureArrayDesc.size = 4096;
 
-	_data.textures = _renderer->CreateTextureArray(textureArrayDesc);
-	_textureDescriptorSet.Bind("_textures", _data.textures);
+    _textures = _renderer->CreateTextureArray(textureArrayDesc);
+    _descriptorSet.Bind("_textures", _textures);
 
-	_data.textureDrawData.SetDebugName("TextureDrawData");
-	_data.textureDrawData.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    Renderer::DataTextureDesc dataTextureDesc;
+    dataTextureDesc.width = 1;
+    dataTextureDesc.height = 1;
+    dataTextureDesc.format = Renderer::ImageFormat::R8G8B8A8_UNORM_SRGB;
+    dataTextureDesc.data = new u8[4]{ 255, 255, 255, 255 }; // White, because UI color is multiplied with this
+    dataTextureDesc.debugName = "UIDebugTexture";
 
-	// Samplers
-	Renderer::SamplerDesc samplerDesc;
-	samplerDesc.enabled = true;
-	samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
-	samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
-	samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
-	samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
-	samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+    u32 arrayIndex = 0;
+    _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
-	_sampler = _renderer->CreateSampler(samplerDesc);
-	_textDescriptorSet.Bind("_sampler"_h, _sampler);
-	_textureDescriptorSet.Bind("_sampler"_h, _sampler);
+    // Samplers
+    Renderer::SamplerDesc samplerDesc;
+    samplerDesc.enabled = true;
+    samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+    samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+    samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+    samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
 
-	_data.font = Renderer::Font::GetDefaultFont(_renderer, 64.0f);
-	_textDescriptorSet.Bind("_textures"_h, _data.font->GetTextureArray());
+    _sampler = _renderer->CreateSampler(samplerDesc);
+    _descriptorSet.Bind("_sampler"_h, _sampler);
 
-	_data.charDrawData.SetDebugName("CharDrawData");
-	_data.charDrawData.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    _font = Renderer::Font::GetDefaultFont(_renderer, 64.0f);
+    _descriptorSet.Bind("_fontTextures"_h, _font->GetTextureArray());
 
-	_data.textVertices.SetDebugName("TextVertices");
-	_data.textVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    _vertices.SetDebugName("UIVertices");
+    _panelDrawDatas.SetDebugName("PanelDrawDatas");
+    _panelDrawDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    _charDrawDatas.SetDebugName("CharDrawDatas");
+    _charDrawDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    //_data.textVertices.SetDebugName("TextVertices");
+    //_data.textVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+}
+
+vec2 panelUVs[6] = {
+    // Triangle 1
+    vec2(0, 1), // Top Left
+    vec2(1, 0), // Lower Right
+    vec2(1, 1), // Top Right
+    // Triangle 2
+    vec2(0, 0), // Lower Left
+    vec2(1, 0), // Lower Right
+    vec2(0, 1), // Top Left
+};
+
+void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel)
+{
+    std::vector<vec4>& vertices = _vertices.Get();
+
+    // Add vertices if necessary
+    if (panel.gpuVertexIndex == -1)
+    {
+        panel.gpuVertexIndex = static_cast<i32>(vertices.size());
+        vertices.resize(vertices.size() + 6); // TODO: Indexing?
+    }
+
+    // Update vertices
+    vec2 position = PixelPosToNDC(transform.GetWorldPosition());
+    vec2 size = PixelSizeToNDC(transform.GetSize());
+
+    // Triangle 1
+    vertices[panel.gpuVertexIndex + 0] = vec4(position, panelUVs[0]);
+    vertices[panel.gpuVertexIndex + 1] = vec4(position + vec2(size.x, size.y), panelUVs[1]);
+    vertices[panel.gpuVertexIndex + 2] = vec4(position + vec2(size.x, 0), panelUVs[2]);
+
+    // Triangle 2
+    vertices[panel.gpuVertexIndex + 3] = vec4(position + vec2(0, size.y), panelUVs[3]);
+    vertices[panel.gpuVertexIndex + 4] = vec4(position + vec2(size.x, size.y), panelUVs[4]);
+    vertices[panel.gpuVertexIndex + 5] = vec4(position, panelUVs[5]);
+
+    _vertices.SetDirtyElements(panel.gpuVertexIndex, 6);
+}
+
+void CalculateVertices(vec2 pos, vec2 size, std::vector<vec4>& vertices, u32 vertexIndex)
+{
+    vec2 upperLeftPos = vec2(pos.x, pos.y);
+    vec2 upperRightPos = vec2(pos.x + size.x, pos.y);
+    vec2 lowerLeftPos = vec2(pos.x, pos.y + size.y);
+    vec2 lowerRightPos = vec2(pos.x + size.x, pos.y + size.y);
+
+    // Vertices
+    vec4 upperLeft = vec4(upperLeftPos, 0, 1);
+    vec4 upperRight = vec4(upperRightPos, 1, 1);
+    vec4 lowerLeft = vec4(lowerLeftPos, 0, 0);
+    vec4 lowerRight = vec4(lowerRightPos, 1, 0);
+
+    vertices[vertexIndex + 0] = upperLeft;
+    vertices[vertexIndex + 1] = lowerRight;
+    vertices[vertexIndex + 2] = upperRight;
+
+    vertices[vertexIndex + 3] = lowerLeft;
+    vertices[vertexIndex + 4] = lowerRight;
+    vertices[vertexIndex + 5] = upperLeft;
+}
+
+void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ::UI::TextTemplate& textTemplate)
+{
+    std::vector<vec4>& vertices = _vertices.Get();
+
+    utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
+    utf8::iterator coundEndIt(text.text.end(), text.text.begin(), text.text.end());
+
+    // Add vertices if necessary
+    if (text.gpuVertexIndex == -1)
+    {
+        if (text.numCharsNonWhitespace == -1)
+        {
+            // Count how many non whitspace characters there are
+            text.numCharsNonWhitespace = 0;
+            for (; countIt != coundEndIt; countIt++)
+            {
+                unsigned int c = *countIt;
+
+                if (c != ' ')
+                {
+                    text.numCharsNonWhitespace++;
+                }
+            }
+        }
+
+        u32 numVertices = text.numCharsNonWhitespace * 6;
+
+        text.gpuVertexIndex = static_cast<i32>(vertices.size());
+        vertices.resize(vertices.size() + numVertices);
+    }
+
+    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
+
+    utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
+    utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
+
+    vec2 currentPos = transform.GetWorldPosition();
+    f32 tallestCharacter = 0.0f;
+    u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
+    for (; it != endIt; it++)
+    {
+        u32 c = *it;
+
+        if (c == ' ')
+        {
+            currentPos.x += font->spaceGap;
+            continue;
+        }
+
+        Renderer::FontChar& fontChar = font->GetChar(c);
+
+        vec2 pixelPos = currentPos + vec2(fontChar.xOffset, -(fontChar.yOffset + fontChar.height));//-fontChar.yOffset + fontChar.height);
+        vec2 pixelSize = vec2(fontChar.width, fontChar.height);
+        tallestCharacter = std::max(tallestCharacter, pixelSize.y);
+
+        vec2 position = PixelPosToNDC(pixelPos);
+        vec2 size = PixelSizeToNDC(pixelSize);
+
+        // Add vertices
+        CalculateVertices(position, size, vertices, vertexIndex);
+        vertexIndex += 6;
+
+        currentPos.x += fontChar.advance;
+    }
+}
+
+void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ::UI::PanelTemplate& panelTemplate)
+{
+    std::vector<PanelDrawData>& panelDrawDatas = _panelDrawDatas.Get();
+
+    // Add draw data if necessary
+    if (panel.gpuDataIndex == -1)
+    {
+        panel.gpuDataIndex = static_cast<i32>(panelDrawDatas.size());
+        panelDrawDatas.resize(panelDrawDatas.size() + 1);
+    }
+    vec2 size = transform.GetSize();
+    vec2 cornerRadius = vec2(panelTemplate.cornerRadius / size.x, panelTemplate.cornerRadius /size.y);
+
+    // Update draw data
+    auto& drawData = panelDrawDatas[panel.gpuDataIndex];
+    drawData.packed.y = panelTemplate.color.ToRGBA32();
+    drawData.cornerRadiusAndBorder = vec4(cornerRadius, 0.0f, 0.0f);
+
+    // Update texture
+    if (panelTemplate.background.empty())
+    {
+        drawData.packed.x = 0;
+    }
+    else
+    {
+        u32 textureNameHash = StringUtils::fnv1a_32(panelTemplate.background.c_str(), panelTemplate.background.size());
+
+        if (_textureNameHashToIndex.contains(textureNameHash))
+        {
+            // Use already loaded texture
+            drawData.packed.x = _textureNameHashToIndex[textureNameHash];
+        }
+        else
+        {
+            // Load texture
+            Renderer::TextureDesc desc;
+            desc.path = panelTemplate.background;
+
+            u32 textureIndex;
+            _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
+
+            _textureNameHashToIndex[textureNameHash] = textureIndex;
+            drawData.packed.x = textureIndex;
+        }
+    }
+
+    _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
+}
+
+void CanvasRenderer::UpdateTextData(Text& text, ::UI::TextTemplate& textTemplate)
+{
+    std::vector<CharDrawData>& charDrawDatas = _charDrawDatas.Get();
+
+    // Count how many non whitspace characters there are
+    utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
+    utf8::iterator countEndIt(text.text.end(), text.text.begin(), text.text.end());
+
+    i32 numCharsNonWhitespace = 0;
+    for (; countIt != countEndIt; countIt++)
+    {
+        unsigned int c = *countIt;
+
+        if (c != ' ')
+        {
+            numCharsNonWhitespace++;
+        }
+    }
+
+    // Add or update draw data if necessary
+    if (text.gpuDataIndex == -1 || numCharsNonWhitespace != text.numCharsNonWhitespace)
+    {
+        text.gpuDataIndex = static_cast<i32>(charDrawDatas.size());
+        charDrawDatas.resize(charDrawDatas.size() + numCharsNonWhitespace);
+    }
+    text.numCharsNonWhitespace = numCharsNonWhitespace;
+
+    // Update CharDrawData
+    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
+
+    // TODO: Manage these better to support drawing more than 1 font at the same time
+    _descriptorSet.Bind("_fontTextures", font->GetTextureArray());
+
+    utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
+    utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
+
+    u32 charIndex = 0;
+    for (; it != endIt; it++)
+    {
+        unsigned int c = *it;
+
+        if (c == ' ')
+        {
+            continue;
+        }
+
+        Renderer::FontChar& fontChar = font->GetChar(c);
+
+        auto& drawData = charDrawDatas[text.gpuDataIndex + charIndex];
+        drawData.packed0.x = fontChar.textureIndex;
+        drawData.packed0.y = charIndex;
+        drawData.packed0.z = textTemplate.color.ToRGBA32();
+        drawData.packed0.w = textTemplate.borderColor.ToRGBA32();
+
+        //vec2 borderSizePixels = vec2(textTemplate.borderSize, textTemplate.borderSize);
+        //vec2 borderSize = PixelSizeToNDC(borderSizePixels);//vec2(textTemplate.borderSize / fontChar.width, textTemplate.borderSize / fontChar.height);
+        drawData.packed1.x = textTemplate.borderSize;
+
+        f32 borderFade = glm::min(textTemplate.borderFade, 0.999f);
+        drawData.packed1.y = borderFade;
+        
+
+        charIndex++;
+    }
+    _charDrawDatas.SetDirtyElements(text.gpuDataIndex, text.numCharsNonWhitespace);
+}
+
+void CanvasRenderer::RenderPanel(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, Widget& widget, Panel& panel)
+{
+    commandList.Draw(6, 1, panel.gpuVertexIndex, panel.gpuDataIndex);
+}
+
+void CanvasRenderer::RenderText(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, Widget& widget, Text& text)
+{
+    commandList.Draw(6, text.numCharsNonWhitespace, text.gpuVertexIndex, text.gpuDataIndex);
+}
+
+vec2 CanvasRenderer::PixelPosToNDC(const vec2& pixelPosition) const
+{
+    constexpr vec2 screenSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
+    return vec2(2.0 * pixelPosition.x / screenSize.x - 1.0, 2.0 * pixelPosition.y / screenSize.y - 1.0);
+}
+
+vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize) const
+{
+    constexpr vec2 screenSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
+    return vec2(2.0 * pixelSize.x / screenSize.x, 2.0 * pixelSize.y / screenSize.y);
 }

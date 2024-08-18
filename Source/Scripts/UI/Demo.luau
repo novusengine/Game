@@ -1,61 +1,133 @@
+--require("UI/Templates")
+
 local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
     if (eventID == ButtonEvent.Hovered) then
 
     end
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
-    -- Register a default panel template
-    local panelTemplate = {
-        background = "interface/framegeneral/ui-background-rock.dds",
-        color = vec3.new(0.3, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 3.0
-    };
-    UI.RegisterPanelTemplate("DefaultPanel", panelTemplate);
-
-    -- Register a default text template
-    local textTemplate = {
-        font = "Fonts/Calibri.ttf", -- Obviously we want a different font
-        size = 20.0,
-        color = vec3.new(1.0, 1.0, 1.0),
-        border = 1,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
-    };
-    UI.RegisterTextTemplate("DefaultText", textTemplate);
-
-    -- Register a default button template
-    local buttonTemplate = {
-        background = "interface/framegeneral/ui-background-rock.dds",
-        color = vec3.new(1.0, 0.5, 1.0), -- TODO: Color class
-        cornerRadius = 5.0
-    };
-    UI.RegisterButtonTemplate("DefaultButton", buttonTemplate);
-
-    -- Create a canvas
-    local canvas = UI.GetCanvas("EscapeMenu", 100, 100);
-    -- Add default frame canvas or whatever
-    -- Add support for childing canvases to other canvases
-    -- Add support for worldspace canvases
-    -- Add support for CachedCanvas (needs to explicitly be :Updated or whatever)
+local function Demo()
+    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 100, 100);
 
     -- Create a panel
-    local panel = canvas:Panel(0, 0, 100, 100, 0, "DefaultPanel");
+    local panel = canvas:NewPanel(100, 100, 800, 800, 0, "DefaultPanel");
 
-    -- Create a text on the panel
-    --local text = panel:Text("Escape Menu", 0, 0, 0, "DefaultText");
-    --text:SetAnchor(0.5, 0.0); -- Center the texts placement on the Panel on the X axis
-    --text:SetRelativePoint(0.5, 0.0) -- Center the buttons reference point on the X axis
+    local bottomLeft = panel:NewText("Bottom Left", 0, 0, 0, "DefaultText");
+    bottomLeft:SetAnchor(0.0, 0.0);
+    bottomLeft:SetRelativePoint(0.0, 0.0);
 
-    -- Create a button on the panel
-    --local button = panel:Button(0, 50, 30, 50, 0, "DefaultButton");
-    --button:Text("Test", Vector2(0, 0), 0, "DefaultText") -- Give the button a text
-    --button:SetAnchor(0.5, 0.0) -- Center the buttons placement on the Panel on the X axis
-    --button:SetRelativePoint(0.5, 0.0) -- Center the buttons reference point on the X axis
+    local bottomRight = panel:NewText("Bottom Right", 0, 0, 0, "DefaultText");
+    bottomRight:SetAnchor(1.0, 0.0);
+    bottomRight:SetRelativePoint(1.0, 0.0);
 
-    --button:RegisterEvent(ButtonEvent.Hover);
-    --button:RegisterEvent(ButtonEvent.Click);
+    local topLeft = panel:NewText("Top Left", 0, 0, 0, "DefaultText");
+    topLeft:SetAnchor(0.0, 1.0);
+    topLeft:SetRelativePoint(0.0, 1.0);
 
-    print('Hello from Demo.luau');
+    local topRight = panel:NewText("Top Right", 0, 0, 0, "DefaultText");
+    topRight:SetAnchor(1.0, 1.0);
+    topRight:SetRelativePoint(1.0, 1.0);
+
+    local center = panel:NewText("Center", 0, 0, 0, "DefaultText");
+    center:SetAnchor(0.5, 0.5);
+    center:SetRelativePoint(0.5, 0.5);
+
+    local testPanel = panel:NewPanel(0, 0, 50, 50, 0, "DefaultPanel2");
+    testPanel:SetAnchor(0.5, 0.5);
+    testPanel:SetRelativePoint(0.5, 0.5);
+end
+
+local function RegisterTemplates()
+    local menuPanelTemplate = {
+        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+        cornerRadius = 0.0
+    };
+    UI.RegisterPanelTemplate("MenuPanel", menuPanelTemplate);
+
+    -- Header
+    local menuPanelHeaderTemplate = {
+        background = "Data/Texture/interface/dialogframe/ui-dialogbox-header.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+        cornerRadius = 0.0
+    };
+    UI.RegisterPanelTemplate("MenuPanelHeader", menuPanelHeaderTemplate);
+
+    local menuPanelHeaderTextTemplate = {
+        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        size = 24.0,
+        color = vec3.new(255.0/255.0, 239.0/255.0, 0.0/255.0),
+        borderSize = 0.30,
+        borderFade = 0.5,
+        borderColor = vec3.new(0.0, 0.0, 0.0),
+    };
+    UI.RegisterTextTemplate("MenuPanelHeaderText", menuPanelHeaderTextTemplate);
+
+    -- Button
+    local menuButtonPanelTemplate = {
+        background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+        cornerRadius = 0.0
+    };
+    UI.RegisterPanelTemplate("MenuButtonPanel", menuButtonPanelTemplate);
+
+    local menuButtonTextTemplate = {
+        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        size = 24.0,
+        color = vec3.new(1.0, 1.0, 1.0),
+        borderSize = 0.35,
+        borderFade = 0.8,
+        borderColor = vec3.new(0.0, 0.0, 0.0),
+    };
+    UI.RegisterTextTemplate("MenuButtonText", menuButtonTextTemplate);
+
+    local menuButtonTemplate = {
+        --buttonPanelTemplate = "MenuButtonPanel",
+        --pressedButtonPanelTemplate = "MenuButtonPanel",
+        --disabledButtonPanelTemplate = "MenuButtonPanel",
+        --hoveredButtonPanelTemplate = "MenuButtonPanel",
+        panelTemplate = "MenuButtonPanel",
+        textTemplate = "MenuButtonText",
+    };
+    UI.RegisterButtonTemplate("MenuButton", menuButtonTemplate);
+
+    --local inheritedMenuButtonTemplate = UI.CopyButtonTemplate("MenuButton")
+    --menuButtonTemplate.buttonPanelTemplate = "OtherButtonPanel"
+    --UI.RegisterButtonTemplate("InheritedMenuButton", inheritedMenuButtonTemplate);
+end
+
+local function CreateEscapeMenu()
+    -- Create Canvas
+    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
+    
+    -- Create Panel
+    local panel = canvas:NewPanel(0, 0, 400, 600, 0, "MenuPanel");
+    panel:SetAnchor(0.5, 0.5);
+    panel:SetRelativePoint(0.5, 0.5);
+
+    -- Create Header
+    local header = panel:NewPanel(0, 30, 400, 100, 0, "MenuPanelHeader");
+    header:SetAnchor(0.5, 1.0);
+    header:SetRelativePoint(0.5, 1.0);
+
+    local headerText = header:NewText("Game Menu", 0, -25, 0, "MenuPanelHeaderText");
+    headerText:SetAnchor(0.5, 1.0);
+    headerText:SetRelativePoint(0.5, 0.5);
+
+    -- Create buttons
+    local optionsButton = panel:NewButton(0, -100, 100, 50, 0, "MenuButton");
+    optionsButton:SetAnchor(0.5, 1.0);
+    optionsButton:SetRelativePoint(0.5, 0.5);
+    optionsButton:SetText("Options");
+
+
+end
+
+local function OnGameLoaded(eventID : number, motd : string)
+    RegisterTemplates();
+
+    CreateEscapeMenu();
+    --print('Hello from Demo.luau');
 end
 
 local function OnGameUpdated(eventID : number, motd : string)

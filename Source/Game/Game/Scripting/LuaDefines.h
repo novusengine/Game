@@ -18,7 +18,7 @@ namespace Scripting
     {
         Global,
         GameEvent,
-        Canvas,
+        UI,
         Count
     };
 

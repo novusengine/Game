@@ -35,21 +35,4 @@ namespace Scripting
 
         { nullptr, nullptr }
     };
-
-    static LuaMethod panelMethods[] =
-    {
-        { "new",			GlobalHandler::PanelCreate },
-        { "GetPosition",	GlobalHandler::PanelGetPosition },
-        { "GetSize",		GlobalHandler::PanelGetExtents },
-
-        { nullptr, nullptr }
-    };
-
-    static LuaMethod panelMetaTableMethods[] =
-    {
-        { "__tostring",	GlobalHandler::PanelToString },
-        { "__index",	GlobalHandler::PanelIndex },
-
-        { nullptr, nullptr }
-    };
 }

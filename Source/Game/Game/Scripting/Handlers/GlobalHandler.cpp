@@ -33,10 +33,6 @@ namespace Scripting
         });
 
         LuaMethodTable::Set(state, globalMethods);
-
-        LuaMethodTable::Set(state, panelMethods, "Panel");
-        LuaMetaTable<Panel>::Register(state, "PanelMetaTable");
-        LuaMetaTable<Panel>::Set(state, panelMetaTableMethods);
     }
 
     i32 GlobalHandler::AddCursor(lua_State* state)
@@ -115,80 +111,6 @@ namespace Scripting
         mapLoader->LoadMap(mapNameHash);
 
         ctx.Push(true);
-        return 1;
-    }
-    i32 GlobalHandler::PanelCreate(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        Panel* panel = ctx.PushUserData<Panel>([](void* x) {
-            // Very sad panel is gone now :(
-        });
-
-        panel->position = vec3(25.0f, 50.0f, 0);
-        panel->extents = vec3(1.5f, 1.5f, 0);
-
-        luaL_getmetatable(state, "PanelMetaTable");
-        lua_setmetatable(state, -2);
-
-        return 1;
-    }
-    i32 GlobalHandler::PanelGetPosition(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        Panel* panel = ctx.GetUserData<Panel>();
-        ctx.Push(panel->position.x);
-        ctx.Push(panel->position.y);
-
-        return 2;
-    }
-    i32 GlobalHandler::PanelGetExtents(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        Panel* panel = ctx.GetUserData<Panel>();
-        ctx.Push(panel->extents.x);
-        ctx.Push(panel->extents.y);
-
-        return 2;
-    }
-    i32 GlobalHandler::PanelToString(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        ctx.Push("Here is a panel :o");
-        return 1;
-    }
-    i32 GlobalHandler::PanelIndex(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        Panel* panel = ctx.GetUserData<Panel>(nullptr, 1);
-        const char* key = ctx.Get(nullptr, 2);
-        u32 keyHash = StringUtils::fnv1a_32(key, strlen(key));
-
-        switch (keyHash)
-        {
-            case "position"_h:
-            {
-                ctx.Push(panel->position);
-                break;
-            }
-            case "extents"_h:
-            {
-                ctx.Push(panel->extents);
-                break;
-            }
-
-            default:
-            {
-                ctx.GetGlobalRaw("Panel");
-                ctx.Push(key);
-                ctx.GetRaw(-2);
-            }
-        }
-
         return 1;
     }
 }

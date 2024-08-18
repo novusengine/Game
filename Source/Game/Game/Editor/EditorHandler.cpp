@@ -14,8 +14,9 @@
 #include "TerrainTools.h"
 #include "Viewport.h"
 
-#include "Game/Util/ServiceLocator.h"
+#include "Game/Scripting/LuaManager.h"
 #include "Game/Rendering/GameRenderer.h"
+#include "Game/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -173,6 +174,11 @@ namespace Editor
 
             if (ImGui::BeginMenu("Debug"))
             {
+                if (ImGui::Button("Reload Scripts"))
+                {
+                    ServiceLocator::GetLuaManager()->SetDirty();
+                }
+
                 // Reload shaders button
                 if (ImGui::Button("Reload Shaders"))
                 {

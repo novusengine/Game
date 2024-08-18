@@ -1,4 +1,4 @@
-local mod = Solution.Util.CreateModuleTable("Game", { "base", "fileformat", "input", "network", "gameplay", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "utfcpp", "base64" })
+local mod = Solution.Util.CreateModuleTable("Game", { "base", "fileformat", "input", "network", "gameplay", "renderer", "luau-compiler", "luau-vm", "jolt", "enkits", "refl-cpp", "base64" })
 
 Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS", "WIN32_LEAN_AND_MEAN", "NOMINMAX" }

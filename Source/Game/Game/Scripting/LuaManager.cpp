@@ -1,9 +1,10 @@
 #include "LuaManager.h"
 #include "LuaDefines.h"
 #include "LuaState.h"
-#include "Handlers/CanvasHandler.h"
+#include "Handlers/UIHandler.h"
 #include "Handlers/GameEventHandler.h"
 #include "Handlers/GlobalHandler.h"
+#include "Handlers/UIHandler.h"
 #include "Systems/LuaSystemBase.h"
 #include "Systems/GenericSystem.h"
 #include "Game/Util/ServiceLocator.h"
@@ -38,7 +39,7 @@ namespace Scripting
         _luaHandlers.resize(static_cast<u32>(LuaHandlerType::Count));
         SetLuaHandler(LuaHandlerType::Global, new GlobalHandler());
         SetLuaHandler(LuaHandlerType::GameEvent, new GameEventHandler());
-        SetLuaHandler(LuaHandlerType::Canvas, new CanvasHandler());
+        SetLuaHandler(LuaHandlerType::UI, new UI::UIHandler());
 
         Prepare();
 
@@ -70,6 +71,9 @@ namespace Scripting
 
                 auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
                 gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
+
+                //auto uiHandler = GetLuaHandler<UI::UIHandler*>(LuaHandlerType::UI);
+                //uiHandler->Clear();
             }
 
             isDirty = result;
