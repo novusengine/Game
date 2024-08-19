@@ -41,6 +41,7 @@ namespace Scripting
         void SetGlobal(const char* key, f64 value);
         void SetGlobal(const char* key, const char* value);
         void SetGlobal(const char* key, const vec3& value);
+        void SetGlobal(const char* key, const lua_CFunction value);
         void SetField(const char* key, i32 index = -2);
 
         void Push();
@@ -53,7 +54,7 @@ namespace Scripting
         void Push(const vec3& value);
         void Push(lua_CFunction value, const char* debugName = nullptr);
         void PushValue(i32 index = -1);
-        void Pop(i32 index = -1);
+        void Pop(i32 numPops = 1);
 
         bool PCall(i32 numArgs = 0, i32 numResults = 0, i32 errorfunc = 0);
 
@@ -102,7 +103,7 @@ namespace Scripting
         void SetTable(const char* key, const lua_CFunction value);
 
         i32 LoadBytecode(const std::string& chunkName, const std::string& bytecode, i32 env = 0);
-        i32 Resume(lua_State* from = nullptr, i32 index = 0);
+        i32 Resume(lua_State* from = nullptr, i32 nArg = 0);
         void MakeReadOnly();
         void ReportError();
         void Close();

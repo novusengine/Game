@@ -1,4 +1,4 @@
---require("UI/Templates")
+local UITemplates = require("UI/UITemplates")
 
 local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
     if (eventID == ButtonEvent.Hovered) then
@@ -37,65 +37,6 @@ local function Demo()
     testPanel:SetRelativePoint(0.5, 0.5);
 end
 
-local function RegisterTemplates()
-    local menuPanelTemplate = {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
-    };
-    UI.RegisterPanelTemplate("MenuPanel", menuPanelTemplate);
-
-    -- Header
-    local menuPanelHeaderTemplate = {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-header.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
-    };
-    UI.RegisterPanelTemplate("MenuPanelHeader", menuPanelHeaderTemplate);
-
-    local menuPanelHeaderTextTemplate = {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 24.0,
-        color = vec3.new(255.0/255.0, 239.0/255.0, 0.0/255.0),
-        borderSize = 0.30,
-        borderFade = 0.5,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
-    };
-    UI.RegisterTextTemplate("MenuPanelHeaderText", menuPanelHeaderTextTemplate);
-
-    -- Button
-    local menuButtonPanelTemplate = {
-        background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
-    };
-    UI.RegisterPanelTemplate("MenuButtonPanel", menuButtonPanelTemplate);
-
-    local menuButtonTextTemplate = {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 24.0,
-        color = vec3.new(1.0, 1.0, 1.0),
-        borderSize = 0.35,
-        borderFade = 0.8,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
-    };
-    UI.RegisterTextTemplate("MenuButtonText", menuButtonTextTemplate);
-
-    local menuButtonTemplate = {
-        --buttonPanelTemplate = "MenuButtonPanel",
-        --pressedButtonPanelTemplate = "MenuButtonPanel",
-        --disabledButtonPanelTemplate = "MenuButtonPanel",
-        --hoveredButtonPanelTemplate = "MenuButtonPanel",
-        panelTemplate = "MenuButtonPanel",
-        textTemplate = "MenuButtonText",
-    };
-    UI.RegisterButtonTemplate("MenuButton", menuButtonTemplate);
-
-    --local inheritedMenuButtonTemplate = UI.CopyButtonTemplate("MenuButton")
-    --menuButtonTemplate.buttonPanelTemplate = "OtherButtonPanel"
-    --UI.RegisterButtonTemplate("InheritedMenuButton", inheritedMenuButtonTemplate);
-end
-
 local function CreateEscapeMenu()
     -- Create Canvas
     local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
@@ -124,10 +65,10 @@ local function CreateEscapeMenu()
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    RegisterTemplates();
+    UITemplates.RegisterTemplates();
 
     CreateEscapeMenu();
-    --print('Hello from Demo.luau');
+    print('Hello from Demo.luau');
 end
 
 local function OnGameUpdated(eventID : number, motd : string)

@@ -155,11 +155,125 @@ namespace Scripting
         }
     }
 
+    static i32 lua_require(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        if (lua_gettop(state) != 1)
+        {
+            luaL_error(state, "error requiring module, invalid number of arguments");
+            return 0;
+        }
+
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        std::string name = luaL_checkstring(state, 1);
+
+        LuaStateInfo* stateInfo = luaManager->GetLuaStateInfo(state);
+        if (!stateInfo)
+        {
+            luaL_error(state, "error requiring module, stateInfo nullptr");
+            return 0;
+        }
+
+        const char* scriptDirPath = ctx.GetGlobal("path", nullptr);
+        if (!scriptDirPath)
+        {
+            luaL_error(state, "error requiring module, global 'path' missing");
+            return 0;
+        }
+
+        std::string scriptPath = std::string(scriptDirPath) + "/" + name + ".luau";
+        std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
+        ctx.Pop();
+
+        if (!fs::exists(scriptPath))
+        {
+            luaL_error(state, "error requiring module, script not found");
+            return 0;
+        }
+
+        u32 moduleHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
+        if (!stateInfo->_luaPathToBytecodeIndex.contains(moduleHash))
+        {
+            luaL_error(state, "error requiring module, bytecode not found");
+            return 0;
+        }
+
+        // Stack: Name, ModuleProxy
+        ctx.CreateTable();
+
+        // Stack: Name, ModuleProxy, __ImportedModules__
+        ctx.GetGlobalRaw("__ImportedModules__");
+
+        // Stack: Name, ModuleProxy, __ImportedModules__, Module
+        if (!ctx.GetTableField(scriptPath))
+        {
+            u32 bytecodeIndex = stateInfo->_luaPathToBytecodeIndex[moduleHash];
+            LuaBytecodeEntry& bytecodeEntry = stateInfo->bytecodeList[bytecodeIndex];
+
+            i32 result = ctx.LoadBytecode(bytecodeEntry.filePath, bytecodeEntry.bytecode, 0);
+            if (result != LUA_OK)
+            {
+                std::string error = lua_tostring(state, -1);
+
+                luaL_error(state, "error requiring module, failed to load module");
+                return false;
+            }
+
+            if (!ctx.PCall(0, 1))
+            {
+                return false;
+            }
+
+            // Stack: Name, ModuleProxy, __ImportedModules__, Module
+            if (lua_gettop(state) == 0)
+            {
+                luaL_error(state, "error requiring module, module does not return a value");
+                return 0;
+            }
+            else if (!lua_istable(state, -1))
+            {
+                luaL_error(state, "error requiring module, module must return a table");
+                return 0;
+            }
+
+            // Stack: Name, ModuleProxy, __ImportedModules__, Module, Module
+            ctx.PushValue();
+
+            // Stack: Name, ModuleProxy, __ImportedModules__, Module
+            ctx.SetTable("__index");
+
+            // Set the ModuleTable as readonly
+            lua_setreadonly(state, -1, true);
+
+            // Add Table to __ImportedModules__
+            // Stack: Name, ModuleProxy, __ImportedModules__
+            ctx.SetTable(scriptPath.c_str());
+
+            // Push Table to the stack
+            ctx.GetTableField(scriptPath);
+
+            bytecodeEntry.isLoaded = true;
+        }
+
+        // Stack: Name, ModuleProxy, __ImportedModules__
+        lua_setmetatable(state, -3);
+
+        // Stack: Name, ModuleProxy
+        ctx.Pop();
+
+        // Stack: ModuleProxy
+        lua_replace(state, -2);
+
+        return 1;
+    }
+
     bool LuaManager::LoadScripts()
     {
         const char* scriptDir = CVAR_ScriptDir.Get();
         const char* scriptExtension = CVAR_ScriptExtension.Get();
         fs::path scriptDirectory = fs::absolute(scriptDir);
+        std::string scriptDirectoryAsString = scriptDirectory.string();
 
         if (!fs::exists(scriptDirectory))
         {
@@ -167,16 +281,28 @@ namespace Scripting
         }
 
         lua_State* state = luaL_newstate();
+        u64 key = reinterpret_cast<u64>(state);
+
+        _luaStateToInfo.erase(key);
+        LuaStateInfo& stateInfo = _luaStateToInfo[key];
+
         LuaState ctx(state);
         ctx.RegisterDefaultLibraries();
+
+        ctx.SetGlobal("path", scriptDirectoryAsString.c_str());
+        ctx.SetGlobal("require", lua_require);
 
         for (u32 i = 0; i < _luaHandlers.size(); i++)
         {
             LuaHandlerBase* base = _luaHandlers[i];
             base->Register(state);
         }
+        
+        luaL_sandbox(state);
+        luaL_sandboxthread(state);
 
-        ctx.MakeReadOnly();
+        ctx.CreateTable("__ImportedModules__");
+        ctx.Pop();
 
         // TODO : Figure out if this catches hidden folders, and if so exclude them
         // TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
@@ -195,8 +321,10 @@ namespace Scripting
         }
         Luau::ParseOptions parseOptions;
 
-        _bytecodeList.clear();
-        _bytecodeList.reserve(paths.size());
+        bool didFail = false;
+
+        auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
+        gameEventHandler->SetupEvents(state);
 
         for (auto& path : paths)
         {
@@ -217,41 +345,67 @@ namespace Scripting
             reader.Read(buffer.get(), bufferSize);
 
             std::string luaCode;
+            luaCode.resize(bufferSize);
+
             if (!buffer->GetString(luaCode, bufferSize))
                 continue;
 
             LuaBytecodeEntry bytecodeEntry
             {
+                false,
                 path.filename().string(),
-                path.parent_path().string(),
+                pathAsStr,
                 Luau::compile(luaCode, compileOptions, parseOptions)
             };
 
-            _bytecodeList.push_back(bytecodeEntry);
+            u32 index = static_cast<u32>(stateInfo.bytecodeList.size());
 
-            i32 result = ctx.LoadBytecode(pathAsStr, bytecodeEntry.bytecode, 0);
-            if (result != LUA_OK)
-            {
-                ctx.ReportError();
-            }
+            fs::path relPath = fs::relative(path, scriptDirectory);
+            std::string scriptPath = scriptDirectoryAsString + "/" + relPath.string();
+            std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
+
+            StringUtils::StringHash pathHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
+
+            stateInfo.bytecodeList.push_back(bytecodeEntry);
+            stateInfo._luaPathToBytecodeIndex[pathHash] = index;
         }
 
-        auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-        gameEventHandler->SetupEvents(state);
-
-        bool didFail = false;
-
-        i32 top = ctx.GetTop();
-        for (i32 i = 0; i < top; i++)
+        if (!didFail)
         {
-            ctx.Resume();
+            u32 numScriptsToLoad = static_cast<u32>(stateInfo.bytecodeList.size());
 
-            i32 result = ctx.GetStatus();
-            if (result != LUA_OK)
+            for (u32 i = 0; i < numScriptsToLoad; i++)
             {
-                ctx.ReportError();
-                didFail = true;
-                break;
+                LuaBytecodeEntry& bytecodeEntry = stateInfo.bytecodeList[i];
+
+                if (bytecodeEntry.isLoaded)
+                    continue;
+
+                i32 result = ctx.LoadBytecode(bytecodeEntry.filePath, bytecodeEntry.bytecode, 0);
+                if (result != LUA_OK)
+                {
+                    std::string error = lua_tostring(state, -1);
+
+                    NC_LOG_ERROR("Failed to load script : {0}\n{1}", bytecodeEntry.filePath, error);
+                    didFail = true;
+                    return false;
+                }
+
+                i32 status = ctx.Resume();
+                if (status != LUA_OK)
+                {
+                    std::string error = (status == LUA_YIELD) ? "thread yielded unexpectedly" : lua_tostring(state, -1);
+                    error += "\nstacktrace:\n";
+                    error += lua_debugtrace(state);
+
+                    NC_LOG_ERROR("Failed to load script : {0}\n{1}", bytecodeEntry.filePath, error);
+                    didFail = true;
+                    return false;
+                }
+
+                NC_LOG_INFO("Loaded Script : {0}", bytecodeEntry.filePath);
+
+                bytecodeEntry.isLoaded = true;
             }
         }
 
@@ -261,6 +415,9 @@ namespace Scripting
             {
                 gameEventHandler->ClearEvents(_internalState);
             
+                u64 key = reinterpret_cast<u64>(_internalState);
+                _luaStateToInfo.erase(key);
+                
                 LuaState oldCtx(_internalState);
                 oldCtx.Close();
             }

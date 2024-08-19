@@ -37,6 +37,9 @@ namespace Scripting
     }
     void GameEventHandler::CallEvent(lua_State* state, u32 eventID, LuaEventData* data)
     {
+        if (eventID >= _eventToFuncHandlerList.size())
+            return;
+
         LuaGameEvent gameEventID = static_cast<LuaGameEvent>(eventID);
 
         if (gameEventID == LuaGameEvent::Invalid || gameEventID >= LuaGameEvent::Count)
@@ -44,7 +47,9 @@ namespace Scripting
             return;
         }
 
-        _eventToFuncHandlerList[eventID](state, eventID, data);
+        EventHandlerFn& fn = _eventToFuncHandlerList[eventID];
+        if (fn)
+            fn(state, eventID, data);
     }
     void GameEventHandler::RegisterEventCallback(lua_State* state, u32 eventID, i32 funcHandle)
     {

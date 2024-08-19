@@ -132,6 +132,12 @@ namespace Scripting
         lua_setglobal(_state, key);
     }
 
+    void LuaState::SetGlobal(const char* key, const lua_CFunction value)
+    {
+        Push(value);
+        lua_setglobal(_state, key);
+    }
+
     void LuaState::SetField(const char* key, i32 index)
     {
         lua_setfield(_state, index, key);
@@ -187,9 +193,9 @@ namespace Scripting
         lua_pushvalue(_state, index);
     }
 
-    void LuaState::Pop(i32 index /*= -1*/)
+    void LuaState::Pop(i32 numPops /*= 1*/)
     {
-        lua_pop(_state, index);
+        lua_pop(_state, numPops);
     }
 
     bool LuaState::PCall(i32 numArgs /*= 0*/, i32 numResults /*= 0*/, i32 errorfunc /*= 0*/)
@@ -283,10 +289,12 @@ namespace Scripting
             return false;
         }
 
+        index += (-1 * (index < 0));
+
         lua_pushstring(_state, key.c_str());
         lua_gettable(_state, index);
 
-        if (lua_isnil(_state, index+1))
+        if (lua_isnil(_state, -1))
         {
             lua_pop(_state, 1);
             return false;
@@ -390,9 +398,9 @@ namespace Scripting
         return luau_load(_state, chunkName.c_str(), bytecode.c_str(), bytecode.size(), env);
     }
 
-    i32 LuaState::Resume(lua_State* from, i32 index)
+    i32 LuaState::Resume(lua_State* from, i32 nArg)
     {
-        return lua_resume(_state, from, index);
+        return lua_resume(_state, from, nArg);
     }
 
     void LuaState::MakeReadOnly()

@@ -17,10 +17,19 @@ namespace Scripting
 
     struct LuaBytecodeEntry
     {
+        bool isLoaded = false;
+
         const std::string fileName;
         const std::string filePath;
 
         const std::string bytecode;
+    };
+
+    struct LuaStateInfo
+    {
+    public:
+        std::vector<LuaBytecodeEntry> bytecodeList;
+        robin_hood::unordered_map<u32, u32> _luaPathToBytecodeIndex;
     };
 
     class LuaManager
@@ -35,6 +44,14 @@ namespace Scripting
 
         void SetDirty() { _isDirty = true; }
 
+        LuaStateInfo* GetLuaStateInfo(lua_State* state)
+        {
+            u64 key = reinterpret_cast<u64>(state);
+            if (!_luaStateToInfo.contains(key))
+                return nullptr;
+
+            return &_luaStateToInfo[key];
+        }
         lua_State* GetInternalState() { return _internalState; }
 
     private:
@@ -59,8 +76,6 @@ namespace Scripting
             return reinterpret_cast<T>(_luaHandlers[index]);
         }
 
-        const std::vector<LuaBytecodeEntry>& GetBytecodeList() { return _bytecodeList; }
-
     private:
         lua_State* _internalState;
         lua_State* _publicState;
@@ -69,7 +84,7 @@ namespace Scripting
         std::vector<LuaSystemBase*> _luaSystems;
         std::vector<enki::TaskSet*> _tasks;
 
-        std::vector<LuaBytecodeEntry> _bytecodeList;
+        robin_hood::unordered_map<u64, LuaStateInfo> _luaStateToInfo;
         
         bool _isDirty = false;
     };
