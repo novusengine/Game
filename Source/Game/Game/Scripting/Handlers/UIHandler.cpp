@@ -9,9 +9,11 @@
 #include "Game/Scripting/LuaManager.h"
 #include "Game/Scripting/Systems/LuaSystemBase.h"
 #include "Game/Scripting/UI/Button.h"
+#include "Game/Scripting/UI/Box.h"
 #include "Game/Scripting/UI/Canvas.h"
 #include "Game/Scripting/UI/Panel.h"
 #include "Game/Scripting/UI/Text.h"
+#include "Game/UI/Box.h"
 #include "Game/Util/ServiceLocator.h"
 
 #include <Base/Util/StringUtils.h>
@@ -29,6 +31,9 @@ namespace Scripting::UI
 
         { "GetCanvas", UIHandler::GetCanvas },
 
+        // Utils
+        { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
+
         { nullptr, nullptr }
     };
 
@@ -40,10 +45,14 @@ namespace Scripting::UI
         // UI
         LuaMethodTable::Set(state, uiMethods, "UI");
 
+        // Widgets
         Button::Register(state);
         Canvas::Register(state);
         Panel::Register(state);
         Text::Register(state);
+
+        // Utils
+        Box::Register(state);
     }
 
     void UIHandler::Clear()
@@ -117,6 +126,18 @@ namespace Scripting::UI
             ctx.Pop(1);
         }
 
+        ::UI::Box texCoords;
+        if (ctx.GetTableField("texCoords", 2))
+        {
+            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, 3);
+            ctx.Pop(1);
+
+            if (box)
+            {
+                texCoords = *box;
+            }
+        }
+
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
@@ -125,6 +146,7 @@ namespace Scripting::UI
         panelTemplate.background = background;
         panelTemplate.color = Color(color.x, color.y, color.z);
         panelTemplate.cornerRadius = cornerRadius;
+        panelTemplate.texCoords = texCoords;
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToPanelTemplateIndex[templateNameHash] = panelTemplateIndex;
@@ -229,5 +251,29 @@ namespace Scripting::UI
         lua_setmetatable(state, -2);
 
         return 1;
+    }
+
+    i32 UIHandler::PixelsToTexCoord(lua_State* state)
+    {
+        LuaState ctx(state);
+        
+        i32 posX = ctx.Get(0, 1);
+        i32 posY = ctx.Get(0, 2);
+
+        i32 sizeX = ctx.Get(1, 3);
+        i32 sizeY = ctx.Get(1, 4);
+
+        ctx.Pop(4);
+
+        vec2 texCoord = vec2(static_cast<f32>(posX) / static_cast<f32>(sizeX), static_cast<f32>(posY) / static_cast<f32>(sizeY));
+
+        u32 top = ctx.GetTop();
+
+        ctx.Push(texCoord.x);
+        ctx.Push(texCoord.y);
+
+        top = ctx.GetTop();
+
+        return 2;
     }
 }

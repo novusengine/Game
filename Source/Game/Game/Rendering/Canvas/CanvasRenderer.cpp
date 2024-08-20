@@ -59,8 +59,9 @@ void CanvasRenderer::Update(f32 deltaTime)
         if (widget.type == WidgetType::Panel)
         {
             auto& panel = registry->get<Panel>(entity);
+            auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
 
-            UpdatePanelVertices(transform, panel);
+            UpdatePanelVertices(transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
@@ -324,18 +325,7 @@ void CanvasRenderer::CreatePermanentResources()
     //_data.textVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 
-vec2 panelUVs[6] = {
-    // Triangle 1
-    vec2(0, 1), // Top Left
-    vec2(1, 0), // Lower Right
-    vec2(1, 1), // Top Right
-    // Triangle 2
-    vec2(0, 0), // Lower Left
-    vec2(1, 0), // Lower Right
-    vec2(0, 1), // Top Left
-};
-
-void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel)
+void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate)
 {
     std::vector<vec4>& vertices = _vertices.Get();
 
@@ -345,6 +335,18 @@ void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform
         panel.gpuVertexIndex = static_cast<i32>(vertices.size());
         vertices.resize(vertices.size() + 6); // TODO: Indexing?
     }
+
+    const vec2 min = panelTemplate.texCoords.min;
+    const vec2 max = panelTemplate.texCoords.max;
+
+    vec2 panelUVs[6];
+    panelUVs[0] = vec2(min.x, max.y); // Left Top 
+    panelUVs[1] = vec2(max.x, min.y); // Right Bottom
+    panelUVs[2] = vec2(max.x, max.y); // Right Top
+
+    panelUVs[3] = vec2(min.x, min.y); // Left Bottom
+    panelUVs[4] = vec2(max.x, min.y); // Right Bottom
+    panelUVs[5] = vec2(min.x, max.y); // Left Top
 
     // Update vertices
     vec2 position = PixelPosToNDC(transform.GetWorldPosition());

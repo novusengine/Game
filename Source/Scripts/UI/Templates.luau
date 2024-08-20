@@ -26,11 +26,17 @@ function Module.RegisterTemplates()
     };
     UI.RegisterTextTemplate("MenuPanelHeaderText", menuPanelHeaderTextTemplate);
 
+    local minX,minY = UI.PixelsToTexCoord(0, 0, 128, 32);
+    local maxX,maxY = UI.PixelsToTexCoord(128, 32, 128, 32);
+
     -- Button
     local menuButtonPanelTemplate = {
         background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
+        cornerRadius = 0.0,
+        --texCoords = Box.new(1.1, 2.1, 3.1, 4.1),
+        texCoords = Box.new(minX, minY, maxX, maxY),
+
     };
     UI.RegisterPanelTemplate("MenuButtonPanel", menuButtonPanelTemplate);
 

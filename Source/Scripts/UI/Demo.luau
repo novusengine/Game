@@ -1,4 +1,4 @@
-local UITemplates = require("UI/UITemplates")
+local UITemplates = require("UI/Templates")
 
 local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
     if (eventID == ButtonEvent.Hovered) then
@@ -61,7 +61,10 @@ local function CreateEscapeMenu()
     optionsButton:SetRelativePoint(0.5, 0.5);
     optionsButton:SetText("Options");
 
-
+    local creditsButton = panel:NewButton(0, -150, 100, 50, 0, "MenuButton");
+    creditsButton:SetAnchor(0.5, 1.0);
+    creditsButton:SetRelativePoint(0.5, 0.5);
+    creditsButton:SetText("Credits");
 end
 
 local function OnGameLoaded(eventID : number, motd : string)

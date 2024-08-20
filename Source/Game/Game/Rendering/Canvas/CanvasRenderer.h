@@ -45,7 +45,7 @@ public:
 private:
     void CreatePermanentResources();
 
-    void UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel);
+    void UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate);
     void UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ::UI::TextTemplate& textTemplate); // Returns the size of the text in pixels
 
     void UpdatePanelData(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate);

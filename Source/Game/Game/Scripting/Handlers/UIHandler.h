@@ -23,5 +23,8 @@ namespace Scripting::UI
         
         // UI functions
         static i32 GetCanvas(lua_State* state);
+
+        // Utils
+        static i32 PixelsToTexCoord(lua_State* state);
     };
 }
