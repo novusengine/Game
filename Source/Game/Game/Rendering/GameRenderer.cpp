@@ -377,9 +377,9 @@ f32 GameRenderer::Render()
 
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
-    _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
+    _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);

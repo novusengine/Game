@@ -263,7 +263,7 @@ bool Application::Init()
     ServiceLocator::SetEditorHandler(_editorHandler);
 
     _ecsScheduler = new ECS::Scheduler();
-    _ecsScheduler->Init(*_registries.gameRegistry);
+    _ecsScheduler->Init(_registries);
 
     ServiceLocator::SetGameConsole(new GameConsole());
 
@@ -472,7 +472,7 @@ bool Application::Tick(f32 deltaTime)
         }
     }
 
-    _ecsScheduler->Update(*_registries.gameRegistry, deltaTime);
+    _ecsScheduler->Update(_registries, deltaTime);
 
     // Handle Double Buffered Event Swap
     {

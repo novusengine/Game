@@ -3,6 +3,7 @@ struct Vertex2D
 {
 	float2 pos;
 	uint color;
+	uint padding;
 };
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<Vertex2D> _vertices;

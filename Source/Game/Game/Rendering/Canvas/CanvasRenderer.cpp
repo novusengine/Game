@@ -27,7 +27,7 @@ void CanvasRenderer::Clear()
     _charDrawDatas.Clear();
     _textureNameHashToIndex.clear();
 
-    _renderer->UnloadTexturesInArray(_textures, 1);
+    _renderer->UnloadTexturesInArray(_textures, 2);
 }
 
 CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer)
@@ -41,12 +41,10 @@ void CanvasRenderer::Update(f32 deltaTime)
     ZoneScoped;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-    auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
-
     ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
     // Dirty transforms
-    transform2DSystem.ProcessMovedEntities([&](entt::entity entity)
+    registry->view<DirtyWidgetTransform>().each([&](entt::entity entity)
     {
         auto& widget = registry->get<Widget>(entity);
 
@@ -59,21 +57,21 @@ void CanvasRenderer::Update(f32 deltaTime)
         if (widget.type == WidgetType::Panel)
         {
             auto& panel = registry->get<Panel>(entity);
-            auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
+            auto& panelTemplate = registry->get<PanelTemplate>(entity);
 
             UpdatePanelVertices(transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
             auto& text = registry->get<Text>(entity);
-            auto& textTemplate = uiSingleton.textTemplates[text.templateIndex];
+            auto& textTemplate = registry->get<TextTemplate>(entity);
 
             UpdateTextVertices(transform, text, textTemplate);
         }
     });
 
     // Dirty widget datas
-    registry->view<DirtyWidget>().each([&](entt::entity entity)
+    registry->view<DirtyWidgetData>().each([&](entt::entity entity)
     {
         auto& widget = registry->get<Widget>(entity);
         if (widget.type == WidgetType::Canvas)
@@ -85,14 +83,14 @@ void CanvasRenderer::Update(f32 deltaTime)
         {
             ECS::Components::Transform2D& transform = registry->get<ECS::Components::Transform2D>(entity);
             auto& panel = registry->get<Panel>(entity);
-            auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
+            auto& panelTemplate = registry->get<PanelTemplate>(entity);
 
             UpdatePanelData(transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
             auto& text = registry->get<Text>(entity);
-            auto& textTemplate = uiSingleton.textTemplates[text.templateIndex];
+            auto& textTemplate = registry->get<TextTemplate>(entity);
 
             UpdateTextData(text, textTemplate);
         }
@@ -113,7 +111,7 @@ void CanvasRenderer::Update(f32 deltaTime)
         _descriptorSet.Bind("_charDrawDatas", _charDrawDatas.GetBuffer());
     }
 
-    registry->clear<DirtyWidget>();
+    registry->clear<DirtyWidgetData>();
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -214,8 +212,6 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
 
-            //NC_LOG_INFO("-- START CANVAS RENDERING --");
-
             Renderer::GraphicsPipelineID currentPipeline;
 
             // Loop over widget roots
@@ -229,7 +225,6 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     if (childWidget.type == WidgetType::Canvas)
                     {
-                        //NC_LOG_INFO("Canvas");
                         return; // There is nothing to draw for a canvas
                     }
 
@@ -257,15 +252,11 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     if (childWidget.type == WidgetType::Panel)
                     {
-                        //NC_LOG_INFO("Panel");
-
                         auto& panel = registry->get<Panel>(childEntity);
                         RenderPanel(commandList, transform, childWidget, panel);
                     }
                     else if (childWidget.type == WidgetType::Text)
                     {
-                        //NC_LOG_INFO("Text");
-
                         auto& text = registry->get<Text>(childEntity);
                         RenderText(commandList, transform, childWidget, text);
                     }
@@ -276,8 +267,6 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             {
                 commandList.EndPipeline(currentPipeline);
             }
-
-            //NC_LOG_INFO("-- END CANVAS RENDERING --");
         });
 }
 
@@ -298,6 +287,15 @@ void CanvasRenderer::CreatePermanentResources()
 
     u32 arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
+
+    Renderer::DataTextureDesc additiveDataTextureDesc;
+    additiveDataTextureDesc.width = 1;
+    additiveDataTextureDesc.height = 1;
+    additiveDataTextureDesc.format = Renderer::ImageFormat::R8G8B8A8_UNORM_SRGB;
+    additiveDataTextureDesc.data = new u8[4]{ 0, 0, 0, 0 }; // Black, because this is additive
+    additiveDataTextureDesc.debugName = "UIDebugAdditiveTexture";
+
+    _renderer->CreateDataTextureIntoArray(additiveDataTextureDesc, _textures, arrayIndex);
 
     // Samplers
     Renderer::SamplerDesc samplerDesc;
@@ -325,7 +323,7 @@ void CanvasRenderer::CreatePermanentResources()
     //_data.textVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 
-void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate)
+void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
     std::vector<vec4>& vertices = _vertices.Get();
 
@@ -365,29 +363,29 @@ void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform
     _vertices.SetDirtyElements(panel.gpuVertexIndex, 6);
 }
 
-void CalculateVertices(vec2 pos, vec2 size, std::vector<vec4>& vertices, u32 vertexIndex)
+void CalculateVertices(const vec2& pos, const vec2& size, const vec2& relativePoint, std::vector<vec4>& vertices, u32 vertexIndex)
 {
-    vec2 upperLeftPos = vec2(pos.x, pos.y);
-    vec2 upperRightPos = vec2(pos.x + size.x, pos.y);
-    vec2 lowerLeftPos = vec2(pos.x, pos.y + size.y);
-    vec2 lowerRightPos = vec2(pos.x + size.x, pos.y + size.y);
+    vec2 lowerLeftPos = vec2(pos.x, pos.y);
+    vec2 lowerRightPos = lowerLeftPos + vec2(size.x, 0.0f);
+    vec2 upperLeftPos = lowerLeftPos + vec2(0.0f, size.y);
+    vec2 upperRightPos = lowerLeftPos + vec2(size.x, size.y);
 
     // Vertices
-    vec4 upperLeft = vec4(upperLeftPos, 0, 1);
-    vec4 upperRight = vec4(upperRightPos, 1, 1);
-    vec4 lowerLeft = vec4(lowerLeftPos, 0, 0);
-    vec4 lowerRight = vec4(lowerRightPos, 1, 0);
+    vec4 lowerLeft = vec4(lowerLeftPos, 0, 1);
+    vec4 lowerRight = vec4(lowerRightPos, 1, 1);
+    vec4 upperLeft = vec4(upperLeftPos, 0, 0);
+    vec4 upperRight = vec4(upperRightPos, 1, 0);
 
     vertices[vertexIndex + 0] = upperLeft;
-    vertices[vertexIndex + 1] = lowerRight;
-    vertices[vertexIndex + 2] = upperRight;
+    vertices[vertexIndex + 1] = upperRight;
+    vertices[vertexIndex + 2] = lowerRight;
 
     vertices[vertexIndex + 3] = lowerLeft;
-    vertices[vertexIndex + 4] = lowerRight;
-    vertices[vertexIndex + 5] = upperLeft;
+    vertices[vertexIndex + 4] = upperLeft;
+    vertices[vertexIndex + 5] = lowerRight;
 }
 
-void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ::UI::TextTemplate& textTemplate)
+void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate)
 {
     std::vector<vec4>& vertices = _vertices.Get();
 
@@ -420,10 +418,15 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
     Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
 
+    vec2 relativePoint = transform.GetRelativePoint();
+
+    f32 scaledDescent = glm::ceil(font->descent * font->scale);
+
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
     vec2 currentPos = transform.GetWorldPosition();
+    
     f32 tallestCharacter = 0.0f;
     u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
     for (; it != endIt; it++)
@@ -438,7 +441,8 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
         Renderer::FontChar& fontChar = font->GetChar(c);
 
-        vec2 pixelPos = currentPos + vec2(fontChar.xOffset, -(fontChar.yOffset + fontChar.height));//-fontChar.yOffset + fontChar.height);
+        //vec2 pixelPos = currentPos + vec2(fontChar.xOffset, -(fontChar.yOffset + fontChar.height));
+        vec2 pixelPos = currentPos - vec2(-(static_cast<f32>(fontChar.xOffset) - fontChar.leftSideBearing), static_cast<f32>(fontChar.yOffset) + fontChar.height + scaledDescent);
         vec2 pixelSize = vec2(fontChar.width, fontChar.height);
         tallestCharacter = std::max(tallestCharacter, pixelSize.y);
 
@@ -446,14 +450,14 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
         vec2 size = PixelSizeToNDC(pixelSize);
 
         // Add vertices
-        CalculateVertices(position, size, vertices, vertexIndex);
+        CalculateVertices(position, size, relativePoint, vertices, vertexIndex);
         vertexIndex += 6;
 
         currentPos.x += fontChar.advance;
     }
 }
 
-void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ::UI::PanelTemplate& panelTemplate)
+void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
     std::vector<PanelDrawData>& panelDrawDatas = _panelDrawDatas.Get();
 
@@ -468,10 +472,10 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
 
     // Update draw data
     auto& drawData = panelDrawDatas[panel.gpuDataIndex];
-    drawData.packed.y = panelTemplate.color.ToRGBA32();
+    drawData.packed.z = panelTemplate.color.ToRGBA32();
     drawData.cornerRadiusAndBorder = vec4(cornerRadius, 0.0f, 0.0f);
 
-    // Update texture
+    // Update textures
     if (panelTemplate.background.empty())
     {
         drawData.packed.x = 0;
@@ -499,10 +503,37 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
         }
     }
 
+    if (panelTemplate.foreground.empty())
+    {
+        drawData.packed.y = 1;
+    }
+    else
+    {
+        u32 textureNameHash = StringUtils::fnv1a_32(panelTemplate.foreground.c_str(), panelTemplate.foreground.size());
+
+        if (_textureNameHashToIndex.contains(textureNameHash))
+        {
+            // Use already loaded texture
+            drawData.packed.y = _textureNameHashToIndex[textureNameHash];
+        }
+        else
+        {
+            // Load texture
+            Renderer::TextureDesc desc;
+            desc.path = panelTemplate.foreground;
+
+            u32 textureIndex;
+            _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
+
+            _textureNameHashToIndex[textureNameHash] = textureIndex;
+            drawData.packed.y = textureIndex;
+        }
+    }
+
     _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
 }
 
-void CanvasRenderer::UpdateTextData(Text& text, ::UI::TextTemplate& textTemplate)
+void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplate& textTemplate)
 {
     std::vector<CharDrawData>& charDrawDatas = _charDrawDatas.Get();
 
@@ -571,12 +602,16 @@ void CanvasRenderer::UpdateTextData(Text& text, ::UI::TextTemplate& textTemplate
 
 void CanvasRenderer::RenderPanel(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, Widget& widget, Panel& panel)
 {
+    commandList.PushMarker("Panel", Color::White);
     commandList.Draw(6, 1, panel.gpuVertexIndex, panel.gpuDataIndex);
+    commandList.PopMarker();
 }
 
 void CanvasRenderer::RenderText(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, Widget& widget, Text& text)
 {
+    commandList.PushMarker("Text", Color::White);
     commandList.Draw(6, text.numCharsNonWhitespace, text.gpuVertexIndex, text.gpuDataIndex);
+    commandList.PopMarker();
 }
 
 vec2 CanvasRenderer::PixelPosToNDC(const vec2& pixelPosition) const

@@ -18,8 +18,8 @@ namespace Scripting::UI
     {
         LuaMetaTable<Canvas>::Register(state, "CanvasMetaTable");
 
-        LuaMetaTable<Canvas>::Set(state, canvasMethods);
         LuaMetaTable<Canvas>::Set(state, widgetCreationMethods);
+        LuaMetaTable<Canvas>::Set(state, canvasMethods);
     }
 
     namespace CanvasMethods

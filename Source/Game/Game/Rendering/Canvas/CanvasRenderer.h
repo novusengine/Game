@@ -1,6 +1,5 @@
 #pragma once
 #include "Game/ECS/Components/UI/Widget.h"
-#include "Game/UI/Templates.h"
 
 #include <Base/Types.h>
 
@@ -23,7 +22,9 @@ namespace ECS
         namespace UI
         {
             struct Panel;
+            struct PanelTemplate;
             struct Text;
+            struct TextTemplate;
         }
     }
 }
@@ -45,11 +46,11 @@ public:
 private:
     void CreatePermanentResources();
 
-    void UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate);
-    void UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ::UI::TextTemplate& textTemplate); // Returns the size of the text in pixels
+    void UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
+    void UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate); // Returns the size of the text in pixels
 
-    void UpdatePanelData(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ::UI::PanelTemplate& panelTemplate);
-    void UpdateTextData(ECS::Components::UI::Text& text, ::UI::TextTemplate& textTemplate);
+    void UpdatePanelData(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
+    void UpdateTextData(ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate);
 
     void RenderPanel(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, ECS::Components::UI::Widget& widget, ECS::Components::UI::Panel& panel);
     void RenderText(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, ECS::Components::UI::Widget& widget, ECS::Components::UI::Text& text);

@@ -3,14 +3,24 @@
 
 #include <entt/entt.hpp>
 
+namespace Scripting::UI
+{
+    struct Widget;
+}
+
 namespace ECS::Util
 {
-	namespace UI
-	{
-		entt::entity GetOrEmplaceCanvas(entt::registry* registry, const char* name, vec2 pos, ivec2 size);
-		entt::entity CreateCanvas(entt::registry* registry, const char* name, vec2 pos, ivec2 size, entt::entity parent = entt::null);
+    namespace UI
+    {
+        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size);
+        entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, entt::entity parent = entt::null);
 
-		entt::entity CreatePanel(entt::registry* registry, vec2 pos, ivec2 size, u32 layer, const char* templateName, entt::entity parent);
-		entt::entity CreateText(entt::registry* registry, const char* text, vec2 pos, u32 layer, const char* templateName, entt::entity parent);
-	}
+        entt::entity CreatePanel(Scripting::UI::Widget* widget, entt::registry* registry, vec2 pos, ivec2 size, u32 layer, const char* templateName, entt::entity parent);
+        entt::entity CreateText(Scripting::UI::Widget* widget, entt::registry* registry, const char* text, vec2 pos, u32 layer, const char* templateName, entt::entity parent);
+
+        void RefreshText(entt::registry* registry, entt::entity entity);
+
+        void ResetTemplate(entt::registry* registry, entt::entity entity);
+        void ApplyTemplateAdditively(entt::registry* registry, entt::entity entity, u32 templateHash);
+    }
 }

@@ -115,6 +115,12 @@ void ECS::Transform2DSystem::AddLocalOffset(entt::entity entity, const vec2& off
     if (tf) AddLocalOffset(entity, *tf, offset);
 }
 
+void ECS::Transform2DSystem::SetLayer(entt::entity entity, u32 newLayer)
+{
+    ECS::Components::Transform2D* tf = owner->try_get<ECS::Components::Transform2D>(entity);
+    if (tf) SetLayer(entity, *tf, newLayer);
+}
+
 void ECS::Transform2DSystem::SetSize(entt::entity entity, const vec2& newSize)
 {
     ECS::Components::Transform2D* tf = owner->try_get<ECS::Components::Transform2D>(entity);
@@ -207,6 +213,15 @@ void ECS::Transform2DSystem::AddLocalOffset(entt::entity entity, ECS::Components
     RefreshTransform(entity, transform);
 }
 
+void ECS::Transform2DSystem::SetLayer(entt::entity entity, ECS::Components::Transform2D& transform, u32 newLayer)
+{
+    if (newLayer != transform.layer)
+    {
+        transform.layer = newLayer;
+        RefreshTransform(entity, transform);
+    }
+}
+
 void ECS::Transform2DSystem::SetSize(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newSize)
 {
     if (newSize != transform.size)
@@ -294,4 +309,25 @@ ECS::Components::Transform2D* ECS::Components::Transform2D::GetParentTransform()
     {
         return nullptr;
     }
+}
+
+u32 ECS::Components::Transform2D::GetHierarchyDepth() const
+{
+    // TODO: Do this while parenting...
+
+    if (ownerNode)
+    {
+        u32 depth = 0;
+
+        SceneNode2D* parent = ownerNode->GetParent();
+        while (parent)
+        {
+            depth++;
+            parent = parent->GetParent();
+        }
+
+        return depth;
+    }
+
+    return 0;
 }

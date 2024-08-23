@@ -3,7 +3,7 @@
 
 struct PanelDrawData
 {
-    uint4 packed; // x: textureIndex, y: color
+    uint4 packed; // x: textureIndex, y: additiveTextureIndex, y: color
     float4 slicingOffset;
     float4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
 };
@@ -25,12 +25,16 @@ float4 main(VertexOutput input) : SV_Target
     float2 uv = input.uv;
 
     uint textureIndex = drawData.packed.x;
-    uint packedColor = drawData.packed.y;
+    uint additiveTextureIndex = drawData.packed.y;
+    uint packedColor = drawData.packed.z;
 
     float4 colorMultiplier = PackedUnormsToFloat4(packedColor);
 
     float4 color = _textures[textureIndex].Sample(_sampler, uv);
     color.rgb *= colorMultiplier.rgb;
+
+    float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, uv);
+    color.rgb += additiveColor.rgb;
 
     float2 cornerRadius = drawData.cornerRadiusAndBorder.xy; // Specified in UV space
 
@@ -55,5 +59,5 @@ float4 main(VertexOutput input) : SV_Target
         }
     }
 
-    return color;
+    return saturate(color);
 }

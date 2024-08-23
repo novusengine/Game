@@ -4,6 +4,7 @@
 #include "Game/ECS/Util/Transform2D.h"
 #include "Game/ECS/Util/UIUtil.h"
 #include "Game/Scripting/LuaState.h"
+#include "Game/Scripting/UI/Button.h"
 #include "Game/Scripting/UI/Panel.h"
 #include "Game/Scripting/UI/Text.h"
 #include "Game/Util/ServiceLocator.h"
@@ -48,20 +49,25 @@ namespace Scripting::UI
             const std::string& panelTemplateName = buttonTemplate.panelTemplate;
             const std::string& textTemplateName = buttonTemplate.textTemplate;
 
-            entt::entity panelEntity = ECS::Util::UI::CreatePanel(registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
-            entt::entity textEntity = ECS::Util::UI::CreateText(registry, "TEST", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
+            Button* button = ctx.PushUserData<Button>([](void* x)
+            {
+
+            });
+
+            entt::entity panelEntity = ECS::Util::UI::CreatePanel(button, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
+            entt::entity textEntity = ECS::Util::UI::CreateText(button, registry, "TEST", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
 
             ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
             ts.SetAnchor(textEntity, vec2(0.5, 0.5));
             ts.SetRelativePoint(textEntity, vec2(0.5, 0.5));
 
-            Widget* button = ctx.PushUserData<Widget>([](void* x)
-            {
-
-            });
             button->type = WidgetType::Button;
             button->entity = panelEntity;
 
+            button->panelEntity = panelEntity;
+            button->textEntity = textEntity;
+
+            button->metaTableName = "ButtonMetaTable";
             luaL_getmetatable(state, "ButtonMetaTable");
             lua_setmetatable(state, -2);
 
@@ -89,16 +95,18 @@ namespace Scripting::UI
                 return 1;
             }
 
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            entt::entity entity = ECS::Util::UI::CreatePanel(registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, templateName, parent->entity);
-
-            Widget* panel = ctx.PushUserData<Widget>([](void* x)
+            Panel* panel = ctx.PushUserData<Panel>([](void* x)
             {
 
             });
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            entt::entity entity = ECS::Util::UI::CreatePanel(panel, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, templateName, parent->entity);
+
             panel->type = WidgetType::Panel;
             panel->entity = entity;
 
+            panel->metaTableName = "PanelMetaTable";
             luaL_getmetatable(state, "PanelMetaTable");
             lua_setmetatable(state, -2);
 
@@ -124,16 +132,18 @@ namespace Scripting::UI
                 return 1;
             }
 
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            entt::entity entity = ECS::Util::UI::CreateText(registry, str, vec2(posX, posY), layer, templateName, parent->entity);
-
-            Widget* text = ctx.PushUserData<Widget>([](void* x)
+            Text* text = ctx.PushUserData<Text>([](void* x)
             {
 
             });
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            entt::entity entity = ECS::Util::UI::CreateText(text, registry, str, vec2(posX, posY), layer, templateName, parent->entity);
+
             text->type = WidgetType::Text;
             text->entity = entity;
 
+            text->metaTableName = "TextMetaTable";
             luaL_getmetatable(state, "TextMetaTable");
             lua_setmetatable(state, -2);
 

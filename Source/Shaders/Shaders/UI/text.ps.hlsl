@@ -31,14 +31,16 @@ float4 main(VertexOutput input) : SV_Target
 
     float distance = _fontTextures[textureIndex].SampleLevel(_sampler, input.uv, 0).r;
 
-    const float fontOnEdgeValue = 180.0f;
-    const float fontBorderSteps = 5.0f; // TODO: When we have font objects, we need to pass this from the CPU
+    const float fontOnEdgeValue = 192.0f;
+    const float fontBorderSteps = 6.0f; // TODO: When we have font objects, we need to pass this from the CPU
     const float fontBorderValue = fontOnEdgeValue / fontBorderSteps; // 36.0f
 
     float borderSize = drawData.packed1.x;
     float borderFade = drawData.packed1.y;
     float borderSteps = borderFade * fontBorderSteps;
     bool hasBorder = borderSize > 0.0;
+
+    return float4(0, 0, 1, 1);
 
     if (distance <= ((1.0 - borderSize) * hasBorder))
     {

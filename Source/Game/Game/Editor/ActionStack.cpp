@@ -27,19 +27,19 @@ namespace Editor
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("GlobalEditor"_h);
 
         keybindGroup->AddKeyboardCallback("UndoEditor", GLFW_KEY_Z, KeybindAction::Press, KeybindModifier::Ctrl, [&](i32 key, KeybindAction action, KeybindModifier modifier)
-            {
+        {
                 if (_actionStack.size() == 0)
                 return true;
 
-        // Undo most recent action
-        BaseAction* lastAction = _actionStack.back();
-        lastAction->Undo();
-        delete lastAction;
+                // Undo most recent action
+                BaseAction* lastAction = _actionStack.back();
+                lastAction->Undo();
+                delete lastAction;
 
-        _actionStack.pop_back();
-        ServiceLocator::GetEditorHandler()->GetInspector()->DirtySelection();
+                _actionStack.pop_back();
+                ServiceLocator::GetEditorHandler()->GetInspector()->DirtySelection();
 
-        return true;
+                return true;
             });
     }
 

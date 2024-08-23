@@ -34,7 +34,7 @@ namespace Scripting::UI
             f32 minX = ctx.Get(0.0f, 1);
             f32 minY = ctx.Get(0.0f, 2);
             f32 maxX = ctx.Get(1.0f, 3);
-            f32 maxY = ctx.Get(5.0f, 4);
+            f32 maxY = ctx.Get(1.0f, 4);
 
             ::UI::Box* box = ctx.PushUserData<::UI::Box>([](void* x)
             {

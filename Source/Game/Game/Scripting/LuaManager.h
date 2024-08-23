@@ -54,6 +54,16 @@ namespace Scripting
         }
         lua_State* GetInternalState() { return _internalState; }
 
+        template <typename T>
+        T GetLuaHandler(LuaHandlerType handler)
+        {
+            u32 index = static_cast<u32>(handler);
+            if (index >= _luaHandlers.size())
+                return nullptr;
+
+            return reinterpret_cast<T>(_luaHandlers[index]);
+        }
+
     private:
         friend LuaHandlerBase;
         friend LuaSystemBase;
@@ -65,16 +75,6 @@ namespace Scripting
 
         void SetLuaHandler(LuaHandlerType handlerType, LuaHandlerBase* luaHandler);
         void RegisterLuaSystem(LuaSystemBase* systemBase);
-        
-        template <typename T>
-        T GetLuaHandler(LuaHandlerType handler)
-        {
-            u32 index = static_cast<u32>(handler);
-            if (index >= _luaHandlers.size())
-                return nullptr;
-
-            return reinterpret_cast<T>(_luaHandlers[index]);
-        }
 
     private:
         lua_State* _internalState;

@@ -3,6 +3,8 @@
 
 #include <Base/Types.h>
 
+#include <entt/entt.hpp>
+
 namespace Scripting::UI
 {
     struct Button : public Widget
@@ -10,6 +12,8 @@ namespace Scripting::UI
     public:
         static void Register(lua_State* state);
 
+        entt::entity panelEntity;
+        entt::entity textEntity;
     };
 
     namespace ButtonMethods

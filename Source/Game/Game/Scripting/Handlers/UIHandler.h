@@ -8,6 +8,19 @@
 
 namespace Scripting::UI
 {
+    enum class UIInputEvents : u32
+    {
+        MouseDown = 0,
+        MouseUp = 1,
+        MouseHeld = 2,
+
+        HoverBegin = 3,
+        HoverEnd = 4,
+        Hover = 5,
+
+        Count
+    };
+
     class UIHandler : public LuaHandlerBase
     {
     public:
@@ -26,5 +39,12 @@ namespace Scripting::UI
 
         // Utils
         static i32 PixelsToTexCoord(lua_State* state);
+
+        // Event calls
+        void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget);
+        void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, i32 value);
+
+    private:
+        void CreateUIInputEventTable(lua_State* state);
     };
 }

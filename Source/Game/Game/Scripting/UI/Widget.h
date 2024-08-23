@@ -20,6 +20,7 @@ namespace Scripting::UI
     {
     public:
         WidgetType type;
+        std::string metaTableName;
 
         entt::entity entity;
     };

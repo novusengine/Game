@@ -1,18 +1,32 @@
 local Module = { }
 
+local function UIInputEventHandler(eventID, widget, ...)
+    print("Event!");
+
+    widget:SetText("Test!");
+
+    if (eventID == UIInputEvent.MouseDown or eventID == UIInputEvent.MouseUp or eventID == UIInputEvent.MouseHeld) then
+        --local mouseButton = ...
+    end
+  end
+
 function Module.RegisterTemplates()
     local menuPanelTemplate = {
         background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
+        cornerRadius = 0.0,
     };
     UI.RegisterPanelTemplate("MenuPanel", menuPanelTemplate);
 
     -- Header
+    local headerMinX, headerMinY = UI.PixelsToTexCoord(60, 2, 256, 64);
+    local headerMaxX, headerMaxY = UI.PixelsToTexCoord(193, 37, 256, 64);
+
     local menuPanelHeaderTemplate = {
         background = "Data/Texture/interface/dialogframe/ui-dialogbox-header.dds",
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
-        cornerRadius = 0.0
+        cornerRadius = 0.0,
+        texCoords = Box.new(headerMinX, headerMinY, headerMaxX, headerMaxY),
     };
     UI.RegisterPanelTemplate("MenuPanelHeader", menuPanelHeaderTemplate);
     
@@ -26,35 +40,68 @@ function Module.RegisterTemplates()
     };
     UI.RegisterTextTemplate("MenuPanelHeaderText", menuPanelHeaderTextTemplate);
 
-    local minX,minY = UI.PixelsToTexCoord(0, 0, 128, 32);
-    local maxX,maxY = UI.PixelsToTexCoord(128, 32, 128, 32);
+    local buttonMinX, buttonMinY = UI.PixelsToTexCoord(1, 1, 128, 32);
+    local buttonMaxX, buttonMaxY = UI.PixelsToTexCoord(78, 21, 128, 32);
 
     -- Button
     local menuButtonPanelTemplate = {
         background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
-        --texCoords = Box.new(1.1, 2.1, 3.1, 4.1),
-        texCoords = Box.new(minX, minY, maxX, maxY),
+        texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
 
+        -- These get applied additively on this template
+        onClickTemplate = "MenuButtonDownPanel",
+        onHoverTemplate = "MenuButtonHoveredPanel",
+
+        onMouseDown = UIInputEventHandler,
+        --onMouseUp = UIInputEventHandler,
+        --onMouseHeld = UIInputEventHandler,
+
+        --onHoverBegin = UIInputEventHandler,
+        --onHoverEnd = UIInputEventHandler,
+        --onHover = UIInputEventHandler,
     };
     UI.RegisterPanelTemplate("MenuButtonPanel", menuButtonPanelTemplate);
+
+    local menuButtonDownPanelTemplate = {
+        background = "Data/Texture/interface/buttons/ui-panel-button-down.dds",
+    };
+    UI.RegisterPanelTemplate("MenuButtonDownPanel", menuButtonDownPanelTemplate);
+
+    local menuButtonHoveredPanelTemplate = {
+        foreground = "Data/Texture/interface/buttons/ui-panel-button-highlight.dds",
+    };
+    UI.RegisterPanelTemplate("MenuButtonHoveredPanel", menuButtonHoveredPanelTemplate);
 
     local menuButtonTextTemplate = {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
         color = vec3.new(1.0, 1.0, 1.0),
-        borderSize = 0.35,
+        borderSize = 0.3,
         borderFade = 0.8,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     };
     UI.RegisterTextTemplate("MenuButtonText", menuButtonTextTemplate);
 
+    --[[
+    OnMouseDown -- Single event when down
+    OnMouseUp -- Single event when released
+    OnMouseHeld -- Event every frame it's down?
+    OnHoverBegin -- Single event when hover starts (Start? Begin? Enter?)
+    OnHoverEnd -- Single event when hover starts
+    OnHover -- Event every frame it's hovered?
+    ]]
+
+    --[[
+    1. First check the exact object
+    2. Then check the aggregate object parent (For example if you hover a button, first check the text, then check the button)
+    3. Then check siblings of the button, IF there is overlap
+    4. Then check parent of the button
+    5. Repeat 3-5
+    ]]
+
     local menuButtonTemplate = {
-        --buttonPanelTemplate = "MenuButtonPanel",
-        --pressedButtonPanelTemplate = "MenuButtonPanel",
-        --disabledButtonPanelTemplate = "MenuButtonPanel",
-        --hoveredButtonPanelTemplate = "MenuButtonPanel",
         panelTemplate = "MenuButtonPanel",
         textTemplate = "MenuButtonText",
     };

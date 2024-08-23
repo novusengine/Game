@@ -14,5 +14,13 @@ namespace Scripting::UI
 
     namespace TextMethods
     {
+        i32 SetText(lua_State* state);
+    };
+
+    static LuaMethod textMethods[] =
+    {
+        { "SetText", TextMethods::SetText },
+
+        { nullptr, nullptr }
     };
 }

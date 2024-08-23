@@ -29,6 +29,7 @@ namespace ECS
         void SetLocalPositionAndRotation(entt::entity entity, const vec2& newPosition, const quat& newRotation);
         void SetLocalTransform(entt::entity entity, const vec2& newPosition, const quat& newRotation, const vec2& newScale);
         void AddLocalOffset(entt::entity entity, const vec2& offset);
+        void SetLayer(entt::entity entity, u32 newLayer);
         void SetSize(entt::entity entity, const vec2& newSize);
         void SetAnchor(entt::entity entity, const vec2& newAnchor);
         void SetRelativePoint(entt::entity entity, const vec2& newRelativePoint);
@@ -43,6 +44,7 @@ namespace ECS
         void SetLocalPositionAndRotation(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newPosition, const quat& newRotation);
         void SetLocalTransform(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newPosition, const quat& newRotation, const vec2& newScale);
         void AddLocalOffset(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& offset);
+        void SetLayer(entt::entity entity, ECS::Components::Transform2D& transform, u32 newLayer);
         void SetSize(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newSize);
         void SetAnchor(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newAnchor);
         void SetRelativePoint(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newRelativePoint);
@@ -167,6 +169,10 @@ namespace ECS::Components
             return scale;
         }
 
+        u32 GetLayer() const
+        {
+            return layer;
+        }
         const vec2& GetSize() const
         {
             return size;
@@ -181,6 +187,7 @@ namespace ECS::Components
         }
 
         Transform2D* GetParentTransform() const;
+        u32 GetHierarchyDepth() const;
 
         struct SceneNode2D* ownerNode{ nullptr };
 
@@ -189,6 +196,7 @@ namespace ECS::Components
         quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         vec2 scale = vec2(1.0f, 1.0f);
 
+        u32 layer = 0;
         vec2 size = vec2(1.0f, 1.0f);
         vec2 anchor = vec2(0.0f, 0.0f); // This is the point on the parent widget that we will anchor to
         vec2 relativePoint = vec2(0.0f, 0.0f); // This is the point on this widget that we will anchor to the parent
@@ -324,6 +332,16 @@ namespace ECS::Components
             {
                 matrix = transform->GetLocalMatrix();
             }
+        }
+
+        entt::entity GetOwner() const
+        {
+            return ownerEntity;
+        }
+
+        SceneNode2D* GetParent() const
+        {
+            return parent;
         }
 
     private:

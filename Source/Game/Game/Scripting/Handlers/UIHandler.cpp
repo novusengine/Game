@@ -53,6 +53,8 @@ namespace Scripting::UI
 
         // Utils
         Box::Register(state);
+
+        CreateUIInputEventTable(state);
     }
 
     void UIHandler::Clear()
@@ -101,52 +103,124 @@ namespace Scripting::UI
 
     i32 UIHandler::RegisterPanelTemplate(lua_State* state)
     {
-        LuaState ctx(state);
-
-        const char* templateName = ctx.Get(nullptr, 1);
-
-        const char* background = "";
-        if (ctx.GetTableField("background", 2))
-        {
-            background = ctx.Get("", 3);
-            ctx.Pop(1);
-        }
-
-        vec3 color = vec3(1.0f, 1.0f, 1.0f);
-        if (ctx.GetTableField("color", 2))
-        {
-            color = ctx.Get(vec3(1, 1, 1), 3);
-            ctx.Pop(1);
-        }
-
-        f32 cornerRadius = 0.0f;
-        if (ctx.GetTableField("cornerRadius", 2))
-        {
-            cornerRadius = ctx.Get(0.0f, 3);
-            ctx.Pop(1);
-        }
-
-        ::UI::Box texCoords;
-        if (ctx.GetTableField("texCoords", 2))
-        {
-            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, 3);
-            ctx.Pop(1);
-
-            if (box)
-            {
-                texCoords = *box;
-            }
-        }
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
         u32 panelTemplateIndex = static_cast<u32>(uiSingleton.panelTemplates.size());
         auto& panelTemplate = uiSingleton.panelTemplates.emplace_back();
-        panelTemplate.background = background;
-        panelTemplate.color = Color(color.x, color.y, color.z);
-        panelTemplate.cornerRadius = cornerRadius;
-        panelTemplate.texCoords = texCoords;
+
+        LuaState ctx(state);
+        const char* templateName = ctx.Get(nullptr, 1);
+
+        if (ctx.GetTableField("background", 2))
+        {
+            panelTemplate.background = ctx.Get("", -1);
+            panelTemplate.setFlags.background = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("foreground", 2))
+        {
+            panelTemplate.foreground = ctx.Get("", -1);
+            panelTemplate.setFlags.foreground = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("color", 2))
+        {
+            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            panelTemplate.color = Color(color.x, color.y, color.z);
+            panelTemplate.setFlags.color = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("cornerRadius", 2))
+        {
+            panelTemplate.cornerRadius = ctx.Get(0.0f, -1);
+            panelTemplate.setFlags.cornerRadius = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("texCoords", 2))
+        {
+            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, -1);
+            ctx.Pop();
+
+            if (box)
+            {
+                panelTemplate.texCoords = *box;
+            }
+            else
+            {
+                panelTemplate.texCoords.min = vec2(0.0f, 0.0f);
+                panelTemplate.texCoords.max = vec2(1.0f, 1.0f);
+            }
+            panelTemplate.setFlags.texCoords = 1;
+        }
+
+        // Event Templates
+        if (ctx.GetTableField("onClickTemplate", 2))
+        {
+            panelTemplate.onClickTemplate = ctx.Get("", -1);
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("onHoverTemplate", 2))
+        {
+            panelTemplate.onHoverTemplate = ctx.Get("", -1);
+            ctx.Pop();
+        }
+
+        // Event Callbacks
+        if (ctx.GetTableField("onMouseDown", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onMouseDownEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onMouseUp", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onMouseUpEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onMouseHeld", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onMouseHeldEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("onHoverBegin", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onHoverBeginEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onHoverEnd", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onHoverEndEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onHover", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onHoverEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToPanelTemplateIndex[templateNameHash] = panelTemplateIndex;
@@ -156,63 +230,124 @@ namespace Scripting::UI
 
     i32 UIHandler::RegisterTextTemplate(lua_State* state)
     {
-        LuaState ctx(state);
-
-        const char* templateName = ctx.Get(nullptr, 1);
-
-        const char* font = nullptr;
-        if (ctx.GetTableField("font", 2))
-        {
-            font = ctx.Get(nullptr, 3);
-            ctx.Pop(1);
-        }
-
-        f32 size = 0.0f;
-        if (ctx.GetTableField("size", 2))
-        {
-            size = ctx.Get(0.0f, 3);
-            ctx.Pop(1);
-        }
-
-        vec3 color = vec3(1.0f, 1.0f, 1.0f);
-        if (ctx.GetTableField("color", 2))
-        {
-            color = ctx.Get(vec3(1, 1, 1), 3);
-            ctx.Pop(1);
-        }
-
-        f32 borderSize = 0.0f;
-        if (ctx.GetTableField("borderSize", 2))
-        {
-            borderSize = ctx.Get(0.0f, 3);
-            ctx.Pop(1);
-        }
-
-        f32 borderFade = 0.5f;
-        if (ctx.GetTableField("borderFade", 2))
-        {
-            borderFade = ctx.Get(0.5f, 3);
-            ctx.Pop(1);
-        }
-
-        vec3 borderColor = vec3(1.0f, 1.0f, 1.0f);
-        if (ctx.GetTableField("borderColor", 2))
-        {
-            borderColor = ctx.Get(vec3(1, 1, 1), 3);
-            ctx.Pop(1);
-        }
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
         u32 textTemplateIndex = static_cast<u32>(uiSingleton.textTemplates.size());
         auto& textTemplate = uiSingleton.textTemplates.emplace_back();
-        textTemplate.font = font;
-        textTemplate.size = size;
-        textTemplate.color = Color(color.x, color.y, color.z);
-        textTemplate.borderSize = borderSize;
-        textTemplate.borderFade = borderFade;
-        textTemplate.borderColor = Color(borderColor.x, borderColor.y, borderColor.z);
+
+        LuaState ctx(state);
+        const char* templateName = ctx.Get(nullptr, 1);
+
+        const char* font = nullptr;
+        if (ctx.GetTableField("font", 2))
+        {
+            textTemplate.font = ctx.Get(nullptr, -1);
+            textTemplate.setFlags.font = 1;
+            ctx.Pop();
+        }
+
+        f32 size = 0.0f;
+        if (ctx.GetTableField("size", 2))
+        {
+            textTemplate.size = ctx.Get(0.0f, -1);
+            textTemplate.setFlags.size = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("color", 2))
+        {
+            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            textTemplate.color = Color(color.x, color.y, color.z);
+            textTemplate.setFlags.color = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("borderSize", 2))
+        {
+            textTemplate.borderSize = ctx.Get(0.0f, -1);
+            textTemplate.setFlags.borderSize = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("borderFade", 2))
+        {
+            textTemplate.borderFade = ctx.Get(0.5f, -1);
+            textTemplate.setFlags.borderFade = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("borderColor", 2))
+        {
+            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            textTemplate.borderColor = Color(color.x, color.y, color.z);
+            textTemplate.setFlags.borderColor = 1;
+            ctx.Pop();
+        }
+
+        // Event Templates
+        if (ctx.GetTableField("onClickTemplate", 2))
+        {
+            textTemplate.onClickTemplate = ctx.Get("", -1);
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("onHoverTemplate", 2))
+        {
+            textTemplate.onHoverTemplate = ctx.Get("", -1);
+            ctx.Pop();
+        }
+
+        // Event Callbacks
+        if (ctx.GetTableField("onMouseDown", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onMouseDownEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onMouseUp", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onMouseUpEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onMouseHeld", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onMouseHeldEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("onHoverBegin", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onHoverBeginEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onHoverEnd", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onHoverEndEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onHover", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onHoverEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToTextTemplateIndex[templateNameHash] = textTemplateIndex;
@@ -237,16 +372,18 @@ namespace Scripting::UI
         i32 sizeX = ctx.Get(100, 4);
         i32 sizeY = ctx.Get(100, 5);
 
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY));
-
         Widget* canvas = ctx.PushUserData<Widget>([](void* x)
         {
             // Very sad canvas is gone now :(
         });
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY));
+
         canvas->type = WidgetType::Canvas;
         canvas->entity = entity;
 
+        canvas->metaTableName = "CanvasMetaTable";
         luaL_getmetatable(state, "CanvasMetaTable");
         lua_setmetatable(state, -2);
 
@@ -263,6 +400,9 @@ namespace Scripting::UI
         i32 sizeX = ctx.Get(1, 3);
         i32 sizeY = ctx.Get(1, 4);
 
+        sizeX = Math::Max(sizeX - 1, 1);
+        sizeY = Math::Max(sizeY - 1, 1);
+
         ctx.Pop(4);
 
         vec2 texCoord = vec2(static_cast<f32>(posX) / static_cast<f32>(sizeX), static_cast<f32>(posY) / static_cast<f32>(sizeY));
@@ -275,5 +415,52 @@ namespace Scripting::UI
         top = ctx.GetTop();
 
         return 2;
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        ctx.Push(static_cast<u32>(inputEvent));
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.PCall(2);
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, i32 value)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        ctx.Push(static_cast<u32>(inputEvent));
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(value);
+        ctx.PCall(3);
+    }
+
+    void UIHandler::CreateUIInputEventTable(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        ctx.CreateTableAndPopulate("UIInputEvent", [&]()
+        {
+            ctx.SetTable("MouseDown", 0u);
+            ctx.SetTable("MouseUp", 1u);
+            ctx.SetTable("MouseHeld", 2u);
+
+            ctx.SetTable("HoverBegin", 3u);
+            ctx.SetTable("HoverEnd", 4u);
+            ctx.SetTable("Hover", 5u);
+
+            ctx.SetTable("Count", 6u);
+        });
     }
 }
