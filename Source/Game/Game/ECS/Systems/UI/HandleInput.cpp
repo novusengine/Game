@@ -68,6 +68,9 @@ namespace ECS::Systems::UI
             const vec2& renderSize = renderer->GetRenderSize();
             mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
 
+            mousePos = mousePos / renderSize;
+            mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
             uiSingleton.lastClickPosition = mousePos;
 
             bool isDown = action == KeybindAction::Press;
@@ -90,10 +93,8 @@ namespace ECS::Systems::UI
 
                     if (templateHash != 0 || inputEvent != -1)
                     {
-                        if (templateHash != 0)
-                        {
-                            Util::UI::ApplyTemplateAdditively(&registry, entity, templateHash);
-                        }
+                        eventInputInfo->isClicked = true;
+                        ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
 
                         if (inputEvent != -1)
                         {
@@ -113,14 +114,9 @@ namespace ECS::Systems::UI
 
                 if (eventInputInfo)
                 {
-                    if (eventInputInfo->onClickTemplateHash != 0)
-                    {
-                        Util::UI::ResetTemplate(&registry, uiSingleton.clickedEntity);
-                        if (uiSingleton.clickedEntity == uiSingleton.hoveredEntity)
-                        {
-                            Util::UI::ApplyTemplateAdditively(&registry, uiSingleton.clickedEntity, eventInputInfo->onHoverTemplateHash);
-                        }
-                    }
+                    eventInputInfo->isClicked = false;
+                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
+
                     if (eventInputInfo->onMouseUpEvent != -1)
                     {
                         auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
@@ -160,6 +156,9 @@ namespace ECS::Systems::UI
         const vec2& renderSize = renderer->GetRenderSize();
         mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
 
+        mousePos = mousePos / renderSize;
+        mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
         auto view = registry.view<Components::UI::Widget, Components::UI::BoundingRect > ();
 
         uiSingleton.allHoveredEntities.clear();
@@ -167,6 +166,9 @@ namespace ECS::Systems::UI
         view.each([&](entt::entity entity, Components::UI::Widget& widget, Components::UI::BoundingRect& rect)
         {
             if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
+                return;
+
+            if (!widget.IsInteractable())
                 return;
 
             bool isWithin = IsWithin(mousePos, rect.min, rect.max);
@@ -231,27 +233,21 @@ namespace ECS::Systems::UI
             {
                 auto* oldEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.hoveredEntity);
 
-                if (oldEventInputInfo->onHoverTemplateHash != 0)
+                oldEventInputInfo->isHovered = false;
+                if (oldEventInputInfo)
                 {
-                    Util::UI::ResetTemplate(&registry, uiSingleton.hoveredEntity);
-                    bool isClicked = uiSingleton.clickedEntity == uiSingleton.hoveredEntity;
-                    if (isClicked)
+                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
+
+                    if (oldEventInputInfo->onHoverEndEvent != -1)
                     {
-                        Util::UI::ApplyTemplateAdditively(&registry, uiSingleton.hoveredEntity, oldEventInputInfo->onClickTemplateHash);
+                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                        CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
                     }
                 }
-
-                if (oldEventInputInfo->onHoverEndEvent != -1)
-                {
-                    auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                    CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
-                }
             }
 
-            if (eventInputInfo->onHoverTemplateHash != 0)
-            {
-                Util::UI::ApplyTemplateAdditively(&registry, entity, eventInputInfo->onHoverTemplateHash);
-            }
+            eventInputInfo->isHovered = true;
+            ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
 
             if (eventInputInfo->onHoverBeginEvent != -1)
             {
@@ -270,20 +266,16 @@ namespace ECS::Systems::UI
             {
                 auto* oldEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.hoveredEntity);
 
-                if (oldEventInputInfo->onHoverTemplateHash != 0)
+                if (oldEventInputInfo)
                 {
-                    Util::UI::ResetTemplate(&registry, uiSingleton.hoveredEntity);
-                    bool isClicked = uiSingleton.clickedEntity == uiSingleton.hoveredEntity;
-                    if (isClicked)
-                    {
-                        Util::UI::ApplyTemplateAdditively(&registry, uiSingleton.hoveredEntity, oldEventInputInfo->onClickTemplateHash);
-                    }
-                }
+                    oldEventInputInfo->isHovered = false;
+                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
 
-                if (oldEventInputInfo->onHoverEndEvent != -1)
-                {
-                    auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                    CallLuaEvent(oldEventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
+                    if (oldEventInputInfo->onHoverEndEvent != -1)
+                    {
+                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                        CallLuaEvent(oldEventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
+                    }
                 }
 
                 uiSingleton.hoveredEntity = entt::null;

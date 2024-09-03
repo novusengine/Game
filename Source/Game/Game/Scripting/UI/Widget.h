@@ -43,12 +43,18 @@ namespace Scripting::UI
 
     namespace WidgetMethods
     {
+        i32 SetEnabled(lua_State* state);
+        i32 SetVisible(lua_State* state);
+        i32 SetInteractable(lua_State* state);
         i32 SetAnchor(lua_State* state);
         i32 SetRelativePoint(lua_State* state);
     }
 
     static LuaMethod widgetMethods[] =
     {
+        { "SetEnabled", WidgetMethods::SetEnabled },
+        { "SetVisible", WidgetMethods::SetVisible },
+        { "SetInteractable", WidgetMethods::SetInteractable },
         { "SetAnchor", WidgetMethods::SetAnchor },
         { "SetRelativePoint", WidgetMethods::SetRelativePoint },
 

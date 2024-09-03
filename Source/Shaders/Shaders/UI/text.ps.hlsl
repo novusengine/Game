@@ -40,8 +40,6 @@ float4 main(VertexOutput input) : SV_Target
     float borderSteps = borderFade * fontBorderSteps;
     bool hasBorder = borderSize > 0.0;
 
-    return float4(0, 0, 1, 1);
-
     if (distance <= ((1.0 - borderSize) * hasBorder))
     {
         discard;

@@ -29,6 +29,7 @@ namespace ECS::Components::UI
 
         std::string onClickTemplate;
         std::string onHoverTemplate;
+        std::string onUninteractableTemplate;
 
         i32 onMouseDownEvent = -1;
         i32 onMouseUpEvent = -1;

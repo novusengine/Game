@@ -6,9 +6,14 @@ namespace ECS::Components::UI
     struct EventInputInfo
     {
     public:
+        bool isHovered = false;
+        bool isClicked = false;
+        bool isInteractable = true;
+
         // Templates
         u32 onClickTemplateHash = 0;
         u32 onHoverTemplateHash = 0;
+        u32 onUninteractableTemplateHash = 0;
 
         // Lua Event Refs
         i32 onMouseDownEvent = -1;

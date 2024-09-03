@@ -65,6 +65,7 @@ local function CreateEscapeMenu()
     shopButton:SetAnchor(0.5, 1.0);
     shopButton:SetRelativePoint(0.5, 0.5);
     shopButton:SetText("Shop");
+    shopButton:SetInteractable(false);
 
     local optionsButton = panel:NewButton(0, -185, 250, 40, 0, "MenuButton");
     optionsButton:SetAnchor(0.5, 1.0);

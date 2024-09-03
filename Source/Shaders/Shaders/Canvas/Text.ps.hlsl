@@ -19,13 +19,13 @@ struct CharData
 
 CharData GetCharData(uint charIndex)
 {
-	PackedCharData packedCharData = _charData[charIndex];
-	CharData charData;
-	charData.textureID = packedCharData.data.x;
+    PackedCharData packedCharData = _charData[charIndex];
+    CharData charData;
+    charData.textureID = packedCharData.data.x;
     charData.textColor = float4((packedCharData.data.y >> 24) & 0xFF, (packedCharData.data.y >> 16) & 0xFF, (packedCharData.data.y >> 8) & 0xFF, (packedCharData.data.y >> 0) & 0xFF) / 255.0;
     charData.outlineColor = float4((packedCharData.data.z >> 24) & 0xFF, (packedCharData.data.z >> 16) & 0xFF, (packedCharData.data.z >> 8) & 0xFF, (packedCharData.data.z >> 0) & 0xFF) / 255.0;
     charData.outlineWidth = asfloat(packedCharData.data.w);
-	return charData;
+    return charData;
 }
 
 struct VertexOutput

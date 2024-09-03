@@ -1,6 +1,7 @@
 #include "CanvasRenderer.h"
 #include "Game/ECS/Components/Name.h"
 #include "Game/ECS/Components/UI/Canvas.h"
+#include "Game/ECS/Components/UI/EventInputInfo.h"
 #include "Game/ECS/Components/UI/Panel.h"
 #include "Game/ECS/Components/UI/Text.h"
 #include "Game/ECS/Components/UI/Widget.h"
@@ -70,6 +71,18 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
     });
 
+    // Dirty widget flags
+    registry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
+    {
+        bool wasInteractable = eventInputInfo.isInteractable;
+        eventInputInfo.isInteractable = (widget.flags & WidgetFlags::Interactable) == WidgetFlags::Interactable;
+
+        if (wasInteractable != eventInputInfo.isInteractable)
+        {
+            ECS::Util::UI::RefreshTemplate(registry, entity, eventInputInfo);
+        }
+    });
+
     // Dirty widget datas
     registry->view<DirtyWidgetData>().each([&](entt::entity entity)
     {
@@ -93,6 +106,7 @@ void CanvasRenderer::Update(f32 deltaTime)
             auto& textTemplate = registry->get<TextTemplate>(entity);
 
             UpdateTextData(text, textTemplate);
+            text.hasGrown = false;
         }
     });
 
@@ -112,6 +126,7 @@ void CanvasRenderer::Update(f32 deltaTime)
     }
 
     registry->clear<DirtyWidgetData>();
+    registry->clear<DirtyWidgetFlags>();
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -224,9 +239,10 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                     auto& childWidget = registry->get<Widget>(childEntity);
 
                     if (childWidget.type == WidgetType::Canvas)
-                    {
                         return; // There is nothing to draw for a canvas
-                    }
+
+                    if (!childWidget.IsVisible())
+                        return; // Skip invisible widgets
 
                     if (_lastRenderedWidgetType != childWidget.type)
                     {
@@ -389,27 +405,30 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 {
     std::vector<vec4>& vertices = _vertices.Get();
 
-    utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
-    utf8::iterator coundEndIt(text.text.end(), text.text.begin(), text.text.end());
-
-    // Add vertices if necessary
-    if (text.gpuVertexIndex == -1)
+    if (text.sizeChanged)
     {
-        if (text.numCharsNonWhitespace == -1)
-        {
-            // Count how many non whitspace characters there are
-            text.numCharsNonWhitespace = 0;
-            for (; countIt != coundEndIt; countIt++)
-            {
-                unsigned int c = *countIt;
+        utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
+        utf8::iterator coundEndIt(text.text.end(), text.text.begin(), text.text.end());
 
-                if (c != ' ')
-                {
-                    text.numCharsNonWhitespace++;
-                }
+        // Count how many non whitspace characters there are
+        i32 numCharsNonWhitespace = 0;
+        for (; countIt != coundEndIt; countIt++)
+        {
+            unsigned int c = *countIt;
+
+            if (c != ' ')
+            {
+                numCharsNonWhitespace++;
             }
         }
 
+        text.numCharsNonWhitespace = numCharsNonWhitespace;
+        text.sizeChanged = false;
+    }
+
+    // Add vertices if necessary
+    if (text.gpuVertexIndex == -1 || text.hasGrown)
+    {
         u32 numVertices = text.numCharsNonWhitespace * 6;
 
         text.gpuVertexIndex = static_cast<i32>(vertices.size());
@@ -455,6 +474,8 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
         currentPos.x += fontChar.advance;
     }
+
+    _vertices.SetDirtyElements(text.gpuVertexIndex, text.numCharsNonWhitespace * 6);
 }
 
 void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
@@ -537,28 +558,32 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
 {
     std::vector<CharDrawData>& charDrawDatas = _charDrawDatas.Get();
 
-    // Count how many non whitspace characters there are
-    utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
-    utf8::iterator countEndIt(text.text.end(), text.text.begin(), text.text.end());
-
-    i32 numCharsNonWhitespace = 0;
-    for (; countIt != countEndIt; countIt++)
+    if (text.sizeChanged)
     {
-        unsigned int c = *countIt;
+        // Count how many non whitspace characters there are
+        utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
+        utf8::iterator countEndIt(text.text.end(), text.text.begin(), text.text.end());
 
-        if (c != ' ')
+        text.numCharsNonWhitespace = 0;
+        for (; countIt != countEndIt; countIt++)
         {
-            numCharsNonWhitespace++;
+            unsigned int c = *countIt;
+
+            if (c != ' ')
+            {
+                text.numCharsNonWhitespace++;
+            }
         }
+
+        text.sizeChanged = false;
     }
 
     // Add or update draw data if necessary
-    if (text.gpuDataIndex == -1 || numCharsNonWhitespace != text.numCharsNonWhitespace)
+    if (text.gpuDataIndex == -1 || text.hasGrown)
     {
         text.gpuDataIndex = static_cast<i32>(charDrawDatas.size());
-        charDrawDatas.resize(charDrawDatas.size() + numCharsNonWhitespace);
+        charDrawDatas.resize(charDrawDatas.size() + text.numCharsNonWhitespace);
     }
-    text.numCharsNonWhitespace = numCharsNonWhitespace;
 
     // Update CharDrawData
     Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
@@ -593,7 +618,6 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
 
         f32 borderFade = glm::min(textTemplate.borderFade, 0.999f);
         drawData.packed1.y = borderFade;
-        
 
         charIndex++;
     }

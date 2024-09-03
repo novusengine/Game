@@ -8,6 +8,11 @@ namespace Scripting::UI
     struct Widget;
 }
 
+namespace ECS::Components::UI
+{
+    struct EventInputInfo;
+}
+
 namespace ECS::Util
 {
     namespace UI
@@ -19,8 +24,9 @@ namespace ECS::Util
         entt::entity CreateText(Scripting::UI::Widget* widget, entt::registry* registry, const char* text, vec2 pos, u32 layer, const char* templateName, entt::entity parent);
 
         void RefreshText(entt::registry* registry, entt::entity entity);
+        void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
 
-        void ResetTemplate(entt::registry* registry, entt::entity entity);
+        void ResetTemplate(entt::registry* registry, entt::entity entity); // Sets it back to base
         void ApplyTemplateAdditively(entt::registry* registry, entt::entity entity, u32 templateHash);
     }
 }

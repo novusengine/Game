@@ -151,6 +151,10 @@ namespace ECS::Util
             {
                 SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplate.onHoverTemplate, eventInputInfo.onHoverTemplateHash);
             }
+            if (!panelTemplate.onUninteractableTemplate.empty())
+            {
+                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplate.onUninteractableTemplate, eventInputInfo.onUninteractableTemplateHash);
+            }
 
             eventInputInfo.onMouseDownEvent = panelTemplate.onMouseDownEvent;
             eventInputInfo.onMouseUpEvent = panelTemplate.onMouseUpEvent;
@@ -262,6 +266,23 @@ namespace ECS::Util
 
             auto& transform = registry->get<ECS::Components::Transform2D>(entity);
             transform2DSystem.RefreshTransform(entity, transform);
+        }
+
+        void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo)
+        {
+            ResetTemplate(registry, entity);
+            if (eventInputInfo.isHovered && eventInputInfo.onHoverTemplateHash != -1)
+            {
+                ApplyTemplateAdditively(registry, entity, eventInputInfo.onHoverTemplateHash);
+            }
+            if (eventInputInfo.isClicked && eventInputInfo.onClickTemplateHash != -1)
+            {
+                ApplyTemplateAdditively(registry, entity, eventInputInfo.onClickTemplateHash);
+            }
+            if (!eventInputInfo.isInteractable && eventInputInfo.onUninteractableTemplateHash != -1)
+            {
+                ApplyTemplateAdditively(registry, entity, eventInputInfo.onUninteractableTemplateHash);
+            }
         }
 
         void ResetTemplate(entt::registry* registry, entt::entity entity)

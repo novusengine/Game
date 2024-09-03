@@ -1,9 +1,19 @@
 local Module = { }
 
 local function UIInputEventHandler(eventID, widget, ...)
-    print("Event!");
+    if (eventID == UIInputEvent.MouseDown) then
+        print("Event: MouseDown");
+    end
+    if (eventID == UIInputEvent.MouseUp) then
+        print("Event: MouseUp");
+    end
 
-    widget:SetText("Test!");
+    if (eventID == UIInputEvent.HoverBegin) then
+        print("Event: HoverBegin");
+    end
+    if (eventID == UIInputEvent.HoverEnd) then
+        print("Event: HoverEnd");
+    end
 
     if (eventID == UIInputEvent.MouseDown or eventID == UIInputEvent.MouseUp or eventID == UIInputEvent.MouseHeld) then
         --local mouseButton = ...
@@ -53,13 +63,14 @@ function Module.RegisterTemplates()
         -- These get applied additively on this template
         onClickTemplate = "MenuButtonDownPanel",
         onHoverTemplate = "MenuButtonHoveredPanel",
+        onUninteractableTemplate = "MenuButtonDisabledPanel",
 
         onMouseDown = UIInputEventHandler,
-        --onMouseUp = UIInputEventHandler,
+        onMouseUp = UIInputEventHandler,
         --onMouseHeld = UIInputEventHandler,
 
-        --onHoverBegin = UIInputEventHandler,
-        --onHoverEnd = UIInputEventHandler,
+        onHoverBegin = UIInputEventHandler,
+        onHoverEnd = UIInputEventHandler,
         --onHover = UIInputEventHandler,
     };
     UI.RegisterPanelTemplate("MenuButtonPanel", menuButtonPanelTemplate);
@@ -68,6 +79,11 @@ function Module.RegisterTemplates()
         background = "Data/Texture/interface/buttons/ui-panel-button-down.dds",
     };
     UI.RegisterPanelTemplate("MenuButtonDownPanel", menuButtonDownPanelTemplate);
+
+    local menuButtonDisabledPanelTemplate = {
+        background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
+    };
+    UI.RegisterPanelTemplate("MenuButtonDisabledPanel", menuButtonDisabledPanelTemplate);
 
     local menuButtonHoveredPanelTemplate = {
         foreground = "Data/Texture/interface/buttons/ui-panel-button-highlight.dds",

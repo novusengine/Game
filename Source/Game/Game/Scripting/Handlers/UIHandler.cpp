@@ -171,6 +171,12 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        if (ctx.GetTableField("onUninteractableTemplate", 2))
+        {
+            panelTemplate.onUninteractableTemplate = ctx.Get("", -1);
+            ctx.Pop();
+        }
+
         // Event Callbacks
         if (ctx.GetTableField("onMouseDown", 2))
         {

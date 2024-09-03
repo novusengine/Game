@@ -15,5 +15,8 @@ namespace ECS::Components::UI
         i32 gpuDataIndex = -1;
 
         i32 numCharsNonWhitespace = -1;
+
+        bool hasGrown = false;
+        bool sizeChanged = true;
     };
 }

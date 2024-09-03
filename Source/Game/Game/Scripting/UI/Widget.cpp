@@ -1,5 +1,6 @@
 #include "Widget.h"
 #include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Components/UI/Widget.h"
 #include "Game/ECS/Singletons/UISingleton.h"
 #include "Game/ECS/Util/Transform2D.h"
 #include "Game/ECS/Util/UIUtil.h"
@@ -150,6 +151,75 @@ namespace Scripting::UI
             return 1;
         }
     }
+}
+
+i32 Scripting::UI::WidgetMethods::SetEnabled(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    bool enabled = ctx.Get(true, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    u32 toAdd = static_cast<u32>(widgetComponent.flags);
+    u32 toRemove = static_cast<u32>(widgetComponent.flags);
+
+    toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Enabled);
+    toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Enabled);
+
+    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * enabled + toRemove * !enabled);
+    registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetVisible(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    bool visible = ctx.Get(true, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    u32 toAdd = static_cast<u32>(widgetComponent.flags);
+    u32 toRemove = static_cast<u32>(widgetComponent.flags);
+
+    toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Visible);
+    toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Visible);
+
+    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * visible + toRemove * !visible);
+    registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetInteractable(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    bool interactable = ctx.Get(true, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    u32 toAdd = static_cast<u32>(widgetComponent.flags);
+    u32 toRemove = static_cast<u32>(widgetComponent.flags);
+
+    toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Interactable);
+    toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Interactable);
+
+    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * interactable + toRemove * !interactable);
+    registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    return 0;
 }
 
 i32 Scripting::UI::WidgetMethods::SetAnchor(lua_State* state)
