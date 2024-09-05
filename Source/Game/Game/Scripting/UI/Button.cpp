@@ -23,6 +23,7 @@ namespace Scripting::UI
 
         LuaMetaTable<Button>::Set(state, widgetCreationMethods);
         LuaMetaTable<Button>::Set(state, widgetMethods);
+        LuaMetaTable<Button>::Set(state, widgetInputMethods);
         LuaMetaTable<Button>::Set(state, buttonMethods);
     }
 

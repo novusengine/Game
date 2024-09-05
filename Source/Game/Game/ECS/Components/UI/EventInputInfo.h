@@ -22,6 +22,6 @@ namespace ECS::Components::UI
 
         i32 onHoverBeginEvent = -1;
         i32 onHoverEndEvent = -1;
-        i32 onHoverEvent = -1;
+        i32 onHoverHeldEvent = -1;
     };
 }

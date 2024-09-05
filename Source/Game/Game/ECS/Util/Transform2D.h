@@ -445,6 +445,7 @@ void ECS::Transform2DSystem::IterateChildrenRecursiveBreadth(entt::entity entity
     }
 }
 
+// The callback returns a boolean value indicating whether to continue processing the children of the current node
 template<typename F>
 void ECS::Transform2DSystem::IterateChildrenRecursiveDepth(entt::entity entity, F&& callback)
 {
@@ -453,16 +454,16 @@ void ECS::Transform2DSystem::IterateChildrenRecursiveDepth(entt::entity entity, 
     if (!node) return;
 
     // Process the current entity
-    callback(entity);
+    bool continueChildren = callback(entity);
 
     // Recursively process each child
-    ECS::Components::SceneNode2D* c = node->firstChild;
-    if (c)
+    ECS::Components::SceneNode2D* child = node->firstChild;
+    if (continueChildren && child)
     {
         do
         {
-            IterateChildrenRecursiveDepth(c->ownerEntity, callback); // Recurse into the child
-            c = c->nextSibling; // Move to the next sibling
-        } while (c != nullptr && c != node->firstChild);
+            IterateChildrenRecursiveDepth(child->ownerEntity, callback); // Recurse into the child
+            child = child->nextSibling; // Move to the next sibling
+        } while (child != nullptr && child != node->firstChild);
     }
 }

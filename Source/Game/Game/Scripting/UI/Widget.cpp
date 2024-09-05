@@ -1,5 +1,6 @@
 #include "Widget.h"
 #include "Game/Application/EnttRegistries.h"
+#include "Game/ECS/Components/UI/EventInputInfo.h"
 #include "Game/ECS/Components/UI/Widget.h"
 #include "Game/ECS/Singletons/UISingleton.h"
 #include "Game/ECS/Util/Transform2D.h"
@@ -252,6 +253,120 @@ i32 Scripting::UI::WidgetMethods::SetRelativePoint(lua_State* state)
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
     ts.SetRelativePoint(widget->entity, vec2(x, y));
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnMouseDown(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onMouseDownEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnMouseUp(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onMouseUpEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnMouseHeld(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onMouseHeldEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnHoverBegin(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onHoverBeginEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnHoverEnd(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onHoverEndEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnHoverHeld(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onHoverHeldEvent = callback;
 
     return 0;
 }

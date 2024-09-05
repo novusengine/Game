@@ -219,11 +219,11 @@ namespace Scripting::UI
             }
             ctx.Pop();
         }
-        if (ctx.GetTableField("onHover", 2))
+        if (ctx.GetTableField("onHoverHeld", 2))
         {
             if (lua_isfunction(ctx.RawState(), -1))
             {
-                panelTemplate.onHoverEvent = ctx.GetRef(-1);
+                panelTemplate.onHoverHeldEvent = ctx.GetRef(-1);
             }
             ctx.Pop();
         }
@@ -346,11 +346,11 @@ namespace Scripting::UI
             }
             ctx.Pop();
         }
-        if (ctx.GetTableField("onHover", 2))
+        if (ctx.GetTableField("onHoverHeld", 2))
         {
             if (lua_isfunction(ctx.RawState(), -1))
             {
-                textTemplate.onHoverEvent = ctx.GetRef(-1);
+                textTemplate.onHoverHeldEvent = ctx.GetRef(-1);
             }
             ctx.Pop();
         }

@@ -60,4 +60,26 @@ namespace Scripting::UI
 
         { nullptr, nullptr }
     };
+
+    namespace WidgetInputMethods
+    {
+        i32 SetOnMouseDown(lua_State* state);
+        i32 SetOnMouseUp(lua_State* state);
+        i32 SetOnMouseHeld(lua_State* state);
+        i32 SetOnHoverBegin(lua_State* state);
+        i32 SetOnHoverEnd(lua_State* state);
+        i32 SetOnHoverHeld(lua_State* state);
+    }
+
+    static LuaMethod widgetInputMethods[] =
+    {
+        { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
+        { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },
+        { "SetOnMouseHeld", WidgetInputMethods::SetOnMouseHeld },
+        { "SetOnHoverBegin", WidgetInputMethods::SetOnHoverBegin },
+        { "SetOnHoverEnd", WidgetInputMethods::SetOnHoverEnd },
+        { "SetOnHoverHeld", WidgetInputMethods::SetOnHoverHeld },
+
+        { nullptr, nullptr }
+    };
 }

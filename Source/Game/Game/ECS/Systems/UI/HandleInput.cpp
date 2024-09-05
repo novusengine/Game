@@ -159,33 +159,45 @@ namespace ECS::Systems::UI
         mousePos = mousePos / renderSize;
         mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
-        auto view = registry.view<Components::UI::Widget, Components::UI::BoundingRect > ();
-
         uiSingleton.allHoveredEntities.clear();
 
-        view.each([&](entt::entity entity, Components::UI::Widget& widget, Components::UI::BoundingRect& rect)
+        auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
+
+        // Loop over widget roots
+        registry.view<Components::UI::WidgetRoot>().each([&](auto entity)
         {
-            if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
-                return;
-
-            if (!widget.IsInteractable())
-                return;
-
-            bool isWithin = IsWithin(mousePos, rect.min, rect.max);
-
-            if (isWithin)
+            // Loop over children recursively (depth first)
+            transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
             {
-                Components::Transform2D& transform = registry.get<Components::Transform2D>(entity);
+                auto& widget = registry.get<Components::UI::Widget>(childEntity);
 
-                vec2 middlePoint = (rect.min + rect.max) * 0.5f;
+                if (!widget.IsVisible())
+                    return false;
 
-                u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
-                u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
-                u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
-                
-                u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
-                uiSingleton.allHoveredEntities[key] = entity;
-            }
+                if (!widget.IsInteractable())
+                    return true;
+
+                if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
+                    return true;
+
+                auto& rect = registry.get<Components::UI::BoundingRect>(childEntity);
+                bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+
+                if (isWithin)
+                {
+                    Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
+
+                    vec2 middlePoint = (rect.min + rect.max) * 0.5f;
+
+                    u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
+                    u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
+                    u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
+
+                    u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
+                    uiSingleton.allHoveredEntities[key] = childEntity;
+                }
+                return true;
+            });
         });
 
         DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();

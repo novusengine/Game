@@ -238,11 +238,11 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                     auto& transform = registry->get<ECS::Components::Transform2D>(childEntity);
                     auto& childWidget = registry->get<Widget>(childEntity);
 
-                    if (childWidget.type == WidgetType::Canvas)
-                        return; // There is nothing to draw for a canvas
-
                     if (!childWidget.IsVisible())
-                        return; // Skip invisible widgets
+                        return false; // Skip invisible widgets
+
+                    if (childWidget.type == WidgetType::Canvas)
+                        return true; // There is nothing to draw for a canvas
 
                     if (_lastRenderedWidgetType != childWidget.type)
                     {
@@ -276,6 +276,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                         auto& text = registry->get<Text>(childEntity);
                         RenderText(commandList, transform, childWidget, text);
                     }
+
+                    return true;
                 });
             });
 

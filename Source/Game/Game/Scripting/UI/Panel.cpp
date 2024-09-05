@@ -18,6 +18,7 @@ namespace Scripting::UI
 
         LuaMetaTable<Panel>::Set(state, widgetCreationMethods);
         LuaMetaTable<Panel>::Set(state, widgetMethods);
+        LuaMetaTable<Panel>::Set(state, widgetInputMethods);
         LuaMetaTable<Panel>::Set(state, panelMethods);
     }
 

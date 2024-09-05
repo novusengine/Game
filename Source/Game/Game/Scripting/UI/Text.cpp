@@ -13,6 +13,7 @@ namespace Scripting::UI
     {
         LuaMetaTable<Text>::Register(state, "TextMetaTable");
         LuaMetaTable<Text>::Set(state, widgetMethods);
+        LuaMetaTable<Text>::Set(state, widgetInputMethods);
         LuaMetaTable<Text>::Set(state, textMethods);
     }
 

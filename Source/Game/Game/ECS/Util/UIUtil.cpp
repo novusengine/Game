@@ -162,7 +162,7 @@ namespace ECS::Util
 
             eventInputInfo.onHoverBeginEvent = panelTemplate.onHoverBeginEvent;
             eventInputInfo.onHoverEndEvent = panelTemplate.onHoverEndEvent;
-            eventInputInfo.onHoverEvent = panelTemplate.onHoverEvent;
+            eventInputInfo.onHoverHeldEvent = panelTemplate.onHoverHeldEvent;
 
             return entity;
         }
@@ -240,7 +240,7 @@ namespace ECS::Util
 
             eventInputInfo.onHoverBeginEvent = textTemplate.onHoverBeginEvent;
             eventInputInfo.onHoverEndEvent = textTemplate.onHoverEndEvent;
-            eventInputInfo.onHoverEvent = textTemplate.onHoverEvent;
+            eventInputInfo.onHoverHeldEvent = textTemplate.onHoverHeldEvent;
 
             return entity;
         }
