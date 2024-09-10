@@ -18,6 +18,7 @@ namespace ECS::Components::UI
             u8 color : 1 = 0;
             u8 cornerRadius : 1 = 0;
             u8 texCoords : 1 = 0;
+            u8 nineSliceCoords : 1 = 0;
         };
         SetFlags setFlags;
 
@@ -26,6 +27,7 @@ namespace ECS::Components::UI
         Color color;
         f32 cornerRadius;
         ::UI::Box texCoords;
+        ::UI::Box nineSliceCoords;
 
         std::string onClickTemplate;
         std::string onHoverTemplate;

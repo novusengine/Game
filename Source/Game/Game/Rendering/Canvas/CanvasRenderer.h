@@ -62,7 +62,9 @@ private:
     struct PanelDrawData
     {
         uvec4 packed; // x: textureIndex, y: backgroundColor
-        uvec4 slicingOffset; // Pixels
+        vec4 widgetSizeAndTexSize; // pixels
+        vec4 texCoord; // uv
+        vec4 slicingCoord; // uv
         //vec4 color; // xyz: color, w: unused
         vec4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
     };

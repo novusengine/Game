@@ -53,7 +53,10 @@ function Module.RegisterTemplates()
     });
 
     local buttonMinX, buttonMinY = UI.PixelsToTexCoord(1, 1, 128, 32);
-    local buttonMaxX, buttonMaxY = UI.PixelsToTexCoord(78, 21, 128, 32);
+    local buttonMaxX, buttonMaxY = UI.PixelsToTexCoord(78, 22, 128, 32);
+
+    local buttonNineSliceMinX, buttonNineSliceMinY = UI.PixelsToTexCoord(5, 5, 128, 32);
+    local buttonNineSliceMaxX, buttonNineSliceMaxY = UI.PixelsToTexCoord(74, 18, 128, 32);
 
     -- Button
     UI.RegisterPanelTemplate("GenericButtonPanel", 
@@ -62,6 +65,7 @@ function Module.RegisterTemplates()
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
+        nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
 
         -- These get applied additively on this template
         onClickTemplate = "GenericButtonDownPanel",

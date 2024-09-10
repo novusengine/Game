@@ -4,12 +4,29 @@
 struct PanelDrawData
 {
     uint4 packed; // x: textureIndex, y: additiveTextureIndex, y: color
-    float4 slicingOffset;
+    float4 widgetSizeAndTexSize; // This can be reduced if we just calculate scale instead
+    float4 texCoord;
+    float4 slicingCoord;
     float4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
 };
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<PanelDrawData> _panelDrawDatas;
 [[vk::binding(2, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float4> _textures[4096];
+
+
+float NineSliceAxis(float coord, float pixelSizeUV, float texCoordMin, float texCoordMax, float borderSizeMin, float borderSizeMax)
+{
+    float scaledBorderMin = texCoordMin + (borderSizeMin / pixelSizeUV);
+    if (coord < scaledBorderMin) // Min
+        return Map(coord, texCoordMin, scaledBorderMin, texCoordMin, texCoordMin + borderSizeMin);
+
+    float scaledBorderMax = texCoordMax - (borderSizeMax / pixelSizeUV);
+    if (coord < scaledBorderMax) // Center
+        return Map(coord, scaledBorderMin, scaledBorderMax, texCoordMin + borderSizeMin, texCoordMax - borderSizeMax);
+
+    // Max
+    return Map(coord, scaledBorderMax, texCoordMax, texCoordMax - borderSizeMax, texCoordMax);
+}
 
 struct VertexOutput
 {
@@ -23,6 +40,22 @@ float4 main(VertexOutput input) : SV_Target
     PanelDrawData drawData = _panelDrawDatas[input.drawDataID];
 
     float2 uv = input.uv;
+    float2 texCoordMin = drawData.texCoord.xy;
+    float2 texCoordMax = drawData.texCoord.zw;
+    float2 slicingCoordMin = max(drawData.slicingCoord.xy, texCoordMin);
+    float2 slicingCoordMax = min(drawData.slicingCoord.zw, texCoordMax);
+
+    float2 borderSizeLeftTop = slicingCoordMin - texCoordMin;
+    float2 borderSizeRightBottom = texCoordMax - slicingCoordMax;
+
+    float2 widgetSize = drawData.widgetSizeAndTexSize.xy;
+    float2 textureSize = drawData.widgetSizeAndTexSize.zw;
+    float2 scale = widgetSize / textureSize;
+
+    float2 scaledUV = float2(
+        NineSliceAxis(input.uv.x, scale.x, texCoordMin.x, texCoordMax.x, borderSizeLeftTop.x, borderSizeRightBottom.x),
+        NineSliceAxis(input.uv.y, scale.y, texCoordMin.y, texCoordMax.y, borderSizeLeftTop.y, borderSizeRightBottom.y)
+    );
 
     uint textureIndex = drawData.packed.x;
     uint additiveTextureIndex = drawData.packed.y;
@@ -30,10 +63,10 @@ float4 main(VertexOutput input) : SV_Target
 
     float4 colorMultiplier = PackedUnormsToFloat4(packedColor);
 
-    float4 color = _textures[textureIndex].Sample(_sampler, uv);
+    float4 color = _textures[textureIndex].Sample(_sampler, scaledUV);
     color.rgb *= colorMultiplier.rgb;
 
-    float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, uv);
+    float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, scaledUV);
     color.rgb += additiveColor.rgb;
 
     float2 cornerRadius = drawData.cornerRadiusAndBorder.xy; // Specified in UV space

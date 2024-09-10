@@ -158,6 +158,23 @@ namespace Scripting::UI
             panelTemplate.setFlags.texCoords = 1;
         }
 
+        if (ctx.GetTableField("nineSliceCoords", 2))
+        {
+            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, -1);
+            ctx.Pop();
+
+            if (box)
+            {
+                panelTemplate.nineSliceCoords = *box;
+            }
+            else
+            {
+                panelTemplate.nineSliceCoords.min = vec2(0.0f, 0.0f);
+                panelTemplate.nineSliceCoords.max = vec2(1.0f, 1.0f);
+            }
+            panelTemplate.setFlags.nineSliceCoords = 1;
+        }
+
         // Event Templates
         if (ctx.GetTableField("onClickTemplate", 2))
         {
