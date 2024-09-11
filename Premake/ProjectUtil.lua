@@ -11,7 +11,11 @@ local function PrintError(msg)
     end
 
     local callerName = debugInfo.name
-    error("[" .. callerName .. "]" .. " : " .. msg, 2)
+    if callerName == nil then
+        error(": " .. msg, 2)
+    else
+        error("[" .. callerName .. "]" .. " : " .. msg, 2)
+    end
 end
 
 --[[ DumpObject(object, [limit], [indent])   Recursively print arbitrary data. 
@@ -93,6 +97,32 @@ Solution.Util.CreateDepTable = function(name, dependencies)
     return dependency
 end
 
+Solution.Util.GetDepTable = function(depName)
+    local depInternalName = "Dependency-" .. depName
+    local dep = _G[depInternalName]
+    if (dep == nil) then
+        Solution.Util.PrintError("Tried to fetch undeclared dependency '" .. depName .. "'")
+    end
+    
+    return dep
+end
+
+-- Cache a value inside the dep table
+Solution.Util.SetDepCache = function(depName, key, data)
+    local dep = Solution.Util.GetDepTable(depName)
+    dep.Cache[key] = data
+end
+
+-- Retrieve a cached value from the dep table, or return nil if not cached
+Solution.Util.GetDepCache = function(depName, key)
+    local dep = Solution.Util.GetDepTable(depName)
+    if dep.Cache[key] then
+        return dep.Cache[key]
+    end
+    
+    return nil
+end
+
 Solution.Util.IncludeSubmodule = function(name, rootDir, binDir)
     local submoduleRootDir = path.getabsolute("Submodules/".. name .. "/", rootDir)
     local submoduleBuildDir = path.getabsolute("Build/".. name .. "/", rootDir)
@@ -118,30 +148,40 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
     -- Default Args here --
     dependencies = dependencies or {}
 
+    local dependencyNameToIndex = { }
     local resolvedDependencies = { }
     local needToResolve = true
 
-    for _, v in pairs(dependencies) do
+    for _, v in ipairs(dependencies) do
         projectTable.deps[v] = 
         {
             deps = {}
         }
 
-        resolvedDependencies[v] =
+        local resolvedDep =
         {
+            name = v,
+            mustComeAfter = 0,
             parent = projectTable.deps[v]
         }
+
+        local depIndex = #resolvedDependencies + 1
+        table.insert(resolvedDependencies, resolvedDep)
+        dependencyNameToIndex[v] = depIndex
     end
 
+    local numResolvedDependencies = 1
     while needToResolve do
         local numAddedDependencies = 0
-
-        for k, v in pairs(resolvedDependencies) do
-            local depInternalName = "Dependency-" .. k
+        local numDependenciesToResolve = #resolvedDependencies
+        
+        for i = numResolvedDependencies, numDependenciesToResolve, 1 do
+            local v = resolvedDependencies[i]
+            local depInternalName = "Dependency-" .. v.name
 
             local dep = _G[depInternalName]
             if (dep == nil) then
-                Solution.Util.PrintError("'" .. name .. "' use undeclared dependency '" .. k .. "'")
+                Solution.Util.PrintError("'" .. name .. "' use undeclared dependency '" .. v.name .. "'")
             end
 
             if dep.Dependencies then
@@ -154,27 +194,41 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
                 end
 
                 if deps then
-                    for _, newDep in pairs(deps) do
-                        if not resolvedDependencies[newDep] then
+                    for _, newDep in ipairs(deps) do
+                        if not dependencyNameToIndex[newDep] then
                             v.parent.deps[newDep] =
                             {
                                 deps = {}
                             }
 
-                            resolvedDependencies[newDep] =
+                            local resolvedDep =
                             {
+                                name = newDep,
+                                mustComeAfter = dependencyNameToIndex[v.name],
                                 parent = v.parent.deps[newDep]
                             }
 
+                            local depIndex = #resolvedDependencies + 1
+                            table.insert(resolvedDependencies, resolvedDep)
+                            dependencyNameToIndex[newDep] = depIndex
+
                             numAddedDependencies = numAddedDependencies + 1
+                        else
+                            local depIndex = dependencyNameToIndex[newDep]
+                            resolvedDependencies[depIndex].mustComeAfter = dependencyNameToIndex[v.name]
                         end
                     end
                 end
             end
         end
 
+        numDependenciesToResolve = numResolvedDependencies
         needToResolve = numAddedDependencies > 0
     end
+
+    table.sort(resolvedDependencies, function(a, b)
+        return a.mustComeAfter < b.mustComeAfter
+    end)
     
     project (name)
         kind (projectType)
@@ -203,12 +257,12 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
         filter "platforms:Win64"
             system "Windows"
             architecture "x86_64"
-            defines { "WIN32", "WINDOWS" }
+            defines { "WIN32", "WINDOWS", "_WIN32_WINNT=0x0601" }
 
         filter { }
 
-    for k, v in pairs(resolvedDependencies) do
-        local depInternalName = "Dependency-" .. k
+    for _, v in ipairs(resolvedDependencies) do
+        local depInternalName = "Dependency-" .. v.name
         if (_G[depInternalName].Callback ~= nil) then
             _G[depInternalName].Callback()
             filter {}
@@ -229,10 +283,6 @@ Solution.Util.CreateProject = function(name, projectType, binDir, dependencies, 
             end
         end
     end
-
-    -- START TEST ONLY START --
-    --DumpObject(projectTable)
-    -- END TEST ONLY END ---
 
     _G[internalName] = projectTable
 
@@ -271,7 +321,8 @@ Solution.Util.CreateDep = function(name, dependencies, callback)
     local dependencyTable = 
     {
         Callback = callback,
-        Dependencies = dependencies
+        Dependencies = dependencies,
+        Cache = {}
     }
 
     _G[internalName] = dependencyTable
@@ -380,6 +431,12 @@ end
 
 Solution.Util.ClearFilter = function()
     filter { }
+end
+
+Solution.Util.MergeIntoTable = function(t, x)
+    for _, v in pairs(x) do
+        table.insert(t, v)
+    end
 end
 
 if InitBuildSettings == nil then
