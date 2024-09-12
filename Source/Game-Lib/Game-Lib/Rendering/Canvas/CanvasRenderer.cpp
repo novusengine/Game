@@ -561,7 +561,8 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
     i32 texHeight = _renderer->GetTextureHeight(textureID);
     vec2 texSize = vec2(texWidth, texHeight);
 
-    drawData.widgetSizeAndTexSize = vec4(widgetSize, texSize);
+    vec2 textureScaleToWidgetSize = texSize / widgetSize;
+    drawData.textureScaleToWidgetSize = hvec2(textureScaleToWidgetSize.x, textureScaleToWidgetSize.y);
     drawData.texCoord = vec4(panelTemplate.texCoords.min, panelTemplate.texCoords.max);
     drawData.slicingCoord = vec4(panelTemplate.nineSliceCoords.min, panelTemplate.nineSliceCoords.max);
 

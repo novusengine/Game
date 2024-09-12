@@ -61,8 +61,8 @@ private:
 private:
     struct PanelDrawData
     {
-        uvec4 packed; // x: textureIndex, y: backgroundColor
-        vec4 widgetSizeAndTexSize; // pixels
+        uvec3 packed; // x: textureIndex, y: additiveTextureIndex, z: color
+        hvec2 textureScaleToWidgetSize = hvec2(0.0f, 0.0f);
         vec4 texCoord; // uv
         vec4 slicingCoord; // uv
         //vec4 color; // xyz: color, w: unused
