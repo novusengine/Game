@@ -14,7 +14,7 @@ AutoCVar_Int CVAR_AnimationSystemThrottle(CVarCategory::Client | CVarCategory::R
 
 namespace Animation
 {
-    __forceinline void matmul4x4(const mat4x4& __restrict m1, const mat4x4& __restrict m2, mat4x4& __restrict out)
+    inline void matmul4x4(const mat4x4& __restrict m1, const mat4x4& __restrict m2, mat4x4& __restrict out)
     {
         __m128  vx = _mm_load_ps(&m1[0][0]);
         __m128  vy = _mm_load_ps(&m1[1][0]);
@@ -37,7 +37,7 @@ namespace Animation
         }
     }
 
-    __forceinline mat4x4 mul(const mat4x4& __restrict matrix1, const mat4x4& __restrict matrix2)
+    inline mat4x4 mul(const mat4x4& __restrict matrix1, const mat4x4& __restrict matrix2)
     {
         mat4x4 result;
         matmul4x4(matrix2, matrix1, result);
