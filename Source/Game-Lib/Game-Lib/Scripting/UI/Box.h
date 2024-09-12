@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/Scripting/UI/Widget.h"
+#include "Game-Lib/Scripting/UI/Widget.h"
 
 #include <Base/Types.h>
 

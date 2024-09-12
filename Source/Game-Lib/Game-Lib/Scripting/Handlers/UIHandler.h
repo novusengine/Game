@@ -1,8 +1,8 @@
 #pragma once
 #include "LuaEventHandlerBase.h"
-#include "Game/Scripting/LuaDefines.h"
-#include "Game/Scripting/LuaMethodTable.h"
-#include "Game/Scripting/UI/Panel.h"
+#include "Game-Lib/Scripting/LuaDefines.h"
+#include "Game-Lib/Scripting/LuaMethodTable.h"
+#include "Game-Lib/Scripting/UI/Panel.h"
 
 #include <Base/Types.h>
 

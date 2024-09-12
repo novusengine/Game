@@ -1,7 +1,7 @@
 #include "Box.h"
 
-#include "Game/Scripting/LuaState.h"
-#include "Game/UI/Box.h"
+#include "Game-Lib/Scripting/LuaState.h"
+#include "Game-Lib/UI/Box.h"
 
 namespace Scripting::UI
 {

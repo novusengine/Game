@@ -1,7 +1,7 @@
 #pragma once
-#include "Game/ECS/Components/UI/PanelTemplate.h"
-#include "Game/ECS/Components/UI/TextTemplate.h"
-#include "Game/UI/Templates.h"
+#include "Game-Lib/ECS/Components/UI/PanelTemplate.h"
+#include "Game-Lib/ECS/Components/UI/TextTemplate.h"
+#include "Game-Lib/UI/Templates.h"
 
 #include <Base/Types.h>
 #include <Base/Memory/StackAllocator.h>

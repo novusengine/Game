@@ -76,7 +76,7 @@ local function CreateGameMenu(stack)
     optionsButton:SetAnchor(0.5, 1.0);
     optionsButton:SetRelativePoint(0.5, 0.5);
     optionsButton:SetText("Options");
-    optionsButton:SetOnMouseDown(function(eventID, widget, ...)
+    optionsButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("OptionsMenu");
     end)
@@ -100,7 +100,7 @@ local function CreateGameMenu(stack)
     returnButton:SetAnchor(0.5, 1.0);
     returnButton:SetRelativePoint(0.5, 0.5);
     returnButton:SetText("Return to Game");
-    returnButton:SetOnMouseDown(function(eventID, widget, ...)
+    returnButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Pop();
     end)
@@ -132,7 +132,7 @@ function CreateOptionsMenu(stack)
     exitButton:SetAnchor(1.0, 1.0);
     exitButton:SetRelativePoint(1.0, 1.0);
     exitButton:SetText("X");
-    exitButton:SetOnMouseDown(function(eventID, widget, ...)
+    exitButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("GameMenu");
     end)

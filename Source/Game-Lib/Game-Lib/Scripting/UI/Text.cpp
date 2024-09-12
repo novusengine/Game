@@ -1,9 +1,9 @@
 #include "Text.h"
 
-#include "Game/ECS/Components/UI/Text.h"
-#include "Game/ECS/Util/UIUtil.h"
-#include "Game/Scripting/LuaState.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Components/UI/Text.h"
+#include "Game-Lib/ECS/Util/UIUtil.h"
+#include "Game-Lib/Scripting/LuaState.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <entt/entt.hpp>
 

@@ -1,9 +1,9 @@
 #include "UpdateBoundingRects.h"
 
-#include "Game/ECS/Components/UI/BoundingRect.h"
-#include "Game/ECS/Components/UI/Widget.h"
-#include "Game/ECS/Util/Transform2D.h"
-#include "Game/Util/ServiceLocator.h"
+#include "Game-Lib/ECS/Components/UI/BoundingRect.h"
+#include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Util/Transform2D.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
 #include <entt/entt.hpp>
 

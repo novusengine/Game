@@ -1,6 +1,6 @@
 #pragma once
-#include "Game/Scripting/LuaDefines.h"
-#include "Game/Scripting/LuaMethodTable.h"
+#include "Game-Lib/Scripting/LuaDefines.h"
+#include "Game-Lib/Scripting/LuaMethodTable.h"
 
 #include <Base/Types.h>
 

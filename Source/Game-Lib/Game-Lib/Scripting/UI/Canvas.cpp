@@ -1,8 +1,8 @@
 #include "Canvas.h"
 
-#include "Game/Scripting/LuaState.h"
-#include "Game/Scripting/UI/Panel.h"
-#include "Game/Scripting/UI/Text.h"
+#include "Game-Lib/Scripting/LuaState.h"
+#include "Game-Lib/Scripting/UI/Panel.h"
+#include "Game-Lib/Scripting/UI/Text.h"
 
 namespace Scripting::UI
 {

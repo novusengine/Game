@@ -1,5 +1,5 @@
 #pragma once
-#include "Game/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Components/UI/Widget.h"
 
 #include <Base/Types.h>
 
