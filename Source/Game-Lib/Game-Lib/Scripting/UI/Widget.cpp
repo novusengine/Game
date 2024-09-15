@@ -36,8 +36,7 @@ namespace Scripting::UI
             const char* templateName = ctx.Get(nullptr, 7);
             if (templateName == nullptr)
             {
-                ctx.Push();
-                return 1;
+                luaL_error(state, "Template name is null");
             }
 
             u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
@@ -93,8 +92,7 @@ namespace Scripting::UI
             const char* templateName = ctx.Get(nullptr, 7);
             if (templateName == nullptr)
             {
-                ctx.Push();
-                return 1;
+                luaL_error(state, "Template name is null");
             }
 
             Panel* panel = ctx.PushUserData<Panel>([](void* x)
@@ -130,8 +128,7 @@ namespace Scripting::UI
             const char* templateName = ctx.Get(nullptr, 6);
             if (templateName == nullptr)
             {
-                ctx.Push();
-                return 1;
+                luaL_error(state, "Template name is null");
             }
 
             Text* text = ctx.PushUserData<Text>([](void* x)
@@ -151,6 +148,42 @@ namespace Scripting::UI
 
             return 1;
         }
+
+        i32 CreateWidget(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
+
+            i32 posX = ctx.Get(0, 2);
+            i32 posY = ctx.Get(0, 3);
+
+            u32 layer = ctx.Get(0, 4);
+
+            Widget* widget = ctx.PushUserData<Widget>([](void* x)
+            {
+
+            });
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            entt::entity entity = ECS::Util::UI::CreateWidget(widget, registry, vec2(posX, posY), layer, parent->entity);
+
+            widget->type = WidgetType::Widget;
+            widget->entity = entity;
+
+            widget->metaTableName = "WidgetMetaTable";
+            luaL_getmetatable(state, "WidgetMetaTable");
+            lua_setmetatable(state, -2);
+
+            return 1;
+        }
+    }
+
+    void Widget::Register(lua_State* state)
+    {
+        LuaMetaTable<Widget>::Register(state, "WidgetMetaTable");
+        LuaMetaTable<Widget>::Set(state, widgetMethods);
+        LuaMetaTable<Widget>::Set(state, widgetCreationMethods);
     }
 }
 
@@ -253,6 +286,198 @@ i32 Scripting::UI::WidgetMethods::SetRelativePoint(lua_State* state)
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
     ts.SetRelativePoint(widget->entity, vec2(x, y));
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetPos(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    ctx.Push(pos.x);
+    ctx.Push(pos.y);
+
+    return 2;
+}
+
+i32 Scripting::UI::WidgetMethods::GetPosX(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    ctx.Push(pos.x);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::GetPosY(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    ctx.Push(pos.y);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::SetPos(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 x = ctx.Get(0.0f, 2);
+    f32 y = ctx.Get(0.0f, 3);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    ts.SetLocalPosition(widget->entity, vec2(x, y));
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetPosX(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 x = ctx.Get(0.0f, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    pos.x = x;
+    ts.SetLocalPosition(widget->entity, pos);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetPosY(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 y = ctx.Get(0.0f, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    pos.y = y;
+    ts.SetLocalPosition(widget->entity, pos);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetWorldPos(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
+    ctx.Push(pos.x);
+    ctx.Push(pos.y);
+
+    return 2;
+}
+
+i32 Scripting::UI::WidgetMethods::GetWorldPosX(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
+    ctx.Push(pos.x);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::GetWorldPosY(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
+    ctx.Push(pos.y);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::SetWorldPos(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 x = ctx.Get(0.0f, 2);
+    f32 y = ctx.Get(0.0f, 3);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    ts.SetWorldPosition(widget->entity, vec2(x, y));
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetWorldPosX(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 x = ctx.Get(0.0f, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    pos.x = x;
+    ts.SetWorldPosition(widget->entity, pos);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetWorldPosY(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+
+    f32 y = ctx.Get(0.0f, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    pos.y = y;
+    ts.SetWorldPosition(widget->entity, pos);
 
     return 0;
 }

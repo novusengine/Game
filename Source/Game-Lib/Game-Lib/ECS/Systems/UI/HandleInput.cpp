@@ -51,6 +51,15 @@ namespace ECS::Systems::UI
         uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
     }
 
+    void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvents inputEvent, Scripting::UI::Widget* widget, vec2 value)
+    {
+        Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        lua_State* state = luaManager->GetInternalState();
+
+        Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+        uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+    }
+
     void HandleInput::Init(entt::registry& registry)
     {
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -68,10 +77,10 @@ namespace ECS::Systems::UI
             const vec2& renderSize = renderer->GetRenderSize();
             mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
 
+            uiSingleton.lastClickPosition = mousePos;
+
             mousePos = mousePos / renderSize;
             mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-
-            uiSingleton.lastClickPosition = mousePos;
 
             bool isDown = action == KeybindAction::Press;
 
@@ -90,8 +99,9 @@ namespace ECS::Systems::UI
 
                     u32 templateHash = eventInputInfo->onClickTemplateHash;
                     i32 inputEvent = eventInputInfo->onMouseDownEvent;
+                    i32 heldEvent = eventInputInfo->onMouseHeldEvent;
 
-                    if (templateHash != 0 || inputEvent != -1)
+                    if (templateHash != 0 || inputEvent != -1 || heldEvent != -1)
                     {
                         eventInputInfo->isClicked = true;
                         ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
@@ -117,7 +127,7 @@ namespace ECS::Systems::UI
                     eventInputInfo->isClicked = false;
                     ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
 
-                    if (eventInputInfo->onMouseUpEvent != -1)
+                    if (eventInputInfo->onMouseUpEvent != -1 && uiSingleton.clickedEntity == uiSingleton.hoveredEntity)
                     {
                         auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
                         CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvents::MouseUp, widget.scriptWidget);
@@ -180,14 +190,19 @@ namespace ECS::Systems::UI
                 if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
                     return true;
 
-                auto& rect = registry.get<Components::UI::BoundingRect>(childEntity);
-                bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+                auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
+                if (rect == nullptr)
+                {
+                    return true;
+                }
+
+                bool isWithin = IsWithin(mousePos, rect->min, rect->max);
 
                 if (isWithin)
                 {
                     Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
 
-                    vec2 middlePoint = (rect.min + rect.max) * 0.5f;
+                    vec2 middlePoint = (rect->min + rect->max) * 0.5f;
 
                     u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
                     u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
@@ -283,14 +298,27 @@ namespace ECS::Systems::UI
                     oldEventInputInfo->isHovered = false;
                     ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
 
-                    if (oldEventInputInfo->onHoverEndEvent != -1)
+                    /*if (oldEventInputInfo->onHoverEndEvent != -1)
                     {
                         auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
                         CallLuaEvent(oldEventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
-                    }
+                    }*/
                 }
 
                 uiSingleton.hoveredEntity = entt::null;
+            }
+        }
+
+        if (uiSingleton.clickedEntity != entt::null)
+        {
+            auto* clickedEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.clickedEntity);
+            if (clickedEventInputInfo)
+            {
+                if (clickedEventInputInfo->onMouseHeldEvent != -1)
+                {
+                    auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
+                    CallLuaEvent(clickedEventInputInfo->onMouseHeldEvent, Scripting::UI::UIInputEvents::MouseHeld, widget.scriptWidget, mousePos);
+                }
             }
         }
     }

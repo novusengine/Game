@@ -1,7 +1,7 @@
 local UITemplates = require("API/UI/Templates")
 local UIStack = require("API/UI/UIStack")
+local UISlider = require("API/UI/Slider")
 
--- TODO: 9 slicing
 -- TODO: Borders :(
 
 local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
@@ -61,18 +61,18 @@ local function CreateGameMenu(stack)
     headerText:SetRelativePoint(0.5, 0.5);
 
     -- Create buttons
-    local supportButton = panel:NewButton(0, -70, 250, 40, 0, "GenericButton");
+    local supportButton = panel:NewButton(0, -70, 250, 40, 0, "DefaultButton");
     supportButton:SetAnchor(0.5, 1.0);
     supportButton:SetRelativePoint(0.5, 0.5);
     supportButton:SetText("Support");
 
-    local shopButton = panel:NewButton(0, -115, 250, 40, 0, "GenericButton");
+    local shopButton = panel:NewButton(0, -115, 250, 40, 0, "DefaultButton");
     shopButton:SetAnchor(0.5, 1.0);
     shopButton:SetRelativePoint(0.5, 0.5);
     shopButton:SetText("Shop");
     shopButton:SetInteractable(false);
 
-    local optionsButton = panel:NewButton(0, -185, 250, 40, 0, "GenericButton");
+    local optionsButton = panel:NewButton(0, -185, 250, 40, 0, "DefaultButton");
     optionsButton:SetAnchor(0.5, 1.0);
     optionsButton:SetRelativePoint(0.5, 0.5);
     optionsButton:SetText("Options");
@@ -81,22 +81,22 @@ local function CreateGameMenu(stack)
         stack:Push("OptionsMenu");
     end)
 
-    local macrosButton = panel:NewButton(0, -230, 250, 40, 0, "GenericButton");
+    local macrosButton = panel:NewButton(0, -230, 250, 40, 0, "DefaultButton");
     macrosButton:SetAnchor(0.5, 1.0);
     macrosButton:SetRelativePoint(0.5, 0.5);
     macrosButton:SetText("Macros");
 
-    local logoutButton = panel:NewButton(0, -300, 250, 40, 0, "GenericButton");
+    local logoutButton = panel:NewButton(0, -300, 250, 40, 0, "DefaultButton");
     logoutButton:SetAnchor(0.5, 1.0);
     logoutButton:SetRelativePoint(0.5, 0.5);
     logoutButton:SetText("Logout");
 
-    local exitButton = panel:NewButton(0, -345, 250, 40, 0, "GenericButton");
+    local exitButton = panel:NewButton(0, -345, 250, 40, 0, "DefaultButton");
     exitButton:SetAnchor(0.5, 1.0);
     exitButton:SetRelativePoint(0.5, 0.5);
     exitButton:SetText("Exit Game");
 
-    local returnButton = panel:NewButton(0, -415, 250, 40, 0, "GenericButton");
+    local returnButton = panel:NewButton(0, -415, 250, 40, 0, "DefaultButton");
     returnButton:SetAnchor(0.5, 1.0);
     returnButton:SetRelativePoint(0.5, 0.5);
     returnButton:SetText("Return to Game");
@@ -128,24 +128,38 @@ function CreateOptionsMenu(stack)
     headerText:SetRelativePoint(0.5, 1.0);
 
     -- Create buttons
-    local exitButton = panel:NewButton(2, 2, 40, 40, 0, "GenericButton");
+    local exitButton = panel:NewButton(2, 2, 40, 40, 0, "DefaultButton");
     exitButton:SetAnchor(1.0, 1.0);
     exitButton:SetRelativePoint(1.0, 1.0);
     exitButton:SetText("X");
     exitButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("GameMenu");
-    end)
+    end);
+
+    local volumeSlider = UISlider.NewSlider(panel, 0, -40, 200, 25, 0, {
+        backgroundTemplate = "DefaultSliderBackground",
+        fillTemplate = "DefaultSliderFill",
+    });
+    volumeSlider.slider:SetAnchor(0.5, 1.0);
+    volumeSlider.background:SetRelativePoint(0.5, 1.0);
+    volumeSlider:SetProgress(0.5);
+
+    -- TODO: This
+    --local volumeSliderText = volumeSlider:AddText("%cPct / %mPct", "DefaultButtonText");
+    --volumeSliderText:SetAnchor(0.0, 0.5);
+    --volumeSliderText:SetRelativePoint(1.0, 0.5);
+    --volumeSliderText:SetPos(-20, 0);
+
 
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
+    --stack:Push("OptionsMenu")
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
     UITemplates.RegisterTemplates();
 
     local stack = UIStack.Get("Menu")
-
-    
 
     --Demo();
     CreateGameMenu(stack);

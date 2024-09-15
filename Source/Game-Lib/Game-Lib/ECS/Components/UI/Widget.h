@@ -13,6 +13,7 @@ namespace ECS::Components::UI
         Canvas,
         Panel,
         Text,
+        Widget,
 
         None
     };

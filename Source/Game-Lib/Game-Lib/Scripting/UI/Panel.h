@@ -14,6 +14,11 @@ namespace Scripting::UI
 
     namespace PanelMethods
     {
-        
+        i32 GetSize(lua_State* state);
+        i32 GetWidth(lua_State* state);
+        i32 GetHeight(lua_State* state);
+        i32 SetSize(lua_State* state);
+        i32 SetWidth(lua_State* state);
+        i32 SetHeight(lua_State* state);
     };
 }

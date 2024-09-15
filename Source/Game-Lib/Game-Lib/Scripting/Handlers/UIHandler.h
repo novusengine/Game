@@ -43,6 +43,7 @@ namespace Scripting::UI
         // Event calls
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget);
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, i32 value);
+        void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, const vec2& value);
 
     private:
         void CreateUIInputEventTable(lua_State* state);

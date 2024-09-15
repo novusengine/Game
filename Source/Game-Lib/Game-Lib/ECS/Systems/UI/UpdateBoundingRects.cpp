@@ -19,13 +19,18 @@ namespace ECS::Systems::UI
         transform2DSystem.ProcessMovedEntities([&](entt::entity entity)
         {
             auto& transform = registry.get<Components::Transform2D>(entity);
-            auto& rect = registry.get<Components::UI::BoundingRect>(entity);
+            auto* rect = registry.try_get<Components::UI::BoundingRect>(entity);
+
+            if (rect == nullptr)
+            {
+                return;
+            }
 
             vec2 pos = transform.GetWorldPosition();
             vec2 size = transform.GetSize();
 
-            rect.min = pos;
-            rect.max = pos + size;
+            rect->min = pos;
+            rect->max = pos + size;
 
             registry.get_or_emplace<Components::UI::DirtyWidgetTransform>(entity);
         });

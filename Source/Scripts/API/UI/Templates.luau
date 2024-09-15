@@ -59,7 +59,7 @@ function Module.RegisterTemplates()
     local buttonNineSliceMaxX, buttonNineSliceMaxY = UI.PixelsToTexCoord(74, 18, 128, 32);
 
     -- Button
-    UI.RegisterPanelTemplate("GenericButtonPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
         color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
@@ -68,27 +68,27 @@ function Module.RegisterTemplates()
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
 
         -- These get applied additively on this template
-        onClickTemplate = "GenericButtonDownPanel",
-        onHoverTemplate = "GenericButtonHoveredPanel",
-        onUninteractableTemplate = "GenericButtonDisabledPanel",
+        onClickTemplate = "DefaultButtonDownPanel",
+        onHoverTemplate = "DefaultButtonHoveredPanel",
+        onUninteractableTemplate = "DefaultButtonDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("GenericButtonDownPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonDownPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("GenericButtonHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonHoveredPanel", 
     {
         foreground = "Data/Texture/interface/buttons/ui-panel-button-highlight.dds",
     });
 
-    UI.RegisterPanelTemplate("GenericButtonDisabledPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonDisabledPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
-    UI.RegisterTextTemplate("GenericButtonText", 
+    UI.RegisterTextTemplate("DefaultButtonText", 
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
@@ -98,11 +98,33 @@ function Module.RegisterTemplates()
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
-    UI.RegisterButtonTemplate("GenericButton", 
+    UI.RegisterButtonTemplate("DefaultButton", 
     {
-        panelTemplate = "GenericButtonPanel",
-        textTemplate = "GenericButtonText",
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "DefaultButtonText",
     });
+
+    -- Slider
+    local sliderMinX, sliderMinY = UI.PixelsToTexCoord(11, 11, 64, 64);
+    local sliderMaxX, sliderMaxY = UI.PixelsToTexCoord(51, 51, 64, 64);
+
+    local sliderNineSliceMinX, sliderNineSliceMinY = UI.PixelsToTexCoord(16, 16, 64, 64);
+    local sliderNineSliceMaxX, sliderNineSliceMaxY = UI.PixelsToTexCoord(46, 46, 64, 64);
+
+    UI.RegisterPanelTemplate("DefaultSliderBackground",
+    {
+        background = "Data/Texture/interface/buttons/ui-quickslot.dds",
+        texCoords = Box.new(sliderMinX, sliderMinY, sliderMaxX, sliderMaxY),
+        nineSliceCoords = Box.new(sliderNineSliceMinX, sliderNineSliceMinY, sliderNineSliceMaxX, sliderNineSliceMaxY),
+    });
+
+    UI.RegisterPanelTemplate("DefaultSliderFill",
+    {
+        background = "Data/Texture/interface/buttons/bluegrad64_faded.dds",
+        color = vec3.new(1.0, 1.0, 1.0),
+        cornerRadius = 2.0,
+    });
+
 
     -- Menu Panel
 

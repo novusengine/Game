@@ -13,11 +13,15 @@ namespace Scripting::UI
         Button,
         Canvas,
         Panel,
-        Text
+        Text,
+        Widget
     };
 
     struct Widget
     {
+    public:
+        static void Register(lua_State* state);
+
     public:
         WidgetType type;
         std::string metaTableName;
@@ -30,6 +34,7 @@ namespace Scripting::UI
         i32 CreateButton(lua_State* state);
         i32 CreatePanel(lua_State* state);
         i32 CreateText(lua_State* state);
+        i32 CreateWidget(lua_State* state);
     };
 
     static LuaMethod widgetCreationMethods[] =
@@ -37,6 +42,7 @@ namespace Scripting::UI
         { "NewButton", WidgetCreationMethods::CreateButton },
         { "NewPanel", WidgetCreationMethods::CreatePanel },
         { "NewText", WidgetCreationMethods::CreateText },
+        { "NewWidget", WidgetCreationMethods::CreateWidget },
 
         { nullptr, nullptr }
     };
@@ -46,8 +52,25 @@ namespace Scripting::UI
         i32 SetEnabled(lua_State* state);
         i32 SetVisible(lua_State* state);
         i32 SetInteractable(lua_State* state);
+
         i32 SetAnchor(lua_State* state);
         i32 SetRelativePoint(lua_State* state);
+
+        i32 GetPos(lua_State* state);
+        i32 GetPosX(lua_State* state);
+        i32 GetPosY(lua_State* state);
+
+        i32 SetPos(lua_State* state);
+        i32 SetPosX(lua_State* state);
+        i32 SetPosY(lua_State* state);
+
+        i32 GetWorldPos(lua_State* state);
+        i32 GetWorldPosX(lua_State* state);
+        i32 GetWorldPosY(lua_State* state);
+
+        i32 SetWorldPos(lua_State* state);
+        i32 SetWorldPosX(lua_State* state);
+        i32 SetWorldPosY(lua_State* state);
     }
 
     static LuaMethod widgetMethods[] =
@@ -55,8 +78,25 @@ namespace Scripting::UI
         { "SetEnabled", WidgetMethods::SetEnabled },
         { "SetVisible", WidgetMethods::SetVisible },
         { "SetInteractable", WidgetMethods::SetInteractable },
+
         { "SetAnchor", WidgetMethods::SetAnchor },
         { "SetRelativePoint", WidgetMethods::SetRelativePoint },
+
+        { "GetPos", WidgetMethods::GetPos },
+        { "GetPosX", WidgetMethods::GetPosX },
+        { "GetPosY", WidgetMethods::GetPosY },
+
+        { "SetPos", WidgetMethods::SetPos },
+        { "SetPosX", WidgetMethods::SetPosX },
+        { "SetPosY", WidgetMethods::SetPosY },
+
+        { "GetWorldPos", WidgetMethods::GetWorldPos },
+        { "GetWorldPosX", WidgetMethods::GetWorldPosX },
+        { "GetWorldPosY", WidgetMethods::GetWorldPosY },
+
+        { "SetWorldPos", WidgetMethods::SetWorldPos },
+        { "SetWorldPosX", WidgetMethods::SetWorldPosX },
+        { "SetWorldPosY", WidgetMethods::SetWorldPosY },
 
         { nullptr, nullptr }
     };

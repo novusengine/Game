@@ -245,6 +245,31 @@ namespace ECS::Util
             return entity;
         }
 
+        entt::entity CreateWidget(Scripting::UI::Widget* widget, entt::registry* registry, vec2 pos, u32 layer, entt::entity parent)
+        {
+            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+
+            auto& ctx = registry->ctx();
+            auto& transform2DSystem = Transform2DSystem::Get(*registry);
+            auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+            entt::entity entity = registry->create();
+
+            // Transform
+            auto& transformComp = registry->emplace<ECS::Components::Transform2D>(entity);
+
+            transform2DSystem.ParentEntityTo(parent, entity);
+            transform2DSystem.SetLayer(entity, layer);
+            transform2DSystem.SetLocalPosition(entity, pos);
+
+            // Widget
+            auto& widgetComp = registry->emplace<ECS::Components::UI::Widget>(entity);
+            widgetComp.type = ECS::Components::UI::WidgetType::Widget;
+            widgetComp.scriptWidget = widget;
+
+            return entity;
+        }
+
         void RefreshText(entt::registry* registry, entt::entity entity)
         {
             Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();

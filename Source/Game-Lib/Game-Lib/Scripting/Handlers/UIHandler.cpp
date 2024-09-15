@@ -46,6 +46,7 @@ namespace Scripting::UI
         LuaMethodTable::Set(state, uiMethods, "UI");
 
         // Widgets
+        Widget::Register(state);
         Button::Register(state);
         Canvas::Register(state);
         Panel::Register(state);
@@ -467,6 +468,22 @@ namespace Scripting::UI
 
         ctx.Push(value);
         ctx.PCall(3);
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, const vec2& value)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        ctx.Push(static_cast<u32>(inputEvent));
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(value.x);
+        ctx.Push(value.y);
+        ctx.PCall(4);
     }
 
     void UIHandler::CreateUIInputEventTable(lua_State* state)
