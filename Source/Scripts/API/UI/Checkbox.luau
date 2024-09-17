@@ -1,11 +1,10 @@
 local Module = { }
 
--- TODO : FIX ME
 --[[
 usage:
-.NewSlider(panel, 0, 0, 200, 25, 0, {
-    backgroundTemplate = "DefaultSliderBackground",
-    fillTemplate = "DefaultSliderFill",
+.NewCheckbox(panel, 0, 0, 200, 25, 0, {
+    backgroundTemplate = "DefaultCheckboxBackground",
+    fillTemplate = "DefaultCheckboxFill",
 })
 ]]--
 
