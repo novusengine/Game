@@ -275,7 +275,10 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                     else if (childWidget.type == WidgetType::Text)
                     {
                         auto& text = registry->get<Text>(childEntity);
-                        RenderText(commandList, transform, childWidget, text);
+                        if (text.numCharsNonWhitespace > 0)
+                        {
+                            RenderText(commandList, transform, childWidget, text);
+                        }
                     }
 
                     return true;
@@ -408,6 +411,11 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 {
     std::vector<vec4>& vertices = _vertices.Get();
 
+    if (text.text.size() == 0)
+    {
+        return;
+    }
+
     if (text.sizeChanged)
     {
         utf8::iterator countIt(text.text.begin(), text.text.begin(), text.text.end());
@@ -427,6 +435,11 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
         text.numCharsNonWhitespace = numCharsNonWhitespace;
         text.sizeChanged = false;
+    }
+
+    if (text.numCharsNonWhitespace == 0)
+    {
+        return;
     }
 
     // Add vertices if necessary
@@ -592,6 +605,11 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
         }
 
         text.sizeChanged = false;
+    }
+
+    if (text.numCharsNonWhitespace == 0)
+    {
+        return;
     }
 
     // Add or update draw data if necessary

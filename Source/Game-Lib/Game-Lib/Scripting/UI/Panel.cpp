@@ -41,6 +41,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
@@ -55,6 +59,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
@@ -68,6 +76,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
@@ -81,6 +93,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
 
             f32 x = ctx.Get(0.0f, 2);
             f32 y = ctx.Get(0.0f, 3);
@@ -98,6 +114,11 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
             f32 x = ctx.Get(0.0f, 2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
@@ -115,6 +136,11 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
             f32 y = ctx.Get(0.0f, 2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;

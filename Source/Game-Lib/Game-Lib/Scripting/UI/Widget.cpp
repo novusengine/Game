@@ -24,6 +24,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
+            if (parent == nullptr)
+            {
+                luaL_error(state, "Parent is null");
+            }
 
             i32 posX = ctx.Get(0, 2);
             i32 posY = ctx.Get(0, 3);
@@ -56,7 +60,7 @@ namespace Scripting::UI
             });
 
             entt::entity panelEntity = ECS::Util::UI::CreatePanel(button, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
-            entt::entity textEntity = ECS::Util::UI::CreateText(button, registry, "TEST", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
+            entt::entity textEntity = ECS::Util::UI::CreateText(button, registry, "", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
 
             ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
             ts.SetAnchor(textEntity, vec2(0.5, 0.5));
@@ -80,6 +84,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
+            if (parent == nullptr)
+            {
+                luaL_error(state, "Parent is null");
+            }
 
             i32 posX = ctx.Get(0, 2);
             i32 posY = ctx.Get(0, 3);
@@ -118,6 +126,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
+            if (parent == nullptr)
+            {
+                luaL_error(state, "Parent is null");
+            }
 
             const char* str = ctx.Get("", 2);
             i32 posX = ctx.Get(0, 3);
@@ -154,6 +166,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
+            if (parent == nullptr)
+            {
+                luaL_error(state, "Parent is null");
+            }
 
             i32 posX = ctx.Get(0, 2);
             i32 posY = ctx.Get(0, 3);
@@ -192,6 +208,10 @@ i32 Scripting::UI::WidgetMethods::SetEnabled(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     bool enabled = ctx.Get(true, 2);
 
@@ -215,6 +235,10 @@ i32 Scripting::UI::WidgetMethods::SetVisible(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     bool visible = ctx.Get(true, 2);
 
@@ -238,6 +262,10 @@ i32 Scripting::UI::WidgetMethods::SetInteractable(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     bool interactable = ctx.Get(true, 2);
 
@@ -261,6 +289,10 @@ i32 Scripting::UI::WidgetMethods::SetAnchor(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
     f32 y = ctx.Get(0.0f, 3);
@@ -278,6 +310,10 @@ i32 Scripting::UI::WidgetMethods::SetRelativePoint(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
     f32 y = ctx.Get(0.0f, 3);
@@ -295,6 +331,10 @@ i32 Scripting::UI::WidgetMethods::GetPos(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -310,6 +350,10 @@ i32 Scripting::UI::WidgetMethods::GetPosX(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -324,6 +368,10 @@ i32 Scripting::UI::WidgetMethods::GetPosY(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -338,6 +386,10 @@ i32 Scripting::UI::WidgetMethods::SetPos(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
     f32 y = ctx.Get(0.0f, 3);
@@ -355,6 +407,10 @@ i32 Scripting::UI::WidgetMethods::SetPosX(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
 
@@ -373,6 +429,10 @@ i32 Scripting::UI::WidgetMethods::SetPosY(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 y = ctx.Get(0.0f, 2);
 
@@ -391,6 +451,10 @@ i32 Scripting::UI::WidgetMethods::GetWorldPos(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -406,6 +470,10 @@ i32 Scripting::UI::WidgetMethods::GetWorldPosX(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -420,6 +488,10 @@ i32 Scripting::UI::WidgetMethods::GetWorldPosY(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
@@ -434,6 +506,10 @@ i32 Scripting::UI::WidgetMethods::SetWorldPos(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
     f32 y = ctx.Get(0.0f, 3);
@@ -451,6 +527,10 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosX(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 x = ctx.Get(0.0f, 2);
 
@@ -469,6 +549,10 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosY(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     f32 y = ctx.Get(0.0f, 2);
 
@@ -487,6 +571,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseDown(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)
@@ -506,6 +594,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseUp(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)
@@ -525,6 +617,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseHeld(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)
@@ -544,6 +640,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverBegin(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)
@@ -563,6 +663,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverEnd(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)
@@ -582,6 +686,10 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverHeld(lua_State* state)
     LuaState ctx(state);
 
     Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
 
     i32 callback = -1;
     if (lua_type(state, 2) == LUA_TFUNCTION)

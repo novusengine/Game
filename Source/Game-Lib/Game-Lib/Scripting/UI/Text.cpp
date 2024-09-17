@@ -24,6 +24,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
 
             const char* text = ctx.Get(nullptr, 2);
             if (text == nullptr)

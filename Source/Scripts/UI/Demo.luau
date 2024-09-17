@@ -2,6 +2,7 @@ local UITemplates = require("API/UI/Templates")
 local UIStack = require("API/UI/UIStack")
 local UISlider = require("API/UI/Slider")
 local UICheckbox = require("API/UI/Checkbox")
+local UICombobox = require("API/UI/Combobox")
 
 -- TODO: Borders :(
 
@@ -132,7 +133,6 @@ function CreateOptionsMenu(stack)
     local exitButton = panel:NewButton(2, 2, 24, 24, 0, "DefaultButtonMinimize");
     exitButton:SetAnchor(1.0, 1.0);
     exitButton:SetRelativePoint(1.0, 1.0);
-    exitButton:SetText(".");
     exitButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("GameMenu");
@@ -163,6 +163,17 @@ function CreateOptionsMenu(stack)
     testCheckbox:SetOnValueChanged(function(checkboxTable, state)
         return true
     end)
+
+    local testCombobox = UICombobox.NewCombobox(panel, 0, -120, 200, 40, 0, {
+        options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
+        backgroundTemplate = "DefaultComboboxPanel",
+        textTemplate = "YellowText"
+    });
+    testCombobox.combobox:SetAnchor(0.5, 1.0);
+    testCombobox.background:SetRelativePoint(0.5, 1.0);
+    testCombobox:SetOnValueChanged(function(table, value)
+        print(table.options[value]);
+    end);
    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
     stack:Push("OptionsMenu")

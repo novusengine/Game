@@ -34,6 +34,10 @@ namespace Scripting::UI
             LuaState ctx(state);
 
             Button* button = ctx.GetUserData<Button>(nullptr, 1);
+            if (button == nullptr)
+            {
+                luaL_error(state, "Button is null");
+            }
 
             const char* text = ctx.Get(nullptr, 2);
             if (text == nullptr)
