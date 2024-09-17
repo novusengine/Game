@@ -104,6 +104,45 @@ function Module.RegisterTemplates()
         textTemplate = "DefaultButtonText",
     });
 
+    -- Minimzie Button
+    
+    local minimizeButtonMinX, minimizeButtonMinY = UI.PixelsToTexCoord(6, 7, 32, 32);
+    local minimizeButtonMaxX, minimizeButtonMaxY = UI.PixelsToTexCoord(24, 24, 32, 32);
+
+    UI.RegisterPanelTemplate("DefaultButtonMinimizePanel", 
+    {
+        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-up.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+        cornerRadius = 0.0,
+        texCoords = Box.new(minimizeButtonMinX, minimizeButtonMinY, minimizeButtonMaxX, minimizeButtonMaxY),
+
+        -- These get applied additively on this template
+        onClickTemplate = "DefaultButtonMinimizeDownPanel",
+        onHoverTemplate = "DefaultButtonMinimizeHoveredPanel",
+        onUninteractableTemplate = "DefaultButtonMinimizeDisabledPanel",
+    });
+
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeDownPanel", 
+    {
+        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-down.dds",
+    });
+
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeHoveredPanel", 
+    {
+        foreground = "Data/Texture/interface/buttons/ui-panel-minimizebutton-highlight.dds",
+    });
+
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel", 
+    {
+        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
+    });
+    
+    UI.RegisterButtonTemplate("DefaultButtonMinimize", 
+    {
+        panelTemplate = "DefaultButtonMinimizePanel",
+        textTemplate = "DefaultButtonText",
+    });
+
     -- Slider
     local sliderMinX, sliderMinY = UI.PixelsToTexCoord(11, 11, 64, 64);
     local sliderMaxX, sliderMaxY = UI.PixelsToTexCoord(51, 51, 64, 64);
@@ -125,6 +164,38 @@ function Module.RegisterTemplates()
         cornerRadius = 2.0,
     });
 
+    -- Checkbox
+    local checkboxMinX, checkboxMinY = UI.PixelsToTexCoord(0, 0, 64, 32);
+    local checkboxMaxX, checkboxMaxY = UI.PixelsToTexCoord(63, 22, 64, 32);
+
+    local checkboxNineSliceMinX, checkboxSliceMinY = UI.PixelsToTexCoord(3, 3, 64, 32);
+    local checkboxNineSliceMaxX, checkboxSliceMaxY = UI.PixelsToTexCoord(61, 20, 64, 32);
+
+    UI.RegisterPanelTemplate("DefaultCheckboxBackground",
+    {
+        background = "Data/Texture/interface/common/common-checkbox-background.dds",
+        texCoords = Box.new(checkboxMinX, checkboxMinY, checkboxMaxX, checkboxMaxY),
+        nineSliceCoords = Box.new(checkboxNineSliceMinX, checkboxSliceMinY, checkboxNineSliceMaxX, checkboxSliceMaxY),
+    });
+
+    UI.RegisterPanelTemplate("DefaultCheckboxFill",
+    {
+        background = "Data/Texture/interface/buttons/ui-checkbox-check.dds",
+        color = vec3.new(1.0, 1.0, 1.0),
+        cornerRadius = 2.0,
+        
+        onUninteractableTemplate = "DefaultCheckboxDisabledFill",
+    });
+
+    UI.RegisterPanelTemplate("DefaultCheckboxHoveredPanel", 
+    {
+        foreground = "Data/Texture/interface/buttons/checkbuttonhilight.dds",
+    });
+
+    UI.RegisterPanelTemplate("DefaultCheckboxDisabledFill", 
+    {
+        background = "Data/Texture/interface/buttons/ui-checkbox-check-disabled.dds",
+    });
 
     -- Menu Panel
 

@@ -8,40 +8,39 @@ usage:
 })
 ]]--
 
-local function SetupSliderMethods(slider)
-
-    slider.SetProgress = function(table, progress)
+local function SetupSliderMethods(sliderTable)
+    sliderTable.SetProgress = function(table, progress)
         local sizeX = table.fillSizeX * progress;
         table.fill:SetWidth(sizeX);
     end
 
-    slider.SetOnMouseDown = function(table, func)
+    sliderTable.SetOnMouseDown = function(table, func)
         table.background:SetOnMouseDown(func);
         table.fill:SetOnMouseDown(func);
     end
 
-    slider.SetOnMouseUp = function(table, func)
+    sliderTable.SetOnMouseUp = function(table, func)
         table.background:SetOnMouseUp(func);
         table.fill:SetOnMouseUp(func);
     end
 
-    slider.SetOnMouseHeld = function(table, func)
+    sliderTable.SetOnMouseHeld = function(table, func)
         table.background:SetOnMouseHeld(func);
         table.fill:SetOnMouseHeld(func);
     end
 
-    slider:SetOnMouseHeld(function(eventID, widget, mouseX, mouseY)
-        local fillPosX = slider.fill:GetWorldPosX();
+    sliderTable:SetOnMouseHeld(function(eventID, widget, mouseX, mouseY)
+        local fillPosX = sliderTable.fill:GetWorldPosX();
 
         local fillDiff = mouseX - fillPosX;
-        local fillSize = slider.fillSizeX;
+        local fillSize = sliderTable.fillSizeX;
         local progress = fillDiff / fillSize;
 
         progress = math.clamp(progress, 0.0, 1.0);
-        slider:SetProgress(progress);
+        sliderTable:SetProgress(progress);
     end);
 
-    return slider
+    return sliderTable
 end
 
 function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplateTable)

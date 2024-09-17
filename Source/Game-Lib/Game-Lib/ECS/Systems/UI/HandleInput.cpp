@@ -98,18 +98,23 @@ namespace ECS::Systems::UI
                     }
 
                     u32 templateHash = eventInputInfo->onClickTemplateHash;
-                    i32 inputEvent = eventInputInfo->onMouseDownEvent;
+                    i32 inputDownEvent = eventInputInfo->onMouseDownEvent;
+                    i32 inputUpEvent = eventInputInfo->onMouseUpEvent;
                     i32 heldEvent = eventInputInfo->onMouseHeldEvent;
 
-                    if (templateHash != 0 || inputEvent != -1 || heldEvent != -1)
+                    if (templateHash != 0 || inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1)
                     {
                         eventInputInfo->isClicked = true;
-                        ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
 
-                        if (inputEvent != -1)
+                        if (templateHash != 0)
+                        {
+                            ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
+                        }
+
+                        if (inputDownEvent != -1)
                         {
                             auto& widget = registry.get<Components::UI::Widget>(entity);
-                            CallLuaEvent(inputEvent, Scripting::UI::UIInputEvents::MouseDown, widget.scriptWidget);
+                            CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvents::MouseDown, widget.scriptWidget);
                         }
 
                         uiSingleton.clickedEntity = entity;
@@ -127,10 +132,15 @@ namespace ECS::Systems::UI
                     eventInputInfo->isClicked = false;
                     ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
 
-                    if (eventInputInfo->onMouseUpEvent != -1 && uiSingleton.clickedEntity == uiSingleton.hoveredEntity)
+                    if (eventInputInfo->onMouseUpEvent != -1)
                     {
-                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                        CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvents::MouseUp, widget.scriptWidget);
+                        auto& rect = registry.get<Components::UI::BoundingRect>(uiSingleton.clickedEntity);
+                        bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+                        if (isWithin)
+                        {
+                            auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
+                            CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvents::MouseUp, widget.scriptWidget);
+                        }
                     }
                 }
 

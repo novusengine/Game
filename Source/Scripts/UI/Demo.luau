@@ -1,6 +1,7 @@
 local UITemplates = require("API/UI/Templates")
 local UIStack = require("API/UI/UIStack")
 local UISlider = require("API/UI/Slider")
+local UICheckbox = require("API/UI/Checkbox")
 
 -- TODO: Borders :(
 
@@ -128,10 +129,10 @@ function CreateOptionsMenu(stack)
     headerText:SetRelativePoint(0.5, 1.0);
 
     -- Create buttons
-    local exitButton = panel:NewButton(2, 2, 40, 40, 0, "DefaultButton");
+    local exitButton = panel:NewButton(2, 2, 24, 24, 0, "DefaultButtonMinimize");
     exitButton:SetAnchor(1.0, 1.0);
     exitButton:SetRelativePoint(1.0, 1.0);
-    exitButton:SetText("X");
+    exitButton:SetText(".");
     exitButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("GameMenu");
@@ -151,9 +152,20 @@ function CreateOptionsMenu(stack)
     --volumeSliderText:SetRelativePoint(1.0, 0.5);
     --volumeSliderText:SetPos(-20, 0);
 
-
+    local testCheckbox = UICheckbox.NewCheckbox(panel, 0, -80, 24, 24, 0,
+    {
+        backgroundTemplate = "DefaultCheckboxBackground",
+        fillTemplate = "DefaultCheckboxFill",
+    });
+    testCheckbox.checkbox:SetAnchor(0.5, 1.0);
+    testCheckbox.background:SetRelativePoint(0.5, 1.0);
+    
+    testCheckbox:SetOnValueChanged(function(checkboxTable, state)
+        return true
+    end)
+   
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
-    --stack:Push("OptionsMenu")
+    stack:Push("OptionsMenu")
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
