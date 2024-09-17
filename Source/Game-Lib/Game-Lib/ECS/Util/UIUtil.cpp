@@ -326,6 +326,11 @@ namespace ECS::Util
 
                 panelTemplateComp = panelTemplate;
 
+                if (panelTemplateComp.setFlags.texCoords)
+                {
+                    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
+                }
+
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);
             }
             else if (widget.type == ECS::Components::UI::WidgetType::Text)
@@ -379,6 +384,11 @@ namespace ECS::Util
                 if (panelTemplate.setFlags.texCoords)
                 {
                     panelTemplateComp.texCoords = panelTemplate.texCoords;
+                    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
+                }
+                if (panelTemplate.setFlags.nineSliceCoords)
+                {
+                    panelTemplateComp.nineSliceCoords = panelTemplate.nineSliceCoords;
                 }
 
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);

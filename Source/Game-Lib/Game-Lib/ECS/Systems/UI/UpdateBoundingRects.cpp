@@ -11,8 +11,6 @@ namespace ECS::Systems::UI
 {
     void UpdateBoundingRects::Update(entt::registry& registry, f32 deltaTime)
     {
-        registry.clear<Components::UI::DirtyWidgetTransform>();
-
         auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
 
         // Dirty transforms

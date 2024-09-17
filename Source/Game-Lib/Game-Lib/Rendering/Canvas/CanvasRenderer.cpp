@@ -44,6 +44,18 @@ void CanvasRenderer::Update(f32 deltaTime)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
+    // Dirty widget flags
+    registry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
+    {
+        bool wasInteractable = eventInputInfo.isInteractable;
+        eventInputInfo.isInteractable = (widget.flags & WidgetFlags::Interactable) == WidgetFlags::Interactable;
+
+        if (wasInteractable != eventInputInfo.isInteractable)
+        {
+            ECS::Util::UI::RefreshTemplate(registry, entity, eventInputInfo);
+        }
+    });
+
     // Dirty transforms
     registry->view<DirtyWidgetTransform>().each([&](entt::entity entity)
     {
@@ -70,18 +82,7 @@ void CanvasRenderer::Update(f32 deltaTime)
             UpdateTextVertices(transform, text, textTemplate);
         }
     });
-
-    // Dirty widget flags
-    registry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
-    {
-        bool wasInteractable = eventInputInfo.isInteractable;
-        eventInputInfo.isInteractable = (widget.flags & WidgetFlags::Interactable) == WidgetFlags::Interactable;
-
-        if (wasInteractable != eventInputInfo.isInteractable)
-        {
-            ECS::Util::UI::RefreshTemplate(registry, entity, eventInputInfo);
-        }
-    });
+    registry->clear<DirtyWidgetTransform>();
 
     // Dirty widget datas
     registry->view<DirtyWidgetData>().each([&](entt::entity entity)
