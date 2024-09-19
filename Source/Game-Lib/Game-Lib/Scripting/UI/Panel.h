@@ -20,5 +20,7 @@ namespace Scripting::UI
         i32 SetSize(lua_State* state);
         i32 SetWidth(lua_State* state);
         i32 SetHeight(lua_State* state);
+        i32 SetBackground(lua_State* state);
+        i32 SetForeground(lua_State* state);
     };
 }

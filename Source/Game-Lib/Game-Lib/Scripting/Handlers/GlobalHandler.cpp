@@ -14,13 +14,6 @@
 
 namespace Scripting
 {
-    struct Panel
-    {
-    public:
-        vec3 position;
-        vec3 extents;
-    };
-
     void GlobalHandler::Register(lua_State* state)
     {
         LuaManager* luaManager = ServiceLocator::GetLuaManager();

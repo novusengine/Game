@@ -75,6 +75,10 @@ namespace Scripting
                 //auto uiHandler = GetLuaHandler<UI::UIHandler*>(LuaHandlerType::UI);
                 //uiHandler->Clear();
             }
+            else
+            {
+                _isDirty = false;
+            }
 
             isDirty = result;
         }
@@ -214,9 +218,7 @@ namespace Scripting
             i32 result = ctx.LoadBytecode(bytecodeEntry.filePath, bytecodeEntry.bytecode, 0);
             if (result != LUA_OK)
             {
-                std::string error = lua_tostring(state, -1);
-
-                luaL_error(state, "error requiring module, failed to load module");
+                lua_error(state);
                 return false;
             }
 
