@@ -1,8 +1,8 @@
-local UITemplates = require("API/UI/Templates")
 local UIStack = require("API/UI/UIStack")
 local UISlider = require("API/UI/Slider")
 local UICheckbox = require("API/UI/Checkbox")
 local UICombobox = require("API/UI/Combobox")
+local UILoadingScreen = require("API/UI/LoadingScreen")
 
 -- TODO: Borders :(
 
@@ -176,21 +176,21 @@ function CreateOptionsMenu(stack)
     end);
    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
-    stack:Push("OptionsMenu")
+    --stack:Push("OptionsMenu")
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    UITemplates.RegisterTemplates();
-
     local stack = UIStack.Get("Menu")
 
     --Demo();
     CreateGameMenu(stack);
     CreateOptionsMenu(stack);
+
+    --UILoadingScreen.SetLoadingScreen(nil)
     print('Hello from Demo.luau');
 end
 
-local function OnGameUpdated(eventID : number, motd : string)
+local function OnGameUpdated(eventID : number, deltaTime : number)
     
 end
 

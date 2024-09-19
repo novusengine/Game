@@ -8,7 +8,12 @@ usage:
 })
 ]]--
 
-local function SetupSliderMethods(sliderTable)
+local function SetupSliderMethods(sliderTable) 
+    sliderTable.GetProgress = function(table)
+        local sizeX = table.fill:GetWidth()
+        return math.clamp(sizeX / table.fillSizeX, 0.0, 1.0)
+    end
+
     sliderTable.SetProgress = function(table, progress)
         local sizeX = table.fillSizeX * progress;
         table.fill:SetWidth(sizeX);
@@ -48,16 +53,18 @@ function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplat
     
     sliderTable.slider = parent:NewWidget(posX, posY, layer);
 
-    local backgroundTemplate = sliderTemplateTable["backgroundTemplate"];
-    local fillTemplate = sliderTemplateTable["fillTemplate"];
+    local backgroundTemplate = sliderTemplateTable["backgroundTemplate"] or "DefaultSliderBackground";
+    local fillTemplate = sliderTemplateTable["fillTemplate"] or "DefaultSliderFill";
 
     sliderTable.background = sliderTable.slider:NewPanel(0, 0, sizeX, sizeY, 0, backgroundTemplate);
     
     -- Create a fill which grows logically from the left
-    sliderTable.fillSizeX = sizeX-16;
-    sliderTable.fillSizeY = sizeY-16;
+    sliderTable.fillSizeX = sliderTemplateTable["fillSizeX"] or sizeX-16;
+    sliderTable.fillSizeY = sliderTemplateTable["fillSizeY"] or sizeY-16;
+    local fillPosX = sliderTemplateTable["fillPosX"] or 8
+    local fillPosY = sliderTemplateTable["fillPosY"] or 0
 
-    sliderTable.fill = sliderTable.background:NewPanel(8, 0, sliderTable.fillSizeX, sliderTable.fillSizeY, 1, fillTemplate);
+    sliderTable.fill = sliderTable.background:NewPanel(fillPosX, fillPosY, sliderTable.fillSizeX, sliderTable.fillSizeY, 1, fillTemplate);
     sliderTable.fill:SetAnchor(0.0, 0.5);
     sliderTable.fill:SetRelativePoint(0.0, 0.5);
 

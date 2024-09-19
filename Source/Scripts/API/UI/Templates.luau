@@ -268,6 +268,31 @@ function Module.RegisterTemplates()
         textTemplate = "DefaultButtonText",
     });
 
+    -- Loading Screen
+    UI.RegisterPanelTemplate("DefaultLoadingScreen",
+    {
+        background = "Data/Texture/interface/glues/loading.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+    });
+
+    UI.RegisterPanelTemplate("DefaultLoadingBarFrame",
+    {
+        background = "Data/Texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+    });
+    
+    UI.RegisterPanelTemplate("DefaultLoadingBarBackground",
+    {
+        background = "Data/Texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+    });
+
+    UI.RegisterPanelTemplate("DefaultLoadingBarFill",
+    {
+        background = "Data/Texture/interface/glues/loadingbar/loading-barfill.dds",
+        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
+    });
+
     -- Menu Panel
 
     --local inheritedMenuButtonTemplate = UI.CopyButtonTemplate("MenuButton")

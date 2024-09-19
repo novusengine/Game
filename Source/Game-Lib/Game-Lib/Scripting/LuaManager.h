@@ -29,7 +29,8 @@ namespace Scripting
     {
     public:
         std::vector<LuaBytecodeEntry> bytecodeList;
-        robin_hood::unordered_map<u32, u32> _luaPathToBytecodeIndex;
+        std::vector<LuaBytecodeEntry> apiBytecodeList;
+        robin_hood::unordered_map<u32, u32> _luaAPIPathToBytecodeIndex;
     };
 
     class LuaManager

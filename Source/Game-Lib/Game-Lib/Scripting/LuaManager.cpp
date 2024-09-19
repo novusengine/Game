@@ -193,7 +193,7 @@ namespace Scripting
         }
 
         u32 moduleHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
-        if (!stateInfo->_luaPathToBytecodeIndex.contains(moduleHash))
+        if (!stateInfo->_luaAPIPathToBytecodeIndex.contains(moduleHash))
         {
             luaL_error(state, "error requiring module, bytecode not found");
             return 0;
@@ -208,8 +208,8 @@ namespace Scripting
         // Stack: Name, ModuleProxy, __ImportedModules__, Module
         if (!ctx.GetTableField(scriptPath))
         {
-            u32 bytecodeIndex = stateInfo->_luaPathToBytecodeIndex[moduleHash];
-            LuaBytecodeEntry& bytecodeEntry = stateInfo->bytecodeList[bytecodeIndex];
+            u32 bytecodeIndex = stateInfo->_luaAPIPathToBytecodeIndex[moduleHash];
+            LuaBytecodeEntry& bytecodeEntry = stateInfo->apiBytecodeList[bytecodeIndex];
 
             i32 result = ctx.LoadBytecode(bytecodeEntry.filePath, bytecodeEntry.bytecode, 0);
             if (result != LUA_OK)
@@ -273,11 +273,21 @@ namespace Scripting
         const char* scriptDir = CVAR_ScriptDir.Get();
         const char* scriptExtension = CVAR_ScriptExtension.Get();
         fs::path scriptDirectory = fs::absolute(scriptDir);
+        fs::path scriptAPIDirectory = scriptDirectory / "API";
+        fs::path scriptBootstrapDirectory = scriptDirectory / "Bootstrap";
         std::string scriptDirectoryAsString = scriptDirectory.string();
 
         if (!fs::exists(scriptDirectory))
         {
             fs::create_directories(scriptDirectory);
+        }
+        if (!fs::exists(scriptAPIDirectory))
+        {
+            fs::create_directories(scriptAPIDirectory);
+        }
+        if (!fs::exists(scriptBootstrapDirectory))
+        {
+            fs::create_directories(scriptBootstrapDirectory);
         }
 
         lua_State* state = luaL_newstate();
@@ -306,9 +316,56 @@ namespace Scripting
 
         // TODO : Figure out if this catches hidden folders, and if so exclude them
         // TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
-        std::vector<std::filesystem::path> paths;
-        std::filesystem::recursive_directory_iterator dirpos{ scriptDirectory };
-        std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
+        std::vector<fs::path> paths;
+        std::vector<fs::path> apiPaths;
+        paths.reserve(1024);
+        apiPaths.reserve(1024);
+
+        fs::recursive_directory_iterator fsScriptAPIDir { scriptAPIDirectory };
+        for (const auto& dirEntry : fsScriptAPIDir)
+        {
+            if (!dirEntry.is_regular_file())
+                continue;
+
+            fs::path path = dirEntry.path();
+            if (path.extension() != scriptExtension)
+                continue;
+
+            apiPaths.push_back(dirEntry.path());
+        }
+
+        fs::recursive_directory_iterator fsScriptBootstrapDir { scriptBootstrapDirectory };
+        for (const auto& dirEntry : fsScriptBootstrapDir)
+        {
+            if (!dirEntry.is_regular_file())
+                continue;
+
+            fs::path path = dirEntry.path();
+            if (path.extension() != scriptExtension)
+                continue;
+
+            paths.push_back(dirEntry.path());
+        }
+
+        fs::recursive_directory_iterator fsScriptDir { scriptDirectory };
+        for (const auto& dirEntry : fsScriptDir)
+        {
+            if (!dirEntry.is_regular_file())
+                continue;
+
+            fs::path path = dirEntry.path();
+            if (path.extension() != scriptExtension)
+                continue;
+
+            fs::path relativePath = fs::relative(path, scriptDirectory);
+            std::string relativePathAsString = relativePath.string();
+            std::replace(relativePathAsString.begin(), relativePathAsString.end(), '\\', '/');
+
+            if (StringUtils::BeginsWith(relativePathAsString, "API/") || StringUtils::BeginsWith(relativePathAsString, "Bootstrap/"))
+                continue;
+
+            paths.push_back(dirEntry.path());
+        }
 
         Luau::CompileOptions compileOptions;
         {
@@ -326,14 +383,46 @@ namespace Scripting
         auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
         gameEventHandler->SetupEvents(state);
 
+        for (auto& path : apiPaths)
+        {
+            const std::string pathAsStr = path.string();
+            FileReader reader(pathAsStr);
+
+            if (!reader.Open())
+                continue;
+
+            u32 bufferSize = static_cast<u32>(reader.Length());
+            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+            reader.Read(buffer.get(), bufferSize);
+
+            std::string luaCode;
+            luaCode.resize(bufferSize);
+
+            if (!buffer->GetString(luaCode, bufferSize))
+                continue;
+
+            LuaBytecodeEntry bytecodeEntry
+            {
+                false,
+                path.filename().string(),
+                pathAsStr,
+                Luau::compile(luaCode, compileOptions, parseOptions)
+            };
+
+            u32 index = static_cast<u32>(stateInfo.apiBytecodeList.size());
+
+            fs::path relPath = fs::relative(path, scriptDirectory);
+            std::string scriptPath = scriptDirectoryAsString + "/" + relPath.string();
+            std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
+
+            StringUtils::StringHash pathHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
+
+            stateInfo.apiBytecodeList.push_back(bytecodeEntry);
+            stateInfo._luaAPIPathToBytecodeIndex[pathHash] = index;
+        }
+
         for (auto& path : paths)
         {
-            if (fs::is_directory(path))
-                continue;
-
-            if (path.extension() != scriptExtension)
-                continue;
-
             const std::string pathAsStr = path.string();
             FileReader reader(pathAsStr);
 
@@ -367,7 +456,6 @@ namespace Scripting
             StringUtils::StringHash pathHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
 
             stateInfo.bytecodeList.push_back(bytecodeEntry);
-            stateInfo._luaPathToBytecodeIndex[pathHash] = index;
         }
 
         if (!didFail)
