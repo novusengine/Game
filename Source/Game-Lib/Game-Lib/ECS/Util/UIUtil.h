@@ -24,7 +24,7 @@ namespace ECS::Util
         entt::entity CreateText(Scripting::UI::Widget* widget, entt::registry* registry, const char* text, vec2 pos, u32 layer, const char* templateName, entt::entity parent);
         entt::entity CreateWidget(Scripting::UI::Widget* widget, entt::registry* registry, vec2 pos, u32 layer, entt::entity parent);
 
-        void RefreshText(entt::registry* registry, entt::entity entity);
+        void RefreshText(entt::registry* registry, entt::entity entity, std::string_view newText);
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
 
         void ResetTemplate(entt::registry* registry, entt::entity entity); // Sets it back to base

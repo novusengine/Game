@@ -270,7 +270,7 @@ namespace ECS::Util
             return entity;
         }
 
-        void RefreshText(entt::registry* registry, entt::entity entity)
+        void RefreshText(entt::registry* registry, entt::entity entity, std::string_view newText)
         {
             Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
 
@@ -281,6 +281,13 @@ namespace ECS::Util
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(entity);
+
+            size_t newLength = newText.size();
+
+            textComponent.sizeChanged |= newLength != textComponent.text.size();
+            textComponent.hasGrown |= newLength > textComponent.text.size();
+
+            textComponent.text = newText;
 
             const std::string& fontPath = uiSingleton.textTemplates[textComponent.templateIndex].font;
             f32 fontSize = uiSingleton.textTemplates[textComponent.templateIndex].size;

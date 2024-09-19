@@ -38,9 +38,7 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            textComponent.text = text;
-
-            ECS::Util::UI::RefreshText(registry, widget->entity);
+            ECS::Util::UI::RefreshText(registry, widget->entity, text);
 
             return 0;
         }

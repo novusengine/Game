@@ -25,7 +25,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DialogBox",
     {
         background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
     });
 
@@ -36,7 +35,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DialogBoxHeader",
     {
         background = "Data/Texture/interface/dialogframe/ui-dialogbox-header.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
         texCoords = Box.new(headerMinX, headerMinY, headerMaxX, headerMaxY),
     });
@@ -62,7 +60,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultButtonPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
@@ -92,7 +89,6 @@ function Module.RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
-        color = vec3.new(1.0, 1.0, 1.0),
         borderSize = 0.3,
         borderFade = 0.8,
         borderColor = vec3.new(0.0, 0.0, 0.0),
@@ -112,7 +108,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultButtonMinimizePanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-up.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
         cornerRadius = 0.0,
         texCoords = Box.new(minimizeButtonMinX, minimizeButtonMinY, minimizeButtonMaxX, minimizeButtonMaxY),
 
@@ -160,7 +155,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultSliderFill",
     {
         background = "Data/Texture/interface/buttons/bluegrad64_faded.dds",
-        color = vec3.new(1.0, 1.0, 1.0),
         cornerRadius = 2.0,
     });
 
@@ -181,7 +175,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultCheckboxFill",
     {
         background = "Data/Texture/interface/buttons/ui-checkbox-check.dds",
-        color = vec3.new(1.0, 1.0, 1.0),
         cornerRadius = 2.0,
         
         onUninteractableTemplate = "DefaultCheckboxDisabledFill",
@@ -201,9 +194,21 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultComboboxPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
-        color = vec3.new(1.0, 1.0, 1.0),
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
+    
+        onHoverTemplate = "DefaultComboboxHoveredPanel",
+    });
+
+    UI.RegisterPanelTemplate("DefaultComboboxHoveredPanel", 
+    {
+        background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
+    });
+
+    UI.RegisterButtonTemplate("DefaultComboboxButton", 
+    {
+        panelTemplate = "DefaultComboboxPanel",
+        textTemplate = "YellowText",
     });
 
     local comboboxIconMinX, comboboxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
@@ -212,7 +217,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultComboboxPrevPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-leftarrow-button-up.dds",
-        color = vec3.new(1.0, 1.0, 1.0),
         texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
 
         onClickTemplate = "DefaultComboboxPrevDownPanel",
@@ -244,7 +248,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultComboboxNextPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-rightarrow-button-up.dds",
-        color = vec3.new(1.0, 1.0, 1.0),
         texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
 
         onClickTemplate = "DefaultComboboxNextDownPanel",
@@ -272,25 +275,21 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultLoadingScreen",
     {
         background = "Data/Texture/interface/glues/loading.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
     });
 
     UI.RegisterPanelTemplate("DefaultLoadingBarFrame",
     {
         background = "Data/Texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
     });
     
     UI.RegisterPanelTemplate("DefaultLoadingBarBackground",
     {
         background = "Data/Texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
     });
 
     UI.RegisterPanelTemplate("DefaultLoadingBarFill",
     {
         background = "Data/Texture/interface/glues/loadingbar/loading-barfill.dds",
-        color = vec3.new(1.0, 1.0, 1.0), -- TODO: Color class
     });
 
     -- Menu Panel

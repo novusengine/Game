@@ -46,17 +46,7 @@ namespace Scripting::UI
             }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(button->textEntity);
-
-            size_t newLength = strlen(text);
-
-            textComponent.sizeChanged |= newLength != textComponent.text.size();
-            textComponent.hasGrown |= newLength > textComponent.text.size();
-
-            textComponent.text = text;
-
-            ECS::Util::UI::RefreshText(registry, button->textEntity);
+            ECS::Util::UI::RefreshText(registry, button->textEntity, text);
 
             return 0;
         }

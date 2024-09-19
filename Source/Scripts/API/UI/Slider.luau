@@ -53,6 +53,8 @@ function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplat
     
     sliderTable.slider = parent:NewWidget(posX, posY, layer);
 
+    sliderTemplateTable = sliderTemplateTable or {};
+
     local backgroundTemplate = sliderTemplateTable["backgroundTemplate"] or "DefaultSliderBackground";
     local fillTemplate = sliderTemplateTable["fillTemplate"] or "DefaultSliderFill";
 
@@ -61,8 +63,8 @@ function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplat
     -- Create a fill which grows logically from the left
     sliderTable.fillSizeX = sliderTemplateTable["fillSizeX"] or sizeX-16;
     sliderTable.fillSizeY = sliderTemplateTable["fillSizeY"] or sizeY-16;
-    local fillPosX = sliderTemplateTable["fillPosX"] or 8
-    local fillPosY = sliderTemplateTable["fillPosY"] or 0
+    local fillPosX = sliderTemplateTable["fillPosX"] or 8;
+    local fillPosY = sliderTemplateTable["fillPosY"] or 0;
 
     sliderTable.fill = sliderTable.background:NewPanel(fillPosX, fillPosY, sliderTable.fillSizeX, sliderTable.fillSizeY, 1, fillTemplate);
     sliderTable.fill:SetAnchor(0.0, 0.5);

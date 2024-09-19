@@ -127,6 +127,7 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        panelTemplate.color = Color::White;
         if (ctx.GetTableField("color", 2))
         {
             vec3 color = ctx.Get(vec3(1, 1, 1), -1);
@@ -279,6 +280,7 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        textTemplate.color = Color::White;
         if (ctx.GetTableField("color", 2))
         {
             vec3 color = ctx.Get(vec3(1, 1, 1), -1);
@@ -301,6 +303,7 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        textTemplate.borderColor = Color::White;
         if (ctx.GetTableField("borderColor", 2))
         {
             vec3 color = ctx.Get(vec3(1, 1, 1), -1);

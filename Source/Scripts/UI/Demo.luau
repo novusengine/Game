@@ -161,18 +161,17 @@ function CreateOptionsMenu(stack)
     testCheckbox.background:SetRelativePoint(0.5, 1.0);
     
     testCheckbox:SetOnValueChanged(function(checkboxTable, state)
-        return true
+        return true; -- Returning false will prevent the value from changing
     end)
 
     local testCombobox = UICombobox.NewCombobox(panel, 0, -120, 200, 40, 0, {
         options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
-        backgroundTemplate = "DefaultComboboxPanel",
-        textTemplate = "YellowText"
+        buttonTemplate = "DefaultComboboxButton",
     });
     testCombobox.combobox:SetAnchor(0.5, 1.0);
-    testCombobox.background:SetRelativePoint(0.5, 1.0);
-    testCombobox:SetOnValueChanged(function(table, value)
-        print(table.options[value]);
+    testCombobox.button:SetRelativePoint(0.5, 1.0);
+    testCombobox:SetOnValueChanged(function(table, index)
+        return true; -- Returning false will prevent the value from changing
     end);
    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
