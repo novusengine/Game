@@ -38,7 +38,7 @@ function Module.RegisterTemplates()
         cornerRadius = 0.0,
         texCoords = Box.new(headerMinX, headerMinY, headerMaxX, headerMaxY),
     });
-    
+
     -- Dialog Box Header Text
     UI.RegisterTextTemplate("YellowText",
     {
@@ -57,7 +57,7 @@ function Module.RegisterTemplates()
     local buttonNineSliceMaxX, buttonNineSliceMaxY = UI.PixelsToTexCoord(74, 18, 128, 32);
 
     -- Button
-    UI.RegisterPanelTemplate("DefaultButtonPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
         cornerRadius = 0.0,
@@ -70,22 +70,22 @@ function Module.RegisterTemplates()
         onUninteractableTemplate = "DefaultButtonDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonDownPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonDownPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonHoveredPanel",
     {
         foreground = "Data/Texture/interface/buttons/ui-panel-button-highlight.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonDisabledPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonDisabledPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
-    UI.RegisterTextTemplate("DefaultButtonText", 
+    UI.RegisterTextTemplate("DefaultButtonText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
@@ -94,7 +94,7 @@ function Module.RegisterTemplates()
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
-    UI.RegisterButtonTemplate("DefaultButton", 
+    UI.RegisterButtonTemplate("DefaultButton",
     {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "DefaultButtonText",
@@ -105,7 +105,7 @@ function Module.RegisterTemplates()
     local minimizeButtonMinX, minimizeButtonMinY = UI.PixelsToTexCoord(6, 7, 32, 32);
     local minimizeButtonMaxX, minimizeButtonMaxY = UI.PixelsToTexCoord(24, 24, 32, 32);
 
-    UI.RegisterPanelTemplate("DefaultButtonMinimizePanel", 
+    UI.RegisterPanelTemplate("DefaultButtonMinimizePanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-up.dds",
         cornerRadius = 0.0,
@@ -117,22 +117,22 @@ function Module.RegisterTemplates()
         onUninteractableTemplate = "DefaultButtonMinimizeDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeDownPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeDownPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeHoveredPanel",
     {
         foreground = "Data/Texture/interface/buttons/ui-panel-minimizebutton-highlight.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel", 
+    UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
     });
     
-    UI.RegisterButtonTemplate("DefaultButtonMinimize", 
+    UI.RegisterButtonTemplate("DefaultButtonMinimize",
     {
         panelTemplate = "DefaultButtonMinimizePanel",
         textTemplate = "DefaultButtonText",
@@ -176,36 +176,36 @@ function Module.RegisterTemplates()
     {
         background = "Data/Texture/interface/buttons/ui-checkbox-check.dds",
         cornerRadius = 2.0,
-        
+
         onUninteractableTemplate = "DefaultCheckboxDisabledFill",
     });
 
-    UI.RegisterPanelTemplate("DefaultCheckboxHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultCheckboxHoveredPanel",
     {
         foreground = "Data/Texture/interface/buttons/checkbuttonhilight.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultCheckboxDisabledFill", 
+    UI.RegisterPanelTemplate("DefaultCheckboxDisabledFill",
     {
         background = "Data/Texture/interface/buttons/ui-checkbox-check-disabled.dds",
     });
 
     -- Combobox
-    UI.RegisterPanelTemplate("DefaultComboboxPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
-    
+
         onHoverTemplate = "DefaultComboboxHoveredPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxHoveredPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxButton", 
+    UI.RegisterButtonTemplate("DefaultComboboxButton",
     {
         panelTemplate = "DefaultComboboxPanel",
         textTemplate = "YellowText",
@@ -213,8 +213,8 @@ function Module.RegisterTemplates()
 
     local comboboxIconMinX, comboboxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
     local comboboxIconMaxX, comboboxIconMaxY = UI.PixelsToTexCoord(26, 28, 32, 32);
-    
-    UI.RegisterPanelTemplate("DefaultComboboxPrevPanel", 
+
+    UI.RegisterPanelTemplate("DefaultComboboxPrevPanel",
     {
         background = "Data/Texture/interface/glues/common/glue-leftarrow-button-up.dds",
         texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
@@ -224,28 +224,28 @@ function Module.RegisterTemplates()
         onUninteractableTemplate = "DefaultComboboxDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxPrevDownPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxPrevDownPanel",
     {
         background = "Data/Texture/interface/glues/common/glue-leftarrow-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxPrevHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxPrevHoveredPanel",
     {
         foreground = "Data/Texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxPrevButton", 
+    UI.RegisterButtonTemplate("DefaultComboboxPrevButton",
     {
         panelTemplate = "DefaultComboboxPrevPanel",
         textTemplate = "DefaultButtonText",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxDisabledPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxDisabledPanel",
     {
         color = vec3.new(0.5, 0.5, 0.5),
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxNextPanel",
     {
         background = "Data/Texture/interface/glues/common/glue-rightarrow-button-up.dds",
         texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
@@ -255,17 +255,17 @@ function Module.RegisterTemplates()
         onUninteractableTemplate = "DefaultComboboxDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextDownPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxNextDownPanel",
     {
         background = "Data/Texture/interface/glues/common/glue-rightarrow-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextHoveredPanel", 
+    UI.RegisterPanelTemplate("DefaultComboboxNextHoveredPanel",
     {
         foreground = "Data/Texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxNextButton", 
+    UI.RegisterButtonTemplate("DefaultComboboxNextButton",
     {
         panelTemplate = "DefaultComboboxNextPanel",
         textTemplate = "DefaultButtonText",
@@ -281,7 +281,7 @@ function Module.RegisterTemplates()
     {
         background = "Data/Texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
     });
-    
+
     UI.RegisterPanelTemplate("DefaultLoadingBarBackground",
     {
         background = "Data/Texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",

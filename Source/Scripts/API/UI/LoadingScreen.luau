@@ -36,7 +36,7 @@ __LoadingScreenData =
     loadingBarFramePanel = loadBarFrame,
     loadingBarSlider = loadBarSlider,
 
-    nameToTextureMap = 
+    nameToTextureMap =
     {
         ["None"]                = "Data/Texture/interface/glues/loading.dds",
         ["Default"]             = "Data/Texture/interface/glues/loading.dds",
