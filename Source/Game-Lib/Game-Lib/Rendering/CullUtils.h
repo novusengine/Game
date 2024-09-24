@@ -10,35 +10,35 @@
 
 namespace Renderer
 {
-	class Renderer;
-	class RenderGraphResources;
-	class CommandList;
+    class Renderer;
+    class RenderGraphResources;
+    class CommandList;
 }
 class DepthPyramidUtils
 {
 public:
-	static void InitBuffers(Renderer::Renderer* renderer);
+    static void InitBuffers(Renderer::Renderer* renderer);
 
-	struct BuildPyramidParams
-	{
-		Renderer::Renderer* renderer;
-		Renderer::RenderGraphResources* graphResources;
-		Renderer::CommandList* commandList;
-		RenderResources* resources;
-		u32 frameIndex;
+    struct BuildPyramidParams
+    {
+        Renderer::Renderer* renderer;
+        Renderer::RenderGraphResources* graphResources;
+        Renderer::CommandList* commandList;
+        RenderResources* resources;
+        u32 frameIndex;
 
-		uvec2 pyramidSize;
-		Renderer::DepthImageResource depth;
-		Renderer::ImageMutableResource depthPyramid;
+        uvec2 pyramidSize;
+        Renderer::DepthImageResource depth;
+        Renderer::ImageMutableResource depthPyramid;
 
-		Renderer::DescriptorSetResource copyDescriptorSet;
-		Renderer::DescriptorSetResource pyramidDescriptorSet;
-	};
-	static void BuildPyramid(BuildPyramidParams& params);
+        Renderer::DescriptorSetResource copyDescriptorSet;
+        Renderer::DescriptorSetResource pyramidDescriptorSet;
+    };
+    static void BuildPyramid(BuildPyramidParams& params);
 
-	static Renderer::SamplerID _copySampler;
-	static Renderer::SamplerID _pyramidSampler;
-	static Renderer::DescriptorSet _copyDescriptorSet;
-	static Renderer::DescriptorSet _pyramidDescriptorSet;
-	static Renderer::BufferID _atomicBuffer;
+    static Renderer::SamplerID _copySampler;
+    static Renderer::SamplerID _pyramidSampler;
+    static Renderer::DescriptorSet _copyDescriptorSet;
+    static Renderer::DescriptorSet _pyramidDescriptorSet;
+    static Renderer::BufferID _atomicBuffer;
 };

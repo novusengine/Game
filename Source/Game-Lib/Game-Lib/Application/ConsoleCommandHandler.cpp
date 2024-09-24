@@ -6,41 +6,41 @@
 
 ConsoleCommandHandler::ConsoleCommandHandler()
 {
-	RegisterCommand("print"_h, &ConsoleCommands::CommandPrint);
-	RegisterCommand("ping"_h, &ConsoleCommands::CommandPing);
-	RegisterCommand("lua"_h, &ConsoleCommands::CommandDoString);
-	RegisterCommand("eval"_h, &ConsoleCommands::CommandDoString);
-	RegisterCommand("r"_h, &ConsoleCommands::CommandReloadScripts);
-	RegisterCommand("reload"_h, &ConsoleCommands::CommandReloadScripts);
-	RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);
+    RegisterCommand("print"_h, &ConsoleCommands::CommandPrint);
+    RegisterCommand("ping"_h, &ConsoleCommands::CommandPing);
+    RegisterCommand("lua"_h, &ConsoleCommands::CommandDoString);
+    RegisterCommand("eval"_h, &ConsoleCommands::CommandDoString);
+    RegisterCommand("r"_h, &ConsoleCommands::CommandReloadScripts);
+    RegisterCommand("reload"_h, &ConsoleCommands::CommandReloadScripts);
+    RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);
 
-	RegisterCommand("exit"_h, &ConsoleCommands::CommandExit);
-	RegisterCommand("halt"_h, &ConsoleCommands::CommandExit);
-	RegisterCommand("quit"_h, &ConsoleCommands::CommandExit);
-	RegisterCommand("stop"_h, &ConsoleCommands::CommandExit);
-	RegisterCommand("termiante"_h, &ConsoleCommands::CommandExit);
+    RegisterCommand("exit"_h, &ConsoleCommands::CommandExit);
+    RegisterCommand("halt"_h, &ConsoleCommands::CommandExit);
+    RegisterCommand("quit"_h, &ConsoleCommands::CommandExit);
+    RegisterCommand("stop"_h, &ConsoleCommands::CommandExit);
+    RegisterCommand("termiante"_h, &ConsoleCommands::CommandExit);
 }
 
 void ConsoleCommandHandler::HandleCommand(Application& app, std::string& command)
 {
-	if (command.length() == 0)
-		return;
+    if (command.length() == 0)
+        return;
 
-	std::vector<std::string> splitCommand = StringUtils::SplitString(command);
-	u32 hashedCommand = StringUtils::fnv1a_32(splitCommand[0].c_str(), splitCommand[0].size());
+    std::vector<std::string> splitCommand = StringUtils::SplitString(command);
+    u32 hashedCommand = StringUtils::fnv1a_32(splitCommand[0].c_str(), splitCommand[0].size());
 
-	auto itr = _commandHashToCallbackFn.find(hashedCommand);
-	if (itr == _commandHashToCallbackFn.end())
-	{
-		NC_LOG_WARNING("Unhandled command: (%s)", command.c_str());
-		return;
-	}
+    auto itr = _commandHashToCallbackFn.find(hashedCommand);
+    if (itr == _commandHashToCallbackFn.end())
+    {
+        NC_LOG_WARNING("Unhandled command: (%s)", command.c_str());
+        return;
+    }
 
-	splitCommand.erase(splitCommand.begin());
-	itr->second(app, splitCommand);
+    splitCommand.erase(splitCommand.begin());
+    itr->second(app, splitCommand);
 }
 
 void ConsoleCommandHandler::RegisterCommand(u32 commandHash, CallbackFn callback)
 {
-	_commandHashToCallbackFn.insert_or_assign(commandHash, callback);
+    _commandHashToCallbackFn.insert_or_assign(commandHash, callback);
 }

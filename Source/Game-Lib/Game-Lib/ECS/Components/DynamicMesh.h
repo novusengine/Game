@@ -2,8 +2,8 @@
 
 namespace ECS::Components
 {
-	struct DynamicMesh
-	{
-	public:
-	};
+    struct DynamicMesh
+    {
+    public:
+    };
 }

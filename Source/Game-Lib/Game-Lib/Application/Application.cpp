@@ -404,7 +404,7 @@ bool Application::Init()
     {
         // ModelRenderer is optional and nullptr can be passed in to run the AnimationSystem without it
         ModelRenderer* modelRenderer = _gameRenderer->GetModelRenderer();
-        _animationSystem = new Animation::AnimationSystem(modelRenderer);
+        _animationSystem = new Animation::AnimationSystem();
 
         ServiceLocator::SetAnimationSystem(_animationSystem);
     }
@@ -481,8 +481,6 @@ bool Application::Tick(f32 deltaTime)
         _registries.eventIncomingRegistry = _registries.eventOutgoingRegistry;
         _registries.eventOutgoingRegistry = temp;
     }
-
-    _animationSystem->Update(deltaTime);
 
     _editorHandler->Update(deltaTime);
 

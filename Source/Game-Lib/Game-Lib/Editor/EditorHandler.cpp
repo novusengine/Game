@@ -1,5 +1,6 @@
 #include "EditorHandler.h"
 #include "ActionStack.h"
+#include "AnimationController.h"
 #include "AssetBrowser.h"
 #include "CameraInfo.h"
 #include "Clock.h"
@@ -42,6 +43,7 @@ namespace Editor
 
         _viewport = new Viewport();
         _editors.push_back(_viewport);
+        _editors.push_back(new AnimationController());
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
         _editors.push_back(new Clock());

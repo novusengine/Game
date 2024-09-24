@@ -2,8 +2,8 @@
 
 namespace ECS::Components
 {
-	struct KinematicMesh
-	{
-	public:
-	};
+    struct KinematicMesh
+    {
+    public:
+    };
 }

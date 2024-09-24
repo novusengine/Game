@@ -7,14 +7,14 @@
 
 namespace ECS::Systems
 {
-	u32 GetSecondsSinceMidnightUTC()
-	{
-		time_t timeNow = std::time(nullptr);
-		tm* timestampUTC = std::gmtime(&timeNow);
+    u32 GetSecondsSinceMidnightUTC()
+    {
+        time_t timeNow = std::time(nullptr);
+        tm* timestampUTC = std::gmtime(&timeNow);
 
-		u32 seconds = timestampUTC->tm_sec + (((timestampUTC->tm_hour * 60) + timestampUTC->tm_min) * 60);
-		return seconds;
-	}
+        u32 seconds = timestampUTC->tm_sec + (((timestampUTC->tm_hour * 60) + timestampUTC->tm_min) * 60);
+        return seconds;
+    }
 
     void UpdateDayNightCycle::Init(entt::registry& registry)
     {
@@ -50,23 +50,23 @@ namespace ECS::Systems
         SetTime(registry, secondsSinceMidnightUTC);
     }
 
-	void UpdateDayNightCycle::SetTime(entt::registry& registry, f32 time)
-	{
-		entt::registry::context& context = registry.ctx();
-		auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
-
-		dayNightCycle.timeInSeconds = time;
-	}
-	void UpdateDayNightCycle::SetSpeedModifier(entt::registry& registry, f32 speedModifier)
-	{
-		entt::registry::context& context = registry.ctx();
-		auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
-
-		dayNightCycle.speedModifier = speedModifier;
-	}
-	void UpdateDayNightCycle::SetTimeAndSpeedModifier(entt::registry& registry, f32 time, f32 speedModifier)
+    void UpdateDayNightCycle::SetTime(entt::registry& registry, f32 time)
     {
-		SetTime(registry, time);
-		SetSpeedModifier(registry, speedModifier);
+        entt::registry::context& context = registry.ctx();
+        auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
+
+        dayNightCycle.timeInSeconds = time;
+    }
+    void UpdateDayNightCycle::SetSpeedModifier(entt::registry& registry, f32 speedModifier)
+    {
+        entt::registry::context& context = registry.ctx();
+        auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
+
+        dayNightCycle.speedModifier = speedModifier;
+    }
+    void UpdateDayNightCycle::SetTimeAndSpeedModifier(entt::registry& registry, f32 time, f32 speedModifier)
+    {
+        SetTime(registry, time);
+        SetSpeedModifier(registry, speedModifier);
     }
 }

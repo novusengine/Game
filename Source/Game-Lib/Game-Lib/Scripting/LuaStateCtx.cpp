@@ -360,9 +360,9 @@ namespace Scripting
 		return luau_load(_state, chunkName.c_str(), bytecode.c_str(), bytecode.size(), env);
 	}
 
-	i32 LuaStateCtx::Resume(lua_State* from, i32 index)
+	i32 LuaStateCtx::Resume(lua_State* from, i32 nArg)
 	{
-		return lua_resume(_state, from, index);
+		return lua_resume(_state, from, nArg);
 	}
 
 	void LuaStateCtx::MakeReadOnly()

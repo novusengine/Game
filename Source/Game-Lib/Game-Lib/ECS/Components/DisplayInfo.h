@@ -3,9 +3,9 @@
 
 namespace ECS::Components
 {
-	struct DisplayInfo
-	{
-	public:
-		u32 displayID;
-	};
+    struct DisplayInfo
+    {
+    public:
+        u32 displayID;
+    };
 }

@@ -108,8 +108,8 @@ namespace ECS::Systems
                     ECS::Util::CameraUtil::SetCaptureMouse(false);
                 }
 
-				settings.mouseRightDown = false;
-			}
+                settings.mouseRightDown = false;
+            }
 
             return true;
         });

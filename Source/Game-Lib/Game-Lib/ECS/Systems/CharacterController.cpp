@@ -746,9 +746,6 @@ namespace ECS::Systems
                     {
                         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
                         modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, model->instanceID);
-
-                        Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-                        animationSystem->RemoveInstance(model->instanceID);
                     }
                 }
 

@@ -1339,12 +1339,8 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
         if (manifest.isAnimated)
         {
-            i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled"_h);
-            if (animationSystemEnabled && *animationSystemEnabled == 1)
-            {
-                u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
-                instanceData.animatedVertexOffset = animatedVertexOffset;
-            }
+            u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
+            instanceData.animatedVertexOffset = animatedVertexOffset;
         }
     }
 
@@ -1505,12 +1501,8 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
             if (manifest.isAnimated)
             {
-                i32* animationSystemEnabled = CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled"_h);
-                if (animationSystemEnabled && *animationSystemEnabled == 1)
-                {
-                    u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
-                    instanceData.animatedVertexOffset = animatedVertexOffset;
-                }
+                u32 animatedVertexOffset = _animatedVerticesIndex.fetch_add(manifest.numVertices);
+                instanceData.animatedVertexOffset = animatedVertexOffset;
             }
             else
             {
@@ -2026,6 +2018,156 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
     }
 }
 
+bool ModelRenderer::AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset)
+{
+    if (_modelManifests.size() <= modelID)
+        return false;
+
+    const ModelManifest& modelManifest = _modelManifests[modelID];
+
+    if (modelManifest.numBones > 0)
+    {
+        boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
+        u32 boneMatrixNum = modelManifest.numBones;
+
+        u32 endMatrixOffset = (boneMatrixOffset + boneMatrixNum);
+
+        std::vector<mat4x4>& boneMatrices = _boneMatrices.Get();
+        if (boneMatrices.size() < endMatrixOffset)
+        {
+            boneMatrices.resize(endMatrixOffset);
+        }
+
+        for (u32 i = 0; i < boneMatrixNum; i++)
+        {
+            boneMatrices[boneMatrixOffset + i] = mat4x4(1.0f);
+        }
+
+        _boneMatrices.SetDirtyElements(boneMatrixOffset, boneMatrixNum);
+    }
+    else
+    {
+        boneMatrixOffset = std::numeric_limits<u32>().max();
+    }
+
+    if (modelManifest.numTextureTransforms > 0)
+    {
+        textureTransformMatrixOffset = _textureTransformMatrixIndex.fetch_add(modelManifest.numTextureTransforms);
+        u32 textureTransformMatrixNum = modelManifest.numTextureTransforms;
+
+        std::vector<mat4x4>& textureTransforMatrices = _textureTransformMatrices.Get();
+
+        u32 endMatrixOffset = (textureTransformMatrixOffset + textureTransformMatrixNum);
+        if (textureTransforMatrices.size() < endMatrixOffset)
+        {
+            textureTransforMatrices.resize(endMatrixOffset);
+        }
+
+        for (u32 i = 0; i < textureTransformMatrixNum; i++)
+        {
+            textureTransforMatrices[textureTransformMatrixOffset + i] = mat4x4(1.0f);
+        }
+
+        _textureTransformMatrices.SetDirtyElements(textureTransformMatrixOffset, textureTransformMatrixNum);
+    }
+    else
+    {
+        textureTransformMatrixOffset = std::numeric_limits<u32>().max();
+    }
+
+    return true;
+}
+
+bool ModelRenderer::SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffset, u32 textureTransformMatrixOffset)
+{
+    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
+
+    if (instanceID >= instanceDatas.size())
+    {
+        return false;
+    }
+
+    InstanceData& instanceData = instanceDatas[instanceID];
+    const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
+
+    if (modelManifest.numBones > 0)
+    {
+        instanceData.boneMatrixOffset = boneMatrixOffset;
+    }
+
+    if (modelManifest.numTextureTransforms > 0)
+    {
+        instanceData.textureTransformMatrixOffset = textureTransformMatrixOffset;
+    }
+
+    if (modelManifest.numBones > 0 || modelManifest.numTextureTransforms > 0)
+    {
+        _instanceDatas.SetDirtyElement(instanceID);
+    }
+
+    return true;
+}
+
+bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatrixOffset, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
+{
+    if (_modelManifests.size() <= modelID)
+        return false;
+
+    const ModelManifest& modelManifest = _modelManifests[modelID];
+    if (boneMatrixOffset == InstanceData::InvalidID)
+        return false;
+
+    u32 globalBoneIndex = boneMatrixOffset + localBoneIndex;
+    u32 endGlobalBoneIndex = globalBoneIndex + (count - 1);
+
+    // Check if the bone range is valid
+    if (endGlobalBoneIndex > boneMatrixOffset + modelManifest.numBones)
+        return false;
+
+    if (count == 1)
+    {
+        _boneMatrices.Get()[globalBoneIndex] = *boneMatrixArray;
+        _boneMatrices.SetDirtyElement(globalBoneIndex);
+    }
+    else
+    {
+        memcpy(&_boneMatrices.Get()[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
+        _boneMatrices.SetDirtyElements(globalBoneIndex, count);
+    }
+
+    return true;
+}
+
+bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u32 textureTransformMatrixOffset, u32 localTextureTransformIndex, u32 count, mat4x4* textureTransformMatrixArray)
+{
+    if (_modelManifests.size() <= modelID)
+        return false;
+
+    const ModelManifest& modelManifest = _modelManifests[modelID];
+    if (textureTransformMatrixOffset == InstanceData::InvalidID)
+        return false;
+
+    u32 globalTextureTransformIndex = textureTransformMatrixOffset + localTextureTransformIndex;
+    u32 endGlobalTextureTransformIndex = globalTextureTransformIndex + (count - 1);
+
+    // Check if the bone range is valid
+    if (endGlobalTextureTransformIndex > textureTransformMatrixOffset + modelManifest.numTextureTransforms)
+        return false;
+
+    if (count == 1)
+    {
+        _textureTransformMatrices.Get()[globalTextureTransformIndex] = *textureTransformMatrixArray;
+        _textureTransformMatrices.SetDirtyElement(globalTextureTransformIndex);
+    }
+    else
+    {
+        memcpy(&_textureTransformMatrices.Get()[globalTextureTransformIndex], textureTransformMatrixArray, count * sizeof(mat4x4));
+        _textureTransformMatrices.SetDirtyElements(globalTextureTransformIndex, count);
+    }
+
+    return true;
+}
+
 bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 {
     std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
@@ -2036,8 +2178,8 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
     }
 
     InstanceData& instanceData = instanceDatas[instanceID];
-
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
+
     if (modelManifest.numBones > 0)
     {
         instanceData.boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
@@ -2046,6 +2188,11 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
     if (modelManifest.numTextureTransforms > 0)
     {
         instanceData.textureTransformMatrixOffset = _textureTransformMatrixIndex.fetch_add(modelManifest.numTextureTransforms);
+    }
+
+    if (modelManifest.numBones > 0 || modelManifest.numTextureTransforms > 0)
+    {
+        _instanceDatas.SetDirtyElement(instanceID);
     }
 
     return true;
