@@ -4,4 +4,5 @@
 namespace ECS::Components
 {
     struct SkyboxModelTag {};
+    struct AnimatingTag {};
 }

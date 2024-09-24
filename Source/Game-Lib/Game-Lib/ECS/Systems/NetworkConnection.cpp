@@ -3,6 +3,7 @@
 
 #include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Model.h"
@@ -212,12 +213,12 @@ namespace ECS::Systems
 
         if (registry->any_of<Components::Model>(entity))
         {
-            Animation::AnimationSystem* AnimationSystem = ServiceLocator::GetAnimationSystem();
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
             auto& model = registry->get<Components::Model>(entity);
-            AnimationSystem->RemoveInstance(model.instanceID);
             modelLoader->UnloadModelForEntity(entity, model.instanceID);
+
+            registry->remove<Components::AnimationData>(entity);
         }
 
         networkState.networkIDToEntity.erase(networkID);
@@ -745,9 +746,6 @@ namespace ECS::Systems
                         {
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
                             modelLoader->UnloadModelForEntity(entity, model->instanceID);
-
-                            Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-                            animationSystem->RemoveInstance(model->instanceID);
                         }
                     }
 

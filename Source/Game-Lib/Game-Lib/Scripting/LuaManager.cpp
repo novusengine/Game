@@ -166,7 +166,9 @@ namespace Scripting
         LuaStateCtx ctx(luaL_newstate());
         ctx.RegisterDefaultLibraries();
         ctx.SetGlobal(table);
-        ctx.MakeReadOnly();
+
+        luaL_sandbox(ctx.GetState());
+        luaL_sandboxthread(ctx.GetState());
 
         // TODO : Figure out if this catches hidden folders, and if so exclude them
         // TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
@@ -187,6 +189,10 @@ namespace Scripting
         _bytecodeList.clear();
         _bytecodeList.reserve(paths.size());
 
+        auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
+        gameEventHandler->SetupEvents(ctx.GetState());
+
+        bool didFail = false;
         for (auto& path : paths)
         {
             if (fs::is_directory(path))
@@ -219,24 +225,26 @@ namespace Scripting
             _bytecodeList.push_back(bytecodeEntry);
 
             i32 result = ctx.LoadBytecode(pathAsStr, bytecodeEntry.bytecode, 0);
-            if (result != LUA_OK)
+            if (result == LUA_OK)
             {
-                ctx.ReportError();
+                i32 status = ctx.Resume();
+
+                if (status == LUA_OK)
+                {
+                    NC_LOG_INFO("Loaded Script : {0}", pathAsStr);
+                }
+                else
+                {
+                    std::string error = (status == LUA_YIELD) ? "thread yielded unexpectedly" : lua_tostring(ctx.GetState(), -1);
+                    error += "\nstacktrace:\n";
+                    error += lua_debugtrace(ctx.GetState());
+
+                    NC_LOG_ERROR("Failed to load script : {0}\n{1}", pathAsStr, error);
+                    didFail = true;
+                    break;
+                }
             }
-        }
-
-        auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-        gameEventHandler->SetupEvents(ctx.GetState());
-
-        bool didFail = false;
-
-        i32 top = ctx.GetTop();
-        for (i32 i = 0; i < top; i++)
-        {
-            ctx.Resume();
-
-            i32 result = ctx.GetStatus();
-            if (result != LUA_OK)
+            else
             {
                 ctx.ReportError();
                 didFail = true;

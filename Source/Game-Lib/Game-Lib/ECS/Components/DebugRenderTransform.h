@@ -4,9 +4,9 @@
 
 namespace ECS::Components
 {
-	struct DebugRenderTransform
-	{
-	public:
-		Color color = Color::Blue;
-	};
+    struct DebugRenderTransform
+    {
+    public:
+        Color color = Color::Blue;
+    };
 }

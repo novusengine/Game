@@ -5,8 +5,8 @@
 
 namespace ECS::Util
 {
-	namespace CharSection
-	{
-		void RefreshData(entt::registry& registry);
-	}
+    namespace CharSection
+    {
+        void RefreshData(entt::registry& registry);
+    }
 }

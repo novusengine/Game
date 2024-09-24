@@ -12,12 +12,12 @@ Items in the scrolling area need to be all the same.
 FakeScrollingArea scrollingArea(itemSize, totalItems);
 if (scrollingArea.Before())
 {
-	auto firstItem = scrollingArea.GetFirstVisibleItem();
-	auto lastItem = scrollingArea.GetLastVisibleItem();
+    auto firstItem = scrollingArea.GetFirstVisibleItem();
+    auto lastItem = scrollingArea.GetLastVisibleItem();
 
-	// do your stuff here
+    // do your stuff here
 
-	scrollingArea.After();
+    scrollingArea.After();
 }
 */
 

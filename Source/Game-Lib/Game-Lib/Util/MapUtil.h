@@ -3,8 +3,8 @@
 
 namespace Util
 {
-	namespace Map
-	{
+    namespace Map
+    {
         vec2 WorldPositionToChunkGlobalPos(const vec3& position);
      
         vec2 GetChunkIndicesFromAdtPosition(const vec2& adtPosition);
@@ -17,5 +17,5 @@ namespace Util
 
         vec2 GetCellVertexPosition(u32 cellID, u32 vertexID);
         vec2 GetGlobalVertexPosition(u32 chunkID, u32 cellID, u32 vertexID);
-	}
+    }
 }

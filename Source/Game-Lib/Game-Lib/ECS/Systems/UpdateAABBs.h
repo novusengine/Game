@@ -4,9 +4,9 @@
 
 namespace ECS::Systems
 {
-	class UpdateAABBs
-	{
-	public:
-		static void Update(entt::registry& registry, f32 deltaTime);
-	};
+    class UpdateAABBs
+    {
+    public:
+        static void Update(entt::registry& registry, f32 deltaTime);
+    };
 }

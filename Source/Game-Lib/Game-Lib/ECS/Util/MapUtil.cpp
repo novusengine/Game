@@ -16,8 +16,8 @@ using namespace ECS::Singletons;
 
 namespace ECS::Util
 {
-	namespace Map
-	{
+    namespace Map
+    {
         bool Refresh()
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -41,23 +41,23 @@ namespace ECS::Util
             return true;
         }
 
-		bool GetMapFromInternalNameHash(u32 nameHash, ClientDB::Definitions::Map* map)
-		{
-			entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-			entt::registry::context& ctx = registry->ctx();
+        bool GetMapFromInternalNameHash(u32 nameHash, ClientDB::Definitions::Map* map)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            entt::registry::context& ctx = registry->ctx();
 
-			auto& mapDB = ctx.get<MapDB>();
+            auto& mapDB = ctx.get<MapDB>();
 
             if (!mapDB.mapInternalNameHashToID.contains(nameHash))
                 return false;
 
-			return true;
-		}
-		bool GetMapFromInternalName(const std::string& name, ClientDB::Definitions::Map* map)
-		{
-			u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
-			return GetMapFromInternalNameHash(nameHash, map);
-		}
+            return true;
+        }
+        bool GetMapFromInternalName(const std::string& name, ClientDB::Definitions::Map* map)
+        {
+            u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+            return GetMapFromInternalNameHash(nameHash, map);
+        }
 
         u32 GetMapIDFromInternalName(const std::string& internalName)
         {
@@ -149,5 +149,5 @@ namespace ECS::Util
 
             mapStorage->SetDirty();
         }
-	}
+    }
 }

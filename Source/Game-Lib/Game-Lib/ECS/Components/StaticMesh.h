@@ -2,8 +2,8 @@
 
 namespace ECS::Components
 {
-	struct StaticMesh
-	{
-	public:
-	};
+    struct StaticMesh
+    {
+    public:
+    };
 }

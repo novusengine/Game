@@ -3,7 +3,7 @@
 
 struct EnttRegistries
 {
-	entt::registry* gameRegistry;
-	entt::registry* eventIncomingRegistry;
-	entt::registry* eventOutgoingRegistry;
+    entt::registry* gameRegistry;
+    entt::registry* eventIncomingRegistry;
+    entt::registry* eventOutgoingRegistry;
 };

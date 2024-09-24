@@ -1,4 +1,5 @@
 #include "MapLoader.h"
+#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Inspector.h"
@@ -41,6 +42,9 @@ void MapLoader::Update(f32 deltaTime)
     // Clear Map
     if (request.internalMapNameHash == std::numeric_limits<u32>().max())
     {
+        if (_currentMapID == std::numeric_limits<u32>().max())
+            return;
+
         _currentMapID = std::numeric_limits<u32>().max();
         ClearRenderersForMap();
     }
@@ -130,6 +134,8 @@ void MapLoader::ClearRenderersForMap()
     _modelLoader->Clear();
     _liquidLoader->Clear();
 
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ServiceLocator::GetAnimationSystem()->Clear(*registry);
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();

@@ -6,15 +6,15 @@
 
 namespace ECS::Components
 {
-	struct Model
-	{
-	public:
-		u32 modelID = std::numeric_limits<u32>().max();
-		u32 instanceID = std::numeric_limits<u32>().max();
-	};
+    struct Model
+    {
+    public:
+        u32 modelID = std::numeric_limits<u32>().max();
+        u32 instanceID = std::numeric_limits<u32>().max();
+    };
 }
 
 REFL_TYPE(ECS::Components::Model)
-	REFL_FIELD(modelID, Reflection::ReadOnly())
-	REFL_FIELD(instanceID, Reflection::ReadOnly())
+    REFL_FIELD(modelID, Reflection::ReadOnly())
+    REFL_FIELD(instanceID, Reflection::ReadOnly())
 REFL_END

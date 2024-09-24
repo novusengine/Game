@@ -90,7 +90,7 @@ namespace Scripting
 		void SetTable(const char* key, LuaTable& value, i32 index = -3);
 
 		i32 LoadBytecode(const std::string& chunkName, const std::string& bytecode, i32 env = 0);
-		i32 Resume(lua_State* from = nullptr, i32 index = 0);
+		i32 Resume(lua_State* from = nullptr, i32 nArg = 0);
 		void MakeReadOnly();
 		void ReportError();
 		void Close();
