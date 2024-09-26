@@ -65,9 +65,9 @@ function Module.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkboxTem
     local fillTemplate = checkboxTemplateTable["fillTemplate"];
 
     checkboxTable.background = checkboxTable.checkbox:NewPanel(0, 0, sizeX, sizeY, 0, backgroundTemplate);
-    checkboxTable.fill = checkboxTable.checkbox:NewPanel(0, -2, sizeX, sizeY, 0, fillTemplate);
+    checkboxTable.fill = checkboxTable.background:NewPanel(0, -2, sizeX, sizeY, 0, fillTemplate);
     checkboxTable.fill:SetAnchor(0.5, 0.5)
-    checkboxTable.fill:SetRelativePoint(0.5, 1.0)
+    checkboxTable.fill:SetRelativePoint(0.5, 0.5)
     checkboxTable.fill:SetVisible(false)
     checkboxTable = SetupCheckboxMethods(checkboxTable);
 

@@ -83,8 +83,8 @@ local function RefreshText(inputBoxTable)
         cursorCharPos = cursorPos
     end
 
-    -- If password is true, replace displayText with asterisks
-    if inputBoxTable.password then
+    -- If secure is true, replace displayText with asterisks
+    if inputBoxTable.secure then
         local len = utf8.len(displayText)
         displayText = string.rep("*", len)
     end
@@ -143,6 +143,10 @@ local function SetupInputBoxMethods(inputBoxTable)
 
     inputBoxTable.SetOnSubmit = function(table, func)
         inputBoxTable.onSubmit = func;
+    end
+
+    inputBoxTable.SetOnTab = function(table, func)
+        inputBoxTable.onTab = func;
     end
 
     inputBoxTable.AddUnicodeToInput = function(table, unicode)
@@ -215,12 +219,20 @@ local function SetupInputBoxMethods(inputBoxTable)
     -- Home Key Functionality
     inputBoxTable.Home = function()
         inputBoxTable.cursorPos = 0
+
+        inputBoxTable.timer = 0.0
+        inputBoxTable.cursorBlinkState = true
+
         RefreshText(inputBoxTable)
     end
 
     -- End Key Functionality
     inputBoxTable.End = function()
         inputBoxTable.cursorPos = utf8.len(inputBoxTable.text)
+
+        inputBoxTable.timer = 0.0
+        inputBoxTable.cursorBlinkState = true
+
         RefreshText(inputBoxTable)
     end
 
@@ -233,6 +245,12 @@ local function SetupInputBoxMethods(inputBoxTable)
                 inputBoxTable.cursorBlinkState = false;
                 RefreshText(inputBoxTable);
             end
+        end
+    end
+
+    inputBoxTable.Tab = function()
+        if inputBoxTable.onTab then
+            inputBoxTable.onTab(inputBoxTable)
         end
     end
 
@@ -258,6 +276,16 @@ local function SetupInputBoxMethods(inputBoxTable)
         end
     end
 
+    inputBoxTable.SetText = function(table, text)
+        table.text = text;
+
+        table.timer = 0.0
+        table.cursorBlinkState = false
+        table.cursorPos = utf8.len(text)
+
+        RefreshText(table)
+    end
+
     return inputBoxTable;
 end
 
@@ -278,6 +306,7 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
     inputBoxTable.cursorBlinkState = false
     inputBoxTable.cursorPos = utf8.len(defaultText)
     inputBoxTable.onSubmit = nil
+    inputBoxTable.onTab = nil
 
     -- Store input box width for alignment calculations
     inputBoxTable.inputBoxWidth = sizeX
@@ -338,7 +367,9 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
     end);
 
     inputBoxTable.button:SetOnFocusEnd(function(eventID, widget)
-        print("OnFocusEnd");
+        inputBoxTable.cursorBlinkState = false;
+
+        RefreshText(inputBoxTable);
     end);
 
     inputBoxTable.button:SetOnFocusHeld(function(eventID, widget, deltaTime)
@@ -376,6 +407,9 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
                     return;
                 elseif (keyID == keyIDEnter) then
                     inputBoxTable:Submit();
+                    return;
+                elseif (keyID == keyIDTab) then
+                    inputBoxTable.Tab();
                     return;
                 elseif (keyID == keyIDLeft) then
                     inputBoxTable:Left();
