@@ -20,6 +20,8 @@
 
 #include <Base/Memory/Bytebuffer.h>
 
+#include <Audio/AudioManager.h>
+
 #include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Opcode.h>
 
@@ -584,5 +586,60 @@ bool GameConsoleCommands::HandleSetLevel(GameConsoleCommandHandler* commandHandl
         networkState.client->Send(buffer);
     }
 
+    return true;
+}
+
+bool GameConsoleCommands::HandlePlaySound(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    fs::path audioPath = fs::absolute("Data/Audio");
+    if (!fs::is_directory(audioPath))
+    {
+        NC_LOG_ERROR("Failed to find Data/Audio/ folder from ({0})", audioPath.string());
+        return false;
+    }
+
+    fs::path filePath;
+    for (const auto& entry : fs::recursive_directory_iterator(audioPath))
+    {
+        if (fs::is_regular_file(entry.path()))
+        {
+            if (entry.path().filename() == subCommands[0] + ".wav")
+            {
+                filePath = entry.path();
+            }
+        }
+    }
+
+    if (filePath.empty())
+    {
+        gameConsole->PrintError("Could not find audio file: %s", subCommands[0].c_str());
+        return false;
+    }
+
+    f32 volume = 1.0;
+    if (subCommands.size() > 1)
+        volume = (std::stof(subCommands[1]) > 1.0f) ? 1.0f : (std::stof(subCommands[1]) < 0.0f) ? 0 : std::stof(subCommands[1]);
+
+    bool doLoop = false;
+    if (subCommands.size() > 2)
+        doLoop = std::stoi(subCommands[2]) == 1 ? 1 : 0;
+
+    bool stopOtherAudio = false;
+    if (subCommands.size() > 3)
+        stopOtherAudio = std::stoi(subCommands[3]) == 1 ? 1 : 0;
+    
+    ServiceLocator::GetAudioManager()->PlaySoundCommand(filePath.string(), volume, doLoop, stopOtherAudio);
+
+    gameConsole->PrintSuccess("Playing file: %s", filePath.filename().string().c_str());
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleStopSound(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    ServiceLocator::GetAudioManager()->StopSoundCommand();
     return true;
 }

@@ -30,6 +30,8 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("setgender", GameConsoleCommands::HandleSetGender);
     RegisterCommand("setclass", GameConsoleCommands::HandleSetClass);
     RegisterCommand("setlevel", GameConsoleCommands::HandleSetLevel);
+    RegisterCommand("playsound", GameConsoleCommands::HandlePlaySound);
+    RegisterCommand("stopsound", GameConsoleCommands::HandleStopSound);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

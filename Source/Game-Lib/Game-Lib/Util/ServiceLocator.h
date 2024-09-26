@@ -7,6 +7,7 @@ namespace Editor
 {
     class EditorHandler;
 }
+class AudioManager;
 class InputManager;
 class GameRenderer;
 
@@ -37,6 +38,13 @@ public:
         return _editorHandler;
     }
     static void SetEditorHandler(Editor::EditorHandler* editorHandler);
+
+    static AudioManager* GetAudioManager()
+    {
+        assert(_audioManager != nullptr);
+        return _audioManager;
+    }
+    static void SetAudioManager(AudioManager* audioManager);
 
     static InputManager* GetInputManager()
     {
@@ -90,6 +98,7 @@ public:
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
+    static AudioManager* _audioManager;
     static InputManager* _inputManager;
     static GameRenderer* _gameRenderer;
     static enki::TaskScheduler* _taskScheduler;

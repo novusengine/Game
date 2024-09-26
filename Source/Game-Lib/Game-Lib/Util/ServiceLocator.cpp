@@ -1,6 +1,7 @@
 #include "ServiceLocator.h"
 
 Editor::EditorHandler* ServiceLocator::_editorHandler = nullptr;
+AudioManager* ServiceLocator::_audioManager = nullptr;
 InputManager* ServiceLocator::_inputManager = nullptr;
 GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
@@ -13,6 +14,12 @@ void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
     assert(_editorHandler == nullptr);
     _editorHandler = editorHandler;
+}
+
+void ServiceLocator::SetAudioManager(AudioManager* audioManager)
+{
+    assert(_audioManager == nullptr);
+    _audioManager = audioManager;
 }
 
 void ServiceLocator::SetInputManager(InputManager* inputManager)

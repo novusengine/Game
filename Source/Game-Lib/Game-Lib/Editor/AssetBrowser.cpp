@@ -43,6 +43,8 @@ namespace Editor
         textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds";
         Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
         _defaultImageHandle = _renderer->GetImguiImageHandle(textureID);
+
+        _audioManager = ServiceLocator::GetAudioManager();
     }
 
     void AssetBrowser::DrawImGui()
@@ -186,7 +188,7 @@ namespace Editor
 
                             for (i32 i = firstItem; i <= lastItem; i++, ite++)
                             {
-                                const fs::path &item = *ite;
+                                const fs::path& item = *ite;
                                 ProcessDisplayRendering(item, i);
                                 DisplayFileMode(_currentImage, _currentSize, displaySize, item, _averageFontWidth);
                             }
@@ -195,7 +197,6 @@ namespace Editor
                         }
                     }
                 }
-
                 ImGui::EndChild();
             }
         }
@@ -238,6 +239,14 @@ namespace Editor
 
                 u32 modelPathHash = StringUtils::fnv1a_32(relativePath.c_str(), relativePath.length());
                 _gameRenderer->GetModelLoader()->LoadModelForEntity(entity, modelPathHash);
+            }
+        }
+
+        if (item.extension() == ".wav")
+        {
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            {
+                _audioManager->SetAudioFile(item);
             }
         }
     }
