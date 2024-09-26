@@ -2,6 +2,7 @@
 #include "ActionStack.h"
 #include "AnimationController.h"
 #include "AssetBrowser.h"
+#include "AudioPanel.h"
 #include "CameraInfo.h"
 #include "Clock.h"
 #include "CVarEditor.h"
@@ -52,6 +53,9 @@ namespace Editor
         _editors.push_back(new NetworkedInfo());
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
+
+        _audioPanel = new AudioPanel();
+        _editors.push_back(new AudioPanel());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);

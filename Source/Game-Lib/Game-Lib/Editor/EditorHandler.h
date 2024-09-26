@@ -8,6 +8,7 @@ namespace Editor
     class Viewport;
     class Inspector;
     class Hierarchy;
+    class AudioPanel;
     class AssetBrowser;
     class ActionStackEditor;
     class TerrainTools;
@@ -48,6 +49,7 @@ namespace Editor
         Viewport* _viewport = nullptr;
         Inspector* _inspector = nullptr;
         Hierarchy* _hierarchy = nullptr;
+        AudioPanel* _audioPanel = nullptr;
         AssetBrowser* _assetBrowser = nullptr;
         ActionStackEditor* _actionStackEditor = nullptr;
         TerrainTools* _terrainTools = nullptr;

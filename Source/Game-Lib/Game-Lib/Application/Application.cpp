@@ -29,6 +29,7 @@
 
 #include <Network/Client.h>
 
+#include <Audio/AudioManager.h>
 #include <enkiTS/TaskScheduler.h>
 #include <entt/entt.hpp>
 #include <imgui/backends/imgui_impl_vulkan.h>
@@ -102,6 +103,13 @@ void Application::Cleanup()
     if (clientDBSaveMethod == 2)
     {
         SaveCDB();
+    }
+
+    if (_audioManager != nullptr)
+    {
+        _audioManager->Cleanup();
+        delete _audioManager;
+        _audioManager = nullptr;
     }
 }
 
@@ -242,6 +250,10 @@ bool Application::Init()
     _registries.eventIncomingRegistry = new entt::registry();
     _registries.eventOutgoingRegistry = new entt::registry();
     ServiceLocator::SetEnttRegistries(&_registries);
+
+    _audioManager = new AudioManager();
+    ServiceLocator::SetAudioManager(_audioManager);
+    _audioManager->Init();
 
     _inputManager = new InputManager();
     ServiceLocator::SetInputManager(_inputManager);

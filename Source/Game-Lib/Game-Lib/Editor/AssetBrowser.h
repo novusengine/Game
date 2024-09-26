@@ -1,6 +1,8 @@
 #pragma once
 #include "BaseEditor.h"
 
+#include <Audio/AudioManager.h>
+
 #include <Game-Lib/Rendering/GameRenderer.h>
 #include <Game-Lib/Util/ServiceLocator.h>
 
@@ -87,6 +89,8 @@ namespace Editor
         void ItemHovered(const fs::path& item);
 
     private:
+        AudioManager* _audioManager = nullptr;
+
         GameRenderer* _gameRenderer = nullptr;
         Renderer::Renderer* _renderer = nullptr;
 
