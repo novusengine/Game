@@ -40,5 +40,9 @@ namespace ECS::Components::UI
         i32 onHoverBeginEvent = -1;
         i32 onHoverEndEvent = -1;
         i32 onHoverHeldEvent = -1;
+
+        i32 onFocusBeginEvent = -1;
+        i32 onFocusEndEvent = -1;
+        i32 onFocusHeldEvent = -1;
     };
 }

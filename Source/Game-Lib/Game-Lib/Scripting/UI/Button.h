@@ -12,12 +12,15 @@ namespace Scripting::UI
     public:
         static void Register(lua_State* state);
 
-        entt::entity panelEntity;
-        entt::entity textEntity;
+        Widget panelWidget;
+        Widget textWidget;
     };
 
     namespace ButtonMethods
     {
         i32 SetText(lua_State* state);
+
+        i32 GetPanelWidget(lua_State* state);
+        i32 GetTextWidget(lua_State* state);
     };
 }

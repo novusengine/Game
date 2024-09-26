@@ -59,8 +59,15 @@ namespace Scripting::UI
 
             });
 
-            entt::entity panelEntity = ECS::Util::UI::CreatePanel(button, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
-            entt::entity textEntity = ECS::Util::UI::CreateText(button, registry, "", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
+            entt::entity panelEntity = ECS::Util::UI::CreatePanel(&button->panelWidget, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
+            button->panelWidget.type = WidgetType::Panel;
+            button->panelWidget.entity = panelEntity;
+            button->panelWidget.metaTableName = "PanelMetaTable";
+
+            entt::entity textEntity = ECS::Util::UI::CreateText(&button->textWidget, registry, "", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
+            button->textWidget.type = WidgetType::Text;
+            button->textWidget.entity = textEntity;
+            button->textWidget.metaTableName = "TextMetaTable";
 
             ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
             ts.SetAnchor(textEntity, vec2(0.5, 0.5));
@@ -68,9 +75,6 @@ namespace Scripting::UI
 
             button->type = WidgetType::Button;
             button->entity = panelEntity;
-
-            button->panelEntity = panelEntity;
-            button->textEntity = textEntity;
 
             button->metaTableName = "ButtonMetaTable";
             luaL_getmetatable(state, "ButtonMetaTable");
@@ -282,6 +286,75 @@ i32 Scripting::UI::WidgetMethods::SetInteractable(lua_State* state)
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
     return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetFocusable(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    bool focusable = ctx.Get(true, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    u32 toAdd = static_cast<u32>(widgetComponent.flags);
+    u32 toRemove = static_cast<u32>(widgetComponent.flags);
+
+    toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Focusable);
+    toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Focusable);
+
+    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * focusable + toRemove * !focusable);
+    registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetAnchor(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    const vec2& anchor = transform.GetAnchor();
+
+    ctx.Push(anchor.x);
+    ctx.Push(anchor.y);
+
+    return 2;
+}
+
+i32 Scripting::UI::WidgetMethods::GetRelativePoint(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    const vec2& relativePoint = transform.GetRelativePoint();
+
+    ctx.Push(relativePoint.x);
+    ctx.Push(relativePoint.y);
+
+    return 2;
 }
 
 i32 Scripting::UI::WidgetMethods::SetAnchor(lua_State* state)
@@ -700,6 +773,98 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverHeld(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onHoverHeldEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnFocusBegin(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onFocusBeginEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnFocusEnd(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onFocusEndEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnFocusHeld(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onFocusHeldEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnKeyboard(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onKeyboardEvent = callback;
 
     return 0;
 }

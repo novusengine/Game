@@ -12,6 +12,9 @@
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Scripting/Handlers/UIHandler.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/UI/Widget.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Renderer/Font.h>
@@ -164,6 +167,10 @@ namespace ECS::Util
             eventInputInfo.onHoverEndEvent = panelTemplate.onHoverEndEvent;
             eventInputInfo.onHoverHeldEvent = panelTemplate.onHoverHeldEvent;
 
+            eventInputInfo.onFocusBeginEvent = panelTemplate.onFocusBeginEvent;
+            eventInputInfo.onFocusEndEvent = panelTemplate.onFocusEndEvent;
+            eventInputInfo.onFocusHeldEvent = panelTemplate.onFocusHeldEvent;
+
             return entity;
         }
 
@@ -242,6 +249,10 @@ namespace ECS::Util
             eventInputInfo.onHoverEndEvent = textTemplate.onHoverEndEvent;
             eventInputInfo.onHoverHeldEvent = textTemplate.onHoverHeldEvent;
 
+            eventInputInfo.onFocusBeginEvent = textTemplate.onFocusBeginEvent;
+            eventInputInfo.onFocusEndEvent = textTemplate.onFocusEndEvent;
+            eventInputInfo.onFocusHeldEvent = textTemplate.onFocusHeldEvent;
+
             return entity;
         }
 
@@ -270,6 +281,57 @@ namespace ECS::Util
             return entity;
         }
 
+        void FocusWidgetEntity(entt::registry* registry, entt::entity entity)
+        {
+            auto& ctx = registry->ctx();
+            auto& uiSingleton = ctx.get<ECS::Singletons::UISingleton>();
+
+            if (uiSingleton.focusedEntity == entity)
+            {
+                return;
+            }
+
+            if (entity != entt::null)
+            {
+                ECS::Components::UI::Widget& widget = registry->get<ECS::Components::UI::Widget>(entity);
+                if (!widget.IsFocusable())
+                {
+                    return;
+                }
+            }
+
+            entt::entity oldFocus = uiSingleton.focusedEntity;
+            if (oldFocus != entt::null)
+            {
+                auto* eventInputInfo = registry->try_get<ECS::Components::UI::EventInputInfo>(oldFocus);
+                if (eventInputInfo && eventInputInfo->onFocusEndEvent != -1)
+                {
+                    auto& widget = registry->get<ECS::Components::UI::Widget>(oldFocus);
+                    CallLuaEvent(eventInputInfo->onFocusEndEvent, Scripting::UI::UIInputEvent::FocusEnd, widget.scriptWidget);
+                }
+            }
+
+            uiSingleton.focusedEntity = entity;
+
+            if (entity != entt::null)
+            {
+                auto* eventInputInfo = registry->try_get<ECS::Components::UI::EventInputInfo>(entity);
+                if (eventInputInfo && eventInputInfo->onFocusBeginEvent != -1)
+                {
+                    auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
+                    CallLuaEvent(eventInputInfo->onFocusBeginEvent, Scripting::UI::UIInputEvent::FocusBegin, widget.scriptWidget);
+                }
+            }
+        }
+
+        entt::entity GetFocusedWidgetEntity(entt::registry* registry)
+        {
+            auto& ctx = registry->ctx();
+            auto& uiSingleton = ctx.get<ECS::Singletons::UISingleton>();
+
+            return uiSingleton.focusedEntity;
+        }
+
         void RefreshText(entt::registry* registry, entt::entity entity, std::string_view newText)
         {
             Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
@@ -279,6 +341,7 @@ namespace ECS::Util
             auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(entity);
 
@@ -297,7 +360,18 @@ namespace ECS::Util
             transform2DSystem.SetSize(entity, textSize);
 
             auto& transform = registry->get<ECS::Components::Transform2D>(entity);
-            transform2DSystem.RefreshTransform(entity, transform);
+
+            vec2 pos = transform.GetWorldPosition();
+            vec2 size = transform.GetSize();
+
+            auto* rect = registry->try_get<ECS::Components::UI::BoundingRect>(entity);
+            if (rect == nullptr)
+            {
+                return;
+            }
+
+            rect->min = pos;
+            rect->max = pos + size;
         }
 
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo)
@@ -439,6 +513,60 @@ namespace ECS::Util
 
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);
             }
+        }
+
+        void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget);
+        }
+
+        void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+        }
+
+        void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, f32 value)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+        }
+
+        void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, vec2 value)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+        }
+
+        void CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallKeyboardInputEvent(state, eventRef, widget, key, actionMask, modifierMask);
+        }
+
+        void CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
         }
     }
 }

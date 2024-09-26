@@ -25,7 +25,8 @@ namespace ECS::Components::UI
         Enabled = 1 << 0,
         Visible = 1 << 1,
         Interactable = 1 << 2,
-        Resizable = 1 << 3,
+        Focusable = 1 << 3,
+        Resizable = 1 << 4,
 
         Default = Enabled | Visible | Interactable,
     };
@@ -42,6 +43,7 @@ namespace ECS::Components::UI
         inline bool IsEnabled() const { return (flags & WidgetFlags::Enabled) == WidgetFlags::Enabled; }
         inline bool IsVisible() const { return IsEnabled() && (flags & WidgetFlags::Visible) == WidgetFlags::Visible; }
         inline bool IsInteractable() const { return IsVisible() && (flags & WidgetFlags::Interactable) == WidgetFlags::Interactable; }
+        inline bool IsFocusable() const { return IsInteractable() && (flags & WidgetFlags::Focusable) == WidgetFlags::Focusable; }
         inline bool IsResizable() const { return IsInteractable() && (flags & WidgetFlags::Resizable) == WidgetFlags::Resizable; }
     };
 

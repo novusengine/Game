@@ -190,84 +190,91 @@ function Module.RegisterTemplates()
         background = "Data/Texture/interface/buttons/ui-checkbox-check-disabled.dds",
     });
 
-    -- Combobox
-    UI.RegisterPanelTemplate("DefaultComboboxPanel",
+    -- ComboBox
+    UI.RegisterPanelTemplate("DefaultComboBoxPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
-
-        onHoverTemplate = "DefaultComboboxHoveredPanel",
+    
+        onHoverTemplate = "DefaultComboBoxHoveredPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxHoveredPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxHoveredPanel", 
     {
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxButton",
+    UI.RegisterButtonTemplate("DefaultComboBoxButton", 
     {
-        panelTemplate = "DefaultComboboxPanel",
+        panelTemplate = "DefaultComboBoxPanel",
         textTemplate = "YellowText",
     });
 
-    local comboboxIconMinX, comboboxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
-    local comboboxIconMaxX, comboboxIconMaxY = UI.PixelsToTexCoord(26, 28, 32, 32);
-
-    UI.RegisterPanelTemplate("DefaultComboboxPrevPanel",
+    local comboBoxIconMinX, comboBoxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
+    local comboBoxIconMaxX, comboBoxIconMaxY = UI.PixelsToTexCoord(26, 28, 32, 32);
+    
+    UI.RegisterPanelTemplate("DefaultComboBoxPrevPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-leftarrow-button-up.dds",
-        texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
+        texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
 
-        onClickTemplate = "DefaultComboboxPrevDownPanel",
-        onHoverTemplate = "DefaultComboboxPrevHoveredPanel",
-        onUninteractableTemplate = "DefaultComboboxDisabledPanel",
+        onClickTemplate = "DefaultComboBoxPrevDownPanel",
+        onHoverTemplate = "DefaultComboBoxPrevHoveredPanel",
+        onUninteractableTemplate = "DefaultComboBoxDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxPrevDownPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxPrevDownPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-leftarrow-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxPrevHoveredPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxPrevHoveredPanel", 
     {
         foreground = "Data/Texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxPrevButton",
+    UI.RegisterButtonTemplate("DefaultComboBoxPrevButton", 
     {
-        panelTemplate = "DefaultComboboxPrevPanel",
+        panelTemplate = "DefaultComboBoxPrevPanel",
         textTemplate = "DefaultButtonText",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxDisabledPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxDisabledPanel", 
     {
         color = vec3.new(0.5, 0.5, 0.5),
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxNextPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-rightarrow-button-up.dds",
-        texCoords = Box.new(comboboxIconMinX, comboboxIconMinY, comboboxIconMaxX, comboboxIconMaxY),
+        texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
 
-        onClickTemplate = "DefaultComboboxNextDownPanel",
-        onHoverTemplate = "DefaultComboboxPrevHoveredPanel",
-        onUninteractableTemplate = "DefaultComboboxDisabledPanel",
+        onClickTemplate = "DefaultComboBoxNextDownPanel",
+        onHoverTemplate = "DefaultComboBoxPrevHoveredPanel",
+        onUninteractableTemplate = "DefaultComboBoxDisabledPanel",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextDownPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxNextDownPanel", 
     {
         background = "Data/Texture/interface/glues/common/glue-rightarrow-button-down.dds",
     });
 
-    UI.RegisterPanelTemplate("DefaultComboboxNextHoveredPanel",
+    UI.RegisterPanelTemplate("DefaultComboBoxNextHoveredPanel", 
     {
         foreground = "Data/Texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboboxNextButton",
+    UI.RegisterButtonTemplate("DefaultComboBoxNextButton", 
     {
-        panelTemplate = "DefaultComboboxNextPanel",
+        panelTemplate = "DefaultComboBoxNextPanel",
+        textTemplate = "DefaultButtonText",
+    });
+
+    -- Input Box
+    UI.RegisterButtonTemplate("DefaultInputBoxButton", 
+    {
+        panelTemplate = "DialogBox",
         textTemplate = "DefaultButtonText",
     });
 

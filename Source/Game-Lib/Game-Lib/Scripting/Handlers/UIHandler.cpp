@@ -18,6 +18,8 @@
 
 #include <Base/Util/StringUtils.h>
 
+#include <Input/KeybindGroup.h>
+
 #include <entt/entt.hpp>
 #include <lualib.h>
 
@@ -33,6 +35,12 @@ namespace Scripting::UI
 
         // Utils
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
+        { "CalculateTextSize", UIHandler::CalculateTextSize },
+
+        { "FocusWidget", UIHandler::FocusWidget },
+        { "UnfocusWidget", UIHandler::UnfocusWidget },
+        { "IsFocusedWidget", UIHandler::IsFocusedWidget },
+        { "GetFocusedWidget", UIHandler::GetFocusedWidget },
 
         { nullptr, nullptr }
     };
@@ -247,6 +255,31 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        if (ctx.GetTableField("onFocusBegin", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onFocusBeginEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onFocusEnd", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onFocusEndEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onFocusHeld", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                panelTemplate.onFocusHeldEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToPanelTemplateIndex[templateNameHash] = panelTemplateIndex;
 
@@ -376,6 +409,31 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        if (ctx.GetTableField("onFocusBegin", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onFocusBeginEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onFocusEnd", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onFocusEndEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+        if (ctx.GetTableField("onFocusHeld", 2))
+        {
+            if (lua_isfunction(ctx.RawState(), -1))
+            {
+                textTemplate.onFocusHeldEvent = ctx.GetRef(-1);
+            }
+            ctx.Pop();
+        }
+
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToTextTemplateIndex[templateNameHash] = textTemplateIndex;
 
@@ -444,7 +502,123 @@ namespace Scripting::UI
         return 2;
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget)
+    i32 UIHandler::CalculateTextSize(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        const char* text = ctx.Get(nullptr, 1);
+        if (text == nullptr)
+        {
+            luaL_error(state, "Expected text as parameter 1");
+        }
+
+        const char* templateName = ctx.Get(nullptr, 1);
+        if (templateName == nullptr)
+        {
+            luaL_error(state, "Expected text template name as parameter 2");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+        u32 textTemplateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
+
+        const auto& textTemplate = uiSingleton.textTemplates[textTemplateIndex];
+
+        const std::string& fontPath = textTemplate.font;
+        f32 fontSize = textTemplate.size;
+
+        Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+        Renderer::Font* font = Renderer::Font::GetFont(renderer, fontPath, fontSize);
+
+        vec2 textSize = font->CalculateTextSize(text);
+
+        ctx.Push(textSize.x);
+        ctx.Push(textSize.y);
+        
+        return 2;
+    }
+
+    i32 UIHandler::FocusWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Util::UI::FocusWidgetEntity(registry, widget->entity);
+
+        return 0;
+    }
+
+    i32 UIHandler::UnfocusWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        if (widget->entity == uiSingleton.focusedEntity)
+        {
+            ECS::Util::UI::FocusWidgetEntity(registry, entt::null);
+        }
+
+        return 0;
+    }
+
+    i32 UIHandler::IsFocusedWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        bool isFocusedWidget = widget->entity == uiSingleton.focusedEntity;
+        ctx.Push(isFocusedWidget);
+
+        return 1;
+    }
+
+    i32 UIHandler::GetFocusedWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        if (uiSingleton.focusedEntity == entt::null)
+        {
+            return 0;
+        }
+
+        auto& widgetComp = registry->get<ECS::Components::UI::Widget>(uiSingleton.focusedEntity);
+
+        lua_pushlightuserdata(state, widgetComp.scriptWidget);
+
+        luaL_getmetatable(state, widgetComp.scriptWidget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        return 1;
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
     {
         LuaState ctx(state);
 
@@ -458,7 +632,7 @@ namespace Scripting::UI
         ctx.PCall(2);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, i32 value)
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value)
     {
         LuaState ctx(state);
 
@@ -473,7 +647,22 @@ namespace Scripting::UI
         ctx.PCall(3);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvents inputEvent, Widget* widget, const vec2& value)
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        ctx.Push(static_cast<u32>(inputEvent));
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(value);
+        ctx.PCall(3);
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value)
     {
         LuaState ctx(state);
 
@@ -489,21 +678,81 @@ namespace Scripting::UI
         ctx.PCall(4);
     }
 
+    void UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(static_cast<i32>(UIKeyboardEvent::Key));
+        ctx.Push(key);
+        ctx.Push(actionMask);
+        ctx.Push(modifierMask);
+
+        ctx.PCall(5);
+    }
+
+    void UIHandler::CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(static_cast<i32>(UIKeyboardEvent::Unicode));
+        ctx.Push(unicode);
+
+        ctx.PCall(3);
+    }
+
     void UIHandler::CreateUIInputEventTable(lua_State* state)
     {
         LuaState ctx(state);
 
         ctx.CreateTableAndPopulate("UIInputEvent", [&]()
         {
-            ctx.SetTable("MouseDown", 0u);
-            ctx.SetTable("MouseUp", 1u);
-            ctx.SetTable("MouseHeld", 2u);
+            ctx.SetTable("MouseDown", static_cast<u32>(UIInputEvent::MouseDown));
+            ctx.SetTable("MouseUp", static_cast<u32>(UIInputEvent::MouseUp));
+            ctx.SetTable("MouseHeld", static_cast<u32>(UIInputEvent::MouseHeld));
 
-            ctx.SetTable("HoverBegin", 3u);
-            ctx.SetTable("HoverEnd", 4u);
-            ctx.SetTable("Hover", 5u);
+            ctx.SetTable("HoverBegin", static_cast<u32>(UIInputEvent::HoverBegin));
+            ctx.SetTable("HoverEnd", static_cast<u32>(UIInputEvent::HoverEnd));
+            ctx.SetTable("HoverHeld", static_cast<u32>(UIInputEvent::HoverHeld));
 
-            ctx.SetTable("Count", 6u);
+            ctx.SetTable("FocusBegin", static_cast<u32>(UIInputEvent::FocusBegin));
+            ctx.SetTable("FocusEnd", static_cast<u32>(UIInputEvent::FocusEnd));
+            ctx.SetTable("FocusHeld", static_cast<u32>(UIInputEvent::FocusHeld));
+        });
+
+        ctx.CreateTableAndPopulate("UIKeyboardEvent", [&]()
+        {
+            ctx.SetTable("Key", static_cast<u32>(UIKeyboardEvent::Key));
+            ctx.SetTable("Unicode", static_cast<u32>(UIKeyboardEvent::Unicode));
+        });
+
+        // TODO: Move these to something related to input in the future
+        ctx.CreateTableAndPopulate("InputAction", [&]()
+        {
+            ctx.SetTable("Press", static_cast<u32>(KeybindAction::Press));
+            ctx.SetTable("Release", static_cast<u32>(KeybindAction::Release));
+            ctx.SetTable("Click", static_cast<u32>(KeybindAction::Click));
+        });
+
+        ctx.CreateTableAndPopulate("InputModifier", [&]()
+        {
+            ctx.SetTable("Invalid", static_cast<u32>(KeybindModifier::Invalid));
+            ctx.SetTable("None", static_cast<u32>(KeybindModifier::ModNone));
+            ctx.SetTable("Shift", static_cast<u32>(KeybindModifier::Shift));
+            ctx.SetTable("Ctrl", static_cast<u32>(KeybindModifier::Ctrl));
+            ctx.SetTable("Alt", static_cast<u32>(KeybindModifier::Alt));
+            ctx.SetTable("Any", static_cast<u32>(KeybindModifier::Any));
         });
     }
 }

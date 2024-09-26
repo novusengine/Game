@@ -1,7 +1,8 @@
 local UIStack = require("API/UI/UIStack")
 local UISlider = require("API/UI/Slider")
 local UICheckbox = require("API/UI/Checkbox")
-local UICombobox = require("API/UI/Combobox")
+local UIComboBox = require("API/UI/ComboBox")
+local UIInputBox = require("API/UI/InputBox")
 local UILoadingScreen = require("API/UI/LoadingScreen")
 
 -- TODO: Borders :(
@@ -164,14 +165,27 @@ function CreateOptionsMenu(stack)
         return true; -- Returning false will prevent the value from changing
     end)
 
-    local testCombobox = UICombobox.NewCombobox(panel, 0, -120, 200, 40, 0, {
+    local testComboBox = UIComboBox.NewComboBox(panel, 0, -120, 200, 40, 0, {
         options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
-        buttonTemplate = "DefaultComboboxButton",
+        buttonTemplate = "DefaultComboBoxButton",
     });
-    testCombobox.combobox:SetAnchor(0.5, 1.0);
-    testCombobox.button:SetRelativePoint(0.5, 1.0);
-    testCombobox:SetOnValueChanged(function(table, index)
+    testComboBox.comboBox:SetAnchor(0.5, 1.0);
+    testComboBox.button:SetRelativePoint(0.5, 1.0);
+    testComboBox:SetOnValueChanged(function(table, index)
         return true; -- Returning false will prevent the value from changing
+    end);
+
+    local testInputBox = UIInputBox.NewInputBox(panel, 0, -170, 200, 40, 0, {
+        buttonTemplate = "DefaultInputBoxButton",
+        defaultText = "Test",
+        --numericOnly = true,
+        --secure = true,
+    });
+    testInputBox.inputBox:SetAnchor(0.5, 1.0);
+    testInputBox.button:SetRelativePoint(0.5, 1.0);
+    testInputBox:SetOnSubmit(function(table)
+        print(table.text)
+        return true; -- Returning true will unfocus the widget
     end);
    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop

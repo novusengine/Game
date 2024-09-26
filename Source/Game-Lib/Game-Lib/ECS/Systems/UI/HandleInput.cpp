@@ -33,33 +33,6 @@ namespace ECS::Systems::UI
         return point.x > min.x && point.x < max.x && point.y > min.y && point.y < max.y;
     }
 
-    void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvents inputEvent, Scripting::UI::Widget* widget)
-    {
-        Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-        lua_State* state = luaManager->GetInternalState();
-        
-        Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-        uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget);
-    }
-
-    void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvents inputEvent, Scripting::UI::Widget* widget, i32 value)
-    {
-        Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-        lua_State* state = luaManager->GetInternalState();
-
-        Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-        uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
-    }
-
-    void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvents inputEvent, Scripting::UI::Widget* widget, vec2 value)
-    {
-        Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-        lua_State* state = luaManager->GetInternalState();
-
-        Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-        uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
-    }
-
     void HandleInput::Init(entt::registry& registry)
     {
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -97,12 +70,22 @@ namespace ECS::Systems::UI
                         continue;
                     }
 
+                    auto& widget = registry.get<Components::UI::Widget>(entity);
+
                     u32 templateHash = eventInputInfo->onClickTemplateHash;
+
                     i32 inputDownEvent = eventInputInfo->onMouseDownEvent;
                     i32 inputUpEvent = eventInputInfo->onMouseUpEvent;
                     i32 heldEvent = eventInputInfo->onMouseHeldEvent;
+                    bool hasInputEvent = inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1;
 
-                    if (templateHash != 0 || inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1)
+                    i32 focusBeginEvent = eventInputInfo->onFocusBeginEvent;
+                    i32 focusEndEvent = eventInputInfo->onFocusEndEvent;
+                    i32 focusHeldEvent = eventInputInfo->onFocusHeldEvent;
+                    bool isFocusable = widget.IsFocusable();
+                    bool hasFocusEvent = (focusBeginEvent != -1 || focusEndEvent != -1 || focusHeldEvent != -1) && isFocusable;
+
+                    if (templateHash != 0 || hasInputEvent)
                     {
                         eventInputInfo->isClicked = true;
 
@@ -113,14 +96,24 @@ namespace ECS::Systems::UI
 
                         if (inputDownEvent != -1)
                         {
-                            auto& widget = registry.get<Components::UI::Widget>(entity);
-                            CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvents::MouseDown, widget.scriptWidget);
+                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, mousePos);
+                        }
+
+                        if (hasFocusEvent)
+                        {
+                            ECS::Util::UI::FocusWidgetEntity(&registry, entity);
+                        }
+                        else
+                        {
+                            ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
                         }
 
                         uiSingleton.clickedEntity = entity;
                         return true;
                     }
                 }
+
+                ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
             }
 
             if (!isDown && uiSingleton.clickedEntity != entt::null)
@@ -139,7 +132,7 @@ namespace ECS::Systems::UI
                         if (isWithin)
                         {
                             auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                            CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvents::MouseUp, widget.scriptWidget);
+                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, mousePos);
                         }
                     }
                 }
@@ -161,6 +154,50 @@ namespace ECS::Systems::UI
             }
 
             return uiSingleton.allHoveredEntities.size() > 0;
+        });
+
+        keybindGroup->AddAnyUnicodeCallback([&registry](u32 unicode) -> bool
+            {
+                auto& ctx = registry.ctx();
+                auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+
+                if (uiSingleton.focusedEntity != entt::null)
+                {
+                    auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton.focusedEntity);
+                    auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
+                    if (!widget || !eventInputInfo)
+                    {
+                        return false;
+                    }
+
+                    ECS::Util::UI::CallUnicodeEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, unicode);
+                    
+                    return true;
+                }
+
+                return false;
+            });
+
+        keybindGroup->AddKeyboardInputValidator("KeyboardUIInputValidator", [&registry](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+        {
+            auto& ctx = registry.ctx();
+            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+
+            if (uiSingleton.focusedEntity != entt::null)
+            {
+                auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton.focusedEntity);
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
+                if (!widget || !eventInputInfo)
+                {
+                    return false;
+                }
+
+                ECS::Util::UI::CallKeyboardEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, key, static_cast<i32>(action), static_cast<i32>(modifier));
+                
+                return true;
+            }
+
+            return false;
         });
     }
 
@@ -278,7 +315,7 @@ namespace ECS::Systems::UI
                     if (oldEventInputInfo->onHoverEndEvent != -1)
                     {
                         auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                        CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
+                        ECS::Util::UI::CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvent::HoverEnd, widget.scriptWidget);
                     }
                 }
             }
@@ -289,7 +326,7 @@ namespace ECS::Systems::UI
             if (eventInputInfo->onHoverBeginEvent != -1)
             {
                 auto& widget = registry.get<Components::UI::Widget>(entity);
-                CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvents::HoverBegin, widget.scriptWidget);
+                ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvent::HoverBegin, widget.scriptWidget);
             }
 
             uiSingleton.hoveredEntity = entity;
@@ -307,12 +344,6 @@ namespace ECS::Systems::UI
                 {
                     oldEventInputInfo->isHovered = false;
                     ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
-
-                    /*if (oldEventInputInfo->onHoverEndEvent != -1)
-                    {
-                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                        CallLuaEvent(oldEventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvents::HoverEnd, widget.scriptWidget);
-                    }*/
                 }
 
                 uiSingleton.hoveredEntity = entt::null;
@@ -327,8 +358,18 @@ namespace ECS::Systems::UI
                 if (clickedEventInputInfo->onMouseHeldEvent != -1)
                 {
                     auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                    CallLuaEvent(clickedEventInputInfo->onMouseHeldEvent, Scripting::UI::UIInputEvents::MouseHeld, widget.scriptWidget, mousePos);
+                    ECS::Util::UI::CallLuaEvent(clickedEventInputInfo->onMouseHeldEvent, Scripting::UI::UIInputEvent::MouseHeld, widget.scriptWidget, mousePos);
                 }
+            }
+        }
+
+        if (uiSingleton.focusedEntity != entt::null)
+        {
+            auto* eventInputInfo = registry.try_get<ECS::Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
+            if (eventInputInfo && eventInputInfo->onFocusHeldEvent != -1)
+            {
+                auto& widget = registry.get<ECS::Components::UI::Widget>(uiSingleton.focusedEntity);
+                ECS::Util::UI::CallLuaEvent(eventInputInfo->onFocusHeldEvent, Scripting::UI::UIInputEvent::FocusHeld, widget.scriptWidget, deltaTime);
             }
         }
     }

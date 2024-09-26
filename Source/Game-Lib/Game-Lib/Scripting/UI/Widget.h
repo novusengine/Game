@@ -52,6 +52,10 @@ namespace Scripting::UI
         i32 SetEnabled(lua_State* state);
         i32 SetVisible(lua_State* state);
         i32 SetInteractable(lua_State* state);
+        i32 SetFocusable(lua_State* state);
+
+        i32 GetAnchor(lua_State* state);
+        i32 GetRelativePoint(lua_State* state);
 
         i32 SetAnchor(lua_State* state);
         i32 SetRelativePoint(lua_State* state);
@@ -78,6 +82,10 @@ namespace Scripting::UI
         { "SetEnabled", WidgetMethods::SetEnabled },
         { "SetVisible", WidgetMethods::SetVisible },
         { "SetInteractable", WidgetMethods::SetInteractable },
+        { "SetFocusable", WidgetMethods::SetFocusable },
+
+        { "GetAnchor", WidgetMethods::GetAnchor },
+        { "GetRelativePoint", WidgetMethods::GetRelativePoint },
 
         { "SetAnchor", WidgetMethods::SetAnchor },
         { "SetRelativePoint", WidgetMethods::SetRelativePoint },
@@ -106,9 +114,16 @@ namespace Scripting::UI
         i32 SetOnMouseDown(lua_State* state);
         i32 SetOnMouseUp(lua_State* state);
         i32 SetOnMouseHeld(lua_State* state);
+
         i32 SetOnHoverBegin(lua_State* state);
         i32 SetOnHoverEnd(lua_State* state);
         i32 SetOnHoverHeld(lua_State* state);
+
+        i32 SetOnFocusBegin(lua_State* state);
+        i32 SetOnFocusEnd(lua_State* state);
+        i32 SetOnFocusHeld(lua_State* state);
+
+        i32 SetOnKeyboard(lua_State* state);
     }
 
     static LuaMethod widgetInputMethods[] =
@@ -116,9 +131,16 @@ namespace Scripting::UI
         { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
         { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },
         { "SetOnMouseHeld", WidgetInputMethods::SetOnMouseHeld },
+
         { "SetOnHoverBegin", WidgetInputMethods::SetOnHoverBegin },
         { "SetOnHoverEnd", WidgetInputMethods::SetOnHoverEnd },
         { "SetOnHoverHeld", WidgetInputMethods::SetOnHoverHeld },
+
+        { "SetOnFocusBegin", WidgetInputMethods::SetOnFocusBegin },
+        { "SetOnFocusEnd", WidgetInputMethods::SetOnFocusEnd },
+        { "SetOnFocusHeld", WidgetInputMethods::SetOnFocusHeld },
+
+        { "SetOnKeyboard", WidgetInputMethods::SetOnKeyboard },
 
         { nullptr, nullptr }
     };

@@ -34,5 +34,6 @@ namespace ECS::Singletons
         vec2 lastClickPosition = vec2(-1.0f, -1.0f);
         entt::entity clickedEntity = entt::null;
         entt::entity hoveredEntity = entt::null;
+        entt::entity focusedEntity = entt::null;
     };
 }
