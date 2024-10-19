@@ -14,34 +14,32 @@ local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
 end
 
 local function Demo()
-    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 100, 100);
+    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080);
 
     -- Create a panel
-    local panel = canvas:NewPanel(100, 100, 800, 800, 0, "DefaultPanel");
+    local panel = canvas:NewPanel(0, 0, 800, 800, 0, "DialogBox");
+    panel:SetAnchor(0.5, 0.5);
+    panel:SetRelativePoint(0.5, 0.5);
 
-    local bottomLeft = panel:NewText("Bottom Left", 0, 0, 0, "MenuButtonText");
+    local bottomLeft = panel:NewText("Bottom Left", 0, 0, 0, "DefaultButtonText");
     bottomLeft:SetAnchor(0.0, 0.0);
     bottomLeft:SetRelativePoint(0.0, 0.0);
 
-    local bottomRight = panel:NewText("Bottom Right", 0, 0, 0, "MenuButtonText");
+    local bottomRight = panel:NewText("Bottom Right", 0, 0, 0, "DefaultButtonText");
     bottomRight:SetAnchor(1.0, 0.0);
     bottomRight:SetRelativePoint(1.0, 0.0);
 
-    local topLeft = panel:NewText("Top Left", 0, 0, 0, "MenuButtonText");
+    local topLeft = panel:NewText("Top Left", 0, 0, 0, "DefaultButtonText");
     topLeft:SetAnchor(0.0, 1.0);
     topLeft:SetRelativePoint(0.0, 1.0);
 
-    local topRight = panel:NewText("Top Right", 0, 0, 0, "MenuButtonText");
+    local topRight = panel:NewText("Top Right", 0, 0, 0, "DefaultButtonText");
     topRight:SetAnchor(1.0, 1.0);
     topRight:SetRelativePoint(1.0, 1.0);
 
-    local center = panel:NewText("Center", 0, 0, 0, "MenuButtonText");
+    local center = panel:NewText("Center", 0, 0, 0, "DefaultButtonText");
     center:SetAnchor(0.5, 0.5);
     center:SetRelativePoint(0.5, 0.5);
-
-    --local testPanel = panel:NewPanel(0, 0, 50, 50, 0, "DefaultPanel2");
-    --testPanel:SetAnchor(0.5, 0.5);
-    --testPanel:SetRelativePoint(0.5, 0.5);
 end
 
 local function CreateGameMenu(stack)
@@ -126,7 +124,7 @@ function CreateOptionsMenu(stack)
     panel:SetAnchor(0.5, 0.5);
     panel:SetRelativePoint(0.5, 0.5);
 
-    local headerText = panel:NewText("Options", 0, 0, 0, "YellowText");
+    local headerText = panel:NewText("Options", 0, -5, 0, "YellowText");
     headerText:SetAnchor(0.5, 1.0);
     headerText:SetRelativePoint(0.5, 1.0);
 

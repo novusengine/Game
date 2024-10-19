@@ -8,6 +8,7 @@
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -31,8 +32,9 @@ void CanvasRenderer::Clear()
     _renderer->UnloadTexturesInArray(_textures, 2);
 }
 
-CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer)
+CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
 }
@@ -217,10 +219,10 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                 // Blending
                 desc.states.blendState.renderTargets[0].blendEnable = true;
-                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
                 desc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
-                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
 
                 textPipeline = _renderer->CreatePipeline(desc);
             }
@@ -331,8 +333,13 @@ void CanvasRenderer::CreatePermanentResources()
     _sampler = _renderer->CreateSampler(samplerDesc);
     _descriptorSet.Bind("_sampler"_h, _sampler);
 
-    _font = Renderer::Font::GetDefaultFont(_renderer, 64.0f);
-    _descriptorSet.Bind("_fontTextures"_h, _font->GetTextureArray());
+    textureArrayDesc.size = 256;
+    _fontTextures = _renderer->CreateTextureArray(textureArrayDesc);
+
+    _font = Renderer::Font::GetDefaultFont(_renderer);
+    _renderer->AddTextureToArray(_font->GetTextureID(), _fontTextures);
+
+    _descriptorSet.Bind("_fontTextures"_h, _fontTextures);
 
     _vertices.SetDebugName("UIVertices");
     _panelDrawDatas.SetDebugName("PanelDrawDatas");
@@ -385,26 +392,25 @@ void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform
     _vertices.SetDirtyElements(panel.gpuVertexIndex, 6);
 }
 
-void CalculateVertices(const vec2& pos, const vec2& size, const vec2& relativePoint, std::vector<vec4>& vertices, u32 vertexIndex)
+void CalculateVertices(const vec4& pos, const vec4& uv, std::vector<vec4>& vertices, u32 vertexIndex)
 {
-    vec2 lowerLeftPos = vec2(pos.x, pos.y);
-    vec2 lowerRightPos = lowerLeftPos + vec2(size.x, 0.0f);
-    vec2 upperLeftPos = lowerLeftPos + vec2(0.0f, size.y);
-    vec2 upperRightPos = lowerLeftPos + vec2(size.x, size.y);
+    const f32& posLeft = pos.x;
+    const f32& posBottom = pos.y;
+    const f32& posRight = pos.z;
+    const f32& posTop = pos.w;
 
-    // Vertices
-    vec4 lowerLeft = vec4(lowerLeftPos, 0, 1);
-    vec4 lowerRight = vec4(lowerRightPos, 1, 1);
-    vec4 upperLeft = vec4(upperLeftPos, 0, 0);
-    vec4 upperRight = vec4(upperRightPos, 1, 0);
+    const f32& uvLeft = uv.x;
+    const f32& uvBottom = uv.y;
+    const f32& uvRight = uv.z;
+    const f32& uvTop = uv.w;
 
-    vertices[vertexIndex + 0] = upperLeft;
-    vertices[vertexIndex + 1] = upperRight;
-    vertices[vertexIndex + 2] = lowerRight;
+    vertices[vertexIndex + 0] = vec4(posLeft, posBottom, uvLeft, uvBottom);
+    vertices[vertexIndex + 1] = vec4(posLeft, posTop, uvLeft, uvTop);
+    vertices[vertexIndex + 2] = vec4(posRight, posBottom, uvRight, uvBottom);
 
-    vertices[vertexIndex + 3] = lowerLeft;
-    vertices[vertexIndex + 4] = upperLeft;
-    vertices[vertexIndex + 5] = lowerRight;
+    vertices[vertexIndex + 3] = vec4(posRight, posTop, uvRight, uvTop);
+    vertices[vertexIndex + 4] = vec4(posRight, posBottom, uvRight, uvBottom);
+    vertices[vertexIndex + 5] = vec4(posLeft, posTop, uvLeft, uvTop);
 }
 
 void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate)
@@ -451,44 +457,88 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
         vertices.resize(vertices.size() + numVertices);
     }
 
-    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
+    vec2 worldPos = transform.GetWorldPosition();
 
-    vec2 relativePoint = transform.GetRelativePoint();
+    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font);
+    vec2 atlasSize = vec2(font->width, font->height);
+    vec2 texelSize = 1.0f / atlasSize;
 
-    f32 scaledDescent = glm::ceil(font->descent * font->scale);
+    const Renderer::FontMetrics& metrics = font->metrics;
+
+    f32 fontSize = textTemplate.size;
 
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
-    vec2 currentPos = transform.GetWorldPosition();
-    
-    f32 tallestCharacter = 0.0f;
+    vec2 penPos = vec2(0.0f, 0.0f);// fontScale* metrics.ascenderY);
+    f32 textWidth = 0.0f;
+
     u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
     for (; it != endIt; it++)
     {
         u32 c = *it;
 
-        if (c == ' ')
+        // Skip carriage return characters
+        if (c == '\r')
         {
-            currentPos.x += font->spaceGap;
             continue;
         }
 
-        Renderer::FontChar& fontChar = font->GetChar(c);
+        // Handle newline characters
+        if (c == '\n')
+        {
+            textWidth = std::max(textWidth, penPos.x);
+            penPos.x = 0.0f;
+            penPos.y -= fontSize * metrics.lineHeight;
+            continue;
+        }
 
-        //vec2 pixelPos = currentPos + vec2(fontChar.xOffset, -(fontChar.yOffset + fontChar.height));
-        vec2 pixelPos = currentPos - vec2(-(static_cast<f32>(fontChar.xOffset) - fontChar.leftSideBearing), static_cast<f32>(fontChar.yOffset) + fontChar.height + scaledDescent);
-        vec2 pixelSize = vec2(fontChar.width, fontChar.height);
-        tallestCharacter = std::max(tallestCharacter, pixelSize.y);
+        const Renderer::Glyph& glyph = font->GetGlyph(c);
+        if (!glyph.isWhitespace())
+        {
+            f64 planeLeft, planeBottom, planeRight, planeTop;
+            f64 atlasLeft, atlasBottom, atlasRight, atlasTop;
 
-        vec2 position = PixelPosToNDC(pixelPos);
-        vec2 size = PixelSizeToNDC(pixelSize);
+            // Get the glyph's quad bounds in plane space (vertex positions)
+            glyph.getQuadPlaneBounds(planeLeft, planeBottom, planeRight, planeTop);
 
-        // Add vertices
-        CalculateVertices(position, size, relativePoint, vertices, vertexIndex);
-        vertexIndex += 6;
+            // Get the glyph's quad bounds in atlas space (texture UVs)
+            glyph.getQuadAtlasBounds(atlasLeft, atlasBottom, atlasRight, atlasTop);
 
-        currentPos.x += fontChar.advance;
+            // Scale the plane coordinates by the font scale
+            planeLeft *= fontSize;
+            planeBottom *= fontSize;
+            planeRight *= fontSize;
+            planeTop *= fontSize;
+
+            planeBottom += textTemplate.borderSize;
+            planeTop += textTemplate.borderSize;
+
+            // Translate the plane coordinates by the current pen position and the world position
+            planeLeft += penPos.x + worldPos.x;
+            planeBottom += penPos.y + worldPos.y;
+            planeRight += penPos.x + worldPos.x;
+            planeTop += penPos.y + worldPos.y;
+
+            // Convert the plane coordinates to NDC space
+            vec2 planeMin = PixelPosToNDC(vec2(planeLeft, planeBottom));
+            vec2 planeMax = PixelPosToNDC(vec2(planeRight, planeTop));
+
+            // Scale the atlas coordinates by the texel dimensions
+            atlasLeft *= texelSize.x;
+            atlasBottom *= texelSize.y;
+            atlasRight *= texelSize.x;
+            atlasTop *= texelSize.y;
+
+            // Add vertices
+            CalculateVertices(vec4(planeMin, planeMax), vec4(atlasLeft, atlasBottom, atlasRight, atlasTop), vertices, vertexIndex);
+            vertexIndex += 6;
+        }
+
+        f32 advance = static_cast<f32>(glyph.getAdvance());
+        //advance = font->GetFontAdvance(advance, c, *(it+1)); // TODO: Kerning
+        
+        penPos.x += (fontSize * advance) + textTemplate.borderSize;
     }
 
     _vertices.SetDirtyElements(text.gpuVertexIndex, text.numCharsNonWhitespace * 6);
@@ -620,10 +670,22 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
     }
 
     // Update CharDrawData
-    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font, textTemplate.size);
+    Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font);
 
-    // TODO: Manage these better to support drawing more than 1 font at the same time
-    _descriptorSet.Bind("_fontTextures", font->GetTextureArray());
+    Renderer::TextureID fontTextureID = font->GetTextureID();
+
+    u32 fontTextureIndex;
+
+    auto textureIt = _textureIDToFontTexturesIndex.find(static_cast<Renderer::TextureID::type>(fontTextureID));
+    if (textureIt != _textureIDToFontTexturesIndex.end())
+    {
+        fontTextureIndex = textureIt->second;
+    }
+    else
+    {
+        fontTextureIndex = _renderer->AddTextureToArray(fontTextureID, _fontTextures);
+        _textureIDToFontTexturesIndex[static_cast<Renderer::TextureID::type>(fontTextureID)] = fontTextureIndex;
+    }
 
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
@@ -633,25 +695,25 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
     {
         unsigned int c = *it;
 
-        if (c == ' ')
+        Renderer::Glyph glyph = font->GetGlyph(c);
+
+        if (glyph.isWhitespace())
         {
             continue;
         }
 
-        Renderer::FontChar& fontChar = font->GetChar(c);
-
         auto& drawData = charDrawDatas[text.gpuDataIndex + charIndex];
-        drawData.packed0.x = fontChar.textureIndex;
+        drawData.packed0.x = fontTextureIndex;
         drawData.packed0.y = charIndex;
         drawData.packed0.z = textTemplate.color.ToRGBA32();
         drawData.packed0.w = textTemplate.borderColor.ToRGBA32();
 
-        //vec2 borderSizePixels = vec2(textTemplate.borderSize, textTemplate.borderSize);
-        //vec2 borderSize = PixelSizeToNDC(borderSizePixels);//vec2(textTemplate.borderSize / fontChar.width, textTemplate.borderSize / fontChar.height);
         drawData.packed1.x = textTemplate.borderSize;
 
-        f32 borderFade = glm::min(textTemplate.borderFade, 0.999f);
-        drawData.packed1.y = borderFade;
+        // Unit range
+        f32 distanceRange = font->upperPixelRange - font->lowerPixelRange;
+        drawData.packed1.z = distanceRange / font->width;
+        drawData.packed1.w = distanceRange / font->height;
 
         charIndex++;
     }

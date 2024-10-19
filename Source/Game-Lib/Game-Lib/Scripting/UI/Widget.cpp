@@ -52,7 +52,18 @@ namespace Scripting::UI
             ::UI::ButtonTemplate& buttonTemplate = uiSingleton.buttonTemplates[buttonTemplateIndex];
 
             const std::string& panelTemplateName = buttonTemplate.panelTemplate;
+            u32 panelTemplateNameHash = StringUtils::fnv1a_32(panelTemplateName.data(), panelTemplateName.size());
+            if (!uiSingleton.templateHashToPanelTemplateIndex.contains(panelTemplateNameHash))
+            {
+                luaL_error(state, "Tried to use template name '%s' but no panel template with that name has been registered", panelTemplateName.c_str());
+            }
+
             const std::string& textTemplateName = buttonTemplate.textTemplate;
+            u32 textTemplateNameHash = StringUtils::fnv1a_32(textTemplateName.data(), textTemplateName.size());
+            if (!uiSingleton.templateHashToTextTemplateIndex.contains(textTemplateNameHash))
+            {
+                luaL_error(state, "Tried to use template name '%s' but no text template with that name has been registered", textTemplateName.c_str());
+            }
 
             Button* button = ctx.PushUserData<Button>([](void* x)
             {
@@ -64,7 +75,7 @@ namespace Scripting::UI
             button->panelWidget.entity = panelEntity;
             button->panelWidget.metaTableName = "PanelMetaTable";
 
-            entt::entity textEntity = ECS::Util::UI::CreateText(&button->textWidget, registry, "", vec2(0, 0), layer, textTemplateName.c_str(), panelEntity);
+            entt::entity textEntity = ECS::Util::UI::CreateText(&button->textWidget, registry, "", vec2(0, 3), layer, textTemplateName.c_str(), panelEntity);
             button->textWidget.type = WidgetType::Text;
             button->textWidget.entity = textEntity;
             button->textWidget.metaTableName = "TextMetaTable";
@@ -113,6 +124,14 @@ namespace Scripting::UI
             });
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+            u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+            if (!uiSingleton.templateHashToPanelTemplateIndex.contains(templateNameHash))
+            {
+                luaL_error(state, "Tried to use template name '%s' but no panel template with that name has been registered", templateName);
+            }
+
             entt::entity entity = ECS::Util::UI::CreatePanel(panel, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, templateName, parent->entity);
 
             panel->type = WidgetType::Panel;
@@ -147,12 +166,20 @@ namespace Scripting::UI
                 luaL_error(state, "Template name is null");
             }
 
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+            
+            u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+            if (!uiSingleton.templateHashToTextTemplateIndex.contains(templateNameHash))
+            {
+                luaL_error(state, "Tried to use template name '%s' but no text template with that name has been registered", templateName);
+            }
+
             Text* text = ctx.PushUserData<Text>([](void* x)
             {
 
             });
 
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             entt::entity entity = ECS::Util::UI::CreateText(text, registry, str, vec2(posX, posY), layer, templateName, parent->entity);
 
             text->type = WidgetType::Text;

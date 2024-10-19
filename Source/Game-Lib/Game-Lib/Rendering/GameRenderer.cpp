@@ -153,7 +153,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
-    _canvasRenderer = new CanvasRenderer(_renderer);
+    _canvasRenderer = new CanvasRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer);
     _shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);

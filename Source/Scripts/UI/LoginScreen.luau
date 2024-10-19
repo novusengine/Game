@@ -9,31 +9,37 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("LoginText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 28.0,
-        color = vec3.new(255.0/255.0, 220.0/255.0, 0.0/255.0),
-        borderSize = 0.5,
-        borderFade = 0.2,
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 24.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.5,
+        borderColor = vec3.new(0.2, 0.2, 0.2),
+    });
+
+    UI.RegisterTextTemplate("LoginButtonText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 24.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.0,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("RememberText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
         size = 18.0,
-        color = vec3.new(255.0/255.0, 220.0/255.0, 0.0/255.0),
-        borderSize = 0.5,
-        borderFade = 0.2,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.0,
+        borderColor = vec3.new(0.2, 0.2, 0.2),
     });
 
     UI.RegisterTextTemplate("VersionText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 14.0,
-        color = vec3.new(255.0/255.0, 220.0/255.0, 0.0/255.0),
-        borderSize = 0.5,
-        borderFade = 0.2,
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 18.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.5,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
@@ -47,7 +53,7 @@ local function RegisterTemplates()
     UI.RegisterButtonTemplate("LoginButton",
     {
         panelTemplate = "DefaultButtonPanel",
-        textTemplate = "LoginText",
+        textTemplate = "LoginButtonText",
     });
 end
 
@@ -126,7 +132,8 @@ local function CreateLoginScreen()
     githubButton:SetText("Github");
 
     -- Version Text
-    local versionText = panel:NewText("Version 0.0.1(1) (Debug)", 20, 20, 0, "VersionText");
+    local versionString = "Version 0.0.1(1) (Debug)"; -- TODO: Not hardcode this
+    local versionText = panel:NewText(versionString, 20, 20, 0, "VersionText");
     versionText:SetAnchor(0.0, 0.0);
     versionText:SetRelativePoint(0.0, 0.0);
 

@@ -128,12 +128,6 @@ namespace ECS::Util
             panelComp.layer = layer;
 
             u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-            if (!uiSingleton.templateHashToPanelTemplateIndex.contains(templateNameHash))
-            {
-                NC_LOG_ERROR("UI: Tried to create panel with template name '{}' but no template with that name has been registered", templateName);
-                return entity;
-            }
-
             u32 templateIndex = uiSingleton.templateHashToPanelTemplateIndex[templateNameHash];
             panelComp.templateIndex = templateIndex;
 
@@ -207,22 +201,14 @@ namespace ECS::Util
             textComp.layer = layer;
 
             u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-            if (!uiSingleton.templateHashToTextTemplateIndex.contains(templateNameHash))
-            {
-                NC_LOG_ERROR("UI: Tried to create text with template name '{}' but no template with that name has been registered", templateName);
-                return entity;
-            }
-
             u32 templateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
             textComp.templateIndex = templateIndex;
 
             const ECS::Components::UI::TextTemplate& textTemplate = uiSingleton.textTemplates[templateIndex];
 
-            const std::string& fontPath = textTemplate.font;
-            f32 fontSize = textTemplate.size;
-            Renderer::Font* font = Renderer::Font::GetFont(renderer, fontPath, fontSize);
+            Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
 
-            vec2 textSize = font->CalculateTextSize(text);
+            vec2 textSize = font->CalculateTextSize(text, textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
 
             // Set this texts specific template data
@@ -352,11 +338,11 @@ namespace ECS::Util
 
             textComponent.text = newText;
 
-            const std::string& fontPath = uiSingleton.textTemplates[textComponent.templateIndex].font;
-            f32 fontSize = uiSingleton.textTemplates[textComponent.templateIndex].size;
-            Renderer::Font* font = Renderer::Font::GetFont(renderer, fontPath, fontSize);
+            const ECS::Components::UI::TextTemplate& textTemplate = uiSingleton.textTemplates[textComponent.templateIndex];
 
-            vec2 textSize = font->CalculateTextSize(textComponent.text);
+            Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
+
+            vec2 textSize = font->CalculateTextSize(textComponent.text, textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
 
             auto& transform = registry->get<ECS::Components::Transform2D>(entity);
@@ -501,10 +487,6 @@ namespace ECS::Util
                 if (textTemplate.setFlags.borderSize)
                 {
                     textTemplateComp.borderSize = textTemplate.borderSize;
-                }
-                if (textTemplate.setFlags.borderFade)
-                {
-                    textTemplateComp.borderFade = textTemplate.borderFade;
                 }
                 if (textTemplate.setFlags.borderColor)
                 {

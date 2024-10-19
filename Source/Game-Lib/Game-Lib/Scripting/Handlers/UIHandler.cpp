@@ -329,13 +329,6 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
-        if (ctx.GetTableField("borderFade", 2))
-        {
-            textTemplate.borderFade = ctx.Get(0.5f, -1);
-            textTemplate.setFlags.borderFade = 1;
-            ctx.Pop();
-        }
-
         textTemplate.borderColor = Color::White;
         if (ctx.GetTableField("borderColor", 2))
         {
@@ -526,13 +519,10 @@ namespace Scripting::UI
 
         const auto& textTemplate = uiSingleton.textTemplates[textTemplateIndex];
 
-        const std::string& fontPath = textTemplate.font;
-        f32 fontSize = textTemplate.size;
-
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
-        Renderer::Font* font = Renderer::Font::GetFont(renderer, fontPath, fontSize);
+        Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
 
-        vec2 textSize = font->CalculateTextSize(text);
+        vec2 textSize = font->CalculateTextSize(text, textTemplate.size, textTemplate.borderSize);
 
         ctx.Push(textSize.x);
         ctx.Push(textSize.y);

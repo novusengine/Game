@@ -45,8 +45,7 @@ function Module.RegisterTemplates()
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
         color = vec3.new(255.0/255.0, 239.0/255.0, 0.0/255.0),
-        borderSize = 0.30,
-        borderFade = 0.5,
+        borderSize = 0.3,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
@@ -89,8 +88,7 @@ function Module.RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
-        borderSize = 0.3,
-        borderFade = 0.8,
+        borderSize = 1.0,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 

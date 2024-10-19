@@ -30,11 +30,12 @@ namespace ECS
 }
 struct RenderResources;
 class Window;
+class DebugRenderer;
 
 class CanvasRenderer
 {
 public:
-    CanvasRenderer(Renderer::Renderer* renderer);
+    CanvasRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
     void Clear();
 
     void Update(f32 deltaTime);
@@ -72,11 +73,12 @@ private:
     struct CharDrawData
     {
         uvec4 packed0; // x: textureIndex, y: charIndex, z: textColor, w: borderColor
-        vec4 packed1; // x: borderWidthX, y: borderWidthY
+        vec4 packed1; // x: borderSize, y: padding, zw: unitRangeXY
     };
 
 private:
     Renderer::Renderer* _renderer;
+    DebugRenderer* _debugRenderer;
 
     Renderer::GPUVector<vec4> _vertices;
     Renderer::GPUVector<PanelDrawData> _panelDrawDatas;
@@ -87,6 +89,9 @@ private:
     Renderer::SamplerID _sampler;
     Renderer::TextureArrayID _textures;
     robin_hood::unordered_map<u32, u32> _textureNameHashToIndex;
+
+    Renderer::TextureArrayID _fontTextures;
+    robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToFontTexturesIndex;
 
     Renderer::DescriptorSet _descriptorSet;
 
