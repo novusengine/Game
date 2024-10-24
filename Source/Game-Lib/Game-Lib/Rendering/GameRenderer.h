@@ -56,6 +56,7 @@ public:
 
     Renderer::Renderer* GetRenderer() { return _renderer; }
 
+    CanvasRenderer* GetCanvasRenderer() { return _canvasRenderer; }
     DebugRenderer* GetDebugRenderer() { return _debugRenderer; }
     JoltDebugRenderer* GetJoltDebugRenderer() { return _joltDebugRenderer; }
     LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }

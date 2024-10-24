@@ -174,7 +174,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
             graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
 
             // Render targets.
             pipelineDesc.renderTargets[0] = data.color;
@@ -416,6 +416,26 @@ void DebugRenderer::DrawLine3D(const glm::vec3& from, const glm::vec3& to, Color
     vertices.push_back({ to, colorInt });
 }
 
+void DebugRenderer::DrawBox2D(const vec2& center, const vec2& extents, Color color)
+{
+    auto& vertices = _debugVertices2D.Get();
+
+    const vec2& renderSize = _renderer->GetRenderSize();
+
+    vec2 v0 = (center - extents) / renderSize;
+    vec2 v1 = (center + extents) / renderSize;
+    u32 colorInt = color.ToABGR32();
+
+    vertices.push_back({ { v0.x, v0.y }, colorInt });
+    vertices.push_back({ { v1.x, v0.y }, colorInt });
+    vertices.push_back({ { v1.x, v0.y }, colorInt });
+    vertices.push_back({ { v1.x, v1.y }, colorInt });
+    vertices.push_back({ { v1.x, v1.y }, colorInt });
+    vertices.push_back({ { v0.x, v1.y }, colorInt });
+    vertices.push_back({ { v0.x, v1.y }, colorInt });
+    vertices.push_back({ { v0.x, v0.y }, colorInt });
+}
+
 void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, Color color)
 {
     auto& vertices = _debugVertices3D.Get();
@@ -504,18 +524,37 @@ void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const qua
     vertices.push_back({ corners[7], colorInt });
 }
 
-void DebugRenderer::DrawTriangle2D(const glm::vec2& v0, const glm::vec2& v1, const glm::vec2& v2, Color color)
+void DebugRenderer::DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color)
 {
     DrawLine2D(v0, v1, color);
     DrawLine2D(v1, v2, color);
     DrawLine2D(v2, v0, color);
 }
 
-void DebugRenderer::DrawTriangle3D(const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, Color color)
+void DebugRenderer::DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color)
 {
     DrawLine3D(v0, v1, color);
     DrawLine3D(v1, v2, color);
     DrawLine3D(v2, v0, color);
+}
+
+void DebugRenderer::DrawCircle2D(const vec2& center, f32 radius, i32 resolution, Color color)
+{
+    auto& vertices = _debugVertices2D.Get();
+
+    u32 colorInt = color.ToABGR32();
+
+    constexpr f32 PI = glm::pi<f32>();
+    constexpr f32 TAU = PI * 2.0f;
+
+    const vec2& renderSize = _renderer->GetRenderSize();
+
+    f32 increment = TAU / resolution;
+    for (f32 currentAngle = 0.0f; currentAngle <= TAU; currentAngle += increment)
+    {
+        glm::vec2 pos = glm::vec2(radius * glm::cos(currentAngle) + center.x, radius * glm::sin(currentAngle) + center.y) / renderSize;
+        vertices.push_back({ pos, colorInt });
+    }
 }
 
 void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution, Color color)

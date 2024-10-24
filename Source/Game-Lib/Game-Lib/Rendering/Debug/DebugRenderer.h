@@ -29,11 +29,13 @@ public:
     void DrawLine2D(const vec2& from, const vec2& to, Color color);
     void DrawLine3D(const vec3& from, const vec3& to, Color color);
 
+    void DrawBox2D(const vec2& center, const vec2& extents, Color color);
     void DrawAABB3D(const vec3& center, const vec3& extents, Color color);
     void DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, Color color);
     void DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color);
     void DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color);
 
+    void DrawCircle2D(const vec2& center, f32 radius, i32 resolution, Color color);
     void DrawCircle3D(const vec3& center, f32 radius, i32 resolution, Color color);
     void DrawSphere3D(const vec3& center, f32 radius, i32 resolution, Color color);
 
@@ -60,6 +62,7 @@ private:
     {
         vec2 pos;
         u32 color;
+        u32 padding;
     };
 
     struct DebugVertex3D

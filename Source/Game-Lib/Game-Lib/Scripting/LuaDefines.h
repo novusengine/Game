@@ -9,57 +9,49 @@ typedef i32 (*lua_CFunction)(lua_State* L);
 
 namespace Scripting
 {
-	class LuaManager;
-	class LuaHandlerBase;
-	class LuaSystemBase;
+    class LuaManager;
+    class LuaHandlerBase;
+    class LuaSystemBase;
+    using LuaUserDataDtor = void(void*);
 
-	struct LuaTable
-	{
-	public:
-		using Table = robin_hood::unordered_map<std::string, std::any>;
+    enum class LuaHandlerType
+    {
+        Global,
+        GameEvent,
+        UI,
+        Count
+    };
 
-		Table data;
-		bool isMetaTable = false;
-	};
-	using LuaUserDataDtor = void(void*);
+    enum class LuaSystemEvent
+    {
+        Invalid,
+        Reload
+    };
 
-	enum class LuaHandlerType
-	{
-		Global,
-		GameEvent,
-		Count
-	};
+    enum class LuaGameEvent
+    {
+        Invalid,
+        Loaded,
+        Updated,
+        Count
+    };
 
-	enum class LuaSystemEvent
-	{
-		Invalid,
-		Reload
-	};
+    struct LuaEventData
+    {
+    public:
+    };
 
-	enum class LuaGameEvent
-	{
-		Invalid,
-		Loaded,
-		Updated,
-		Count
-	};
+    struct LuaGameEventLoadedData : LuaEventData
+    {
+    public:
+        std::string motd;
+    };
 
-	struct LuaEventData
-	{
-	public:
-	};
+    struct LuaGameEventUpdatedData : LuaEventData
+    {
+    public:
+        f32 deltaTime;
+    };
 
-	struct LuaGameEventLoadedData : LuaEventData
-	{
-	public:
-		std::string motd;
-	};
-
-	struct LuaGameEventUpdatedData : LuaEventData
-	{
-	public:
-		f32 deltaTime;
-	};
-
-	using LuaGameEventHandlerFn = std::function<void(lua_State*, LuaGameEvent, LuaEventData*)>;
+    using LuaGameEventHandlerFn = std::function<void(lua_State*, LuaGameEvent, LuaEventData*)>;
 }
