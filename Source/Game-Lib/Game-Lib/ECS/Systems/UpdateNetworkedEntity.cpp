@@ -212,17 +212,17 @@ namespace ECS::Systems
                     if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
                     {
                         quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
-                        animationSystem->SetBoneRotation(instanceID, Animation::Bone::SpineLow, rotation);
+                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::SpineLow, rotation);
                     }
                     if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
                     {
                         quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
-                        animationSystem->SetBoneRotation(instanceID, Animation::Bone::Head, rotation);
+                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::Head, rotation);
                     }
                     if (HandleUpdateOrientation(movementInfo.waistRotationSettings, deltaTime))
                     {
                         quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.waistRotationSettings.x), 0.0f));
-                        animationSystem->SetBoneRotation(instanceID, Animation::Bone::Waist, rotation);
+                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::Waist, rotation);
                     }
                 }
             }

@@ -4,10 +4,10 @@
 
 namespace ECS::Systems
 {
-    class UpdateSkyboxes
+    class Animations
     {
     public:
         static void Init(entt::registry& registry);
-        static void Update(entt::registry& registry, f32 deltaTime);
+        static void UpdateSimulation(entt::registry& registry, f32 deltaTime);
     };
 }

@@ -170,8 +170,8 @@ template<class T>
 class CullingResourcesIndexed : public CullingResourcesIndexedBase
 {
 public:
-	void Init(InitParams& params) override
-	{
+    void Init(InitParams& params) override
+    {
         CullingResourcesIndexedBase::Init(params);
 
         // DrawCallDatas
@@ -179,10 +179,10 @@ public:
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
         SyncToGPU();
-	}
+    }
 
-	bool SyncToGPU() override
-	{
+    bool SyncToGPU() override
+    {
         bool gotRecreated = CullingResourcesIndexedBase::SyncToGPU();
 
         // DrawCallDatas
@@ -201,7 +201,7 @@ public:
         }
 
         return gotRecreated;
-	}
+    }
 
     void Clear() override
     {
@@ -237,7 +237,7 @@ public:
     Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
 
 private:
-	Renderer::GPUVector<T> _drawCallDatas;
+    Renderer::GPUVector<T> _drawCallDatas;
 };
 
 template<class T>

@@ -8,7 +8,7 @@
 
 namespace Editor
 {
-	class EditorHandler;
+    class EditorHandler;
 }
 class InputManager;
 class GameRenderer;
@@ -16,61 +16,61 @@ class ModelLoader;
 
 namespace enki
 {
-	class TaskScheduler;
+    class TaskScheduler;
 }
 namespace ECS
 {
-	class Scheduler;
+    class Scheduler;
 }
 namespace Scripting
 {
-	class LuaManager;
+    class LuaManager;
 }
 namespace Animation
 {
-	class AnimationSystem;
+    class AnimationSystem;
 }
 
 class Application
 {
 public:
-	Application();
-	~Application();
+    Application();
+    ~Application();
 
-	void Start(bool startInSeparateThread);
-	void Stop();
+    void Start(bool startInSeparateThread);
+    void Stop();
 
-	void PassMessage(MessageInbound& message);
-	bool TryGetMessageOutbound(MessageOutbound& message);
+    void PassMessage(MessageInbound& message);
+    bool TryGetMessageOutbound(MessageOutbound& message);
 
-	bool IsRunning() { return _isRunning; }
-	bool Tick(f32 deltaTime);
-
-private:
-	void Run();
-	bool Init();
-	bool Render(f32 deltaTime, f32& timeSpentWaiting);
-	void SaveCDB();
-
-	void Cleanup();
+    bool IsRunning() { return _isRunning; }
+    bool Tick(f32 deltaTime);
 
 private:
-	bool _isRunning = false;
+    void Run();
+    bool Init();
+    bool Render(f32 deltaTime, f32& timeSpentWaiting);
+    void SaveCDB();
 
-	InputManager* _inputManager = nullptr;
-	GameRenderer* _gameRenderer = nullptr;
+    void Cleanup();
 
-	Editor::EditorHandler* _editorHandler = nullptr;
+private:
+    bool _isRunning = false;
 
-	EnttRegistries _registries;
-	enki::TaskScheduler* _taskScheduler = nullptr;
+    InputManager* _inputManager = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
 
-	ECS::Scheduler* _ecsScheduler = nullptr;
-	Scripting::LuaManager* _luaManager = nullptr;
-	Animation::AnimationSystem* _animationSystem = nullptr;
+    Editor::EditorHandler* _editorHandler = nullptr;
 
-	nlohmann::json _cvarJson;
+    EnttRegistries _registries;
+    enki::TaskScheduler* _taskScheduler = nullptr;
 
-	moodycamel::ConcurrentQueue<MessageInbound> _messagesInbound;
-	moodycamel::ConcurrentQueue<MessageOutbound> _messagesOutbound;
+    ECS::Scheduler* _ecsScheduler = nullptr;
+    Scripting::LuaManager* _luaManager = nullptr;
+    Animation::AnimationSystem* _animationSystem = nullptr;
+
+    nlohmann::json _cvarJson;
+
+    moodycamel::ConcurrentQueue<MessageInbound> _messagesInbound;
+    moodycamel::ConcurrentQueue<MessageOutbound> _messagesOutbound;
 };

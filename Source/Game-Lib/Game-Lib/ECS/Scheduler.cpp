@@ -9,6 +9,7 @@
 #include "Game-Lib/ECS/Singletons/RenderState.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 
+#include "Game-Lib/ECS/Systems/Animations.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
 #include "Game-Lib/ECS/Systems/CalculateShadowCameraMatrices.h"
@@ -42,10 +43,10 @@ namespace ECS
 
     void Scheduler::Init(EnttRegistries& registries)
     {
-        // Game
         entt::registry& gameRegistry = *registries.gameRegistry;
 
         Systems::NetworkConnection::Init(gameRegistry);
+        Systems::Animations::Init(gameRegistry);
         Systems::UpdateNetworkedEntity::Init(gameRegistry);
         Systems::UpdatePhysics::Init(gameRegistry);
         Systems::DrawDebugMesh::Init(gameRegistry);
@@ -92,6 +93,15 @@ namespace ECS
         {
             ZoneScopedN("DrawDebugMesh");
             Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
+        }
+
+        {
+            ZoneScopedN("Animations");
+
+            {
+                ZoneScopedN("Animation::UpdateSimulation");
+                Systems::Animations::UpdateSimulation(gameRegistry, clampedDeltaTime);
+            }
         }
 
         {

@@ -3,9 +3,10 @@
 #include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/NetworkedEntity.h"
-#include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Singletons/Skybox.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
@@ -210,21 +211,11 @@ void ModelLoader::Clear()
 
     _modelRenderer->Clear();
 
-    auto view = registry->view<ECS::Components::Model>();
-    view.each([&](ECS::Components::Model& model)
-    {
-        model.instanceID = std::numeric_limits<u32>().max();
-    });
-
-    ServiceLocator::GetAnimationSystem()->Clear();
+    ServiceLocator::GetAnimationSystem()->Clear(*registry);
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     
     _createdEntities.clear();
-
-    entt::registry::context& ctx = registry->ctx();
-    auto& skybox = ctx.get<ECS::Singletons::Skybox>();
-    registry->get<ECS::Components::Model>(skybox.entity).instanceID = std::numeric_limits<u32>::max();
 }
 
 void ModelLoader::Update(f32 deltaTime)
@@ -297,7 +288,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones, reserveInfo.numTextureTransforms);
+            animationSystem->Reserve(reserveInfo.numModels);
 
             // Create entt entities
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -308,11 +299,12 @@ void ModelLoader::Update(f32 deltaTime)
             
             registry->create(begin, _createdEntities.end());
 
-            registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
             registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::AnimationInitData>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
+            registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
             registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances = 0;
@@ -371,7 +363,6 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
-            animationSystem->FitToBuffersAfterLoad();
         }
     }
 
@@ -455,7 +446,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels, reserveInfo.numInstances, reserveInfo.numBones, reserveInfo.numTextureTransforms);
+            animationSystem->Reserve(reserveInfo.numModels);
 
             for (u32 i = 0; i < numDequeued; i++)
             {
@@ -498,7 +489,6 @@ void ModelLoader::Update(f32 deltaTime)
 
             // Fit the buffers to the data we loaded
             _modelRenderer->FitBuffersAfterLoad();
-            animationSystem->FitToBuffersAfterLoad();
         }
     }
 
@@ -807,12 +797,12 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     }
 
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-    if (animationSystem->AddInstance(modelID, instanceID))
+
+    if (animationSystem->HasSkeleton(modelID))
     {
-        if (!animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop))
-        {
-            animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Closed, Animation::Flag::Loop);
-        }
+        auto& animationInitData = registry->get<ECS::Components::AnimationInitData>(entityID);
+        animationInitData.flags.shouldInitialize = true;
+        animationInitData.flags.isDynamic = false;
     }
 }
 
@@ -840,7 +830,6 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     }
     else
     {
-        animationSystem->RemoveInstance(instanceID);
         _modelRenderer->ModifyInstance(entityID, instanceID, modelID, complexModel, transform.GetMatrix(), request.displayID);
     }
 
@@ -899,8 +888,15 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         }
     }
 
-    if (animationSystem->AddInstance(modelID, instanceID))
+    if (animationSystem->HasSkeleton(modelID))
     {
-        animationSystem->SetBoneSequence(instanceID, Animation::Bone::Default, Animation::Type::Stand, Animation::Flag::Loop);
+        auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
+        animationInitData.flags.shouldInitialize = true;
+        animationInitData.flags.isDynamic = true;
+
+        if (_modelRenderer)
+        {
+            _modelRenderer->AddAnimationInstance(instanceID);
+        }
     }
 }

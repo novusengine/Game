@@ -7,8 +7,8 @@
 
 namespace ECS::Systems
 {
-	void UpdateAABBs::Update(entt::registry& registry, f32 deltaTime)
-	{
+    void UpdateAABBs::Update(entt::registry& registry, f32 deltaTime)
+    {
         auto view = registry.view<Components::Transform, Components::AABB, Components::WorldAABB, Components::DirtyTransform>();
 
         view.each([&](entt::entity entity, Components::Transform& transform, Components::AABB& aabb, Components::WorldAABB& worldAABB, ECS::Components::DirtyTransform& dirtyTransform)
@@ -43,5 +43,5 @@ namespace ECS::Systems
                 worldAABB.max = glm::max(worldAABB.max, corners[i]);
             }
         });
-	}
+    }
 }
