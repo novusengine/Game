@@ -42,7 +42,6 @@ namespace Scripting::UI
     public: 
         // Registered Functions
         // Register templates
-        static i32 RegisterButtonTemplate(lua_State* state);
         static i32 RegisterPanelTemplate(lua_State* state);
         static i32 RegisterTextTemplate(lua_State* state);
         

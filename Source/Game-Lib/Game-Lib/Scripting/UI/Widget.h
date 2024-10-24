@@ -10,7 +10,6 @@ namespace Scripting::UI
 {
     enum class WidgetType : u8
     {
-        Button,
         Canvas,
         Panel,
         Text,
@@ -31,7 +30,6 @@ namespace Scripting::UI
 
     namespace WidgetCreationMethods
     {
-        i32 CreateButton(lua_State* state);
         i32 CreatePanel(lua_State* state);
         i32 CreateText(lua_State* state);
         i32 CreateWidget(lua_State* state);
@@ -39,7 +37,6 @@ namespace Scripting::UI
 
     static LuaMethod widgetCreationMethods[] =
     {
-        { "NewButton", WidgetCreationMethods::CreateButton },
         { "NewPanel", WidgetCreationMethods::CreatePanel },
         { "NewText", WidgetCreationMethods::CreateText },
         { "NewWidget", WidgetCreationMethods::CreateWidget },

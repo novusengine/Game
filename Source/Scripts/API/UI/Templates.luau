@@ -87,18 +87,12 @@ function Module.RegisterTemplates()
     UI.RegisterTextTemplate("DefaultButtonText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 24.0,
+        size = 22.0,
         borderSize = 1.0,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
 
-    UI.RegisterButtonTemplate("DefaultButton",
-    {
-        panelTemplate = "DefaultButtonPanel",
-        textTemplate = "DefaultButtonText",
-    });
-
-    -- Minimzie Button
+    -- Minimize Button
     
     local minimizeButtonMinX, minimizeButtonMinY = UI.PixelsToTexCoord(6, 7, 32, 32);
     local minimizeButtonMaxX, minimizeButtonMaxY = UI.PixelsToTexCoord(24, 24, 32, 32);
@@ -128,12 +122,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel",
     {
         background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
-    });
-    
-    UI.RegisterButtonTemplate("DefaultButtonMinimize",
-    {
-        panelTemplate = "DefaultButtonMinimizePanel",
-        textTemplate = "DefaultButtonText",
     });
 
     -- Slider
@@ -203,12 +191,6 @@ function Module.RegisterTemplates()
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
-    UI.RegisterButtonTemplate("DefaultComboBoxButton", 
-    {
-        panelTemplate = "DefaultComboBoxPanel",
-        textTemplate = "YellowText",
-    });
-
     local comboBoxIconMinX, comboBoxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
     local comboBoxIconMaxX, comboBoxIconMaxY = UI.PixelsToTexCoord(26, 28, 32, 32);
     
@@ -230,12 +212,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultComboBoxPrevHoveredPanel", 
     {
         foreground = "Data/Texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
-    });
-
-    UI.RegisterButtonTemplate("DefaultComboBoxPrevButton", 
-    {
-        panelTemplate = "DefaultComboBoxPrevPanel",
-        textTemplate = "DefaultButtonText",
     });
 
     UI.RegisterPanelTemplate("DefaultComboBoxDisabledPanel", 
@@ -261,19 +237,6 @@ function Module.RegisterTemplates()
     UI.RegisterPanelTemplate("DefaultComboBoxNextHoveredPanel", 
     {
         foreground = "Data/Texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
-    });
-
-    UI.RegisterButtonTemplate("DefaultComboBoxNextButton", 
-    {
-        panelTemplate = "DefaultComboBoxNextPanel",
-        textTemplate = "DefaultButtonText",
-    });
-
-    -- Input Box
-    UI.RegisterButtonTemplate("DefaultInputBoxButton", 
-    {
-        panelTemplate = "DialogBox",
-        textTemplate = "DefaultButtonText",
     });
 
     -- Loading Screen

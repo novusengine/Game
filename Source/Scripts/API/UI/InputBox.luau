@@ -1,4 +1,16 @@
+local UIButton = require("API/UI/Button")
+
 local Module = { }
+--[[
+usage:
+.NewInputBox(panel, 0, -170, 200, 40, 0, {
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
+        defaultText = "Test",
+        numericOnly = true,
+        secure = true,
+    });
+]]
 
 -- Helper function to get the byte position from a character position in a UTF-8 string
 local function GetBytePositionFromCharacterPosition(s, charPos)
@@ -240,7 +252,7 @@ local function SetupInputBoxMethods(inputBoxTable)
         if inputBoxTable.onSubmit then
             local shouldUnfocus = inputBoxTable.onSubmit(inputBoxTable) or false;
             if (shouldUnfocus) then
-                UI.UnfocusWidget(inputBoxTable.button);
+                UI.UnfocusWidget(inputBoxTable.button.panel);
 
                 inputBoxTable.cursorBlinkState = false;
                 RefreshText(inputBoxTable);
@@ -295,8 +307,8 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
     inputBoxTable.inputBox = parent:NewWidget(posX, posY, layer)
 
     inputBoxTemplateTable = inputBoxTemplateTable or {}
-    local buttonTemplate = inputBoxTemplateTable["buttonTemplate"] or "DefaultInputBoxButton"
-    local textTemplate = buttonTemplate["textTemplate"] or "DefaultButtonText"
+    local panelTemplate = inputBoxTemplateTable["panelTemplate"] or "DialogBox"
+    local textTemplate = inputBoxTemplateTable["textTemplate"] or "DefaultButtonText"
     inputBoxTable.textTemplate = textTemplate  -- Store textTemplate for use in calculations
     local defaultText = inputBoxTemplateTable["defaultText"] or ""
 
@@ -314,11 +326,14 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
     inputBoxTable.numericOnly = inputBoxTemplateTable["numericOnly"] or false
     inputBoxTable.secure = inputBoxTemplateTable["secure"] or false
 
-    inputBoxTable.button = inputBoxTable.inputBox:NewButton(0, 0, sizeX, sizeY, 0, buttonTemplate)
+    inputBoxTable.button = UIButton.NewButton(inputBoxTable.inputBox, 0, 0, sizeX, sizeY, 0, {
+        panelTemplate = panelTemplate,
+        textTemplate = textTemplate,
+    })
     inputBoxTable.button:SetText(defaultText)
     inputBoxTable.button:SetFocusable(true)
     
-    local buttonText = inputBoxTable.button:GetTextWidget()
+    local buttonText = inputBoxTable.button.text
     buttonText:SetAnchor(0.0, 0.0)
     buttonText:SetRelativePoint(0.0, 0.0)
     buttonText:SetPos(5, 5)

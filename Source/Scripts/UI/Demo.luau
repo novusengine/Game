@@ -1,4 +1,5 @@
 local UIStack = require("API/UI/UIStack")
+local UIButton = require("API/UI/Button")
 local UISlider = require("API/UI/Slider")
 local UICheckbox = require("API/UI/Checkbox")
 local UIComboBox = require("API/UI/ComboBox")
@@ -62,45 +63,52 @@ local function CreateGameMenu(stack)
     headerText:SetRelativePoint(0.5, 0.5);
 
     -- Create buttons
-    local supportButton = panel:NewButton(0, -70, 250, 40, 0, "DefaultButton");
+    local supportButton = UIButton.NewButton(panel, 0, -70, 250, 40, 0, {
+        text = "Support"
+    });
     supportButton:SetAnchor(0.5, 1.0);
     supportButton:SetRelativePoint(0.5, 0.5);
-    supportButton:SetText("Support");
 
-    local shopButton = panel:NewButton(0, -115, 250, 40, 0, "DefaultButton");
+    local shopButton = UIButton.NewButton(panel, 0, -115, 250, 40, 0, {
+        text = "Shop"
+    });
     shopButton:SetAnchor(0.5, 1.0);
     shopButton:SetRelativePoint(0.5, 0.5);
-    shopButton:SetText("Shop");
     shopButton:SetInteractable(false);
 
-    local optionsButton = panel:NewButton(0, -185, 250, 40, 0, "DefaultButton");
+    local optionsButton = UIButton.NewButton(panel, 0, -185, 250, 40, 0, {
+        text = "Options"
+    });
     optionsButton:SetAnchor(0.5, 1.0);
     optionsButton:SetRelativePoint(0.5, 0.5);
-    optionsButton:SetText("Options");
     optionsButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Push("OptionsMenu");
     end)
 
-    local macrosButton = panel:NewButton(0, -230, 250, 40, 0, "DefaultButton");
+    local macrosButton = UIButton.NewButton(panel, 0, -230, 250, 40, 0, {
+        text = "Macros"
+    });
     macrosButton:SetAnchor(0.5, 1.0);
     macrosButton:SetRelativePoint(0.5, 0.5);
-    macrosButton:SetText("Macros");
 
-    local logoutButton = panel:NewButton(0, -300, 250, 40, 0, "DefaultButton");
+    local logoutButton = UIButton.NewButton(panel, 0, -300, 250, 40, 0, {
+        text = "Logout"
+    });
     logoutButton:SetAnchor(0.5, 1.0);
     logoutButton:SetRelativePoint(0.5, 0.5);
-    logoutButton:SetText("Logout");
 
-    local exitButton = panel:NewButton(0, -345, 250, 40, 0, "DefaultButton");
+    local exitButton = UIButton.NewButton(panel, 0, -345, 250, 40, 0, {
+        text = "Exit Game"
+    });
     exitButton:SetAnchor(0.5, 1.0);
     exitButton:SetRelativePoint(0.5, 0.5);
-    exitButton:SetText("Exit Game");
 
-    local returnButton = panel:NewButton(0, -415, 250, 40, 0, "DefaultButton");
+    local returnButton = UIButton.NewButton(panel, 0, -415, 250, 40, 0, {
+        text = "Return to Game"
+    });
     returnButton:SetAnchor(0.5, 1.0);
     returnButton:SetRelativePoint(0.5, 0.5);
-    returnButton:SetText("Return to Game");
     returnButton:SetOnMouseUp(function(eventID, widget, ...)
         local stack = UIStack.Get("Menu");
         stack:Pop();
@@ -129,7 +137,9 @@ function CreateOptionsMenu(stack)
     headerText:SetRelativePoint(0.5, 1.0);
 
     -- Create buttons
-    local exitButton = panel:NewButton(2, 2, 24, 24, 0, "DefaultButtonMinimize");
+    local exitButton = UIButton.NewButton(panel, 2, 2, 24, 24, 0, {
+        panelTemplate = "DefaultButtonMinimizePanel",
+    });
     exitButton:SetAnchor(1.0, 1.0);
     exitButton:SetRelativePoint(1.0, 1.0);
     exitButton:SetOnMouseUp(function(eventID, widget, ...)
@@ -164,8 +174,7 @@ function CreateOptionsMenu(stack)
     end)
 
     local testComboBox = UIComboBox.NewComboBox(panel, 0, -120, 200, 40, 0, {
-        options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
-        buttonTemplate = "DefaultComboBoxButton",
+        options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"}
     });
     testComboBox.comboBox:SetAnchor(0.5, 1.0);
     testComboBox.button:SetRelativePoint(0.5, 1.0);
@@ -174,10 +183,7 @@ function CreateOptionsMenu(stack)
     end);
 
     local testInputBox = UIInputBox.NewInputBox(panel, 0, -170, 200, 40, 0, {
-        buttonTemplate = "DefaultInputBoxButton",
         defaultText = "Test",
-        --numericOnly = true,
-        --secure = true,
     });
     testInputBox.inputBox:SetAnchor(0.5, 1.0);
     testInputBox.button:SetRelativePoint(0.5, 1.0);

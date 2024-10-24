@@ -489,7 +489,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
         {
             textWidth = std::max(textWidth, penPos.x);
             penPos.x = 0.0f;
-            penPos.y -= fontSize * metrics.lineHeight;
+            penPos.y -= fontSize * static_cast<f32>(metrics.lineHeight);
             continue;
         }
 

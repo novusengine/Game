@@ -8,7 +8,6 @@
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
-#include "Game-Lib/Scripting/UI/Button.h"
 #include "Game-Lib/Scripting/UI/Box.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
@@ -27,7 +26,6 @@ namespace Scripting::UI
 {
     static LuaMethod uiMethods[] =
     {
-        { "RegisterButtonTemplate", UIHandler::RegisterButtonTemplate },
         { "RegisterPanelTemplate", UIHandler::RegisterPanelTemplate },
         { "RegisterTextTemplate", UIHandler::RegisterTextTemplate },
 
@@ -55,7 +53,6 @@ namespace Scripting::UI
 
         // Widgets
         Widget::Register(state);
-        Button::Register(state);
         Canvas::Register(state);
         Panel::Register(state);
         Text::Register(state);
@@ -76,40 +73,6 @@ namespace Scripting::UI
     }
 
     // UI
-    i32 UIHandler::RegisterButtonTemplate(lua_State* state)
-    {
-        LuaState ctx(state);
-
-        const char* templateName = ctx.Get(nullptr, 1);
-
-        const char* panelTemplate = nullptr;
-        if (ctx.GetTableField("panelTemplate", 2))
-        {
-            panelTemplate = ctx.Get(nullptr, 3);
-            ctx.Pop(1);
-        }
-
-        const char* textTemplate = nullptr;
-        if (ctx.GetTableField("textTemplate", 2))
-        {
-            textTemplate = ctx.Get(nullptr, 3);
-            ctx.Pop(1);
-        }
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
-
-        u32 buttonTemplateIndex = static_cast<u32>(uiSingleton.buttonTemplates.size());
-        auto& buttonTemplate = uiSingleton.buttonTemplates.emplace_back();
-        buttonTemplate.panelTemplate = panelTemplate;
-        buttonTemplate.textTemplate = textTemplate;
-
-        u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-        uiSingleton.templateHashToButtonTemplateIndex[templateNameHash] = buttonTemplateIndex;
-
-        return 0;
-    }
-
     i32 UIHandler::RegisterPanelTemplate(lua_State* state)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;

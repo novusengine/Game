@@ -1,10 +1,14 @@
-local Module = { }
+local UIButton = require("API/UI/Button")
 
+local Module = { }
 --[[
 usage:
 .NewComboBox(panel, 0, -120, 200, 40, 0, {
     options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
-        buttonTemplate = "DefaultComboBoxButton",
+        buttonTemplate = {
+            panelTemplate = "DefaultButtonPanel",
+            textTemplate = "DefaultButtonText",
+        },
 })
 ]]--
 
@@ -74,9 +78,19 @@ function Module.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTem
     comboBoxTable.onValueChanged = nil;
 
     local options = comboBoxTemplateTable["options"] or { "None" };
-    local buttonTemplate = comboBoxTemplateTable["buttonTemplate"] or "DefaultComboBoxButton";
-    local prevButtonTemplate = comboBoxTemplateTable["prevButtonTemplate"] or "DefaultComboBoxPrevButton";
-    local nextButtonTemplate = comboBoxTemplateTable["nextButtonTemplate"] or "DefaultComboBoxNextButton";
+    local buttonTemplate = comboBoxTemplateTable["buttonTemplate"] or {
+        panelTemplate = "DefaultComboBoxPanel",
+        textTemplate = "YellowText",
+    };
+
+    local prevButtonTemplate = comboBoxTemplateTable["prevButtonTemplate"] or {
+        panelTemplate = "DefaultComboBoxPrevPanel",
+        textTemplate = "DefaultButtonText",
+    };
+    local nextButtonTemplate = comboBoxTemplateTable["nextButtonTemplate"] or {
+        panelTemplate = "DefaultComboBoxNextPanel",
+        textTemplate = "DefaultButtonText",
+    };
     comboBoxTable.selectedOption = comboBoxTemplateTable["selectedOption"] or 1;
 
     local sideButtonsSizeX = sizeY; -- Square button
@@ -85,18 +99,17 @@ function Module.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTem
     local sideButtonPosXOffset = (middleButtonSizeX / 2.0);
 
     -- Background
-    comboBoxTable.button = comboBoxTable.comboBox:NewButton(0, 0, middleButtonSizeX, sizeY, 0, buttonTemplate);
-    
+    comboBoxTable.button = UIButton.NewButton(comboBoxTable.comboBox, 0, 0, middleButtonSizeX, sizeY, 0, buttonTemplate);
     comboBoxTable.options = options;
     
     comboBoxTable.button:SetText(comboBoxTable.options[comboBoxTable.selectedOption]);
 
     -- Previous
-    comboBoxTable.prevButton = comboBoxTable.comboBox:NewButton(-sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, prevButtonTemplate);
+    comboBoxTable.prevButton = UIButton.NewButton(comboBoxTable.comboBox, -sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, prevButtonTemplate);
     comboBoxTable.prevButton:SetAnchor(0.5, 0.0);
     comboBoxTable.prevButton:SetRelativePoint(1.0, 1.0);
     -- Next
-    comboBoxTable.nextButton = comboBoxTable.comboBox:NewButton(sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, nextButtonTemplate);
+    comboBoxTable.nextButton = UIButton.NewButton(comboBoxTable.comboBox, sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, nextButtonTemplate);
     comboBoxTable.nextButton:SetAnchor(0.5, 0.0);
     comboBoxTable.nextButton:SetRelativePoint(0.0, 1.0);
 
@@ -119,7 +132,7 @@ function Module.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTem
     local yPos = -selectionPanelPaddingY / 2.0;
     comboBoxTable.selectionButtons = {};
     for i=1, numOptions do
-        comboBoxTable.selectionButtons[i] = comboBoxTable.selectionPanel:NewButton(0, yPos, middleButtonSizeX, selectionButtonHeight, 0, buttonTemplate);
+        comboBoxTable.selectionButtons[i] = UIButton.NewButton(comboBoxTable.selectionPanel, 0, yPos, middleButtonSizeX, selectionButtonHeight, 0, buttonTemplate);
         comboBoxTable.selectionButtons[i]:SetText(options[i]);
 
         comboBoxTable.selectionButtons[i]:SetAnchor(0.5, 1.0);

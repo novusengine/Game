@@ -1,7 +1,6 @@
 #pragma once
 #include "Game-Lib/ECS/Components/UI/PanelTemplate.h"
 #include "Game-Lib/ECS/Components/UI/TextTemplate.h"
-#include "Game-Lib/UI/Templates.h"
 
 #include <Base/Types.h>
 #include <Base/Memory/StackAllocator.h>
@@ -20,9 +19,6 @@ namespace ECS::Singletons
         robin_hood::unordered_map<u32, entt::entity> nameHashToCanvasEntity;
 
         // Templates
-        std::vector <UI::ButtonTemplate> buttonTemplates;
-        robin_hood::unordered_map<u32, u32> templateHashToButtonTemplateIndex;
-
         std::vector <ECS::Components::UI::PanelTemplate> panelTemplates;
         robin_hood::unordered_map<u32, u32> templateHashToPanelTemplateIndex;
 

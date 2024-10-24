@@ -1,3 +1,4 @@
+local UIButton = require("API/UI/Button")
 local UICheckbox = require("API/UI/Checkbox")
 local UIInputBox = require("API/UI/InputBox")
 
@@ -42,19 +43,6 @@ local function RegisterTemplates()
         borderSize = 1.5,
         borderColor = vec3.new(0.0, 0.0, 0.0),
     });
-
-    -- Input Box
-    UI.RegisterButtonTemplate("LoginInputBoxButton", 
-    {
-        panelTemplate = "DialogBox",
-        textTemplate = "DefaultButtonText",
-    });
-
-    UI.RegisterButtonTemplate("LoginButton",
-    {
-        panelTemplate = "DefaultButtonPanel",
-        textTemplate = "LoginButtonText",
-    });
 end
 
 local function Login(accountInputBox, passwordInputBox)
@@ -75,7 +63,8 @@ local function CreateLoginScreen()
 
     -- Account Name Input
     local accountNameInputBox = UIInputBox.NewInputBox(panel, 0, -40, 200, 40, 0, {
-        buttonTemplate = "LoginInputBoxButton",
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
     });
     accountNameInputBox.inputBox:SetAnchor(0.5, 0.5);
     accountNameInputBox.button:SetRelativePoint(0.5, 0.5);
@@ -102,7 +91,8 @@ local function CreateLoginScreen()
 
     -- Password Input
     local passwordInputBox = UIInputBox.NewInputBox(panel, 0, -170, 200, 40, 0, {
-        buttonTemplate = "LoginInputBoxButton",
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
         secure = true,
     });
     passwordInputBox.inputBox:SetAnchor(0.5, 0.5);
@@ -114,22 +104,38 @@ local function CreateLoginScreen()
     passwordText:SetRelativePoint(0.5, 0.0);
 
     -- Login Button
-    local loginButton = panel:NewButton(0, -260, 250, 40, 0, "LoginButton");
+    UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Login",
+    });
+
+
+    local loginButton = UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Login",
+    });
     loginButton:SetAnchor(0.5, 0.5);
     loginButton:SetRelativePoint(0.5, 0.5);
-    loginButton:SetText("Login");
 
     -- Discord Button
-    local discordButton = panel:NewButton(20, -260, 250, 40, 0, "LoginButton");
+    local discordButton = UIButton.NewButton(panel, 20, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Discord",
+    });
     discordButton:SetAnchor(0.0, 0.5);
     discordButton:SetRelativePoint(0.0, 0.5);
-    discordButton:SetText("Discord");
 
     -- Github Button
-    local githubButton = panel:NewButton(20, -310, 250, 40, 0, "LoginButton");
+    local githubButton = UIButton.NewButton(panel, 20, -310, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Github",
+    });
     githubButton:SetAnchor(0.0, 0.5);
     githubButton:SetRelativePoint(0.0, 0.5);
-    githubButton:SetText("Github");
 
     -- Version Text
     local versionString = "Version 0.0.1(1) (Debug)"; -- TODO: Not hardcode this
@@ -138,28 +144,40 @@ local function CreateLoginScreen()
     versionText:SetRelativePoint(0.0, 0.0);
 
     -- System Button
-    local systemButton = panel:NewButton(-20, -260, 250, 40, 0, "LoginButton");
+    local systemButton = UIButton.NewButton(panel, -20, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "System",
+    });
     systemButton:SetAnchor(1.0, 0.5);
     systemButton:SetRelativePoint(1.0, 0.5);
-    systemButton:SetText("System");
 
     -- Credits Button
-    local creditsButton = panel:NewButton(-20, -310, 250, 40, 0, "LoginButton");
+    local creditsButton = UIButton.NewButton(panel, -20, -310, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Credits",
+    });
     creditsButton:SetAnchor(1.0, 0.5);
     creditsButton:SetRelativePoint(1.0, 0.5);
-    creditsButton:SetText("Credits");
 
     -- License Button
-    local licenseButton = panel:NewButton(-20, -360, 250, 40, 0, "LoginButton");
+    local licenseButton = UIButton.NewButton(panel, -20, -360, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "License",
+    });
     licenseButton:SetAnchor(1.0, 0.5);
     licenseButton:SetRelativePoint(1.0, 0.5);
-    licenseButton:SetText("License");
 
     -- Quit Button
-    local quitButton = panel:NewButton(-20, 20, 250, 40, 0, "LoginButton");
+    local quitButton = UIButton.NewButton(panel, -20, 20, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Quit",
+    });
     quitButton:SetAnchor(1.0, 0.0);
     quitButton:SetRelativePoint(1.0, 0.0);
-    quitButton:SetText("Quit");
 
     -- Login handlers
     accountNameInputBox:SetOnSubmit(function(table)

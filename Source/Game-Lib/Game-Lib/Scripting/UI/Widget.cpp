@@ -6,7 +6,6 @@
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Scripting/LuaState.h"
-#include "Game-Lib/Scripting/UI/Button.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -19,81 +18,6 @@ namespace Scripting::UI
 {
     namespace WidgetCreationMethods
     {
-        i32 CreateButton(lua_State* state)
-        {
-            LuaState ctx(state);
-
-            Widget* parent = ctx.GetUserData<Widget>(nullptr, 1);
-            if (parent == nullptr)
-            {
-                luaL_error(state, "Parent is null");
-            }
-
-            i32 posX = ctx.Get(0, 2);
-            i32 posY = ctx.Get(0, 3);
-
-            i32 sizeX = ctx.Get(100, 4);
-            i32 sizeY = ctx.Get(100, 5);
-
-            i32 layer = ctx.Get(0, 6);
-
-            const char* templateName = ctx.Get(nullptr, 7);
-            if (templateName == nullptr)
-            {
-                luaL_error(state, "Template name is null");
-            }
-
-            u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
-
-            u32 buttonTemplateIndex = uiSingleton.templateHashToButtonTemplateIndex[templateNameHash];
-            ::UI::ButtonTemplate& buttonTemplate = uiSingleton.buttonTemplates[buttonTemplateIndex];
-
-            const std::string& panelTemplateName = buttonTemplate.panelTemplate;
-            u32 panelTemplateNameHash = StringUtils::fnv1a_32(panelTemplateName.data(), panelTemplateName.size());
-            if (!uiSingleton.templateHashToPanelTemplateIndex.contains(panelTemplateNameHash))
-            {
-                luaL_error(state, "Tried to use template name '%s' but no panel template with that name has been registered", panelTemplateName.c_str());
-            }
-
-            const std::string& textTemplateName = buttonTemplate.textTemplate;
-            u32 textTemplateNameHash = StringUtils::fnv1a_32(textTemplateName.data(), textTemplateName.size());
-            if (!uiSingleton.templateHashToTextTemplateIndex.contains(textTemplateNameHash))
-            {
-                luaL_error(state, "Tried to use template name '%s' but no text template with that name has been registered", textTemplateName.c_str());
-            }
-
-            Button* button = ctx.PushUserData<Button>([](void* x)
-            {
-
-            });
-
-            entt::entity panelEntity = ECS::Util::UI::CreatePanel(&button->panelWidget, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, panelTemplateName.c_str(), parent->entity);
-            button->panelWidget.type = WidgetType::Panel;
-            button->panelWidget.entity = panelEntity;
-            button->panelWidget.metaTableName = "PanelMetaTable";
-
-            entt::entity textEntity = ECS::Util::UI::CreateText(&button->textWidget, registry, "", vec2(0, 3), layer, textTemplateName.c_str(), panelEntity);
-            button->textWidget.type = WidgetType::Text;
-            button->textWidget.entity = textEntity;
-            button->textWidget.metaTableName = "TextMetaTable";
-
-            ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
-            ts.SetAnchor(textEntity, vec2(0.5, 0.5));
-            ts.SetRelativePoint(textEntity, vec2(0.5, 0.5));
-
-            button->type = WidgetType::Button;
-            button->entity = panelEntity;
-
-            button->metaTableName = "ButtonMetaTable";
-            luaL_getmetatable(state, "ButtonMetaTable");
-            lua_setmetatable(state, -2);
-
-            return 1;
-        }
-
         i32 CreatePanel(lua_State* state)
         {
             LuaState ctx(state);
