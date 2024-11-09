@@ -62,11 +62,11 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             // Panel Shaders
             Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "UI/panel.vs.hlsl";
+            vertexShaderDesc.path = "UI/Panel.vs.hlsl";
             pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
             Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "UI/panel.ps.hlsl";
+            pixelShaderDesc.path = "UI/Panel.ps.hlsl";
             pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
             Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
