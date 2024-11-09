@@ -1,0 +1,213 @@
+local UIButton = require("API/UI/Button")
+local UICheckbox = require("API/UI/Checkbox")
+local UIInputBox = require("API/UI/InputBox")
+
+local function RegisterTemplates()
+    UI.RegisterPanelTemplate("LoginBackgroundPanel",
+    {
+        background = "Data/Texture/interface/glues/models/ui_mainmenu_lowbandwidth/ui_mainmenu_pandaria_low_01.dds",
+    });
+
+    UI.RegisterTextTemplate("LoginText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 24.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.5,
+        borderColor = vec3.new(0.2, 0.2, 0.2),
+    });
+
+    UI.RegisterTextTemplate("LoginButtonText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 24.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.0,
+        borderColor = vec3.new(0.0, 0.0, 0.0),
+    });
+
+    UI.RegisterTextTemplate("RememberText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 18.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.0,
+        borderColor = vec3.new(0.2, 0.2, 0.2),
+    });
+
+    UI.RegisterTextTemplate("VersionText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 18.0,
+        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.5,
+        borderColor = vec3.new(0.0, 0.0, 0.0),
+    });
+end
+
+local function Login(accountInputBox, passwordInputBox)
+    print(`Logged in: {accountInputBox.text} {passwordInputBox.text}`)
+
+    passwordInputBox:SetText("");
+end
+
+local function CreateLoginScreen()
+    -- Create Canvas
+    local canvas = UI.GetCanvas("LoginScreen", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
+    
+    -- Create Panel
+    local panel = canvas:NewPanel(0, 0, 1920, 1080, 0, "LoginBackgroundPanel");
+    panel:SetEnabled(false);
+    panel:SetAnchor(0.5, 0.5);
+    panel:SetRelativePoint(0.5, 0.5);
+
+    -- Account Name Input
+    local accountNameInputBox = UIInputBox.NewInputBox(panel, 0, -40, 200, 40, 0, {
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
+    });
+    accountNameInputBox.inputBox:SetAnchor(0.5, 0.5);
+    accountNameInputBox.button:SetRelativePoint(0.5, 0.5);
+
+    -- Account Name Text
+    local accountNameText = accountNameInputBox.button:NewText("Account Name", 0, 5, 0, "LoginText");
+    accountNameText:SetAnchor(0.5, 1.0);
+    accountNameText:SetRelativePoint(0.5, 0.0);
+
+    -- Remember Checkbox
+    local rememberCheckbox = UICheckbox.NewCheckbox(accountNameInputBox.button, 0, -5, 24, 24, 0,
+    {
+        backgroundTemplate = "DefaultCheckboxBackground",
+        fillTemplate = "DefaultCheckboxFill",
+    });
+    rememberCheckbox.checkbox:SetAnchor(0.0, 0.0);
+    rememberCheckbox.background:SetRelativePoint(0.0, 1.0);
+    rememberCheckbox:Click();
+
+    -- Remember Text
+    local rememberText = rememberCheckbox.background:NewText("Remember Account", 10, 0, 0, "RememberText");
+    rememberText:SetAnchor(1.0, 0.5);
+    rememberText:SetRelativePoint(0.0, 0.5);
+
+    -- Password Input
+    local passwordInputBox = UIInputBox.NewInputBox(panel, 0, -170, 200, 40, 0, {
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
+        secure = true,
+    });
+    passwordInputBox.inputBox:SetAnchor(0.5, 0.5);
+    passwordInputBox.button:SetRelativePoint(0.5, 0.5);
+
+    -- Password Text
+    local passwordText = passwordInputBox.button:NewText("Password", 0, 5, 0, "LoginText");
+    passwordText:SetAnchor(0.5, 1.0);
+    passwordText:SetRelativePoint(0.5, 0.0);
+
+    -- Login Button
+    UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Login",
+    });
+
+
+    local loginButton = UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Login",
+    });
+    loginButton:SetAnchor(0.5, 0.5);
+    loginButton:SetRelativePoint(0.5, 0.5);
+
+    -- Discord Button
+    local discordButton = UIButton.NewButton(panel, 20, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Discord",
+    });
+    discordButton:SetAnchor(0.0, 0.5);
+    discordButton:SetRelativePoint(0.0, 0.5);
+
+    -- Github Button
+    local githubButton = UIButton.NewButton(panel, 20, -310, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Github",
+    });
+    githubButton:SetAnchor(0.0, 0.5);
+    githubButton:SetRelativePoint(0.0, 0.5);
+
+    -- Version Text
+    local versionString = "Version 0.0.1(1) (Debug)"; -- TODO: Not hardcode this
+    local versionText = panel:NewText(versionString, 20, 20, 0, "VersionText");
+    versionText:SetAnchor(0.0, 0.0);
+    versionText:SetRelativePoint(0.0, 0.0);
+
+    -- System Button
+    local systemButton = UIButton.NewButton(panel, -20, -260, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "System",
+    });
+    systemButton:SetAnchor(1.0, 0.5);
+    systemButton:SetRelativePoint(1.0, 0.5);
+
+    -- Credits Button
+    local creditsButton = UIButton.NewButton(panel, -20, -310, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Credits",
+    });
+    creditsButton:SetAnchor(1.0, 0.5);
+    creditsButton:SetRelativePoint(1.0, 0.5);
+
+    -- License Button
+    local licenseButton = UIButton.NewButton(panel, -20, -360, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "License",
+    });
+    licenseButton:SetAnchor(1.0, 0.5);
+    licenseButton:SetRelativePoint(1.0, 0.5);
+
+    -- Quit Button
+    local quitButton = UIButton.NewButton(panel, -20, 20, 250, 40, 0, {
+        panelTemplate = "DefaultButtonPanel",
+        textTemplate = "LoginButtonText",
+        text = "Quit",
+    });
+    quitButton:SetAnchor(1.0, 0.0);
+    quitButton:SetRelativePoint(1.0, 0.0);
+
+    -- Login handlers
+    accountNameInputBox:SetOnSubmit(function(table)
+        Login(accountNameInputBox, passwordInputBox);
+        return true; -- Returning true will unfocus the widget
+    end);
+
+    passwordInputBox:SetOnSubmit(function(table)
+        Login(accountNameInputBox, passwordInputBox);
+        return true; -- Returning true will unfocus the widget
+    end);
+
+    loginButton:SetOnMouseUp(function(eventID, widget, ...)
+        Login(accountNameInputBox, passwordInputBox);
+    end)
+
+    -- Tab Handlers (TODO: Make a system to set this up easier)
+    accountNameInputBox:SetOnTab(function(table)
+        UI.FocusWidget(passwordInputBox.button);
+    end);
+
+    passwordInputBox:SetOnTab(function(table)
+        UI.FocusWidget(accountNameInputBox.button);
+    end);
+end
+
+local function OnGameLoaded(eventID : number, motd : string)
+    RegisterTemplates();
+
+    CreateLoginScreen();
+end
+
+RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

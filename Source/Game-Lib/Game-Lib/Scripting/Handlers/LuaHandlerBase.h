@@ -5,10 +5,10 @@ struct lua_State;
 
 namespace Scripting
 {
-	class LuaHandlerBase
-	{
-	public:
-		virtual void Register() = 0;
-		virtual void Clear() = 0;
-	};
+    class LuaHandlerBase
+    {
+    public:
+        virtual void Register(lua_State* state) = 0;
+        virtual void Clear() = 0;
+    };
 }

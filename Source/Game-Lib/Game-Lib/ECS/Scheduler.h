@@ -3,6 +3,8 @@
 
 #include <entt/fwd.hpp>
 
+struct EnttRegistries;
+
 namespace ECS
 {
     class Scheduler
@@ -10,8 +12,8 @@ namespace ECS
     public:
         Scheduler();
 
-        void Init(entt::registry & registry);
-        void Update(entt::registry& registry, f32 deltaTime);
+        void Init(EnttRegistries& registries);
+        void Update(EnttRegistries& registries, f32 deltaTime);
 
     private:
     };

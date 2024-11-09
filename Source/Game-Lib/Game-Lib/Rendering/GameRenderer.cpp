@@ -153,7 +153,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
-    _canvasRenderer = new CanvasRenderer(_renderer);
+    _canvasRenderer = new CanvasRenderer(_renderer, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer);
     _shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
@@ -377,9 +377,9 @@ f32 GameRenderer::Render()
 
     _editorRenderer->AddWorldGridPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add3DPass(&renderGraph, _resources, _frameIndex);
-    _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
+    _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);

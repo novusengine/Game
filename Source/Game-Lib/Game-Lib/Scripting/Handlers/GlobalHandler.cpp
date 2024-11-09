@@ -4,7 +4,7 @@
 #include "Game-Lib/ECS/Singletons/MapDB.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
-#include "Game-Lib/Scripting/LuaStateCtx.h"
+#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -14,205 +14,96 @@
 
 namespace Scripting
 {
-	struct Panel
-	{
-	public:
-		vec3 position;
-		vec3 extents;
-	};
+    void GlobalHandler::Register(lua_State* state)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        LuaState ctx(state);
 
-	void GlobalHandler::Register()
-	{
-		LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        ctx.CreateTableAndPopulate("Engine", [&]()
+        {
+            ctx.SetTable("Name", "NovusEngine");
+            ctx.SetTable("Version", vec3(0.0f, 0.0f, 1.0f));
+        });
 
-		luaManager->SetGlobal("AddCursor", AddCursor, true);
-		luaManager->SetGlobal("SetCursor", SetCursor, true);
-		luaManager->SetGlobal("GetCurrentMap", GetCurrentMap, true);
-		luaManager->SetGlobal("LoadMap", LoadMap, true);
+        LuaMethodTable::Set(state, globalMethods);
+    }
 
-		LuaTable engineTable =
-		{
-			{
-				{ "Name", "Novuscore" },
-				{ "Version", vec3(0, 0, 1) },
-			}
-		};
+    i32 GlobalHandler::AddCursor(lua_State* state)
+    {
+        LuaState ctx(state);
 
-		luaManager->SetGlobal("Engine", engineTable, true);
+        const char* cursorName = ctx.Get(nullptr, 1);
+        const char* cursorPath = ctx.Get(nullptr, 2);
 
-		LuaTable panelTable =
-		{
-			{
-				{ "new", PanelCreate },
-				{ "GetPosition", PanelGetPosition },
-				{ "GetSize", PanelGetExtents }
-			}
-		};
+        if (cursorName == nullptr || cursorPath == nullptr)
+        {
+            ctx.Push(false);
+            return 1;
+        }
 
-		LuaTable panelMetaTable =
-		{
-			{
-				{ "__tostring", PanelToString },
-				{ "__index", PanelIndex }
-			},
+        u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
+        std::string path = cursorPath;
 
-			true
-		};
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        bool result = gameRenderer->AddCursor(hash, path);
 
-		luaManager->SetGlobal("Panel", panelTable, true);
-		luaManager->SetGlobal("PanelMetaTable", panelMetaTable, true);
-	}
+        ctx.Push(result);
+        return 1;
+    }
+    i32 GlobalHandler::SetCursor(lua_State* state)
+    {
+        LuaState ctx(state);
 
-	i32 GlobalHandler::AddCursor(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
+        const char* cursorName = ctx.Get(nullptr);
+        if (cursorName == nullptr)
+        {
+            ctx.Push(false);
+            return 1;
+        }
 
-		const char* cursorName = ctx.GetString(nullptr, 1);
-		const char* cursorPath = ctx.GetString(nullptr, 2);
+        u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
 
-		if (cursorName == nullptr || cursorPath == nullptr)
-		{
-			ctx.PushBool(false);
-			return 1;
-		}
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        bool result = gameRenderer->SetCursor(hash);
 
-		u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
-		std::string path = cursorPath;
+        ctx.Push(result);
+        return 1;
+    }
+    i32 GlobalHandler::GetCurrentMap(lua_State* state)
+    {
+        LuaState ctx(state);
 
-		GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-		bool result = gameRenderer->AddCursor(hash, path);
+        const std::string& currentMapInternalName = ServiceLocator::GetGameRenderer()->GetTerrainLoader()->GetCurrentMapInternalName();
 
-		ctx.PushBool(result);
-		return 1;
-	}
-	i32 GlobalHandler::SetCursor(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
+        ctx.Push(currentMapInternalName.c_str());
+        return 1;
+    }
+    i32 GlobalHandler::LoadMap(lua_State* state)
+    {
+        LuaState ctx(state);
 
-		const char* cursorName = ctx.GetString();
-		if (cursorName == nullptr)
-		{
-			ctx.PushBool(false);
-			return 1;
-		}
+        const char* mapInternalName = ctx.Get(nullptr);
+        size_t mapInternalNameLen = strlen(mapInternalName);
 
-		u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
+        if (mapInternalName == nullptr)
+        {
+            ctx.Push(false);
+            return 1;
+        }
 
-		GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-		bool result = gameRenderer->SetCursor(hash);
+        ClientDB::Definitions::Map* map = nullptr;
+        if (!ECS::Util::Map::GetMapFromInternalName(mapInternalName, map))
+        {
+            ctx.Push(false);
+            return 1;
+        }
 
-		ctx.PushBool(result);
-		return 1;
-	}
-	i32 GlobalHandler::GetCurrentMap(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
+        u32 mapNameHash = StringUtils::fnv1a_32(mapInternalName, mapInternalNameLen);
 
-		const std::string& currentMapInternalName = ServiceLocator::GetGameRenderer()->GetTerrainLoader()->GetCurrentMapInternalName();
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->LoadMap(mapNameHash);
 
-		ctx.PushString(currentMapInternalName.c_str());
-		return 1;
-	}
-	i32 GlobalHandler::LoadMap(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		const char* mapInternalName = ctx.GetString();
-		size_t mapInternalNameLen = strlen(mapInternalName);
-
-		if (mapInternalName == nullptr)
-		{
-			ctx.PushBool(false);
-			return 1;
-		}
-
-		ClientDB::Definitions::Map* map = nullptr;
-		if (!ECS::Util::Map::GetMapFromInternalName(mapInternalName, map))
-		{
-			ctx.PushBool(false);
-			return 1;
-		}
-
-		u32 mapNameHash = StringUtils::fnv1a_32(mapInternalName, mapInternalNameLen);
-
-		MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-		mapLoader->LoadMap(mapNameHash);
-
-		ctx.PushBool(true);
-		return 1;
-	}
-	i32 GlobalHandler::PanelCreate(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		Panel* panel = ctx.PushUserData<Panel>([](void* x) {
-			// Very sad panel is gone now :(
-		});
-
-		panel->position = vec3(25.0f, 50.0f, 0);
-		panel->extents = vec3(1.5f, 1.5f, 0);
-
-		luaL_getmetatable(state, "PanelMetaTable");
-		lua_setmetatable(state, -2);
-
-		return 1;
-	}
-	i32 GlobalHandler::PanelGetPosition(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		Panel* panel = ctx.GetUserData<Panel>();
-		ctx.PushNumber(panel->position.x);
-		ctx.PushNumber(panel->position.y);
-
-		return 2;
-	}
-	i32 GlobalHandler::PanelGetExtents(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		Panel* panel = ctx.GetUserData<Panel>();
-		ctx.PushNumber(panel->extents.x);
-		ctx.PushNumber(panel->extents.y);
-
-		return 2;
-	}
-	i32 GlobalHandler::PanelToString(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		ctx.PushString("Here is a panel :o");
-		return 1;
-	}
-	i32 GlobalHandler::PanelIndex(lua_State* state)
-	{
-		LuaStateCtx ctx(state);
-
-		Panel* panel = ctx.GetUserData<Panel>(nullptr, 1);
-		const char* key = ctx.GetString(nullptr, 2);
-		u32 keyHash = StringUtils::fnv1a_32(key, strlen(key));
-
-		switch (keyHash)
-		{
-			case "position"_h:
-			{
-				ctx.PushVector(panel->position);
-				break;
-			}
-			case "extents"_h:
-			{
-				ctx.PushVector(panel->extents);
-				break;
-			}
-
-			default:
-			{
-				ctx.GetGlobal("Panel");
-				ctx.PushString(key);
-				ctx.GetRaw(-2);
-			}
-		}
-
-		return 1;
-	}
+        ctx.Push(true);
+        return 1;
+    }
 }

@@ -7,82 +7,86 @@
 
 namespace enki
 {
-	class TaskSet;
+    class TaskSet;
 }
 
 namespace Scripting
 {
-	class GenericSystem;
-	class GameEventHandler;
+    class GenericSystem;
+    class GameEventHandler;
 
-	struct LuaBytecodeEntry
-	{
-		const std::string fileName;
-		const std::string filePath;
+    struct LuaBytecodeEntry
+    {
+        bool isLoaded = false;
 
-		const std::string bytecode;
-	};
+        const std::string fileName;
+        const std::string filePath;
 
-	class LuaManager
-	{
-	public:
-		LuaManager();
+        const std::string bytecode;
+    };
 
-		void Init();
-		void Update(f32 deltaTime);
+    struct LuaStateInfo
+    {
+    public:
+        std::vector<LuaBytecodeEntry> bytecodeList;
+        std::vector<LuaBytecodeEntry> apiBytecodeList;
+        robin_hood::unordered_map<u32, u32> _luaAPIPathToBytecodeIndex;
+    };
 
-		bool DoString(const std::string& code);
+    class LuaManager
+    {
+    public:
+        LuaManager();
 
-		template <typename T>
-		bool SetGlobal(const std::string& name, T& value, bool canOverride)
-		{
-			if (_globalTable.data.contains(name) && !canOverride)
-				return false;
+        void Init();
+        void Update(f32 deltaTime);
 
-			_globalTable.data[name] = value;
-			_isDirty = true;
-			return true;
-		}
+        bool DoString(const std::string& code);
 
-		void SetDirty() { _isDirty = true; }
+        void SetDirty() { _isDirty = true; }
 
-	private:
-		friend LuaHandlerBase;
-		friend LuaSystemBase;
-		friend GenericSystem;
-		friend GameEventHandler;
+        LuaStateInfo* GetLuaStateInfo(lua_State* state)
+        {
+            u64 key = reinterpret_cast<u64>(state);
+            if (!_luaStateToInfo.contains(key))
+                return nullptr;
 
-		void Prepare();
-		bool LoadScripts();
+            return &_luaStateToInfo[key];
+        }
+        lua_State* GetInternalState() { return _internalState; }
 
-		void SetLuaHandler(LuaHandlerType handlerType, LuaHandlerBase* luaHandler);
-		void RegisterLuaSystem(LuaSystemBase* systemBase);
-		
-		template <typename T>
-		T GetLuaHandler(LuaHandlerType handler)
-		{
-			u32 index = static_cast<u32>(handler);
-			if (index >= _luaHandlers.size())
-				return nullptr;
+        template <typename T>
+        T GetLuaHandler(LuaHandlerType handler)
+        {
+            u32 index = static_cast<u32>(handler);
+            if (index >= _luaHandlers.size())
+                return nullptr;
 
-			return reinterpret_cast<T>(_luaHandlers[index]);
-		}
+            return reinterpret_cast<T>(_luaHandlers[index]);
+        }
 
-		const std::vector<LuaBytecodeEntry>& GetBytecodeList() { return _bytecodeList; }
-		const LuaTable& GetGlobalTable() { return _globalTable; }
+    private:
+        friend LuaHandlerBase;
+        friend LuaSystemBase;
+        friend GenericSystem;
+        friend GameEventHandler;
 
-	private:
-		lua_State* _internalState;
-		lua_State* _publicState;
+        void Prepare();
+        bool LoadScripts();
 
-		std::vector<LuaHandlerBase*> _luaHandlers;
-		std::vector<LuaSystemBase*> _luaSystems;
-		std::vector<enki::TaskSet*> _tasks;
+        void SetLuaHandler(LuaHandlerType handlerType, LuaHandlerBase* luaHandler);
+        void RegisterLuaSystem(LuaSystemBase* systemBase);
 
-		std::vector<LuaBytecodeEntry> _bytecodeList;
+    private:
+        lua_State* _internalState;
+        lua_State* _publicState;
 
-		LuaTable _globalTable;
-		
-		bool _isDirty = false;
-	};
+        std::vector<LuaHandlerBase*> _luaHandlers;
+        std::vector<LuaSystemBase*> _luaSystems;
+        std::vector<enki::TaskSet*> _tasks;
+
+        robin_hood::unordered_map<u64, LuaStateInfo> _luaStateToInfo;
+        
+        bool _isDirty = false;
+    };
 }
