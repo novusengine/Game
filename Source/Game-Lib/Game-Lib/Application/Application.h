@@ -59,8 +59,6 @@ private:
     bool _isRunning = false;
 
 	AudioManager* _audioManager = nullptr;
-	InputManager* _inputManager = nullptr;
-	GameRenderer* _gameRenderer = nullptr;
 
     Editor::EditorHandler* _editorHandler = nullptr;
 
