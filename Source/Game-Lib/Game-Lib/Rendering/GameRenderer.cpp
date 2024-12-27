@@ -586,7 +586,7 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.cameras.SetDebugName("Cameras");
     _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
-    _resources.cameras.Get().push_back(Camera());
+    _resources.cameras.Add(Camera());
 }
 
 void GameRenderer::InitImgui()

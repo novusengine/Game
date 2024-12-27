@@ -40,8 +40,6 @@ namespace ECS::Systems
 
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
-        std::vector<Camera>& gpuCameras = renderResources.cameras.Get();
-
         u32 numCascades = CVAR_ShadowCascadeNum.GetU32();
         i32 cascadeTextureSize = CVAR_ShadowCascadeTextureSize.Get();
         bool stableShadows = CVAR_ShadowsStable.Get() == 1;
@@ -49,7 +47,9 @@ namespace ECS::Systems
         // Initialize any new shadow cascades
         if (numCascades != renderResources.shadowDepthCascades.size())
         {
-            gpuCameras.resize(numCascades + 1); // + 1 because of main camera
+            u32 numCameras = renderResources.cameras.Count();
+            u32 numCamerasToAdd = numCascades - numCameras;
+            renderResources.cameras.AddCount(numCamerasToAdd);
 
             while (numCascades > renderResources.shadowDepthCascades.size())
             {
@@ -241,7 +241,7 @@ namespace ECS::Systems
             }
 
             // Store split distance and matrix in cascade camera
-            Camera& cascadeCamera = gpuCameras[i + 1]; // +1 because the first camera is the main camera
+            Camera& cascadeCamera = renderResources.cameras[i + 1]; // +1 because the first camera is the main camera
 
             cascadeCamera.worldToView = viewMatrix;
             cascadeCamera.viewToClip = projMatrix;

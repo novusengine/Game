@@ -354,13 +354,10 @@ void CanvasRenderer::CreatePermanentResources()
 
 void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
-    std::vector<vec4>& vertices = _vertices.Get();
-
     // Add vertices if necessary
     if (panel.gpuVertexIndex == -1)
     {
-        panel.gpuVertexIndex = static_cast<i32>(vertices.size());
-        vertices.resize(vertices.size() + 6); // TODO: Indexing?
+        panel.gpuVertexIndex = _vertices.AddCount(6);
     }
 
     const vec2 min = panelTemplate.texCoords.min;
@@ -380,19 +377,19 @@ void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform
     vec2 size = PixelSizeToNDC(transform.GetSize());
 
     // Triangle 1
-    vertices[panel.gpuVertexIndex + 0] = vec4(position, panelUVs[0]);
-    vertices[panel.gpuVertexIndex + 1] = vec4(position + vec2(size.x, size.y), panelUVs[1]);
-    vertices[panel.gpuVertexIndex + 2] = vec4(position + vec2(size.x, 0), panelUVs[2]);
+    _vertices[panel.gpuVertexIndex + 0] = vec4(position, panelUVs[0]);
+    _vertices[panel.gpuVertexIndex + 1] = vec4(position + vec2(size.x, size.y), panelUVs[1]);
+    _vertices[panel.gpuVertexIndex + 2] = vec4(position + vec2(size.x, 0), panelUVs[2]);
 
     // Triangle 2
-    vertices[panel.gpuVertexIndex + 3] = vec4(position + vec2(0, size.y), panelUVs[3]);
-    vertices[panel.gpuVertexIndex + 4] = vec4(position + vec2(size.x, size.y), panelUVs[4]);
-    vertices[panel.gpuVertexIndex + 5] = vec4(position, panelUVs[5]);
+    _vertices[panel.gpuVertexIndex + 3] = vec4(position + vec2(0, size.y), panelUVs[3]);
+    _vertices[panel.gpuVertexIndex + 4] = vec4(position + vec2(size.x, size.y), panelUVs[4]);
+    _vertices[panel.gpuVertexIndex + 5] = vec4(position, panelUVs[5]);
 
     _vertices.SetDirtyElements(panel.gpuVertexIndex, 6);
 }
 
-void CalculateVertices(const vec4& pos, const vec4& uv, std::vector<vec4>& vertices, u32 vertexIndex)
+void CalculateVertices(const vec4& pos, const vec4& uv, Renderer::GPUVector<vec4>& vertices, u32 vertexIndex)
 {
     const f32& posLeft = pos.x;
     const f32& posBottom = pos.y;
@@ -415,8 +412,6 @@ void CalculateVertices(const vec4& pos, const vec4& uv, std::vector<vec4>& verti
 
 void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate)
 {
-    std::vector<vec4>& vertices = _vertices.Get();
-
     if (text.text.size() == 0)
     {
         return;
@@ -452,9 +447,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
     if (text.gpuVertexIndex == -1 || text.hasGrown)
     {
         u32 numVertices = text.numCharsNonWhitespace * 6;
-
-        text.gpuVertexIndex = static_cast<i32>(vertices.size());
-        vertices.resize(vertices.size() + numVertices);
+        text.gpuVertexIndex = _vertices.AddCount(numVertices);
     }
 
     vec2 worldPos = transform.GetWorldPosition();
@@ -531,7 +524,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
             atlasTop *= texelSize.y;
 
             // Add vertices
-            CalculateVertices(vec4(planeMin, planeMax), vec4(atlasLeft, atlasBottom, atlasRight, atlasTop), vertices, vertexIndex);
+            CalculateVertices(vec4(planeMin, planeMax), vec4(atlasLeft, atlasBottom, atlasRight, atlasTop), _vertices, vertexIndex);
             vertexIndex += 6;
         }
 
@@ -546,19 +539,16 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
 void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
-    std::vector<PanelDrawData>& panelDrawDatas = _panelDrawDatas.Get();
-
     // Add draw data if necessary
     if (panel.gpuDataIndex == -1)
     {
-        panel.gpuDataIndex = static_cast<i32>(panelDrawDatas.size());
-        panelDrawDatas.resize(panelDrawDatas.size() + 1);
+        panel.gpuDataIndex = _panelDrawDatas.Add();
     }
     vec2 size = transform.GetSize();
     vec2 cornerRadius = vec2(panelTemplate.cornerRadius / size.x, panelTemplate.cornerRadius /size.y);
 
     // Update draw data
-    auto& drawData = panelDrawDatas[panel.gpuDataIndex];
+    auto& drawData = _panelDrawDatas[panel.gpuDataIndex];
     drawData.packed.z = panelTemplate.color.ToRGBA32();
     drawData.cornerRadiusAndBorder = vec4(cornerRadius, 0.0f, 0.0f);
 
@@ -635,8 +625,6 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
 
 void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplate& textTemplate)
 {
-    std::vector<CharDrawData>& charDrawDatas = _charDrawDatas.Get();
-
     if (text.sizeChanged)
     {
         // Count how many non whitspace characters there are
@@ -665,8 +653,7 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
     // Add or update draw data if necessary
     if (text.gpuDataIndex == -1 || text.hasGrown)
     {
-        text.gpuDataIndex = static_cast<i32>(charDrawDatas.size());
-        charDrawDatas.resize(charDrawDatas.size() + text.numCharsNonWhitespace);
+        text.gpuDataIndex = _charDrawDatas.AddCount(text.numCharsNonWhitespace);
     }
 
     // Update CharDrawData
@@ -702,7 +689,7 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
             continue;
         }
 
-        auto& drawData = charDrawDatas[text.gpuDataIndex + charIndex];
+        auto& drawData = _charDrawDatas[text.gpuDataIndex + charIndex];
         drawData.packed0.x = fontTextureIndex;
         drawData.packed0.y = charIndex;
         drawData.packed0.z = textTemplate.color.ToRGBA32();

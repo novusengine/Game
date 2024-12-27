@@ -28,6 +28,13 @@ namespace Map
     struct Chunk;
 }
 
+struct TerrainReserveOffsets
+{
+    u32 chunkDataStartOffset = 0;
+    u32 cellDataStartOffset = 0;
+    u32 vertexDataStartOffset = 0;
+};
+
 class TerrainRenderer
 {
 public:
@@ -41,8 +48,8 @@ public:
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     void Clear();
-    void Reserve(u32 numChunks);
-    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
+    void Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffsets);
+    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataIndex, u32 cellDataStartIndex, u32 vertexDataStartIndex);
 
     Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
@@ -176,6 +183,8 @@ private:
     
     std::shared_mutex _packedChunkCellIDToGlobalCellIDMutex;
     robin_hood::unordered_map<u32, u32> _packedChunkCellIDToGlobalCellID;
+
+    std::shared_mutex _addChunkMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
 
     friend class TerrainManipulator;
 };

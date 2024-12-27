@@ -63,8 +63,7 @@ namespace ECS::Systems
                 camera.clipToWorld = glm::inverse(camera.worldToView) * glm::inverse(camera.viewToClip);
 
                 // Update the GPU binding
-                std::vector<Camera>& gpuCameras = renderResources.cameras.Get();
-                Camera& gpuCamera = gpuCameras[camera.cameraBindSlot];
+                Camera& gpuCamera = renderResources.cameras[camera.cameraBindSlot];
 
                 gpuCamera.clipToView = camera.clipToView;
                 gpuCamera.clipToWorld = camera.clipToWorld;
