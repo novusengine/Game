@@ -30,7 +30,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 {
     NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : OccluderPass got params with invalid drawCallback");
 
-    const u32 numDrawCalls = params.cullingResources->GetDrawCallsSize();
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
     u32 numInstances = params.cullingResources->GetNumInstances();
 
     if (numDrawCalls == 0 || numInstances == 0)
@@ -331,7 +331,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 {
     NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : CullingPass params provided an invalid drawCallDataSize");
 
-    const u32 numDrawCalls = params.cullingResources->GetDrawCallsSize();
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
     u32 numInstances = params.cullingResources->GetNumInstances();
 
     if (numDrawCalls > 0 && numInstances > 0)
@@ -569,7 +569,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 {
     NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
 
-    const u32 numDrawCalls = params.cullingResources->GetDrawCallsSize();
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
 
     for (u32 i = 0; i < params.numCascades + 1; i++)
     {

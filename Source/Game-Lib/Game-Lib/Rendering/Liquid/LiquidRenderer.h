@@ -10,6 +10,13 @@ namespace Renderer
 
 class DebugRenderer;
 
+struct LiquidReserveOffsets
+{
+    u32 instanceStartOffset = 0;
+    u32 vertexStartOffset = 0;
+    u32 indexStartOffset = 0;
+};
+
 class LiquidRenderer : CulledRenderer
 {
 public:
@@ -61,8 +68,7 @@ public:
     void Update(f32 deltaTime);
     void Clear();
 
-    void Reserve(ReserveInfo& info);
-    void FitAfterGrow();
+    void Reserve(const ReserveInfo& info, LiquidReserveOffsets& reserveOffsets);
 
     struct LoadDesc
     {
@@ -87,6 +93,12 @@ public:
         f32 defaultHeight;
         f32* heightMap = nullptr;
         u8* bitMap = nullptr;
+
+        u32 vertexOffset;
+        u32 vertexCount;
+        u32 indexOffset;
+        u32 indexCount;
+        u32 instanceOffset;
     };
     void Load(LoadDesc& desc);
 
@@ -116,13 +128,9 @@ private:
     Renderer::TextureArrayID _textures;
 
     CullingResourcesIndexed<DrawCallData> _cullingResources;
-    std::atomic<u32> _instanceIndex = 0;
-
     Renderer::GPUVector<Vertex> _vertices;
-    std::atomic<u32> _verticesIndex = 0;
-
     Renderer::GPUVector<u16> _indices;
-    std::atomic<u32> _indicesIndex = 0;
 
+    std::shared_mutex _addLiquidMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
     std::mutex _textureMutex;
 };

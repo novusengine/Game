@@ -68,30 +68,28 @@ void LiquidRenderer::Clear()
     _cullingDatas.Clear();
 
     _cullingResources.Clear();
-    _instanceIndex.store(0);
 
     _vertices.Clear();
-    _verticesIndex.store(0);
-
     _indices.Clear();
-    _indicesIndex.store(0);
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 }
 
-void LiquidRenderer::Reserve(ReserveInfo& info)
+void LiquidRenderer::Reserve(const ReserveInfo& info, LiquidReserveOffsets& reserveOffsets)
 {
-    _cullingResources.Grow(info.numInstances);
+    u32 cullingResourcesStartIndex = _cullingResources.AddCount(info.numInstances);
+    u32 cullingDatasStartIndex = _cullingDatas.AddCount(info.numInstances);
 
-    _cullingDatas.Grow(info.numInstances);
+#if NC_DEBUG
+    if (cullingResourcesStartIndex != cullingDatasStartIndex)
+    {
+        NC_LOG_ERROR("LiquidRenderer::Reserve: Culling resources start index %u does not match culling data start index %u, this will probably result in weird liquid", cullingResourcesStartIndex, cullingDatasStartIndex);
+    }
+#endif
 
-    _vertices.Grow(info.numVertices);
-    _indices.Grow(info.numIndices);
-}
-
-void LiquidRenderer::FitAfterGrow()
-{
-    // TODO
+    reserveOffsets.indexStartOffset = cullingResourcesStartIndex;
+    reserveOffsets.vertexStartOffset = _vertices.AddCount(info.numVertices);
+    reserveOffsets.indexStartOffset = _indices.AddCount(info.numIndices);
 }
 
 void LiquidRenderer::Load(LoadDesc& desc)
@@ -101,28 +99,19 @@ void LiquidRenderer::Load(LoadDesc& desc)
         return;
     }
 
-    std::vector<Renderer::IndexedIndirectDraw>& drawCalls = _cullingResources.GetDrawCalls().Get();
-    std::vector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas().Get();
-    std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
+    // Shared lock as we don't do anything that causes reallocation
+    std::shared_lock lock(_addLiquidMutex);
 
-    std::vector<Vertex>& vertices = _vertices.Get();
-    std::vector<u16>& indices = _indices.Get();
+    Renderer::GPUVector<Renderer::IndexedIndirectDraw>& drawCalls = _cullingResources.GetDrawCalls();
+    Renderer::GPUVector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas();
 
-    u32 numVertices = (desc.height + 1) * (desc.width + 1);
-    u32 vertexOffset = _verticesIndex.fetch_add(numVertices);
-
-    u32 numIndices = (desc.height) * (desc.width) * 6;
-    u32 indexOffset = _indicesIndex.fetch_add(numIndices);
-
-    u32 instanceOffset = _instanceIndex.fetch_add(1);
-
-    Renderer::IndexedIndirectDraw& drawCall = drawCalls[instanceOffset];
+    Renderer::IndexedIndirectDraw& drawCall = drawCalls[desc.instanceOffset];
     drawCall.instanceCount = 1;
-    drawCall.vertexOffset = vertexOffset;
-    drawCall.firstIndex = indexOffset;
-    drawCall.firstInstance = instanceOffset;
+    drawCall.vertexOffset = desc.vertexOffset;
+    drawCall.firstIndex = desc.indexOffset;
+    drawCall.firstInstance = desc.instanceOffset;
 
-    DrawCallData& drawCallData = drawCallDatas[instanceOffset];
+    DrawCallData& drawCallData = drawCallDatas[desc.instanceOffset];
     drawCallData.chunkID = desc.chunkID;
     drawCallData.cellID = desc.cellID;
     drawCallData.textureStartIndex = 0;
@@ -157,13 +146,13 @@ void LiquidRenderer::Load(LoadDesc& desc)
             for (u32 i = 0; i < liquidType->frameCountTextures[0]; i++)
             {
                 i32 length = StringUtils::FormatString(textureBuffer, 256, liquidType->textures[0].c_str(), i + 1);
-            
+
                 Renderer::TextureDesc textureDesc;
                 textureDesc.path = "Data/Texture/" + std::string(textureBuffer, length);
-            
+
                 u32 index;
                 _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
-            
+
                 if (i == 0)
                 {
                     textureStartIndex = static_cast<u16>(index);
@@ -182,6 +171,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
         drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
     }
 
+    // Write vertices and calculate bounding box
     vec3 min = vec3(100000, 100000, 100000);
     vec3 max = vec3(-100000, -100000, -100000);
 
@@ -214,7 +204,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
             }
 
             u32 vertexIndex = x + (y * (desc.width + 1));
-            Vertex& vertex = vertices[vertexOffset + vertexIndex];
+            Vertex& vertex = _vertices[desc.vertexOffset + vertexIndex];
 
             // The offsets here are flipped on purpose
             vertex.xCellOffset = yOffset;
@@ -247,6 +237,8 @@ void LiquidRenderer::Load(LoadDesc& desc)
         }
     }
 
+    // Write indices
+    u32 indexOffset = desc.indexOffset;
     for (i32 y = desc.startY; y < desc.endY; y++)
     {
         for (i32 x = desc.startX; x < desc.endX; x++)
@@ -266,23 +258,24 @@ void LiquidRenderer::Load(LoadDesc& desc)
             u16 bottomLeftVert = topLeftVert + (desc.width + 1);
             u16 bottomRightVert = bottomLeftVert + 1;
 
-            indices[indexOffset++] = topLeftVert;
-            indices[indexOffset++] = bottomLeftVert;
-            indices[indexOffset++] = topRightVert;
+            _indices[indexOffset++] = topLeftVert;
+            _indices[indexOffset++] = bottomLeftVert;
+            _indices[indexOffset++] = topRightVert;
 
-            indices[indexOffset++] = topRightVert;
-            indices[indexOffset++] = bottomLeftVert;
-            indices[indexOffset++] = bottomRightVert;
+            _indices[indexOffset++] = topRightVert;
+            _indices[indexOffset++] = bottomLeftVert;
+            _indices[indexOffset++] = bottomRightVert;
 
             drawCall.indexCount += 6;
         }
     }
 
-    // Liquids can be a flat plane so lets add offsets
+    // Liquids can be a flat plane so lets add offsets to the bounding box
     min.y -= 0.5f;
     max.y += 0.5f;
 
-    Model::ComplexModel::CullingData& cullingData = cullingDatas[instanceOffset];
+    // Write culling data
+    Model::ComplexModel::CullingData& cullingData = _cullingDatas[desc.instanceOffset];
     cullingData.center = min; // TODO: Unfuck our AABB representations, we currently mix AABBs with min/max variables and ones with center/extents...
     cullingData.extents = max;
     cullingData.boundingSphereRadius = glm::distance(min, max);
@@ -298,7 +291,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (!CVAR_LiquidCullingEnabled.Get())
         return;
 
-    if (_cullingResources.GetDrawCalls().Size() == 0)
+    if (_cullingResources.GetDrawCalls().Count() == 0)
         return;
 
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
@@ -433,7 +426,7 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
     if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
-    if (_cullingResources.GetDrawCalls().Size() == 0)
+    if (_cullingResources.GetDrawCalls().Count() == 0)
         return;
 
     const bool cullingEnabled = CVAR_LiquidCullingEnabled.Get();

@@ -52,7 +52,7 @@ public:
     void LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo);
 
 private:
-    void LoadRequest(LoadRequestInternal& request);
+    void LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset);
 
 private:
     LiquidRenderer* _liquidRenderer = nullptr;

@@ -28,17 +28,16 @@ public:
 
     virtual void Update(f32 deltaTime, bool cullingEnabled);
 
+    virtual u32 Add();
+    virtual u32 AddCount(u32 count);
+
+    virtual void Remove(u32 index);
+
     virtual bool SyncToGPU();
     virtual void Clear();
 
-    virtual u32 GetDrawCallsSize() = 0;
+    virtual u32 GetDrawCallCount() = 0;
     virtual bool IsIndexed() = 0;
-
-    virtual void Grow(u32 growthSize);
-    virtual void Resize(u32 size);
-    virtual void FitBuffersAfterLoad();
-
-    std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
     Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
 
@@ -84,8 +83,6 @@ protected:
     std::string _bufferNamePrefix = "";
     bool _enableTwoStepCulling;
 
-    std::atomic<u32> _drawCallsIndex = 0;
-
     Renderer::GPUVector<InstanceRef> _instanceRefs;
 
     FrameResource<Renderer::BufferID, 2> _culledDrawCallsBitMaskBuffer;
@@ -125,15 +122,16 @@ class CullingResourcesIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
+    virtual u32 Add() override;
+    virtual u32 AddCount(u32 count) override;
+
+    virtual void Remove(u32 index) override;
+
     bool SyncToGPU() override;
     void Clear() override;
 
-    u32 GetDrawCallsSize() override;
+    u32 GetDrawCallCount() override;
     bool IsIndexed() override { return true; }
-
-    virtual void Grow(u32 growthSize) override;
-    virtual void Resize(u32 size) override;
-    virtual void FitBuffersAfterLoad() override;
 
     virtual void SetValidation(bool validation);
 
@@ -148,15 +146,16 @@ class CullingResourcesNonIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
+    virtual u32 Add() override;
+    virtual u32 AddCount(u32 count) override;
+
+    virtual void Remove(u32 index) override;
+
     bool SyncToGPU() override;
     void Clear() override;
 
-    u32 GetDrawCallsSize() override;
+    u32 GetDrawCallCount() override;
     bool IsIndexed() override { return false; }
-
-    virtual void Grow(u32 growthSize) override;
-    virtual void Resize(u32 size) override;
-    virtual void FitBuffersAfterLoad() override;
 
     virtual void SetValidation(bool validation);
 
@@ -179,6 +178,37 @@ public:
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
         SyncToGPU();
+    }
+
+    virtual u32 Add() override
+    {
+        u32 baseIndex = CullingResourcesIndexedBase::Add();
+        u32 index = _drawCallDatas.Add();
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesIndexed::Add() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+    virtual u32 AddCount(u32 count) override
+    {
+        u32 baseIndex = CullingResourcesIndexedBase::AddCount(count);
+        u32 index = _drawCallDatas.AddCount(count);
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesIndexed::AddCount() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+
+    virtual void Remove(u32 index) override
+    {
+        CullingResourcesIndexedBase::Remove(index);
+        _drawCallDatas.Remove(index);
     }
 
     bool SyncToGPU() override
@@ -209,25 +239,6 @@ public:
         _drawCallDatas.Clear();
     }
 
-    void Grow(u32 growthSize) override
-    {
-        CullingResourcesIndexedBase::Grow(growthSize);
-        _drawCallDatas.Grow(growthSize);
-    }
-
-    void Resize(u32 size) override
-    {
-        CullingResourcesIndexedBase::Resize(size);
-        _drawCallDatas.Resize(size);
-    }
-
-    void FitBuffersAfterLoad() override
-    {
-        CullingResourcesIndexedBase::FitBuffersAfterLoad();
-        u32 numDrawCalls = _drawCallsIndex.load();
-        _drawCallDatas.Resize(numDrawCalls);
-    }
-
     void SetValidation(bool validation) override
     {
         CullingResourcesIndexedBase::SetValidation(validation);
@@ -253,6 +264,37 @@ public:
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
         SyncToGPU();
+    }
+
+    virtual u32 Add() override
+    {
+        u32 baseIndex = CullingResourcesNonIndexedBase::Add();
+        u32 index = _drawCallDatas.Add();
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesNonIndexed::Add() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+    virtual u32 AddCount(u32 count) override
+    {
+        u32 baseIndex = CullingResourcesNonIndexedBase::AddCount(count);
+        u32 index = _drawCallDatas.AddCount(count);
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesNonIndexed::AddCount() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+
+    virtual void Remove(u32 index) override
+    {
+        CullingResourcesNonIndexedBase::Remove(index);
+        _drawCallDatas.Remove(index);
     }
 
     bool SyncToGPU() override
@@ -281,25 +323,6 @@ public:
     {
         CullingResourcesNonIndexedBase::Clear();
         _drawCallDatas.Clear();
-    }
-
-    void Grow(u32 growthSize) override
-    {
-        CullingResourcesNonIndexedBase::Grow(growthSize);
-        _drawCallDatas.Grow(growthSize);
-    }
-
-    void Resize(u32 size) override
-    {
-        CullingResourcesNonIndexedBase::Resize(size);
-        _drawCallDatas.Resize(size);
-    }
-
-    void FitBuffersAfterLoad() override
-    {
-        CullingResourcesNonIndexedBase::FitBuffersAfterLoad();
-        u32 numDrawCalls = _drawCallsIndex.load();
-        _drawCallDatas.Resize(numDrawCalls);
     }
 
     void SetValidation(bool validation) override

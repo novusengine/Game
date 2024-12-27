@@ -70,7 +70,7 @@ void TerrainRenderer::Update(f32 deltaTime)
     const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
     // Read back from culling counters
-    u32 numDrawCalls = Terrain::CHUNK_NUM_CELLS * _numChunksLoaded;
+    u32 numDrawCalls = _instanceDatas.Count();
 
     for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
     {
@@ -564,8 +564,6 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
 void TerrainRenderer::Clear()
 {
-    _numChunksLoaded = 0;
-
     _chunkDatas.Clear();
     _chunkBoundingBoxes.clear();
     _instanceDatas.Clear();

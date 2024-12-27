@@ -55,12 +55,12 @@ public:
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
     // Drawcall stats
-    u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded; }
+    u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _instanceDatas.Count(); }
     u32 GetNumOccluderDrawCalls(u32 viewID) { return _numOccluderDrawCalls[viewID]; }
     u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
 
     // Triangle stats
-    u32 GetNumTriangles() { return Terrain::CHUNK_NUM_CELLS * _numChunksLoaded * Terrain::CELL_NUM_TRIANGLES; }
+    u32 GetNumTriangles() { return Terrain::CHUNK_NUM_CELLS * _instanceDatas.Count() * Terrain::CELL_NUM_TRIANGLES; }
     u32 GetNumOccluderTriangles(u32 viewID) { return _numOccluderDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
     u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return _numSurvivingDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
 
@@ -175,8 +175,6 @@ private:
 
     std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
     std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;
-
-    std::atomic<u32> _numChunksLoaded = 0;
 
     u32 _numOccluderDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
