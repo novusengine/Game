@@ -93,8 +93,6 @@ PSOutput main(PSInput input)
 
             vertices[i].position = LoadAnimatedVertexPosition(animatedVertexID);
         }
-
-        vertices[i].position = mul(float4(vertices[i].position, 1.0f), instanceMatrix).xyz;
     }
 
     // Calculate Barycentrics

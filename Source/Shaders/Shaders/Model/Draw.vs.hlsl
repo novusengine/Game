@@ -53,6 +53,7 @@ VSOutput main(VSInput input)
 
         StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
     }
+    float3 modelPosition = position.xyz;
 
     position = mul(position, instanceMatrix);
 
@@ -93,7 +94,7 @@ VSOutput main(VSInput input)
     output.uv01 = UVs;
 #endif
 #if (!EDITOR_PASS) && (!SHADOW_PASS)
-    output.modelPosition = position.xyz;
+    output.modelPosition = modelPosition.xyz;
 #endif
 
     return output;
