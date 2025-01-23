@@ -51,6 +51,8 @@ ShadowRenderer::~ShadowRenderer()
 
 void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
+    ZoneScoped;
+
     CVarSystem* cvarSystem = CVarSystem::Get();
     const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
 
@@ -58,10 +60,9 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     const i32 debugMatrixIndex = CVAR_ShadowDebugMatrixIndex.Get();
     if (debugMatrices && debugMatrixIndex >= 0 && debugMatrixIndex < static_cast<i32>(numCascades))
     {
-        std::vector<Camera>& gpuCameras = resources.cameras.Get();
-        const Camera& debugCascadeCamera = gpuCameras[debugMatrixIndex + 1]; // +1 because the first camera is the main camera
+        const Camera& debugCascadeCamera = resources.cameras[debugMatrixIndex + 1]; // +1 because the first camera is the main camera
 
-        Camera& mainCamera = gpuCameras[0];
+        Camera& mainCamera = resources.cameras[0];
 
         mainCamera = debugCascadeCamera;
         resources.cameras.SetDirtyElement(0);
@@ -69,8 +70,6 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 
     if (CVAR_ShadowDrawMatrices.Get())
     {
-        std::vector<Camera>& gpuCameras = resources.cameras.Get();
-        
         Color colors[] = 
         {
             Color::Red,
@@ -85,7 +84,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 
         for (u32 i = 0; i < numCascades; i++)
         {
-            const Camera& debugCascadeCamera = gpuCameras[i + 1]; // +1 because the first camera is the main camera
+            const Camera& debugCascadeCamera = resources.cameras[i + 1]; // +1 because the first camera is the main camera
             _debugRenderer->DrawFrustum(debugCascadeCamera.worldToClip, colors[i]);
         }
     }

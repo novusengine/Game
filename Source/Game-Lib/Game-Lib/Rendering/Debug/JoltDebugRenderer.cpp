@@ -55,6 +55,8 @@ JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, ::DebugRender
 
 void JoltDebugRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (CVAR_JoltDebugRender.Get() == ShowFlag::DISABLED)
     {
         _indexedCullingResources.ResetCullingStats();
@@ -68,7 +70,7 @@ void JoltDebugRenderer::Update(f32 deltaTime)
     auto& joltState = ctx.get<ECS::Singletons::JoltState>();
 
     JPH::BodyManager::DrawSettings drawSettings;
-    drawSettings.mDrawBoundingBox = true;
+    //drawSettings.mDrawBoundingBox = true;
     drawSettings.mDrawShape = true;
 
     joltState.physicsSystem.DrawBodies(drawSettings, this);
@@ -312,7 +314,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::DescriptorSetResource cullingSet;
     };
 
-    if (_indexedCullingResources.GetDrawCalls().Size() > 0)
+    if (_indexedCullingResources.GetDrawCalls().Count() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Culling (I)",
             [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
@@ -381,7 +383,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
             });
     }
 
-    if (_cullingResources.GetDrawCalls().Size() > 0)
+    if (_cullingResources.GetDrawCalls().Count() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Culling",
             [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
@@ -479,7 +481,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
         Renderer::DescriptorSetResource drawSet;
     };
 
-    if (_indexedCullingResources.GetDrawCalls().Size() > 0)
+    if (_indexedCullingResources.GetDrawCalls().Count() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Geometry (I)",
             [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
@@ -548,8 +550,8 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 // Reset counts
                 {
-                    std::vector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls().Get();
-                    for (u32 i = 0; i < draws.size(); i++)
+                    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls();
+                    for (u32 i = 0; i < draws.Count(); i++)
                     {
                         Renderer::IndexedIndirectDraw& draw = draws[i];
                         draw.instanceCount = 0;
@@ -563,7 +565,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
             });
     }
 
-    if (_cullingResources.GetDrawCalls().Size() > 0)
+    if (_cullingResources.GetDrawCalls().Count() > 0)
     {
         renderGraph->AddPass<Data>("Jolt Debug Geometry",
             [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
@@ -632,21 +634,23 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 // Reset counts
                 {
-                    std::vector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls().Get();
-                    for (u32 i = 0; i < draws.size(); i++)
+                    const Renderer::GPUVector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls();
+                    for (u32 i = 0; i < draws.Count(); i++)
                     {
                         Renderer::IndirectDraw& draw = draws[i];
                         draw.instanceCount = 0;
                     }
                 }
 
-                _instances.Clear(true);
                 for (DrawManifest& manifest : _drawManifests)
                 {
                     manifest.instanceIDs.clear();
                 }
             });
     }
+
+    _instances.Clear();
+    _cullingDatas.Clear();
 }
 
 #ifdef JPH_DEBUG_RENDERER
@@ -676,8 +680,7 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Vertex* i
     batch->isIndexed = true;
 
     // Add vertices
-    std::vector<PackedVertex>& vertices = _vertices.Get();
-    u32 vertexOffset = static_cast<u32>(vertices.size());
+    u32 vertexOffset = _vertices.AddCount(inVertexCount);
 
     vec3 min = vec3(FLT_MAX);
     vec3 max = vec3(-FLT_MAX);
@@ -694,24 +697,24 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Vertex* i
         min = glm::min(min, vec3(packedVertex.posAndUVx));
         max = glm::max(max, vec3(packedVertex.posAndUVx));
 
-        vertices.push_back(packedVertex);
+        _vertices[i] = packedVertex;
     }
 
     // Add indices
-    std::vector<u32>& indices = _indices.Get();
-    u32 indexOffset = static_cast<u32>(indices.size());
+    u32 indexOffset = _indices.AddCount(inIndexCount);
 
     for (i32 i = 0; i < inIndexCount; ++i)
     {
-        const u32& index = inIndices[i];
-        indices.push_back(index);
+        _indices[i] = inIndices[i];
     }
 
-    // Add drawcall
-    std::vector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls().Get();
-    batch->drawID = static_cast<u32>(draws.size());
+    u32 instanceIndex = _indexedCullingResources.Add();
 
-    Renderer::IndexedIndirectDraw& draw = draws.emplace_back();
+    // Add drawcall
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls();
+    batch->drawID = instanceIndex;
+
+    Renderer::IndexedIndirectDraw& draw = draws[batch->drawID];
     draw.indexCount = inIndexCount;
     draw.instanceCount = 0;
     draw.firstIndex = indexOffset;
@@ -719,9 +722,9 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Vertex* i
     draw.firstInstance = 0; // Compact() function will set this up
 
     // Add drawcall data
-    std::vector<DrawCallData>& drawCallDatas = _indexedCullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<DrawCallData>& drawCallDatas = _indexedCullingResources.GetDrawCallDatas();
 
-    DrawCallData& drawCallData = drawCallDatas.emplace_back();
+    DrawCallData& drawCallData = drawCallDatas[instanceIndex];
     drawCallData.baseInstanceLookupOffset = 0; // Compact() function will set this up
 
     // Add drawcall manifest
@@ -740,12 +743,12 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Triangle*
     batch->isIndexed = false;
 
     // Add vertices
-    std::vector<PackedVertex>& vertices = _vertices.Get();
-    u32 vertexOffset = static_cast<u32>(vertices.size());
+    u32 vertexOffset = _vertices.AddCount(inTriangleCount * 3);
 
     vec3 min = vec3(FLT_MAX);
     vec3 max = vec3(-FLT_MAX);
 
+    u32 vertexIndex = 0;
     for (i32 i = 0; i < inTriangleCount; i++)
     {
         const Triangle& triangle = inTriangles[i];
@@ -762,24 +765,27 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Triangle*
             min = glm::min(min, vec3(packedVertex.posAndUVx));
             max = glm::max(max, vec3(packedVertex.posAndUVx));
 
-            vertices.push_back(packedVertex);
+            _vertices[vertexOffset + vertexIndex] = packedVertex;
+            vertexIndex++;
         }
     }
 
-    // Add drawcall
-    std::vector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls().Get();
-    batch->drawID = static_cast<u32>(draws.size());
+    u32 instanceIndex = _cullingResources.Add();
 
-    Renderer::IndirectDraw& draw = draws.emplace_back();
+    // Add drawcall
+    const Renderer::GPUVector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls();
+    batch->drawID = instanceIndex;
+
+    Renderer::IndirectDraw& draw = draws[batch->drawID];
     draw.vertexCount = inTriangleCount * 3;
     draw.instanceCount = 0;
     draw.firstVertex = vertexOffset;
     draw.firstInstance = 0; // Compact() function will set this up
 
     // Add drawcall data
-    std::vector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas();
 
-    DrawCallData& drawCallData = drawCallDatas.emplace_back();
+    DrawCallData& drawCallData = drawCallDatas[instanceIndex];
     drawCallData.baseInstanceLookupOffset = 0; // Compact() function will set this up
 
     // Add drawcall manifest
@@ -800,10 +806,8 @@ void JoltDebugRenderer::DrawGeometry(JPH::RMat44Arg inModelMatrix, const JPH::AA
     bool isIndexed = joltBatch->isIndexed;
 
     // Add instance
-    std::vector<mat4x4>& instances = _instances.Get();
-    
-    u32 instanceID = static_cast<u32>(instances.size());
-    mat4x4& instance = instances.emplace_back();
+    u32 instanceID = _instances.Add();
+    mat4x4& instance = _instances[instanceID];
 
     for (u32 i = 0; i < 4; i++)
     {
@@ -812,13 +816,13 @@ void JoltDebugRenderer::DrawGeometry(JPH::RMat44Arg inModelMatrix, const JPH::AA
     }
 
     // Add culling data
-    std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
-    Model::ComplexModel::CullingData& cullingData = cullingDatas.emplace_back();
+    u32 cullingDataID = _cullingDatas.Add();
+    Model::ComplexModel::CullingData& cullingData = _cullingDatas[cullingDataID];
 
     // Increment instanceCount and add instanceID to manifest
     if (isIndexed)
     {
-        std::vector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls().Get();
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls();
         Renderer::IndexedIndirectDraw& draw = draws[drawID];
 
         draw.instanceCount++;
@@ -831,7 +835,7 @@ void JoltDebugRenderer::DrawGeometry(JPH::RMat44Arg inModelMatrix, const JPH::AA
     }
     else
     {
-        std::vector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls().Get();
+        const Renderer::GPUVector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls();
         Renderer::IndirectDraw& draw = draws[drawID];
 
         draw.instanceCount++;
@@ -944,6 +948,8 @@ void JoltDebugRenderer::CreatePermanentResources()
 
 void JoltDebugRenderer::SyncToGPU()
 {
+    ZoneScoped;
+
     CulledRenderer::SyncToGPU();
 
     Renderer::DescriptorSet& indexedDrawDescriptorSet = _indexedCullingResources.GetGeometryPassDescriptorSet();
@@ -952,7 +958,8 @@ void JoltDebugRenderer::SyncToGPU()
     Renderer::DescriptorSet& drawDescriptorSet = _cullingResources.GetGeometryPassDescriptorSet();
     Renderer::DescriptorSet& cullingDescriptorSet = _cullingResources.GetCullingDescriptorSet();
 
-    if (_instances.ForceSyncToGPU(_renderer))
+    _instances.SetDirty();
+    if (_instances.SyncToGPU(_renderer))
     {
         indexedDrawDescriptorSet.Bind("_instances", _instances.GetBuffer());
         indexedCullingDescriptorSet.Bind("_instanceMatrices", _instances.GetBuffer());
@@ -977,15 +984,17 @@ void JoltDebugRenderer::SyncToGPU()
 
 void JoltDebugRenderer::Compact()
 {
+    ZoneScoped;
+
     // Indexed
     {
-        _indexedCullingResources.GetInstanceRefs().Clear(false);
-        std::vector<InstanceRef>& instanceRefs = _indexedCullingResources.GetInstanceRefs().Get();
+        Renderer::GPUVector<InstanceRef>& instanceRefs = _indexedCullingResources.GetInstanceRefs();
+        instanceRefs.Clear();
 
-        std::vector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& drawCallDatas = _indexedCullingResources.GetDrawCallDatas().Get();
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& draws = _indexedCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& drawCallDatas = _indexedCullingResources.GetDrawCallDatas();
 
-        u32 numDraws = static_cast<u32>(draws.size());
+        u32 numDraws = static_cast<u32>(draws.Count());
         u32 numInstances = 0;
         for (u32 drawID = 0; drawID < numDraws; drawID++)
         {
@@ -996,8 +1005,9 @@ void JoltDebugRenderer::Compact()
             for (u32 i = 0; i < manifest.instanceIDs.size(); i++)
             {
                 u32 instanceID = manifest.instanceIDs[i];
+                u32 instanceRefID = instanceRefs.Add();
 
-                InstanceRef& instanceRef = instanceRefs.emplace_back();
+                InstanceRef& instanceRef = instanceRefs[instanceRefID];
                 instanceRef.drawID = drawID;
                 instanceRef.instanceID = instanceID;
             }
@@ -1008,20 +1018,18 @@ void JoltDebugRenderer::Compact()
 
             numInstances += draw.instanceCount;
         }
-        _indexedCullingResources.GetDrawCalls().SetDirty();
-        _indexedCullingResources.GetDrawCallDatas().SetDirty();
-        _indexedCullingResources.GetInstanceRefs().SetDirty();
+        _indexedCullingResources.SetDirty();
     }
 
     // Non-indexed
     {
-        _cullingResources.GetInstanceRefs().Clear(false);
-        std::vector<InstanceRef>& instanceRefs = _cullingResources.GetInstanceRefs().Get();
+        Renderer::GPUVector<InstanceRef>& instanceRefs = _cullingResources.GetInstanceRefs();
+        instanceRefs.Clear();
 
-        std::vector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas().Get();
+        const Renderer::GPUVector<Renderer::IndirectDraw>& draws = _cullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas();
 
-        u32 numDraws = static_cast<u32>(draws.size());
+        u32 numDraws = static_cast<u32>(draws.Count());
         u32 numInstances = 0;
         for (u32 drawID = 0; drawID < numDraws; drawID++)
         {
@@ -1032,8 +1040,9 @@ void JoltDebugRenderer::Compact()
             for (u32 i = 0; i < manifest.instanceIDs.size(); i++)
             {
                 u32 instanceID = manifest.instanceIDs[i];
+                u32 instanceRefID = instanceRefs.Add();
 
-                InstanceRef& instanceRef = instanceRefs.emplace_back();
+                InstanceRef& instanceRef = instanceRefs[instanceRefID];
                 instanceRef.drawID = drawID;
                 instanceRef.instanceID = instanceID;
             }
@@ -1044,9 +1053,7 @@ void JoltDebugRenderer::Compact()
 
             numInstances += draw.instanceCount;
         }
-        _cullingResources.GetDrawCalls().SetDirty();
-        _cullingResources.GetDrawCallDatas().SetDirty();
-        _cullingResources.GetInstanceRefs().SetDirty();
+        _cullingResources.SetDirty();
     }
 }
 

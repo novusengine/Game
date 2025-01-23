@@ -28,6 +28,8 @@ void LiquidLoader::Clear()
 
 void LiquidLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (!CVAR_LiquidLoaderEnabled.Get())
         return;
 
@@ -44,7 +46,8 @@ void LiquidLoader::Update(f32 deltaTime)
     {
         LoadRequestInternal& request = _workingRequests[i];
 
-        reserveInfo.numInstances += static_cast<u32>(request.instances.size());
+        u32 numInstances = static_cast<u32>(request.instances.size());
+        reserveInfo.numInstances += numInstances;
 
         for (LiquidInstance& instance : request.instances)
         {
@@ -54,22 +57,24 @@ void LiquidLoader::Update(f32 deltaTime)
             if (width == 0 || height == 0)
                 continue;
 
-            u32 vertexCount = (width + 1) * (height + 1);
-            reserveInfo.numVertices += vertexCount;
-
-            u32 indexCount = width * height * 6;
-            reserveInfo.numIndices += indexCount;
+            reserveInfo.numVertices += (width + 1) * (height + 1);
+            reserveInfo.numIndices += width * height * 6;
         }
     }
 
     // Have LiquidRenderer prepare all buffers for what we need to load
-    _liquidRenderer->Reserve(reserveInfo);
+    LiquidReserveOffsets reserveOffsets;
+    _liquidRenderer->Reserve(reserveInfo, reserveOffsets);
+
+    std::atomic<u32> instanceOffset = reserveOffsets.instanceStartOffset;
+    std::atomic<u32> vertexOffset = reserveOffsets.vertexStartOffset;
+    std::atomic<u32> indexOffset = reserveOffsets.indexStartOffset;
 
 #if 0
     for (u32 i = 0; i < numDequeued; i++)
     {
         LoadRequestInternal& request = _workingRequests[i];
-        LoadRequest(request);
+        LoadRequest(request, instanceOffset, vertexOffset, indexOffset);
     }
 #else
     enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
@@ -77,7 +82,7 @@ void LiquidLoader::Update(f32 deltaTime)
         for (u32 i = range.start; i < range.end; i++)
         {
             LoadRequestInternal& request = _workingRequests[i];
-            LoadRequest(request);
+            LoadRequest(request, instanceOffset, vertexOffset, indexOffset);
         }
     });
     
@@ -85,8 +90,6 @@ void LiquidLoader::Update(f32 deltaTime)
     taskScheduler->AddTaskSetToPipe(&loadModelsTask);
     taskScheduler->WaitforTask(&loadModelsTask);
 #endif
-
-    _liquidRenderer->FitAfterGrow();
 }
 
 vec2 GetChunkPosition(u32 chunkID)
@@ -176,9 +179,10 @@ void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquid
     _requests.enqueue(request);
 }
 
-void LiquidLoader::LoadRequest(LoadRequestInternal& request)
+void LiquidLoader::LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset)
 {
     u32 chunkID = (request.chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE) + request.chunkX;
+    u32 instanceStartIndex = instanceOffset.fetch_add(request.instances.size());
 
     for (u32 i = 0; i < request.instances.size(); i++)
     {
@@ -197,7 +201,6 @@ void LiquidLoader::LoadRequest(LoadRequestInternal& request)
         u8 width = liquidInstance.packedSize & 0xF;
         u8 height = liquidInstance.packedSize >> 4;
 
-        u32 vertexCount = (width + 1) * (height + 1);
         u32 bitMapBytes = (width * height + 7) / 8;
 
         bool hasVertexData = liquidInstance.packedData >> 7;
@@ -246,6 +249,12 @@ void LiquidLoader::LoadRequest(LoadRequestInternal& request)
         desc.defaultHeight = liquidInstance.height;
         desc.heightMap = heightMap;
         desc.bitMap = bitMap;
+
+        desc.instanceOffset = instanceStartIndex + i;
+        desc.vertexCount = (width + 1) * (height + 1);
+        desc.vertexOffset = vertexOffset.fetch_add(desc.vertexCount);
+        desc.indexCount = width * height * 6;
+        desc.indexOffset = indexOffset.fetch_add(desc.indexCount);
 
         _liquidRenderer->Load(desc);
     }

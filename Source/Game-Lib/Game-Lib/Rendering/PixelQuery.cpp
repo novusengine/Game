@@ -30,6 +30,7 @@ void PixelQuery::CreatePermanentResources()
 
 void PixelQuery::Update(f32 deltaTime)
 {
+    ZoneScoped;
 }
 
 void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)

@@ -28,17 +28,24 @@ public:
 
     virtual void Update(f32 deltaTime, bool cullingEnabled);
 
+    virtual u32 Add();
+    virtual u32 AddCount(u32 count);
+
+    virtual void Remove(u32 index);
+
+    virtual void Reserve(u32 count);
+
     virtual bool SyncToGPU();
     virtual void Clear();
 
-    virtual u32 GetDrawCallsSize() = 0;
+    virtual bool IsDirty() const;
+    virtual void SetDirtyRegion(size_t offset, size_t size);
+    virtual void SetDirtyElement(size_t index);
+    virtual void SetDirtyElements(size_t startIndex, size_t count);
+    virtual void SetDirty();
+
+    virtual u32 GetDrawCallCount() = 0;
     virtual bool IsIndexed() = 0;
-
-    virtual void Grow(u32 growthSize);
-    virtual void Resize(u32 size);
-    virtual void FitBuffersAfterLoad();
-
-    std::atomic<u32>& GetDrawCallsIndex() { return _drawCallsIndex; }
 
     Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
 
@@ -84,8 +91,6 @@ protected:
     std::string _bufferNamePrefix = "";
     bool _enableTwoStepCulling;
 
-    std::atomic<u32> _drawCallsIndex = 0;
-
     Renderer::GPUVector<InstanceRef> _instanceRefs;
 
     FrameResource<Renderer::BufferID, 2> _culledDrawCallsBitMaskBuffer;
@@ -125,19 +130,28 @@ class CullingResourcesIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
+    virtual u32 Add() override;
+    virtual u32 AddCount(u32 count) override;
+
+    virtual void Remove(u32 index) override;
+
+    virtual void Reserve(u32 count) override;
+
     bool SyncToGPU() override;
     void Clear() override;
 
-    u32 GetDrawCallsSize() override;
-    bool IsIndexed() override { return true; }
+    virtual bool IsDirty() const override;
+    virtual void SetDirtyRegion(size_t offset, size_t size) override;
+    virtual void SetDirtyElement(size_t index) override;
+    virtual void SetDirtyElements(size_t startIndex, size_t count) override;
+    virtual void SetDirty() override;
 
-    virtual void Grow(u32 growthSize) override;
-    virtual void Resize(u32 size) override;
-    virtual void FitBuffersAfterLoad() override;
+    u32 GetDrawCallCount() override;
+    bool IsIndexed() override { return true; }
 
     virtual void SetValidation(bool validation);
 
-    Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& GetDrawCalls() { return _drawCalls; }
 
 protected:
     Renderer::GPUVector<Renderer::IndexedIndirectDraw> _drawCalls;
@@ -148,19 +162,28 @@ class CullingResourcesNonIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
+    virtual u32 Add() override;
+    virtual u32 AddCount(u32 count) override;
+
+    virtual void Remove(u32 index) override;
+
+    virtual void Reserve(u32 count) override;
+
     bool SyncToGPU() override;
     void Clear() override;
 
-    u32 GetDrawCallsSize() override;
-    bool IsIndexed() override { return false; }
+    virtual bool IsDirty() const override;
+    virtual void SetDirtyRegion(size_t offset, size_t size) override;
+    virtual void SetDirtyElement(size_t index) override;
+    virtual void SetDirtyElements(size_t startIndex, size_t count) override;
+    virtual void SetDirty() override;
 
-    virtual void Grow(u32 growthSize) override;
-    virtual void Resize(u32 size) override;
-    virtual void FitBuffersAfterLoad() override;
+    u32 GetDrawCallCount() override;
+    bool IsIndexed() override { return false; }
 
     virtual void SetValidation(bool validation);
 
-    Renderer::GPUVector<Renderer::IndirectDraw>& GetDrawCalls() { return _drawCalls; }
+    const Renderer::GPUVector<Renderer::IndirectDraw>& GetDrawCalls() { return _drawCalls; }
 
 protected:
     Renderer::GPUVector<Renderer::IndirectDraw> _drawCalls;
@@ -179,6 +202,43 @@ public:
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
         SyncToGPU();
+    }
+
+    virtual u32 Add() override
+    {
+        u32 baseIndex = CullingResourcesIndexedBase::Add();
+        u32 index = _drawCallDatas.Add();
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesIndexed::Add() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+    virtual u32 AddCount(u32 count) override
+    {
+        u32 baseIndex = CullingResourcesIndexedBase::AddCount(count);
+        u32 index = _drawCallDatas.AddCount(count);
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesIndexed::AddCount() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+
+    virtual void Remove(u32 index) override
+    {
+        CullingResourcesIndexedBase::Remove(index);
+        _drawCallDatas.Remove(index);
+    }
+
+    virtual void Reserve(u32 count) override
+    {
+        CullingResourcesIndexedBase::Reserve(count);
+        _drawCallDatas.Reserve(count);
     }
 
     bool SyncToGPU() override
@@ -209,23 +269,30 @@ public:
         _drawCallDatas.Clear();
     }
 
-    void Grow(u32 growthSize) override
+    virtual bool IsDirty() const override
     {
-        CullingResourcesIndexedBase::Grow(growthSize);
-        _drawCallDatas.Grow(growthSize);
+        bool isDirty = CullingResourcesIndexedBase::IsDirty();
+        return isDirty || _drawCallDatas.IsDirty();
     }
-
-    void Resize(u32 size) override
+    virtual void SetDirtyRegion(size_t offset, size_t size) override
     {
-        CullingResourcesIndexedBase::Resize(size);
-        _drawCallDatas.Resize(size);
+        CullingResourcesIndexedBase::SetDirtyRegion(offset, size);
+        _drawCallDatas.SetDirtyRegion(offset, size);
     }
-
-    void FitBuffersAfterLoad() override
+    virtual void SetDirtyElement(size_t index) override
     {
-        CullingResourcesIndexedBase::FitBuffersAfterLoad();
-        u32 numDrawCalls = _drawCallsIndex.load();
-        _drawCallDatas.Resize(numDrawCalls);
+        CullingResourcesIndexedBase::SetDirtyElement(index);
+        _drawCallDatas.SetDirtyElement(index);
+    }
+    virtual void SetDirtyElements(size_t startIndex, size_t count) override
+    {
+        CullingResourcesIndexedBase::SetDirtyElements(startIndex, count);
+        _drawCallDatas.SetDirtyElements(startIndex, count);
+    }
+    virtual void SetDirty() override
+    {
+        CullingResourcesIndexedBase::SetDirty();
+        _drawCallDatas.SetDirty();
     }
 
     void SetValidation(bool validation) override
@@ -234,7 +301,7 @@ public:
         _drawCallDatas.SetValidation(validation);
     }
 
-    Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
+    const Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
 
 private:
     Renderer::GPUVector<T> _drawCallDatas;
@@ -253,6 +320,43 @@ public:
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
         SyncToGPU();
+    }
+
+    virtual u32 Add() override
+    {
+        u32 baseIndex = CullingResourcesNonIndexedBase::Add();
+        u32 index = _drawCallDatas.Add();
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesNonIndexed::Add() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+    virtual u32 AddCount(u32 count) override
+    {
+        u32 baseIndex = CullingResourcesNonIndexedBase::AddCount(count);
+        u32 index = _drawCallDatas.AddCount(count);
+#if NC_DEBUG
+        if (baseIndex != index)
+        {
+            NC_LOG_ERROR("CullingResourcesNonIndexed::AddCount() baseIndex != index");
+        }
+#endif
+        return index;
+    }
+
+    virtual void Remove(u32 index) override
+    {
+        CullingResourcesNonIndexedBase::Remove(index);
+        _drawCallDatas.Remove(index);
+    }
+
+    virtual void Reserve(u32 count) override
+    {
+        CullingResourcesNonIndexedBase::Reserve(count);
+        _drawCallDatas.Reserve(count);
     }
 
     bool SyncToGPU() override
@@ -283,23 +387,30 @@ public:
         _drawCallDatas.Clear();
     }
 
-    void Grow(u32 growthSize) override
+    virtual bool IsDirty() const override
     {
-        CullingResourcesNonIndexedBase::Grow(growthSize);
-        _drawCallDatas.Grow(growthSize);
+        bool isDirty = CullingResourcesNonIndexedBase::IsDirty();
+        return isDirty || _drawCallDatas.IsDirty();
     }
-
-    void Resize(u32 size) override
+    virtual void SetDirtyRegion(size_t offset, size_t size) override
     {
-        CullingResourcesNonIndexedBase::Resize(size);
-        _drawCallDatas.Resize(size);
+        CullingResourcesNonIndexedBase::SetDirtyRegion(offset, size);
+        _drawCallDatas.SetDirtyRegion(offset, size);
     }
-
-    void FitBuffersAfterLoad() override
+    virtual void SetDirtyElement(size_t index) override
     {
-        CullingResourcesNonIndexedBase::FitBuffersAfterLoad();
-        u32 numDrawCalls = _drawCallsIndex.load();
-        _drawCallDatas.Resize(numDrawCalls);
+        CullingResourcesNonIndexedBase::SetDirtyElement(index);
+        _drawCallDatas.SetDirtyElement(index);
+    }
+    virtual void SetDirtyElements(size_t startIndex, size_t count) override
+    {
+        CullingResourcesNonIndexedBase::SetDirtyElements(startIndex, count);
+        _drawCallDatas.SetDirtyElements(startIndex, count);
+    }
+    virtual void SetDirty() override
+    {
+        CullingResourcesNonIndexedBase::SetDirty();
+        _drawCallDatas.SetDirty();
     }
 
     void SetValidation(bool validation) override
@@ -308,7 +419,7 @@ public:
         _drawCallDatas.SetValidation(validation);
     }
 
-    Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
+    const Renderer::GPUVector<T>& GetDrawCallDatas() { return _drawCallDatas; }
 
 private:
     Renderer::GPUVector<T> _drawCallDatas;

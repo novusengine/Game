@@ -90,6 +90,8 @@ void TerrainLoader::Clear()
 
 void TerrainLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     LoadRequestInternal loadRequest;
 
     while (_requests.try_dequeue(loadRequest))
@@ -167,6 +169,21 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
         numExistingChunks.fetch_add(localNumExistingChunks);
     });
 
+    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
+    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
+    taskScheduler->WaitforTask(&countValidChunksTask);
+    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
+
+    u32 numChunksToLoad = numExistingChunks.load();
+    if (numChunksToLoad == 0)
+    {
+        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+        return;
+    }
+
+    TerrainReserveOffsets reserveOffsets;
+    _terrainRenderer->Reserve(numChunksToLoad, reserveOffsets);
+
     enki::TaskSet loadChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
     {
         std::string chunkLocalPathStr = "";
@@ -199,7 +216,11 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
                 u32 chunkHash = StringUtils::fnv1a_32(chunkPathStr.c_str(), chunkPathStr.size());
                 Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
 
-                u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+                u32 chunkDataIndex = reserveOffsets.chunkDataStartOffset + i;
+                u32 cellDataStartIndex = reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS);
+                u32 vertexDataStartIndex = reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES);
+
+                u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
 
                 for (Terrain::Placement& placement : chunk->complexModelPlacements)
                 {
@@ -208,20 +229,6 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
             }
         }
     });
-
-    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
-    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
-    taskScheduler->WaitforTask(&countValidChunksTask);
-    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
-
-    u32 numChunksToLoad = numExistingChunks.load();
-    if (numChunksToLoad == 0)
-    {
-        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
-        return;
-    }
-
-    _terrainRenderer->Reserve(numChunksToLoad);
 
     NC_LOG_INFO("TerrainLoader : Started Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&loadChunksTask);
@@ -274,6 +281,22 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
             numExistingChunks++;
         }
     });
+
+    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
+    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
+    taskScheduler->WaitforTask(&countValidChunksTask);
+    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
+
+    u32 numChunksToLoad = numExistingChunks.load();
+    if (numChunksToLoad == 0)
+    {
+        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+        return;
+    }
+
+    TerrainReserveOffsets reserveOffsets;
+    PrepareForChunks(LoadType::Full, numPaths, reserveOffsets);
+    _currentMapInternalName = mapName;
 
     enki::TaskSet loadChunksTask(numPaths, [&, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
     {
@@ -343,14 +366,18 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
                 // Load into Terrain Renderer
                 {
-                    u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY));
+                    u32 chunkDataIndex = reserveOffsets.chunkDataStartOffset + i;
+                    u32 cellDataStartIndex = reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS);
+                    u32 vertexDataStartIndex = reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES);
+
+                    u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
                     _chunkIDToLoadedID[chunkID] = chunkDataID;
 
                     u32 numMapObjectPlacements = chunk->numMapObjectPlacements;
                     u32 numComplexModelPlacements = chunk->numComplexModelPlacements;
 
                     size_t mapObjectOffset = sizeof(Map::Chunk) - ((sizeof(std::vector<Terrain::Placement>) * 2) + sizeof(Map::LiquidInfo));
-                    
+
                     if (numMapObjectPlacements)
                     {
                         for (u32 j = 0; j < numMapObjectPlacements; j++)
@@ -359,7 +386,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
                             _modelLoader->LoadPlacement(placement);
                         }
                     }
-                    
+
                     if (numComplexModelPlacements)
                     {
                         size_t cModelOffset = mapObjectOffset + (numMapObjectPlacements * sizeof(Terrain::Placement));
@@ -392,21 +419,6 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         return true;
     });
 
-    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
-    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
-    taskScheduler->WaitforTask(&countValidChunksTask);
-    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
-
-    u32 numChunksToLoad = numExistingChunks.load();
-    if (numChunksToLoad == 0)
-    {
-        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
-        return;
-    }
-
-    PrepareForChunks(LoadType::Full, numChunksToLoad);
-    _currentMapInternalName = mapName;
-
     NC_LOG_INFO("TerrainLoader : Started Chunk Loading");
     taskScheduler->AddTaskSetToPipe(&loadChunksTask);
     taskScheduler->WaitforTask(&loadChunksTask);
@@ -423,7 +435,7 @@ void TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     NC_LOG_INFO("TerrainLoader : Finished Chunk Loading");
 }
 
-void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
+void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks, TerrainReserveOffsets& reserveOffsets)
 {
     if (loadType == LoadType::Partial)
     {
@@ -433,7 +445,7 @@ void TerrainLoader::PrepareForChunks(LoadType loadType, u32 numChunks)
     {
         Clear();
 
-        _terrainRenderer->Reserve(numChunks);
+        _terrainRenderer->Reserve(numChunks, reserveOffsets);
         _chunkIDToLoadedID.reserve(numChunks);
         _chunkIDToBodyID.reserve(numChunks);
     }

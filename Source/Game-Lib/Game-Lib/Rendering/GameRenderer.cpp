@@ -178,6 +178,8 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 
 void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
+    ZoneScoped;
+
     // Reset the memory in the frameAllocator
     _frameAllocator[_frameIndex]->Reset();
 
@@ -586,7 +588,7 @@ void GameRenderer::CreatePermanentResources()
 
     _resources.cameras.SetDebugName("Cameras");
     _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
-    _resources.cameras.Get().push_back(Camera());
+    _resources.cameras.Add(Camera());
 }
 
 void GameRenderer::InitImgui()

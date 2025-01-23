@@ -220,6 +220,8 @@ void ModelLoader::Clear()
 
 void ModelLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
@@ -308,10 +310,11 @@ void ModelLoader::Update(f32 deltaTime)
             registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
 
             std::atomic<u32> numCreatedInstances = 0;
-            //enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
-            //{
-            	//for (u32 i = range.start; i < range.end; i++)
-                for (u32 i = 0; i < numDequeued; i++)
+
+            enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+            {
+            	for (u32 i = range.start; i < range.end; i++)
+                //for (u32 i = 0; i < numDequeued; i++)
                 {
                     LoadRequestInternal& request = _staticLoadRequests[i];
 
@@ -337,7 +340,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                         bool didLoad = LoadRequest(request);
 
-                        loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
+                        loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));
                         _nameHashToLoadState[placementHash] = loadState;
 
                         if (!didLoad)
@@ -346,23 +349,21 @@ void ModelLoader::Update(f32 deltaTime)
 
                     if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
                         continue;
-
+                    
                     u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
+
                     AddStaticInstance(_createdEntities[index], request);
                 }
-            //});
+            });
 
             // Execute the multithreaded job
-            //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-            //taskScheduler->WaitforTask(&loadModelsTask);
+            taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+            taskScheduler->WaitforTask(&loadModelsTask);
 
             // Destroy the entities we didn't use
             u32 numCreated = numCreatedInstances.load();
             registry->destroy(begin + numCreated, _createdEntities.end());
             _createdEntities.resize(createdEntitiesOffset + numCreated);
-
-            // Fit the buffers to the data we loaded
-            _modelRenderer->FitBuffersAfterLoad();
         }
     }
 
@@ -484,11 +485,9 @@ void ModelLoader::Update(f32 deltaTime)
                         continue;
                 }
 
+                // TODO: Skybox?
                 AddDynamicInstance(request.entity, request);
             }
-
-            // Fit the buffers to the data we loaded
-            _modelRenderer->FitBuffersAfterLoad();
         }
     }
 

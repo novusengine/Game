@@ -35,6 +35,8 @@ TerrainManipulator::~TerrainManipulator()
 
 void TerrainManipulator::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (_isManipulating)
     {
         Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
@@ -55,23 +57,20 @@ void TerrainManipulator::Update(f32 deltaTime)
             GetVertexDatasAroundWorldPos(mouseWorldPosition, radius, hardness, hardnessMode, vertexDatas);
 
             Renderer::GPUVector<TerrainRenderer::TerrainVertex>& gpuVertices = _terrainRenderer._vertices;
-            std::vector<TerrainRenderer::TerrainVertex>& vertices = gpuVertices.Get();
-
             Renderer::GPUVector<TerrainRenderer::CellHeightRange>& gpuCellHeightRanges = _terrainRenderer._cellHeightRanges;
-            std::vector<TerrainRenderer::CellHeightRange>& cellHeightRanges = gpuCellHeightRanges.Get();
 
             for (const VertexData& vertexData : vertexDatas)
             {
                 // Update height
-                f32 height = vertices[vertexData.vertexID].height;
+                f32 height = gpuVertices[vertexData.vertexID].height;
 
                 height += pressure * vertexData.hardness * deltaTime * (_isLower ? -1.0f : 1.0f);
                 
-                vertices[vertexData.vertexID].height = height;
+                gpuVertices[vertexData.vertexID].height = height;
                 gpuVertices.SetDirtyElement(vertexData.vertexID);
 
                 // Update height range for culling
-                TerrainRenderer::CellHeightRange& cellHeightRange = cellHeightRanges[vertexData.cellHeightRangeID];
+                TerrainRenderer::CellHeightRange& cellHeightRange = gpuCellHeightRanges[vertexData.cellHeightRangeID];
                 cellHeightRange.min = glm::min(cellHeightRange.min, height);
                 cellHeightRange.max = glm::max(cellHeightRange.max, height);
                 gpuCellHeightRanges.SetDirtyElement(vertexData.cellHeightRangeID);

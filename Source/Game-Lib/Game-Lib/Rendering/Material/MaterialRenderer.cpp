@@ -39,6 +39,8 @@ MaterialRenderer::~MaterialRenderer()
 
 void MaterialRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     SyncToGPU();
 }
 
@@ -222,7 +224,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 CVarSystem* cvarSystem = CVarSystem::Get();
                 const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
                 const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"));
-                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Size()), 0, numCascades, shadowEnabled);
+                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), 0, numCascades, shadowEnabled);
 
                 constants->fogColor = CVAR_FogColor.Get();
                 constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;
@@ -265,19 +267,16 @@ void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& co
         .shadowColor = vec4(shadowColor, 0.0f)
     };
 
-    std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
-    directionalLights.push_back(light);
+    _directionalLights.Add(light);
 }
 
 bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor)
 {
-    std::vector<DirectionalLight>& directionalLights = _directionalLights.Get();
-
-    u32 numDirectionalLights = static_cast<u32>(directionalLights.size());
+    u32 numDirectionalLights = static_cast<u32>(_directionalLights.Count());
     if (index >= numDirectionalLights)
         return false;
 
-    DirectionalLight& light = directionalLights[index];
+    DirectionalLight& light = _directionalLights[index];
 
     light.direction = vec4(direction, 0.0f);
     light.color = vec4(color, intensity);

@@ -16,6 +16,7 @@ namespace Map
 }
 
 class TerrainRenderer;
+struct TerrainReserveOffsets;
 class TerrainLoader
 {
 public:
@@ -55,7 +56,7 @@ private:
     void LoadPartialMapRequest(const LoadRequestInternal& request);
     void LoadFullMapRequest(const LoadRequestInternal& request);
 
-    void PrepareForChunks(LoadType loadType, u32 numChunks);
+    void PrepareForChunks(LoadType loadType, u32 numChunks, TerrainReserveOffsets& reserveOffsets);
 
 private:
     TerrainRenderer* _terrainRenderer = nullptr;

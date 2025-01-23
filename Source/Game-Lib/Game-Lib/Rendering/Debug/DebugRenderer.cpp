@@ -90,6 +90,8 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 
 void DebugRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     // Draw world axises
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), Color::Red);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), Color::Green);
@@ -202,11 +204,11 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.drawSolid2DSet, frameIndex);
 
                     // Draw
-                    commandList.Draw(static_cast<u32>(_debugVerticesSolid2D.Size()), 1, 0, 0);
+                    commandList.Draw(static_cast<u32>(_debugVerticesSolid2D.Count()), 1, 0, 0);
 
                     commandList.EndPipeline(pipeline);
                 }
-                _debugVerticesSolid2D.Clear(false);
+                _debugVerticesSolid2D.Clear();
             }
 
             // Wireframe
@@ -222,11 +224,11 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DSet, frameIndex);
 
                     // Draw
-                    commandList.Draw(static_cast<u32>(_debugVertices2D.Size()), 1, 0, 0);
+                    commandList.Draw(static_cast<u32>(_debugVertices2D.Count()), 1, 0, 0);
 
                     commandList.EndPipeline(pipeline);
                 }
-                _debugVertices2D.Clear(false);
+                _debugVertices2D.Clear();
 
                 // GPU side debug rendering
                 {
@@ -342,11 +344,11 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.drawSolid3DSet, frameIndex);
 
                     // Draw
-                    commandList.Draw(static_cast<u32>(_debugVerticesSolid3D.Size()), 1, 0, 0);
+                    commandList.Draw(static_cast<u32>(_debugVerticesSolid3D.Count()), 1, 0, 0);
 
                     commandList.EndPipeline(pipeline);
                 }
-                _debugVerticesSolid3D.Clear(false);
+                _debugVerticesSolid3D.Clear();
             }
 
             // Wireframe
@@ -374,11 +376,11 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DSet, frameIndex);
 
                     // Draw
-                    commandList.Draw(static_cast<u32>(_debugVertices3D.Size()), 1, 0, 0);
+                    commandList.Draw(static_cast<u32>(_debugVertices3D.Count()), 1, 0, 0);
 
                     commandList.EndPipeline(pipeline);
                 }
-                _debugVertices3D.Clear(false);
+                _debugVertices3D.Clear();
 
                 // GPU side debug rendering
                 {
@@ -398,90 +400,84 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void DebugRenderer::DrawLine2D(const glm::vec2& from, const glm::vec2& to, Color color)
 {
-    auto& vertices = _debugVertices2D.Get();
-
     u32 colorInt = color.ToABGR32();
 
-    vertices.push_back({ from, colorInt });
-    vertices.push_back({ to, colorInt });
+    u32 index = _debugVertices2D.AddCount(2);
+    _debugVertices2D[index + 0] = { from, colorInt };
+    _debugVertices2D[index + 1] = { to, colorInt };
 }
 
 void DebugRenderer::DrawLine3D(const glm::vec3& from, const glm::vec3& to, Color color)
 {
-    auto& vertices = _debugVertices3D.Get();
-
     u32 colorInt = color.ToABGR32();
 
-    vertices.push_back({ from, colorInt });
-    vertices.push_back({ to, colorInt });
+    u32 index = _debugVertices3D.AddCount(2);
+    _debugVertices3D[index + 0] = { from, colorInt };
+    _debugVertices3D[index + 1] = { to, colorInt };
 }
 
 void DebugRenderer::DrawBox2D(const vec2& center, const vec2& extents, Color color)
 {
-    auto& vertices = _debugVertices2D.Get();
-
     const vec2& renderSize = _renderer->GetRenderSize();
 
     vec2 v0 = (center - extents) / renderSize;
     vec2 v1 = (center + extents) / renderSize;
     u32 colorInt = color.ToABGR32();
 
-    vertices.push_back({ { v0.x, v0.y }, colorInt });
-    vertices.push_back({ { v1.x, v0.y }, colorInt });
-    vertices.push_back({ { v1.x, v0.y }, colorInt });
-    vertices.push_back({ { v1.x, v1.y }, colorInt });
-    vertices.push_back({ { v1.x, v1.y }, colorInt });
-    vertices.push_back({ { v0.x, v1.y }, colorInt });
-    vertices.push_back({ { v0.x, v1.y }, colorInt });
-    vertices.push_back({ { v0.x, v0.y }, colorInt });
+    u32 index = _debugVertices2D.AddCount(8);
+    _debugVertices2D[index + 0] = { { v0.x, v0.y }, colorInt };
+    _debugVertices2D[index + 1] = { { v1.x, v0.y }, colorInt };
+    _debugVertices2D[index + 2] = { { v1.x, v0.y }, colorInt };
+    _debugVertices2D[index + 3] = { { v1.x, v1.y }, colorInt };
+    _debugVertices2D[index + 4] = { { v1.x, v1.y }, colorInt };
+    _debugVertices2D[index + 5] = { { v0.x, v1.y }, colorInt };
+    _debugVertices2D[index + 6] = { { v0.x, v1.y }, colorInt };
+    _debugVertices2D[index + 7] = { { v0.x, v0.y }, colorInt };
 }
 
 void DebugRenderer::DrawAABB3D(const vec3& center, const vec3& extents, Color color)
 {
-    auto& vertices = _debugVertices3D.Get();
-
     vec3 v0 = center - extents;
     vec3 v1 = center + extents;
 
     u32 colorInt = color.ToABGR32();
 
+    u32 index = _debugVertices3D.AddCount(24);
+
     // Bottom
-    vertices.push_back({ { v0.x, v0.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v0.y, v0.z }, colorInt });
+    _debugVertices3D[index +  0] = { { v0.x, v0.y, v0.z }, colorInt };
+    _debugVertices3D[index +  1] = { { v1.x, v0.y, v0.z }, colorInt };
+    _debugVertices3D[index +  2] = { { v1.x, v0.y, v0.z }, colorInt };
+    _debugVertices3D[index +  3] = { { v1.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index +  4] = { { v1.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index +  5] = { { v0.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index +  6] = { { v0.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index +  7] = { { v0.x, v0.y, v0.z }, colorInt };
 
     // Top
-    vertices.push_back({ { v0.x, v1.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v1.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v1.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v1.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v1.y, v0.z }, colorInt });
+    _debugVertices3D[index +  8] = { { v0.x, v1.y, v0.z }, colorInt };
+    _debugVertices3D[index +  9] = { { v1.x, v1.y, v0.z }, colorInt };
+    _debugVertices3D[index + 10] = { { v1.x, v1.y, v0.z }, colorInt };
+    _debugVertices3D[index + 11] = { { v1.x, v1.y, v1.z }, colorInt };
+    _debugVertices3D[index + 12] = { { v1.x, v1.y, v1.z }, colorInt };
+    _debugVertices3D[index + 13] = { { v0.x, v1.y, v1.z }, colorInt };
+    _debugVertices3D[index + 14] = { { v0.x, v1.y, v1.z }, colorInt };
+    _debugVertices3D[index + 15] = { { v0.x, v1.y, v0.z }, colorInt };
 
     // Vertical edges
-    vertices.push_back({ { v0.x, v0.y, v0.z }, colorInt });
-    vertices.push_back({ { v0.x, v1.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v0.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v0.z }, colorInt });
-    vertices.push_back({ { v0.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v0.x, v1.y, v1.z }, colorInt });
-    vertices.push_back({ { v1.x, v0.y, v1.z }, colorInt });
-    vertices.push_back({ { v1.x, v1.y, v1.z }, colorInt });
+    _debugVertices3D[index + 16] = { { v0.x, v0.y, v0.z }, colorInt };
+    _debugVertices3D[index + 17] = { { v0.x, v1.y, v0.z }, colorInt };
+    _debugVertices3D[index + 18] = { { v1.x, v0.y, v0.z }, colorInt };
+    _debugVertices3D[index + 19] = { { v1.x, v1.y, v0.z }, colorInt };
+    _debugVertices3D[index + 20] = { { v0.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index + 21] = { { v0.x, v1.y, v1.z }, colorInt };
+    _debugVertices3D[index + 22] = { { v1.x, v0.y, v1.z }, colorInt };
+    _debugVertices3D[index + 23] = { { v1.x, v1.y, v1.z }, colorInt };
 }
 
 void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const quat& rotation, Color color)
 {
-    auto& vertices = _debugVertices3D.Get();
-
     u32 colorInt = color.ToABGR32();
-
     vec3 corners[8] = {
         center + rotation * glm::vec3(-extents.x, -extents.y, -extents.z),
         center + rotation * glm::vec3( extents.x, -extents.y, -extents.z),
@@ -493,54 +489,75 @@ void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const qua
         center + rotation * glm::vec3(-extents.x,  extents.y,  extents.z)
     };
 
+    u32 index = _debugVertices3D.AddCount(24);
+
     // Bottom
-    vertices.push_back({ corners[0], colorInt });
-    vertices.push_back({ corners[1], colorInt });
-    vertices.push_back({ corners[1], colorInt });
-    vertices.push_back({ corners[2], colorInt });
-    vertices.push_back({ corners[2], colorInt });
-    vertices.push_back({ corners[3], colorInt });
-    vertices.push_back({ corners[3], colorInt });
-    vertices.push_back({ corners[0], colorInt });
+    _debugVertices3D[index +  0] = { corners[0], colorInt };
+    _debugVertices3D[index +  1] = { corners[1], colorInt };
+    _debugVertices3D[index +  2] = { corners[1], colorInt };
+    _debugVertices3D[index +  3] = { corners[2], colorInt };
+    _debugVertices3D[index +  4] = { corners[2], colorInt };
+    _debugVertices3D[index +  5] = { corners[3], colorInt };
+    _debugVertices3D[index +  6] = { corners[3], colorInt };
+    _debugVertices3D[index +  7] = { corners[0], colorInt };
 
     // Top
-    vertices.push_back({ corners[4], colorInt });
-    vertices.push_back({ corners[5], colorInt });
-    vertices.push_back({ corners[5], colorInt });
-    vertices.push_back({ corners[6], colorInt });
-    vertices.push_back({ corners[6], colorInt });
-    vertices.push_back({ corners[7], colorInt });
-    vertices.push_back({ corners[7], colorInt });
-    vertices.push_back({ corners[4], colorInt });
+    _debugVertices3D[index +  8] = { corners[4], colorInt };
+    _debugVertices3D[index +  9] = { corners[5], colorInt };
+    _debugVertices3D[index + 10] = { corners[5], colorInt };
+    _debugVertices3D[index + 11] = { corners[6], colorInt };
+    _debugVertices3D[index + 12] = { corners[6], colorInt };
+    _debugVertices3D[index + 13] = { corners[7], colorInt };
+    _debugVertices3D[index + 14] = { corners[7], colorInt };
+    _debugVertices3D[index + 15] = { corners[4], colorInt };
 
     // Vertical edges
-    vertices.push_back({ corners[0], colorInt });
-    vertices.push_back({ corners[4], colorInt });
-    vertices.push_back({ corners[1], colorInt });
-    vertices.push_back({ corners[5], colorInt });
-    vertices.push_back({ corners[2], colorInt });
-    vertices.push_back({ corners[6], colorInt });
-    vertices.push_back({ corners[3], colorInt });
-    vertices.push_back({ corners[7], colorInt });
+    _debugVertices3D[index + 16] = { corners[0], colorInt };
+    _debugVertices3D[index + 17] = { corners[4], colorInt };
+    _debugVertices3D[index + 18] = { corners[1], colorInt };
+    _debugVertices3D[index + 19] = { corners[5], colorInt };
+    _debugVertices3D[index + 20] = { corners[2], colorInt };
+    _debugVertices3D[index + 21] = { corners[6], colorInt };
+    _debugVertices3D[index + 22] = { corners[3], colorInt };
+    _debugVertices3D[index + 23] = { corners[7], colorInt };
 }
 
 void DebugRenderer::DrawTriangle2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color)
 {
-    DrawLine2D(v0, v1, color);
-    DrawLine2D(v1, v2, color);
-    DrawLine2D(v2, v0, color);
+    u32 colorInt = color.ToABGR32();
+
+    u32 index = _debugVertices2D.AddCount(6);
+
+    _debugVertices2D[index + 0] = { v0, colorInt };
+    _debugVertices2D[index + 1] = { v1, colorInt };
+
+    _debugVertices2D[index + 2] = { v1, colorInt };
+    _debugVertices2D[index + 3] = { v2, colorInt };
+
+    _debugVertices2D[index + 4] = { v2, colorInt };
+    _debugVertices2D[index + 5] = { v0, colorInt };
 }
 
 void DebugRenderer::DrawTriangle3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color)
 {
-    DrawLine3D(v0, v1, color);
-    DrawLine3D(v1, v2, color);
-    DrawLine3D(v2, v0, color);
+    u32 colorInt = color.ToABGR32();
+
+    u32 index = _debugVertices3D.AddCount(6);
+
+    _debugVertices3D[index + 0] = { v0, colorInt };
+    _debugVertices3D[index + 1] = { v1, colorInt };
+
+    _debugVertices3D[index + 2] = { v1, colorInt };
+    _debugVertices3D[index + 3] = { v2, colorInt };
+
+    _debugVertices3D[index + 4] = { v2, colorInt };
+    _debugVertices3D[index + 5] = { v0, colorInt };
 }
 
 void DebugRenderer::DrawCircle2D(const vec2& center, f32 radius, i32 resolution, Color color)
 {
-    auto& vertices = _debugVertices2D.Get();
+    // Ensure resolution is even
+    resolution += resolution % 2;
 
     u32 colorInt = color.ToABGR32();
 
@@ -548,49 +565,85 @@ void DebugRenderer::DrawCircle2D(const vec2& center, f32 radius, i32 resolution,
     constexpr f32 TAU = PI * 2.0f;
 
     const vec2& renderSize = _renderer->GetRenderSize();
-
     f32 increment = TAU / resolution;
-    for (f32 currentAngle = 0.0f; currentAngle <= TAU; currentAngle += increment)
+
+    // Each line segment (resolution of them) needs 2 vertices: start and end
+    u32 vertexCount = resolution * 2;
+    u32 index = _debugVertices2D.AddCount(vertexCount);
+
+    for (i32 i = 0; i < resolution; i++)
     {
-        glm::vec2 pos = glm::vec2(radius * glm::cos(currentAngle) + center.x, radius * glm::sin(currentAngle) + center.y) / renderSize;
-        vertices.push_back({ pos, colorInt });
+        f32 startAngle = i * increment;
+        f32 endAngle = (i + 1) * increment;
+
+        glm::vec2 posStart = glm::vec2(radius * glm::cos(startAngle) + center.x,
+            radius * glm::sin(startAngle) + center.y) / renderSize;
+
+        glm::vec2 posEnd = glm::vec2(radius * glm::cos(endAngle) + center.x,
+            radius * glm::sin(endAngle) + center.y) / renderSize;
+
+        _debugVertices2D[index + i * 2] = { posStart, colorInt };
+        _debugVertices2D[index + i * 2 + 1] = { posEnd,   colorInt };
     }
 }
 
 void DebugRenderer::DrawCircle3D(const vec3& center, f32 radius, i32 resolution, Color color)
 {
-    auto& vertices = _debugVertices3D.Get();
+    // Ensure resolution is even
+    resolution += resolution % 2;
 
     u32 colorInt = color.ToABGR32();
 
     constexpr f32 PI = glm::pi<f32>();
     constexpr f32 TAU = PI * 2.0f;
-
     f32 increment = TAU / resolution;
-    for (f32 currentAngle = 0.0f; currentAngle <= TAU; currentAngle += increment)
+
+    // Each segment (resolution) needs 2 vertices: start and end
+    u32 vertexCount = resolution * 2;
+    u32 index = _debugVertices3D.AddCount(vertexCount);
+
+    for (i32 i = 0; i < resolution; i++)
     {
-        vec3 pos = vec3(radius * glm::cos(currentAngle) + center.x, radius * glm::sin(currentAngle) + center.y, center.z);
-        vertices.push_back({ vec3(pos.x, pos.y, pos.z), colorInt });
+        f32 startAngle = i * increment;
+        f32 endAngle = (i + 1) * increment;
+
+        vec3 posStart(radius * glm::cos(startAngle) + center.x,
+            radius * glm::sin(startAngle) + center.y,
+            center.z);
+
+        vec3 posEnd(radius * glm::cos(endAngle) + center.x,
+            radius * glm::sin(endAngle) + center.y,
+            center.z);
+
+        _debugVertices3D[index + i * 2] = { posStart, colorInt };
+        _debugVertices3D[index + i * 2 + 1] = { posEnd,   colorInt };
     }
 }
 
 void DebugRenderer::DrawSphere3D(const vec3& center, f32 radius, i32 resolution, Color color)
 {
-    auto& vertices = _debugVertices3D.Get();
+    // Ensure resolution is even
+    resolution += resolution % 2;
 
     u32 colorInt = color.ToABGR32();
 
-    // Latitude lines
-    for (i32 lat = 0; lat <= resolution; ++lat) 
+    constexpr f32 PI = glm::pi<f32>();
+
+    // We'll precompute all points on the sphere
+    // We have (resolution+1) points along latitude and (resolution+1) along longitude
+    // lat from 0 to resolution, lon from 0 to resolution
+    std::vector<vec3> points;
+    points.reserve((resolution + 1) * (resolution + 1));
+
+    for (i32 lat = 0; lat <= resolution; ++lat)
     {
-        f32 theta = lat * Math::PI / resolution;
+        f32 theta = lat * PI / resolution;
         f32 sinTheta = sin(theta);
         f32 cosTheta = cos(theta);
 
-        // Loop around the longitude
-        for (i32 lon = 0; lon <= resolution; ++lon) 
+        for (i32 lon = 0; lon <= resolution; ++lon)
         {
-            f32 phi = lon * 2 * Math::PI / resolution;
+            f32 phi = lon * 2.0f * PI / resolution;
             f32 sinPhi = sin(phi);
             f32 cosPhi = cos(phi);
 
@@ -599,22 +652,47 @@ void DebugRenderer::DrawSphere3D(const vec3& center, f32 radius, i32 resolution,
             point.y = center.y + radius * cosTheta;
             point.z = center.z + radius * sinPhi * sinTheta;
 
-            // Connect this point to the next, and the one directly 'below' it if we're not at the poles
-            if (lon != resolution) 
-            {
-                vertices.push_back({ point, colorInt });
-                vertices.push_back({ {center.x + radius * cos(phi + 2 * Math::PI / resolution) * sinTheta,
-                                      center.y + radius * cosTheta,
-                                      center.z + radius * sin(phi + 2 * Math::PI / resolution) * sinTheta}, colorInt });
-            }
+            points.push_back(point);
+        }
+    }
 
-            if (lat != resolution) 
-            {
-                vertices.push_back({ point, colorInt });
-                vertices.push_back({ {center.x + radius * cosPhi * sin(theta + Math::PI / resolution),
-                                      center.y + radius * cos(theta + Math::PI / resolution),
-                                      center.z + radius * sinPhi * sin(theta + Math::PI / resolution)}, colorInt });
-            }
+    // Each lat line: we connect 'resolution' horizontal segments
+    // For each of the (resolution+1) lat lines, we have resolution horizontal segments
+    // Each lon line: we connect 'resolution' vertical segments
+    // For each of the (resolution+1) lon lines, we have resolution vertical segments
+    // Total horizontal segments: (resolution+1)*resolution
+    // Total vertical segments: (resolution+1)*resolution
+    // Total segments: 2*(resolution+1)*resolution
+    // Each segment has 2 vertices, so total vertices = 2 * 2 * (resolution+1)*resolution = 4*(resolution+1)*resolution
+
+    u32 totalSegments = 2 * (resolution + 1) * resolution;
+    u32 totalVertices = totalSegments * 2;
+
+    u32 index = _debugVertices3D.AddCount(totalVertices);
+
+    // Fill horizontal line segments (connect points along each latitude line)
+    for (i32 lat = 0; lat <= resolution; ++lat)
+    {
+        for (i32 lon = 0; lon < resolution; ++lon)
+        {
+            u32 p1 = lat * (resolution + 1) + lon;
+            u32 p2 = p1 + 1;
+
+            _debugVertices3D[index++] = { points[p1], colorInt };
+            _debugVertices3D[index++] = { points[p2], colorInt };
+        }
+    }
+
+    // Fill vertical line segments (connect points along each longitude)
+    for (i32 lat = 0; lat < resolution; ++lat)
+    {
+        for (i32 lon = 0; lon <= resolution; ++lon)
+        {
+            u32 p1 = lat * (resolution + 1) + lon;
+            u32 p2 = p1 + (resolution + 1);
+
+            _debugVertices3D[index++] = { points[p1], colorInt };
+            _debugVertices3D[index++] = { points[p2], colorInt };
         }
     }
 }
@@ -628,6 +706,7 @@ vec3 DebugRenderer::UnProject(const vec3& point, const mat4x4& m)
 
 void DebugRenderer::DrawFrustum(const mat4x4& viewProjectionMatrix, Color color)
 {
+    u32 colorInt = color.ToABGR32();
     const mat4x4 m = glm::inverse(viewProjectionMatrix);
 
     const vec3 near0 = UnProject(vec3(-1.0f, -1.0f, 0.0f), m);
@@ -640,49 +719,67 @@ void DebugRenderer::DrawFrustum(const mat4x4& viewProjectionMatrix, Color color)
     const vec3 far2 = UnProject(vec3(+1.0f, +1.0f, 1.0f), m);
     const vec3 far3 = UnProject(vec3(-1.0f, +1.0f, 1.0f), m);
 
+    u32 index = _debugVertices3D.AddCount(24);
+
     // Near plane
-    DrawLine3D(near0, near1, color);
-    DrawLine3D(near1, near2, color);
-    DrawLine3D(near2, near3, color);
-    DrawLine3D(near3, near0, color);
+    _debugVertices3D[index +  0] = { near0, colorInt };
+    _debugVertices3D[index +  1] = { near1, colorInt };
+    _debugVertices3D[index +  2] = { near1, colorInt };
+    _debugVertices3D[index +  3] = { near2, colorInt };
+    _debugVertices3D[index +  4] = { near2, colorInt };
+    _debugVertices3D[index +  5] = { near3, colorInt };
+    _debugVertices3D[index +  6] = { near3, colorInt };
+    _debugVertices3D[index +  7] = { near0, colorInt };
 
     // Far plane
-    DrawLine3D(far0, far1, color);
-    DrawLine3D(far1, far2, color);
-    DrawLine3D(far2, far3, color);
-    DrawLine3D(far3, far0, color);
+    _debugVertices3D[index +  8] = { far0, colorInt };
+    _debugVertices3D[index +  9] = { far1, colorInt };
+    _debugVertices3D[index + 10] = { far1, colorInt };
+    _debugVertices3D[index + 11] = { far2, colorInt };
+    _debugVertices3D[index + 12] = { far2, colorInt };
+    _debugVertices3D[index + 13] = { far3, colorInt };
+    _debugVertices3D[index + 14] = { far3, colorInt };
+    _debugVertices3D[index + 15] = { far0, colorInt };
 
     // Edges
-    DrawLine3D(near0, far0, color);
-    DrawLine3D(near1, far1, color);
-    DrawLine3D(near2, far2, color);
-    DrawLine3D(near3, far3, color);
+    _debugVertices3D[index + 16] = { near0, colorInt };
+    _debugVertices3D[index + 17] = { far0, colorInt };
+    _debugVertices3D[index + 18] = { near1, colorInt };
+    _debugVertices3D[index + 19] = { far1, colorInt };
+    _debugVertices3D[index + 20] = { near2, colorInt };
+    _debugVertices3D[index + 21] = { far2, colorInt };
+    _debugVertices3D[index + 22] = { near3, colorInt };
+    _debugVertices3D[index + 23] = { far3, colorInt };
 }
 
 void DebugRenderer::DrawMatrix(const mat4x4& matrix, f32 scale)
 {
     const vec3 origin = vec3(matrix[3].x, matrix[3].y, matrix[3].z);
 
-    DrawLine3D(origin, origin + (vec3(matrix[0].x, matrix[0].y, matrix[0].z) * scale), Color::Red);
-    DrawLine3D(origin, origin + (vec3(matrix[1].x, matrix[1].y, matrix[1].z) * scale), Color::Green);
-    DrawLine3D(origin, origin + (vec3(matrix[2].x, matrix[2].y, matrix[2].z) * scale), Color::Blue);
+    u32 index = _debugVertices3D.AddCount(6);
+
+    _debugVertices3D[index + 0] = { origin, 0xFF0000FF };
+    _debugVertices3D[index + 1] = { origin + (vec3(matrix[0].x, matrix[0].y, matrix[0].z) * scale), 0xFF0000FF };
+
+    _debugVertices3D[index + 2] = { origin, 0xFF00FF00 };
+    _debugVertices3D[index + 3] = { origin + (vec3(matrix[1].x, matrix[1].y, matrix[1].z) * scale), 0xFF00FF00 };
+
+    _debugVertices3D[index + 4] = { origin, 0xFFFF0000 };
+    _debugVertices3D[index + 5] = { origin + (vec3(matrix[2].x, matrix[2].y, matrix[2].z) * scale), 0xFFFF0000 };
 }
 
 void DebugRenderer::DrawLineSolid2D(const vec2& from, const vec2& to, Color color, bool shaded)
 {
     color.a = static_cast<f32>(shaded);
     u32 colorInt = color.ToABGR32();
-
-    auto& vertices = _debugVerticesSolid2D.Get();
-
-    vertices.push_back({ from, colorInt });
-    vertices.push_back({ to, colorInt });
+    
+    u32 index = _debugVerticesSolid2D.AddCount(2);
+    _debugVerticesSolid2D[index + 0] = { from, colorInt };
+    _debugVerticesSolid2D[index + 1] = { to, colorInt };
 }
 
 void DebugRenderer::DrawAABBSolid3D(const vec3& center, const vec3& extents, Color color, bool shaded)
 {
-    auto& vertices = _debugVerticesSolid3D.Get();
-
     vec3 v0 = center - extents;
     vec3 v1 = center + extents;
 
@@ -698,65 +795,65 @@ void DebugRenderer::DrawAABBSolid3D(const vec3& center, const vec3& extents, Col
     u32 colorInt = color.ToABGR32();
     f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
 
-    // Bottom
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v1.z, 0 ), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v0.z, 0 ), vec4(bottomNormal, colorFloat) });
+    u32 index = _debugVerticesSolid3D.AddCount(36);
 
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v0.y, v1.z, 0 ), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v1.z, 0 ), vec4(bottomNormal, colorFloat) });
+    // Bottom
+    _debugVerticesSolid3D[index +  0] = { vec4(v0.x, v0.y, v0.z, 0), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  1] = { vec4(v1.x, v0.y, v1.z, 0), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  2] = { vec4(v1.x, v0.y, v0.z, 0), vec4(bottomNormal, colorFloat) };
+
+    _debugVerticesSolid3D[index +  3] = { vec4(v0.x, v0.y, v0.z, 0), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  4] = { vec4(v0.x, v0.y, v1.z, 0), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  5] = { vec4(v1.x, v0.y, v1.z, 0), vec4(bottomNormal, colorFloat) };
 
     // Top
-    vertices.push_back({ vec4(v0.x, v1.y, v0.z, 0 ), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v0.z, 0 ), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(topNormal, colorFloat) });
+    _debugVerticesSolid3D[index +  6] = { vec4(v0.x, v1.y, v0.z, 0), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  7] = { vec4(v1.x, v1.y, v0.z, 0), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  8] = { vec4(v1.x, v1.y, v1.z, 0), vec4(topNormal, colorFloat) };
 
-    vertices.push_back({ vec4(v0.x, v1.y, v0.z, 0 ), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v1.z, 0 ), vec4(topNormal, colorFloat) });
+    _debugVerticesSolid3D[index +  9] = { vec4(v0.x, v1.y, v0.z, 0), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 10] = { vec4(v1.x, v1.y, v1.z, 0), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 11] = { vec4(v0.x, v1.y, v1.z, 0), vec4(topNormal, colorFloat) };
 
     // Front
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 12] = { vec4(v0.x, v0.y, v0.z, 0), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 13] = { vec4(v1.x, v1.y, v0.z, 0), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 14] = { vec4(v0.x, v1.y, v0.z, 0), vec4(frontNormal, colorFloat) };
 
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v0.z, 0 ), vec4(frontNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 15] = { vec4(v0.x, v0.y, v0.z, 0), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 16] = { vec4(v1.x, v0.y, v0.z, 0), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 17] = { vec4(v1.x, v1.y, v0.z, 0), vec4(frontNormal, colorFloat) };
 
     // Back
-    vertices.push_back({ vec4(v0.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 18] = { vec4(v0.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 19] = { vec4(v0.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 20] = { vec4(v1.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
 
-    vertices.push_back({ vec4(v0.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 21] = { vec4(v0.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 22] = { vec4(v1.x, v1.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 23] = { vec4(v1.x, v0.y, v1.z, 0 ), vec4(backNormal, colorFloat) };
 
     // Left
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v1.z, 0 ), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v0.y, v1.z, 0 ), vec4(leftNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 24] = { vec4(v0.x, v0.y, v0.z, 0 ), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 25] = { vec4(v0.x, v1.y, v1.z, 0 ), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 26] = { vec4(v0.x, v0.y, v1.z, 0 ), vec4(leftNormal, colorFloat) };
 
-    vertices.push_back({ vec4(v0.x, v0.y, v0.z, 0 ), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v0.z, 0 ), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(v0.x, v1.y, v1.z, 0 ), vec4(leftNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 27] = { vec4(v0.x, v0.y, v0.z, 0 ), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 28] = { vec4(v0.x, v1.y, v0.z, 0 ), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 29] = { vec4(v0.x, v1.y, v1.z, 0 ), vec4(leftNormal, colorFloat) };
 
     // Right
-    vertices.push_back({ vec4(v1.x, v0.y, v0.z, 0 ), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v0.y, v1.z, 0 ), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(rightNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 30] = { vec4(v1.x, v0.y, v0.z, 0 ), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 31] = { vec4(v1.x, v0.y, v1.z, 0 ), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 32] = { vec4(v1.x, v1.y, v1.z, 0 ), vec4(rightNormal, colorFloat) };
 
-    vertices.push_back({ vec4(v1.x, v0.y, v0.z, 0 ), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v1.z, 0 ), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(v1.x, v1.y, v0.z, 0 ), vec4(rightNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 33] = { vec4(v1.x, v0.y, v0.z, 0 ), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 34] = { vec4(v1.x, v1.y, v1.z, 0 ), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 35] = { vec4(v1.x, v1.y, v0.z, 0 ), vec4(rightNormal, colorFloat) };
 }
 
 void DebugRenderer::DrawOBBSolid3D(const vec3& center, const vec3& extents, const quat& rotation, Color color, bool shaded)
 {
-    auto& vertices = _debugVerticesSolid3D.Get();
-
     vec3 corners[8] = {
         center + rotation * glm::vec3(-extents.x, -extents.y, -extents.z),
         center + rotation * glm::vec3(extents.x, -extents.y, -extents.z),
@@ -780,83 +877,96 @@ void DebugRenderer::DrawOBBSolid3D(const vec3& center, const vec3& extents, cons
     u32 colorInt = color.ToABGR32();
     f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
 
-    // Bottom
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[2], 0.0f), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[1], 0.0f), vec4(bottomNormal, colorFloat) });
+    u32 index = _debugVerticesSolid3D.AddCount(36);
 
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[3], 0.0f), vec4(bottomNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[2], 0.0f), vec4(bottomNormal, colorFloat) });
+    // Bottom
+    _debugVerticesSolid3D[index +  0] = { vec4(corners[0], 0.0f), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  1] = { vec4(corners[2], 0.0f), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  2] = { vec4(corners[1], 0.0f), vec4(bottomNormal, colorFloat) };
+
+    _debugVerticesSolid3D[index +  3] = { vec4(corners[0], 0.0f), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  4] = { vec4(corners[3], 0.0f), vec4(bottomNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  5] = { vec4(corners[2], 0.0f), vec4(bottomNormal, colorFloat) };
 
     // Top
-    vertices.push_back({ vec4(corners[4], 0.0f), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[5], 0.0f), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[6], 0.0f), vec4(topNormal, colorFloat) });
+    _debugVerticesSolid3D[index +  6] = { vec4(corners[4], 0.0f), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  7] = { vec4(corners[5], 0.0f), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index +  8] = { vec4(corners[6], 0.0f), vec4(topNormal, colorFloat) };
 
-    vertices.push_back({ vec4(corners[4], 0.0f), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[6], 0.0f), vec4(topNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[7], 0.0f), vec4(topNormal, colorFloat) });
+    _debugVerticesSolid3D[index +  9] = { vec4(corners[4], 0.0f), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 10] = { vec4(corners[6], 0.0f), vec4(topNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 11] = { vec4(corners[7], 0.0f), vec4(topNormal, colorFloat) };
 
     // Front
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[1], 0.0f), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[5], 0.0f), vec4(frontNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 12] = { vec4(corners[0], 0.0f), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 13] = { vec4(corners[1], 0.0f), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 14] = { vec4(corners[5], 0.0f), vec4(frontNormal, colorFloat) };
 
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[5], 0.0f), vec4(frontNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[4], 0.0f), vec4(frontNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 15] = { vec4(corners[0], 0.0f), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 16] = { vec4(corners[5], 0.0f), vec4(frontNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 17] = { vec4(corners[4], 0.0f), vec4(frontNormal, colorFloat) };
 
     // Back
-    vertices.push_back({ vec4(corners[2], 0.0f), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[3], 0.0f), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[7], 0.0f), vec4(backNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 18] = { vec4(corners[2], 0.0f), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 19] = { vec4(corners[3], 0.0f), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 20] = { vec4(corners[7], 0.0f), vec4(backNormal, colorFloat) };
 
-    vertices.push_back({ vec4(corners[2], 0.0f), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[7], 0.0f), vec4(backNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[6], 0.0f), vec4(backNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 21] = { vec4(corners[2], 0.0f), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 22] = { vec4(corners[7], 0.0f), vec4(backNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 23] = { vec4(corners[6], 0.0f), vec4(backNormal, colorFloat) };
 
     // Left
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[7], 0.0f), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[3], 0.0f), vec4(leftNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 24] = { vec4(corners[0], 0.0f), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 25] = { vec4(corners[7], 0.0f), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 26] = { vec4(corners[3], 0.0f), vec4(leftNormal, colorFloat) };
 
-    vertices.push_back({ vec4(corners[0], 0.0f), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[4], 0.0f), vec4(leftNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[7], 0.0f), vec4(leftNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 27] = { vec4(corners[0], 0.0f), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 28] = { vec4(corners[4], 0.0f), vec4(leftNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 29] = { vec4(corners[7], 0.0f), vec4(leftNormal, colorFloat) };
 
     // Right
-    vertices.push_back({ vec4(corners[1], 0.0f), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[2], 0.0f), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[6], 0.0f), vec4(rightNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 30] = { vec4(corners[1], 0.0f), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 31] = { vec4(corners[2], 0.0f), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 32] = { vec4(corners[6], 0.0f), vec4(rightNormal, colorFloat) };
 
-    vertices.push_back({ vec4(corners[1], 0.0f), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[6], 0.0f), vec4(rightNormal, colorFloat) });
-    vertices.push_back({ vec4(corners[5], 0.0f), vec4(rightNormal, colorFloat) });
+    _debugVerticesSolid3D[index + 33] = { vec4(corners[1], 0.0f), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 34] = { vec4(corners[6], 0.0f), vec4(rightNormal, colorFloat) };
+    _debugVerticesSolid3D[index + 35] = { vec4(corners[5], 0.0f), vec4(rightNormal, colorFloat) };
 }
 
 void DebugRenderer::DrawTriangleSolid2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color, bool shaded)
 {
     color.a = static_cast<f32>(shaded);
+    u32 colorInt = color.ToABGR32();
 
-    DrawLineSolid2D(v0, v1, color, shaded);
-    DrawLineSolid2D(v1, v2, color, shaded);
-    DrawLineSolid2D(v2, v0, color, shaded);
+    u32 index = _debugVerticesSolid2D.AddCount(6);
+    _debugVerticesSolid2D[index + 0] = { v0, colorInt };
+    _debugVerticesSolid2D[index + 1] = { v1, colorInt };
+
+    _debugVerticesSolid2D[index + 2] = { v1, colorInt };
+    _debugVerticesSolid2D[index + 3] = { v2, colorInt };
+
+    _debugVerticesSolid2D[index + 4] = { v2, colorInt };
+    _debugVerticesSolid2D[index + 5] = { v0, colorInt };
 }
 
 void DebugRenderer::DrawTriangleSolid3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color, bool shaded)
 {
-    auto& vertices = _debugVerticesSolid3D.Get();
-
     vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
     color.a = static_cast<f32>(shaded);
     u32 colorInt = color.ToABGR32();
     f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
     
-    vertices.push_back({ vec4(v0, 0.0f), vec4(normal, colorFloat ) });
-    vertices.push_back({ vec4(v1, 0.0f), vec4(normal, colorFloat ) });
-    vertices.push_back({ vec4(v2, 0.0f), vec4(normal, colorFloat ) });
+    u32 index = _debugVerticesSolid3D.AddCount(6);
+    _debugVerticesSolid3D[index + 0] = { vec4(v0, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3D[index + 1] = { vec4(v1, 0.0f), vec4(normal, colorFloat) };
+
+    _debugVerticesSolid3D[index + 2] = { vec4(v1, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3D[index + 3] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
+
+    _debugVerticesSolid3D[index + 4] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3D[index + 5] = { vec4(v0, 0.0f), vec4(normal, colorFloat) };
 }
 
 void DebugRenderer::RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder)

@@ -70,7 +70,7 @@ namespace Editor
 
             Renderer::GPUVector<mat4x4>& instances = modelRenderer->GetInstanceMatrices();
 
-            instances.Get()[_instanceID] = _preEditValue;
+            instances[_instanceID] = _preEditValue;
             instances.SetDirtyElement(_instanceID);
         }
 
