@@ -680,7 +680,7 @@ JPH::DebugRenderer::Batch JoltDebugRenderer::CreateTriangleBatch(const Vertex* i
     batch->isIndexed = true;
 
     // Add vertices
-    u32 vertexOffset = _vertices.AddCount(inVertexCount);//static_cast<u32>(vertices.size());
+    u32 vertexOffset = _vertices.AddCount(inVertexCount);
 
     vec3 min = vec3(FLT_MAX);
     vec3 max = vec3(-FLT_MAX);
@@ -806,7 +806,7 @@ void JoltDebugRenderer::DrawGeometry(JPH::RMat44Arg inModelMatrix, const JPH::AA
     bool isIndexed = joltBatch->isIndexed;
 
     // Add instance
-    u32 instanceID = _instances.Add(); // TODO: This probably grows every frame
+    u32 instanceID = _instances.Add();
     mat4x4& instance = _instances[instanceID];
 
     for (u32 i = 0; i < 4; i++)

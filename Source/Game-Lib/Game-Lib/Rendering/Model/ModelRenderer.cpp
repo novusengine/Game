@@ -889,12 +889,6 @@ u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
 
 void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 {
-    // Function AllocateForModel which LoadModel calls and passes in complexmodel
-    // Calculate all the numbers for how much we need to add (pretty much this)
-    // Try to acquire lock or wait, then add for everything
-    // Now we have a bunch of offsets, return them to the LoadModel function
-
-    // Basically move current Reserve functionality into AllocateForModel, and turn Reserve into a proper reserve which only increases capacity
     _instanceDatas.Reserve(reserveInfo.numInstances);
     _instanceMatrices.Reserve(reserveInfo.numInstances);
 
