@@ -47,6 +47,7 @@ EffectRenderer::~EffectRenderer()
 
 void EffectRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
     /*vec2 renderSize = _renderer->GetRenderSize();
     if (_lastRenderSize != renderSize)
     {

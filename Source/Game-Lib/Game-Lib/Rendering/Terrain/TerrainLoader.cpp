@@ -90,6 +90,8 @@ void TerrainLoader::Clear()
 
 void TerrainLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     LoadRequestInternal loadRequest;
 
     while (_requests.try_dequeue(loadRequest))

@@ -139,6 +139,11 @@ void CullingResourcesBase::Remove(u32 index)
     _instanceRefs.Remove(index);
 }
 
+void CullingResourcesBase::Reserve(u32 count)
+{
+    _instanceRefs.Reserve(count);
+}
+
 bool CullingResourcesBase::SyncToGPU()
 {
     bool gotRecreated = false;
@@ -199,6 +204,27 @@ void CullingResourcesBase::Clear()
     _instanceRefs.Clear();
 }
 
+bool CullingResourcesBase::IsDirty() const
+{
+    return _instanceRefs.IsDirty();
+}
+void CullingResourcesBase::SetDirtyRegion(size_t offset, size_t size)
+{
+    _instanceRefs.SetDirtyRegion(offset, size);
+}
+void CullingResourcesBase::SetDirtyElement(size_t index)
+{
+    _instanceRefs.SetDirtyElement(index);
+}
+void CullingResourcesBase::SetDirtyElements(size_t startIndex, size_t count)
+{
+    _instanceRefs.SetDirtyElements(startIndex, count);
+}
+void CullingResourcesBase::SetDirty()
+{
+    _instanceRefs.SetDirty();
+}
+
 void CullingResourcesBase::ResetCullingStats()
 {
     _numSurvivingOccluderInstances = 0;
@@ -249,6 +275,12 @@ void CullingResourcesIndexedBase::Remove(u32 index)
 {
     CullingResourcesBase::Remove(index);
     _drawCalls.Remove(index);
+}
+
+void CullingResourcesIndexedBase::Reserve(u32 count)
+{
+    CullingResourcesBase::Reserve(count);
+    _drawCalls.Reserve(count);
 }
 
 bool CullingResourcesIndexedBase::SyncToGPU()
@@ -336,6 +368,32 @@ void CullingResourcesIndexedBase::Clear()
     _drawCalls.Clear();
 }
 
+bool CullingResourcesIndexedBase::IsDirty() const
+{
+    bool isDirty = CullingResourcesBase::IsDirty();
+    return isDirty || _drawCalls.IsDirty();
+}
+void CullingResourcesIndexedBase::SetDirtyRegion(size_t offset, size_t size)
+{
+    CullingResourcesBase::SetDirtyRegion(offset, size);
+    _drawCalls.SetDirtyRegion(offset, size);
+}
+void CullingResourcesIndexedBase::SetDirtyElement(size_t index)
+{
+    CullingResourcesBase::SetDirtyElement(index);
+    _drawCalls.SetDirtyElement(index);
+}
+void CullingResourcesIndexedBase::SetDirtyElements(size_t startIndex, size_t count)
+{
+    CullingResourcesBase::SetDirtyElements(startIndex, count);
+    _drawCalls.SetDirtyElements(startIndex, count);
+}
+void CullingResourcesIndexedBase::SetDirty()
+{
+    CullingResourcesBase::SetDirty();
+    _drawCalls.SetDirty();
+}
+
 u32 CullingResourcesIndexedBase::GetDrawCallCount()
 {
     return static_cast<u32>(_drawCalls.Count());
@@ -384,6 +442,12 @@ void CullingResourcesNonIndexedBase::Remove(u32 index)
 {
     CullingResourcesBase::Remove(index);
     _drawCalls.Remove(index);
+}
+
+void CullingResourcesNonIndexedBase::Reserve(u32 count)
+{
+    CullingResourcesBase::Reserve(count);
+    _drawCalls.Reserve(count);
 }
 
 bool CullingResourcesNonIndexedBase::SyncToGPU()
@@ -470,6 +534,32 @@ void CullingResourcesNonIndexedBase::Clear()
 {
     CullingResourcesBase::Clear();
     _drawCalls.Clear();
+}
+
+bool CullingResourcesNonIndexedBase::IsDirty() const
+{
+    bool isDirty = CullingResourcesBase::IsDirty();
+    return isDirty || _drawCalls.IsDirty();
+}
+void CullingResourcesNonIndexedBase::SetDirtyRegion(size_t offset, size_t size)
+{
+    CullingResourcesBase::SetDirtyRegion(offset, size);
+    _drawCalls.SetDirtyRegion(offset, size);
+}
+void CullingResourcesNonIndexedBase::SetDirtyElement(size_t index)
+{
+    CullingResourcesBase::SetDirtyElement(index);
+    _drawCalls.SetDirtyElement(index);
+}
+void CullingResourcesNonIndexedBase::SetDirtyElements(size_t startIndex, size_t count)
+{
+    CullingResourcesBase::SetDirtyElements(startIndex, count);
+    _drawCalls.SetDirtyElements(startIndex, count);
+}
+void CullingResourcesNonIndexedBase::SetDirty()
+{
+    CullingResourcesBase::SetDirty();
+    _drawCalls.SetDirty();
 }
 
 u32 CullingResourcesNonIndexedBase::GetDrawCallCount()

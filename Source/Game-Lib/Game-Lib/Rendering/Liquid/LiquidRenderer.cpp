@@ -51,6 +51,8 @@ LiquidRenderer::~LiquidRenderer()
 
 void LiquidRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (!CVAR_LiquidRendererEnabled.Get())
         return;
 
@@ -102,8 +104,8 @@ void LiquidRenderer::Load(LoadDesc& desc)
     // Shared lock as we don't do anything that causes reallocation
     std::shared_lock lock(_addLiquidMutex);
 
-    Renderer::GPUVector<Renderer::IndexedIndirectDraw>& drawCalls = _cullingResources.GetDrawCalls();
-    Renderer::GPUVector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas();
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& drawCalls = _cullingResources.GetDrawCalls();
+    const Renderer::GPUVector<DrawCallData>& drawCallDatas = _cullingResources.GetDrawCallDatas();
 
     Renderer::IndexedIndirectDraw& drawCall = drawCalls[desc.instanceOffset];
     drawCall.instanceCount = 1;

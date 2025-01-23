@@ -93,8 +93,7 @@ void ModelRenderer::Update(f32 deltaTime)
             return;
         }
 
-        std::vector<mat4x4>& instanceMatrices = _instanceMatrices.Get();
-        mat4x4& matrix = instanceMatrices[instanceID];
+        mat4x4& matrix = _instanceMatrices[instanceID];
 
         matrix = transform.GetMatrix();
         _instanceMatrices.SetDirtyElement(instanceID);
@@ -115,39 +114,25 @@ void ModelRenderer::Clear()
     ZoneScoped;
 
     _modelManifests.clear();
-    _modelManifestsIndex.store(0);
-
     _modelIDToNumInstances.clear();
 
     _cullingDatas.Clear();
-
     _vertices.Clear();
-    _verticesIndex.store(0);
-
     _indices.Clear();
-    _indicesIndex.store(0);
 
     _instanceDatas.Clear();
     _instanceMatrices.Clear();
-    _instanceIndex.store(0);
 
     _textureUnits.Clear();
-    _textureUnitIndex.store(0);
 
     _boneMatrices.Clear();
-    _boneMatrixIndex.store(0);
-
     _textureTransformMatrices.Clear();
-    _textureTransformMatrixIndex.store(0);
 
     _animatedVertices.Clear(false);
     _animatedVerticesIndex.store(0);
 
     _modelDecorationSets.clear();
-    _modelDecorationSetsIndex.store(0);
-
     _modelDecorations.clear();
-    _modelDecorationsIndex.store(0);
 
     _opaqueCullingResources.Clear();
     _transparentCullingResources.Clear();
@@ -170,7 +155,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (!CVAR_ModelCullingEnabled.Get())
         return;
 
-    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     CVarSystem* cvarSystem = CVarSystem::Get();
@@ -287,7 +272,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     if (!CVAR_ModelCullingEnabled.Get())
         return;
 
-    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     struct Data
@@ -377,7 +362,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (!CVAR_ModelRendererEnabled.Get())
         return;
 
-    if (_opaqueCullingResources.GetDrawCalls().Size() == 0)
+    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     CVarSystem* cvarSystem = CVarSystem::Get();
@@ -500,7 +485,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     if (!CVAR_ModelCullingEnabled.Get())
         return;
 
-    if (_transparentCullingResources.GetDrawCalls().Size() == 0)
+    if (_transparentCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
@@ -594,7 +579,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
     if (!CVAR_ModelRendererEnabled.Get())
         return;
 
-    if (_transparentCullingResources.GetDrawCalls().Size() == 0)
+    if (_transparentCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
@@ -696,7 +681,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
     if (!CVAR_ModelRendererEnabled.Get())
         return;
 
-    if (_opaqueSkyboxCullingResources.GetDrawCalls().Size() > 0)
+    if (_opaqueSkyboxCullingResources.GetDrawCalls().Count() > 0)
     {
         struct Data
         {
@@ -783,7 +768,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
             });
     }
 
-    if (_transparentSkyboxCullingResources.GetDrawCalls().Size() > 0)
+    if (_transparentSkyboxCullingResources.GetDrawCalls().Count() > 0)
     {
         struct Data
         {
@@ -892,117 +877,57 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
 
 u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
 {
-    Renderer::GPUVector<DrawCallData>& drawCallDatas = (isOpaque) ? _opaqueCullingResources.GetDrawCallDatas() : _transparentCullingResources.GetDrawCallDatas();
+    const Renderer::GPUVector<DrawCallData>& drawCallDatas = (isOpaque) ? _opaqueCullingResources.GetDrawCallDatas() : _transparentCullingResources.GetDrawCallDatas();
 
-    if (drawCallDatas.Size() < drawCallID)
+    if (drawCallDatas.Count() < drawCallID)
     {
         NC_LOG_CRITICAL("ModelRenderer : Tried to get InstanceID from invalid {0} DrawCallID {1}", isOpaque ? "Opaque" : "Transparent", drawCallID);
     }
 
-    return drawCallDatas.Get()[drawCallID].instanceID;
+    return drawCallDatas[drawCallID].instanceID;
 }
 
 void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 {
-    _modelIDToNumInstances.resize(_modelIDToNumInstances.size() + reserveInfo.numModels);
-    _modelManifests.resize(_modelManifests.size() + reserveInfo.numModels);
+    // Function AllocateForModel which LoadModel calls and passes in complexmodel
+    // Calculate all the numbers for how much we need to add (pretty much this)
+    // Try to acquire lock or wait, then add for everything
+    // Now we have a bunch of offsets, return them to the LoadModel function
 
-    _cullingDatas.Grow(reserveInfo.numModels);
+    // Basically move current Reserve functionality into AllocateForModel, and turn Reserve into a proper reserve which only increases capacity
+    _instanceDatas.Reserve(reserveInfo.numInstances);
+    _instanceMatrices.Reserve(reserveInfo.numInstances);
 
-    _vertices.Grow(reserveInfo.numVertices);
-    _indices.Grow(reserveInfo.numIndices);
+    _instanceIDToOpaqueDrawCallOffset.reserve(_instanceIDToOpaqueDrawCallOffset.size() + reserveInfo.numInstances);
+    _instanceIDToTransparentDrawCallOffset.reserve(_instanceIDToTransparentDrawCallOffset.size() + reserveInfo.numInstances);
 
-    _instanceDatas.Grow(reserveInfo.numInstances);
-    _instanceMatrices.Grow(reserveInfo.numInstances);
-    _instanceIDToOpaqueDrawCallOffset.resize(_instanceIDToOpaqueDrawCallOffset.size() + reserveInfo.numInstances);
-    _instanceIDToTransparentDrawCallOffset.resize(_instanceIDToTransparentDrawCallOffset.size() + reserveInfo.numInstances);
+    _cullingDatas.Reserve(reserveInfo.numModels);
+    _modelIDToNumInstances.reserve(_modelIDToNumInstances.size() + reserveInfo.numModels);
+    _modelManifests.reserve(_modelManifests.size() + reserveInfo.numModels);
 
-    _textureUnits.Grow(reserveInfo.numTextureUnits);
+    _vertices.Reserve(reserveInfo.numVertices);
+    _indices.Reserve(reserveInfo.numIndices);
 
-    u32 numBoneMatrices = static_cast<u32>(_boneMatrices.Size());
-    _boneMatrices.Grow(reserveInfo.numBones);
+    _textureUnits.Reserve(reserveInfo.numTextureUnits);
 
-    std::vector<glm::mat4>& boneMatrices = _boneMatrices.Get();
-    for (u32 i = 0; i < reserveInfo.numBones; ++i)
-    {
-        boneMatrices[numBoneMatrices + i] = glm::mat4(1.0f);
-    }
+    _boneMatrices.Reserve(reserveInfo.numBones);
+        
+    _textureTransformMatrices.Reserve(reserveInfo.numTextureTransforms);
 
-    u32 numTextureTransformMatrices = static_cast<u32>(_textureTransformMatrices.Size());
-    _textureTransformMatrices.Grow(reserveInfo.numTextureTransforms);
+    _modelDecorationSets.reserve(_modelDecorationSets.size() + reserveInfo.numDecorationSets);
+    _modelDecorations.reserve(_modelDecorations.size() + reserveInfo.numDecorations);
 
-    std::vector<glm::mat4>& textureTransformMatrices = _textureTransformMatrices.Get();
-    for (u32 i = 0; i < reserveInfo.numTextureTransforms; ++i)
-    {
-        textureTransformMatrices[numTextureTransformMatrices + i] = glm::mat4(1.0f);
-    }
+    _opaqueCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
+    _transparentCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
 
-    u32 numDecorationSets = static_cast<u32>(_modelDecorationSets.size());
-    _modelDecorationSets.resize(numDecorationSets + reserveInfo.numDecorationSets);
+    _opaqueSkyboxCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
+    _transparentSkyboxCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
 
-    u32 numDecorations = static_cast<u32>(_modelDecorations.size());
-    _modelDecorations.resize(numDecorations + reserveInfo.numDecorations);
+    _modelOpaqueDrawCallTemplates.reserve(_modelOpaqueDrawCallTemplates.size() + reserveInfo.numUniqueOpaqueDrawcalls);
+    _modelOpaqueDrawCallDataTemplates.reserve(_modelOpaqueDrawCallDataTemplates.size() + reserveInfo.numUniqueOpaqueDrawcalls);
 
-    _opaqueCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
-    _transparentCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
-
-    _opaqueSkyboxCullingResources.Grow(reserveInfo.numOpaqueDrawcalls);
-    _transparentSkyboxCullingResources.Grow(reserveInfo.numTransparentDrawcalls);
-
-    u32 numUniqueOpaqueDrawCalls = static_cast<u32>(_modelOpaqueDrawCallTemplates.size());
-    _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls + reserveInfo.numUniqueOpaqueDrawcalls);
-    _modelOpaqueDrawCallDataTemplates.resize(numUniqueOpaqueDrawCalls + reserveInfo.numUniqueOpaqueDrawcalls);
-
-    u32 numUniqueTransparentDrawCalls = static_cast<u32>(_modelTransparentDrawCallTemplates.size());
-    _modelTransparentDrawCallTemplates.resize(numUniqueTransparentDrawCalls + reserveInfo.numUniqueTransparentDrawcalls);
-    _modelTransparentDrawCallDataTemplates.resize(numUniqueTransparentDrawCalls + reserveInfo.numUniqueTransparentDrawcalls);
-}
-
-void ModelRenderer::FitBuffersAfterLoad()
-{
-    u32 numModelsUsed = _modelManifestsIndex.load();
-    _cullingDatas.Resize(numModelsUsed);
-
-    u32 numVerticesUsed = _verticesIndex.load();
-    _vertices.Resize(numVerticesUsed);
-
-    u32 numIndicesUsed = _indicesIndex.load();
-    _indices.Resize(numIndicesUsed);
-
-    u32 numInstancesUsed = _instanceIndex.load();
-    _instanceDatas.Resize(numInstancesUsed);
-    _instanceMatrices.Resize(numInstancesUsed);
-    _instanceIDToOpaqueDrawCallOffset.resize(numInstancesUsed);
-    _instanceIDToTransparentDrawCallOffset.resize(numInstancesUsed);
-
-    u32 numTextureUnitsUsed = _textureUnitIndex.load();
-    _textureUnits.Resize(numTextureUnitsUsed);
-
-    u32 numBoneMatricesUsed = _boneMatrixIndex.load();
-    _boneMatrices.Resize(numBoneMatricesUsed);
-
-    u32 numTextureTransformMatricesUsed = _textureTransformMatrixIndex.load();
-    _textureTransformMatrices.Resize(numTextureTransformMatricesUsed);
-
-    u32 numDecorationSetsUsed = _modelDecorationSetsIndex.load();
-    _modelDecorationSets.resize(numDecorationSetsUsed);
-
-    u32 numDecorationsUsed = _modelDecorationsIndex.load();
-    _modelDecorations.resize(numDecorationsUsed);
-
-    _opaqueCullingResources.FitBuffersAfterLoad();
-    _transparentCullingResources.FitBuffersAfterLoad();
-
-    _opaqueSkyboxCullingResources.FitBuffersAfterLoad();
-    _transparentSkyboxCullingResources.FitBuffersAfterLoad();
-
-    u32 numUniqueOpaqueDrawCalls = _modelOpaqueDrawCallTemplateIndex.load();
-    _modelOpaqueDrawCallTemplates.resize(numUniqueOpaqueDrawCalls);
-    _modelOpaqueDrawCallDataTemplates.resize(numUniqueOpaqueDrawCalls);
-
-    u32 numUniqueTransparentDrawCalls = _modelTransparentDrawCallTemplateIndex.load();
-    _modelTransparentDrawCallTemplates.resize(numUniqueTransparentDrawCalls);
-    _modelTransparentDrawCallDataTemplates.resize(numUniqueTransparentDrawCalls);
+    _modelTransparentDrawCallTemplates.reserve(_modelTransparentDrawCallTemplates.size() + reserveInfo.numUniqueTransparentDrawcalls);
+    _modelTransparentDrawCallDataTemplates.reserve(_modelTransparentDrawCallDataTemplates.size() + reserveInfo.numUniqueTransparentDrawcalls);
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -1014,36 +939,37 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     entt::registry::context& ctx = registry->ctx();
     auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
 
-    // Add ModelManifest
-    u32 modelManifestIndex = _modelManifestsIndex.fetch_add(1);
-    ModelManifest& modelManifest = _modelManifests[modelManifestIndex];
+    ModelReserveOffsets modelOffsets;
+    AllocateModel(model, modelOffsets);
 
+    TextureUnitReserveOffsets textureUnitsOffsets;
+    AllocateTextureUnits(model, textureUnitsOffsets);
+
+    // Add ModelManifest
+    ModelManifest& modelManifest = _modelManifests[modelOffsets.modelIndex];
     modelManifest.debugName = name;
 
     // Add CullingData
     {
-        std::vector<Model::ComplexModel::CullingData>& cullingDatas = _cullingDatas.Get();
-        Model::ComplexModel::CullingData& cullingData = cullingDatas[modelManifestIndex];
+        Model::ComplexModel::CullingData& cullingData = _cullingDatas[modelOffsets.modelIndex];
         cullingData = model.cullingData;
     }
 
     // Add vertices
     {
         modelManifest.numVertices = model.modelHeader.numVertices;
-        modelManifest.vertexOffset = _verticesIndex.fetch_add(modelManifest.numVertices);
+        modelManifest.vertexOffset = modelOffsets.verticesStartIndex;
 
         if (modelManifest.numVertices)
         {
-            std::vector<Model::ComplexModel::Vertex>& vertices = _vertices.Get();
-
             u32 numModelVertices = static_cast<u32>(model.vertices.size());
             assert(modelManifest.numVertices == numModelVertices);
 
-            void* dst = &vertices[modelManifest.vertexOffset];
+            void* dst = &_vertices[modelManifest.vertexOffset];
             void* src = model.vertices.data();
             size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
 
-            if (modelManifest.vertexOffset + numModelVertices > vertices.size())
+            if (modelManifest.vertexOffset + numModelVertices > _vertices.Count())
             {
                 NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy vertices outside array");
             }
@@ -1055,17 +981,15 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     // Add indices
     {
         modelManifest.numIndices = model.modelHeader.numIndices;
-        modelManifest.indexOffset = _indicesIndex.fetch_add(modelManifest.numIndices);
+        modelManifest.indexOffset = modelOffsets.indicesStartIndex;
 
         if (modelManifest.numIndices)
         {
-            std::vector<u16>& indices = _indices.Get();
-
-            void* dst = &indices[modelManifest.indexOffset];
+            void* dst = &_indices[modelManifest.indexOffset];
             void* src = model.modelData.indices.data();
             size_t size = sizeof(u16) * model.modelData.indices.size();
 
-            if (modelManifest.indexOffset + model.modelData.indices.size() > indices.size())
+            if (modelManifest.indexOffset + model.modelData.indices.size() > _indices.Count())
             {
                 NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy vertices outside array");
             }
@@ -1077,10 +1001,10 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     // Add TextureUnits and DrawCalls
     {
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
-        modelManifest.opaqueDrawCallTemplateOffset = _modelOpaqueDrawCallTemplateIndex.fetch_add(modelManifest.numOpaqueDrawCalls);
+        modelManifest.opaqueDrawCallTemplateOffset = modelOffsets.opaqueDrawCallTemplateStartIndex;
 
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
-        modelManifest.transparentDrawCallTemplateOffset = _modelTransparentDrawCallTemplateIndex.fetch_add(modelManifest.numTransparentDrawCalls);
+        modelManifest.transparentDrawCallTemplateOffset = modelOffsets.transparentDrawCallTemplateStartIndex;
 
         u32 numAddedIndices = 0;
 
@@ -1089,15 +1013,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
         u32 textureTransformLookupTableSize = static_cast<u32>(model.textureTransformLookupTable.size());
 
+        u32 textureUnitIndex = 0;
         for (auto& renderBatch : model.modelData.renderBatches)
         {
-            u32 textureUnitBaseIndex = _textureUnitIndex.fetch_add(static_cast<u32>(renderBatch.textureUnits.size()));
+            u32 textureUnitStartIndex = textureUnitsOffsets.textureUnitsStartIndex + textureUnitIndex;
             u16 numUnlitTextureUnits = 0;
 
             for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
             {
                 // Texture Unit
-                TextureUnit& textureUnit = _textureUnits.Get()[textureUnitBaseIndex + i];
+                TextureUnit& textureUnit = _textureUnits[textureUnitsOffsets.textureUnitsStartIndex + (textureUnitIndex++)];
 
                 Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
                 Model::ComplexModel::Material& cMaterial = model.materials[cTextureUnit.materialIndex];
@@ -1201,7 +1126,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             DrawCallData& drawCallData = (renderBatch.isTransparent) ? _modelTransparentDrawCallDataTemplates[curDrawCallOffset] : _modelOpaqueDrawCallDataTemplates[curDrawCallOffset];
             drawCallData.instanceID = 0; // Is set during AddInstance
-            drawCallData.textureUnitOffset = textureUnitBaseIndex;
+            drawCallData.textureUnitOffset = textureUnitStartIndex;
             drawCallData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
             drawCallData.numUnlitTextureUnits = numUnlitTextureUnits;
 
@@ -1220,7 +1145,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     // Add Decoration Data
     {
         modelManifest.numDecorationSets = model.modelHeader.numDecorationSets;
-        modelManifest.decorationSetOffset = _modelDecorationSetsIndex.fetch_add(modelManifest.numDecorationSets);
+        modelManifest.decorationSetOffset = modelOffsets.decorationSetStartIndex;
 
         if (modelManifest.numDecorationSets)
         {
@@ -1239,7 +1164,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         }
 
         modelManifest.numDecorations = model.modelHeader.numDecorations;
-        modelManifest.decorationOffset = _modelDecorationsIndex.fetch_add(modelManifest.numDecorations);
+        modelManifest.decorationOffset = modelOffsets.decorationStartIndex;
 
         if (modelManifest.numDecorations)
         {
@@ -1258,7 +1183,65 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         }
     }
 
-    return modelManifestIndex;
+    // Allocate animation data
+    AnimationReserveOffsets animationOffsets;
+    AllocateAnimation(modelOffsets.modelIndex, animationOffsets);
+
+    // Default initialize the bone and texture transform matrices
+    for (u32 i = 0; i < model.modelHeader.numBones; ++i)
+    {
+        _boneMatrices[animationOffsets.boneStartIndex + i] = glm::mat4(1.0f);
+    }
+
+    for (u32 i = 0; i < model.modelHeader.numTextureTransforms; ++i)
+    {
+        _textureTransformMatrices[animationOffsets.textureTransformStartIndex + i] = glm::mat4(1.0f);
+    }
+
+    return modelOffsets.modelIndex;
+}
+
+void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelReserveOffsets& offsets)
+{
+    std::scoped_lock lock(_modelOffsetsMutex);
+
+    offsets.modelIndex = _cullingDatas.Add();
+    _modelIDToNumInstances.resize(_modelIDToNumInstances.size() + 1);
+    _modelManifests.resize(_modelManifests.size() + 1);
+
+    offsets.verticesStartIndex = _vertices.AddCount(model.modelHeader.numVertices);
+    offsets.indicesStartIndex = _indices.AddCount(model.modelHeader.numIndices);
+
+    offsets.decorationSetStartIndex = static_cast<u32>(_modelDecorationSets.size());
+    _modelDecorationSets.resize(offsets.decorationSetStartIndex + model.modelHeader.numDecorationSets);
+
+    offsets.decorationStartIndex = static_cast<u32>(_modelDecorations.size());
+    _modelDecorations.resize(offsets.decorationStartIndex + model.modelHeader.numDecorations);
+
+    offsets.opaqueDrawCallTemplateStartIndex = static_cast<u32>(_modelOpaqueDrawCallTemplates.size());
+    _modelOpaqueDrawCallTemplates.resize(offsets.opaqueDrawCallTemplateStartIndex + model.modelHeader.numOpaqueRenderBatches);
+    _modelOpaqueDrawCallDataTemplates.resize(offsets.opaqueDrawCallTemplateStartIndex + model.modelHeader.numOpaqueRenderBatches);
+
+    offsets.transparentDrawCallTemplateStartIndex = static_cast<u32>(_modelTransparentDrawCallTemplates.size());
+    _modelTransparentDrawCallTemplates.resize(offsets.transparentDrawCallTemplateStartIndex + model.modelHeader.numTransparentRenderBatches);
+    _modelTransparentDrawCallDataTemplates.resize(offsets.transparentDrawCallTemplateStartIndex + model.modelHeader.numTransparentRenderBatches);
+}
+
+void ModelRenderer::AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitReserveOffsets& offsets)
+{
+    std::scoped_lock lock(_textureOffsetsMutex);
+
+    offsets.textureUnitsStartIndex = _textureUnits.AddCount(model.modelHeader.numTextureUnits);
+}
+
+void ModelRenderer::AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets)
+{
+    std::scoped_lock lock(_animationOffsetsMutex);
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    offsets.boneStartIndex = _boneMatrices.AddCount(manifest.numBones);
+    offsets.textureTransformStartIndex = _textureTransformMatrices.AddCount(manifest.numTextureTransforms);
 }
 
 u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement)
@@ -1270,8 +1253,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
     mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
 
-    u32 instanceID = AddInstance(entityID, modelID, model, instanceMatrix);
-
+    u32 instanceIndex = AddInstance(entityID, modelID, model, instanceMatrix);
     ModelManifest& manifest = _modelManifests[modelID];
 
     // Add Decorations
@@ -1287,7 +1269,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
             for (u32 i = 0; i < manifestDecorationSet.count; i++)
             {
                 const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
-                modelLoader->LoadDecoration(instanceID, manifestDecoration);
+                modelLoader->LoadDecoration(instanceIndex, manifestDecoration);
             }
         }
         else
@@ -1301,13 +1283,13 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
                 for (u32 i = 0; i < manifestDecorationSet.count; i++)
                 {
                     const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
-                    modelLoader->LoadDecoration(instanceID, manifestDecoration);
+                    modelLoader->LoadDecoration(instanceIndex, manifestDecoration);
                 }
             }
         }
     }
 
-    return instanceID;
+    return instanceIndex;
 }
 
 u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
@@ -1317,8 +1299,14 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
     if (registry->valid(entityID))
     {
-        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID); // TODO: We want to get rid of this
     }
+
+    InstanceReserveOffsets instanceOffsets;
+    AllocateInstance(modelID, instanceOffsets);
+
+    DrawCallReserveOffsets drawCallOffsets;
+    AllocateDrawCalls(modelID, drawCallOffsets, isSkybox);
 
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -1328,11 +1316,9 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         modelInstanceIndex = _modelIDToNumInstances[modelID]++;
     }
 
-    u32 instanceID = _instanceIndex.fetch_add(1);
-
     // Add InstanceData
     {
-        InstanceData& instanceData = _instanceDatas.Get()[instanceID];
+        InstanceData& instanceData = _instanceDatas[instanceOffsets.instanceIndex];
 
         instanceData.modelID = modelID;
         instanceData.modelVertexOffset = manifest.vertexOffset;
@@ -1346,7 +1332,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
     // Add Instance matrix
     {
-        mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
+        mat4x4& instanceMatrix = _instanceMatrices[instanceOffsets.instanceIndex];
         instanceMatrix = transformMatrix;
     }
 
@@ -1355,15 +1341,14 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     {
         CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
 
-        std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
 
-        u32 opaqueDrawCallOffset = opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
-        _instanceIDToOpaqueDrawCallOffset[instanceID] = opaqueDrawCallOffset;
+        _instanceIDToOpaqueDrawCallOffset[instanceOffsets.instanceIndex] = drawCallOffsets.opaqueDrawCallStartIndex;
 
         // Copy DrawCalls
         {
-            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
+            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[drawCallOffsets.opaqueDrawCallStartIndex];
             Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
             size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
             memcpy(dst, src, size);
@@ -1371,7 +1356,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
         // Copy DrawCallDatas
         {
-            DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
+            DrawCallData* dst = &opaqueDrawCallDatas[drawCallOffsets.opaqueDrawCallStartIndex];
             DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
             size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
             memcpy(dst, src, size);
@@ -1380,13 +1365,13 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         // Modify the per-instance data
         for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
         {
-            u32 opaqueIndex = opaqueDrawCallOffset + i;
+            u32 opaqueIndex = drawCallOffsets.opaqueDrawCallStartIndex + i;
 
             Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
             drawCall.firstInstance = opaqueIndex;
 
             DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
-            drawCallData.instanceID = instanceID;
+            drawCallData.instanceID = instanceOffsets.instanceIndex;
             drawCallData.modelID = modelID;
         }
     }
@@ -1396,15 +1381,14 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     {
         CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
 
-        std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
-        std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
 
-        u32 transparentDrawCallOffset = transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
-        _instanceIDToTransparentDrawCallOffset[instanceID] = transparentDrawCallOffset;
+        _instanceIDToTransparentDrawCallOffset[instanceOffsets.instanceIndex] = drawCallOffsets.transparentDrawCallStartIndex;
 
         // Copy DrawCalls
         {
-            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
+            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[drawCallOffsets.transparentDrawCallStartIndex];
             Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
             size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
             memcpy(dst, src, size);
@@ -1412,7 +1396,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
         // Copy DrawCallDatas
         {
-            DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
+            DrawCallData* dst = &transparentDrawCallDatas[drawCallOffsets.transparentDrawCallStartIndex];
             DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
             size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
             memcpy(dst, src, size);
@@ -1421,28 +1405,59 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         // Modify the per-instance data
         for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
         {
-            u32 transparentIndex = transparentDrawCallOffset + i;
+            u32 transparentIndex = drawCallOffsets.transparentDrawCallStartIndex + i;
 
             Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
             drawCall.firstInstance = transparentIndex;
 
             DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
-            drawCallData.instanceID = instanceID;
+            drawCallData.instanceID = instanceOffsets.instanceIndex;
             drawCallData.modelID = modelID;
         }
     }
 
     if (model && displayID != std::numeric_limits<u32>().max())
     {
-        ReplaceTextureUnits(modelID, model, instanceID, displayID);
+        ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayID);
     }
 
-    return instanceID;
+    return instanceOffsets.instanceIndex;
+}
+
+void ModelRenderer::AllocateInstance(u32 modelID, InstanceReserveOffsets& offsets)
+{
+    std::scoped_lock lock(_instanceOffsetsMutex);
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    offsets.instanceIndex = _instanceDatas.Add();
+    u32 instanceMatrixIndex = _instanceMatrices.Add();
+    assert(offsets.instanceIndex == instanceMatrixIndex);
+    _instanceIDToOpaqueDrawCallOffset.resize(_instanceIDToOpaqueDrawCallOffset.size() + 1);
+    _instanceIDToTransparentDrawCallOffset.resize(_instanceIDToTransparentDrawCallOffset.size() + 1);
+}
+
+void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offsets, bool isSkybox)
+{
+    std::scoped_lock lock(_drawCallOffsetsMutex);
+
+    ModelManifest& manifest = _modelManifests[modelID];
+
+    if (isSkybox)
+    {
+        offsets.opaqueDrawCallStartIndex = _opaqueSkyboxCullingResources.AddCount(manifest.numOpaqueDrawCalls);
+        offsets.transparentDrawCallStartIndex = _transparentSkyboxCullingResources.AddCount(manifest.numTransparentDrawCalls);
+    }
+    else
+    {
+        offsets.opaqueDrawCallStartIndex = _opaqueCullingResources.AddCount(manifest.numOpaqueDrawCalls);
+        offsets.transparentDrawCallStartIndex = _transparentCullingResources.AddCount(manifest.numTransparentDrawCalls);
+    }
 }
 
 void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
 {
-    InstanceData& instanceData = _instanceDatas.Get()[instanceID];
+    InstanceData& instanceData = _instanceDatas[instanceID];
 
     u32 oldModelID = instanceData.modelID;
 
@@ -1473,13 +1488,13 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Get the correct culling resources
     CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
 
-    std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
-    std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
+    const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
 
     CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
 
-    std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
-    std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
+    const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
 
     // Update the instancedatas modelID
     instanceData.modelID = modelID;
@@ -1487,6 +1502,9 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Set up new drawcalls if the modelID is valid
     if (modelID != std::numeric_limits<u32>().max())
     {
+        DrawCallReserveOffsets drawCallOffsets;
+        AllocateDrawCalls(modelID, drawCallOffsets, isSkybox);
+
         ModelManifest& manifest = _modelManifests[modelID];
 
         u32 modelInstanceIndex = 0;
@@ -1514,7 +1532,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
         // Setup Instance matrix
         {
-            mat4x4& instanceMatrix = _instanceMatrices.Get()[instanceID];
+            mat4x4& instanceMatrix = _instanceMatrices[instanceID];
             instanceMatrix = transformMatrix;
 
             _instanceMatrices.SetDirtyElement(instanceID);
@@ -1523,12 +1541,11 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         // Set up Opaque DrawCalls and DrawCallDatas
         if (manifest.numOpaqueDrawCalls > 0)
         {
-            u32 opaqueDrawCallOffset = opaqueCullingResources.GetDrawCallsIndex().fetch_add(manifest.numOpaqueDrawCalls);
-            _instanceIDToOpaqueDrawCallOffset[instanceID] = opaqueDrawCallOffset;
+            _instanceIDToOpaqueDrawCallOffset[instanceID] = drawCallOffsets.opaqueDrawCallStartIndex;
 
             // Copy DrawCalls
             {
-                Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[opaqueDrawCallOffset];
+                Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[drawCallOffsets.opaqueDrawCallStartIndex];
                 Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
                 size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
                 memcpy(dst, src, size);
@@ -1536,7 +1553,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
             // Copy DrawCallDatas
             {
-                DrawCallData* dst = &opaqueDrawCallDatas[opaqueDrawCallOffset];
+                DrawCallData* dst = &opaqueDrawCallDatas[drawCallOffsets.opaqueDrawCallStartIndex];
                 DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
                 size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
                 memcpy(dst, src, size);
@@ -1545,7 +1562,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
             // Modify the per-instance data
             for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
             {
-                u32 opaqueIndex = opaqueDrawCallOffset + i;
+                u32 opaqueIndex = drawCallOffsets.opaqueDrawCallStartIndex + i;
 
                 Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
                 drawCall.firstInstance = opaqueIndex;
@@ -1559,12 +1576,11 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         // Set up Transparent DrawCalls and DrawCallDatas
         if (manifest.numTransparentDrawCalls > 0)
         {
-            u32 transparentDrawCallOffset = transparentCullingResources.GetDrawCallsIndex().fetch_add(manifest.numTransparentDrawCalls);
-            _instanceIDToTransparentDrawCallOffset[instanceID] = transparentDrawCallOffset;
+            _instanceIDToTransparentDrawCallOffset[instanceID] = drawCallOffsets.transparentDrawCallStartIndex;
 
             // Copy DrawCalls
             {
-                Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[transparentDrawCallOffset];
+                Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[drawCallOffsets.transparentDrawCallStartIndex];
                 Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
                 size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
                 memcpy(dst, src, size);
@@ -1572,7 +1588,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
             // Copy DrawCallDatas
             {
-                DrawCallData* dst = &transparentDrawCallDatas[transparentDrawCallOffset];
+                DrawCallData* dst = &transparentDrawCallDatas[drawCallOffsets.transparentDrawCallStartIndex];
                 DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
                 size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
                 memcpy(dst, src, size);
@@ -1581,7 +1597,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
             // Modify the per-instance data
             for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
             {
-                u32 transparentIndex = transparentDrawCallOffset + i;
+                u32 transparentIndex = drawCallOffsets.transparentDrawCallStartIndex + i;
 
                 Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
                 drawCall.firstInstance = transparentIndex;
@@ -1609,8 +1625,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
-            opaqueCullingResources.GetDrawCalls().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
-            opaqueCullingResources.GetDrawCallDatas().SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
+            opaqueCullingResources.SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
         }
 
         // Modify the old per-instance data
@@ -1627,8 +1642,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
-            transparentCullingResources.GetDrawCalls().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
-            transparentCullingResources.GetDrawCallDatas().SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
+            transparentCullingResources.SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
         }
     }
 
@@ -1726,25 +1740,31 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
     // Get the correct culling resources
     CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = _opaqueCullingResources;
 
-    std::vector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls().Get();
-    std::vector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
+    const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
 
     CullingResourcesIndexed<DrawCallData>& transparentCullingResources = _transparentCullingResources;
 
-    std::vector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls().Get();
-    std::vector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas().Get();
+    const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
+    const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
 
+    // Allocate new texture units
+    TextureUnitReserveOffsets textureUnitOffsets;
+    AllocateTextureUnits(*model, textureUnitOffsets);
+
+    u32 numTextureUnitsAdded = 0;
     for (u32 renderBatchIndex = 0; renderBatchIndex < numRenderBatches; renderBatchIndex++)
     {
+        u32 renderBatchTextureUnitStartIndex = textureUnitOffsets.textureUnitsStartIndex + numTextureUnitsAdded;
         Model::ComplexModel::RenderBatch& renderBatch = model->modelData.renderBatches[renderBatchIndex];
 
-        u32 textureUnitBaseIndex = _textureUnitIndex.fetch_add(static_cast<u32>(renderBatch.textureUnits.size()));
         u16 numUnlitTextureUnits = 0;
 
         for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
         {
             // Texture Unit
-            TextureUnit& textureUnit = _textureUnits.Get()[textureUnitBaseIndex + i];
+            TextureUnit& textureUnit = _textureUnits[textureUnitOffsets.textureUnitsStartIndex + numTextureUnitsAdded];
+            numTextureUnitsAdded++;
 
             Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
             Model::ComplexModel::Material& cMaterial = model->materials[cTextureUnit.materialIndex];
@@ -2001,17 +2021,17 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
         u32 curDrawCallOffset = drawCallOffset + numHandledDrawCalls;
 
         DrawCallData& drawCallData = (renderBatch.isTransparent) ? transparentDrawCallDatas[curDrawCallOffset] : opaqueDrawCallDatas[curDrawCallOffset];
-        drawCallData.textureUnitOffset = textureUnitBaseIndex;
+        drawCallData.textureUnitOffset = renderBatchTextureUnitStartIndex;
         drawCallData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
         drawCallData.numUnlitTextureUnits = numUnlitTextureUnits;
 
         if (renderBatch.isTransparent)
         {
-            transparentCullingResources.GetDrawCallDatas().SetDirtyElement(curDrawCallOffset);
+            transparentCullingResources.SetDirtyElement(curDrawCallOffset);
         }
         else
         {
-            opaqueCullingResources.GetDrawCallDatas().SetDirtyElement(curDrawCallOffset);
+            opaqueCullingResources.SetDirtyElement(curDrawCallOffset);
         }
 
         numHandledDrawCalls++;
@@ -2023,27 +2043,21 @@ bool ModelRenderer::AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffs
     if (_modelManifests.size() <= modelID)
         return false;
 
+    AnimationReserveOffsets animationOffsets;
+    AllocateAnimation(modelID, animationOffsets);
+
     const ModelManifest& modelManifest = _modelManifests[modelID];
 
     if (modelManifest.numBones > 0)
     {
-        boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
-        u32 boneMatrixNum = modelManifest.numBones;
+        boneMatrixOffset = animationOffsets.boneStartIndex;
 
-        u32 endMatrixOffset = (boneMatrixOffset + boneMatrixNum);
-
-        std::vector<mat4x4>& boneMatrices = _boneMatrices.Get();
-        if (boneMatrices.size() < endMatrixOffset)
+        for (u32 i = 0; i < modelManifest.numBones; i++)
         {
-            boneMatrices.resize(endMatrixOffset);
+            _boneMatrices[boneMatrixOffset + i] = mat4x4(1.0f);
         }
 
-        for (u32 i = 0; i < boneMatrixNum; i++)
-        {
-            boneMatrices[boneMatrixOffset + i] = mat4x4(1.0f);
-        }
-
-        _boneMatrices.SetDirtyElements(boneMatrixOffset, boneMatrixNum);
+        _boneMatrices.SetDirtyElements(boneMatrixOffset, modelManifest.numBones);
     }
     else
     {
@@ -2052,23 +2066,14 @@ bool ModelRenderer::AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffs
 
     if (modelManifest.numTextureTransforms > 0)
     {
-        textureTransformMatrixOffset = _textureTransformMatrixIndex.fetch_add(modelManifest.numTextureTransforms);
-        u32 textureTransformMatrixNum = modelManifest.numTextureTransforms;
-
-        std::vector<mat4x4>& textureTransforMatrices = _textureTransformMatrices.Get();
-
-        u32 endMatrixOffset = (textureTransformMatrixOffset + textureTransformMatrixNum);
-        if (textureTransforMatrices.size() < endMatrixOffset)
+        textureTransformMatrixOffset = animationOffsets.textureTransformStartIndex;
+        
+        for (u32 i = 0; i < modelManifest.numTextureTransforms; i++)
         {
-            textureTransforMatrices.resize(endMatrixOffset);
+            _textureTransformMatrices[textureTransformMatrixOffset + i] = mat4x4(1.0f);
         }
 
-        for (u32 i = 0; i < textureTransformMatrixNum; i++)
-        {
-            textureTransforMatrices[textureTransformMatrixOffset + i] = mat4x4(1.0f);
-        }
-
-        _textureTransformMatrices.SetDirtyElements(textureTransformMatrixOffset, textureTransformMatrixNum);
+        _textureTransformMatrices.SetDirtyElements(textureTransformMatrixOffset, modelManifest.numTextureTransforms);
     }
     else
     {
@@ -2080,14 +2085,12 @@ bool ModelRenderer::AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffs
 
 bool ModelRenderer::SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffset, u32 textureTransformMatrixOffset)
 {
-    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
-
-    if (instanceID >= instanceDatas.size())
+    if (instanceID >= _instanceDatas.Count())
     {
         return false;
     }
 
-    InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = _instanceDatas[instanceID];
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
 
     if (modelManifest.numBones > 0)
@@ -2126,12 +2129,12 @@ bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatri
 
     if (count == 1)
     {
-        _boneMatrices.Get()[globalBoneIndex] = *boneMatrixArray;
+        _boneMatrices[globalBoneIndex] = *boneMatrixArray;
         _boneMatrices.SetDirtyElement(globalBoneIndex);
     }
     else
     {
-        memcpy(&_boneMatrices.Get()[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
+        memcpy(&_boneMatrices[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
         _boneMatrices.SetDirtyElements(globalBoneIndex, count);
     }
 
@@ -2156,12 +2159,12 @@ bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u
 
     if (count == 1)
     {
-        _textureTransformMatrices.Get()[globalTextureTransformIndex] = *textureTransformMatrixArray;
+        _textureTransformMatrices[globalTextureTransformIndex] = *textureTransformMatrixArray;
         _textureTransformMatrices.SetDirtyElement(globalTextureTransformIndex);
     }
     else
     {
-        memcpy(&_textureTransformMatrices.Get()[globalTextureTransformIndex], textureTransformMatrixArray, count * sizeof(mat4x4));
+        memcpy(&_textureTransformMatrices[globalTextureTransformIndex], textureTransformMatrixArray, count * sizeof(mat4x4));
         _textureTransformMatrices.SetDirtyElements(globalTextureTransformIndex, count);
     }
 
@@ -2170,24 +2173,41 @@ bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u
 
 bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 {
-    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
-
-    if (instanceID >= instanceDatas.size())
+    if (instanceID >= _instanceDatas.Count())
     {
         return false;
     }
 
-    InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = _instanceDatas[instanceID];
+
+    AnimationReserveOffsets animationOffsets;
+    AllocateAnimation(instanceData.modelID, animationOffsets);
+
     const ModelManifest& modelManifest = _modelManifests[instanceData.modelID];
 
     if (modelManifest.numBones > 0)
     {
-        instanceData.boneMatrixOffset = _boneMatrixIndex.fetch_add(modelManifest.numBones);
+        instanceData.boneMatrixOffset = animationOffsets.boneStartIndex;
+
+        // Default initialize the bone and texture transform matrices
+        for (u32 i = 0; i < modelManifest.numBones; ++i)
+        {
+            _boneMatrices[animationOffsets.boneStartIndex + i] = glm::mat4(1.0f);
+        }
+    
+        _boneMatrices.SetDirtyElements(animationOffsets.boneStartIndex, modelManifest.numBones);
     }
 
     if (modelManifest.numTextureTransforms > 0)
     {
-        instanceData.textureTransformMatrixOffset = _textureTransformMatrixIndex.fetch_add(modelManifest.numTextureTransforms);
+        instanceData.textureTransformMatrixOffset = animationOffsets.textureTransformStartIndex;
+
+        for (u32 i = 0; i < modelManifest.numTextureTransforms; ++i)
+        {
+            _textureTransformMatrices[animationOffsets.textureTransformStartIndex + i] = glm::mat4(1.0f);
+        }
+
+        _textureTransformMatrices.SetDirtyElements(animationOffsets.textureTransformStartIndex, modelManifest.numTextureTransforms);
     }
 
     if (modelManifest.numBones > 0 || modelManifest.numTextureTransforms > 0)
@@ -2200,13 +2220,12 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 
 bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
 {
-    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
-    if (instanceID >= instanceDatas.size())
+    if (instanceID >= _instanceDatas.Count())
     {
         return false;
     }
 
-    InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = _instanceDatas[instanceID];
     if (instanceData.boneMatrixOffset == InstanceData::InvalidID)
     {
         return false;
@@ -2225,12 +2244,12 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
 
     if (count == 1)
     {
-        _boneMatrices.Get()[globalBoneIndex] = *boneMatrixArray;
+        _boneMatrices[globalBoneIndex] = *boneMatrixArray;
         _boneMatrices.SetDirtyElement(globalBoneIndex);
     }
     else
     {
-        memcpy(&_boneMatrices.Get()[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
+        memcpy(&_boneMatrices[globalBoneIndex], boneMatrixArray, count * sizeof(mat4x4));
         _boneMatrices.SetDirtyElements(globalBoneIndex, count);
     }
 
@@ -2239,13 +2258,12 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
 
 bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, mat4x4* boneMatrixArray)
 {
-    std::vector<InstanceData>& instanceDatas = _instanceDatas.Get();
-    if (instanceID >= instanceDatas.size())
+    if (instanceID >= _instanceDatas.Count())
     {
         return false;
     }
 
-    InstanceData& instanceData = instanceDatas[instanceID];
+    InstanceData& instanceData = _instanceDatas[instanceID];
     if (instanceData.textureTransformMatrixOffset == InstanceData::InvalidID)
     {
         return false;
@@ -2264,12 +2282,12 @@ bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 local
 
     if (count == 1)
     {
-        _textureTransformMatrices.Get()[globalTextureTransformMatrixIndex] = *boneMatrixArray;
+        _textureTransformMatrices[globalTextureTransformMatrixIndex] = *boneMatrixArray;
         _textureTransformMatrices.SetDirtyElement(globalTextureTransformMatrixIndex);
     }
     else
     {
-        memcpy(&_textureTransformMatrices.Get()[globalTextureTransformMatrixIndex], boneMatrixArray, count * sizeof(mat4x4));
+        memcpy(&_textureTransformMatrices[globalTextureTransformMatrixIndex], boneMatrixArray, count * sizeof(mat4x4));
         _textureTransformMatrices.SetDirtyElements(globalTextureTransformMatrixIndex, count);
     }
 

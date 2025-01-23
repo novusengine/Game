@@ -35,6 +35,8 @@ TerrainManipulator::~TerrainManipulator()
 
 void TerrainManipulator::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (_isManipulating)
     {
         Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();

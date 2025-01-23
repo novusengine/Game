@@ -90,6 +90,8 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
 
 void DebugRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     // Draw world axises
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), Color::Red);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), Color::Green);

@@ -39,6 +39,8 @@ MaterialRenderer::~MaterialRenderer()
 
 void MaterialRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     SyncToGPU();
 }
 

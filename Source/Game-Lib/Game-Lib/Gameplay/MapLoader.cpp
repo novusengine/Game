@@ -32,6 +32,8 @@ using namespace ECS::Singletons;
 
 void MapLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     size_t numRequests = _requests.size_approx();
     if (numRequests == 0)
         return;

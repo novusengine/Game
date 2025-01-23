@@ -20,6 +20,7 @@ UIRenderer::UIRenderer(Renderer::Renderer* renderer) : _renderer(renderer)
 
 void UIRenderer::Update(f32 deltaTime)
 {
+    ZoneScoped;
 }
 
 void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, Renderer::ImageID imguiTarget)

@@ -178,6 +178,8 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 
 void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
+    ZoneScoped;
+
     // Reset the memory in the frameAllocator
     _frameAllocator[_frameIndex]->Reset();
 

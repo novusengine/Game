@@ -32,6 +32,41 @@ constexpr u32 MODEL_INVALID_TEXTURE_ID = 0; // This refers to the debug texture
 constexpr u32 MODEL_INVALID_TEXTURE_TRANSFORM_ID = std::numeric_limits<u16>().max();
 constexpr u8 MODEL_INVALID_TEXTURE_UNIT_INDEX = std::numeric_limits<u8>().max();
 
+struct ModelReserveOffsets
+{
+    u32 modelIndex = 0;
+    u32 verticesStartIndex = 0;
+    u32 indicesStartIndex = 0;
+
+    u32 decorationSetStartIndex = 0;
+    u32 decorationStartIndex = 0;
+
+    u32 opaqueDrawCallTemplateStartIndex = 0;
+    u32 transparentDrawCallTemplateStartIndex = 0;
+};
+
+struct TextureUnitReserveOffsets
+{
+    u32 textureUnitsStartIndex = 0;
+};
+
+struct AnimationReserveOffsets
+{
+    u32 boneStartIndex = 0;
+    u32 textureTransformStartIndex = 0;
+};
+
+struct InstanceReserveOffsets
+{
+    u32 instanceIndex = 0;
+};
+
+struct DrawCallReserveOffsets
+{
+    u32 opaqueDrawCallStartIndex = 0;
+    u32 transparentDrawCallStartIndex = 0;
+};
+
 class ModelRenderer : CulledRenderer
 {
 public:
@@ -142,10 +177,15 @@ public:
     void Clear();
 
     void Reserve(const ReserveInfo& reserveInfo);
-    void FitBuffersAfterLoad();
+
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
+    void AllocateModel(const Model::ComplexModel& model, ModelReserveOffsets& offsets);
+    void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitReserveOffsets& offsets);
+    void AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets);
     u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement);
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
+    void AllocateInstance(u32 modelID, InstanceReserveOffsets& offsets);
+    void AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offsets, bool isSkybox);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
     void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayID);
 
@@ -208,45 +248,31 @@ private:
     std::mutex _textureLoadMutex;
 
     std::vector<ModelManifest> _modelManifests;
-    std::atomic<u32> _modelManifestsIndex = 0;
 
     std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
-    std::atomic<u32> _modelDecorationSetsIndex = 0;
-
     std::vector<Model::ComplexModel::Decoration> _modelDecorations;
-    std::atomic<u32> _modelDecorationsIndex = 0;
 
     std::vector<u32> _modelIDToNumInstances;
     std::mutex _modelIDToNumInstancesMutex;
 
     Renderer::GPUVector<Model::ComplexModel::Vertex> _vertices;
-    std::atomic<u32> _verticesIndex = 0;
-
     Renderer::GPUVector<u16> _indices;
-    std::atomic<u32> _indicesIndex = 0;
 
     Renderer::GPUVector<InstanceData> _instanceDatas;
     Renderer::GPUVector<mat4x4> _instanceMatrices;
     std::vector<u32> _instanceIDToOpaqueDrawCallOffset;
     std::vector<u32> _instanceIDToTransparentDrawCallOffset;
-    std::atomic<u32> _instanceIndex = 0;
 
     Renderer::GPUVector<TextureUnit> _textureUnits;
-    std::atomic<u32> _textureUnitIndex = 0;
 
     Renderer::GPUVector<mat4x4> _boneMatrices;
-    std::atomic<u32> _boneMatrixIndex = 0;
-
     Renderer::GPUVector<mat4x4> _textureTransformMatrices;
-    std::atomic<u32> _textureTransformMatrixIndex = 0;
 
     std::vector<Renderer::IndexedIndirectDraw> _modelOpaqueDrawCallTemplates;
     std::vector<DrawCallData> _modelOpaqueDrawCallDataTemplates;
-    std::atomic<u32> _modelOpaqueDrawCallTemplateIndex = 0;
 
     std::vector<Renderer::IndexedIndirectDraw> _modelTransparentDrawCallTemplates;
     std::vector<DrawCallData> _modelTransparentDrawCallDataTemplates;
-    std::atomic<u32> _modelTransparentDrawCallTemplateIndex = 0;
 
     CullingResourcesIndexed<DrawCallData> _opaqueCullingResources;
     CullingResourcesIndexed<DrawCallData> _transparentCullingResources;
@@ -270,4 +296,10 @@ private:
 
     u32 _numOccluderDrawCalls = 0;
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
+
+    std::mutex _modelOffsetsMutex;
+    std::mutex _textureOffsetsMutex;
+    std::mutex _animationOffsetsMutex;
+    std::mutex _instanceOffsetsMutex;
+    std::mutex _drawCallOffsetsMutex;
 };

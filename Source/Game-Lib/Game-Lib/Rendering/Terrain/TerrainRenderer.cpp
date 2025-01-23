@@ -590,7 +590,7 @@ void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffse
 
     u32 chunkVertexStartIndex = 0;
 
-    // First we do an exclusive lock for operations that might reallocate GPUVectors, maybe we just move this back into Reserve?
+    // First we do an exclusive lock for operations that might reallocate
     {
         std::unique_lock lock(_addChunkMutex);
         chunkDataStartIndex = _chunkDatas.AddCount(numChunks);

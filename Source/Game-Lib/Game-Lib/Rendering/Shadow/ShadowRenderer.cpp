@@ -51,6 +51,8 @@ ShadowRenderer::~ShadowRenderer()
 
 void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
+    ZoneScoped;
+
     CVarSystem* cvarSystem = CVarSystem::Get();
     const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
 

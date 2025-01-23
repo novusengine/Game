@@ -24,7 +24,7 @@ SkyboxRenderer::~SkyboxRenderer()
 
 void SkyboxRenderer::Update(f32 deltaTime)
 {
-
+    ZoneScoped;
 }
 
 void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)

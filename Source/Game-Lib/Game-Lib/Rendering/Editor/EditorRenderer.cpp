@@ -30,7 +30,7 @@ EditorRenderer::~EditorRenderer()
 
 void EditorRenderer::Update(f32 deltaTime)
 {
-
+    ZoneScoped;
 }
 
 void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)

@@ -28,6 +28,8 @@ void LiquidLoader::Clear()
 
 void LiquidLoader::Update(f32 deltaTime)
 {
+    ZoneScoped;
+
     if (!CVAR_LiquidLoaderEnabled.Get())
         return;
 
