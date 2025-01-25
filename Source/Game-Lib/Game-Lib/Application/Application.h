@@ -11,6 +11,7 @@ namespace Editor
     class EditorHandler;
 }
 class InputManager;
+class IOLoader;
 class GameRenderer;
 class ModelLoader;
 
@@ -25,10 +26,6 @@ namespace ECS
 namespace Scripting
 {
     class LuaManager;
-}
-namespace Animation
-{
-    class AnimationSystem;
 }
 
 class Application
@@ -48,6 +45,8 @@ public:
 
 private:
     void Run();
+    void IOLoadThread();
+
     bool Init();
     bool Render(f32 deltaTime, f32& timeSpentWaiting);
     void SaveCDB();
@@ -67,7 +66,6 @@ private:
 
     ECS::Scheduler* _ecsScheduler = nullptr;
     Scripting::LuaManager* _luaManager = nullptr;
-    Animation::AnimationSystem* _animationSystem = nullptr;
 
     nlohmann::json _cvarJson;
 

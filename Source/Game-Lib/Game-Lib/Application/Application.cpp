@@ -1,6 +1,6 @@
 #include "Application.h"
+#include "IOLoader.h"
 
-#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/ECS/Scheduler.h"
 #include "Game-Lib/ECS/Singletons/CameraSaveDB.h"
 #include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
@@ -8,15 +8,14 @@
 #include "Game-Lib/ECS/Singletons/MapDB.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
-#include "Game-Lib/ECS/Util/CharSectionUtil.h"
 #include "Game-Lib/ECS/Util/MapUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Util/ClientDBUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
-#include "Game-Lib/Loaders/ClientDB/ClientDBLoader.h"
-#include "Game-Lib/Loaders/Texture/TextureLoader.h"
+#include "Game-Lib/Util/TextureUtil.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 
@@ -42,7 +41,9 @@
 #include <filesystem>
 
 AutoCVar_Int CVAR_FramerateLimit(CVarCategory::Client, "framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_IOFramerateLimit(CVarCategory::Client, "ioFramerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_FramerateLimitTarget(CVarCategory::Client, "framerateLimitTarget", "target framerate while limited", 60);
+AutoCVar_Int CVAR_IOFramerateLimitTarget(CVarCategory::Client, "ioFramerateLimitTarget", "target io framerate while limited", 5);
 AutoCVar_Int CVAR_CpuReportDetailLevel(CVarCategory::Client, "cpuReportDetailLevel", "Sets the detail level for CPU info printing on startup. (0 = No Output, 1 = CPU Name, 2 = CPU Name + Feature Support)", 1);
 AutoCVar_Int CVAR_ApplicationNumThreads(CVarCategory::Client, "numThreads", "number of threads used for multi threading, 0 = number of hardware threads", 0);
 AutoCVar_Int CVAR_ClientDBSaveMethod(CVarCategory::Client, "clientDBSaveMethod", "specifies when clientDBs are saved. (0 = Immediately, 1 = Every x Seconds, 2 = On Shutdown, 3+ = Disabled, default is 1)", 1);
@@ -65,6 +66,14 @@ void Application::Start(bool startInSeparateThread)
     if (startInSeparateThread)
     {
         _isRunning = true;
+
+        {
+            IOLoader* ioLoader = new IOLoader();
+            ServiceLocator::SetIOLoader(ioLoader);
+
+            std::thread ioLoadThread = std::thread(&Application::IOLoadThread, this);
+            ioLoadThread.detach();
+        }
 
         std::thread applicationThread = std::thread(&Application::Run, this);
         applicationThread.detach();
@@ -90,6 +99,9 @@ void Application::Stop()
 
 void Application::Cleanup()
 {
+    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
+    ioLoader->SetRunning(false);
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry::context& ctx = registry->ctx();
     auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
@@ -201,6 +213,36 @@ void Application::Run()
     Stop();
 }
 
+void Application::IOLoadThread()
+{
+    tracy::SetThreadName("IOLoader Thread");
+
+    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
+    ioLoader->SetRunning(true);
+
+    Timer timer;
+    while (true)
+    {
+        f32 deltaTime = timer.GetDeltaTime();
+        timer.Tick();
+
+        if (!ioLoader->Tick())
+            break;
+
+        bool limitFrameRate = CVAR_IOFramerateLimit.Get() == 1;
+        if (limitFrameRate)
+        {
+            f32 targetFramerate = Math::Max(static_cast<f32>(CVAR_IOFramerateLimitTarget.Get()), 5.0f);
+            f32 targetDelta = 1.0f / targetFramerate;
+
+            for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
+            {
+                std::this_thread::yield();
+            }
+        }
+    }
+}
+
 bool Application::Init()
 {
     // Setup CVar Config
@@ -255,8 +297,8 @@ bool Application::Init()
     JPH::Factory::sInstance = new JPH::Factory();
     JPH::RegisterTypes();
 
-    TextureLoader::Init();
-    ClientDBLoader::Init();
+    Util::Texture::DiscoverAll();
+    Util::ClientDB::DiscoverAll();
 
     _gameRenderer = new GameRenderer(_inputManager);
     _editorHandler = new Editor::EditorHandler();
@@ -278,19 +320,25 @@ bool Application::Init()
         entt::registry::context& ctx = _registries.gameRegistry->ctx();
         auto& clientDBCollection = ctx.get<ClientDBCollection>();
 
-        clientDBCollection.Register<ClientDB::Definitions::Map>(ClientDBHash::Map, "Map");
-        clientDBCollection.Register<ClientDB::Definitions::LiquidObject>(ClientDBHash::LiquidObject, "LiquidObject");
-        clientDBCollection.Register<ClientDB::Definitions::LiquidType>(ClientDBHash::LiquidType, "LiquidType");
-        clientDBCollection.Register<ClientDB::Definitions::LiquidMaterial>(ClientDBHash::LiquidMaterial, "LiquidMaterial");
-        clientDBCollection.Register<ClientDB::Definitions::CinematicCamera>(ClientDBHash::CinematicCamera, "CinematicCamera");
-        clientDBCollection.Register<ClientDB::Definitions::CinematicSequence>(ClientDBHash::CinematicSequence, "CinematicSequence");
-        clientDBCollection.Register<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave, "CameraSave");
-        clientDBCollection.Register<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor, "Cursor");
-        clientDBCollection.Register<ClientDB::Definitions::AnimationData>(ClientDBHash::AnimationData, "AnimationData");
-        clientDBCollection.Register<ClientDB::Definitions::CreatureDisplayInfo>(ClientDBHash::CreatureDisplayInfo, "CreatureDisplayInfo");
-        clientDBCollection.Register<ClientDB::Definitions::CreatureDisplayInfoExtra>(ClientDBHash::CreatureDisplayInfoExtra, "CreatureDisplayInfoExtra");
-        clientDBCollection.Register<ClientDB::Definitions::CreatureModelData>(ClientDBHash::CreatureModelData, "CreatureModelData");
-        clientDBCollection.Register<ClientDB::Definitions::CharSection>(ClientDBHash::CharSection, "CharSection");
+        if (!clientDBCollection.Has(ClientDBHash::CameraSave))
+        {
+            clientDBCollection.Register(ClientDBHash::CameraSave, "CameraSave");
+
+            auto* cameraSaveStorage = clientDBCollection.Get(ClientDBHash::CameraSave);
+            cameraSaveStorage->Initialize({
+                { "Name",   ClientDB::FieldType::StringRef },
+                { "Code",   ClientDB::FieldType::StringRef }
+            });
+
+            ClientDB::Definitions::CameraSave cameraSave =
+            {
+                .name = cameraSaveStorage->AddString("Default"),
+                .code = cameraSaveStorage->AddString("RGVmYXVsdAAAAAAAAAAAIEEAACDBAADwQQAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAA==")
+            };
+            cameraSaveStorage->Replace(0, cameraSave);
+
+            cameraSaveStorage->MarkDirty();
+        }
 
         _registries.gameRegistry->ctx().emplace<MapDB>();
         ECS::Util::Map::Refresh();
@@ -299,20 +347,25 @@ bool Application::Init()
         cameraSaveDB.Refresh();
 
         // Setup Cursors
+        if (!clientDBCollection.Has(ClientDBHash::Cursor))
         {
-            auto* cursors = clientDBCollection.Get<ClientDB::Definitions::Cursor>(ClientDBHash::Cursor);
+            clientDBCollection.Register(ClientDBHash::Cursor, "Cursor");
 
-            if (cursors->Count() == 0)
+            auto* cursorStorage = clientDBCollection.Get(ClientDBHash::Cursor);
+            cursorStorage->Initialize({
+                { "Name",       ClientDB::FieldType::StringRef },
+                { "Texture",    ClientDB::FieldType::StringRef }
+            });
+
+            struct CursorEntry
             {
-                struct CursorEntry
-                {
-                public:
-                    std::string name;
-                    std::string texture;
-                };
-            
-                std::vector<CursorEntry> cursorEntries =
-                {
+            public:
+                std::string name;
+                std::string texture;
+            };
+        
+            std::vector<CursorEntry> cursorEntries =
+            {
                     { "architect", "Data/Texture/interface/cursor/architect.dds" },
                     { "argusteleporter", "Data/Texture/interface/cursor/argusteleporter.dds" },
                     { "attack", "Data/Texture/interface/cursor/attack.dds" },
@@ -384,30 +437,18 @@ bool Application::Init()
                     { "move", "Data/Texture/interface/cursor/ui-cursor-move.dds" },
                     { "unablemove", "Data/Texture/interface/cursor/unableui-cursor-move.dds" }
                 };
-            
-                for (const CursorEntry& cursorEntry : cursorEntries)
-                {
-                    ClientDB::Definitions::Cursor entry;
-                    entry.name = cursorEntry.name;
-                    entry.texturePath = cursorEntry.texture;
-            
-                    cursors->AddRow(entry);
-                }
-            
-                cursors->SetDirty();
+        
+            for (const CursorEntry& cursorEntry : cursorEntries)
+            {
+                ClientDB::Definitions::Cursor entry;
+                entry.name = cursorStorage->AddString(cursorEntry.name);
+                entry.texturePath = cursorStorage->AddString(cursorEntry.texture);
+        
+                cursorStorage->Add(entry);
             }
+        
+            cursorStorage->MarkDirty();
         }
-
-        ECS::Util::CharSection::RefreshData(*_registries.gameRegistry);
-    }
-
-    // Init AnimationSystem
-    {
-        // ModelRenderer is optional and nullptr can be passed in to run the AnimationSystem without it
-        ModelRenderer* modelRenderer = _gameRenderer->GetModelRenderer();
-        _animationSystem = new Animation::AnimationSystem();
-
-        ServiceLocator::SetAnimationSystem(_animationSystem);
     }
 
     return true;
@@ -530,19 +571,20 @@ bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
 
 void Application::SaveCDB()
 {
-    std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
-
     entt::registry::context& ctx = _registries.gameRegistry->ctx();
     auto& clientDBCollection = ctx.get<ECS::Singletons::ClientDBCollection>();
 
-    for (auto& clientDB : clientDBCollection._dbs)
+    std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
+
+    clientDBCollection.Each([&clientDBCollection, &absolutePath](ECS::Singletons::ClientDBHash dbHash, ClientDB::Data* db)
     {
-        if (!clientDB->IsDirty())
-            continue;
+        if (!db->IsDirty())
+            return;
 
-        std::filesystem::path savePath = (absolutePath / clientDB->GetName()).replace_extension(ClientDB::FILE_EXTENSION);
+        const std::string& dbName = clientDBCollection.GetDBName(dbHash);
+        std::string savePath = std::filesystem::path(absolutePath / dbName).replace_extension(ClientDB::FILE_EXTENSION).string();
 
-        clientDB->Save(savePath.string());
-        clientDB->ClearDirty();
-    }
+        db->Save(savePath);
+        db->ClearDirty();
+    });
 }

@@ -30,6 +30,7 @@ namespace Map
 
 struct TerrainReserveOffsets
 {
+public:
     u32 chunkDataStartOffset = 0;
     u32 cellDataStartOffset = 0;
     u32 vertexDataStartOffset = 0;
@@ -71,6 +72,7 @@ private:
 
     struct DrawParams
     {
+    public:
         bool shadowPass = false;
         u32 viewIndex = 0;
         bool cullingEnabled = false;
@@ -90,6 +92,7 @@ private:
 
     struct FillDrawCallsParams
     {
+    public:
         std::string passName;
 
         u32 cellCount;
@@ -104,9 +107,9 @@ private:
     void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);
 
 private:
-    PRAGMA_NO_PADDING_START
     struct TerrainVertex
     {
+    public:
         u8 normal[3] = { 0, 0, 0 }; // 3 bytes
         u8 color[3] = { 0, 0, 0 }; // 3 bytes
         u8 padding[2] = { 0, 0 }; // 2 bytes
@@ -115,27 +118,30 @@ private:
 
     struct InstanceData
     {
+    public:
         u32 packedChunkCellID = 0;
         u32 globalCellID = 0;
     };
 
     struct CellData
     {
+    public:
         u16 diffuseIDs[4] = { 0, 0, 0, 0 };
         u64 hole = 0;
     };
 
     struct ChunkData
     {
+    public:
         u32 alphaMapID = 0;
     };
 
     struct CellHeightRange
     {
+    public:
         f32 min = 0;
         f32 max = 0;
     };
-    PRAGMA_NO_PADDING_END
 
 private:
     Renderer::Renderer* _renderer = nullptr;
@@ -175,6 +181,10 @@ private:
 
     std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
     std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;
+
+    std::atomic<u32> _numChunksLoaded = 0;
+    std::mutex _chunkLoadMutex;
+    std::mutex _chunkLoadAlphaTextureMutex;
 
     u32 _numOccluderDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };

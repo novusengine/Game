@@ -11,6 +11,7 @@ namespace ECS::Components
     public:
         u32 modelID = std::numeric_limits<u32>().max();
         u32 instanceID = std::numeric_limits<u32>().max();
+        u32 modelHash = std::numeric_limits<u32>().max();
     };
 }
 

@@ -15,6 +15,7 @@ class SkyboxRenderer
 public:
     struct SkybandColors
     {
+    public:
         vec4 top = vec4(0.00f, 0.12f, 0.29f, 0.0f);
         vec4 middle = vec4(0.23f, 0.64f, 0.81f, 0.0f);
         vec4 bottom = vec4(0.60f, 0.86f, 0.96f, 0.0f);

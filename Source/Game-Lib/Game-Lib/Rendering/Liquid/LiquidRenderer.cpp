@@ -89,7 +89,7 @@ void LiquidRenderer::Reserve(const ReserveInfo& info, LiquidReserveOffsets& rese
     }
 #endif
 
-    reserveOffsets.indexStartOffset = cullingResourcesStartIndex;
+    reserveOffsets.instanceStartOffset = cullingResourcesStartIndex;
     reserveOffsets.vertexStartOffset = _vertices.AddCount(info.numVertices);
     reserveOffsets.indexStartOffset = _indices.AddCount(info.numIndices);
 }
@@ -122,56 +122,58 @@ void LiquidRenderer::Load(LoadDesc& desc)
     drawCallData.liquidType = 0;
     drawCallData.uvAnim = hvec2(0.0f, 0.0f);
 
+    // TODO : LOAD LIQUID TEXTURES UP FRONT FROM CDB
+
     // Load textures if they exist
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    entt::registry::context& ctx = registry->ctx();
-    auto& clientDBCollection = ctx.get<ECS::Singletons::ClientDBCollection>();
-    auto* liquidTypes = clientDBCollection.Get<ClientDB::Definitions::LiquidType>(ECS::Singletons::ClientDBHash::LiquidType);
-
+    //entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    //entt::registry::context& ctx = registry->ctx();
+    //auto& clientDBCollection = ctx.get<ECS::Singletons::ClientDBCollection>();
+    //auto* liquidTypes = clientDBCollection.Get<ClientDB::Definitions::LiquidType>(ECS::Singletons::ClientDBHash::LiquidType);
+    //
     bool isLavaOrSlime = false;
-    if (liquidTypes->HasRow(desc.typeID))
-    {
-        const ClientDB::Definitions::LiquidType* liquidType = liquidTypes->GetRow(desc.typeID);
-
-        u16 textureStartIndex = 0;
-        u32 textureCount = liquidType->frameCountTextures[0];
-
-        if (textureCount > std::numeric_limits<u8>().max())
-        {
-            NC_LOG_CRITICAL("Tried to load a liquid texture with more than 255 frames!");
-        }
-
-        {
-            std::scoped_lock lock(_textureMutex);
-
-            char textureBuffer[256];
-            for (u32 i = 0; i < liquidType->frameCountTextures[0]; i++)
-            {
-                i32 length = StringUtils::FormatString(textureBuffer, 256, liquidType->textures[0].c_str(), i + 1);
-
-                Renderer::TextureDesc textureDesc;
-                textureDesc.path = "Data/Texture/" + std::string(textureBuffer, length);
-
-                u32 index;
-                _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
-
-                if (i == 0)
-                {
-                    textureStartIndex = static_cast<u16>(index);
-                }
-            }
-        }
-
-        if (liquidType->soundBank == 2 || liquidType->soundBank == 3)
-        {
-            isLavaOrSlime = true;
-        }
-
-        drawCallData.textureStartIndex = textureStartIndex;
-        drawCallData.textureCount = textureCount;
-        drawCallData.liquidType = liquidType->soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
-        drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
-    }
+    //if (liquidTypes->HasRow(desc.typeID))
+    //{
+    //    const ClientDB::Definitions::LiquidType* liquidType = liquidTypes->GetRow(desc.typeID);
+    //
+    //    u16 textureStartIndex = 0;
+    //    u32 textureCount = liquidType->frameCountTextures[0];
+    //
+    //    if (textureCount > std::numeric_limits<u8>().max())
+    //    {
+    //        NC_LOG_CRITICAL("Tried to load a liquid texture with more than 255 frames!");
+    //    }
+    //
+    //    {
+    //        std::scoped_lock lock(_textureMutex);
+    //
+    //        char textureBuffer[256];
+    //        for (u32 i = 0; i < liquidType->frameCountTextures[0]; i++)
+    //        {
+    //            i32 length = StringUtils::FormatString(textureBuffer, 256, liquidType->textures[0].c_str(), i + 1);
+    //        
+    //            Renderer::TextureDesc textureDesc;
+    //            textureDesc.path = "Data/Texture/" + std::string(textureBuffer, length);
+    //        
+    //            u32 index;
+    //            _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
+    //        
+    //            if (i == 0)
+    //            {
+    //                textureStartIndex = static_cast<u16>(index);
+    //            }
+    //        }
+    //    }
+    //
+    //    if (liquidType->soundBank == 2 || liquidType->soundBank == 3)
+    //    {
+    //        isLavaOrSlime = true;
+    //    }
+    //
+    //    drawCallData.textureStartIndex = textureStartIndex;
+    //    drawCallData.textureCount = textureCount;
+    //    drawCallData.liquidType = liquidType->soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
+    //    drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
+    //}
 
     // Write vertices and calculate bounding box
     vec3 min = vec3(100000, 100000, 100000);

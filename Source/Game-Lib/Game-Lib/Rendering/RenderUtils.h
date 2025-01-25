@@ -19,6 +19,7 @@ class RenderUtils
 public:
     struct BlitParams
     {
+    public:
         Renderer::ImageResource input;
         u32 inputMipLevel = 0;
         vec4 colorMultiplier;
@@ -33,6 +34,7 @@ public:
 
     struct DepthBlitParams
     {
+    public:
         Renderer::DepthImageResource input;
         vec4 colorMultiplier;
         vec4 additiveColor;
@@ -46,6 +48,7 @@ public:
 
     struct OverlayParams
     {
+    public:
         Renderer::ImageResource overlayImage;
         u32 mipLevel = 0;
         vec4 colorMultiplier;
@@ -60,6 +63,7 @@ public:
 
     struct DepthOverlayParams
     {
+    public:
         Renderer::DepthImageResource overlayImage;
         vec4 colorMultiplier;
         vec4 additiveColor;
@@ -73,6 +77,7 @@ public:
 
     struct PictureInPictureParams
     {
+    public:
         Renderer::ImageResource pipImage;
         u32 mipLevel = 0;
         vec4 colorMultiplier;
@@ -88,6 +93,7 @@ public:
 
     struct DepthPictureInPictureParams
     {
+    public:
         Renderer::DepthImageResource pipImage;
         vec4 colorMultiplier;
         vec4 additiveColor;
@@ -124,6 +130,7 @@ public:
 
     struct CopyDepthToColorParams
     {
+    public:
         Renderer::DepthImageResource source;
         Renderer::ImageMutableResource destination;
         u32 destinationMip;

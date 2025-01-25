@@ -3,9 +3,11 @@
 #include "Game-Lib/Rendering/CullingResources.h"
 
 #include <Base/Types.h>
+#include <Base/Container/ConcurrentQueue.h>
 #include <Base/Math/Geometry.h>
 
 #include <FileFormat/Shared.h>
+#include <FileFormat/Novus/ClientDB/Definitions.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <Renderer/DescriptorSet.h>
@@ -14,6 +16,7 @@
 #include <Renderer/GPUVector.h>
 
 #include <entt/fwd.hpp>
+#include <robinhood/robinhood.h>
 
 class DebugRenderer;
 struct RenderResources;
@@ -34,6 +37,7 @@ constexpr u8 MODEL_INVALID_TEXTURE_UNIT_INDEX = std::numeric_limits<u8>().max();
 
 struct ModelReserveOffsets
 {
+public:
     u32 modelIndex = 0;
     u32 verticesStartIndex = 0;
     u32 indicesStartIndex = 0;
@@ -47,22 +51,26 @@ struct ModelReserveOffsets
 
 struct TextureUnitReserveOffsets
 {
+public:
     u32 textureUnitsStartIndex = 0;
 };
 
 struct AnimationReserveOffsets
 {
+public:
     u32 boneStartIndex = 0;
     u32 textureTransformStartIndex = 0;
 };
 
 struct InstanceReserveOffsets
 {
+public:
     u32 instanceIndex = 0;
 };
 
 struct DrawCallReserveOffsets
 {
+public:
     u32 opaqueDrawCallStartIndex = 0;
     u32 transparentDrawCallStartIndex = 0;
 };
@@ -165,8 +173,17 @@ public:
 
     struct PackedAnimatedVertexPositions
     {
+    public:
         u32 packed0;
         u32 packed1;
+    };
+
+    struct TextureLoadRequest
+    {
+    public:
+        u32 textureUnitOffset = 0;
+        u32 textureIndex = 0;
+        u32 textureHash = 0;
     };
 
 public:
@@ -182,21 +199,21 @@ public:
     void AllocateModel(const Model::ComplexModel& model, ModelReserveOffsets& offsets);
     void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitReserveOffsets& offsets);
     void AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets);
-    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement);
-    u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
+    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet);
+    u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
     void AllocateInstance(u32 modelID, InstanceReserveOffsets& offsets);
     void AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offsets, bool isSkybox);
-    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID = std::numeric_limits<u32>().max());
-    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayID);
+    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
+    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID);
 
     bool AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset);
     bool SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffset, u32 textureTransformMatrixOffset);
-    bool SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatrixOffset, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
-    bool SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u32 textureTransformMatrixOffset, u32 localTextureTransformIndex, u32 count, mat4x4* textureTransformMatrixArray);
+    bool SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatrixOffset, u32 localBoneIndex, u32 count, const mat4x4* boneMatrixArray);
+    bool SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u32 textureTransformMatrixOffset, u32 localTextureTransformIndex, u32 count, const mat4x4* textureTransformMatrixArray);
 
     bool AddAnimationInstance(u32 instanceID);
-    bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray);
-    bool SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, mat4x4* boneMatrixArray);
+    bool SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, const mat4x4* boneMatrixArray);
+    bool SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, const mat4x4* boneMatrixArray);
 
     void AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
@@ -296,6 +313,10 @@ private:
 
     u32 _numOccluderDrawCalls = 0;
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };
+
+    moodycamel::ConcurrentQueue<TextureLoadRequest> _textureLoadRequests;
+    std::vector<TextureLoadRequest> _textureLoadWork;
+    robin_hood::unordered_set<u32> _dirtyTextureUnitOffsets;
 
     std::mutex _modelOffsetsMutex;
     std::mutex _textureOffsetsMutex;

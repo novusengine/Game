@@ -2,12 +2,12 @@
 
 Editor::EditorHandler* ServiceLocator::_editorHandler = nullptr;
 InputManager* ServiceLocator::_inputManager = nullptr;
+IOLoader* ServiceLocator::_ioLoader = nullptr;
 GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
 EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
 GameConsole* ServiceLocator::_gameConsole = nullptr;
 Scripting::LuaManager* ServiceLocator::_luaManager = nullptr;
-Animation::AnimationSystem* ServiceLocator::_animationSystem = nullptr;
 
 void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
@@ -19,6 +19,12 @@ void ServiceLocator::SetInputManager(InputManager* inputManager)
 {
     assert(_inputManager == nullptr);
     _inputManager = inputManager;
+}
+
+void ServiceLocator::SetIOLoader(IOLoader* ioLoader)
+{
+    assert(_ioLoader == nullptr);
+    _ioLoader = ioLoader;
 }
 
 void ServiceLocator::SetGameRenderer(GameRenderer* gameRenderer)
@@ -49,10 +55,4 @@ void ServiceLocator::SetLuaManager(Scripting::LuaManager* luaManager)
 {
     assert(_luaManager == nullptr);
     _luaManager = luaManager;
-}
-
-void ServiceLocator::SetAnimationSystem(Animation::AnimationSystem* animationSystem)
-{
-    assert(_animationSystem == nullptr);
-    _animationSystem = animationSystem;
 }

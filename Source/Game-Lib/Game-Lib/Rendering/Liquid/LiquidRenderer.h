@@ -12,6 +12,7 @@ class DebugRenderer;
 
 struct LiquidReserveOffsets
 {
+public:
     u32 instanceStartOffset = 0;
     u32 vertexStartOffset = 0;
     u32 indexStartOffset = 0;
@@ -22,15 +23,16 @@ class LiquidRenderer : CulledRenderer
 public:
     struct ReserveInfo
     {
+    public:
         u32 numInstances = 0;
         u32 numVertices = 0;
         u32 numIndices = 0;
     };
 
 private:
-#pragma pack(push, 1)
     struct Vertex
     {
+    public:
         u8 xCellOffset = 0;
         u8 yCellOffset = 0;
         u8 padding[2] = { 0, 0 };
@@ -40,6 +42,7 @@ private:
 
     struct DrawCallData
     {
+    public:
         u16 chunkID;
         u16 cellID;
         u16 textureStartIndex;
@@ -52,6 +55,7 @@ private:
 
     struct Constants
     {
+    public:
         Color shallowOceanColor;
         Color deepOceanColor;
         Color shallowRiverColor;
@@ -59,7 +63,6 @@ private:
         f32 liquidVisibilityRange;
         f32 currentTime;
     };
-#pragma pack(pop)
 
 public:
     LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
@@ -72,6 +75,7 @@ public:
 
     struct LoadDesc
     {
+    public:
         u32 chunkID;
         u32 cellID;
         u8 typeID;
@@ -91,8 +95,8 @@ public:
         vec2 cellPos;
 
         f32 defaultHeight;
-        f32* heightMap = nullptr;
-        u8* bitMap = nullptr;
+        const f32* heightMap = nullptr;
+        const u8* bitMap = nullptr;
 
         u32 vertexOffset;
         u32 vertexCount;

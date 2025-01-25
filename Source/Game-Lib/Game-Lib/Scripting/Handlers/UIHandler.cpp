@@ -468,7 +468,7 @@ namespace Scripting::UI
             luaL_error(state, "Expected text as parameter 1");
         }
 
-        const char* templateName = ctx.Get(nullptr, 1);
+        const char* templateName = ctx.Get(nullptr, 2);
         if (templateName == nullptr)
         {
             luaL_error(state, "Expected text template name as parameter 2");

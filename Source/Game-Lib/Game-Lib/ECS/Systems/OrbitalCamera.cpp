@@ -162,6 +162,8 @@ namespace ECS::Systems
 
     void OrbitalCamera::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::OrbitalCamera");
+
         entt::registry::context& ctx = registry.ctx();
 
         auto& activeCamera = ctx.get<Singletons::ActiveCamera>();

@@ -1,9 +1,11 @@
-#pragma once
+#include "TextureUtil.h"
+
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/TextureSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/DebugHandler.h>
+#include <Base/Util/StringUtils.h>
 #include <Base/Container/ConcurrentQueue.h>
 
 #include <entt/entt.hpp>
@@ -12,18 +14,15 @@
 #include <filesystem>
 namespace fs = std::filesystem;
 
-struct TexturePair
+namespace Util::Texture
 {
-    u32 hash;
-    std::string path;
-};
+    struct DiscoveredTexture
+    {
+        u32 hash;
+        std::string path;
+    };
 
-class TextureLoader
-{
-public:
-    TextureLoader() = delete;
-
-    static bool Init()
+    void DiscoverAll()
     {
         NC_LOG_INFO("TextureLoader : Scanning for textures");
 
@@ -47,7 +46,9 @@ public:
         std::filesystem::recursive_directory_iterator dirpos{ absolutePath };
         std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
 
-        moodycamel::ConcurrentQueue<TexturePair> texturePairs(paths.size());
+        u32 numPaths = static_cast<u32>(paths.size());
+        u32 numToReserve = numPaths * moodycamel::ConcurrentQueue<DiscoveredTexture>::BLOCK_SIZE;
+        moodycamel::ConcurrentQueue<DiscoveredTexture> texturePairs(numToReserve);
 
         std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&subStrIndex, &texturePairs](const std::filesystem::path& path)
         {
@@ -57,7 +58,7 @@ public:
             std::string texturePath = path.string().substr(subStrIndex);
             std::replace(texturePath.begin(), texturePath.end(), '\\', '/');
 
-            TexturePair texturePair;
+            DiscoveredTexture texturePair;
             texturePair.path = texturePath;
             texturePair.hash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
 
@@ -67,9 +68,8 @@ public:
         u32 numTexturePairs = static_cast<u32>(texturePairs.size_approx());
 
         textureSingleton.textureHashToPath.reserve(numTexturePairs);
-        textureSingleton.textureHashToTextureID.reserve(numTexturePairs);
 
-        TexturePair texturePair;
+        DiscoveredTexture texturePair;
         while (texturePairs.try_dequeue(texturePair))
         {
             if (textureSingleton.textureHashToPath.contains(texturePair.hash))
@@ -82,7 +82,5 @@ public:
         }
 
         NC_LOG_INFO("Loaded Texture {0} entries", textureSingleton.textureHashToPath.size());
-
-        return true;
     }
-};
+}

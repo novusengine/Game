@@ -31,6 +31,7 @@ class CulledRenderer
 protected:
     struct DrawParams
     {
+    public:
         bool cullingEnabled = false;
         bool shadowPass = false;
         u32 viewIndex = 0;
@@ -113,6 +114,7 @@ protected:
 
     struct OccluderPassParams : public PassParams
     {
+    public:
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
         Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
@@ -195,6 +197,7 @@ protected:
 
     struct CullingPassParams : public PassParams
     {
+    public:
         Renderer::ImageResource depthPyramid;
 
         Renderer::BufferResource prevCulledDrawCallsBitMask;
@@ -274,6 +277,7 @@ protected:
 
     struct GeometryPassParams : public PassParams
     {
+    public:
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
         Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];

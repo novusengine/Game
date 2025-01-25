@@ -21,9 +21,9 @@ class CollideShapeSettings;
 /// Class that constructs a MeshShape
 class JPH_EXPORT MeshShapeSettings final : public ShapeSettings
 {
-public:
 	JPH_DECLARE_SERIALIZABLE_VIRTUAL(JPH_EXPORT, MeshShapeSettings)
 
+public:
 	/// Default constructor for deserialization
 									MeshShapeSettings() = default;
 
@@ -42,6 +42,7 @@ public:
 
 	/// Original list of indexed triangles (triangles will be reordered internally in the mesh shape).
 	/// Triangles must be provided in counter clockwise order.
+	/// Degenerate triangles will automatically be removed during mesh creation but no other mesh simplifications are performed, use an external library if this is desired.
 	/// For simulation, the triangles are considered to be single sided.
 	/// For ray casts you can choose to make triangles double sided by setting RayCastSettings::mBackFaceMode to EBackFaceMode::CollideWithBackFaces.
 	/// For collide shape tests you can use CollideShapeSettings::mBackFaceMode and for shape casts you can use ShapeCastSettings::mBackFaceModeTriangles.
@@ -58,6 +59,12 @@ public:
 	/// Setting this value too small can cause ghost collisions with edges, setting it too big can cause depenetration artifacts (objects not depenetrating quickly).
 	/// Valid ranges are between cos(0 degrees) and cos(90 degrees). The default value is cos(5 degrees).
 	float							mActiveEdgeCosThresholdAngle = 0.996195f;					// cos(5 degrees)
+
+	/// When true, we store the user data coming from Triangle::mUserData or IndexedTriangle::mUserData in the mesh shape.
+	/// This can be used to store additional data like the original index of the triangle in the mesh.
+	/// Can be retrieved using MeshShape::GetTriangleUserData.
+	/// Turning this on increases the memory used by the MeshShape by roughly 25%.
+	bool							mPerTriangleUserData = false;
 };
 
 /// A mesh shape, consisting of triangles. Mesh shapes are mostly used for static geometry.
@@ -118,7 +125,7 @@ public:
 	virtual void					CollidePoint(Vec3Arg inPoint, const SubShapeIDCreator &inSubShapeIDCreator, CollidePointCollector &ioCollector, const ShapeFilter &inShapeFilter = { }) const override;
 
 	// See: Shape::CollideSoftBodyVertices
-	virtual void					CollideSoftBodyVertices(Mat44Arg inCenterOfMassTransform, Vec3Arg inScale, SoftBodyVertex *ioVertices, uint inNumVertices, float inDeltaTime, Vec3Arg inDisplacementDueToGravity, int inCollidingShapeIndex) const override;
+	virtual void					CollideSoftBodyVertices(Mat44Arg inCenterOfMassTransform, Vec3Arg inScale, const CollideSoftBodyVertexIterator &inVertices, uint inNumVertices, int inCollidingShapeIndex) const override;
 
 	// See Shape::GetTrianglesStart
 	virtual void					GetTrianglesStart(GetTrianglesContext &ioContext, const AABox &inBox, Vec3Arg inPositionCOM, QuatArg inRotation, Vec3Arg inScale) const override;
@@ -139,6 +146,9 @@ public:
 
 	// See Shape::GetVolume
 	virtual float					GetVolume() const override									{ return 0; }
+
+	// When MeshShape::mPerTriangleUserData is true, this function can be used to retrieve the user data that was stored in the mesh shape.
+	uint32							GetTriangleUserData(const SubShapeID &inSubShapeID) const;
 
 #ifdef JPH_DEBUG_RENDERER
 	// Settings

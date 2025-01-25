@@ -33,6 +33,8 @@ namespace ECS::Systems
 
     void UpdateSkyboxes::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::UpdateSkyboxes");
+
         if (CVAR_CameraLockSkybox.Get())
             return;
 

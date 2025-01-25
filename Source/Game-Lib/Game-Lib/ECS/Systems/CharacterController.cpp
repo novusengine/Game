@@ -1,7 +1,8 @@
 #include "CharacterController.h"
 
-#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Events.h"
@@ -25,6 +26,8 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/AnimationUtil.h"
+#include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/CharacterControllerUtil.h"
 #include "Game-Lib/Util/PhysicsUtil.h"
 #include "Game-Lib/Util/UnitUtil.h"
@@ -408,7 +411,7 @@ namespace ECS::Systems
 #else
     void CharacterController::Update(entt::registry& registry, f32 deltaTime)
     {
-        ZoneScopedN("CharacterController::Preprocessing");
+        ZoneScopedN("ECS::CharacterController::Preprocessing");
         InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("CharacterController"_h);
 
@@ -416,10 +419,27 @@ namespace ECS::Systems
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
         auto& networkState = ctx.get<Singletons::NetworkState>();
 
+        static bool addedAttachments = false;
+
+        Util::EventUtil::OnEvent<Components::DiscoveredModelsCompleteEvent>([&]()
+        {
+            bool isLocal = !networkState.client || (networkState.client && !networkState.client->IsConnected());
+            if (isLocal && registry.valid(characterSingleton.moverEntity))
+            {
+                ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                auto& moverModel = registry.get<Components::Model>(characterSingleton.moverEntity);
+                modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, ClientDB::Definitions::DisplayInfoType::Creature, 50);
+            }
+
+            addedAttachments = false;
+        });
+
         Util::EventUtil::OnEvent<Components::MapLoadedEvent>([&](const Components::MapLoadedEvent& event)
         {
             bool isLocal = !networkState.client || (networkState.client && !networkState.client->IsConnected());
             InitCharacterController(registry, isLocal);
+
+            addedAttachments = false;
         });
 
 //#ifdef JPH_DEBUG_RENDERER
@@ -432,7 +452,34 @@ namespace ECS::Systems
 //        characterSingleton.character->GetShape()->Draw(joltDebugRenderer, characterSingleton.character->GetWorldTransform(), JPH::Vec3(modelScale.x, modelScale.y, modelScale.z), JPH::Color::sCyan, true, true);
 //#endif
 
-        if (!keybindGroup->IsActive() || characterSingleton.moverEntity == entt::null)
+        if (characterSingleton.moverEntity == entt::null)
+            return;
+
+        // TODO : Get rid of the dependency on AnimationData here, we can fetch the data needed to determine attachments directly from the stored model pointers
+        if (!addedAttachments && registry.all_of<Components::Model, Components::AttachmentData, Components::AnimationData>(characterSingleton.moverEntity))
+        {
+            auto& transformSystem = ctx.get<TransformSystem>();
+            auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
+            auto& attachmentData = registry.get<Components::AttachmentData>(characterSingleton.moverEntity);
+        
+            entt::entity itemEntity = entt::null;
+            //if (::Util::Unit::AddItemToHand(registry, characterSingleton.moverEntity, Animation::AnimationAttachment::HandLeft, 453, itemEntity))
+            if (::Util::Unit::AddItemToHand(registry, characterSingleton.moverEntity, ::Attachment::Defines::Type::Shield, 30993, itemEntity))
+            {
+                // Yay!
+            }
+
+            //if (::Util::Unit::AddItemToHand(registry, characterSingleton.moverEntity, Animation::AnimationAttachment::HandRight, 679, itemEntity))
+            //if (::Util::Unit::AddItemToHand(registry, characterSingleton.moverEntity, Animation::AnimationAttachment::HandRight, 30606, itemEntity))
+            if (::Util::Unit::AddItemToHand(registry, characterSingleton.moverEntity, ::Attachment::Defines::Type::HandRight, 36377, itemEntity))
+            {
+                // Yay!
+            }
+
+            addedAttachments = true;
+        }
+
+        if (!keybindGroup->IsActive())
             return;
 
         auto& transformSystem = ctx.get<TransformSystem>();
@@ -443,7 +490,7 @@ namespace ECS::Systems
             return;
 
         {
-            ZoneScopedN("CharacterController::Update - Active");
+            ZoneScopedN("ECS::CharacterController::Update - Active");
 
             auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
             auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
@@ -493,7 +540,7 @@ namespace ECS::Systems
             JPH::CharacterVirtual::EGroundState groundState = characterSingleton.character->GetGroundState();
 
             // Fix for animations bricking when turning off animations while jumping state is not None
-            bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationEnabled");
+            bool animationsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "animationSimulationEnabled");
             if (!animationsEnabled && movementInfo.jumpState != Components::JumpState::None)
             {
                 movementInfo.jumpState = Components::JumpState::None;
@@ -640,12 +687,14 @@ namespace ECS::Systems
         if (isLocal)
         {
             characterSingleton.moverEntity = registry.create();
+
             registry.emplace<Components::Name>(characterSingleton.moverEntity);
             registry.emplace<Components::AABB>(characterSingleton.moverEntity);
             registry.emplace<Components::Transform>(characterSingleton.moverEntity);
-            registry.emplace<Components::Model>(characterSingleton.moverEntity);
+            auto& moverModel = registry.emplace<Components::Model>(characterSingleton.moverEntity);
             registry.emplace<Components::MovementInfo>(characterSingleton.moverEntity);
             registry.emplace<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            registry.emplace<Components::AttachmentData>(characterSingleton.moverEntity);
 
             auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
             displayInfo.displayID = 50;
@@ -653,10 +702,11 @@ namespace ECS::Systems
             auto& unitStatsComponent = registry.emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
             unitStatsComponent.currentHealth = 50.0f;
             unitStatsComponent.maxHealth = 100.0f;
+
             transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
 
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, 50);
+            modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, ClientDB::Definitions::DisplayInfoType::Creature, 50);
         }
 
         f32 width = 0.4166f;
@@ -742,11 +792,8 @@ namespace ECS::Systems
             {
                 if (auto* model = registry.try_get<Components::Model>(characterSingleton.moverEntity))
                 {
-                    if (model->instanceID != std::numeric_limits<u32>().max())
-                    {
-                        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                        modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, model->instanceID);
-                    }
+                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                    modelLoader->UnloadModelForEntity(characterSingleton.moverEntity, *model);
                 }
 
                 registry.destroy(characterSingleton.moverEntity);

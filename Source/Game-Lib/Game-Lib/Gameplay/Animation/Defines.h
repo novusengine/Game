@@ -1,18 +1,20 @@
 #pragma once
 #include <Base/Types.h>
 
-namespace Animation
+#include <entt/fwd.hpp>
+
+namespace Animation::Defines
 {
-    using AnimationModelID = u32;
-    using AnimationInstanceID = u32;
-    using AnimationSequenceID = u16;
-    using AnimationStateID = i16;
-    static constexpr AnimationSequenceID InvalidSequenceID = std::numeric_limits<AnimationSequenceID>().max();
-    static constexpr AnimationStateID InvalidStateID = std::numeric_limits<AnimationStateID>().max();
+    using ModelID = u32;
+    using InstanceID = u32;
+    using SequenceID = u16;
+    using StateID = i16;
+    static constexpr SequenceID InvalidSequenceID = std::numeric_limits<SequenceID>().max();
+    static constexpr StateID InvalidStateID = std::numeric_limits<StateID>().max();
     static constexpr u8 InvalidProcedualBoneID = std::numeric_limits<u8>().max();
     static constexpr i16 InvalidBoneID = -1;
 
-    enum class AnimationType : i16
+    enum class Type : i16
     {
         Invalid = -1,
         Stand = 0,
@@ -667,7 +669,7 @@ namespace Animation
         FlyMountSelfFall = 649,
         Count
     };
-    static const char* AnimationNames[(i16)AnimationType::Count] =
+    static const char* TypeNames[(i16)Type::Count] =
     {
         "Stand",
         "Death",
@@ -1321,7 +1323,7 @@ namespace Animation
         "FlyMountSelfFall"
     };
 
-    enum class AnimationBone : i8
+    enum class Bone : i8
     {
         Default = -1,
         ArmL = 0,
@@ -1416,7 +1418,7 @@ namespace Animation
         EXP_L1_FingerClawB1 = 89,
         Count
     };
-    static const char* AnimationBoneNames[(i8)AnimationBone::Count] =
+    static const char* BoneNames[(i8)Bone::Count] =
     {
         "ArmL",
         "ArmR",
@@ -1510,11 +1512,12 @@ namespace Animation
         "EXP_L1_FingerClawB1"
     };
 
-    enum class AnimationFlags : u8
+    enum class Flags : u8
     {
         None = 0,
         HoldAtEnd = 1 << 0,
         PlayReversed = 1 << 1,
+        SplitBody = 1 << 2,
 
         // Internal Flags
         ForceTransition = 1 << 4,
@@ -1522,13 +1525,13 @@ namespace Animation
         Paused = 1 << 6,
         Finished = 1 << 7
     };
-    DECLARE_GENERIC_BITWISE_OPERATORS(AnimationFlags);
-    inline bool HasAnimationFlag(AnimationFlags flags, AnimationFlags flag)
+    DECLARE_GENERIC_BITWISE_OPERATORS(Flags);
+    inline bool HasFlag(Flags flags, Flags flag)
     {
         return (flags & flag) == flag;
     }
 
-    enum class AnimationBoneFlags : u8
+    enum class BoneFlags : u8
     {
         None = 0,
 
@@ -1541,13 +1544,13 @@ namespace Animation
         CylindricialBillboardLockZ = 1 << 6,
         Transformed = 1 << 7,
     };
-    DECLARE_GENERIC_BITWISE_OPERATORS(AnimationBoneFlags);
-    inline bool HasAnimationBoneFlag(AnimationBoneFlags flags, AnimationBoneFlags flag)
+    DECLARE_GENERIC_BITWISE_OPERATORS(BoneFlags);
+    inline bool HasBoneFlag(BoneFlags flags, BoneFlags flag)
     {
         return (flags & flag) == flag;
     }
 
-    enum class AnimationBlendOverride
+    enum class BlendOverride
     {
         Auto,
         None,
@@ -1555,36 +1558,42 @@ namespace Animation
         End,
         Both
     };
-    typedef void(*AnimationCallback)(AnimationInstanceID instanceID, AnimationType animation, AnimationType interruptedBy);
-
-    struct AnimationGlobalLoop
+    DECLARE_GENERIC_BITWISE_OPERATORS(BlendOverride);
+    inline bool HasBlendOverride(BlendOverride blendOverrideMask1, BlendOverride blendOverrideMask2)
     {
+        return (blendOverrideMask1 & blendOverrideMask2) == blendOverrideMask2;
+    }
+    typedef void(*SequenceInterruptCallback)(InstanceID instanceID, Type animation, Type interruptedBy);
+
+    struct GlobalLoop
+    {
+    public:
         f32 currentTime = 0.0f;
         f32 duration = 0.0f;
     };
 
-    struct AnimationState
+    struct State
     {
     public:
-        i16 boneIndex = InvalidBoneID;
-        AnimationType currentAnimation = AnimationType::Invalid;
-        AnimationType nextAnimation = AnimationType::Invalid;
-        AnimationSequenceID currentSequenceIndex = InvalidSequenceID;
-        AnimationSequenceID nextSequenceIndex = InvalidSequenceID;
-        AnimationFlags currentFlags = AnimationFlags::Finished;
-        AnimationFlags nextFlags = AnimationFlags::None;
+        Type currentAnimation = Type::Invalid;
+        Type nextAnimation = Type::Invalid;
+        SequenceID currentSequenceIndex = InvalidSequenceID;
+        SequenceID nextSequenceIndex = InvalidSequenceID;
+        Flags currentFlags = Flags::Finished;
+        Flags nextFlags = Flags::None;
         i8 timesToRepeat = 0;
         u16 timeToTransitionMS = 0;
 
         f32 progress = 0.0f;
         f32 transitionTime = 0.0f;
-        AnimationCallback finishedCallback = nullptr;
+        SequenceInterruptCallback finishedCallback = nullptr;
     };
 
-    struct AnimationBoneInstance
+    struct BoneInstance
     {
-        AnimationBoneFlags flags = AnimationBoneFlags::None;
-        u8 proceduralBoneIndex = InvalidProcedualBoneID;
-        i16 animationStateIndex = InvalidStateID;
+    public:
+        BoneFlags flags = BoneFlags::None;
+        u8 proceduralRotationOffsetIndex = InvalidProcedualBoneID;
+        i16 stateIndex = InvalidStateID;
     };
 }

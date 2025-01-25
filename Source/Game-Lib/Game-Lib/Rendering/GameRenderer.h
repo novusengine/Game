@@ -86,6 +86,7 @@ private:
 private:
     struct Cursor
     {
+    public:
         GLFWimage* image = nullptr;
         GLFWcursor* cursor = nullptr;
     };

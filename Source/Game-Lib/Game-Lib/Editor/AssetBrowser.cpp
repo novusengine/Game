@@ -227,7 +227,7 @@ namespace Editor
 
                 entt::entity entity = registry.create();
                 registry.emplace<ECS::Components::Name>(entity);
-                registry.emplace<ECS::Components::Model>(entity);
+                auto& model = registry.emplace<ECS::Components::Model>(entity);
                 registry.emplace<ECS::Components::AABB>(entity);
                 registry.emplace<ECS::Components::Transform>(entity);
 
@@ -236,8 +236,8 @@ namespace Editor
                 std::string relativePath = fs::relative(item, _modelTopPath).string();
                 std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
 
-                u32 modelPathHash = StringUtils::fnv1a_32(relativePath.c_str(), relativePath.length());
-                _gameRenderer->GetModelLoader()->LoadModelForEntity(entity, modelPathHash);
+                u32 modelPathHash = _gameRenderer->GetModelLoader()->GetModelHashFromModelPath(relativePath);
+                _gameRenderer->GetModelLoader()->LoadModelForEntity(entity, model, modelPathHash);
             }
         }
     }

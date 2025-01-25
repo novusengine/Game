@@ -1,7 +1,6 @@
 #include "NetworkConnection.h"
 #include "CharacterController.h"
 
-#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
@@ -216,7 +215,7 @@ namespace ECS::Systems
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
             auto& model = registry->get<Components::Model>(entity);
-            modelLoader->UnloadModelForEntity(entity, model.instanceID);
+            modelLoader->UnloadModelForEntity(entity, model);
 
             registry->remove<Components::AnimationData>(entity);
         }
@@ -256,7 +255,9 @@ namespace ECS::Systems
         }
 
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        if (!modelLoader->LoadDisplayIDForEntity(entity, displayID))
+        auto& model = registry->get<ECS::Components::Model>(entity);
+
+        if (!modelLoader->LoadDisplayIDForEntity(entity, model, ClientDB::Definitions::DisplayInfoType::Creature, displayID))
         {
             NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", entt::to_integral(networkID));
             return true;
@@ -667,6 +668,8 @@ namespace ECS::Systems
 
     void NetworkConnection::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::NetworkConnection");
+
         entt::registry::context& ctx = registry.ctx();
         auto& networkState = ctx.get<Singletons::NetworkState>();
 
@@ -745,7 +748,7 @@ namespace ECS::Systems
                         if (model->instanceID != std::numeric_limits<u32>().max())
                         {
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                            modelLoader->UnloadModelForEntity(entity, model->instanceID);
+                            modelLoader->UnloadModelForEntity(entity, *model);
                         }
                     }
 

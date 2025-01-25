@@ -330,9 +330,17 @@ namespace Scripting
     {
         NC_ASSERT(populateFunc, "Function pointer is null");
 
-        CreateTable(name);
-        populateFunc();
-        Pop();
+        if (name)
+        {
+            CreateTable(name);
+            populateFunc();
+            Pop();
+        }
+        else
+        {
+            CreateTable();
+            populateFunc();
+        }
     }
 
     void LuaState::CreateMetaTable(const char* name)

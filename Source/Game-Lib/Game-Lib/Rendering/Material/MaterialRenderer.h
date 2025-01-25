@@ -38,6 +38,7 @@ private:
 
     struct DirectionalLight
     {
+    public:
         vec4 direction;
         vec4 color; // a = intensity
         vec4 groundAmbientColor; // a = intensity

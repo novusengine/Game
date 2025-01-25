@@ -46,20 +46,9 @@ void LiquidLoader::Update(f32 deltaTime)
     {
         LoadRequestInternal& request = _workingRequests[i];
 
-        u32 numInstances = static_cast<u32>(request.instances.size());
-        reserveInfo.numInstances += numInstances;
-
-        for (LiquidInstance& instance : request.instances)
-        {
-            u8 height = instance.packedSize >> 4;
-            u8 width = instance.packedSize & 0xF;
-
-            if (width == 0 || height == 0)
-                continue;
-
-            reserveInfo.numVertices += (width + 1) * (height + 1);
-            reserveInfo.numIndices += width * height * 6;
-        }
+        reserveInfo.numInstances += request.numInstances;
+        reserveInfo.numVertices += request.numVertices;
+        reserveInfo.numIndices += request.numIndices;
     }
 
     // Have LiquidRenderer prepare all buffers for what we need to load
@@ -77,7 +66,7 @@ void LiquidLoader::Update(f32 deltaTime)
         LoadRequest(request, instanceOffset, vertexOffset, indexOffset);
     }
 #else
-    enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+    enki::TaskSet loadLiquidTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
     {
         for (u32 i = range.start; i < range.end; i++)
         {
@@ -87,8 +76,8 @@ void LiquidLoader::Update(f32 deltaTime)
     });
     
     // Execute the multithreaded job
-    taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-    taskScheduler->WaitforTask(&loadModelsTask);
+    taskScheduler->AddTaskSetToPipe(&loadLiquidTask);
+    taskScheduler->WaitforTask(&loadLiquidTask);
 #endif
 }
 
@@ -113,7 +102,7 @@ vec2 GetCellPosition(u32 chunkID, u32 cellID)
     return vec2(cellWorldPos.x, -cellWorldPos.y);
 }
 
-void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo)
+void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, const Map::LiquidInfo* liquidInfo)
 {
     if (!CVAR_LiquidLoaderEnabled.Get())
         return;
@@ -124,144 +113,141 @@ void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquid
     LoadRequestInternal request;
     request.chunkX = chunkX;
     request.chunkY = chunkY;
+    request.liquidInfo = liquidInfo;
 
     u32 instanceIndex = 0;
+    u32 numVertices = 0;
+    u32 numIndices = 0;
+
     for (u32 i = 0; i < liquidInfo->headers.size(); i++)
     {
-        Map::CellLiquidHeader& header = liquidInfo->headers[i];
-
-        u32 cellID = i; // Directly corresponding to the header index?
+        const Map::CellLiquidHeader& header = liquidInfo->headers[i];
         u32 numInstances = (header.packedData & 0x7F);
 
         u32 start = instanceIndex;
         u32 end = instanceIndex + numInstances;
-        
+
         for (u32 j = start; j < end; j++)
         {
-            const Map::CellLiquidInstance& instance = liquidInfo->instances[j];
+            const Map::CellLiquidInstance& liquidInstance = liquidInfo->instances[j];
 
-            LiquidInstance& liquidInstance = request.instances.emplace_back();
-            liquidInstance.cellID = cellID;
-            liquidInstance.typeID = instance.liquidTypeID;
-            liquidInstance.packedData = instance.packedData;
-            liquidInstance.packedOffset = instance.packedOffset;
-            liquidInstance.packedSize = instance.packedSize;
-            liquidInstance.height = instance.height;
-            liquidInstance.bitmapDataOffset = instance.bitmapDataOffset;
-            liquidInstance.vertexDataOffset = instance.vertexDataOffset;
+            u8 height = liquidInstance.packedSize >> 4;
+            u8 width = liquidInstance.packedSize & 0xF;
+
+            if (width == 0 || height == 0)
+                continue;
+
+            u32 vertexCount = (width + 1) * (height + 1);
+            numVertices += vertexCount;
+
+            u32 indexCount = width * height * 6;
+            numIndices += indexCount;
         }
 
         instanceIndex += numInstances;
     }
 
-    size_t bitmapDataSize = liquidInfo->bitmapData.size();
-    if (bitmapDataSize > 0)
-    {
-        request.bitmapData = new u8[bitmapDataSize];
-        memcpy(request.bitmapData, liquidInfo->bitmapData.data(), bitmapDataSize * sizeof(u8));
-    }
-    else
-    {
-        request.vertexData = nullptr;
-    }
-
-    size_t vertexDataSize = liquidInfo->vertexData.size();
-    if (vertexDataSize > 0)
-    {
-        request.vertexData = new u8[vertexDataSize];
-        memcpy(request.vertexData, liquidInfo->vertexData.data(), vertexDataSize * sizeof(u8));
-    }
-    else
-    {
-        request.vertexData = nullptr;
-    }
+    request.numInstances = instanceIndex;
+    request.numVertices = numVertices;
+    request.numIndices = numIndices;
 
     _requests.enqueue(request);
 }
 
 void LiquidLoader::LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset)
 {
+    const Map::LiquidInfo* liquidInfo = request.liquidInfo;
     u32 chunkID = (request.chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE) + request.chunkX;
-    u32 instanceStartIndex = instanceOffset.fetch_add(request.instances.size());
 
-    for (u32 i = 0; i < request.instances.size(); i++)
+    u32 numTotalInstances = static_cast<u32>(liquidInfo->instances.size());
+    if (numTotalInstances == 0)
+        return;
+
+    u32 instanceStartIndex = instanceOffset.fetch_add(numTotalInstances);
+
+    u32 instanceIndex = 0;
+    for (u32 i = 0; i < liquidInfo->headers.size(); i++)
     {
-        LiquidLoader::LiquidInstance& liquidInstance = request.instances[i];
+        const Map::CellLiquidHeader& header = liquidInfo->headers[i];
 
-        u16 cellID = liquidInstance.cellID;
+        u16 cellID = i;
+        u32 numInstances = (header.packedData & 0x7F);
 
-        u16 cellX = cellID % Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
-        u16 cellY = cellID / Terrain::CHUNK_NUM_CELLS_PER_STRIDE;
+        u32 start = instanceIndex;
+        u32 end = instanceIndex + numInstances;
+        instanceIndex += numInstances;
 
-        const vec2 cellPos = GetCellPosition(chunkID, cellID);
-
-        u8 posX = liquidInstance.packedOffset & 0xF;
-        u8 posY = liquidInstance.packedOffset >> 4;
-
-        u8 width = liquidInstance.packedSize & 0xF;
-        u8 height = liquidInstance.packedSize >> 4;
-
-        u32 bitMapBytes = (width * height + 7) / 8;
-
-        bool hasVertexData = liquidInstance.packedData >> 7;
-        bool hasBitmapData = (liquidInstance.packedData >> 6) & 0x1;
-        u16 liquidVertexFormat = liquidInstance.packedData & 0x3F;
-
-        f32* heightMap = nullptr;
-        u8* bitMap = nullptr;
-        
-        if (request.vertexData != nullptr && hasVertexData)
+        for (u32 j = start; j < end; j++)
         {
-            heightMap = reinterpret_cast<f32*>(&request.vertexData[liquidInstance.vertexDataOffset]);
+            const Map::CellLiquidInstance& liquidInstance = liquidInfo->instances[j];
+
+            u8 posX = liquidInstance.packedOffset & 0xF;
+            u8 posY = liquidInstance.packedOffset >> 4;
+
+            u8 width = liquidInstance.packedSize & 0xF;
+            u8 height = liquidInstance.packedSize >> 4;
+
+            u32 vertexCount = (width + 1) * (height + 1);
+            u32 bitMapBytes = (width * height + 7) / 8;
+
+            bool hasVertexData = liquidInstance.packedData >> 7;
+            bool hasBitmapData = (liquidInstance.packedData >> 6) & 0x1;
+            u16 liquidVertexFormat = liquidInstance.packedData & 0x3F;
+
+            const f32* heightMap = nullptr;
+            const u8* bitMap = nullptr;
+
+            size_t vertexDataSize = liquidInfo->vertexData.size();
+            if (vertexDataSize > 0 && hasVertexData)
+            {
+                heightMap = reinterpret_cast<const f32*>(&liquidInfo->vertexData[liquidInstance.vertexDataOffset]);
+            }
+
+            size_t bitmapDataSize = liquidInfo->bitmapData.size();
+            if (bitmapDataSize > 0 && hasBitmapData)
+            {
+                bitMap = &liquidInfo->bitmapData[liquidInstance.bitmapDataOffset];
+            }
+
+            LiquidRenderer::LoadDesc desc;
+            desc.chunkID = chunkID;
+            desc.cellID = cellID;
+            desc.typeID = liquidInstance.liquidTypeID;
+
+            desc.posX = posX;
+            desc.posY = posY;
+            desc.width = width;
+            desc.height = height;
+
+            desc.startX = 0;
+            desc.endX = 8;
+            desc.startY = 0;
+            desc.endY = 8;
+
+            if (liquidVertexFormat != 2)
+            {
+                desc.startX = desc.posX;
+                desc.endX = desc.startX + desc.width;
+
+                desc.startY = desc.posY;
+                desc.endY = desc.startY + desc.height;
+            }
+
+            desc.cellPos = GetCellPosition(chunkID, cellID);
+
+            desc.defaultHeight = liquidInstance.height;
+            desc.heightMap = heightMap;
+            desc.bitMap = bitMap;
+
+            desc.vertexCount = (width + 1) * (height + 1);
+            desc.vertexOffset = vertexOffset.fetch_add(desc.vertexCount);
+
+            desc.indexCount = width * height * 6;
+            desc.indexOffset = indexOffset.fetch_add(desc.indexCount);
+
+            desc.instanceOffset = instanceStartIndex + j;
+
+            _liquidRenderer->Load(desc);
         }
-
-        if (request.bitmapData != nullptr && hasBitmapData)
-        {
-            bitMap = &request.bitmapData[liquidInstance.bitmapDataOffset];
-        }
-
-        LiquidRenderer::LoadDesc desc;
-        desc.chunkID = chunkID;
-        desc.cellID = cellID;
-        desc.typeID = liquidInstance.typeID;
-
-        desc.posX = posX;
-        desc.posY = posY;
-        desc.width = width;
-        desc.height = height;
-
-        desc.startX = 0;
-        desc.endX = 8;
-        desc.startY = 0;
-        desc.endY = 8;
-
-        if (liquidVertexFormat != 2)
-        {
-            desc.startX = desc.posX;
-            desc.endX = desc.startX + desc.width;
-
-            desc.startY = desc.posY;
-            desc.endY = desc.startY + desc.height;
-        }
-
-        desc.cellPos = cellPos;
-
-        desc.defaultHeight = liquidInstance.height;
-        desc.heightMap = heightMap;
-        desc.bitMap = bitMap;
-
-        desc.instanceOffset = instanceStartIndex + i;
-        desc.vertexCount = (width + 1) * (height + 1);
-        desc.vertexOffset = vertexOffset.fetch_add(desc.vertexCount);
-        desc.indexCount = width * height * 6;
-        desc.indexOffset = indexOffset.fetch_add(desc.indexCount);
-
-        _liquidRenderer->Load(desc);
     }
-
-    if (request.vertexData)
-        delete request.vertexData; // TODO: Avoid this
-
-    if (request.bitmapData)
-        delete request.bitmapData;  // TODO: Avoid this
 }

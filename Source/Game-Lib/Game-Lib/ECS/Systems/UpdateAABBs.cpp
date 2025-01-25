@@ -4,13 +4,15 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 
 #include <entt/entt.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace ECS::Systems
 {
     void UpdateAABBs::Update(entt::registry& registry, f32 deltaTime)
     {
-        auto view = registry.view<Components::Transform, Components::AABB, Components::WorldAABB, Components::DirtyTransform>();
+        ZoneScopedN("ECS::UpdateAABBs");
 
+        auto view = registry.view<Components::Transform, Components::AABB, Components::WorldAABB, Components::DirtyTransform>();
         view.each([&](entt::entity entity, Components::Transform& transform, Components::AABB& aabb, Components::WorldAABB& worldAABB, ECS::Components::DirtyTransform& dirtyTransform)
         {
             // Calculate the world AABB

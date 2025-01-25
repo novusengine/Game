@@ -16,6 +16,8 @@ namespace ECS::Systems
 
     void DrawDebugMesh::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::DrawDebugMesh");
+
         auto view = registry.view<const Components::Transform, const Components::DebugRenderTransform>();
         if (view.size_hint() == 0)
             return;

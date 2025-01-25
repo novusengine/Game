@@ -9,7 +9,7 @@
 #include "Game-Lib/ECS/Singletons/RenderState.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 
-#include "Game-Lib/ECS/Systems/Animations.h"
+#include "Game-Lib/ECS/Systems/Animation.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
 #include "Game-Lib/ECS/Systems/CalculateShadowCameraMatrices.h"
@@ -46,7 +46,7 @@ namespace ECS
         entt::registry& gameRegistry = *registries.gameRegistry;
 
         Systems::NetworkConnection::Init(gameRegistry);
-        Systems::Animations::Init(gameRegistry);
+        Systems::Animation::Init(gameRegistry);
         Systems::UpdateNetworkedEntity::Init(gameRegistry);
         Systems::UpdatePhysics::Init(gameRegistry);
         Systems::DrawDebugMesh::Init(gameRegistry);
@@ -82,80 +82,25 @@ namespace ECS
 
         joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-        {
-            ZoneScopedN("UpdateDayNightCycle");
             Systems::UpdateDayNightCycle::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("NetworkConnection");
             Systems::NetworkConnection::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("DrawDebugMesh");
             Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
-        }
-
-        {
-            ZoneScopedN("Animations");
-
-            {
-                ZoneScopedN("Animation::UpdateSimulation");
-                Systems::Animations::UpdateSimulation(gameRegistry, clampedDeltaTime);
-            }
-        }
-
-        {
-            ZoneScopedN("CharacterController");
+            Systems::Animation::Update(gameRegistry, clampedDeltaTime);
             Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("UpdateNetworkedEntity");
             Systems::UpdateNetworkedEntity::Update(gameRegistry, clampedDeltaTime);
-        }
-
-        {
-            ZoneScopedN("FreeflyingCamera");
             Systems::FreeflyingCamera::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("OrbitalCamera");
             Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("CalculateCameraMatrices");
             Systems::CalculateCameraMatrices::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("CalculateShadowCameraMatrices");
             Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
-        }
-
-        {
-            ZoneScopedN("UpdateSkyboxes");
             Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("UpdateAreaLights");
             Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("CalculateTransformMatrices");
             Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("UpdateAABBs");
             Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
-        }
-        {
-            ZoneScopedN("UpdatePhysics");
             Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);
-        }
 
-        // Note: For now UpdateScripts should always be run last
-        {
-            ZoneScopedN("UpdateScripts");
+            // Note: For now UpdateScripts should always be run last
             Systems::UpdateScripts::Update(gameRegistry, clampedDeltaTime);
-        }
+        
 
         if (joltState.updateTimer >= Singletons::JoltState::FixedDeltaTime)
         {

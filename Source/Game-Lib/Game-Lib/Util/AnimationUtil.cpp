@@ -1,7 +1,13 @@
 #include "AnimationUtil.h"
-#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/AttachmentData.h"
+#include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
 
 #include <FileFormat/Novus/ClientDB/Definitions.h>
 
@@ -9,123 +15,296 @@
 
 namespace Util::Animation
 {
-    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(entt::registry& registry, ::Animation::AnimationType type)
+    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(entt::registry& registry, ::Animation::Defines::Type type)
     {
         auto& clientDBCollection = registry.ctx().get<ECS::Singletons::ClientDBCollection>();
-        auto* animationDatas = clientDBCollection.Get<ClientDB::Definitions::AnimationData>(ECS::Singletons::ClientDBHash::AnimationData);
+        auto* animationDatas = clientDBCollection.Get(ECS::Singletons::ClientDBHash::AnimationData);
 
         if (!animationDatas)
             return nullptr;
 
         u32 typeIndex = static_cast<u32>(type);
-        return animationDatas->GetRow(typeIndex);
+        return &animationDatas->Get<ClientDB::Definitions::AnimationData>(typeIndex);
     }
 
-    bool SetBoneSequence(entt::registry& registry, const ECS::Components::Model& model, ECS::Components::AnimationData& animationData, ::Animation::AnimationBone bone, ::Animation::AnimationType animationType)
+    bool HasAnimationSequence(entt::registry& registry, const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType)
     {
-        /*
-            if (animationType == AnimationType::Invalid)
-            // Unset the current animation for the bone and fallback to parent chain if applicable
-        */
+        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(registry, animationType);
+        if (!animationDataRec)
+            return false;
+
+        ::Animation::Defines::SequenceID sequenceID = GetFirstSequenceForAnimation(modelInfo, animationType);
+
+        bool canUseFallback = animationDataRec->fallback != 0;
+        if (sequenceID == ::Animation::Defines::InvalidSequenceID && canUseFallback)
+        {
+            auto fallbackAnimationType = static_cast<::Animation::Defines::Type>(animationDataRec->fallback);
+            sequenceID = GetFirstSequenceForAnimation(modelInfo, fallbackAnimationType);
+        }
+
+        bool result = sequenceID != ::Animation::Defines::InvalidSequenceID;
+        return result;
+    }
+
+    ::Animation::Defines::SequenceID GetFirstSequenceForAnimation(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationID)
+    {
+        if (!modelInfo->animationIDToFirstSequenceID.contains((i16)animationID))
+        {
+            return ::Animation::Defines::InvalidSequenceID;
+        }
+
+        u32 numSequences = static_cast<u16>(modelInfo->sequences.size());
+        u16 sequenceID = modelInfo->animationIDToFirstSequenceID.at((i16)animationID);
+        if (sequenceID >= numSequences)
+        {
+            return ::Animation::Defines::InvalidSequenceID;
+        }
+
+        return sequenceID;
+    }
+
+    ::Animation::Defines::SequenceID GetSequenceIndexForAnimation(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType, i8& timesToRepeat)
+    {
+        i32 probability = static_cast<i32>((static_cast<f32>(rand()) / static_cast<f32>(RAND_MAX)) * static_cast<f32>(0x7FFF));
+        i32 currentProbability = 0;
+
+        u32 nextSequenceID = ::Animation::Defines::InvalidSequenceID;
+        i32 variationID = GetFirstSequenceForAnimation(modelInfo, animationType);
+
+        do
+        {
+            const Model::ComplexModel::AnimationSequence& currentVariation = modelInfo->sequences[variationID];
+
+            currentProbability += currentVariation.frequency;
+            nextSequenceID = variationID;
+            variationID = currentVariation.nextVariationID;
+
+        } while (currentProbability < probability && variationID != -1);
+
+        NC_ASSERT(nextSequenceID != ::Animation::Defines::InvalidSequenceID, "nextSequenceID is invalid.");
+
+        const Model::ComplexModel::AnimationSequence& nextVariationSequence = modelInfo->sequences[nextSequenceID];
+        u32 minRepetitions = nextVariationSequence.repetitionRange.x;
+        u32 maxRepetitions = nextVariationSequence.repetitionRange.y;
+
+        timesToRepeat = static_cast<i8>(minRepetitions + ((maxRepetitions - minRepetitions) * (static_cast<f32>(rand()) / static_cast<f32>(RAND_MAX)))) - 1;
+
+        return nextSequenceID;
+    }
+
+    i16 GetBoneIndexFromKeyBoneID(const Model::ComplexModel* modelInfo, ::Animation::Defines::Bone bone)
+    {
+        u32 numBones = static_cast<u32>(modelInfo->bones.size());
+        if (numBones == 0)
+            return ::Animation::Defines::InvalidBoneID;
+
+        if (bone < ::Animation::Defines::Bone::Default || bone >= ::Animation::Defines::Bone::Count)
+            return ::Animation::Defines::InvalidBoneID;
+
+        if (bone == ::Animation::Defines::Bone::Default)
+        {
+            static std::array<::Animation::Defines::Bone, 5> defaultBones = { ::Animation::Defines::Bone::Default, ::Animation::Defines::Bone::Main, ::Animation::Defines::Bone::Root, ::Animation::Defines::Bone::Waist, ::Animation::Defines::Bone::Head };
+
+            bool foundMapping = false;
+            for (::Animation::Defines::Bone defaultBone : defaultBones)
+            {
+                if (modelInfo->keyBoneIDToBoneIndex.contains((i16)defaultBone))
+                {
+                    i16 boneIndex = modelInfo->keyBoneIDToBoneIndex.at((i16)defaultBone);
+                    if (boneIndex == ::Animation::Defines::InvalidBoneID)
+                        continue;
+
+                    bone = defaultBone;
+                    foundMapping = true;
+                    break;
+                }
+            }
+
+            if (!foundMapping)
+                return ::Animation::Defines::InvalidBoneID;
+        }
+
+        if (!modelInfo->keyBoneIDToBoneIndex.contains((i16)bone))
+            return ::Animation::Defines::InvalidBoneID;
+
+        i16 boneIndex = modelInfo->keyBoneIDToBoneIndex.at((i16)bone);
+        if (boneIndex >= static_cast<i16>(numBones))
+            return ::Animation::Defines::InvalidBoneID;
+
+        return boneIndex;
+    }
+
+    void SetChildrenAnimationStateIndex(const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, u32 stateIndex, u16 boneIndex)
+    {
+        if (!modelInfo->boneIndexToChildren.contains(boneIndex))
+            return;
+
+        const auto& childrenList = modelInfo->boneIndexToChildren.at(boneIndex);
+        for (u16 childBoneIndex : childrenList)
+        {
+            ::Animation::Defines::BoneInstance& animationBoneInstance = animationData.boneInstances[childBoneIndex];
+            animationBoneInstance.stateIndex = stateIndex;
+
+            SetChildrenAnimationStateIndex(modelInfo, animationData, stateIndex, childBoneIndex);
+        }
+    }
+
+    bool SetBoneSequenceRaw(entt::registry& registry, const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride)
+    {
+        u32 numBoneInstances = static_cast<u32>(animationData.boneInstances.size());
+        if (boneIndex >= numBoneInstances)
+            return false;
+
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+        if (animationType == ::Animation::Defines::Type::Invalid)
+        {
+            ::Animation::Defines::BoneInstance& animationBoneInstance = animationData.boneInstances[boneIndex];
+            animationBoneInstance.stateIndex = 0;
+
+            if (propagateToChildren)
+            {
+                SetChildrenAnimationStateIndex(modelInfo, animationData, 0, boneIndex);
+            }
+
+            return true;
+        }
 
         const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(registry, animationType);
         if (!animationDataRec)
             return false;
 
-        ::Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-        i16 boneIndex = animationSystem->GetBoneIndexFromKeyBoneID(model.modelID, bone);
-        if (boneIndex == ::Animation::InvalidBoneID)
-            return false;
-
-        ::Animation::AnimationSkeleton& skeleton = animationSystem->GetStorage().skeletons[model.modelID];
-        ::Animation::AnimationType animType = animationType;
-        ::Animation::AnimationSequenceID sequenceID = animationSystem->GetSequenceIDForAnimationID(model.modelID, animationType);
-        ClientDB::Definitions::AnimationData::Flags animationDataFlags = animationDataRec->flags[0];
+        ::Animation::Defines::Type animType = animationType;
+        ::Animation::Defines::SequenceID sequenceID = GetFirstSequenceForAnimation(modelInfo, animationType);
         bool isUsingFallback = false;
 
-        if (sequenceID == ::Animation::InvalidSequenceID && animationDataRec->fallback != 0)
+        if (sequenceID == ::Animation::Defines::InvalidSequenceID && animationDataRec->fallback != 0)
         {
-            auto fallbackAnimationType = static_cast<::Animation::AnimationType>(animationDataRec->fallback);
+            auto fallbackAnimationType = static_cast<::Animation::Defines::Type>(animationDataRec->fallback);
             animType = fallbackAnimationType;
-            sequenceID = animationSystem->GetSequenceIDForAnimationID(model.modelID, fallbackAnimationType);
+            sequenceID = GetFirstSequenceForAnimation(modelInfo, fallbackAnimationType);
             isUsingFallback = true;
         }
 
-        if (sequenceID == ::Animation::InvalidSequenceID)
+        if (sequenceID == ::Animation::Defines::InvalidSequenceID)
             return false;
 
-        bool updateBoneInstances = false;
-        u32 animationStateIndex = ::Animation::InvalidStateID;
-        ::Animation::AnimationBoneInstance& animationBoneInstance = animationData.boneInstances[boneIndex];
+        ClientDB::Definitions::AnimationData::Flags animationDataFlags = animationDataRec->flags[0];
+        bool splitBody = animationDataFlags.IsSplitBodyBehavior;
+
+        i16 defaultBoneIndex = GetBoneIndexFromKeyBoneID(modelInfo, ::Animation::Defines::Bone::Default);
+        bool isPlayedOnDefault = boneIndex == defaultBoneIndex || defaultBoneIndex == ::Animation::Defines::InvalidBoneID;
+        u32 stateIndex = ::Animation::Defines::InvalidStateID;
+        ::Animation::Defines::BoneInstance& animationBoneInstance = animationData.boneInstances[boneIndex];
 
         {
-            bool foundExistingIndex = false;
-
-            if (animationBoneInstance.animationStateIndex != ::Animation::InvalidStateID)
+            if (!isPlayedOnDefault)
             {
-                ::Animation::AnimationState& animationState = animationData.animationStates[animationBoneInstance.animationStateIndex];
-                if (animationState.boneIndex == boneIndex)
-                {
-                    animationStateIndex = animationBoneInstance.animationStateIndex;
-                    foundExistingIndex = true;
-                }
-            }
+                bool foundExistingIndex = false;
 
-            if (!foundExistingIndex)
-            {
-                u32 numAnimationStates = static_cast<u32>(animationData.animationStates.size());
-                for (u32 i = 0; i < numAnimationStates; i++)
+                if (animationBoneInstance.stateIndex != ::Animation::Defines::InvalidStateID)
                 {
-                    ::Animation::AnimationState& animationState = animationData.animationStates[i];
-                    if (animationState.boneIndex == boneIndex)
+                    ::Animation::Defines::State& animationState = animationData.animationStates[animationBoneInstance.stateIndex];
+                    if (animationState.currentAnimation == animType)
                     {
-                        animationStateIndex = i;
+                        stateIndex = animationBoneInstance.stateIndex;
                         foundExistingIndex = true;
-                        updateBoneInstances = true;
-                        break;
                     }
                 }
 
                 if (!foundExistingIndex)
                 {
-                    animationStateIndex = numAnimationStates;
+                    u32 numAnimationStates = static_cast<u32>(animationData.animationStates.size());
+                    for (u32 i = 0; i < numAnimationStates; i++)
+                    {
+                        ::Animation::Defines::State& animationState = animationData.animationStates[i];
+                        if (animationState.currentAnimation == animType)
+                        {
+                            stateIndex = i;
+                            foundExistingIndex = true;
+                            break;
+                        }
+                    }
 
-                    ::Animation::AnimationState& animationState = animationData.animationStates.emplace_back();
-                    animationState.boneIndex = boneIndex;
-
-                    updateBoneInstances = true;
+                    if (!foundExistingIndex)
+                    {
+                        stateIndex = numAnimationStates;
+                        animationData.animationStates.emplace_back();
+                    }
                 }
             }
+            else
+            {
+                stateIndex = 0;
+            }
 
-            animationBoneInstance.animationStateIndex = animationStateIndex;
-            animationBoneInstance.flags = animationBoneInstance.flags | ::Animation::AnimationBoneFlags::Transformed;
+            animationBoneInstance.stateIndex = stateIndex;
+            animationBoneInstance.flags = animationBoneInstance.flags | ::Animation::Defines::BoneFlags::Transformed;
         }
 
-        auto animationFlags = ::Animation::AnimationFlags::None;
-        bool playReversed = (isUsingFallback && animationDataFlags.FallbackPlaysReverse);
-        bool holdAtEnd = (isUsingFallback && animationDataFlags.FallbackHoldsEnd) || playReversed;
+        auto animationFlags = ::Animation::Defines::Flags::None;
+        bool playReversed = (isUsingFallback && animationDataFlags.FallbackPlaysReverse || ::Animation::Defines::HasFlag(flags, ::Animation::Defines::Flags::PlayReversed));
+        bool holdAtEnd = (isUsingFallback && animationDataFlags.FallbackHoldsEnd) || playReversed || ::Animation::Defines::HasFlag(flags, ::Animation::Defines::Flags::HoldAtEnd);
 
         if (holdAtEnd)
         {
-            animationFlags |= ::Animation::AnimationFlags::HoldAtEnd;
+            animationFlags |= ::Animation::Defines::Flags::HoldAtEnd;
         }
 
         if (playReversed)
         {
-            animationFlags |= ::Animation::AnimationFlags::PlayReversed;
+            animationFlags |= ::Animation::Defines::Flags::PlayReversed;
         }
 
-        ::Animation::AnimationState& animationState = animationData.animationStates[animationBoneInstance.animationStateIndex];
-        auto& animationSequence = skeleton.sequences[sequenceID];
+        ::Animation::Defines::State& animationState = animationData.animationStates[animationBoneInstance.stateIndex];
+        auto& animationSequence = modelInfo->sequences[sequenceID];
 
-        if (::Animation::HasAnimationFlag(animationState.currentFlags, ::Animation::AnimationFlags::Finished))
+        bool shouldBlend = false;
+        bool canBlend = animationState.currentSequenceIndex != ::Animation::Defines::InvalidSequenceID;
+        u16 blendTimeStartInMS = animationSequence.blendTimeStart;
+
+        if (canBlend)
+        {
+            if (blendOverride == ::Animation::Defines::BlendOverride::Auto)
+            {
+                shouldBlend = animationSequence.flags.blendTransition;
+
+                if (!shouldBlend)
+                {
+                    const Model::ComplexModel::AnimationSequence& currentSequenceInfo = modelInfo->sequences[animationState.currentSequenceIndex];
+                    shouldBlend |= currentSequenceInfo.flags.blendTransition || currentSequenceInfo.flags.blendTransitionIfActive;
+                }
+            }
+            else if (blendOverride == ::Animation::Defines::BlendOverride::Start || blendOverride == ::Animation::Defines::BlendOverride::Both)
+            {
+                shouldBlend = true;
+            }
+
+            if (shouldBlend)
+            {
+                if (blendTimeStartInMS == 0)
+                    blendTimeStartInMS = 150;
+            }
+        }
+
+        if (shouldBlend)
+        {
+            animationState.nextAnimation = animationType;
+            animationState.nextSequenceIndex = Util::Animation::GetSequenceIndexForAnimation(modelInfo, animType, animationState.timesToRepeat);
+            animationState.nextFlags = animationFlags | ::Animation::Defines::Flags::ForceTransition;
+            animationState.timeToTransitionMS = blendTimeStartInMS;
+            animationState.transitionTime = 0.0f;
+        }
+        else
         {
             animationState.currentAnimation = animationType;
-            animationState.currentSequenceIndex = Util::Animation::GetSequenceIndexForAnimation(skeleton, animType, animationState.timesToRepeat);
-            animationState.nextSequenceIndex = ::Animation::InvalidSequenceID;
+            animationState.currentSequenceIndex = Util::Animation::GetSequenceIndexForAnimation(modelInfo, animType, animationState.timesToRepeat);
+            animationState.nextAnimation = ::Animation::Defines::Type::Invalid;
+            animationState.nextSequenceIndex = ::Animation::Defines::InvalidSequenceID;
             animationState.currentFlags = animationFlags;
-            animationState.nextFlags = ::Animation::AnimationFlags::None;
+            animationState.nextFlags = ::Animation::Defines::Flags::None;
             animationState.timeToTransitionMS = 0;
+            animationState.transitionTime = 0.0f;
 
             if (playReversed)
             {
@@ -137,78 +316,62 @@ namespace Util::Animation
                 animationState.progress = 0.0f;
             }
 
-            animationState.transitionTime = 0.0f;
             animationState.finishedCallback = nullptr;
         }
-        else
+
+        if (propagateToChildren)
         {
-            if (animationState.currentAnimation == animationType || animationState.nextAnimation == animationType)
-                return false;
-
-            animationState.nextAnimation = animationType;
-            animationState.nextSequenceIndex = Util::Animation::GetSequenceIndexForAnimation(skeleton, animType, animationState.timesToRepeat);
-            animationState.nextFlags = animationFlags | ::Animation::AnimationFlags::ForceTransition;
-        }
-
-        if (updateBoneInstances)
-        {
-            u32 numBoneInstances = static_cast<u32>(animationData.boneInstances.size());
-            for (u32 i = 1; i < numBoneInstances; i++)
-            {
-                const ::Animation::AnimationSkeletonBone& bone = skeleton.bones[i];
-                ::Animation::AnimationBoneInstance& boneInstance = animationData.boneInstances[i];
-        
-                if (bone.info.parentBoneID == -1)
-                {
-                    ::Animation::AnimationBoneInstance& parentBoneInstance = animationData.boneInstances[0];
-                    boneInstance.animationStateIndex = parentBoneInstance.animationStateIndex;
-        
-                    continue;
-                }
-        
-                ::Animation::AnimationBoneInstance& parentBoneInstance = animationData.boneInstances[bone.info.parentBoneID];
-        
-                bool hasTransformedFlag = ::Animation::HasAnimationBoneFlag(boneInstance.flags, ::Animation::AnimationBoneFlags::Transformed);
-                bool missingAnimationState = boneInstance.animationStateIndex == ::Animation::InvalidStateID;
-
-                if (!hasTransformedFlag || (hasTransformedFlag && missingAnimationState))
-                {
-                    boneInstance.animationStateIndex = parentBoneInstance.animationStateIndex;
-                }
-            }
+            SetChildrenAnimationStateIndex(modelInfo, animationData, stateIndex, boneIndex);
         }
 
         return true;
     }
 
-    ::Animation::AnimationSequenceID GetSequenceIndexForAnimation(const::Animation::AnimationSkeleton& skeleton, ::Animation::AnimationType animationType, i8& timesToRepeat)
+    bool SetBoneSequence(entt::registry& registry, const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride)
     {
-        ::Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+        i16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
+        if (boneIndex == ::Animation::Defines::InvalidBoneID)
+            return false;
 
-        i32 probability = static_cast<i32>((static_cast<f32>(rand()) / static_cast<f32>(RAND_MAX)) * static_cast<f32>(0x7FFF));
-        i32 currentProbability = 0;
+        return SetBoneSequenceRaw(registry, modelInfo, animationData, boneIndex, animationType, propagateToChildren, flags);
+    }
 
-        u32 nextSequenceID = ::Animation::InvalidSequenceID;
-        i32 variationID = animationSystem->GetSequenceIDForAnimationID(skeleton.modelID, animationType);
+    bool SetBoneRotation(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, quat offset)
+    {
+        i16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
+        if (boneIndex == ::Animation::Defines::InvalidBoneID)
+            return false;
 
-        do
+        if (animationData.proceduralRotationOffsets.size() >= ::Animation::Defines::InvalidProcedualBoneID - 1)
+            return false;
+
+        ::Animation::Defines::BoneInstance& boneInstance = animationData.boneInstances[boneIndex];
+        if (boneInstance.proceduralRotationOffsetIndex == ::Animation::Defines::InvalidProcedualBoneID)
         {
-            const Model::ComplexModel::AnimationSequence& currentVariation = skeleton.sequences[variationID];
+            animationData.proceduralRotationOffsets.push_back(offset);
+            boneInstance.proceduralRotationOffsetIndex = static_cast<u8>(animationData.proceduralRotationOffsets.size()) - 1u;
+        }
+        else
+        {
+            animationData.proceduralRotationOffsets[boneInstance.proceduralRotationOffsetIndex] = offset;
+        }
 
-            currentProbability += currentVariation.frequency;
-            nextSequenceID = variationID;
-            variationID = currentVariation.nextVariationID;
+        return true;
+    }
 
-        } while (currentProbability < probability && variationID != -1);
+    const mat4x4* GetBoneMatrixRaw(::ECS::Components::AnimationData& animationData, u16 boneIndex)
+    {
+        return &animationData.boneTransforms[boneIndex];
+    }
 
-        NC_ASSERT(nextSequenceID != ::Animation::InvalidSequenceID, "nextSequenceID is invalid.");
+    const mat4x4* GetBoneMatrix(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone)
+    {
+        u32 numBoneMatrices = static_cast<u32>(animationData.boneTransforms.size());
+        u16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
 
-        const Model::ComplexModel::AnimationSequence& nextVariationSequence = skeleton.sequences[nextSequenceID];
-        u32 minRepetitions = nextVariationSequence.repetitionRange.x;
-        u32 maxRepetitions = nextVariationSequence.repetitionRange.y;
+        if (boneIndex == ::Animation::Defines::InvalidBoneID || boneIndex >= numBoneMatrices)
+            return nullptr;
 
-        timesToRepeat = static_cast<i8>(minRepetitions + ((maxRepetitions - minRepetitions) * (static_cast<f32>(rand()) / static_cast<f32>(RAND_MAX)))) - 1;
-
-        return nextSequenceID;
+        return GetBoneMatrixRaw(animationData, boneIndex);
     }
 }

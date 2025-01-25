@@ -11,6 +11,7 @@ class TerrainManipulator
 {
     struct VertexData
     {
+    public:
         u32 vertexID;
         u16 chunkID;
         u16 localCellID;

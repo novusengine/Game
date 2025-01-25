@@ -85,6 +85,7 @@ private:
 private:
     struct DrawManifest
     {
+    public:
         vec3 center;
         vec3 extents;
         std::vector<u32> instanceIDs;
@@ -92,6 +93,7 @@ private:
 
     struct PackedVertex
     {
+    public:
         vec4 posAndUVx; // xyz = pos, w = uv.x
         vec4 normalAndUVy; // xyz = normal, w = uv.y
         vec4 color;
@@ -100,6 +102,7 @@ private:
     // We have one of these for each draw call
     struct DrawCallData
     {
+    public:
         u32 baseInstanceLookupOffset;
         u32 padding;
     };

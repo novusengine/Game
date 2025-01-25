@@ -25,6 +25,7 @@ namespace ECS
         void SetLocalScale(entt::entity entity, const vec3& newScale);
         void SetLocalPositionAndRotation(entt::entity entity, const vec3& newpos, const quat& newrotation);
         void SetLocalTransform(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void SetLocalTransformMatrix(entt::entity entity, const mat4a& transform);
         void AddLocalOffset(entt::entity entity, const vec3& offset);
 
         //manually flags the entity as moved. will refresh its matrix and do the same for children
@@ -36,6 +37,7 @@ namespace ECS
         void SetLocalScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale);
         void SetLocalPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation);
         void SetLocalTransform(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void SetLocalTransformMatrix(entt::entity entity, ECS::Components::Transform& transform, const mat4a& newmatrix);
         void AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
 
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
@@ -190,6 +192,11 @@ namespace ECS::Components
                 c->parent = nullptr;
                 c = next;
             }
+        }
+
+        entt::entity GetOwnerEntity()
+        {
+            return ownerEntity;
         }
 
         bool HasParent() const

@@ -93,6 +93,8 @@ namespace ECS::Systems
 
     void FreeflyingCamera::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::FreeflyingCamera");
+
         entt::registry::context& ctx = registry.ctx();
 
         auto& activeCamera = ctx.get<Singletons::ActiveCamera>();

@@ -40,7 +40,7 @@ namespace ECS::Components
         JumpState jumpState = JumpState::None;
 
         vec4 spineRotationSettings = vec4(0.0f);    // x = current, y = target, z = time to change, w = time since last change
-        vec4 headRotationSettings = vec4(0.0f);	    // x = current, y = target, z = time to change, w = time since last change
-        vec4 waistRotationSettings = vec4(0.0f);    // x = current, y = target, z = time to change, w = time since last change
+        vec4 headRotationSettings  = vec4(0.0f);	// x = current, y = target, z = time to change, w = time since last change
+        vec4 rootRotationSettings  = vec4(0.0f);    // x = current, y = target, z = time to change, w = time since last change
     };
 }

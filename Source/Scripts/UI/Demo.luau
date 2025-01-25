@@ -200,8 +200,8 @@ local function OnGameLoaded(eventID : number, motd : string)
     local stack = UIStack.Get("Menu")
 
     --Demo();
-    CreateGameMenu(stack);
-    CreateOptionsMenu(stack);
+    --CreateGameMenu(stack);
+    --CreateOptionsMenu(stack);
 
     --UILoadingScreen.SetLoadingScreen(nil)
     print('Hello from Demo.luau');

@@ -27,6 +27,8 @@ namespace ECS::Systems
 
     void CalculateCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::CalculateCameraMatrices");
+
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderResources& renderResources = gameRenderer->GetRenderResources();
 
