@@ -2,6 +2,7 @@
 #include "Game-Lib/ECS/Singletons/DayNightCycle.h"
 
 #include <entt/entt.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <ctime>
 
@@ -28,6 +29,8 @@ namespace ECS::Systems
 
     void UpdateDayNightCycle::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::UpdateDayNightCycle");
+
         entt::registry::context& context = registry.ctx();
         auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
 

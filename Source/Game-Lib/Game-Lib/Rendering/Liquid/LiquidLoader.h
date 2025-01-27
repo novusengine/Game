@@ -18,28 +18,16 @@ class LiquidLoader
     static constexpr u32 MAX_LOADS_PER_FRAME = 65535;
 
 private:
-    struct LiquidInstance
-    {
-        u16 cellID;
-
-        u8 typeID;
-        u8 packedData;
-        u8 packedOffset;
-        u8 packedSize;
-
-        f32 height;
-        u32 bitmapDataOffset;
-        u32 vertexDataOffset;
-    };
-
     struct LoadRequestInternal
     {
+    public:
         u16 chunkX;
         u16 chunkY;
 
-        std::vector<LiquidInstance> instances;
-        u8* vertexData = nullptr;
-        u8* bitmapData = nullptr;
+        u32 numInstances;
+        u32 numVertices;
+        u32 numIndices;
+        const Map::LiquidInfo* liquidInfo;
     };
 
 public:
@@ -49,7 +37,7 @@ public:
     void Clear();
     void Update(f32 deltaTime);
 
-    void LoadFromChunk(u16 chunkX, u16 chunkY, Map::LiquidInfo* liquidInfo);
+    void LoadFromChunk(u16 chunkX, u16 chunkY, const Map::LiquidInfo* liquidInfo);
 
 private:
     void LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset);

@@ -22,6 +22,7 @@ class PixelQuery
 public:
     struct PixelData
     {
+    public:
         u32 type = 0;
         u32 value = 0;
     };
@@ -43,11 +44,13 @@ private:
     static const u32 MaxQueryRequestPerFrame = 15;
     struct QueryRequest
     {
+    public:
         uvec2 pixelCoords;
     };
 
     struct QueryRequestConstant
     {
+    public:
         uvec2 pixelCoords[MaxQueryRequestPerFrame];
         u32 numRequests;
     };

@@ -35,6 +35,8 @@ namespace ECS::Systems
 
     void CalculateShadowCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::CalculateShadowCameraMatrices");
+
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         Renderer::Renderer* renderer = gameRenderer->GetRenderer();
 

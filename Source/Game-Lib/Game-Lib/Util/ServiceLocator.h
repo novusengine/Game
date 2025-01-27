@@ -8,6 +8,7 @@ namespace Editor
     class EditorHandler;
 }
 class InputManager;
+class IOLoader;
 class GameRenderer;
 
 namespace enki
@@ -21,11 +22,6 @@ class GameConsole;
 namespace Scripting
 {
     class LuaManager;
-}
-
-namespace Animation
-{
-    class AnimationSystem;
 }
 
 class ServiceLocator
@@ -44,6 +40,13 @@ public:
         return _inputManager;
     }
     static void SetInputManager(InputManager* inputManager);
+
+    static IOLoader* GetIOLoader()
+    {
+        assert(_ioLoader != nullptr);
+        return _ioLoader;
+    }
+    static void SetIOLoader(IOLoader* ioLoader);
 
     static GameRenderer* GetGameRenderer()
     {
@@ -80,21 +83,14 @@ public:
     }
     static void SetLuaManager(Scripting::LuaManager* luaManager);
 
-    static Animation::AnimationSystem* GetAnimationSystem()
-    {
-        assert(_animationSystem != nullptr);
-        return _animationSystem;
-    }
-    static void SetAnimationSystem(Animation::AnimationSystem* animationSystem);
-
 private:
     ServiceLocator() { }
     static Editor::EditorHandler* _editorHandler;
     static InputManager* _inputManager;
+    static IOLoader* _ioLoader;
     static GameRenderer* _gameRenderer;
     static enki::TaskScheduler* _taskScheduler;
     static EnttRegistries* _enttRegistries;
     static GameConsole* _gameConsole;
     static Scripting::LuaManager* _luaManager;
-    static Animation::AnimationSystem* _animationSystem;
 };

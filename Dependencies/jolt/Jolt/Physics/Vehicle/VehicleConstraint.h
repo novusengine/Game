@@ -22,9 +22,9 @@ class PhysicsSystem;
 /// See: https://www.asawicki.info/Mirror/Car%20Physics%20for%20Games/Car%20Physics%20for%20Games.html
 class JPH_EXPORT VehicleConstraintSettings : public ConstraintSettings
 {
-public:
 	JPH_DECLARE_SERIALIZABLE_VIRTUAL(JPH_EXPORT, VehicleConstraintSettings)
 
+public:
 	/// Saves the contents of the constraint settings in binary form to inStream.
 	virtual void				SaveBinaryState(StreamOut &inStream) const override;
 
@@ -88,7 +88,7 @@ public:
 	const CombineFunction &		GetCombineFriction() const					{ return mCombineFriction; }
 
 	/// Callback function to notify of current stage in PhysicsStepListener::OnStep.
-	using StepCallback = function<void(VehicleConstraint &inVehicle, float inDeltaTime, PhysicsSystem &inPhysicsSystem)>;
+	using StepCallback = function<void(VehicleConstraint &inVehicle, const PhysicsStepListenerContext &inContext)>;
 
 	/// Callback function to notify that PhysicsStepListener::OnStep has started for this vehicle. Default is to do nothing.
 	/// Can be used to allow higher-level code to e.g. control steering. This is the last moment that the position/orientation of the vehicle can be changed.
@@ -107,6 +107,12 @@ public:
 	/// You should not change the position of the vehicle in this callback as the wheel collision checks have already been performed.
 	const StepCallback &		GetPostStepCallback() const					{ return mPostStepCallback; }
 	void						SetPostStepCallback(const StepCallback &inPostStepCallback) { mPostStepCallback = inPostStepCallback; }
+
+	/// Override gravity for this vehicle. Note that overriding gravity will set the gravity factor of the vehicle body to 0 and apply gravity in the PhysicsStepListener instead.
+	void						OverrideGravity(Vec3Arg inGravity)			{ mGravityOverride = inGravity; mIsGravityOverridden = true; }
+	bool						IsGravityOverridden() const					{ return mIsGravityOverridden; }
+	Vec3						GetGravityOverride() const					{ return mGravityOverride; }
+	void						ResetGravityOverride()						{ mIsGravityOverridden = false; mBody->GetMotionProperties()->SetGravityFactor(1.0f); } ///< Note that resetting the gravity override will restore the gravity factor of the vehicle body to 1.
 
 	/// Get the local space forward vector of the vehicle
 	Vec3						GetLocalForward() const						{ return mForward; }
@@ -190,13 +196,17 @@ public:
 
 private:
 	// See: PhysicsStepListener
-	virtual void				OnStep(float inDeltaTime, PhysicsSystem &inPhysicsSystem) override;
+	virtual void				OnStep(const PhysicsStepListenerContext &inContext) override;
 
 	// Calculate the position where the suspension and traction forces should be applied in world space, relative to the center of mass of both bodies
 	void						CalculateSuspensionForcePoint(const Wheel &inWheel, Vec3 &outR1PlusU, Vec3 &outR2) const;
 
 	// Calculate the constraint properties for mPitchRollPart
 	void						CalculatePitchRollConstraintProperties(RMat44Arg inBodyTransform);
+
+	// Gravity override
+	bool						mIsGravityOverridden = false;				///< If the gravity is currently overridden
+	Vec3						mGravityOverride = Vec3::sZero();			///< Gravity override value, replaces PhysicsSystem::GetGravity() when mIsGravityOverridden is true
 
 	// Simulation information
 	Body *						mBody;										///< Body of the vehicle

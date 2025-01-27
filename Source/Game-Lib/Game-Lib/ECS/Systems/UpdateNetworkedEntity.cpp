@@ -1,6 +1,6 @@
 #include "UpdateNetworkedEntity.h"
 
-#include "Game-Lib/Animation/AnimationSystem.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/NetworkedEntity.h"
@@ -8,6 +8,10 @@
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Gameplay/Animation/Defines.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
@@ -43,11 +47,14 @@ namespace ECS::Systems
 
     void UpdateNetworkedEntity::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::UpdateNetworkedEntity");
+
         auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
         entt::entity characterEntity = characterSingleton.moverEntity;
 
-        auto view = registry.view<Components::Transform, Components::MovementInfo, Components::NetworkedEntity>();
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
+        auto view = registry.view<Components::Transform, Components::MovementInfo, Components::NetworkedEntity>();
         view.each([&, characterEntity](entt::entity entity, Components::Transform& transform, Components::MovementInfo& movementInfo, Components::NetworkedEntity& networkedEntity)
         {
             if (networkedEntity.positionProgress != -1.0f)
@@ -103,7 +110,6 @@ namespace ECS::Systems
                 }
             }
 
-            Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
             if (auto* model = registry.try_get<Components::Model>(entity))
             {
                 u32 instanceID = model->instanceID;
@@ -118,8 +124,7 @@ namespace ECS::Systems
                     settings.y = orientation;
                     settings.w = 0.0f;
 
-                    f32 timeToChange = glm::abs(orientation - currentOrientation) / 450.0f;
-                    timeToChange = glm::max(timeToChange, 0.01f);
+                    f32 timeToChange = 0.15f;
                     settings.z = timeToChange;
                 };
 
@@ -130,7 +135,11 @@ namespace ECS::Systems
                     JPH::BodyID bodyID = JPH::BodyID(networkedEntity.bodyID);
                 }
 
-                ::Util::Unit::UpdateAnimationState(registry, entity, instanceID, deltaTime);
+                if (!registry.all_of<Components::AnimationData>(entity))
+                    return;
+
+                if (networkedEntity.overrideAnimation == ::Animation::Defines::Type::Invalid)
+                    ::Util::Unit::UpdateAnimationState(registry, entity, *model, deltaTime);
 
                 bool isAlive = unitStatsComponent.currentHealth > 0.0f;
                 if (isAlive)
@@ -141,7 +150,9 @@ namespace ECS::Systems
                     bool isMovingRight = movementInfo.movementFlags.right;
                     bool isGrounded = movementInfo.movementFlags.grounded;
 
-                    if (isAlive && (isGrounded /* || (canControlInAir && isMoving))*/))
+                    const auto* modelInfo = modelLoader->GetModelInfo(model->modelHash);
+
+                    if (isAlive && modelInfo && (isGrounded /* || (canControlInAir && isMoving))*/))
                     {
                         f32 spineOrientation = 0.0f;
                         f32 headOrientation = 0.0f;
@@ -151,14 +162,14 @@ namespace ECS::Systems
                         {
                             if (isMovingRight)
                             {
-                                spineOrientation = 30.0f;
-                                headOrientation = -15.0f;
+                                spineOrientation = -30.0f;
+                                headOrientation = -30.0f;
                                 waistOrientation = 45.0f;
                             }
                             else if (isMovingLeft)
                             {
-                                spineOrientation = -30.0f;
-                                headOrientation = 15.0f;
+                                spineOrientation = 30.0f;
+                                headOrientation = 30.0f;
                                 waistOrientation = -45.0f;
                             }
                         }
@@ -166,33 +177,33 @@ namespace ECS::Systems
                         {
                             if (isMovingRight)
                             {
-                                spineOrientation = -30.0f;
+                                spineOrientation = 30.0f;
                                 headOrientation = 15.0f;
                                 waistOrientation = -45.0f;
                             }
                             else if (isMovingLeft)
                             {
-                                spineOrientation = 30.0f;
+                                spineOrientation = -30.0f;
                                 headOrientation = -15.0f;
                                 waistOrientation = 45.0f;
                             }
                         }
                         else if (isMovingRight)
                         {
-                            spineOrientation = 45.0f;
+                            spineOrientation = -45.0f;
                             headOrientation = -30.0f;
                             waistOrientation = 90.0f;
                         }
                         else if (isMovingLeft)
                         {
-                            spineOrientation = -45.0f;
+                            spineOrientation = 45.0f;
                             headOrientation = 30.0f;
                             waistOrientation = -90.0f;
                         }
 
                         SetOrientation(movementInfo.spineRotationSettings, spineOrientation);
                         SetOrientation(movementInfo.headRotationSettings, headOrientation);
-                        SetOrientation(movementInfo.waistRotationSettings, waistOrientation);
+                        SetOrientation(movementInfo.rootRotationSettings, waistOrientation);
                     }
 
                     auto HandleUpdateOrientation = [](vec4& settings, f32 deltaTime) -> bool
@@ -211,18 +222,24 @@ namespace ECS::Systems
 
                     if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
                     {
+                        auto& animationData = registry.get<Components::AnimationData>(entity);
+
                         quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
-                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::SpineLow, rotation);
+                        Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::SpineLow, rotation);
                     }
                     if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
                     {
+                        auto& animationData = registry.get<Components::AnimationData>(entity);
+
                         quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
-                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::Head, rotation);
+                        Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Head, rotation);
                     }
-                    if (HandleUpdateOrientation(movementInfo.waistRotationSettings, deltaTime))
+                    if (HandleUpdateOrientation(movementInfo.rootRotationSettings, deltaTime))
                     {
-                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.waistRotationSettings.x), 0.0f));
-                        //animationSystem->SetBoneRotation(instanceID, Animation::AnimationBone::Waist, rotation);
+                        auto& animationData = registry.get<Components::AnimationData>(entity);
+
+                        quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.rootRotationSettings.x), 0.0f));
+                        Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Default, rotation);
                     }
                 }
             }

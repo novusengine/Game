@@ -60,6 +60,7 @@ private:
 
     struct DebugVertex2D
     {
+    public:
         vec2 pos;
         u32 color;
         u32 padding;
@@ -67,12 +68,14 @@ private:
 
     struct DebugVertex3D
     {
+    public:
         vec3 pos;
         u32 color;
     };
 
     struct DebugVertexSolid3D
     {
+    public:
         vec4 pos;
         vec4 normalAndColor; // xyz = normal, int(w) = color
     };

@@ -1,5 +1,4 @@
 #include "MapLoader.h"
-#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Inspector.h"
@@ -32,6 +31,15 @@ using namespace ECS::Singletons;
 
 void MapLoader::Update(f32 deltaTime)
 {
+    bool discoveredModelsCompleteLastFrame = _discoveredModelsCompleteLastFrame;
+    bool discoveredModelsCompleteThisFrame = _modelLoader->DiscoveredModelsComplete();
+    if (!discoveredModelsCompleteThisFrame)
+        return;
+
+    _discoveredModelsCompleteLastFrame = true;
+    if (discoveredModelsCompleteThisFrame && !discoveredModelsCompleteLastFrame)
+        return;
+    
     ZoneScoped;
 
     size_t numRequests = _requests.size_approx();
@@ -55,7 +63,7 @@ void MapLoader::Update(f32 deltaTime)
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& clientDBCollection = registry->ctx().get<ClientDBCollection>();
         auto& mapDB = registry->ctx().get<MapDB>();
-        auto* maps = clientDBCollection.Get<ClientDB::Definitions::Map>(ClientDBHash::Map);
+        auto* mapStorage = clientDBCollection.Get(ClientDBHash::Map);
 
         const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapDB.mapInternalNameHashToID;
 
@@ -63,14 +71,15 @@ void MapLoader::Update(f32 deltaTime)
             return;
 
         u32 mapID = internalNameHashToID.at(request.internalMapNameHash);
-        if (!maps->HasRow(mapID))
+        if (!mapStorage->Has(mapID))
             return;
 
-        const ClientDB::Definitions::Map* currentMap = maps->GetRow(mapID);
+        const ClientDB::Definitions::Map& currentMap = mapStorage->Get<ClientDB::Definitions::Map>(mapID);
+        const std::string& mapInternalName = mapStorage->GetString(currentMap.internalName);
         
         fs::path relativeParentPath = "Data/Map";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
-        std::string mapFile = ((absolutePath / currentMap->internalName / currentMap->internalName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
+        std::string mapFile = ((absolutePath / mapInternalName / mapInternalName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
         
         if (!fs::exists(mapFile))
         {
@@ -107,7 +116,7 @@ void MapLoader::Update(f32 deltaTime)
 
             TerrainLoader::LoadDesc loadDesc;
             loadDesc.loadType = TerrainLoader::LoadType::Full;
-            loadDesc.mapName = currentMap->internalName;
+            loadDesc.mapName = mapInternalName;
         
             _terrainLoader->AddInstance(loadDesc);
         }
@@ -137,7 +146,6 @@ void MapLoader::ClearRenderersForMap()
     _liquidLoader->Clear();
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    ServiceLocator::GetAnimationSystem()->Clear(*registry);
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();

@@ -13,9 +13,14 @@ JPH_SUPPRESS_WARNINGS_STD_BEGIN
 #include <fstream>
 JPH_SUPPRESS_WARNINGS_STD_END
 
-#ifdef JPH_PROFILE_ENABLED
-
 JPH_NAMESPACE_BEGIN
+
+#if defined(JPH_EXTERNAL_PROFILE) && defined(JPH_SHARED_LIBRARY)
+
+ProfileStartMeasurementFunction ProfileStartMeasurement = [](const char *, uint32, uint8 *) { };
+ProfileEndMeasurementFunction ProfileEndMeasurement = [](uint8 *) { };
+
+#elif defined(JPH_PROFILE_ENABLED)
 
 //////////////////////////////////////////////////////////////////////////////////////////
 // Profiler
@@ -55,6 +60,9 @@ uint64 Profiler::GetProcessorTicksPerSecond() const
 	return (ticks - mReferenceTick) * 1000000000ULL / std::chrono::duration_cast<std::chrono::nanoseconds>(time - mReferenceTime).count();
 }
 
+// This function assumes that none of the threads are active while we're dumping the profile,
+// otherwise there will be a race condition on mCurrentSample and the profile data.
+JPH_TSAN_NO_SANITIZE
 void Profiler::NextFrame()
 {
 	std::lock_guard lock(mLock);
@@ -88,7 +96,7 @@ void Profiler::RemoveThread(ProfileThread *inThread)
 {
 	std::lock_guard lock(mLock);
 
-	Array<ProfileThread *>::iterator i = find(mThreads.begin(), mThreads.end(), inThread);
+	Array<ProfileThread *>::iterator i = std::find(mThreads.begin(), mThreads.end(), inThread);
 	JPH_ASSERT(i != mThreads.end());
 	mThreads.erase(i);
 }
@@ -341,6 +349,6 @@ void Profiler::DumpChart(const char *inTag, const Threads &inThreads, const KeyT
 </tbody></table></body></html>)";
 }
 
-JPH_NAMESPACE_END
-
 #endif // JPH_PROFILE_ENABLED
+
+JPH_NAMESPACE_END

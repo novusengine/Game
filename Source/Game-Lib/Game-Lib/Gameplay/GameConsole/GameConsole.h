@@ -27,7 +27,7 @@ public:
 
         if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
         {
-            NC_LOG_INFO("{0]", result.c_str());
+            NC_LOG_INFO("{0]", result);
         }
     }
 
@@ -103,7 +103,7 @@ private:
     void Disable();
 
 private:
-    static constexpr size_t FormatBufferSize = 256;
+    static constexpr size_t FormatBufferSize = 1024;
     f32 _visibleProgressTimer = 0;
 
     std::string _searchText;

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <Jolt/Core/StaticArray.h>
 #include <Jolt/Math/Float3.h>
 #include <Jolt/Math/Swizzle.h>
 #include <Jolt/Math/MathTypes.h>
@@ -86,8 +87,8 @@ public:
 	/// Calculates inMul1 * inMul2 + inAdd
 	static JPH_INLINE Vec3		sFusedMultiplyAdd(Vec3Arg inMul1, Vec3Arg inMul2, Vec3Arg inAdd);
 
-	/// Component wise select, returns inV1 when highest bit of inControl = 0 and inV2 when highest bit of inControl = 1
-	static JPH_INLINE Vec3		sSelect(Vec3Arg inV1, Vec3Arg inV2, UVec4Arg inControl);
+	/// Component wise select, returns inNotSet when highest bit of inControl = 0 and inSet when highest bit of inControl = 1
+	static JPH_INLINE Vec3		sSelect(Vec3Arg inNotSet, Vec3Arg inSet, UVec4Arg inControl);
 
 	/// Logical or (component wise)
 	static JPH_INLINE Vec3		sOr(Vec3Arg inV1, Vec3Arg inV2);
@@ -104,7 +105,7 @@ public:
 	static JPH_INLINE Vec3		sUnitSpherical(float inTheta, float inPhi);
 
 	/// A set of vectors uniformly spanning the surface of a unit sphere, usable for debug purposes
-	JPH_EXPORT static const std::vector<Vec3> sUnitSphere;
+	JPH_EXPORT static const StaticArray<Vec3, 1026> sUnitSphere;
 
 	/// Get random unit vector
 	template <class Random>
@@ -188,7 +189,7 @@ public:
 	/// Subtract two float vectors (component wise)
 	JPH_INLINE Vec3				operator - (Vec3Arg inV2) const;
 
-	/// Add two float vectors (component wise)
+	/// Subtract two float vectors (component wise)
 	JPH_INLINE Vec3 &			operator -= (Vec3Arg inV2);
 
 	/// Divide (component wise)

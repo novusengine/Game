@@ -19,6 +19,7 @@ namespace Scripting
         Global,
         GameEvent,
         UI,
+        Database,
         Count
     };
 

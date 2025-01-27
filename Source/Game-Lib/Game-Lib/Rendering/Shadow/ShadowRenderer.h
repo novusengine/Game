@@ -34,6 +34,7 @@ private:
 private:
     struct ShadowCascadeDebugInformation
     {
+    public:
         vec3 frustumCorners[8];
         vec3 frustumPlanePos;
         vec4 frustumPlanes[6];

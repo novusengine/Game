@@ -408,7 +408,7 @@ void ContactConstraintManager::ManifoldCache::SaveState(StateRecorder &inStream,
 	}
 
 	// Write body pairs
-	size_t num_body_pairs = selected_bp.size();
+	uint32 num_body_pairs = uint32(selected_bp.size());
 	inStream.Write(num_body_pairs);
 	for (const BPKeyValue *bp_kv : selected_bp)
 	{
@@ -424,7 +424,7 @@ void ContactConstraintManager::ManifoldCache::SaveState(StateRecorder &inStream,
 		GetAllManifoldsSorted(bp, all_m);
 
 		// Write num manifolds
-		size_t num_manifolds = all_m.size();
+		uint32 num_manifolds = uint32(all_m.size());
 		inStream.Write(num_manifolds);
 
 		// Write all manifolds
@@ -464,13 +464,13 @@ void ContactConstraintManager::ManifoldCache::SaveState(StateRecorder &inStream,
 	}
 
 	// Write all CCD manifold keys
-	size_t num_manifolds = selected_m.size();
+	uint32 num_manifolds = uint32(selected_m.size());
 	inStream.Write(num_manifolds);
 	for (const MKeyValue *m_kv : selected_m)
 		inStream.Write(m_kv->GetKey());
 }
 
-bool ContactConstraintManager::ManifoldCache::RestoreState(const ManifoldCache &inReadCache, StateRecorder &inStream)
+bool ContactConstraintManager::ManifoldCache::RestoreState(const ManifoldCache &inReadCache, StateRecorder &inStream, const StateRecorderFilter *inFilter)
 {
 	JPH_ASSERT(!mIsFinalized);
 
@@ -485,13 +485,13 @@ bool ContactConstraintManager::ManifoldCache::RestoreState(const ManifoldCache &
 		inReadCache.GetAllBodyPairsSorted(all_bp);
 
 	// Read amount of body pairs
-	size_t num_body_pairs;
+	uint32 num_body_pairs;
 	if (inStream.IsValidating())
-		num_body_pairs = all_bp.size();
+		num_body_pairs = uint32(all_bp.size());
 	inStream.Read(num_body_pairs);
 
 	// Read entire cache
-	for (size_t i = 0; i < num_body_pairs; ++i)
+	for (uint32 i = 0; i < num_body_pairs; ++i)
 	{
 		// Read key
 		BodyPair body_pair_key;
@@ -499,72 +499,95 @@ bool ContactConstraintManager::ManifoldCache::RestoreState(const ManifoldCache &
 			body_pair_key = all_bp[i]->GetKey();
 		inStream.Read(body_pair_key);
 
-		// Create new entry for this body pair
-		uint64 body_pair_hash = body_pair_key.GetHash();
-		BPKeyValue *bp_kv = Create(contact_allocator, body_pair_key, body_pair_hash);
-		if (bp_kv == nullptr)
+		// Check if we want to restore this contact
+		if (inFilter == nullptr || inFilter->ShouldRestoreContact(body_pair_key.mBodyA, body_pair_key.mBodyB))
 		{
-			// Out of cache space
-			success = false;
-			break;
-		}
-		CachedBodyPair &bp = bp_kv->GetValue();
-
-		// Read body pair
-		if (inStream.IsValidating() && i < all_bp.size())
-			memcpy(&bp, &all_bp[i]->GetValue(), sizeof(CachedBodyPair));
-		bp.RestoreState(inStream);
-
-		// When validating, get all existing manifolds
-		Array<const MKeyValue *> all_m;
-		if (inStream.IsValidating())
-			inReadCache.GetAllManifoldsSorted(all_bp[i]->GetValue(), all_m);
-
-		// Read amount of manifolds
-		size_t num_manifolds;
-		if (inStream.IsValidating())
-			num_manifolds = all_m.size();
-		inStream.Read(num_manifolds);
-
-		uint32 handle = ManifoldMap::cInvalidHandle;
-		for (size_t j = 0; j < num_manifolds; ++j)
-		{
-			// Read key
-			SubShapeIDPair sub_shape_key;
-			if (inStream.IsValidating() && j < all_m.size())
-				sub_shape_key = all_m[j]->GetKey();
-			inStream.Read(sub_shape_key);
-			uint64 sub_shape_key_hash = sub_shape_key.GetHash();
-
-			// Read amount of contact points
-			uint16 num_contact_points;
-			if (inStream.IsValidating() && j < all_m.size())
-				num_contact_points = all_m[j]->GetValue().mNumContactPoints;
-			inStream.Read(num_contact_points);
-
-			// Read manifold
-			MKeyValue *m_kv = Create(contact_allocator, sub_shape_key, sub_shape_key_hash, num_contact_points);
-			if (m_kv == nullptr)
+			// Create new entry for this body pair
+			uint64 body_pair_hash = body_pair_key.GetHash();
+			BPKeyValue *bp_kv = Create(contact_allocator, body_pair_key, body_pair_hash);
+			if (bp_kv == nullptr)
 			{
 				// Out of cache space
 				success = false;
 				break;
 			}
-			CachedManifold &cm = m_kv->GetValue();
-			if (inStream.IsValidating() && j < all_m.size())
-			{
-				memcpy(&cm, &all_m[j]->GetValue(), CachedManifold::sGetRequiredTotalSize(num_contact_points));
-				cm.mNumContactPoints = uint16(num_contact_points); // Restore num contact points
-			}
-			cm.RestoreState(inStream);
-			cm.mNextWithSameBodyPair = handle;
-			handle = ToHandle(m_kv);
+			CachedBodyPair &bp = bp_kv->GetValue();
 
-			// Read contact points
-			for (uint32 k = 0; k < num_contact_points; ++k)
-				cm.mContactPoints[k].RestoreState(inStream);
+			// Read body pair
+			if (inStream.IsValidating() && i < all_bp.size())
+				memcpy(&bp, &all_bp[i]->GetValue(), sizeof(CachedBodyPair));
+			bp.RestoreState(inStream);
+
+			// When validating, get all existing manifolds
+			Array<const MKeyValue *> all_m;
+			if (inStream.IsValidating())
+				inReadCache.GetAllManifoldsSorted(all_bp[i]->GetValue(), all_m);
+
+			// Read amount of manifolds
+			uint32 num_manifolds = 0;
+			if (inStream.IsValidating())
+				num_manifolds = uint32(all_m.size());
+			inStream.Read(num_manifolds);
+
+			uint32 handle = ManifoldMap::cInvalidHandle;
+			for (uint32 j = 0; j < num_manifolds; ++j)
+			{
+				// Read key
+				SubShapeIDPair sub_shape_key;
+				if (inStream.IsValidating() && j < all_m.size())
+					sub_shape_key = all_m[j]->GetKey();
+				inStream.Read(sub_shape_key);
+				uint64 sub_shape_key_hash = sub_shape_key.GetHash();
+
+				// Read amount of contact points
+				uint16 num_contact_points = 0;
+				if (inStream.IsValidating() && j < all_m.size())
+					num_contact_points = all_m[j]->GetValue().mNumContactPoints;
+				inStream.Read(num_contact_points);
+
+				// Read manifold
+				MKeyValue *m_kv = Create(contact_allocator, sub_shape_key, sub_shape_key_hash, num_contact_points);
+				if (m_kv == nullptr)
+				{
+					// Out of cache space
+					success = false;
+					break;
+				}
+				CachedManifold &cm = m_kv->GetValue();
+				if (inStream.IsValidating() && j < all_m.size())
+				{
+					memcpy(&cm, &all_m[j]->GetValue(), CachedManifold::sGetRequiredTotalSize(num_contact_points));
+					cm.mNumContactPoints = uint16(num_contact_points); // Restore num contact points
+				}
+				cm.RestoreState(inStream);
+				cm.mNextWithSameBodyPair = handle;
+				handle = ToHandle(m_kv);
+
+				// Read contact points
+				for (uint32 k = 0; k < num_contact_points; ++k)
+					cm.mContactPoints[k].RestoreState(inStream);
+			}
+			bp.mFirstCachedManifold = handle;
 		}
-		bp.mFirstCachedManifold = handle;
+		else
+		{
+			// Skip the contact
+			CachedBodyPair bp;
+			bp.RestoreState(inStream);
+			uint32 num_manifolds = 0;
+			inStream.Read(num_manifolds);
+			for (uint32 j = 0; j < num_manifolds; ++j)
+			{
+				SubShapeIDPair sub_shape_key;
+				inStream.Read(sub_shape_key);
+				uint16 num_contact_points;
+				inStream.Read(num_contact_points);
+				CachedManifold cm;
+				cm.RestoreState(inStream);
+				for (uint32 k = 0; k < num_contact_points; ++k)
+					cm.mContactPoints[0].RestoreState(inStream);
+			}
+		}
 	}
 
 	// When validating, get all existing CCD manifolds
@@ -573,34 +596,40 @@ bool ContactConstraintManager::ManifoldCache::RestoreState(const ManifoldCache &
 		inReadCache.GetAllCCDManifoldsSorted(all_m);
 
 	// Read amount of CCD manifolds
-	size_t num_manifolds;
+	uint32 num_manifolds;
 	if (inStream.IsValidating())
-		num_manifolds = all_m.size();
+		num_manifolds = uint32(all_m.size());
 	inStream.Read(num_manifolds);
 
-	for (size_t j = 0; j < num_manifolds; ++j)
+	for (uint32 j = 0; j < num_manifolds; ++j)
 	{
 		// Read key
 		SubShapeIDPair sub_shape_key;
 		if (inStream.IsValidating() && j < all_m.size())
 			sub_shape_key = all_m[j]->GetKey();
 		inStream.Read(sub_shape_key);
-		uint64 sub_shape_key_hash = sub_shape_key.GetHash();
 
-		// Create CCD manifold
-		MKeyValue *m_kv = Create(contact_allocator, sub_shape_key, sub_shape_key_hash, 0);
-		if (m_kv == nullptr)
+		// Check if we want to restore this contact
+		if (inFilter == nullptr || inFilter->ShouldRestoreContact(sub_shape_key.GetBody1ID(), sub_shape_key.GetBody2ID()))
 		{
-			// Out of cache space
-			success = false;
-			break;
+			// Create CCD manifold
+			uint64 sub_shape_key_hash = sub_shape_key.GetHash();
+			MKeyValue *m_kv = Create(contact_allocator, sub_shape_key, sub_shape_key_hash, 0);
+			if (m_kv == nullptr)
+			{
+				// Out of cache space
+				success = false;
+				break;
+			}
+			CachedManifold &cm = m_kv->GetValue();
+			cm.mFlags |= (uint16)CachedManifold::EFlags::CCDContact;
 		}
-		CachedManifold &cm = m_kv->GetValue();
-		cm.mFlags |= (uint16)CachedManifold::EFlags::CCDContact;
 	}
 
 #ifdef JPH_ENABLE_ASSERTS
-	mIsFinalized = true;
+	// We don't finalize until the last part is restored
+	if (inStream.IsLastPart())
+		mIsFinalized = true;
 #endif
 
 	return success;
@@ -1707,11 +1736,17 @@ void ContactConstraintManager::SaveState(StateRecorder &inStream, const StateRec
 	mCache[mCacheWriteIdx ^ 1].SaveState(inStream, inFilter);
 }
 
-bool ContactConstraintManager::RestoreState(StateRecorder &inStream)
+bool ContactConstraintManager::RestoreState(StateRecorder &inStream, const StateRecorderFilter *inFilter)
 {
-	bool success = mCache[mCacheWriteIdx].RestoreState(mCache[mCacheWriteIdx ^ 1], inStream);
-	mCacheWriteIdx ^= 1;
-	mCache[mCacheWriteIdx].Clear();
+	bool success = mCache[mCacheWriteIdx].RestoreState(mCache[mCacheWriteIdx ^ 1], inStream, inFilter);
+
+	// If this is the last part, the cache is finalized
+	if (inStream.IsLastPart())
+	{
+		mCacheWriteIdx ^= 1;
+		mCache[mCacheWriteIdx].Clear();
+	}
+
 	return success;
 }
 

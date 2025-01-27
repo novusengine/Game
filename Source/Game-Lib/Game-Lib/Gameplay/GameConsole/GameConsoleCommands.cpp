@@ -4,6 +4,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
+#include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/NetworkedEntity.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
@@ -298,9 +299,9 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
-    auto* creatureDisplayStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+    auto* creatureDisplayStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
 
-    if (!creatureDisplayStorage || !creatureDisplayStorage->HasRow(displayID))
+    if (!creatureDisplayStorage->Has(displayID))
         return false;
 
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -318,7 +319,8 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
         auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-        if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, displayID))
+        auto& model = registry->get<ECS::Components::Model>(characterSingleton.moverEntity);
+        if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, model, ClientDB::Definitions::DisplayInfoType::Creature, displayID))
             return false;
 
         gameConsole->PrintSuccess("Morphed into : %u", displayID);

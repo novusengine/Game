@@ -195,6 +195,8 @@ namespace ECS::Systems
 
     void UpdatePhysics::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("ECS::UpdatePhysics");
+
         entt::registry::context& ctx = registry.ctx();
         auto& joltState = ctx.get<Singletons::JoltState>();
         auto& tSystem = TransformSystem::Get(registry);

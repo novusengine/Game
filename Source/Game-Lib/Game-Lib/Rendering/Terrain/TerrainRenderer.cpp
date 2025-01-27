@@ -564,6 +564,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
 void TerrainRenderer::Clear()
 {
+    ZoneScoped;
     _chunkDatas.Clear();
     _chunkBoundingBoxes.clear();
     _instanceDatas.Clear();
@@ -578,6 +579,7 @@ void TerrainRenderer::Clear()
 
 void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffsets)
 {
+    ZoneScoped;
     u32 numCells = numChunks * Terrain::CHUNK_NUM_CELLS;
 
     u32 chunkDataStartIndex = 0;
@@ -609,15 +611,15 @@ void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffse
 #if NC_DEBUG
     if (chunkDataStartIndex != chunkBoundingBoxStartIndex)
     {
-        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk data start index %u does not match chunk bounding box start index %u, this will probably result in weird terrain", chunkDataStartIndex, chunkBoundingBoxStartIndex);
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk data start index {0} does not match chunk bounding box start index {1}, this will probably result in weird terrain", chunkDataStartIndex, chunkBoundingBoxStartIndex);
     }
     if (instanceDataStartIndex != cellDataStartIndex || instanceDataStartIndex != cellHeightRangeStartIndex || instanceDataStartIndex != cellBoundingBoxStartIndex)
     {
-        NC_LOG_ERROR("TerrainRenderer::Reserve: Instance data start index %u does not match cell data start index %u, cell height range start index %u or cell bounding box start index %u, this will probably result in weird terrain", instanceDataStartIndex, cellDataStartIndex, cellHeightRangeStartIndex, cellBoundingBoxStartIndex);
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Instance data start index {0} does not match cell data start index {1}, cell height range start index {2} or cell bounding box start index {3}, this will probably result in weird terrain", instanceDataStartIndex, cellDataStartIndex, cellHeightRangeStartIndex, cellBoundingBoxStartIndex);
     }
-    if (chunkVertexStartIndex != chunkDataStartIndex * Terrain::CELL_NUM_VERTICES)
+    if (chunkVertexStartIndex != (chunkDataStartIndex * Terrain::CHUNK_NUM_CELLS) * Terrain::CELL_NUM_VERTICES)
     {
-        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk vertex start index %u does not match chunk data index %u * Terrain::CELL_NUM_VERTICES %u, this will probably result in weird terrain", chunkVertexStartIndex, chunkDataStartIndex, chunkDataStartIndex * Terrain::CELL_NUM_VERTICES);
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk vertex start index {0} does not match chunk data index {1} * Terrain::CELL_NUM_VERTICES {2}, this will probably result in weird terrain", chunkVertexStartIndex, chunkDataStartIndex, chunkDataStartIndex * Terrain::CELL_NUM_VERTICES);
     }
 #endif
 
@@ -628,6 +630,8 @@ void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffse
 
 u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataIndex, u32 cellDataStartIndex, u32 vertexDataStartIndex)
 {
+    ZoneScoped;
+
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
     entt::registry* registry = registries->gameRegistry;
 
@@ -705,8 +709,6 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
                 {
                     ZoneScopedN("LoadTexture");
                     Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, diffuseID);
-
-                    textureSingleton.textureHashToTextureID[layer.textureID] = static_cast<Renderer::TextureID::type>(textureID);
                 }
 
                 cellData.diffuseIDs[layerCount++] = diffuseID;
@@ -936,6 +938,7 @@ void TerrainRenderer::CreatePermanentResources()
 
 void TerrainRenderer::SyncToGPU()
 {
+    ZoneScoped;
     if (_vertices.SyncToGPU(_renderer))
     {
         _geometryPassDescriptorSet.Bind("_packedTerrainVertices", _vertices.GetBuffer());

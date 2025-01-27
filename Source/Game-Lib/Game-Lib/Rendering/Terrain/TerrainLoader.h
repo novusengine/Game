@@ -1,4 +1,6 @@
 #pragma once
+#include "Game-Lib/Application/IOLoader.h"
+
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
 #include <Base/Container/SafeUnorderedMap.h>
@@ -28,6 +30,7 @@ public:
 
     struct LoadDesc
     {
+    public:
         LoadType loadType = LoadType::Full;
         std::string mapName = "";
         uvec2 chunkGridStartPos = uvec2(0, 0);
@@ -37,10 +40,19 @@ public:
 private:
     struct LoadRequestInternal
     {
+    public:
         LoadType loadType = LoadType::Full;
         std::string mapName = "";
         uvec2 chunkGridStartPos = uvec2(0, 0);
         uvec2 chunkGridEndPos = uvec2(0, 0);
+    };
+
+    struct WorkRequest
+    {
+    public:
+        u32 chunkID = std::numeric_limits<u16>().max();
+        u32 chunkHash = std::numeric_limits<u32>().max();
+        std::shared_ptr<Bytebuffer> data = nullptr;
     };
 
 public:
@@ -54,9 +66,9 @@ public:
 
 private:
     void LoadPartialMapRequest(const LoadRequestInternal& request);
-    void LoadFullMapRequest(const LoadRequestInternal& request);
+    bool LoadFullMapRequest(const LoadRequestInternal& request);
 
-    void PrepareForChunks(LoadType loadType, u32 numChunks, TerrainReserveOffsets& reserveOffsets);
+    void IOLoadCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata);
 
 private:
     TerrainRenderer* _terrainRenderer = nullptr;
@@ -65,9 +77,17 @@ private:
     ModelLoader* _modelLoader = nullptr;
     LiquidLoader* _liquidLoader = nullptr;
 
+    u32 _numChunksToLoad = 0;
+    std::atomic<u32> _numChunksLoaded = 0;
+    robin_hood::unordered_set<u32> _requestedChunkHashes;
+
     moodycamel::ConcurrentQueue<LoadRequestInternal> _requests;
+    moodycamel::ConcurrentQueue<IOLoadRequest> _loadedChunkRequests;
+    moodycamel::ConcurrentQueue<WorkRequest> _pendingWorkRequests;
 
     robin_hood::unordered_map<u32, u32> _chunkIDToLoadedID;
     robin_hood::unordered_map<u32, u32> _chunkIDToBodyID;
     robin_hood::unordered_map<u32, Map::Chunk*> _chunkIDToChunkPtr;
+
+    std::mutex _chunkLoadingMutex;
 };

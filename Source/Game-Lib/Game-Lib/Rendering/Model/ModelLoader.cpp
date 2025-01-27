@@ -1,13 +1,15 @@
 #include "ModelLoader.h"
 #include "ModelRenderer.h"
-#include "Game-Lib/Animation/AnimationSystem.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/NetworkedEntity.h"
 #include "Game-Lib/ECS/Singletons/Skybox.h"
+#include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
@@ -31,17 +33,21 @@
 #include <filesystem>
 #include <mutex>
 #include <vector>
-#include <Game-Lib/ECS/Singletons/ClientDBCollection.h>
 
 namespace fs = std::filesystem;
 
 static const fs::path dataPath = fs::path("Data/");
-static const fs::path complexModelPath = dataPath / "ComplexModel/";
+static const fs::path complexModelPath = dataPath / "ComplexModel";
 
 ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
     : _modelRenderer(modelRenderer)
-    , _staticRequests(MAX_STATIC_LOADS_PER_FRAME)
-    , _dynamicRequests(MAX_DYNAMIC_LOADS_PER_FRAME) { }
+    , _pendingLoadRequests(MAX_PENDING_LOADS_PER_FRAME)
+    , _internalLoadRequests(MAX_INTERNAL_LOADS_PER_FRAME)
+    , _discoveredModels()
+{
+    _pendingLoadRequestsVector.resize(MAX_PENDING_LOADS_PER_FRAME);
+    _internalLoadRequestsVector.resize(MAX_INTERNAL_LOADS_PER_FRAME);
+}
 
 void ModelLoader::Init()
 {
@@ -55,119 +61,81 @@ void ModelLoader::Init()
     }
 
     enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
+    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
+
+    // Then create a multithreaded job to loop over the paths
+    _numDiscoveredModelsToLoad = 0;
+
+    fs::path absolutePath = std::filesystem::absolute(complexModelPath).make_preferred();
+    std::string absolutePathStr = absolutePath.string();
+    size_t subStrIndex = absolutePathStr.length() + 1; // + 1 here for folder seperator
 
     // First recursively iterate the directory and find all paths
     std::vector<fs::path> paths;
-    std::filesystem::recursive_directory_iterator dirpos { complexModelPath };
+    std::filesystem::recursive_directory_iterator dirpos { absolutePath };
     std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
 
-    // Then create a multithreaded job to loop over the paths
-    moodycamel::ConcurrentQueue<DiscoveredModel> discoveredModels;
-    enki::TaskSet discoverModelsTask(static_cast<u32>(paths.size()), [&, paths](enki::TaskSetPartition range, u32 threadNum)
+    u32 numPaths = static_cast<u32>(paths.size());
+    NC_LOG_INFO("ModelLoader : Processing {0} scanned model paths", numPaths);
+
+    enki::TaskSet discoverModelsTask(numPaths, [&, this, paths, subStrIndex](enki::TaskSetPartition range, u32 threadNum)
     {
+        u32 numDiscoveredModelsToLoad = 0;
+
+        IOLoadRequest loadRequest;
+        loadRequest.callback = std::bind(&ModelLoader::HandleDiscoverModelCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
         for (u32 i = range.start; i < range.end; i++)
         {
             const fs::path& path = paths[i];
-            std::string pathStr = path.string();
-
+            
             if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
                 continue;
 
-            fs::path relativePath = fs::relative(path, complexModelPath);
+            std::string pathStr = path.string();
+            std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
+            loadRequest.path = std::move(pathStr);
 
-            PRAGMA_MSVC_IGNORE_WARNING(4244);
-            std::string cModelPath = relativePath.string();
-            std::replace(cModelPath.begin(), cModelPath.end(), L'\\', L'/');
+            std::string modelPath = loadRequest.path.substr(subStrIndex);
+            loadRequest.userdata = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
 
-            FileReader cModelFile(path.string());
-            if (!cModelFile.Open())
-            {
-                NC_LOG_CRITICAL("ModelLoader : Failed to open CModel file: {0}", path.string());
-                continue;
-            }
-
-            // Load the first HEADER_SIZE of the file into memory
-            size_t fileSize = cModelFile.Length();
-            constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-
-            if (fileSize < HEADER_SIZE)
-            {
-                NC_LOG_ERROR("ModelLoader : Tried to open CModel file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", pathStr);
-                continue;
-            }
-
-            std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::Borrow<HEADER_SIZE>();
-
-            cModelFile.Read(cModelBuffer.get(), HEADER_SIZE);
-            cModelFile.Close();
-
-            // Extract the ModelHeader from the file and store it as a DiscoveredModel
-            DiscoveredModel discoveredModel;
-            if (!Model::ComplexModel::ReadHeader(cModelBuffer, discoveredModel.modelHeader))
-            {
-                NC_LOG_ERROR("ModelLoader : Failed to read the ModelHeader for CModel file ({0})", pathStr);
-                continue;
-            }
-
-            discoveredModel.name = cModelPath;
-            discoveredModel.nameHash = StringUtils::fnv1a_32(cModelPath.c_str(), cModelPath.length());
-            discoveredModel.hasShape = false;
-
-            discoveredModels.enqueue(discoveredModel);
+            ioLoader->RequestLoad(loadRequest);
+            numDiscoveredModelsToLoad++;
         }
+
+        _numDiscoveredModelsToLoad += numDiscoveredModelsToLoad;
     });
 
     // Execute the multithreaded job
     taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
     taskScheduler->WaitforTask(&discoverModelsTask);
-
-    // And lastly move the data into the hashmap
-
-    size_t numDiscoveredModels = discoveredModels.size_approx();
-    _nameHashToDiscoveredModel.reserve(numDiscoveredModels);
-
-    DiscoveredModel discoveredModel;
-    while (discoveredModels.try_dequeue(discoveredModel))
-    {
-        if (_nameHashToDiscoveredModel.contains(discoveredModel.nameHash))
-        {
-            const DiscoveredModel& existingDiscoveredModel = _nameHashToDiscoveredModel[discoveredModel.nameHash];
-            NC_LOG_ERROR("Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.nameHash, existingDiscoveredModel.name, discoveredModel.name);
-        }
-
-        _nameHashToDiscoveredModel[discoveredModel.nameHash] = discoveredModel;
-    }
-
-    NC_LOG_INFO("Found {0} models", _nameHashToDiscoveredModel.size());
-
-    _staticLoadRequests.resize(MAX_STATIC_LOADS_PER_FRAME);
-    _dynamicLoadRequests.resize(MAX_DYNAMIC_LOADS_PER_FRAME);
 }
 
 void ModelLoader::Clear()
 {
     LoadRequestInternal dummyRequest;
-    while (_staticRequests.try_dequeue(dummyRequest))
-    {
-        // Just empty the queue
-    }
-    while (_dynamicRequests.try_dequeue(dummyRequest))
+    while (_pendingLoadRequests.try_dequeue(dummyRequest))
     {
         // Just empty the queue
     }
 
-    _nameHashToLoadState.clear();
-    _nameHashToModelID.clear();
-
-    for (auto& it : _nameHashToLoadingMutex)
+    while (_internalLoadRequests.try_dequeue(dummyRequest))
     {
-        if (it.second != nullptr)
-        {
-            delete it.second;
-            it.second = nullptr;
-        }
+        // Just empty the queue
     }
-    _nameHashToLoadingMutex.clear();
+
+    UnloadRequest dummyUnloadRequest;
+    while (_unloadRequests.try_dequeue(dummyUnloadRequest))
+    {
+        // Just empty the queue
+    }
+
+    for (auto& pair : _modelHashToLoadState)
+    {
+        if (pair.second != LoadState::Failed)
+            pair.second = LoadState::NotLoaded;
+    }
+    _modelHashToModelID.clear();
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
@@ -177,323 +145,371 @@ void ModelLoader::Clear()
         auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
+        u32 numBodies = static_cast<u32>(_instanceIDToBodyID.size());
+        std::vector<JPH::BodyID> bodyIDs(numBodies);
+
+        u32 bodyIndex = 0;
         for (auto& pair : _instanceIDToBodyID)
         {
             JPH::BodyID id = static_cast<JPH::BodyID>(pair.second);
-
-            bodyInterface.RemoveBody(id);
-            bodyInterface.DestroyBody(id);
+            bodyIDs[bodyIndex++] = id;
         }
+
+        bodyInterface.RemoveBodies(bodyIDs.data(), numBodies);
+        bodyInterface.DestroyBodies(bodyIDs.data(), numBodies);
 
         _instanceIDToBodyID.clear();
     }
 
-    for (auto& pair : _nameHashToJoltShape)
+    for (auto& pair : _modelHashToJoltShape)
     {
         pair.second = nullptr;
     }
-    _nameHashToJoltShape.clear();
+    _modelHashToJoltShape.clear();
 
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
-    _instanceIDToEntityID.clear();
-    _modelIDToNameHash.clear();
-
-    for (auto& it : _modelIDToComplexModel)
-    {
-        if (it.second != nullptr)
-        {
-            delete it.second;
-            it.second = nullptr;
-        }
-    }
-    _modelIDToComplexModel.clear();
-
+    _modelIDToModelHash.clear();
     _modelRenderer->Clear();
 
-    ServiceLocator::GetAnimationSystem()->Clear(*registry);
+    auto& tSystem = ECS::TransformSystem::Get(*registry);
+    tSystem.ProcessMovedEntities([](entt::entity entity) { });
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
-    
     _createdEntities.clear();
 }
 
 void ModelLoader::Update(f32 deltaTime)
 {
-    ZoneScoped;
-
-    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
+    ZoneScopedN("ModelLoader::Update");
+    
     enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
+    u32 numPendingWorkRequests = static_cast<u32>(_discoveredModelPendingWorkRequests.size_approx());
 
-    size_t staticRequests = _staticRequests.size_approx();
-    if (staticRequests > 0)
+    if (numPendingWorkRequests > 0)
     {
-        u32 numDequeued = static_cast<u32>(_staticRequests.try_dequeue_bulk(&_staticLoadRequests[0], MAX_STATIC_LOADS_PER_FRAME));
-        if (numDequeued > 0)
+        ZoneScopedN("Discover Models");
+        u32 maxModelDiscoveryThisTick = glm::min(numPendingWorkRequests, 50u);
+
+        std::atomic<u32> numModelsDiscoveredThisTick = 0;
+        enki::TaskSet loadDiscoveredModelTask(maxModelDiscoveryThisTick, [&](enki::TaskSetPartition range, uint32_t threadNum)
         {
-            ModelRenderer::ReserveInfo reserveInfo;
+            ZoneScopedN("Discover Task");
+            u32 numRequestsCompleted = 0;
 
-            for (u32 i = 0; i < numDequeued; i++)
+            WorkRequest workRequest;
+            for (u32 i = range.start; i < range.end; i++)
+            //for (u32 i = 0; i < maxModelDiscoveryThisTick; i++)
             {
-                LoadRequestInternal& request = _staticLoadRequests[i];
-                u32 nameHash = request.placement.nameHash;
+                if (!_discoveredModelPendingWorkRequests.try_dequeue(workRequest))
+                    break;
 
-                if (!_nameHashToDiscoveredModel.contains(nameHash))
+                ZoneScopedN("Discover Work");
+                numRequestsCompleted++;
+
+                size_t fileSize = workRequest.data->writtenData;
+                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+                
+                if (fileSize < HEADER_SIZE)
                 {
-                    NC_LOG_ERROR("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
+                    NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", workRequest.path);
+
+                    std::scoped_lock lock(_modelHashMutex);
+                    _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
+
                     continue;
                 }
-
-                DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
-                bool isSupported = discoveredModel.modelHeader.numVertices > 0;
-
-                // Only increment Instance Count & Drawcall Count if the model have vertices
+                
+                // Extract the Model from the file and store it as a DiscoveredModel
+                DiscoveredModel discoveredModel =
                 {
-                    reserveInfo.numInstances += 1 * isSupported;
-                    reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
-                    reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
-                    reserveInfo.numTextureTransforms += discoveredModel.modelHeader.numTextureTransforms * isSupported;
-                }
+                    .name = std::move(workRequest.path),
+                    .modelHash = workRequest.modelHash,
+                    .hasShape = false,
+                    .model = nullptr
+                };
 
-                if (!_nameHashToLoadState.contains(nameHash))
                 {
-                    _nameHashToLoadState[nameHash] = static_cast<LoadState>((LoadState::Received * isSupported) + (LoadState::Failed * !isSupported));
-                    _nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
-                    _nameHashToLoadingMutex[nameHash] = new std::mutex();
+                    ZoneScopedN("Read Model");
 
-                    reserveInfo.numModels += 1 * isSupported;
-                    reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
-                    reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
-                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported;
-                    reserveInfo.numDecorationSets += discoveredModel.modelHeader.numDecorationSets * isSupported;
-                    reserveInfo.numDecorations += discoveredModel.modelHeader.numDecorations * isSupported;
+                    Model::ComplexModel* model = new Model::ComplexModel();
+                    if (!Model::ComplexModel::Read(workRequest.data, *model))
+                    {
+                        NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", discoveredModel.name);
+                        delete model;
 
-                    reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
+                        std::scoped_lock lock(_modelHashMutex);
+                        _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
+
+                        continue;
+                    }
+
+                    discoveredModel.model = model;
+                    _discoveredModels.enqueue(discoveredModel);
                 }
             }
 
-            // Prepare lookup tables
-            _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
-            _modelIDToComplexModel.reserve(_modelIDToComplexModel.size() + reserveInfo.numModels);
-            _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
-            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
-            _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
-            _nameHashToLoadingMutex.reserve(_nameHashToLoadingMutex.size() + reserveInfo.numModels);
+            numModelsDiscoveredThisTick += numRequestsCompleted;
+        });
+        
+        taskScheduler->AddTaskSetToPipe(&loadDiscoveredModelTask);
+        taskScheduler->WaitforTask(&loadDiscoveredModelTask);
 
-            _nameHashToJoltShape.reserve(_nameHashToJoltShape.size() + reserveInfo.numInstances);
-            _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
-            _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
-            _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
-            _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
+        _numDiscoveredModelsLoaded += numModelsDiscoveredThisTick;
+        _modelHashToLoadState.reserve(_modelHashToLoadState.size() + numModelsDiscoveredThisTick);
+        _modelHashToLoadingMutex.reserve(_modelHashToLoadingMutex.size() + numModelsDiscoveredThisTick);
+        _modelHashToDiscoveredModel.reserve(_modelHashToDiscoveredModel.size() + numModelsDiscoveredThisTick);
 
-            // Have ModelRenderer prepare all buffers for what we need to load
-            _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels);
+        {
+            ZoneScopedN("Process Discovered Models");
 
-            // Create entt entities
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-
-            size_t createdEntitiesOffset = _createdEntities.size();
-            _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
-            auto begin = _createdEntities.begin() + createdEntitiesOffset;
-            
-            registry->create(begin, _createdEntities.end());
-
-            registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::AnimationInitData>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
-            registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
-
-            std::atomic<u32> numCreatedInstances = 0;
-
-            enki::TaskSet loadModelsTask(numDequeued, [&](enki::TaskSetPartition range, u32 threadNum)
+            DiscoveredModel discoveredModel;
+            while (_discoveredModels.try_dequeue(discoveredModel))
             {
-            	for (u32 i = range.start; i < range.end; i++)
-                //for (u32 i = 0; i < numDequeued; i++)
+                if (_modelHashToDiscoveredModel.contains(discoveredModel.modelHash))
                 {
-                    LoadRequestInternal& request = _staticLoadRequests[i];
-
-                    u32 placementHash = request.placement.nameHash;
-                    if (!_nameHashToDiscoveredModel.contains(placementHash))
-                    {
-                        // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-                        continue;
-                    }
-
-                    std::mutex* mutex = _nameHashToLoadingMutex[placementHash];
-                    std::scoped_lock lock(*mutex);
-
-                    LoadState loadState = _nameHashToLoadState[placementHash];
-
-                    if (loadState == LoadState::Failed)
-                        continue;
-
-                    if (loadState == LoadState::Received)
-                    {
-                        loadState = LoadState::Loading;
-                        _nameHashToLoadState[placementHash] = LoadState::Loading;
-
-                        bool didLoad = LoadRequest(request);
-
-                        loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));
-                        _nameHashToLoadState[placementHash] = loadState;
-
-                        if (!didLoad)
-                            continue;
-                    }
-
-                    if (request.placement.uniqueID != std::numeric_limits<u32>().max() && _uniqueIDToinstanceID.contains(request.placement.uniqueID))
-                        continue;
-                    
-                    u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
-
-                    AddStaticInstance(_createdEntities[index], request);
+                    const DiscoveredModel& existingDiscoveredModel = _modelHashToDiscoveredModel[discoveredModel.modelHash];
+                    NC_LOG_ERROR("ModelLoader : Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.modelHash, existingDiscoveredModel.name, discoveredModel.name);
                 }
-            });
 
-            // Execute the multithreaded job
-            taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-            taskScheduler->WaitforTask(&loadModelsTask);
-
-            // Destroy the entities we didn't use
-            u32 numCreated = numCreatedInstances.load();
-            registry->destroy(begin + numCreated, _createdEntities.end());
-            _createdEntities.resize(createdEntitiesOffset + numCreated);
+                _modelHashToLoadState[discoveredModel.modelHash] = LoadState::NotLoaded;
+                _modelHashToLoadingMutex[discoveredModel.modelHash] = new std::mutex();
+                _modelHashToDiscoveredModel[discoveredModel.modelHash] = std::move(discoveredModel);
+            }
         }
     }
 
-    size_t dynamicRequests = _dynamicRequests.size_approx();
-    if (dynamicRequests > 0)
+    // Ensure All Discovered Models are loaded before we proceed
+    if (_numDiscoveredModelsLoaded < _numDiscoveredModelsToLoad)
+        return;
+
+    bool discoveredModelsComplete = _discoveredModelsComplete;
+    if (!discoveredModelsComplete)
     {
-        u32 numDequeued = static_cast<u32>(_dynamicRequests.try_dequeue_bulk(&_dynamicLoadRequests[0], MAX_DYNAMIC_LOADS_PER_FRAME));
-        if (numDequeued > 0)
+        ECS::Util::EventUtil::PushEvent(ECS::Components::DiscoveredModelsCompleteEvent{});
+        _discoveredModelsComplete = true;
+    }
+
+    u32 numDequeuedLoadRequests = static_cast<u32>(_pendingLoadRequests.try_dequeue_bulk(_pendingLoadRequestsVector.data(), MAX_PENDING_LOADS_PER_FRAME));
+    if (numDequeuedLoadRequests > 0)
+    {
+        ZoneScopedN("Pending Load Model Requests");
+        ModelRenderer::ReserveInfo reserveInfo;
+
         {
-            ModelRenderer::ReserveInfo reserveInfo;
+            ZoneScopedN("Calculate Model Reserve Info");
 
-            std::vector<u32> unloadRequests;
-            unloadRequests.reserve(16);
-
-            for (u32 i = 0; i < numDequeued; i++)
+            for (u32 i = 0; i < numDequeuedLoadRequests; i++)
             {
-                LoadRequestInternal& request = _dynamicLoadRequests[i];
-                u32 nameHash = request.placement.nameHash;
+                const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
 
-                if (nameHash == std::numeric_limits<u32>().max())
-                {
-                    unloadRequests.push_back(i);
-                    continue;
-                }
+                DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
+                bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
 
-                if (!_nameHashToDiscoveredModel.contains(nameHash))
-                {
-                    NC_LOG_ERROR("ModelLoader : Tried to load model with hash ({0}) which wasn't discovered", nameHash);
-                    continue;
-                }
+                reserveInfo.numModels += 1 * isSupported;
+                reserveInfo.numVertices += discoveredModel.model->modelHeader.numVertices * isSupported;
+                reserveInfo.numIndices += discoveredModel.model->modelHeader.numIndices * isSupported;
+                reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * isSupported;
+                reserveInfo.numDecorationSets += discoveredModel.model->modelHeader.numDecorationSets * isSupported;
+                reserveInfo.numDecorations += discoveredModel.model->modelHeader.numDecorations * isSupported;
 
-                DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[nameHash];
-                bool isSupported = discoveredModel.modelHeader.numVertices > 0;
-
-                // Only increment Instance Count & Drawcall Count if the model have vertices
-                {
-                    reserveInfo.numInstances += 1 * isSupported;
-                    reserveInfo.numOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
-                    reserveInfo.numBones += discoveredModel.modelHeader.numBones * isSupported;
-                    reserveInfo.numTextureTransforms += discoveredModel.modelHeader.numTextureTransforms * isSupported;
-                }
-
-                bool hasDisplayID = request.displayID != std::numeric_limits<u32>().max();
-
-                if (!_nameHashToLoadState.contains(nameHash))
-                {
-                    _nameHashToLoadState[nameHash] = LoadState::Received;
-                    _nameHashToModelID[nameHash] = 0; // 0 should be a cube representing currently loading or something
-                    _nameHashToLoadingMutex[nameHash] = new std::mutex();
-
-                    reserveInfo.numModels++;
-                    reserveInfo.numVertices += discoveredModel.modelHeader.numVertices * isSupported;
-                    reserveInfo.numIndices += discoveredModel.modelHeader.numIndices * isSupported;
-                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits + (discoveredModel.modelHeader.numTextureUnits * hasDisplayID) * isSupported;
-                    reserveInfo.numDecorationSets += discoveredModel.modelHeader.numDecorationSets * isSupported;
-                    reserveInfo.numDecorations += discoveredModel.modelHeader.numDecorations * isSupported;
-
-                    reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.modelHeader.numTransparentRenderBatches * isSupported;
-                }
-                else
-                {
-                    reserveInfo.numTextureUnits += discoveredModel.modelHeader.numTextureUnits * isSupported * hasDisplayID;
-                }
+                reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
             }
+        }
 
-            // Prepare lookup tables
-            _nameHashToModelID.reserve(_nameHashToModelID.size() + reserveInfo.numModels);
-            _modelIDToNameHash.reserve(_modelIDToNameHash.size() + reserveInfo.numModels);
-            _modelIDToComplexModel.reserve(_modelIDToComplexModel.size() + reserveInfo.numModels);
+        {
+            ZoneScopedN("Model Reserve");
+
+            _modelHashToModelID.reserve(_modelHashToModelID.size() + reserveInfo.numModels);
+            _modelIDToModelHash.reserve(_modelIDToModelHash.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
             _modelIDToAABB.reserve(_modelIDToAABB.size() + reserveInfo.numModels);
-            _nameHashToLoadingMutex.reserve(_nameHashToLoadingMutex.size() + reserveInfo.numModels);
+            _modelHashToLoadingMutex.reserve(_modelHashToLoadingMutex.size() + reserveInfo.numModels);
 
-            _nameHashToJoltShape.reserve(_nameHashToJoltShape.size() + reserveInfo.numInstances);
-            _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
-            _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
-            _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
-            _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
-
-            // Have ModelRenderer prepare all buffers for what we need to load
             _modelRenderer->Reserve(reserveInfo);
-            animationSystem->Reserve(reserveInfo.numModels);
+        }
 
-            for (u32 i = 0; i < numDequeued; i++)
+        //enki::TaskSet loadModelsTask(numDequeuedLoadRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
+        //{
+            //ZoneScopedN("Load Model Task");
+            //for (u32 i = range.start; i < range.end; i++)
+            for (u32 i = 0; i < numDequeuedLoadRequests; i++)
             {
-                LoadRequestInternal& request = _dynamicLoadRequests[i];
+                ZoneScopedN("Load Model Work");
 
-                if (request.entity == entt::null)
+                const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
+                if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
                     continue;
 
-                u32 modelHash = request.placement.nameHash;
-                if (!_nameHashToDiscoveredModel.contains(modelHash))
+                std::mutex* modelMutex = _modelHashToLoadingMutex[loadRequest.modelHash];
+                std::scoped_lock lock(*modelMutex);
+
+                LoadState loadState = _modelHashToLoadState[loadRequest.modelHash];
+                if (loadState == LoadState::NotLoaded)
                 {
-                    // Maybe we should add a warning that we tried to load a model that wasn't discovered? Or load an error cube or something?
-                    continue;
+                    ZoneScopedN("Load Model Request");
+                    DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
+
+                    bool didLoad = LoadRequest(discoveredModel);
+                    loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));
+                    _modelHashToLoadState[loadRequest.modelHash] = loadState;
                 }
-
-                std::mutex* mutex = _nameHashToLoadingMutex[modelHash];
-                std::scoped_lock lock(*mutex);
-
-                LoadState loadState = _nameHashToLoadState[modelHash];
 
                 if (loadState == LoadState::Failed)
                     continue;
 
-                if (loadState == LoadState::Received)
-                {
-                    loadState = LoadState::Loading;
-                    _nameHashToLoadState[modelHash] = LoadState::Loading;
-
-                    bool didLoad = LoadRequest(request);
-
-                    loadState = static_cast<LoadState>((LoadState::Loaded * didLoad) + (LoadState::Failed * !didLoad));;
-                    _nameHashToLoadState[modelHash] = loadState;
-
-                    if (!didLoad)
-                        continue;
-                }
-
-                // TODO: Skybox?
-                AddDynamicInstance(request.entity, request);
+                _internalLoadRequests.enqueue(loadRequest);
             }
-        }
+        //});
+
+        //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+        //taskScheduler->WaitforTask(&loadModelsTask);
     }
 
+    u32 numDequeuedInternalRequests = static_cast<u32>(_internalLoadRequests.try_dequeue_bulk(_internalLoadRequestsVector.data(), MAX_INTERNAL_LOADS_PER_FRAME));
+    if (numDequeuedInternalRequests > 0)
+    {
+        ZoneScopedN("Pending Load Instance Requests");
+
+        ModelRenderer::ReserveInfo reserveInfo;
+
+        {
+            ZoneScopedN("Calculate Instance Reserve Info");
+
+            for (u32 i = 0; i < numDequeuedInternalRequests; i++)
+            {
+                const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
+
+                u32 modelHash = loadRequest.modelHash;
+                const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[modelHash];
+                bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
+                bool hasDisplayID = loadRequest.type == LoadRequestType::DisplayID;
+
+                // Only increment Instance Count & Drawcall Count if the model have vertices
+                {
+                    reserveInfo.numInstances += 1 * isSupported;
+                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                    reserveInfo.numBones += discoveredModel.model->modelHeader.numBones * isSupported;
+                    reserveInfo.numTextureTransforms += discoveredModel.model->modelHeader.numTextureTransforms * isSupported;
+                    reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * hasDisplayID * isSupported;
+                }
+            }
+        }
+
+        if (reserveInfo.numInstances > 0)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            size_t createdEntitiesOffset = _createdEntities.size();
+
+            {
+                ZoneScopedN("Instance Reserve");
+
+                _modelHashToJoltShape.reserve(_modelHashToJoltShape.size() + reserveInfo.numInstances);
+                _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
+                _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
+                _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
+                _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
+
+                // Create entt entities
+                _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
+                auto begin = _createdEntities.begin() + createdEntitiesOffset;
+
+                registry->create(begin, _createdEntities.end());
+
+                registry->insert<ECS::Components::AABB>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::AnimationInitData>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::DirtyTransform>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::Model>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::Name>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::Transform>(begin, _createdEntities.end());
+                registry->insert<ECS::Components::WorldAABB>(begin, _createdEntities.end());
+
+                _modelRenderer->Reserve(reserveInfo);
+            }
+
+            std::atomic<u32> numCreatedInstances = 0;
+            //enki::TaskSet loadModelInstancesTask(numDequeuedInternalRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
+            //{
+                //ZoneScopedN("Load Instance Task");
+
+                //for (u32 i = range.start; i < range.end; i++)
+                for (u32 i = 0; i < numDequeuedInternalRequests; i++)
+                {
+                    ZoneScopedN("Load Instance Work");
+                    const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
+
+                    const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
+                    bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
+                    if (!isSupported)
+                        continue;
+
+                    switch (loadRequest.type)
+                    {
+                        case LoadRequestType::Placement:
+                        case LoadRequestType::Decoration:
+                        {
+                            ZoneScopedN("Load Placement / Decoration");
+
+                            bool hasUniqueID = loadRequest.uniqueID != std::numeric_limits<u32>().max();
+                            bool uniqueIDExists = _uniqueIDToinstanceID.contains(loadRequest.uniqueID);
+
+                            if (hasUniqueID && uniqueIDExists)
+                                break;
+
+                            if (loadRequest.entity == entt::null)
+                            {
+                                u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
+                                AddStaticInstance(_createdEntities[index], loadRequest);
+                            }
+                            else
+                            {
+                                AddStaticInstance(loadRequest.entity, loadRequest);
+                            }
+
+                            break;
+                        }
+
+                        case LoadRequestType::Model:
+                        case LoadRequestType::DisplayID:
+                        {
+                            ZoneScopedN("Load Model / DisplayID");
+                            if (loadRequest.entity == entt::null)
+                            {
+                                u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
+                                AddDynamicInstance(_createdEntities[index], loadRequest);
+                            }
+                            else
+                            {
+                                AddDynamicInstance(loadRequest.entity, loadRequest);
+                            }
+
+                            break;
+                        }
+
+                        default: break;
+                    }
+                }
+            //});
+
+            //taskScheduler->AddTaskSetToPipe(&loadModelInstancesTask);
+            //taskScheduler->WaitforTask(&loadModelInstancesTask);
+
+            // Destroy the entities we didn't use
+            u32 numCreated = numCreatedInstances.load();
+            auto begin = _createdEntities.begin() + createdEntitiesOffset;
+
+            registry->destroy(begin + numCreated, _createdEntities.end());
+            _createdEntities.resize(createdEntitiesOffset + numCreated);
+        }
+    }
+    
     size_t unloadRequests = _unloadRequests.size_approx();
     if (unloadRequests)
     {
+        ZoneScopedN("Unload Requests Task");
+
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         mat4x4 identity = mat4x4(1.0f);
 
@@ -525,87 +541,159 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 {
     LoadRequestInternal loadRequest;
-    loadRequest.entity = entt::null;
-    loadRequest.placement = placement;
 
-    _staticRequests.enqueue(loadRequest);
+    loadRequest.type = LoadRequestType::Placement;
+    loadRequest.entity = entt::null;
+    loadRequest.uniqueID = placement.uniqueID;
+    loadRequest.modelHash = placement.nameHash;
+
+    // Terrain::Placement uses u16::max for doodadSet when the field is unused, but we need to use u32::max for extraData when it is unused
+    bool isDoodadSetPresent = placement.doodadSet != std::numeric_limits<u16>().max();
+    constexpr u32 defaultValue = std::numeric_limits<u32>().max();
+    u32 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (defaultValue * !isDoodadSetPresent);
+    loadRequest.extraData = doodadSet;
+
+    loadRequest.spawnPosition = placement.position;
+    loadRequest.spawnRotation = placement.rotation;
+    loadRequest.scale = static_cast<f32>(placement.scale) / 1024.0f;
+
+    _pendingLoadRequests.enqueue(loadRequest);
 }
 
 void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
 {
     LoadRequestInternal loadRequest;
+    loadRequest.type = LoadRequestType::Decoration;
     loadRequest.entity = entt::null;
     loadRequest.instanceID = instanceID;
+    loadRequest.modelHash = decoration.nameID;
+    loadRequest.extraData = decoration.color;
+    loadRequest.spawnPosition = decoration.position;
+    loadRequest.spawnRotation = decoration.rotation;
+    loadRequest.scale = decoration.scale;
 
-    Terrain::Placement placement;
-    placement.nameHash = decoration.nameID;
-    placement.position = decoration.position;
-    placement.rotation = decoration.rotation;
-    placement.scale = static_cast<u16>(decoration.scale * 1024.0f);
-
-    loadRequest.placement = placement;
-
-    _staticRequests.enqueue(loadRequest);
+    _pendingLoadRequests.enqueue(loadRequest);
 }
 
-void ModelLoader::LoadModelForEntity(entt::entity entity, u32 modelNameHash)
+bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash)
 {
+    if (!_modelHashToDiscoveredModel.contains(modelNameHash))
+        return false;
+
     LoadRequestInternal loadRequest;
+    loadRequest.type = LoadRequestType::Model;
     loadRequest.entity = entity;
-    loadRequest.placement.nameHash = modelNameHash;
+    loadRequest.modelHash = modelNameHash;
+    model.modelHash = modelNameHash;
 
-    _dynamicRequests.enqueue(loadRequest);
-}
+    _pendingLoadRequests.enqueue(loadRequest);
 
-bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, u32 displayID)
-{
-    LoadRequestInternal loadRequest;
-    loadRequest.entity = entity;
-    loadRequest.displayID = displayID;
-
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
-    auto* creatureDisplayInfoStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
-    auto* creatureModelDataStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureModelData>(ECS::Singletons::ClientDBHash::CreatureModelData);
-
-    if (!creatureDisplayInfoStorage || !creatureModelDataStorage)
-        return false;
-
-    const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = creatureDisplayInfoStorage->GetRow(displayID);
-    if (!creatureDisplayInfo)
-        return false;
-
-    const ClientDB::Definitions::CreatureModelData* creatureModelData = creatureModelDataStorage->GetRow(creatureDisplayInfo->modelID);
-    if (!creatureModelData)
-        return false;
-
-    loadRequest.placement.nameHash = creatureModelData->modelHash;
-    _dynamicRequests.enqueue(loadRequest);
     return true;
 }
 
-void ModelLoader::UnloadModelForEntity(entt::entity entity, u32 instanceID)
+bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID)
 {
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
+
+    u32 modelHash = std::numeric_limits<u32>().max();
+
+    switch (displayInfoType)
+    {
+        case ClientDB::Definitions::DisplayInfoType::Creature:
+        {
+            auto* creatureDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+            auto* creatureModelDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureModelData);
+
+            if (!creatureDisplayInfoStorage->Has(displayID))
+                return false;
+
+            const ClientDB::Definitions::CreatureDisplayInfo& creatureDisplayInfo = creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
+            const ClientDB::Definitions::CreatureModelData& creatureModelData = creatureModelDataStorage->Get<ClientDB::Definitions::CreatureModelData>(creatureDisplayInfo.modelID);
+
+            modelHash = creatureModelData.modelHash;
+            break;
+        }
+        
+        case ClientDB::Definitions::DisplayInfoType::GameObject:
+        {
+            break;
+        }
+        
+        case ClientDB::Definitions::DisplayInfoType::Item:
+        {
+            auto* modelFileDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ModelFileData);
+            auto* itemDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayInfo);
+
+            if (!itemDisplayInfoStorage->Has(displayID))
+                return false;
+
+            const ClientDB::Definitions::ItemDisplayInfo& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+
+            u32 itemModelHash = std::numeric_limits<u32>().max();
+            u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
+
+            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
+            modelFileDataStorage->Each([&itemModelHash, modelResourcesID](u32 id, const ClientDB::Definitions::ModelFileData& modelFileData) -> bool
+            {
+                if (modelFileData.modelResourcesID != modelResourcesID)
+                    return true;
+
+                itemModelHash = modelFileData.modelHash;
+                return false;
+            });
+
+            modelHash = itemModelHash;
+            break;
+        }
+
+        default: break;
+    }
+
+    if (!_modelHashToDiscoveredModel.contains(modelHash))
+        return false;
+
+    LoadRequestInternal loadRequest;
+    loadRequest.type = LoadRequestType::DisplayID;
+    loadRequest.entity = entity;
+
+    u32 displayInfoPacked = displayID | static_cast<u32>(displayInfoType) << 24;
+    loadRequest.extraData = displayInfoPacked;
+    loadRequest.modelHash = modelHash;
+    model.modelHash = modelHash;
+
+    _pendingLoadRequests.enqueue(loadRequest);
+    return true;
+}
+
+void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
     UnloadRequest unloadRequest =
     {
         .entity = entity,
-        .instanceID = instanceID
+        .instanceID = model.instanceID
     };
+    model.modelHash = std::numeric_limits<u32>().max();
 
     _unloadRequests.enqueue(unloadRequest);
 }
 
+const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
+{
+    if (!_modelHashToDiscoveredModel.contains(modelHash))
+        return nullptr;
+
+    const auto& discoveredModel = _modelHashToDiscoveredModel[modelHash];
+    return discoveredModel.model;
+}
+
 u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
 {
-    u32 nameHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
-
-    if (!_nameHashToDiscoveredModel.contains(nameHash))
-    {
-        NC_LOG_ERROR("Failed to find DiscoveredModel for Model ({0})", modelPath);
-        return std::numeric_limits<u32>().max();
-    }
-
-    return nameHash;
+    u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+    return modelHash;
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
@@ -628,94 +716,68 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
 
 bool ModelLoader::ContainsDiscoveredModel(u32 modelNameHash)
 {
-    return _nameHashToDiscoveredModel.contains(modelNameHash);
+    return _modelHashToDiscoveredModel.contains(modelNameHash);
 }
 
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 modelID)
 {
-    if (!_modelIDToNameHash.contains(modelID))
+    if (!_modelIDToModelHash.contains(modelID))
     {
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelID {0}", modelID);
     }
 
-    u32 nameHash = _modelIDToNameHash[modelID];
-    if (!_nameHashToDiscoveredModel.contains(nameHash))
+    u32 modelHash = _modelIDToModelHash[modelID];
+    if (!_modelHashToDiscoveredModel.contains(modelHash))
     {
-        NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid NameHash {0}", nameHash);
+        NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelHash {0}", modelHash);
     }
 
-    return _nameHashToDiscoveredModel[nameHash];
+    return _modelHashToDiscoveredModel[modelHash];
 }
 
-bool ModelLoader::LoadRequest(const LoadRequestInternal& request)
+bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
 {
-    if (!_nameHashToDiscoveredModel.contains(request.placement.nameHash))
+    if (!discoveredModel.model)
     {
-        NC_LOG_ERROR("ModelLoader : Tried to load model nameHash ({0}) that doesn't exist", request.placement.nameHash);
         return false;
     }
 
-    DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
-
-    fs::path path = complexModelPath / discoveredModel.name;
-    FileReader cModelFile(path.string());
-    if (!cModelFile.Open())
-    {
-        NC_LOG_CRITICAL("ModelLoader : Failed to open CModel file: {0}", path.string());
-        return false;
-    }
-
-    // Load the file into memory
-    size_t fileSize = cModelFile.Length();
-    std::shared_ptr<Bytebuffer> cModelBuffer = Bytebuffer::BorrowRuntime(fileSize);
-
-    cModelFile.Read(cModelBuffer.get(), fileSize);
-    cModelFile.Close();
-
-    // Extract the ComplexModel from the file
-    Model::ComplexModel* model = new Model::ComplexModel();
-    Model::ComplexModel::Read(cModelBuffer, *model);
-
-    if (model->modelHeader.numVertices == 0)
+    if (discoveredModel.model->modelHeader.numVertices == 0)
     {
         NC_LOG_ERROR("ModelLoader : Tried to load model ({0}) without any vertices", discoveredModel.name);
         return false;
     }
 
-    assert(discoveredModel.modelHeader.numVertices == model->vertices.size());
-
-    u32 modelID = _modelRenderer->LoadModel(path.string(), *model);
-    _nameHashToModelID[request.placement.nameHash] = modelID;
-
-    _modelIDToComplexModel[modelID] = model;
-    _modelIDToNameHash[modelID] = request.placement.nameHash;
+    u32 modelID = _modelRenderer->LoadModel(discoveredModel.name, *discoveredModel.model);
+    _modelHashToModelID[discoveredModel.modelHash] = modelID;
+    _modelIDToModelHash[modelID] = discoveredModel.modelHash;
 
     ECS::Components::AABB& aabb = _modelIDToAABB[modelID];
-    aabb.centerPos = model->aabbCenter;
-    aabb.extents = model->aabbExtents;
+    aabb.centerPos = discoveredModel.model->aabbCenter;
+    aabb.extents = discoveredModel.model->aabbExtents;
 
     // Generate Jolt Shape
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-        u32 numPhysicsBytes = static_cast<u32>(model->physicsData.size());
+        u32 numPhysicsBytes = static_cast<u32>(discoveredModel.model->physicsData.size());
 
         if (physicsEnabled && numPhysicsBytes > 0)
         {
-            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(model->physicsData.data(), numPhysicsBytes);
+            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(discoveredModel.model->physicsData.data(), numPhysicsBytes);
             JoltStreamIn streamIn(physicsBuffer);
 
             JPH::Shape::IDToShapeMap shapeMap;
             JPH::Shape::IDToMaterialMap materialMap;
 
             JPH::MeshShapeSettings::ShapeResult shapeResult = JPH::Shape::sRestoreWithChildren(streamIn, shapeMap, materialMap);
-
-            _nameHashToJoltShape[request.placement.nameHash] = shapeResult.Get();
             discoveredModel.hasShape = true;
+
+            {
+                std::scoped_lock lock(_physicsSystemMutex);
+                _modelHashToJoltShape[discoveredModel.modelHash] = shapeResult.Get();
+            }
         }
     }
-
-    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-    animationSystem->AddSkeleton(modelID, *model);
 
     return true;
 }
@@ -725,21 +787,19 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& tSystem = ECS::TransformSystem::Get(*registry);
 
-    f32 scale = static_cast<f32>(request.placement.scale) / 1024.0f;
-    tSystem.SetLocalTransform(entityID, request.placement.position, request.placement.rotation, vec3(scale, scale, scale));
-
     auto& name = registry->get<ECS::Components::Name>(entityID);
-    DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
+    DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[request.modelHash];
     name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
     name.fullName = discoveredModel.name;
-    name.nameHash = discoveredModel.nameHash;
+    name.nameHash = discoveredModel.modelHash;
 
-    u32 modelID = _nameHashToModelID[request.placement.nameHash];
-    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.placement);
+    u32 modelID = _modelHashToModelID[request.modelHash];
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.spawnPosition, request.spawnRotation, request.scale, request.extraData);
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
     model.modelID = modelID;
     model.instanceID = instanceID;
+    model.modelHash = request.modelHash;
 
     const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
 
@@ -747,89 +807,94 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
-    std::scoped_lock lock(_instanceIDToModelIDMutex);
-    _uniqueIDToinstanceID[request.placement.uniqueID] = instanceID;
-    _instanceIDToModelID[instanceID] = modelID;
-    _instanceIDToEntityID[instanceID] = entityID;
-
-    bool hasParent = request.instanceID != std::numeric_limits<u32>().max() && _instanceIDToEntityID.contains(request.instanceID);
-    if (hasParent)
+    bool hasParent = false;
     {
-        entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
-        tSystem.ParentEntityTo(parentEntityID, entityID);
+        std::scoped_lock lock(_instanceIDToModelIDMutex);
+        _uniqueIDToinstanceID[request.uniqueID] = instanceID;
+        _instanceIDToModelID[instanceID] = modelID;
+        _instanceIDToEntityID[instanceID] = entityID;
+
+        hasParent = request.instanceID != std::numeric_limits<u32>().max() && _instanceIDToEntityID.contains(request.instanceID);
+    }
+
+    {
+        std::scoped_lock lock(_transformSystemMutex);
+
+        tSystem.SetLocalTransform(entityID, request.spawnPosition, request.spawnRotation, vec3(request.scale));
+
+        if (hasParent)
+        {
+            entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
+            tSystem.ParentEntityTo(parentEntityID, entityID);
+        }
     }
 
     if (discoveredModel.hasShape)
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-
+    
         if (physicsEnabled)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-
-            const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
-
+    
+            const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
+    
             // TODO: We need to scale the shape
-
+    
             auto& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
             const quat& rotation = transform.GetWorldRotation();
-
+    
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3::sReplicate(scale)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
-
+            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3::sReplicate(request.scale)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
+    
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-
+    
                 // Store the entity ID in the body so we can look it up later
                 body->SetUserData(static_cast<JPH::uint64>(entityID));
-
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-                _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+
+                {
+                    std::scoped_lock lock(_physicsSystemMutex);
+                    _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+                }
             }
         }
     }
 
-    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
-
-    if (animationSystem->HasSkeleton(modelID))
-    {
-        auto& animationInitData = registry->get<ECS::Components::AnimationInitData>(entityID);
-        animationInitData.flags.shouldInitialize = true;
-        animationInitData.flags.isDynamic = false;
-    }
+    auto& animationInitData = registry->get<ECS::Components::AnimationInitData>(entityID);
+    animationInitData.flags.isDynamic = false;
 }
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
-    Animation::AnimationSystem* animationSystem = ServiceLocator::GetAnimationSystem();
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-    DiscoveredModel& discoveredModel = _nameHashToDiscoveredModel[request.placement.nameHash];
+    const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[request.modelHash];
     auto& name = registry->get<ECS::Components::Name>(entityID);
     name.name = StringUtils::GetFileNameFromPath(discoveredModel.name);
     name.fullName = discoveredModel.name;
-    name.nameHash = discoveredModel.nameHash;
+    name.nameHash = discoveredModel.modelHash;
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
 
-    u32 modelID = _nameHashToModelID[request.placement.nameHash];
-    Model::ComplexModel* complexModel = _modelIDToComplexModel[modelID];
+    u32 modelID = _modelHashToModelID[request.modelHash];
     u32 instanceID = model.instanceID;
 
     auto& transform = registry->get<ECS::Components::Transform>(entityID);
     if (instanceID == std::numeric_limits<u32>().max())
     {
-        instanceID = _modelRenderer->AddInstance(entityID, modelID, complexModel, transform.GetMatrix(), request.displayID);
+        instanceID = _modelRenderer->AddInstance(entityID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData);
     }
     else
     {
-        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, complexModel, transform.GetMatrix(), request.displayID);
+        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData);
     }
 
     model.modelID = modelID;
@@ -840,9 +905,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
-    std::scoped_lock lock(_instanceIDToModelIDMutex);
-    _instanceIDToModelID[instanceID] = modelID;
-    _instanceIDToEntityID[instanceID] = entityID;
+    {
+        std::scoped_lock lock(_instanceIDToModelIDMutex);
+        _instanceIDToModelID[instanceID] = modelID;
+        _instanceIDToEntityID[instanceID] = entityID;
+    }
 
     if (discoveredModel.hasShape)
     {
@@ -854,11 +921,9 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
-            const JPH::ShapeRefC& shape = _nameHashToJoltShape[request.placement.nameHash];
+            const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
 
             // TODO: We need to scale the shape
-
-            auto& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
             const quat& rotation = transform.GetWorldRotation();
 
@@ -882,20 +947,42 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
                 body->SetUserData(static_cast<JPH::uint64>(entityID));
 
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-                _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+
+                {
+                    std::scoped_lock lock(_physicsSystemMutex);
+                    _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
+                }
             }
         }
     }
 
-    if (animationSystem->HasSkeleton(modelID))
     {
-        auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
-        animationInitData.flags.shouldInitialize = true;
-        animationInitData.flags.isDynamic = true;
+        std::scoped_lock lock(_animationMutex);
 
-        if (_modelRenderer)
-        {
-            _modelRenderer->AddAnimationInstance(instanceID);
-        }
+        auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
+        animationInitData.flags.isDynamic = true;
     }
+
+    if (_modelRenderer)
+    {
+        _modelRenderer->AddAnimationInstance(instanceID);
+    }
+}
+
+void ModelLoader::HandleDiscoverModelCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata)
+{
+    if (!result)
+    {
+        NC_LOG_WARNING("ModelLoader : Failed to Load ({0})", path);
+        return;
+    }
+
+    WorkRequest workRequest =
+    {
+        .path = path,
+        .modelHash = static_cast<u32>(userdata),
+        .data = std::move(buffer)
+    };
+
+    _discoveredModelPendingWorkRequests.enqueue(workRequest);
 }

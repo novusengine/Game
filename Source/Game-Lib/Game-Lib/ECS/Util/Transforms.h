@@ -25,6 +25,7 @@ namespace ECS
         void SetLocalScale(entt::entity entity, const vec3& newScale);
         void SetLocalPositionAndRotation(entt::entity entity, const vec3& newpos, const quat& newrotation);
         void SetLocalTransform(entt::entity entity, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void SetLocalTransformMatrix(entt::entity entity, const mat4a& transform);
         void AddLocalOffset(entt::entity entity, const vec3& offset);
 
         //manually flags the entity as moved. will refresh its matrix and do the same for children
@@ -36,6 +37,7 @@ namespace ECS
         void SetLocalScale(entt::entity entity, ECS::Components::Transform& transform, const vec3& newScale);
         void SetLocalPositionAndRotation(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation);
         void SetLocalTransform(entt::entity entity, ECS::Components::Transform& transform, const vec3& newpos, const quat& newrotation, const vec3& newscale);
+        void SetLocalTransformMatrix(entt::entity entity, ECS::Components::Transform& transform, const mat4a& newmatrix);
         void AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset);
 
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
@@ -169,6 +171,9 @@ namespace ECS::Components
         friend class Editor::Inspector;
 
     public:
+        //makes the component use pointer stable references in entt. do not remove
+        static constexpr auto in_place_delete = true;
+
         SceneNode(Transform* tf, entt::entity owner)
         {
             transform = tf;
@@ -190,6 +195,22 @@ namespace ECS::Components
                 c->parent = nullptr;
                 c = next;
             }
+
+            if (transform)
+                transform->ownerNode = nullptr;
+
+            transform = nullptr;
+            ownerEntity = entt::null;
+
+            firstChild = nullptr;
+            nextSibling = nullptr;
+            prevSibling = nullptr;
+            children = 0;
+        }
+
+        entt::entity GetOwnerEntity()
+        {
+            return ownerEntity;
         }
 
         bool HasParent() const
@@ -296,10 +317,7 @@ namespace ECS::Components
         SceneNode* firstChild{};
         SceneNode* nextSibling{};
         SceneNode* prevSibling{};
-        int children{ 0 };
-
-        //makes the component use pointer stable references in entt. do not remove
-        static constexpr auto in_place_delete = true;
+        i32 children{ 0 };
     };
 }
 

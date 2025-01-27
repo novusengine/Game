@@ -23,18 +23,20 @@ namespace ECS::Singletons
             entt::registry::context& ctx = registry->ctx();
 
             auto& clientDBCollection = ctx.get<ClientDBCollection>();
-            auto* cameraSaves = clientDBCollection.Get<ClientDB::Definitions::CameraSave>(ClientDBHash::CameraSave);
+            auto* cameraSaves = clientDBCollection.Get(ClientDBHash::CameraSave);
 
             cameraSaveNameHashToID.clear();
 
-            u32 numRecords = cameraSaves->Count();
+            u32 numRecords = cameraSaves->GetNumRows();
             cameraSaveNameHashToID.reserve(numRecords);
 
-            cameraSaves->Each([this](auto* storage, const ClientDB::Definitions::CameraSave* cameraSave)
+            cameraSaves->Each([this, &cameraSaves](u32 id, const ClientDB::Definitions::CameraSave& cameraSave) -> bool
             {
-                u32 nameHash = StringUtils::fnv1a_32(cameraSave->name.c_str(), cameraSave->name.length());
+                const std::string& cameraSaveName = cameraSaves->GetString(cameraSave.name);
+                u32 nameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
 
-                cameraSaveNameHashToID[nameHash] = cameraSave->id;
+                cameraSaveNameHashToID[nameHash] = id;
+                return true;
             });
 
             return true;

@@ -101,6 +101,13 @@ void ECS::TransformSystem::SetLocalTransform(entt::entity entity, const vec3& ne
     if (tf) SetLocalTransform(entity, *tf, newPosition, newRotation, newScale);
 }
 
+void ECS::TransformSystem::SetLocalTransformMatrix(entt::entity entity, const mat4a& transform)
+{
+    ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
+
+    if (tf) SetLocalTransformMatrix(entity, *tf, transform);
+}
+
 void ECS::TransformSystem::AddLocalOffset(entt::entity entity, const vec3& offset)
 {
     ECS::Components::Transform* tf = owner->try_get<ECS::Components::Transform>(entity);
@@ -173,6 +180,25 @@ void ECS::TransformSystem::SetLocalTransform(entt::entity entity,
     }
 }
 
+void ECS::TransformSystem::SetLocalTransformMatrix(entt::entity entity, ECS::Components::Transform& transform, const mat4a& newmatrix)
+{
+    transform.SetDirty(*this, entity);
+
+    if (transform.ownerNode)
+    {
+        if (transform.ownerNode->parent)
+        {
+            transform.ownerNode->matrix = Math::AffineMatrix::MatrixMul(transform.ownerNode->parent->matrix, newmatrix);
+        }
+        else
+        {
+            transform.ownerNode->matrix = newmatrix;
+        }
+
+        transform.ownerNode->PropagateMatrixToChildren(this);
+    }
+}
+
 void ECS::TransformSystem::AddLocalOffset(entt::entity entity, ECS::Components::Transform& transform, const vec3& offset)
 {
     transform.position += offset;
@@ -216,13 +242,7 @@ void ECS::TransformSystem::ClearParent(entt::entity entity)
     }
 
     ECS::Components::SceneNode* sceneNode = owner->try_get<ECS::Components::SceneNode>(entity);
-    if (!sceneNode)
-    {
-        NC_LOG_ERROR("Transform system, trying to clear parent from entity with no scene node!");
-        assert(sceneNode);
-    }
-
-    if (sceneNode->HasParent())
+    if (sceneNode && sceneNode->HasParent())
     {
         sceneNode->DetachParent();
         RefreshTransform(entity, *transform);

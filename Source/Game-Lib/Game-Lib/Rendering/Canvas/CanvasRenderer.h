@@ -62,6 +62,7 @@ private:
 private:
     struct PanelDrawData
     {
+    public:
         uvec3 packed; // x: textureIndex, y: additiveTextureIndex, z: color
         hvec2 textureScaleToWidgetSize = hvec2(0.0f, 0.0f);
         vec4 texCoord; // uv
@@ -72,6 +73,7 @@ private:
 
     struct CharDrawData
     {
+    public:
         uvec4 packed0; // x: textureIndex, y: charIndex, z: textColor, w: borderColor
         vec4 packed1; // x: borderSize, y: padding, zw: unitRangeXY
     };

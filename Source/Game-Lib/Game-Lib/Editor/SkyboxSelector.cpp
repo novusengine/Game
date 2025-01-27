@@ -225,17 +225,13 @@ namespace Editor
                         if (ImGui::MenuItem("Load"))
                         {
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                            
+
+                            auto& model = registry.get<ECS::Components::Model>(skybox.entity);
                             u32 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
-                            if (modelHash == std::numeric_limits<u32>().max())
+                            if (!modelLoader->LoadModelForEntity(skybox.entity, model, modelHash))
                             {
                                 std::string pathStr = skyboxPath.string();
                                 NC_LOG_ERROR("Failed to load skybox model: {0}", pathStr);
-                            }
-                            else
-                            {
-                                modelLoader->LoadModelForEntity(skybox.entity, modelHash);
-                                name.name = "Skybox"; // The loader changes name, lets change it back
                             }
                         }
                         if (ImGui::MenuItem("Unload"))
@@ -243,7 +239,7 @@ namespace Editor
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
                             auto& model = registry.get<ECS::Components::Model>(skybox.entity);
-                            modelLoader->UnloadModelForEntity(skybox.entity, model.modelID);
+                            modelLoader->UnloadModelForEntity(skybox.entity, model);
                         }
 
                         ImGui::EndPopup();

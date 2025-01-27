@@ -21,6 +21,7 @@ public:
 
     struct BuildPyramidParams
     {
+    public:
         Renderer::Renderer* renderer;
         Renderer::RenderGraphResources* graphResources;
         Renderer::CommandList* commandList;

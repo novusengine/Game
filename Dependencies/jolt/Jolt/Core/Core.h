@@ -6,7 +6,7 @@
 
 // Jolt library version
 #define JPH_VERSION_MAJOR 5
-#define JPH_VERSION_MINOR 0
+#define JPH_VERSION_MINOR 2
 #define JPH_VERSION_PATCH 0
 
 // Determine which features the library was compiled with
@@ -60,7 +60,12 @@
 #else
 	#define JPH_VERSION_FEATURE_BIT_10 0
 #endif
-#define JPH_VERSION_FEATURES (uint64(JPH_VERSION_FEATURE_BIT_1) | (JPH_VERSION_FEATURE_BIT_2 << 1) | (JPH_VERSION_FEATURE_BIT_3 << 2) | (JPH_VERSION_FEATURE_BIT_4 << 3) | (JPH_VERSION_FEATURE_BIT_5 << 4) | (JPH_VERSION_FEATURE_BIT_6 << 5) | (JPH_VERSION_FEATURE_BIT_7 << 6) | (JPH_VERSION_FEATURE_BIT_8 << 7) | (JPH_VERSION_FEATURE_BIT_9 << 8) | (JPH_VERSION_FEATURE_BIT_10 << 9))
+#ifdef JPH_OBJECT_STREAM
+	#define JPH_VERSION_FEATURE_BIT_11 1
+#else
+	#define JPH_VERSION_FEATURE_BIT_11 0
+#endif
+#define JPH_VERSION_FEATURES (uint64(JPH_VERSION_FEATURE_BIT_1) | (JPH_VERSION_FEATURE_BIT_2 << 1) | (JPH_VERSION_FEATURE_BIT_3 << 2) | (JPH_VERSION_FEATURE_BIT_4 << 3) | (JPH_VERSION_FEATURE_BIT_5 << 4) | (JPH_VERSION_FEATURE_BIT_6 << 5) | (JPH_VERSION_FEATURE_BIT_7 << 6) | (JPH_VERSION_FEATURE_BIT_8 << 7) | (JPH_VERSION_FEATURE_BIT_9 << 8) | (JPH_VERSION_FEATURE_BIT_10 << 9) | (JPH_VERSION_FEATURE_BIT_11 << 10))
 
 // Combine the version and features in a single ID
 #define JPH_VERSION_ID ((JPH_VERSION_FEATURES << 24) | (JPH_VERSION_MAJOR << 16) | (JPH_VERSION_MINOR << 8) | JPH_VERSION_PATCH)
@@ -81,12 +86,12 @@
 #elif defined(__FreeBSD__)
 	#define JPH_PLATFORM_FREEBSD
 #elif defined(__APPLE__)
-    #include <TargetConditionals.h>
-    #if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
-        #define JPH_PLATFORM_MACOS
-    #else
-        #define JPH_PLATFORM_IOS
-    #endif
+	#include <TargetConditionals.h>
+	#if defined(TARGET_OS_IPHONE) && !TARGET_OS_IPHONE
+		#define JPH_PLATFORM_MACOS
+	#else
+		#define JPH_PLATFORM_IOS
+	#endif
 #elif defined(__EMSCRIPTEN__)
 	#define JPH_PLATFORM_WASM
 #endif
@@ -187,12 +192,16 @@
 		#define JPH_USE_SSE4_2
 	#endif
 #elif defined(__e2k__)
-	// Elbrus e2k architecture
+	// E2K CPU architecture (MCST Elbrus 2000)
 	#define JPH_CPU_E2K
 	#define JPH_CPU_ADDRESS_BITS 64
-	#define JPH_USE_SSE
 	#define JPH_VECTOR_ALIGNMENT 16
 	#define JPH_DVECTOR_ALIGNMENT 32
+
+	// Compiler flags on e2k arch determine CPU features
+	#if defined(__SSE__) && !defined(JPH_USE_SSE)
+		#define JPH_USE_SSE
+	#endif
 #else
 	#error Unsupported CPU architecture
 #endif
@@ -201,7 +210,7 @@
 #ifdef JPH_SHARED_LIBRARY
 	#ifdef JPH_BUILD_SHARED_LIBRARY
 		// While building the shared library, we must export these symbols
-		#ifdef JPH_PLATFORM_WINDOWS
+		#if defined(JPH_PLATFORM_WINDOWS) && !defined(JPH_COMPILER_MINGW)
 			#define JPH_EXPORT __declspec(dllexport)
 		#else
 			#define JPH_EXPORT __attribute__ ((visibility ("default")))
@@ -212,7 +221,7 @@
 		#endif
 	#else
 		// When linking against Jolt, we must import these symbols
-		#ifdef JPH_PLATFORM_WINDOWS
+		#if defined(JPH_PLATFORM_WINDOWS) && !defined(JPH_COMPILER_MINGW)
 			#define JPH_EXPORT __declspec(dllimport)
 		#else
 			#define JPH_EXPORT __attribute__ ((visibility ("default")))
@@ -308,6 +317,8 @@
 	JPH_GCC_SUPPRESS_WARNING("-Winvalid-offsetof")												\
 	JPH_GCC_SUPPRESS_WARNING("-Wclass-memaccess")												\
 	JPH_GCC_SUPPRESS_WARNING("-Wpedantic")														\
+	JPH_GCC_SUPPRESS_WARNING("-Wunused-parameter")												\
+	JPH_GCC_SUPPRESS_WARNING("-Wmaybe-uninitialized")											\
 																								\
 	JPH_MSVC_SUPPRESS_WARNING(4619) /* #pragma warning: there is no warning number 'XXXX' */	\
 	JPH_MSVC_SUPPRESS_WARNING(4514) /* 'X' : unreferenced inline function has been removed */	\
@@ -385,18 +396,19 @@
 	JPH_SUPPRESS_WARNING_POP
 
 // Standard C++ includes
+JPH_SUPPRESS_WARNINGS_STD_BEGIN
 #include <float.h>
 #include <limits.h>
 #include <string.h>
-JPH_SUPPRESS_WARNINGS_STD_BEGIN
-#include <vector>
 #include <utility>
 #include <cmath>
 #include <sstream>
 #include <functional>
 #include <algorithm>
 #include <cstdint>
-JPH_SUPPRESS_WARNINGS_STD_END
+#ifdef JPH_COMPILER_MSVC
+	#include <malloc.h> // for alloca
+#endif
 #if defined(JPH_USE_SSE)
 	#include <immintrin.h>
 #elif defined(JPH_USE_NEON)
@@ -407,6 +419,7 @@ JPH_SUPPRESS_WARNINGS_STD_END
 		#include <arm_neon.h>
 	#endif
 #endif
+JPH_SUPPRESS_WARNINGS_STD_END
 
 JPH_NAMESPACE_BEGIN
 
@@ -450,11 +463,24 @@ static_assert(sizeof(uint32) == 4, "Invalid size of uint32");
 static_assert(sizeof(uint64) == 8, "Invalid size of uint64");
 static_assert(sizeof(void *) == (JPH_CPU_ADDRESS_BITS == 64? 8 : 4), "Invalid size of pointer" );
 
+// Determine if we want extra debugging code to be active
+#if !defined(NDEBUG) && !defined(JPH_NO_DEBUG)
+	#define JPH_DEBUG
+#endif
+
 // Define inline macro
 #if defined(JPH_NO_FORCE_INLINE)
 	#define JPH_INLINE inline
-#elif defined(JPH_COMPILER_CLANG) || defined(JPH_COMPILER_GCC)
+#elif defined(JPH_COMPILER_CLANG)
 	#define JPH_INLINE __inline__ __attribute__((always_inline))
+#elif defined(JPH_COMPILER_GCC)
+	// On gcc 14 using always_inline in debug mode causes error: "inlining failed in call to 'always_inline' 'XXX': function not considered for inlining"
+	// See: https://github.com/jrouwe/JoltPhysics/issues/1096
+	#if __GNUC__ >= 14 && defined(JPH_DEBUG)
+		#define JPH_INLINE inline
+	#else
+		#define JPH_INLINE __inline__ __attribute__((always_inline))
+	#endif
 #elif defined(JPH_COMPILER_MSVC)
 	#define JPH_INLINE __forceinline
 #else
@@ -478,8 +504,8 @@ static_assert(sizeof(void *) == (JPH_CPU_ADDRESS_BITS == 64? 8 : 4), "Invalid si
 // Stack allocation
 #define JPH_STACK_ALLOC(n)		alloca(n)
 
-// Shorthand for #ifdef _DEBUG / #endif
-#ifdef _DEBUG
+// Shorthand for #ifdef JPH_DEBUG / #endif
+#ifdef JPH_DEBUG
 	#define JPH_IF_DEBUG(...)	__VA_ARGS__
 	#define JPH_IF_NOT_DEBUG(...)
 #else
@@ -550,6 +576,24 @@ static_assert(sizeof(void *) == (JPH_CPU_ADDRESS_BITS == 64? 8 : 4), "Invalid si
 		__pragma(float_control(pop))
 #else
 	#error Undefined
+#endif
+
+// Check if Thread Sanitizer is enabled
+#ifdef __has_feature
+	#if __has_feature(thread_sanitizer)
+		#define JPH_TSAN_ENABLED
+	#endif
+#else
+	#ifdef __SANITIZE_THREAD__
+		#define JPH_TSAN_ENABLED
+	#endif
+#endif
+
+// Attribute to disable Thread Sanitizer for a particular function
+#ifdef JPH_TSAN_ENABLED
+	#define JPH_TSAN_NO_SANITIZE __attribute__((no_sanitize("thread")))
+#else
+	#define JPH_TSAN_NO_SANITIZE
 #endif
 
 JPH_NAMESPACE_END

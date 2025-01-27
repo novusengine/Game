@@ -78,33 +78,84 @@ ModelRenderer::~ModelRenderer()
 
 void ModelRenderer::Update(f32 deltaTime)
 {
-    ZoneScoped;
+    ZoneScopedN("ModelRenderer::Update");
 
     if (!CVAR_ModelRendererEnabled.Get())
         return;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-    registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
     {
-        u32 instanceID = model.instanceID;
-        if (instanceID == std::numeric_limits<u32>::max())
+        ZoneScopedN("Update Transform Matrices");
+
+        registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
         {
-            return;
+            u32 instanceID = model.instanceID;
+            if (instanceID == std::numeric_limits<u32>::max())
+            {
+                return;
+            }
+
+            mat4x4& matrix = _instanceMatrices[instanceID];
+
+            matrix = transform.GetMatrix();
+            _instanceMatrices.SetDirtyElement(instanceID);
+        });
+    }
+
+    {
+        ZoneScopedN("Update Culling Resources");
+
+        const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
+        _opaqueCullingResources.Update(deltaTime, cullingEnabled);
+        _transparentCullingResources.Update(deltaTime, cullingEnabled);
+
+        _opaqueSkyboxCullingResources.Update(deltaTime, false);
+        _transparentSkyboxCullingResources.Update(deltaTime, false);
+    }
+
+    u32 numTextureLoads = static_cast<u32>(_textureLoadRequests.try_dequeue_bulk(_textureLoadWork.begin(), 256));
+    if (numTextureLoads > 0)
+    {
+        ZoneScopedN("Texture Load Requests");
+    
+        auto& textureSingleton = registry->ctx().get<ECS::Singletons::TextureSingleton>();
+    
+        Renderer::TextureDesc textureDesc;
+        textureDesc.path.reserve(128);
+    
+        {
+            ZoneScopedN("Texture Loading");
+    
+            for (u32 i = 0; i < numTextureLoads; i++)
+            {
+                ZoneScopedN("Texture Load");
+                const TextureLoadRequest& textureLoad = _textureLoadWork[i];
+                TextureUnit& textureUnit = _textureUnits[textureLoad.textureUnitOffset];
+    
+                if (!textureSingleton.textureHashToPath.contains(textureLoad.textureHash))
+                    continue;
+    
+                textureDesc.path = textureSingleton.textureHashToPath[textureLoad.textureHash];
+    
+                Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
+                NC_ASSERT(textureUnit.textureIds[textureLoad.textureIndex] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
+    
+                _dirtyTextureUnitOffsets.insert(textureLoad.textureUnitOffset);
+            }
         }
-
-        mat4x4& matrix = _instanceMatrices[instanceID];
-
-        matrix = transform.GetMatrix();
-        _instanceMatrices.SetDirtyElement(instanceID);
-    });
-
-    const bool cullingEnabled = CVAR_ModelCullingEnabled.Get();
-    _opaqueCullingResources.Update(deltaTime, cullingEnabled);
-    _transparentCullingResources.Update(deltaTime, cullingEnabled);
-
-    _opaqueSkyboxCullingResources.Update(deltaTime, false);
-    _transparentSkyboxCullingResources.Update(deltaTime, false);
+    
+        {
+            ZoneScopedN("Set Dirty Texture Units");
+    
+            for (u32 textureUnitOffset : _dirtyTextureUnitOffsets)
+            {
+                _textureUnits.SetDirtyElement(textureUnitOffset);
+            }
+    
+            _dirtyTextureUnitOffsets.clear();
+        }
+    }
 
     SyncToGPU();
 }
@@ -139,6 +190,10 @@ void ModelRenderer::Clear()
 
     _opaqueSkyboxCullingResources.Clear();
     _transparentSkyboxCullingResources.Clear();
+
+    TextureLoadRequest textureLoadRequest;
+    while (_textureLoadRequests.try_dequeue(textureLoadRequest)) {}
+    _dirtyTextureUnitOffsets.clear();
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 
@@ -926,6 +981,8 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
 {
+    ZoneScopedN("ModelRenderer::LoadModel");
+
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
 
     entt::registry* registry = registries->gameRegistry;
@@ -945,12 +1002,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
     // Add CullingData
     {
+        ZoneScopedN("Add Culling Data");
+
         Model::ComplexModel::CullingData& cullingData = _cullingDatas[modelOffsets.modelIndex];
         cullingData = model.cullingData;
     }
 
     // Add vertices
     {
+        ZoneScopedN("Add Vertex Data");
+
         modelManifest.numVertices = model.modelHeader.numVertices;
         modelManifest.vertexOffset = modelOffsets.verticesStartIndex;
 
@@ -974,6 +1035,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
     // Add indices
     {
+        ZoneScopedN("Add Index Data");
+
         modelManifest.numIndices = model.modelHeader.numIndices;
         modelManifest.indexOffset = modelOffsets.indicesStartIndex;
 
@@ -994,6 +1057,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
     // Add TextureUnits and DrawCalls
     {
+        ZoneScopedN("Add TextureUnits and DrawCalls");
+
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
         modelManifest.opaqueDrawCallTemplateOffset = modelOffsets.opaqueDrawCallTemplateStartIndex;
 
@@ -1007,16 +1072,22 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
         u32 textureTransformLookupTableSize = static_cast<u32>(model.textureTransformLookupTable.size());
 
+        u32 numRenderBatches = static_cast<u32>(model.modelData.renderBatches.size());
+        u32 numTexturesInModel = static_cast<u32>(model.textures.size());
+
         u32 textureUnitIndex = 0;
-        for (auto& renderBatch : model.modelData.renderBatches)
+        for (u32 renderBatchIndex = 0; renderBatchIndex < numRenderBatches; renderBatchIndex++)
         {
+            auto& renderBatch = model.modelData.renderBatches[renderBatchIndex];
+
             u32 textureUnitStartIndex = textureUnitsOffsets.textureUnitsStartIndex + textureUnitIndex;
             u16 numUnlitTextureUnits = 0;
 
             for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
             {
                 // Texture Unit
-                TextureUnit& textureUnit = _textureUnits[textureUnitsOffsets.textureUnitsStartIndex + (textureUnitIndex++)];
+                u32 textureUnitOffset = textureUnitsOffsets.textureUnitsStartIndex + (textureUnitIndex++);
+                TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
 
                 Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
                 Model::ComplexModel::Material& cMaterial = model.materials[cTextureUnit.materialIndex];
@@ -1044,36 +1115,32 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                 // Textures
                 for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
                 {
-                    std::scoped_lock lock(_textureLoadMutex);
-
-                    Renderer::TextureDesc textureDesc;
                     u16 textureIndex = model.textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
                     if (textureIndex == 65535)
                         continue;
 
-                    Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
-                    if (cTexture.type == Model::ComplexModel::Texture::Type::None)
+                    const Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
+                    if (cTexture.type == Model::ComplexModel::Texture::Type::None && cTexture.textureHash != std::numeric_limits<u32>().max())
                     {
-                        textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
+                        TextureLoadRequest textureLoadRequest =
+                        {
+                            .textureUnitOffset = textureUnitOffset,
+                            .textureIndex = j,
+                            .textureHash = cTexture.textureHash,
+                        };
+
+                        _textureLoadRequests.enqueue(textureLoadRequest);
                     }
                     else
                     {
                         continue;
                     }
 
-                    if (textureDesc.path.size() > 0)
-                    {
-                        Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
-                        textureSingleton.textureHashToTextureID[cTexture.textureHash] = static_cast<Renderer::TextureID::type>(textureID);
-
-                        NC_ASSERT(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
-                    }
-
                     u8 textureSamplerIndex = 0;
 
                     if (cTexture.flags.wrapX)
                         textureSamplerIndex |= 0x1;
-                    
+
                     if (cTexture.flags.wrapY)
                         textureSamplerIndex |= 0x2;
 
@@ -1091,24 +1158,24 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             switch (renderBatch.groupID)
             {
-                case 0: // Base
-                case 1: // Bald Head
-                case 101: // Beard
-                case 201: // Sideburns
-                case 301: // Moustache
-                case 401: // Gloves
-                case 501: // Boots
-                case 702: // Ears
-                case 1301: // Legs
-                case 1501: // Cloak
+            case 0: // Base
+            case 1: // Bald Head
+            case 101: // Beard
+            case 201: // Sideburns
+            case 301: // Moustache
+            case 401: // Gloves
+            case 501: // Boots
+            case 702: // Ears
+            case 1301: // Legs
+            case 1501: // Cloak
                 //case 1703: // DK Eye Glow (Needs further support to be animated)
-                    break;
+                break;
 
-                default:
-                {
-                    isAllowedGroupID = false;
-                    break;
-                }
+            default:
+            {
+                isAllowedGroupID = false;
+                break;
+            }
             }
 
             Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
@@ -1130,6 +1197,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
     // Set Animated Data
     {
+        ZoneScopedN("Set Animation Data");
+
         modelManifest.numBones = static_cast<u32>(model.bones.size());
         modelManifest.numTextureTransforms = static_cast<u32>(model.textureTransforms.size());
 
@@ -1138,6 +1207,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
     // Add Decoration Data
     {
+        ZoneScopedN("Add Decoration Data");
+
         modelManifest.numDecorationSets = model.modelHeader.numDecorationSets;
         modelManifest.decorationSetOffset = modelOffsets.decorationSetStartIndex;
 
@@ -1177,21 +1248,6 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         }
     }
 
-    // Allocate animation data
-    AnimationReserveOffsets animationOffsets;
-    AllocateAnimation(modelOffsets.modelIndex, animationOffsets);
-
-    // Default initialize the bone and texture transform matrices
-    for (u32 i = 0; i < model.modelHeader.numBones; ++i)
-    {
-        _boneMatrices[animationOffsets.boneStartIndex + i] = glm::mat4(1.0f);
-    }
-
-    for (u32 i = 0; i < model.modelHeader.numTextureTransforms; ++i)
-    {
-        _textureTransformMatrices[animationOffsets.textureTransformStartIndex + i] = glm::mat4(1.0f);
-    }
-
     return modelOffsets.modelIndex;
 }
 
@@ -1199,7 +1255,17 @@ void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelReserve
 {
     std::scoped_lock lock(_modelOffsetsMutex);
 
+    u32 beforeCapacity = _cullingDatas.Capacity();
+
     offsets.modelIndex = _cullingDatas.Add();
+
+    u32 afterCapacity = _cullingDatas.Capacity();
+    if (beforeCapacity != afterCapacity)
+    {
+        NC_LOG_ERROR("AllocateModel : CullingData grew when it shouldn't have");
+        volatile i32 test = 0;
+    }
+
     _modelIDToNumInstances.resize(_modelIDToNumInstances.size() + 1);
     _modelManifests.resize(_modelManifests.size() + 1);
 
@@ -1225,7 +1291,16 @@ void ModelRenderer::AllocateTextureUnits(const Model::ComplexModel& model, Textu
 {
     std::scoped_lock lock(_textureOffsetsMutex);
 
+    u32 beforeCapacity = _textureUnits.Capacity();
+
     offsets.textureUnitsStartIndex = _textureUnits.AddCount(model.modelHeader.numTextureUnits);
+
+    u32 afterCapacity = _textureUnits.Capacity();
+    if (beforeCapacity != afterCapacity)
+    {
+        NC_LOG_ERROR("AllocateTextureUnits : TextureUnits grew when it shouldn't have");
+        volatile i32 test = 0;
+    }
 }
 
 void ModelRenderer::AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets)
@@ -1234,18 +1309,34 @@ void ModelRenderer::AllocateAnimation(u32 modelID, AnimationReserveOffsets& offs
 
     ModelManifest& manifest = _modelManifests[modelID];
 
+    u32 boneBeforeCapacity = _boneMatrices.Capacity();
+    u32 textureTransformBeforeCapacity = _textureTransformMatrices.Capacity();
+
     offsets.boneStartIndex = _boneMatrices.AddCount(manifest.numBones);
     offsets.textureTransformStartIndex = _textureTransformMatrices.AddCount(manifest.numTextureTransforms);
+
+    u32 boneAfterCapacity = _boneMatrices.Capacity();
+    u32 textureTransformAfterCapacity = _textureTransformMatrices.Capacity();
+
+    if (boneBeforeCapacity != boneAfterCapacity)
+    {
+        NC_LOG_ERROR("AllocateAnimation : Bone Matrices grew when it shouldn't have");
+        volatile i32 test = 0;
+    }
+
+    if (textureTransformBeforeCapacity != textureTransformAfterCapacity)
+    {
+        NC_LOG_ERROR("AllocateAnimation : Texture Transforms grew when it shouldn't have");
+        volatile i32 test = 0;
+    }
 }
 
-u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const Terrain::Placement& placement)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet)
 {
-    vec3 scale = vec3(placement.scale) / 1024.0f;
-
     // Add Instance matrix
-    mat4x4 rotationMatrix = glm::toMat4(placement.rotation);
-    mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), scale);
-    mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), placement.position) * rotationMatrix * scaleMatrix;
+    mat4x4 rotationMatrix = glm::toMat4(rotation);
+    mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(scale));
+    mat4x4 instanceMatrix = glm::translate(mat4x4(1.0f), position) * rotationMatrix * scaleMatrix;
 
     u32 instanceIndex = AddInstance(entityID, modelID, model, instanceMatrix);
     ModelManifest& manifest = _modelManifests[modelID];
@@ -1253,7 +1344,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
     // Add Decorations
     if (manifest.numDecorationSets && manifest.numDecorations)
     {
-        if (placement.doodadSet == std::numeric_limits<u16>().max())
+        if (doodadSet == std::numeric_limits<u32>().max())
         {
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
@@ -1268,11 +1359,11 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
         }
         else
         {
-            if (placement.doodadSet < manifest.numDecorationSets)
+            if (doodadSet < manifest.numDecorationSets)
             {
                 ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-                const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset + placement.doodadSet];
+                const Model::ComplexModel::DecorationSet& manifestDecorationSet = _modelDecorationSets[manifest.decorationSetOffset + doodadSet];
 
                 for (u32 i = 0; i < manifestDecorationSet.count; i++)
                 {
@@ -1286,7 +1377,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
     return instanceIndex;
 }
 
-u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
+u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     bool isSkybox = false;
@@ -1410,9 +1501,12 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         }
     }
 
-    if (model && displayID != std::numeric_limits<u32>().max())
+    if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
-        ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayID);
+        auto displayInfoType = static_cast<ClientDB::Definitions::DisplayInfoType>(displayInfoPacked >> 24);
+        u32 displayID = displayInfoPacked & 0xFFFFFF;
+
+        ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayInfoType, displayID);
     }
 
     return instanceOffsets.instanceIndex;
@@ -1424,7 +1518,17 @@ void ModelRenderer::AllocateInstance(u32 modelID, InstanceReserveOffsets& offset
 
     ModelManifest& manifest = _modelManifests[modelID];
 
+    u32 beforeCapacity = _instanceDatas.Capacity();
+
     offsets.instanceIndex = _instanceDatas.Add();
+
+    u32 afterCapacity = _instanceDatas.Capacity();
+    if (beforeCapacity != afterCapacity)
+    {
+        NC_LOG_ERROR("AllocateInstance : InstanceDatas grew when it shouldn't have");
+        volatile i32 test = 0;
+    }
+
     u32 instanceMatrixIndex = _instanceMatrices.Add();
     assert(offsets.instanceIndex == instanceMatrixIndex);
     _instanceIDToOpaqueDrawCallOffset.resize(_instanceIDToOpaqueDrawCallOffset.size() + 1);
@@ -1444,18 +1548,38 @@ void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offse
     }
     else
     {
+        const auto& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
+        const auto& transparentDrawCalls = _opaqueCullingResources.GetDrawCalls();
+        u32 opaqueDrawCallBeforeCapacity = opaqueDrawCalls.Capacity();
+        u32 transparentDrawCallBeforeCapacity = transparentDrawCalls.Capacity();
+
         offsets.opaqueDrawCallStartIndex = _opaqueCullingResources.AddCount(manifest.numOpaqueDrawCalls);
         offsets.transparentDrawCallStartIndex = _transparentCullingResources.AddCount(manifest.numTransparentDrawCalls);
+
+        u32 opaqueDrawCallAfterCapacity = opaqueDrawCalls.Capacity();
+        u32 transparentDrawCallAfterCapacity = transparentDrawCalls.Capacity();
+
+        if (opaqueDrawCallBeforeCapacity != opaqueDrawCallAfterCapacity)
+        {
+            NC_LOG_ERROR("AllocateDrawCalls : OpaqueDrawCalls grew when it shouldn't have");
+            volatile i32 test = 0;
+        }
+
+        if (transparentDrawCallBeforeCapacity != transparentDrawCallAfterCapacity)
+        {
+            NC_LOG_ERROR("AllocateDrawCalls : TransparentDrawCalls grew when it shouldn't have");
+            volatile i32 test = 0;
+        }
     }
 }
 
-void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayID)
+void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
 {
     InstanceData& instanceData = _instanceDatas[instanceID];
 
     u32 oldModelID = instanceData.modelID;
 
-    if (modelID == oldModelID && displayID == std::numeric_limits<u32>().max())
+    if (modelID == oldModelID && displayInfoPacked == std::numeric_limits<u32>().max())
         return;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1640,32 +1764,59 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         }
     }
 
-    if (model && displayID != std::numeric_limits<u32>().max())
+    if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
-        ReplaceTextureUnits(modelID, model, instanceID, displayID);
+        auto displayInfoType = static_cast<ClientDB::Definitions::DisplayInfoType>(displayInfoPacked >> 24);
+        u32 displayID = displayInfoPacked & 0xFFFFFF;
+
+        ReplaceTextureUnits(modelID, model, instanceID, displayInfoType, displayID);
     }
 }
 
-void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayID)
+void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
     auto& textureSingleton = registry->ctx().get<ECS::Singletons::TextureSingleton>();
-    auto* creatureDisplayStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfo>(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
 
-    ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
-    ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
-    if (creatureDisplayStorage)
+    auto* textureFileDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::TextureFileData);
+    auto* creatureDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+    auto* creatureDisplayInfoExtraStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfoExtra);
+    auto* itemDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayInfo);
+    auto* itemDisplayModelMaterialStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayModelMaterialResources);
+
+    const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
+    const ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
+    const ClientDB::Definitions::ItemDisplayInfo* itemDisplayInfo = nullptr;
+
+    switch (displayInfoType)
     {
-        creatureDisplayInfo = creatureDisplayStorage->GetRow(displayID);
-
-        if (creatureDisplayInfo->extendedDisplayInfoID != 0)
+        case ClientDB::Definitions::DisplayInfoType::Creature:
         {
-            if (auto* creatureDisplayInfoExtraStorage = clientDBCollection.Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(ECS::Singletons::ClientDBHash::CreatureDisplayInfoExtra))
+            if (creatureDisplayInfoStorage)
             {
-                creatureDisplayInfoExtra = creatureDisplayInfoExtraStorage->GetRow(creatureDisplayInfo->extendedDisplayInfoID);
+                creatureDisplayInfo = &creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
+
+                if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
+                {
+                    creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(creatureDisplayInfo->extendedDisplayInfoID);
+                }
             }
+
+            break;
         }
+
+        case ClientDB::Definitions::DisplayInfoType::Item:
+        {
+            if (itemDisplayInfoStorage)
+            {
+                itemDisplayInfo = &itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+            }
+
+            break;
+        }
+
+        default: return;
     }
 
     ModelManifest& manifest = _modelManifests[modelID];
@@ -1696,6 +1847,7 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                 {
                     case Model::ComplexModel::Texture::Type::Skin:
                     case Model::ComplexModel::Texture::Type::ObjectSkin:
+                    case Model::ComplexModel::Texture::Type::WeaponBlade:
                     case Model::ComplexModel::Texture::Type::CharacterHair:
                     case Model::ComplexModel::Texture::Type::CharacterFacialHair:
                     case Model::ComplexModel::Texture::Type::SkinExtra:
@@ -1757,7 +1909,8 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
         for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
         {
             // Texture Unit
-            TextureUnit& textureUnit = _textureUnits[textureUnitOffsets.textureUnitsStartIndex + numTextureUnitsAdded];
+            u32 textureUnitOffset = textureUnitOffsets.textureUnitsStartIndex + numTextureUnitsAdded;
+            TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
             numTextureUnitsAdded++;
 
             Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
@@ -1786,9 +1939,6 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
             // Textures
             for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
             {
-                std::scoped_lock lock(_textureLoadMutex);
-
-                Renderer::TextureDesc textureDesc;
                 u16 textureIndex = model->textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
                 if (textureIndex == 65535)
                     continue;
@@ -1806,7 +1956,7 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                         }
                         case 50: // Human Female
                         {
-                            return "textures/bakednpctextures/creaturedisplayextra-154629.dds"_h;
+                            return "textures/bakednpctextures/creaturedisplayextra-00941.dds"_h;
                         }
                         case 51: // Orc Male
                         {
@@ -1943,7 +2093,7 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
 
                 if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                 {
-                    textureDesc.path = textureSingleton.textureHashToPath[cTexture.textureHash];
+                    textureHash = cTexture.textureHash;
                 }
                 else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
                 {
@@ -1957,19 +2107,49 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                         skinHash = GetRaceSkinTextureForDisplayID(displayID);
                     }
 
-                    textureDesc.path = textureSingleton.textureHashToPath[skinHash];
+                    textureHash = skinHash;
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::ObjectSkin)
+                {
+                    if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
+                    {
+                        u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+
+                        itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](const u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
+                        {
+                            if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 2)
+                                return true;
+
+                            textureHash = row.textureHash[0];
+                            return false;
+                        });
+                    }
+                }
+                else if (cTexture.type == Model::ComplexModel::Texture::Type::WeaponBlade)
+                {
+                    if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
+                    {
+                        u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+
+                        itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
+                        {
+                            if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 3)
+                                return true;
+
+                            textureHash = row.textureHash[0];
+                            return false;
+                        });
+                    }
                 }
                 else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
                 {
-                    u32 defaultHairHash = GetRaceHairTextureForDisplayID(displayID);
-                    textureDesc.path = textureSingleton.textureHashToPath[defaultHairHash];
+                    textureHash = GetRaceHairTextureForDisplayID(displayID);
                 }
                 else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin1)
                 {
                     if (creatureDisplayInfo)
                     {
                         textureHash = creatureDisplayInfo->textureVariations[0];
-                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
                     }
                 }
                 else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin2)
@@ -1977,7 +2157,6 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                     if (creatureDisplayInfo)
                     {
                         textureHash = creatureDisplayInfo->textureVariations[1];
-                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
                     }
                 }
                 else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin3)
@@ -1985,16 +2164,19 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                     if (creatureDisplayInfo)
                     {
                         textureHash = creatureDisplayInfo->textureVariations[2];
-                        textureDesc.path = textureSingleton.textureHashToPath[textureHash];
                     }
                 }
 
-                if (textureDesc.path.size() > 0)
+                if (textureHash != std::numeric_limits<u32>().max())
                 {
-                    Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[j]);
-                    textureSingleton.textureHashToTextureID[textureHash] = static_cast<Renderer::TextureID::type>(textureID);
+                    TextureLoadRequest textureLoadRequest =
+                    {
+                        .textureUnitOffset = textureUnitOffset,
+                        .textureIndex = j,
+                        .textureHash = textureHash,
+                    };
 
-                    NC_ASSERT(textureUnit.textureIds[j] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : ReplaceTextureUnits overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
+                    _textureLoadRequests.enqueue(textureLoadRequest);
                 }
 
                 u8 textureSamplerIndex = 0;
@@ -2105,7 +2287,7 @@ bool ModelRenderer::SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffse
     return true;
 }
 
-bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatrixOffset, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
+bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatrixOffset, u32 localBoneIndex, u32 count, const mat4x4* boneMatrixArray)
 {
     if (_modelManifests.size() <= modelID)
         return false;
@@ -2135,7 +2317,7 @@ bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatri
     return true;
 }
 
-bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u32 textureTransformMatrixOffset, u32 localTextureTransformIndex, u32 count, mat4x4* textureTransformMatrixArray)
+bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u32 textureTransformMatrixOffset, u32 localTextureTransformIndex, u32 count, const mat4x4* textureTransformMatrixArray)
 {
     if (_modelManifests.size() <= modelID)
         return false;
@@ -2212,7 +2394,7 @@ bool ModelRenderer::AddAnimationInstance(u32 instanceID)
     return true;
 }
 
-bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, mat4x4* boneMatrixArray)
+bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u32 count, const mat4x4* boneMatrixArray)
 {
     if (instanceID >= _instanceDatas.Count())
     {
@@ -2250,7 +2432,7 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
     return true;
 }
 
-bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, mat4x4* boneMatrixArray)
+bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 localTextureTransformIndex, u32 count, const mat4x4* boneMatrixArray)
 {
     if (instanceID >= _instanceDatas.Count())
     {
@@ -2315,6 +2497,9 @@ void ModelRenderer::CreatePermanentResources()
     debugTextureDesc.path = "Data/Texture/spells/frankcube.dds";
 
     _renderer->LoadTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
+
+    _textureLoadWork.resize(256);
+    _dirtyTextureUnitOffsets.reserve(256);
 
     static constexpr u32 NumSamplers = 4;
     _samplers.reserve(NumSamplers);
@@ -2409,6 +2594,8 @@ void ModelRenderer::CreatePermanentResources()
 
 void ModelRenderer::SyncToGPU()
 {
+    ZoneScopedN("ModelRenderer::SyncToGPU");
+
     CulledRenderer::SyncToGPU();
 
     // Sync Vertex buffer to GPU

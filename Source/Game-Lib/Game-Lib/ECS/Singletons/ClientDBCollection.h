@@ -20,23 +20,28 @@ namespace ECS::Singletons
 
     enum class ClientDBHash : u32
     {
-        Map					        = GetHash("Map.cdb"_h),
-        LiquidObject		        = GetHash("LiquidObject.cdb"_h),
-        LiquidType			        = GetHash("LiquidType.cdb"_h),
-        LiquidMaterial		        = GetHash("LiquidMaterial.cdb"_h),
-        CinematicCamera		        = GetHash("CinematicCamera.cdb"_h),
-        CinematicSequence	        = GetHash("CinematicSequence.cdb"_h),
-        CameraSave			        = GetHash("CameraSave.cdb"_h),
-        Cursor				        = GetHash("Cursor.cdb"_h),
-        AnimationData		        = GetHash("AnimationData.cdb"_h),
-        CreatureDisplayInfo         = GetHash("CreatureDisplayInfo.cdb"_h),
-        CreatureDisplayInfoExtra    = GetHash("CreatureDisplayInfoExtra.cdb"_h),
-        CreatureModelData           = GetHash("CreatureModelData.cdb"_h),
-        CharSection                 = GetHash("CharSection.cdb"_h),
-        Light                       = GetHash("Light.cdb"_h),
-        LightData                   = GetHash("LightData.cdb"_h),
-        LightParams                 = GetHash("LightParams.cdb"_h),
-        LightSkybox                 = GetHash("LightSkybox.cdb"_h)
+        TextureFileData                     = GetHash("TextureFileData"_h),
+        ModelFileData                       = GetHash("ModelFileData"_h),
+        Map					                = GetHash("Map"_h),
+        LiquidObject		                = GetHash("LiquidObject"_h),
+        LiquidType			                = GetHash("LiquidType"_h),
+        LiquidMaterial		                = GetHash("LiquidMaterial"_h),
+        CinematicCamera		                = GetHash("CinematicCamera"_h),
+        CinematicSequence	                = GetHash("CinematicSequence"_h),
+        CameraSave			                = GetHash("CameraSave"_h),
+        Cursor				                = GetHash("Cursor"_h),
+        AnimationData		                = GetHash("AnimationData"_h),
+        CreatureDisplayInfo                 = GetHash("CreatureDisplayInfo"_h),
+        CreatureDisplayInfoExtra            = GetHash("CreatureDisplayInfoExtra"_h),
+        CreatureModelData                   = GetHash("CreatureModelData"_h),
+        Item                                = GetHash("Item"_h),
+        ItemDisplayInfo                     = GetHash("ItemDisplayInfo"_h),
+        ItemDisplayMaterialResources        = GetHash("ItemDisplayInfoMaterialRes"_h),
+        ItemDisplayModelMaterialResources   = GetHash("ItemDisplayInfoModelMatRes"_h),
+        Light                               = GetHash("Light"_h),
+        LightData                           = GetHash("LightData"_h),
+        LightParams                         = GetHash("LightParams"_h),
+        LightSkybox                         = GetHash("LightSkybox"_h)
     };
 
     struct ClientDBCollection
@@ -44,12 +49,17 @@ namespace ECS::Singletons
     public:
         ClientDBCollection() { }
 
-        template <typename T>
+        void Reserve(u32 numDBs)
+        {
+            _dbs.reserve(numDBs);
+            _dbHashToIndex.reserve(numDBs);
+            _dbIndexToHash.reserve(numDBs);
+            _dbHashToName.reserve(numDBs);
+        }
+
         bool Register(ClientDBHash hash, const std::string& dbName)
         {
-            constexpr size_t STORAGE_SIZE = sizeof(T);
-
-            if (_dbHashToIndex.contains(hash))
+            if (Has(hash))
                 return true;
 
             if (dbName.length() == 0)
@@ -58,40 +68,109 @@ namespace ECS::Singletons
                 return false;
             }
 
-            std::string dbFileName = dbName + ClientDB::FILE_EXTENSION;
-            ClientDBHash dbFileNameHash = static_cast<ClientDBHash>(StringUtils::fnv1a_32(dbFileName.c_str(), dbFileName.size()));
-
+            ClientDBHash dbFileNameHash = static_cast<ClientDBHash>(StringUtils::fnv1a_32(dbName.c_str(), dbName.size()));
             if (dbFileNameHash != hash)
             {
                 NC_LOG_ERROR("ClientDBCollection : Attempted to register ClientDB \"{0}\" with mismatching ClientDBHash", dbName);
                 return false;
             }
 
-            auto* rawDB = new ClientDB::Storage<ClientDB::Definitions::Empty>(dbName);
+            auto* cdb = new ClientDB::Data();
 
             u32 index = static_cast<u32>(_dbs.size());
 
-            _dbs.push_back(rawDB);
+            _dbs.push_back(cdb);
             _dbHashToIndex[hash] = index;
-
-            rawDB->SetDirty();
+            _dbIndexToHash[index] = hash;
+            _dbHashToName[hash] = dbName;
 
             NC_LOG_INFO("ClientDBCollection : Registered '{0}{1}'", dbName, ClientDB::FILE_EXTENSION);
             return true;
         }
 
-        template <typename T>
-        ClientDB::Storage<T>* Get(ClientDBHash hash)
+        bool Remove(ClientDBHash hash)
+        {
+            if (!Has(hash))
+                return false;
+
+            u32 index = _dbHashToIndex[hash];
+            std::string name = _dbHashToName[hash];
+
+            _dbHashToIndex.erase(hash);
+            _dbIndexToHash.erase(index);
+            _dbHashToName.erase(hash);
+
+            std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
+            std::filesystem::path savePath = std::filesystem::path(absolutePath / name).replace_extension(ClientDB::FILE_EXTENSION);
+
+            if (!std::filesystem::exists(savePath))
+                return false;
+
+            std::filesystem::remove(savePath);
+            return true;
+        }
+
+        u32 Count()
+        {
+            u32 numDBs = static_cast<u32>(_dbHashToIndex.size());
+            return numDBs;
+        }
+
+        bool Has(ClientDBHash hash)
+        {
+            return _dbHashToIndex.contains(hash);
+        }
+
+        ClientDB::Data* Get(ClientDBHash hash)
         {
             if (!_dbHashToIndex.contains(hash))
             {
                 NC_LOG_CRITICAL("ClientDBCollection : Storage does not exist in the lookup table, meaning it was not loaded.");
+                return nullptr;
             }
 
             u32 index = _dbHashToIndex[hash];
-            ClientDB::Storage<T>* storage = reinterpret_cast<ClientDB::Storage<T>*>(_dbs[index]);
+            return _dbs[index];
+        }
 
-            return storage;
+        void Each(std::function<void(ClientDBHash dbHash, ClientDB::Data* db)> callback)
+        {
+            u32 numDBs = static_cast<u32>(_dbs.size());
+
+            for (u32 i = 0; i < numDBs; i++)
+            {
+                if (!_dbIndexToHash.contains(i))
+                    continue;
+
+                ClientDBHash hash = _dbIndexToHash[i];
+                callback(hash, _dbs[i]);
+            }
+        }
+
+        void EachInRange(u32 startIndex, u32 count, std::function<void(ClientDBHash dbHash, ClientDB::Data* db)> callback)
+        {
+            u32 numDBs = Count();
+            if (startIndex + count >= numDBs)
+                return;
+
+            for (u32 i = 0; i <= count; i++)
+            {
+                if (!_dbIndexToHash.contains(startIndex + i))
+                    continue;
+
+                ClientDBHash hash = _dbIndexToHash[startIndex + i];
+                callback(hash, _dbs[startIndex + i]);
+            }
+        }
+
+        const std::string& GetDBName(ClientDBHash hash)
+        {
+            if (!_dbHashToName.contains(hash))
+            {
+                NC_LOG_CRITICAL("ClientDBCollection : Storage does not exist in the lookup table, meaning it was not loaded.");
+            }
+
+            return _dbHashToName[hash];
         }
 
     private:
@@ -102,10 +181,9 @@ namespace ECS::Singletons
             std::string name;
         };
 
-        friend class ::Application;
-        friend class ::ClientDBLoader;
-
-        std::vector<ClientDB::Storage<ClientDB::Definitions::Empty>*> _dbs;
+        std::vector<ClientDB::Data*> _dbs;
         robin_hood::unordered_map<ClientDBHash, u32> _dbHashToIndex;
+        robin_hood::unordered_map<u32, ClientDBHash> _dbIndexToHash;
+        robin_hood::unordered_map<ClientDBHash, std::string> _dbHashToName;
     };
 }

@@ -342,6 +342,8 @@ void CanvasRenderer::CreatePermanentResources()
     _descriptorSet.Bind("_fontTextures"_h, _fontTextures);
 
     _vertices.SetDebugName("UIVertices");
+    _vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
     _panelDrawDatas.SetDebugName("PanelDrawDatas");
     _panelDrawDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
