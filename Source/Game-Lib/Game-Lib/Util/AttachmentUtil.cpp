@@ -78,7 +78,7 @@ namespace Util::Attachment
         entt::entity entity = registry->create();
 
         auto& name = registry->emplace<ECS::Components::Name>(entity);
-        name.name = ::Animation::Defines::TypeNames[(u16)attachment];
+        name.name = ::Attachment::Defines::TypeNames[(u16)attachment];
         name.fullName = name.name;
         name.nameHash = StringUtils::fnv1a_32(name.name.c_str(), name.name.size());
 

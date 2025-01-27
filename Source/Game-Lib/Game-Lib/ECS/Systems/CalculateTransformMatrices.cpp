@@ -18,6 +18,9 @@ namespace ECS::Systems
         //convert the async transform queue into dirty transform components
         transformQueue.ProcessMovedEntities([&](entt::entity entity)
         {
+            if (!registry.valid(entity))
+                return;
+
             registry.get_or_emplace<ECS::Components::DirtyTransform>(entity).dirtyFrame = renderState.frameNumber;
         });
 

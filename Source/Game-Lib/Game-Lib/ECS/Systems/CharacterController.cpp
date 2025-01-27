@@ -67,6 +67,7 @@ namespace ECS::Systems
         auto& characterSingleton = ctx.emplace<Singletons::CharacterSingleton>();
 
         characterSingleton.controllerEntity = registry.create();
+        characterSingleton.moverEntity = entt::null;
         auto& name = registry.emplace<Components::Name>(characterSingleton.controllerEntity);
         name.fullName = "CharacterController";
         name.name = "CharacterController";
@@ -686,20 +687,21 @@ namespace ECS::Systems
 
         if (isLocal)
         {
-            characterSingleton.moverEntity = registry.create();
+            if (characterSingleton.moverEntity == entt::null)
+                characterSingleton.moverEntity = registry.create();
 
-            registry.emplace<Components::Name>(characterSingleton.moverEntity);
-            registry.emplace<Components::AABB>(characterSingleton.moverEntity);
-            registry.emplace<Components::Transform>(characterSingleton.moverEntity);
-            auto& moverModel = registry.emplace<Components::Model>(characterSingleton.moverEntity);
-            registry.emplace<Components::MovementInfo>(characterSingleton.moverEntity);
-            registry.emplace<Components::NetworkedEntity>(characterSingleton.moverEntity);
-            registry.emplace<Components::AttachmentData>(characterSingleton.moverEntity);
+            auto& name = registry.get_or_emplace<Components::Name>(characterSingleton.moverEntity);
+            auto& aabb = registry.get_or_emplace<Components::AABB>(characterSingleton.moverEntity);
+            auto& transform = registry.get_or_emplace<Components::Transform>(characterSingleton.moverEntity);
+            auto& moverModel = registry.get_or_emplace<Components::Model>(characterSingleton.moverEntity);
+            auto& movementInfo = registry.get_or_emplace<Components::MovementInfo>(characterSingleton.moverEntity);
+            auto& networkedEntity = registry.get_or_emplace<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& attachmentData = registry.get_or_emplace<Components::AttachmentData>(characterSingleton.moverEntity);
 
-            auto& displayInfo = registry.emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
+            auto& displayInfo = registry.get_or_emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
             displayInfo.displayID = 50;
 
-            auto& unitStatsComponent = registry.emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
+            auto& unitStatsComponent = registry.get_or_emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
             unitStatsComponent.currentHealth = 50.0f;
             unitStatsComponent.maxHealth = 100.0f;
 

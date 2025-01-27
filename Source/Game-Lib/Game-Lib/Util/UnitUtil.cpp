@@ -318,12 +318,10 @@ namespace Util::Unit
         {
             entt::entity childEntity = childSceneNode->GetOwnerEntity();
             attachedEntities.push_back(childEntity);
-
         });
 
         for (entt::entity attachedEntity : attachedEntities)
         {
-            transformSystem.ClearParent(attachedEntity);
             registry.destroy(attachedEntity);
         }
         

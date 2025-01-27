@@ -242,13 +242,7 @@ void ECS::TransformSystem::ClearParent(entt::entity entity)
     }
 
     ECS::Components::SceneNode* sceneNode = owner->try_get<ECS::Components::SceneNode>(entity);
-    if (!sceneNode)
-    {
-        NC_LOG_ERROR("Transform system, trying to clear parent from entity with no scene node!");
-        assert(sceneNode);
-    }
-
-    if (sceneNode->HasParent())
+    if (sceneNode && sceneNode->HasParent())
     {
         sceneNode->DetachParent();
         RefreshTransform(entity, *transform);

@@ -112,21 +112,9 @@ void ModelRenderer::Update(f32 deltaTime)
 
         _opaqueSkyboxCullingResources.Update(deltaTime, false);
         _transparentSkyboxCullingResources.Update(deltaTime, false);
-
-        const auto& drawCalls = _opaqueCullingResources.GetDrawCalls();
-
-        u32 numDrawCalls = drawCalls.Count();
-        for (u32 i = 0; i < numDrawCalls; i++)
-        {
-            const auto& drawCall = drawCalls[i];
-            if (drawCall.indexCount < 15000)
-                continue;
-
-            NC_LOG_ERROR("Found DrawCall with high IndexCount ({0}, {1})", i, drawCall.indexCount);
-        }
     }
 
-    u32 numTextureLoads = static_cast<u32>(_textureLoadRequests.try_dequeue_bulk(_textureLoadWork.begin(), 128));
+    u32 numTextureLoads = static_cast<u32>(_textureLoadRequests.try_dequeue_bulk(_textureLoadWork.begin(), 256));
     if (numTextureLoads > 0)
     {
         ZoneScopedN("Texture Load Requests");
@@ -2510,8 +2498,8 @@ void ModelRenderer::CreatePermanentResources()
 
     _renderer->LoadTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
 
-    _textureLoadWork.resize(128);
-    _dirtyTextureUnitOffsets.reserve(128);
+    _textureLoadWork.resize(256);
+    _dirtyTextureUnitOffsets.reserve(256);
 
     static constexpr u32 NumSamplers = 4;
     _samplers.reserve(NumSamplers);

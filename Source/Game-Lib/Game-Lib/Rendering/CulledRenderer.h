@@ -238,20 +238,20 @@ protected:
     {
         using BufferUsage = Renderer::BufferPassUsage;
 
-        data.drawCallsBuffer = builder.Write(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
-        data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
+        data.drawCallsBuffer = builder.Write(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+        data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
-        data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
-        data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
+        data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+        data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
         data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
         builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
 
         data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
-        data.fillSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+        data.fillSet = builder.Use(cullingResources->GetGeometryFillDescriptorSet());
     }
 
     template <typename Data>
@@ -272,7 +272,7 @@ protected:
         builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
 
         data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
-        data.fillSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
+        data.fillSet = builder.Use(cullingResources->GetGeometryFillDescriptorSet());
     }
 
     struct GeometryPassParams : public PassParams

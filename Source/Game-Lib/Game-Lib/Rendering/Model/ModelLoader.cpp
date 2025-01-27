@@ -169,10 +169,11 @@ void ModelLoader::Clear()
 
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
-    _instanceIDToEntityID.clear();
     _modelIDToModelHash.clear();
-
     _modelRenderer->Clear();
+
+    auto& tSystem = ECS::TransformSystem::Get(*registry);
+    tSystem.ProcessMovedEntities([](entt::entity entity) { });
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     _createdEntities.clear();
@@ -188,7 +189,7 @@ void ModelLoader::Update(f32 deltaTime)
     if (numPendingWorkRequests > 0)
     {
         ZoneScopedN("Discover Models");
-        u32 maxModelDiscoveryThisTick = glm::min(numPendingWorkRequests, 5u);
+        u32 maxModelDiscoveryThisTick = glm::min(numPendingWorkRequests, 50u);
 
         std::atomic<u32> numModelsDiscoveredThisTick = 0;
         enki::TaskSet loadDiscoveredModelTask(maxModelDiscoveryThisTick, [&](enki::TaskSetPartition range, uint32_t threadNum)
@@ -198,6 +199,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             WorkRequest workRequest;
             for (u32 i = range.start; i < range.end; i++)
+            //for (u32 i = 0; i < maxModelDiscoveryThisTick; i++)
             {
                 if (!_discoveredModelPendingWorkRequests.try_dequeue(workRequest))
                     break;
@@ -212,7 +214,7 @@ void ModelLoader::Update(f32 deltaTime)
                 {
                     NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", workRequest.path);
 
-                    std::unique_lock lock(_modelHashMutex);
+                    std::scoped_lock lock(_modelHashMutex);
                     _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
 
                     continue;
@@ -236,7 +238,7 @@ void ModelLoader::Update(f32 deltaTime)
                         NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", discoveredModel.name);
                         delete model;
 
-                        std::unique_lock lock(_modelHashMutex);
+                        std::scoped_lock lock(_modelHashMutex);
                         _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
 
                         continue;
@@ -328,10 +330,11 @@ void ModelLoader::Update(f32 deltaTime)
             _modelRenderer->Reserve(reserveInfo);
         }
 
-        enki::TaskSet loadModelsTask(numDequeuedLoadRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
-        {
-            ZoneScopedN("Load Model Task");
-            for (u32 i = range.start; i < range.end; i++)
+        //enki::TaskSet loadModelsTask(numDequeuedLoadRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
+        //{
+            //ZoneScopedN("Load Model Task");
+            //for (u32 i = range.start; i < range.end; i++)
+            for (u32 i = 0; i < numDequeuedLoadRequests; i++)
             {
                 ZoneScopedN("Load Model Work");
 
@@ -358,10 +361,10 @@ void ModelLoader::Update(f32 deltaTime)
 
                 _internalLoadRequests.enqueue(loadRequest);
             }
-        });
+        //});
 
-        taskScheduler->AddTaskSetToPipe(&loadModelsTask);
-        taskScheduler->WaitforTask(&loadModelsTask);
+        //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
+        //taskScheduler->WaitforTask(&loadModelsTask);
     }
 
     u32 numDequeuedInternalRequests = static_cast<u32>(_internalLoadRequests.try_dequeue_bulk(_internalLoadRequestsVector.data(), MAX_INTERNAL_LOADS_PER_FRAME));
@@ -427,11 +430,12 @@ void ModelLoader::Update(f32 deltaTime)
             }
 
             std::atomic<u32> numCreatedInstances = 0;
-            enki::TaskSet loadModelInstancesTask(numDequeuedInternalRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
-            {
-                ZoneScopedN("Load Instance Task");
+            //enki::TaskSet loadModelInstancesTask(numDequeuedInternalRequests, [&](enki::TaskSetPartition range, uint32_t threadNum)
+            //{
+                //ZoneScopedN("Load Instance Task");
 
-                for (u32 i = range.start; i < range.end; i++)
+                //for (u32 i = range.start; i < range.end; i++)
+                for (u32 i = 0; i < numDequeuedInternalRequests; i++)
                 {
                     ZoneScopedN("Load Instance Work");
                     const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
@@ -487,10 +491,10 @@ void ModelLoader::Update(f32 deltaTime)
                         default: break;
                     }
                 }
-            });
+            //});
 
-            taskScheduler->AddTaskSetToPipe(&loadModelInstancesTask);
-            taskScheduler->WaitforTask(&loadModelInstancesTask);
+            //taskScheduler->AddTaskSetToPipe(&loadModelInstancesTask);
+            //taskScheduler->WaitforTask(&loadModelInstancesTask);
 
             // Destroy the entities we didn't use
             u32 numCreated = numCreatedInstances.load();
@@ -814,12 +818,12 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     }
 
     {
+        std::scoped_lock lock(_transformSystemMutex);
+
         tSystem.SetLocalTransform(entityID, request.spawnPosition, request.spawnRotation, vec3(request.scale));
 
         if (hasParent)
         {
-            std::scoped_lock lock(_transformSystemMutex);
-
             entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
             tSystem.ParentEntityTo(parentEntityID, entityID);
         }
@@ -910,38 +914,38 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     if (discoveredModel.hasShape)
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-    
+
         if (physicsEnabled && registry->all_of<ECS::Components::NetworkedEntity>(entityID))
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-    
+
             const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
-    
+
             // TODO: We need to scale the shape
             vec3 position = transform.GetWorldPosition();
             const quat& rotation = transform.GetWorldRotation();
-    
+
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
             JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3(2.0f, 1.0f, 0.5f)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Kinematic, Jolt::Layers::NON_MOVING);
             bodySettings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
             bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
             bodySettings.mMassPropertiesOverride.mMass = 1000.0f;
             bodySettings.mIsSensor = true;
-    
+
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-    
+
                 auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(entityID);
                 networkedEntity.bodyID = bodyID.GetIndexAndSequenceNumber();
-    
+
                 // Store the entity ID in the body so we can look it up later
                 body->SetUserData(static_cast<JPH::uint64>(entityID));
-    
+
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
 
                 {
@@ -951,9 +955,13 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             }
         }
     }
-    
-    auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
-    animationInitData.flags.isDynamic = true;
+
+    {
+        std::scoped_lock lock(_animationMutex);
+
+        auto& animationInitData = registry->get_or_emplace<ECS::Components::AnimationInitData>(entityID);
+        animationInitData.flags.isDynamic = true;
+    }
 
     if (_modelRenderer)
     {

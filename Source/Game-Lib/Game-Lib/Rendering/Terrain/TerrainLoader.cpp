@@ -558,6 +558,10 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     Clear();
 
+
+    const auto& storage = registry->storage<entt::entity>(); // Access internal entity storage
+    NC_LOG_INFO("Allocated Entities {0}", storage.free_list());
+
     _currentMapInternalName = mapName;
     _numChunksToLoad = numChunksToLoad;
 

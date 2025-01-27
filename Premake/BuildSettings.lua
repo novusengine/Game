@@ -4,7 +4,7 @@ BuildSettings:Add("Multithreaded Compilation", true) -- Used to enable multi thr
 BuildSettings:Add("Multithreaded Core Count", 0) -- Used to adjust the allowed number of cores when enabling multi threaded compilation (0 = All) (Assuming the selected build environment supports it)
 
 -- Enables/Disables Tracy
-BuildSettings:Add("Enable Tracy", true)
+BuildSettings:Add("Enable Tracy", false)
 
 -- Enables/Disables the UnitTest Project
 BuildSettings:Add("Build UnitTests", true)

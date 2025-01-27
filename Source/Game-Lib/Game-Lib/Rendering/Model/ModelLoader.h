@@ -29,7 +29,7 @@ class ModelLoader
 {
 public:
     static constexpr u32 MAX_PENDING_LOADS_PER_FRAME = 4096;
-    static constexpr u32 MAX_INTERNAL_LOADS_PER_FRAME = 1024;
+    static constexpr u32 MAX_INTERNAL_LOADS_PER_FRAME = 4096;
 
     enum LoadState : u8
     {
@@ -151,10 +151,11 @@ private:
     robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
     robin_hood::unordered_map<u32, u32> _instanceIDToBodyID;
     robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
-    std::shared_mutex _modelHashMutex;
+    std::mutex _modelHashMutex;
     std::mutex _instanceIDToModelIDMutex;
     std::mutex _transformSystemMutex;
     std::mutex _physicsSystemMutex;
+    std::mutex _animationMutex;
 
     robin_hood::unordered_map<u32, u32> _modelIDToModelHash;
     robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;

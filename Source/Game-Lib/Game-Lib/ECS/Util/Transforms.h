@@ -171,6 +171,9 @@ namespace ECS::Components
         friend class Editor::Inspector;
 
     public:
+        //makes the component use pointer stable references in entt. do not remove
+        static constexpr auto in_place_delete = true;
+
         SceneNode(Transform* tf, entt::entity owner)
         {
             transform = tf;
@@ -192,6 +195,17 @@ namespace ECS::Components
                 c->parent = nullptr;
                 c = next;
             }
+
+            if (transform)
+                transform->ownerNode = nullptr;
+
+            transform = nullptr;
+            ownerEntity = entt::null;
+
+            firstChild = nullptr;
+            nextSibling = nullptr;
+            prevSibling = nullptr;
+            children = 0;
         }
 
         entt::entity GetOwnerEntity()
@@ -303,10 +317,7 @@ namespace ECS::Components
         SceneNode* firstChild{};
         SceneNode* nextSibling{};
         SceneNode* prevSibling{};
-        int children{ 0 };
-
-        //makes the component use pointer stable references in entt. do not remove
-        static constexpr auto in_place_delete = true;
+        i32 children{ 0 };
     };
 }
 
