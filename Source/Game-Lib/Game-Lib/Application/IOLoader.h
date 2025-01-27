@@ -3,6 +3,7 @@
 #include <Base/Container/ConcurrentQueue.h>
 
 #include <atomic>
+#include <memory>
 
 class Application;
 class Bytebuffer;
