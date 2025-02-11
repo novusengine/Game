@@ -39,7 +39,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0);
 
-    InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
+    InstanceData cellInstance = _instanceDatas[vBuffer.instanceID];
     uint globalCellID = cellInstance.globalCellID;
     const uint cellID = cellInstance.packedChunkCellID & 0xFFFF;
 
@@ -190,7 +190,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0);
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
+    ModelDrawCallData drawCallData = LoadModelDrawCallData(pixelVertexData.drawCallID);
 
     // Shade
     float4 color = float4(0, 0, 0, 0);
@@ -271,7 +271,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #elif DEBUG_ID == 2 // ObjectID debug output
-    float3 debugColor = IDToColor3(GetObjectID(vBuffer.typeID, vBuffer.drawID));
+    float3 debugColor = IDToColor3(GetObjectID(vBuffer.typeID, vBuffer.instanceID));
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #elif DEBUG_ID == 3 // TriangleID   

@@ -157,7 +157,9 @@ void ModelRenderer::Update(f32 deltaTime)
         }
     }
 
+    CompactInstanceRefs();
     SyncToGPU();
+    _instancesDirty = false;
 }
 
 void ModelRenderer::Clear()
@@ -227,8 +229,13 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
         Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
+
+        Renderer::BufferMutableResource culledInstanceCountsBuffer;
+
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -260,9 +267,12 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             OccluderPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
+            data.culledDrawCallCountBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
+            data.culledInstanceCountsBuffer = builder.Write(_opaqueCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
@@ -288,8 +298,11 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             }
 
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
             params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
             params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
+            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
+
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -297,12 +310,16 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.globalDescriptorSet = data.globalSet;
             params.occluderFillDescriptorSet = data.occluderFillSet;
+            params.createIndirectDescriptorSet = data.createIndirectDescriptorSet;
             params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
             {
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
+
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.drawCallDataSize = sizeof(DrawCallData);
             
             params.numCascades = numCascades;
 
@@ -312,6 +329,8 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.enableDrawing = CVAR_ModelDrawOccluders.Get();
             params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
+            params.isIndexed = true;
+            params.useInstancedCulling = true;
 
             OccluderPass(params);
         });
@@ -337,7 +356,9 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::BufferResource prevCulledDrawCallsBitMask;
 
         Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
+        Renderer::BufferMutableResource culledInstanceCountsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -360,6 +381,9 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
 
             CullingPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
+            data.prevCulledDrawCallsBitMask = builder.Read(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
+            data.currentCulledDrawCallsBitMask = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
@@ -385,7 +409,10 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.prevCulledDrawCallsBitMask = data.prevCulledDrawCallsBitMask;
 
             params.currentCulledDrawCallsBitMask = data.currentCulledDrawCallsBitMask;
+            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -397,14 +424,17 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             params.numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
+            params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
 
-            params.modelIDIsDrawCallID = false;
             params.cullingDataIsWorldspace = false;
             params.debugDrawColliders = CVAR_ModelDrawOpaqueAABBs.Get();
 
-            params.instanceIDOffset = offsetof(DrawCallData, instanceID);
+            //params.instanceIDOffset = offsetof(DrawCallData, instanceID);
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
             params.drawCallDataSize = sizeof(DrawCallData);
+
+            params.useInstancedCulling = true;
 
             CullingPass(params);
         });
@@ -436,6 +466,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
         Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
         Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
@@ -473,9 +504,13 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             GeometryPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
+            data.culledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.prevCulledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.fillSet = builder.Use(_opaqueCullingResources.GetGeometryFillDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -498,6 +533,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
             params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
             params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
 
@@ -523,8 +559,8 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
+            params.useInstancedCulling = true;
             params.isIndexed = true;
-            
 
             GeometryPass(params);
         });
@@ -549,7 +585,9 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     {
         Renderer::ImageResource depthPyramid;
 
+        Renderer::BufferMutableResource culledInstanceCountsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -561,7 +599,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
     };
 
     renderGraph->AddPass<Data>("Model (T) Culling",
-        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             ZoneScoped;
             using BufferUsage = Renderer::BufferPassUsage;
@@ -571,14 +609,9 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_cullingDatas.GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
-            builder.Read(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
-            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
-            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
-            data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-            data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-            data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
-            data.triangleCountReadBackBuffer = builder.Write(_transparentCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+            CullingPassSetup(data, builder, &_transparentCullingResources, frameIndex);
+            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
             data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
             data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -601,7 +634,10 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
 
             params.depthPyramid = data.depthPyramid;
 
+            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
             params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
@@ -615,13 +651,14 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
 
-            params.modelIDIsDrawCallID = false;
             params.cullingDataIsWorldspace = false;
             params.debugDrawColliders = CVAR_ModelDrawTransparentAABBs.Get();
 
-            params.instanceIDOffset = offsetof(DrawCallData, instanceID);
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
             params.drawCallDataSize = sizeof(DrawCallData);
+
+            params.useInstancedCulling = true;
 
             CullingPass(params);
         });
@@ -647,6 +684,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
         Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
@@ -654,11 +692,12 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource fillSet;
         Renderer::DescriptorSetResource drawSet;
     };
 
     renderGraph->AddPass<Data>("Model (T) Geometry",
-        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
@@ -674,19 +713,14 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
-            data.drawCallsBuffer = builder.Write(_transparentCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS);
-            data.culledDrawCallsBuffer = builder.Write(_transparentCullingResources.GetCulledDrawsBuffer(), BufferUsage::GRAPHICS);
-            data.drawCountBuffer = builder.Write(_transparentCullingResources.GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
-            data.triangleCountBuffer = builder.Write(_transparentCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
-            data.drawCountReadBackBuffer = builder.Write(_transparentCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
-            data.triangleCountReadBackBuffer = builder.Write(_transparentCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+            GeometryPassSetup(data, builder, &_transparentCullingResources, frameIndex);
+            builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
-            data.drawSet = builder.Use(_transparentCullingResources.GetGeometryPassDescriptorSet());
+            data.fillSet = builder.Use(_transparentCullingResources.GetGeometryFillDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -707,6 +741,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
 
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
@@ -714,6 +749,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
 
             params.globalDescriptorSet = data.globalSet;
+            params.fillDescriptorSet = data.fillSet;
             params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](const DrawParams& drawParams)
@@ -721,9 +757,12 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
                 DrawTransparent(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
+            params.numCascades = 0;
+
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            params.useInstancedCulling = true;
+            params.isIndexed = true;
 
             GeometryPass(params);
         });
@@ -920,6 +959,7 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
 
     builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_opaqueCullingResources.GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_vertices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_indices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_textureUnits.GetBuffer(), BufferUsage::COMPUTE);
@@ -928,18 +968,6 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_boneMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Write(_animatedVertices.GetBuffer(), BufferUsage::COMPUTE);
-}
-
-u32 ModelRenderer::GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque)
-{
-    const Renderer::GPUVector<DrawCallData>& drawCallDatas = (isOpaque) ? _opaqueCullingResources.GetDrawCallDatas() : _transparentCullingResources.GetDrawCallDatas();
-
-    if (drawCallDatas.Count() < drawCallID)
-    {
-        NC_LOG_CRITICAL("ModelRenderer : Tried to get InstanceID from invalid {0} DrawCallID {1}", isOpaque ? "Opaque" : "Transparent", drawCallID);
-    }
-
-    return drawCallDatas[drawCallID].instanceID;
 }
 
 void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
@@ -971,12 +999,6 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 
     _opaqueSkyboxCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
     _transparentSkyboxCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
-
-    _modelOpaqueDrawCallTemplates.reserve(_modelOpaqueDrawCallTemplates.size() + reserveInfo.numUniqueOpaqueDrawcalls);
-    _modelOpaqueDrawCallDataTemplates.reserve(_modelOpaqueDrawCallDataTemplates.size() + reserveInfo.numUniqueOpaqueDrawcalls);
-
-    _modelTransparentDrawCallTemplates.reserve(_modelTransparentDrawCallTemplates.size() + reserveInfo.numUniqueTransparentDrawcalls);
-    _modelTransparentDrawCallDataTemplates.reserve(_modelTransparentDrawCallDataTemplates.size() + reserveInfo.numUniqueTransparentDrawcalls);
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -1060,10 +1082,24 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         ZoneScopedN("Add TextureUnits and DrawCalls");
 
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
-        modelManifest.opaqueDrawCallTemplateOffset = modelOffsets.opaqueDrawCallTemplateStartIndex;
-
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
-        modelManifest.transparentDrawCallTemplateOffset = modelOffsets.transparentDrawCallTemplateStartIndex;
+
+        bool isSkybox = false; // TODO: In the flow, not dealing with this yet
+
+        DrawCallReserveOffsets drawCallOffsets;
+        AllocateDrawCalls(modelOffsets.modelIndex, drawCallOffsets, isSkybox);
+
+        modelManifest.opaqueDrawCallOffset = drawCallOffsets.opaqueDrawCallStartIndex;
+        modelManifest.transparentDrawCallOffset = drawCallOffsets.transparentDrawCallStartIndex;
+
+        CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
+        CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
+
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
+
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
 
         u32 numAddedIndices = 0;
 
@@ -1150,11 +1186,11 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             // Draw Calls
             u32& numAddedDrawCalls = (renderBatch.isTransparent) ? numAddedTransparentDrawCalls : numAddedOpaqueDrawCalls;
-            u32& drawCallTemplateOffset = (renderBatch.isTransparent) ? modelManifest.transparentDrawCallTemplateOffset : modelManifest.opaqueDrawCallTemplateOffset;
+            u32& drawCallOffset = (renderBatch.isTransparent) ? modelManifest.transparentDrawCallOffset : modelManifest.opaqueDrawCallOffset;
 
-            u32 curDrawCallOffset = drawCallTemplateOffset + numAddedDrawCalls;
+            u32 curDrawCallOffset = drawCallOffset + numAddedDrawCalls;
 
-            bool isAllowedGroupID = true;
+            /*bool isAllowedGroupID = true;
 
             switch (renderBatch.groupID)
             {
@@ -1176,17 +1212,18 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                 isAllowedGroupID = false;
                 break;
             }
-            }
+            }*/
 
-            Renderer::IndexedIndirectDraw& drawCallTemplate = (renderBatch.isTransparent) ? _modelTransparentDrawCallTemplates[curDrawCallOffset] : _modelOpaqueDrawCallTemplates[curDrawCallOffset];
-            drawCallTemplate.indexCount = renderBatch.indexCount;
-            drawCallTemplate.instanceCount = 1 * isAllowedGroupID;
-            drawCallTemplate.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
-            drawCallTemplate.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
-            drawCallTemplate.firstInstance = 0; // Is set during AddInstance
+            Renderer::IndexedIndirectDraw& drawCall = (renderBatch.isTransparent) ? transparentDrawCalls[curDrawCallOffset] : opaqueDrawCalls[curDrawCallOffset];
+            drawCall.indexCount = renderBatch.indexCount;
+            drawCall.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
+            drawCall.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
+            drawCall.firstInstance = 0; // Is set during Compact
+            drawCall.instanceCount = 0;//1 * isAllowedGroupID; // Is set during Compact
 
-            DrawCallData& drawCallData = (renderBatch.isTransparent) ? _modelTransparentDrawCallDataTemplates[curDrawCallOffset] : _modelOpaqueDrawCallDataTemplates[curDrawCallOffset];
-            drawCallData.instanceID = 0; // Is set during AddInstance
+            DrawCallData& drawCallData = (renderBatch.isTransparent) ? transparentDrawCallDatas[curDrawCallOffset] : opaqueDrawCallDatas[curDrawCallOffset];
+            //drawCallData.baseInstanceLookupOffset = 0; // Is set during Compact
+            drawCallData.modelID = modelOffsets.modelIndex;
             drawCallData.textureUnitOffset = textureUnitStartIndex;
             drawCallData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
             drawCallData.numUnlitTextureUnits = numUnlitTextureUnits;
@@ -1255,19 +1292,11 @@ void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelReserve
 {
     std::scoped_lock lock(_modelOffsetsMutex);
 
-    u32 beforeCapacity = _cullingDatas.Capacity();
-
     offsets.modelIndex = _cullingDatas.Add();
-
-    u32 afterCapacity = _cullingDatas.Capacity();
-    if (beforeCapacity != afterCapacity)
-    {
-        NC_LOG_ERROR("AllocateModel : CullingData grew when it shouldn't have");
-        volatile i32 test = 0;
-    }
 
     _modelIDToNumInstances.resize(_modelIDToNumInstances.size() + 1);
     _modelManifests.resize(_modelManifests.size() + 1);
+    _modelManifestsInstancesMutexes.push_back(std::make_unique<std::mutex>());
 
     offsets.verticesStartIndex = _vertices.AddCount(model.modelHeader.numVertices);
     offsets.indicesStartIndex = _indices.AddCount(model.modelHeader.numIndices);
@@ -1277,30 +1306,13 @@ void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelReserve
 
     offsets.decorationStartIndex = static_cast<u32>(_modelDecorations.size());
     _modelDecorations.resize(offsets.decorationStartIndex + model.modelHeader.numDecorations);
-
-    offsets.opaqueDrawCallTemplateStartIndex = static_cast<u32>(_modelOpaqueDrawCallTemplates.size());
-    _modelOpaqueDrawCallTemplates.resize(offsets.opaqueDrawCallTemplateStartIndex + model.modelHeader.numOpaqueRenderBatches);
-    _modelOpaqueDrawCallDataTemplates.resize(offsets.opaqueDrawCallTemplateStartIndex + model.modelHeader.numOpaqueRenderBatches);
-
-    offsets.transparentDrawCallTemplateStartIndex = static_cast<u32>(_modelTransparentDrawCallTemplates.size());
-    _modelTransparentDrawCallTemplates.resize(offsets.transparentDrawCallTemplateStartIndex + model.modelHeader.numTransparentRenderBatches);
-    _modelTransparentDrawCallDataTemplates.resize(offsets.transparentDrawCallTemplateStartIndex + model.modelHeader.numTransparentRenderBatches);
 }
 
 void ModelRenderer::AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitReserveOffsets& offsets)
 {
     std::scoped_lock lock(_textureOffsetsMutex);
 
-    u32 beforeCapacity = _textureUnits.Capacity();
-
     offsets.textureUnitsStartIndex = _textureUnits.AddCount(model.modelHeader.numTextureUnits);
-
-    u32 afterCapacity = _textureUnits.Capacity();
-    if (beforeCapacity != afterCapacity)
-    {
-        NC_LOG_ERROR("AllocateTextureUnits : TextureUnits grew when it shouldn't have");
-        volatile i32 test = 0;
-    }
 }
 
 void ModelRenderer::AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets)
@@ -1309,26 +1321,8 @@ void ModelRenderer::AllocateAnimation(u32 modelID, AnimationReserveOffsets& offs
 
     ModelManifest& manifest = _modelManifests[modelID];
 
-    u32 boneBeforeCapacity = _boneMatrices.Capacity();
-    u32 textureTransformBeforeCapacity = _textureTransformMatrices.Capacity();
-
     offsets.boneStartIndex = _boneMatrices.AddCount(manifest.numBones);
     offsets.textureTransformStartIndex = _textureTransformMatrices.AddCount(manifest.numTextureTransforms);
-
-    u32 boneAfterCapacity = _boneMatrices.Capacity();
-    u32 textureTransformAfterCapacity = _textureTransformMatrices.Capacity();
-
-    if (boneBeforeCapacity != boneAfterCapacity)
-    {
-        NC_LOG_ERROR("AllocateAnimation : Bone Matrices grew when it shouldn't have");
-        volatile i32 test = 0;
-    }
-
-    if (textureTransformBeforeCapacity != textureTransformAfterCapacity)
-    {
-        NC_LOG_ERROR("AllocateAnimation : Texture Transforms grew when it shouldn't have");
-        volatile i32 test = 0;
-    }
 }
 
 u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet)
@@ -1390,9 +1384,6 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     InstanceReserveOffsets instanceOffsets;
     AllocateInstance(modelID, instanceOffsets);
 
-    DrawCallReserveOffsets drawCallOffsets;
-    AllocateDrawCalls(modelID, drawCallOffsets, isSkybox);
-
     ModelManifest& manifest = _modelManifests[modelID];
 
     u32 modelInstanceIndex = 0;
@@ -1404,7 +1395,6 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     // Add InstanceData
     {
         InstanceData& instanceData = _instanceDatas[instanceOffsets.instanceIndex];
-
         instanceData.modelID = modelID;
         instanceData.modelVertexOffset = manifest.vertexOffset;
 
@@ -1421,84 +1411,10 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         instanceMatrix = transformMatrix;
     }
 
-    // Set up Opaque DrawCalls and DrawCallDatas
-    if (manifest.numOpaqueDrawCalls > 0)
+    // Add Instance to ModelManifest
     {
-        CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
-
-        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
-        const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
-
-        _instanceIDToOpaqueDrawCallOffset[instanceOffsets.instanceIndex] = drawCallOffsets.opaqueDrawCallStartIndex;
-
-        // Copy DrawCalls
-        {
-            Renderer::IndexedIndirectDraw* dst = &opaqueDrawCalls[drawCallOffsets.opaqueDrawCallStartIndex];
-            Renderer::IndexedIndirectDraw* src = &_modelOpaqueDrawCallTemplates[manifest.opaqueDrawCallTemplateOffset];
-            size_t size = manifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-            memcpy(dst, src, size);
-        }
-
-        // Copy DrawCallDatas
-        {
-            DrawCallData* dst = &opaqueDrawCallDatas[drawCallOffsets.opaqueDrawCallStartIndex];
-            DrawCallData* src = &_modelOpaqueDrawCallDataTemplates[manifest.opaqueDrawCallTemplateOffset];
-            size_t size = manifest.numOpaqueDrawCalls * sizeof(DrawCallData);
-            memcpy(dst, src, size);
-        }
-
-        // Modify the per-instance data
-        for (u32 i = 0; i < manifest.numOpaqueDrawCalls; i++)
-        {
-            u32 opaqueIndex = drawCallOffsets.opaqueDrawCallStartIndex + i;
-
-            Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
-            drawCall.firstInstance = opaqueIndex;
-
-            DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
-            drawCallData.instanceID = instanceOffsets.instanceIndex;
-            drawCallData.modelID = modelID;
-        }
-    }
-
-    // Set up Transparent DrawCalls and DrawCallDatas
-    if (manifest.numTransparentDrawCalls > 0)
-    {
-        CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
-
-        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
-        const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
-
-        _instanceIDToTransparentDrawCallOffset[instanceOffsets.instanceIndex] = drawCallOffsets.transparentDrawCallStartIndex;
-
-        // Copy DrawCalls
-        {
-            Renderer::IndexedIndirectDraw* dst = &transparentDrawCalls[drawCallOffsets.transparentDrawCallStartIndex];
-            Renderer::IndexedIndirectDraw* src = &_modelTransparentDrawCallTemplates[manifest.transparentDrawCallTemplateOffset];
-            size_t size = manifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw);
-            memcpy(dst, src, size);
-        }
-
-        // Copy DrawCallDatas
-        {
-            DrawCallData* dst = &transparentDrawCallDatas[drawCallOffsets.transparentDrawCallStartIndex];
-            DrawCallData* src = &_modelTransparentDrawCallDataTemplates[manifest.transparentDrawCallTemplateOffset];
-            size_t size = manifest.numTransparentDrawCalls * sizeof(DrawCallData);
-            memcpy(dst, src, size);
-        }
-
-        // Modify the per-instance data
-        for (u32 i = 0; i < manifest.numTransparentDrawCalls; i++)
-        {
-            u32 transparentIndex = drawCallOffsets.transparentDrawCallStartIndex + i;
-
-            Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
-            drawCall.firstInstance = transparentIndex;
-
-            DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
-            drawCallData.instanceID = instanceOffsets.instanceIndex;
-            drawCallData.modelID = modelID;
-        }
+        std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
+        manifest.instances.push_back(instanceOffsets.instanceIndex);
     }
 
     if (model && displayInfoPacked != std::numeric_limits<u32>().max())
@@ -1509,6 +1425,8 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayInfoType, displayID);
     }
 
+    _instancesDirty = true;
+
     return instanceOffsets.instanceIndex;
 }
 
@@ -1518,16 +1436,7 @@ void ModelRenderer::AllocateInstance(u32 modelID, InstanceReserveOffsets& offset
 
     ModelManifest& manifest = _modelManifests[modelID];
 
-    u32 beforeCapacity = _instanceDatas.Capacity();
-
     offsets.instanceIndex = _instanceDatas.Add();
-
-    u32 afterCapacity = _instanceDatas.Capacity();
-    if (beforeCapacity != afterCapacity)
-    {
-        NC_LOG_ERROR("AllocateInstance : InstanceDatas grew when it shouldn't have");
-        volatile i32 test = 0;
-    }
 
     u32 instanceMatrixIndex = _instanceMatrices.Add();
     assert(offsets.instanceIndex == instanceMatrixIndex);
@@ -1550,31 +1459,16 @@ void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offse
     {
         const auto& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
         const auto& transparentDrawCalls = _opaqueCullingResources.GetDrawCalls();
-        u32 opaqueDrawCallBeforeCapacity = opaqueDrawCalls.Capacity();
-        u32 transparentDrawCallBeforeCapacity = transparentDrawCalls.Capacity();
 
         offsets.opaqueDrawCallStartIndex = _opaqueCullingResources.AddCount(manifest.numOpaqueDrawCalls);
         offsets.transparentDrawCallStartIndex = _transparentCullingResources.AddCount(manifest.numTransparentDrawCalls);
-
-        u32 opaqueDrawCallAfterCapacity = opaqueDrawCalls.Capacity();
-        u32 transparentDrawCallAfterCapacity = transparentDrawCalls.Capacity();
-
-        if (opaqueDrawCallBeforeCapacity != opaqueDrawCallAfterCapacity)
-        {
-            NC_LOG_ERROR("AllocateDrawCalls : OpaqueDrawCalls grew when it shouldn't have");
-            volatile i32 test = 0;
-        }
-
-        if (transparentDrawCallBeforeCapacity != transparentDrawCallAfterCapacity)
-        {
-            NC_LOG_ERROR("AllocateDrawCalls : TransparentDrawCalls grew when it shouldn't have");
-            volatile i32 test = 0;
-        }
     }
 }
 
 void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
 {
+    return;
+    /*
     InstanceData& instanceData = _instanceDatas[instanceID];
 
     u32 oldModelID = instanceData.modelID;
@@ -1686,7 +1580,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 drawCall.firstInstance = opaqueIndex;
 
                 DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
-                drawCallData.instanceID = instanceID;
+                //drawCallData.instanceID = instanceID;
                 drawCallData.modelID = modelID;
             }
         }
@@ -1721,7 +1615,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 drawCall.firstInstance = transparentIndex;
 
                 DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
-                drawCallData.instanceID = instanceID;
+                //drawCallData.instanceID = instanceID;
                 drawCallData.modelID = modelID;
             }
         }
@@ -1739,8 +1633,8 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 Renderer::IndexedIndirectDraw& drawCall = opaqueDrawCalls[opaqueIndex];
                 drawCall.instanceCount = 0;
 
-                DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
-                drawCallData.instanceID = std::numeric_limits<u32>().max();
+                //DrawCallData& drawCallData = opaqueDrawCallDatas[opaqueIndex];
+                //drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
             opaqueCullingResources.SetDirtyElements(oldOpaqueBaseIndex, oldOpaqueNumDrawCalls);
@@ -1756,8 +1650,8 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 Renderer::IndexedIndirectDraw& drawCall = transparentDrawCalls[transparentIndex];
                 drawCall.instanceCount = 0;
 
-                DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
-                drawCallData.instanceID = std::numeric_limits<u32>().max();
+                //DrawCallData& drawCallData = transparentDrawCallDatas[transparentIndex];
+                //drawCallData.instanceID = std::numeric_limits<u32>().max();
             }
 
             transparentCullingResources.SetDirtyElements(oldTransparentBaseIndex, oldTransparentNumDrawCalls);
@@ -1770,7 +1664,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         u32 displayID = displayInfoPacked & 0xFFFFFF;
 
         ReplaceTextureUnits(modelID, model, instanceID, displayInfoType, displayID);
-    }
+    }*/
 }
 
 void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID)
@@ -2592,6 +2486,59 @@ void ModelRenderer::CreatePermanentResources()
     _transparentSkyboxCullingResources.Init(initParams);
 }
 
+void ModelRenderer::CompactInstanceRefs()
+{
+    if (!_instancesDirty)
+        return;
+
+    // Create array of culling resources that we can loop over
+    CullingResourcesIndexed<DrawCallData>* cullingResources[] = {
+        &_opaqueCullingResources,
+        &_transparentCullingResources,
+        &_opaqueSkyboxCullingResources,
+        &_transparentSkyboxCullingResources
+    };
+
+    // Loop over all the culling resources
+    for (auto& cullingResource : cullingResources)
+    {
+        u32 numTotalInstances = 0;
+
+        auto& instanceRefs = cullingResource->GetInstanceRefs();
+        instanceRefs.Clear();
+
+        const auto& draws = cullingResource->GetDrawCalls();
+        const auto& drawDatas = cullingResource->GetDrawCallDatas();
+
+        u32 numDraws = draws.Count();
+        for (u32 drawID = 0; drawID < numDraws; drawID++)
+        {
+            Renderer::IndexedIndirectDraw& draw = draws[drawID];
+            DrawCallData& drawData = drawDatas[drawID];
+            const ModelManifest& manifest = _modelManifests[drawData.modelID];
+
+            u32 numInstancesInDraw = static_cast<u32>(manifest.instances.size());
+            u32 instanceRefOffset = instanceRefs.AddCount(numInstancesInDraw);
+
+            for (u32 i = 0; i < manifest.instances.size(); i++)
+            {
+                u32 instanceID = manifest.instances[i];
+                
+                InstanceRef& instanceRef = instanceRefs[instanceRefOffset + i];
+                instanceRef.drawID = drawID;
+                instanceRef.instanceID = instanceID;
+                numTotalInstances++;
+            }
+
+            draw.firstInstance = instanceRefOffset;
+            draw.instanceCount = numInstancesInDraw;
+
+            drawData.baseInstanceLookupOffset = instanceRefOffset;
+        }
+        cullingResource->SetDirty();
+    }
+}
+
 void ModelRenderer::SyncToGPU()
 {
     ZoneScopedN("ModelRenderer::SyncToGPU");
@@ -2734,10 +2681,11 @@ void ModelRenderer::SyncToGPU()
         }
     }
 
-    _opaqueCullingResources.SyncToGPU();
-    _transparentCullingResources.SyncToGPU();
-    _opaqueSkyboxCullingResources.SyncToGPU();
-    _transparentSkyboxCullingResources.SyncToGPU();
+    bool forceRecount = _instancesDirty;
+    _opaqueCullingResources.SyncToGPU(forceRecount);
+    _transparentCullingResources.SyncToGPU(forceRecount);
+    _opaqueSkyboxCullingResources.SyncToGPU(forceRecount);
+    _transparentSkyboxCullingResources.SyncToGPU(forceRecount);
 
     BindCullingResource(_opaqueCullingResources);
     BindCullingResource(_transparentCullingResources);

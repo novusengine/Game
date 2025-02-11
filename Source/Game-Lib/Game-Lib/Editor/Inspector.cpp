@@ -175,11 +175,7 @@ namespace Editor
                         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
                         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
 
-                        bool isOpaque = pixelData.type == QueryObjectType::ModelOpaque;
-
-                        u32 instanceID = modelRenderer->GetInstanceIDFromDrawCallID(pixelData.value, isOpaque);
-
-                        SelectModel(instanceID);
+                        SelectModel(pixelData.value);
                     }
                 }
             }

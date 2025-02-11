@@ -322,13 +322,13 @@ namespace Editor
             return;
 
         ImGui::SetNextWindowSizeConstraints(ImVec2(-1.f, -1.f), ImVec2(widthConstraint, constraint));
-        if (ImGui::BeginChild("##SurvivingDrawCalls", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
+        if (ImGui::BeginChild("##SurvivingInstances", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             f32 textWidth = ImGui::CalcTextSize(text.c_str()).x;
             f32 windowWidth = ImGui::GetWindowContentRegionWidth();
             f32 textPos = windowWidth - textWidth;
 
-            ImGui::Text("DrawCalls");
+            ImGui::Text("Instances");
             ImGui::SameLine();
             if (textPos > ImGui::GetCursorPosX())
             {
@@ -559,7 +559,7 @@ namespace Editor
         
         const std::string rightHeaderText = "Survived / Total (%)";
 
-        std::string viewName = "Main View Drawcalls";
+        std::string viewName = "Main View Instances";
         if (viewID > 0)
         {
             viewName = "Shadow Cascade " + std::to_string(viewID - 1) + " Drawcalls";

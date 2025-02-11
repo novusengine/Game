@@ -47,7 +47,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
     if (params.useInstancedCulling)
     {
-        const bool debugOrdered = true;
+        const bool debugOrdered = false;
 
         params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
         params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
@@ -338,7 +338,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     {
         if (params.useInstancedCulling)
         {
-            const bool debugOrdered = true;
+            const bool debugOrdered = false;
 
             params.commandList->PushMarker(params.passName + " Culling", Color::Yellow);
 
@@ -382,6 +382,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
                     u32 drawCallSize;
                     u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+                    u32 modelIDOffset; // Byte offset into drawCallDatas where the modelID is stored
                     u32 drawCallDataSize;
                     u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
                     u32 debugDrawColliders;
@@ -397,6 +398,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
 
                 cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+                cullConstants->modelIDOffset = params.modelIDOffset;
                 cullConstants->drawCallDataSize = params.drawCallDataSize;
 
                 cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;

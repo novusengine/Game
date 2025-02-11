@@ -15,6 +15,7 @@ struct Constants
     uint instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
     uint drawCallSize;
     uint baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+    uint modelIDOffset; // Byte offset into drawCallDatas where the modelID is stored
     uint drawCallDataSize;
     uint cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
     uint debugDrawColliders;
@@ -73,6 +74,13 @@ uint GetBaseInstanceLookup(uint drawCallID)
     uint byteOffset = (_constants.drawCallDataSize * drawCallID) + _constants.baseInstanceLookupOffset;
     uint baseInstanceLookup = _drawCallDatas.Load(byteOffset);
     return baseInstanceLookup;
+}
+
+uint GetModelID(uint drawCallID)
+{
+    uint byteOffset = (_constants.drawCallDataSize * drawCallID) + _constants.modelIDOffset;
+    uint modelID = _drawCallDatas.Load(byteOffset);
+    return modelID;
 }
 
 CullingData LoadCullingData(uint instanceIndex)
@@ -250,7 +258,8 @@ void main(CSInput input)
     InstanceRef instanceRef = _instanceRefTable[instanceRefID];
 
     // Load CullingData which contains AABB of the drawcall
-    CullingData cullingData = LoadCullingData(instanceRef.instanceID);
+    uint modelID = GetModelID(instanceRef.drawID);
+    CullingData cullingData = LoadCullingData(modelID);
 
     // Get AABB from CullingData
     AABB aabb = cullingData.boundingBox;

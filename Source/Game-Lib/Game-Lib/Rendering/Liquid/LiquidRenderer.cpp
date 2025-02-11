@@ -92,6 +92,8 @@ void LiquidRenderer::Reserve(const ReserveInfo& info, LiquidReserveOffsets& rese
     reserveOffsets.instanceStartOffset = cullingResourcesStartIndex;
     reserveOffsets.vertexStartOffset = _vertices.AddCount(info.numVertices);
     reserveOffsets.indexStartOffset = _indices.AddCount(info.numIndices);
+
+    _instancesIsDirty = true;
 }
 
 void LiquidRenderer::Load(LoadDesc& desc)
@@ -605,7 +607,7 @@ void LiquidRenderer::SyncToGPU()
         }
     }
 
-    _cullingResources.SyncToGPU();
+    _cullingResources.SyncToGPU(_instancesIsDirty);
     BindCullingResource(_cullingResources);
 }
 

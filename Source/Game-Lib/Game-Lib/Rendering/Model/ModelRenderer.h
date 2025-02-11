@@ -44,9 +44,6 @@ public:
 
     u32 decorationSetStartIndex = 0;
     u32 decorationStartIndex = 0;
-
-    u32 opaqueDrawCallTemplateStartIndex = 0;
-    u32 transparentDrawCallTemplateStartIndex = 0;
 };
 
 struct TextureUnitReserveOffsets
@@ -87,9 +84,6 @@ public:
         u32 numOpaqueDrawcalls = 0;
         u32 numTransparentDrawcalls = 0;
 
-        u32 numUniqueOpaqueDrawcalls = 0;
-        u32 numUniqueTransparentDrawcalls = 0;
-
         u32 numVertices = 0;
         u32 numIndices = 0;
 
@@ -107,10 +101,10 @@ public:
     public:
         std::string debugName = "";
 
-        u32 opaqueDrawCallTemplateOffset = 0;
+        u32 opaqueDrawCallOffset = 0;
         u32 numOpaqueDrawCalls = 0;
 
-        u32 transparentDrawCallTemplateOffset = 0;
+        u32 transparentDrawCallOffset = 0;
         u32 numTransparentDrawCalls = 0;
 
         u32 vertexOffset = 0;
@@ -129,12 +123,14 @@ public:
         u32 numDecorations = 0;
 
         bool isAnimated = false;
+
+        std::vector<u32> instances;
     };
 
     struct DrawCallData
     {
     public:
-        u32 instanceID = 0;
+        u32 baseInstanceLookupOffset = 0;
         u32 modelID = 0;
         u32 textureUnitOffset = 0;
         u16 numTextureUnits = 0;
@@ -229,7 +225,6 @@ public:
 
     Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
     const std::vector<ModelManifest>& GetModelManifests() { return _modelManifests; }
-    u32 GetInstanceIDFromDrawCallID(u32 drawCallID, bool isOpaque);
 
     CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
     CullingResourcesIndexed<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
@@ -247,16 +242,12 @@ public:
 private:
     void CreatePermanentResources();
 
+    void CompactInstanceRefs();
     void SyncToGPU();
 
     void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
     void DrawTransparent(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
     void DrawSkybox(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params, bool isTransparent);
-
-private:
-    PRAGMA_NO_PADDING_START
-        // Stuff here
-    PRAGMA_NO_PADDING_END
 
 private:
     Renderer::Renderer* _renderer = nullptr;
@@ -265,6 +256,7 @@ private:
     std::mutex _textureLoadMutex;
 
     std::vector<ModelManifest> _modelManifests;
+    std::vector<std::unique_ptr<std::mutex>> _modelManifestsInstancesMutexes;
 
     std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
     std::vector<Model::ComplexModel::Decoration> _modelDecorations;
@@ -284,12 +276,6 @@ private:
 
     Renderer::GPUVector<mat4x4> _boneMatrices;
     Renderer::GPUVector<mat4x4> _textureTransformMatrices;
-
-    std::vector<Renderer::IndexedIndirectDraw> _modelOpaqueDrawCallTemplates;
-    std::vector<DrawCallData> _modelOpaqueDrawCallDataTemplates;
-
-    std::vector<Renderer::IndexedIndirectDraw> _modelTransparentDrawCallTemplates;
-    std::vector<DrawCallData> _modelTransparentDrawCallDataTemplates;
 
     CullingResourcesIndexed<DrawCallData> _opaqueCullingResources;
     CullingResourcesIndexed<DrawCallData> _transparentCullingResources;
@@ -317,6 +303,8 @@ private:
     moodycamel::ConcurrentQueue<TextureLoadRequest> _textureLoadRequests;
     std::vector<TextureLoadRequest> _textureLoadWork;
     robin_hood::unordered_set<u32> _dirtyTextureUnitOffsets;
+
+    std::atomic_bool _instancesDirty = false;
 
     std::mutex _modelOffsetsMutex;
     std::mutex _textureOffsetsMutex;

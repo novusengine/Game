@@ -17,7 +17,7 @@ struct ModelInstanceData
 
 struct PackedModelDrawCallData
 {
-    uint instanceID;
+    uint baseInstanceLookupOffset;
     uint modelID;
     uint textureUnitOffset;
     uint packed1; // uint16_t numTextureUnits, uint16_t numUnlitTextureUnits
@@ -25,21 +25,38 @@ struct PackedModelDrawCallData
 
 struct ModelDrawCallData
 {
-    uint instanceID;
+    uint baseInstanceLookupOffset;
     uint modelID;
     uint textureUnitOffset;
     uint numTextureUnits;
     uint numUnlitTextureUnits;
 };
 
-[[vk::binding(0, MODEL)]] StructuredBuffer<PackedModelDrawCallData> _packedModelDrawCallDatas;
+struct InstanceRef
+{
+    uint instanceID;
+    uint drawID;
+};
+
+[[vk::binding(0, MODEL)]] StructuredBuffer<uint> _culledInstanceLookupTable; // One uint per instance, contains instanceRefID of what survives culling, and thus can get reordered
+uint GetInstanceRefID(uint culledInstanceID)
+{
+    return _culledInstanceLookupTable[culledInstanceID];
+}
+
+[[vk::binding(1, MODEL)]] StructuredBuffer<InstanceRef> _instanceRefTable;
+InstanceRef GetModelInstanceID(uint instanceRefID)
+{
+    return _instanceRefTable[instanceRefID];
+}
+
+[[vk::binding(2, MODEL)]] StructuredBuffer<PackedModelDrawCallData> _packedModelDrawCallDatas;
 ModelDrawCallData LoadModelDrawCallData(uint drawCallID)
 {
     PackedModelDrawCallData packedDrawCallData = _packedModelDrawCallDatas[drawCallID];
 
     ModelDrawCallData drawCallData;
-
-    drawCallData.instanceID = packedDrawCallData.instanceID;
+    drawCallData.baseInstanceLookupOffset = packedDrawCallData.baseInstanceLookupOffset;
     drawCallData.modelID = packedDrawCallData.modelID;
     drawCallData.textureUnitOffset = packedDrawCallData.textureUnitOffset;
 
@@ -128,7 +145,7 @@ float4 UnpackModelBoneWeights(PackedModelVertex packedVertex)
     return boneWeights;
 }
 
-[[vk::binding(1, MODEL)]] StructuredBuffer<PackedModelVertex> _packedModelVertices;
+[[vk::binding(3, MODEL)]] StructuredBuffer<PackedModelVertex> _packedModelVertices;
 ModelVertex LoadModelVertex(uint vertexID)
 {
     PackedModelVertex packedVertex = _packedModelVertices[vertexID];
@@ -149,17 +166,17 @@ ModelVertex LoadModelVertex(uint vertexID)
     return vertex;
 }
 
-[[vk::binding(2, MODEL)]] StructuredBuffer<ModelInstanceData> _modelInstanceDatas;
-[[vk::binding(3, MODEL)]] StructuredBuffer<float4x4> _modelInstanceMatrices;
-[[vk::binding(4, MODEL)]] StructuredBuffer<float4x4> _instanceBoneMatrices;
-[[vk::binding(5, MODEL)]] StructuredBuffer<float4x4> _instanceTextureTransformMatrices;
+[[vk::binding(4, MODEL)]] StructuredBuffer<ModelInstanceData> _modelInstanceDatas;
+[[vk::binding(5, MODEL)]] StructuredBuffer<float4x4> _modelInstanceMatrices;
+[[vk::binding(6, MODEL)]] StructuredBuffer<float4x4> _instanceBoneMatrices;
+[[vk::binding(7, MODEL)]] StructuredBuffer<float4x4> _instanceTextureTransformMatrices;
 
 struct PackedAnimatedVertexPosition
 {
     uint packed0; // half2 position.xy
     uint packed1; // half position.z, padding
 };
-[[vk::binding(6, MODEL)]] RWStructuredBuffer<PackedAnimatedVertexPosition> _animatedModelVertexPositions;
+[[vk::binding(8, MODEL)]] RWStructuredBuffer<PackedAnimatedVertexPosition> _animatedModelVertexPositions;
 
 void StoreAnimatedVertexPosition(uint animatedVertexID, float3 position)
 {
@@ -200,8 +217,8 @@ float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVert
     return boneTransformMatrix;
 }
 
-[[vk::binding(7, MODEL)]] StructuredBuffer<IndexedDraw> _modelDraws;
-[[vk::binding(8, MODEL)]] StructuredBuffer<uint> _modelIndices;
+[[vk::binding(9, MODEL)]] StructuredBuffer<IndexedDraw> _modelDraws;
+[[vk::binding(10, MODEL)]] StructuredBuffer<uint> _modelIndices;
 
 struct ModelTextureUnit
 {
@@ -210,8 +227,8 @@ struct ModelTextureUnit
     uint packedTextureTransformIDs; // u16 textureTransformID[0], u16 textureTransformID[1]
 };
 
-[[vk::binding(9, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
-[[vk::binding(10, MODEL)]] SamplerState _samplers[MAX_MODEL_SAMPLERS];
+[[vk::binding(11, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
+[[vk::binding(12, MODEL)]] SamplerState _samplers[MAX_MODEL_SAMPLERS];
 [[vk::binding(20, MODEL)]] Texture2D<float4> _modelTextures[MAX_TEXTURES]; // We give this index 20 because it always needs to be last in this descriptor set
 
 enum ModelPixelShaderID

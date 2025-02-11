@@ -9,7 +9,7 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 
 struct PSInput
 {
-    uint drawID : TEXCOORD0;
+    uint3 drawIDInstanceIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 
 #if !SHADOW_PASS
@@ -29,7 +29,11 @@ struct PSOutput
 
 PSOutput main(PSInput input)
 {
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(input.drawID);
+    uint drawCallID = input.drawIDInstanceIDInstanceRefID.x;
+    uint instanceID = input.drawIDInstanceIDInstanceRefID.y;
+    uint instanceRefID = input.drawIDInstanceIDInstanceRefID.z;
+
+    ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
 
     for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
     {
@@ -70,11 +74,11 @@ PSOutput main(PSInput input)
     }
 
 #if !SHADOW_PASS
-    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
+    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
 
     // Get the VertexIDs of the triangle we're in
-    IndexedDraw draw = _modelDraws[input.drawID];
+    IndexedDraw draw = _modelDraws[drawCallID];
     uint3 vertexIDs = GetVertexIDs(input.triangleID, draw, _modelIndices);
 
     // Load the vertices
@@ -102,7 +106,7 @@ PSOutput main(PSInput input)
     float2 ddyBarycentrics = ddy(barycentrics);
 
     PSOutput output;
-    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, input.drawID, input.triangleID, barycentrics, ddxBarycentrics, ddyBarycentrics);
+    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, instanceRefID, input.triangleID, barycentrics, ddxBarycentrics, ddyBarycentrics);
 
     return output;
 #endif

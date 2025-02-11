@@ -56,14 +56,14 @@ public:
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
     // Drawcall stats
-    u32 GetNumDrawCalls() { return Terrain::CHUNK_NUM_CELLS * _instanceDatas.Count(); }
-    u32 GetNumOccluderDrawCalls(u32 viewID) { return _numOccluderDrawCalls[viewID]; }
-    u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
+    inline u32 GetNumDrawCalls() { return _instanceDatas.Count(); }
+    inline u32 GetNumOccluderDrawCalls(u32 viewID) { return _numOccluderDrawCalls[viewID]; }
+    inline u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
 
     // Triangle stats
-    u32 GetNumTriangles() { return Terrain::CHUNK_NUM_CELLS * _instanceDatas.Count() * Terrain::CELL_NUM_TRIANGLES; }
-    u32 GetNumOccluderTriangles(u32 viewID) { return _numOccluderDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
-    u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return _numSurvivingDrawCalls[viewID] * Terrain::CELL_NUM_TRIANGLES; }
+    inline u32 GetNumTriangles() { return GetNumDrawCalls() * Terrain::CELL_NUM_TRIANGLES; }
+    inline u32 GetNumOccluderTriangles(u32 viewID) { return GetNumOccluderDrawCalls(viewID) * Terrain::CELL_NUM_TRIANGLES; }
+    inline u32 GetNumSurvivingGeometryTriangles(u32 viewID) { return GetNumSurvivingDrawCalls(viewID) * Terrain::CELL_NUM_TRIANGLES; }
 
 private:
     void CreatePermanentResources();

@@ -313,8 +313,8 @@ void ModelLoader::Update(f32 deltaTime)
                 reserveInfo.numDecorationSets += discoveredModel.model->modelHeader.numDecorationSets * isSupported;
                 reserveInfo.numDecorations += discoveredModel.model->modelHeader.numDecorations * isSupported;
 
-                reserveInfo.numUniqueOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                reserveInfo.numUniqueTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
             }
         }
 
@@ -389,8 +389,8 @@ void ModelLoader::Update(f32 deltaTime)
                 // Only increment Instance Count & Drawcall Count if the model have vertices
                 {
                     reserveInfo.numInstances += 1 * isSupported;
-                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                    //reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                    //reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
                     reserveInfo.numBones += discoveredModel.model->modelHeader.numBones * isSupported;
                     reserveInfo.numTextureTransforms += discoveredModel.model->modelHeader.numTextureTransforms * isSupported;
                     reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * hasDisplayID * isSupported;

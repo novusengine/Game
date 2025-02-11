@@ -6,28 +6,29 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 struct VSInput
 {
     uint vertexID : SV_VertexID;
-    uint instanceID : SV_InstanceID;
+    uint culledInstanceID : SV_InstanceID;
 };
 
 struct VSOutput
 {
     float4 position : SV_Position;
 
-    nointerpolation uint drawCallID : TEXCOORD0;
+    nointerpolation uint drawID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
     float3 posViewSpace : TEXCOORD2;
 };
 
 VSOutput main(VSInput input)
 {
-    uint drawCallID = input.instanceID;
-    ModelVertex vertex = LoadModelVertex(input.vertexID);
+    uint instanceRefID = GetInstanceRefID(input.culledInstanceID);
+    InstanceRef instanceRef = GetModelInstanceID(instanceRefID);
+    uint instanceID = instanceRef.instanceID;
+    uint drawID = instanceRef.drawID;
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
-    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
 
     // Skin this vertex
+    ModelVertex vertex = LoadModelVertex(input.vertexID);
     float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertex);
     float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
 
@@ -39,13 +40,15 @@ VSOutput main(VSInput input)
 
         StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
     }
-    
+
+    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
     position = mul(position, instanceMatrix);
 
     float4 UVs = vertex.uv01;
 
     if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
+        ModelDrawCallData drawCallData = LoadModelDrawCallData(drawID);
         uint numTextureUnits = drawCallData.numTextureUnits;
 
         if (numTextureUnits > 0)
@@ -72,7 +75,7 @@ VSOutput main(VSInput input)
     // Pass data to pixelshader
     VSOutput output;
     output.position = mul(position, _cameras[0].worldToClip);
-    output.drawCallID = drawCallID;
+    output.drawID = drawID;
     output.uv01 = UVs;
     output.posViewSpace = mul(position, _cameras[0].worldToView).xyz;
 
