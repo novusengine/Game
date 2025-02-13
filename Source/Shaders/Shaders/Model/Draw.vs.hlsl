@@ -24,7 +24,7 @@ struct VSOutput
 {
     float4 position : SV_Position;
 #if (!EDITOR_PASS)
-    nointerpolation uint3 drawIDInstanceIDInstanceRefID : TEXCOORD0;
+    nointerpolation uint4 drawIDInstanceIDTextureDataIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 #endif
 #if (!EDITOR_PASS) && (!SHADOW_PASS)
@@ -64,18 +64,18 @@ VSOutput main(VSInput input)
     output.position = mul(position, _cameras[_constants.viewIndex].worldToClip);
 
 #if !EDITOR_PASS
-    output.drawIDInstanceIDInstanceRefID = int3(drawID, instanceID, instanceRefID);
+    output.drawIDInstanceIDTextureDataIDInstanceRefID = int4(drawID, instanceID, instanceRef.extraID, instanceRefID);
 
     float4 UVs = vertex.uv01;
 
     if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
-        ModelDrawCallData drawCallData = LoadModelDrawCallData(drawID);
-        uint numTextureUnits = drawCallData.numTextureUnits;
+        TextureData textureData = LoadModelTextureData(instanceRef.extraID);
+        uint numTextureUnits = textureData.numTextureUnits;
 
         if (numTextureUnits > 0)
         {
-            uint textureUnitIndex = drawCallData.textureUnitOffset;
+            uint textureUnitIndex = textureData.textureUnitOffset;
             ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
             uint textureTransformID1 = textureUnit.packedTextureTransformIDs & 0xFFFF;
             uint textureTransformID2 = (textureUnit.packedTextureTransformIDs >> 16) & 0xFFFF;

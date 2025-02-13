@@ -516,7 +516,8 @@ void ModelLoader::Update(f32 deltaTime)
         UnloadRequest unloadRequest;
         while (_unloadRequests.try_dequeue(unloadRequest))
         {
-            _modelRenderer->ModifyInstance(unloadRequest.entity, unloadRequest.instanceID, std::numeric_limits<u32>().max(), nullptr, identity);
+            _modelRenderer->RemoveInstance(unloadRequest.instanceID);
+            //_modelRenderer->ModifyInstance(unloadRequest.entity, unloadRequest.instanceID, std::numeric_limits<u32>().max(), nullptr, identity);
         }
     }
 }
@@ -679,6 +680,70 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
     model.modelHash = std::numeric_limits<u32>().max();
 
     _unloadRequests.enqueue(unloadRequest);
+}
+
+void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+
+    EnableGroupForModel(modelComponent, groupID);
+}
+
+void ModelLoader::EnableGroupForModel(ECS::Components::Model& model, u32 groupID)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeGroup(model.instanceID, groupID, 0, true);
+}
+
+void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+
+    DisableGroupForModel(modelComponent, groupID);
+}
+
+void ModelLoader::DisableGroupForModel(ECS::Components::Model& model, u32 groupID)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeGroup(model.instanceID, groupID, 0, false);
+}
+
+void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, u32 groupIDEnd)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+
+    DisableGroupsForModel(modelComponent, groupIDStart, groupIDEnd);
+}
+
+void ModelLoader::DisableGroupsForModel(ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeGroup(model.instanceID, groupIDStart, groupIDEnd, false);
+}
+
+void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+
+    DisableAllGroupsForModel(modelComponent);
+}
+
+void ModelLoader::DisableAllGroupsForModel(ECS::Components::Model& model)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeGroup(model.instanceID, 1, std::numeric_limits<u32>().max(), false);
 }
 
 const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)

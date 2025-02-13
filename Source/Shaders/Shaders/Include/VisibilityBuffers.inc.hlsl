@@ -234,6 +234,7 @@ struct PixelVertexData
 {
     uint typeID;
     uint drawCallID; // Same as instanceID for terrain
+    uint extraID; // Only used for models
     FullBary2 uv0;
     FullBary2 uv1; // Only used for models, for terrain it's a copy of uv0
     float3 color; // Only used for terrain, for models it's hardcoded to white
@@ -268,6 +269,7 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
     result.drawCallID = vBuffer.instanceID;
+    result.extraID = 0;
 
     // UV
     result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv, vertices[1].uv, vertices[2].uv); // [0..8] This is correct for terrain color textures
@@ -322,6 +324,7 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
     result.drawCallID = instanceRef.drawID;
+    result.extraID = instanceRef.extraID;
 
     // UV
     result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);

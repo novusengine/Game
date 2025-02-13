@@ -9,7 +9,7 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 
 struct PSInput
 {
-    uint3 drawIDInstanceIDInstanceRefID : TEXCOORD0;
+    uint4 drawIDInstanceIDTextureDataIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 
 #if !SHADOW_PASS
@@ -29,13 +29,14 @@ struct PSOutput
 
 PSOutput main(PSInput input)
 {
-    uint drawCallID = input.drawIDInstanceIDInstanceRefID.x;
-    uint instanceID = input.drawIDInstanceIDInstanceRefID.y;
-    uint instanceRefID = input.drawIDInstanceIDInstanceRefID.z;
+    uint drawCallID = input.drawIDInstanceIDTextureDataIDInstanceRefID.x;
+    uint instanceID = input.drawIDInstanceIDTextureDataIDInstanceRefID.y;
+    uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
+    uint instanceRefID = input.drawIDInstanceIDTextureDataIDInstanceRefID.w;
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
+    TextureData textureData = LoadModelTextureData(textureDataID);
 
-    for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
     {
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 

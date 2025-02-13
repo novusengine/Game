@@ -11,6 +11,8 @@ struct InstanceRef
 {
     u32 instanceID;
     u32 drawID;
+    u32 extraID; // For example ModelRenderer uses this for TextureData
+    u32 padding;
 };
 
 class CullingResourcesBase

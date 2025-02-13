@@ -13,7 +13,7 @@ struct VSOutput
 {
     float4 position : SV_Position;
 
-    nointerpolation uint drawID : TEXCOORD0;
+    nointerpolation uint textureDataID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
     float3 posViewSpace : TEXCOORD2;
 };
@@ -24,6 +24,7 @@ VSOutput main(VSInput input)
     InstanceRef instanceRef = GetModelInstanceID(instanceRefID);
     uint instanceID = instanceRef.instanceID;
     uint drawID = instanceRef.drawID;
+    uint textureDataID = instanceRef.extraID;
 
     ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
 
@@ -48,12 +49,12 @@ VSOutput main(VSInput input)
 
     if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
-        ModelDrawCallData drawCallData = LoadModelDrawCallData(drawID);
-        uint numTextureUnits = drawCallData.numTextureUnits;
+        TextureData textureData = LoadModelTextureData(textureDataID);
+        uint numTextureUnits = textureData.numTextureUnits;
 
         if (numTextureUnits > 0)
         {
-            uint textureUnitIndex = drawCallData.textureUnitOffset;
+            uint textureUnitIndex = textureData.textureUnitOffset;
             ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
             uint textureTransformID1 = textureUnit.packedTextureTransformIDs & 0xFFFF;
             uint textureTransformID2 = (textureUnit.packedTextureTransformIDs >> 16) & 0xFFFF;
@@ -75,7 +76,7 @@ VSOutput main(VSInput input)
     // Pass data to pixelshader
     VSOutput output;
     output.position = mul(position, _cameras[0].worldToClip);
-    output.drawID = drawID;
+    output.textureDataID = textureDataID;
     output.uv01 = UVs;
     output.posViewSpace = mul(position, _cameras[0].worldToView).xyz;
 

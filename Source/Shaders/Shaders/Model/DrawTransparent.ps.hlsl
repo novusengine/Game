@@ -9,7 +9,7 @@ permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 struct PSInput
 {
     float4 position : SV_Position;
-    uint drawID : TEXCOORD0;
+    uint textureDataID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
     float3 posViewSpace : TEXCOORD2;
     //float3 normal : TEXCOORD2;
@@ -23,7 +23,7 @@ struct PSOutput
 
 PSOutput main(PSInput input)
 {
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(input.drawID);
+    TextureData textureData = LoadModelTextureData(input.textureDataID);
 
     float4 color = float4(0, 0, 0, 0);
 
@@ -32,7 +32,7 @@ PSOutput main(PSInput input)
     uint indexThatBecameZero = 0;
     uint blendModeOfThatIndex = 0;
 
-    for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
     {
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 
@@ -63,17 +63,17 @@ PSOutput main(PSInput input)
 
         if (color.a == 0.0f)
         {
-            indexThatBecameZero = textureUnitIndex - drawCallData.textureUnitOffset;
+            indexThatBecameZero = textureUnitIndex - textureData.textureUnitOffset;
             blendModeOfThatIndex = blendingMode;
         }
     }
 
-    bool isUnlit = drawCallData.numUnlitTextureUnits;
+    bool isUnlit = textureData.numUnlitTextureUnits;
 
     //color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), input.normal, 1.0f, !isUnlit) + specular;
     color = saturate(color);
 
-    ModelTextureUnit firstTextureUnit = _modelTextureUnits[drawCallData.textureUnitOffset];
+    ModelTextureUnit firstTextureUnit = _modelTextureUnits[textureData.textureUnitOffset];
     uint blendingMode = (firstTextureUnit.data1 >> 11) & 0x7;
 
     float biggestComponent = max(color.x, max(color.y, color.z));

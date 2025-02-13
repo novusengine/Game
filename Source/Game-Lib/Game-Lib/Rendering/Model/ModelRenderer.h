@@ -33,44 +33,8 @@ struct DrawParams;
 
 constexpr u32 MODEL_INVALID_TEXTURE_ID = 0; // This refers to the debug texture
 constexpr u32 MODEL_INVALID_TEXTURE_TRANSFORM_ID = std::numeric_limits<u16>().max();
+constexpr u32 MODEL_INVALID_TEXTURE_DATA_ID = std::numeric_limits<u32>().max();
 constexpr u8 MODEL_INVALID_TEXTURE_UNIT_INDEX = std::numeric_limits<u8>().max();
-
-struct ModelReserveOffsets
-{
-public:
-    u32 modelIndex = 0;
-    u32 verticesStartIndex = 0;
-    u32 indicesStartIndex = 0;
-
-    u32 decorationSetStartIndex = 0;
-    u32 decorationStartIndex = 0;
-};
-
-struct TextureUnitReserveOffsets
-{
-public:
-    u32 textureUnitsStartIndex = 0;
-};
-
-struct AnimationReserveOffsets
-{
-public:
-    u32 boneStartIndex = 0;
-    u32 textureTransformStartIndex = 0;
-};
-
-struct InstanceReserveOffsets
-{
-public:
-    u32 instanceIndex = 0;
-};
-
-struct DrawCallReserveOffsets
-{
-public:
-    u32 opaqueDrawCallStartIndex = 0;
-    u32 transparentDrawCallStartIndex = 0;
-};
 
 class ModelRenderer : CulledRenderer
 {
@@ -124,7 +88,29 @@ public:
 
         bool isAnimated = false;
 
+        robin_hood::unordered_map<u32, u32> opaqueDrawIDToTextureDataID;
+        robin_hood::unordered_map<u32, u32> transparentDrawIDToTextureDataID;
+
+        robin_hood::unordered_map<u32, u32> opaqueDrawIDToGroupID;
+        robin_hood::unordered_map<u32, u32> transparentDrawIDToGroupID;
+
         std::vector<u32> instances;
+    };
+
+    struct InstanceManifest
+    {
+    public:
+        u32 displayInfoPacked = 0;
+
+        robin_hood::unordered_set<u32> enabledGroupIDs;
+    };
+
+    struct DisplayInfoManifest
+    {
+    public:
+        bool overrideTextureDatas = false;
+        robin_hood::unordered_map<u32, u32> opaqueDrawIDToTextureDataID;
+        robin_hood::unordered_map<u32, u32> transparentDrawIDToTextureDataID;
     };
 
     struct DrawCallData
@@ -132,6 +118,10 @@ public:
     public:
         u32 baseInstanceLookupOffset = 0;
         u32 modelID = 0;
+    };
+
+    struct TextureData
+    {
         u32 textureUnitOffset = 0;
         u16 numTextureUnits = 0;
         u16 numUnlitTextureUnits = 0;
@@ -144,9 +134,7 @@ public:
 
         u32 modelID = 0;
         u32 boneMatrixOffset = InvalidID;
-        u32 boneInstanceDataOffset = InvalidID;
         u32 textureTransformMatrixOffset = InvalidID;
-        u32 textureTransformInstanceDataOffset = InvalidID;
         u32 modelVertexOffset = InvalidID;
         u32 animatedVertexOffset = InvalidID;
     };
@@ -182,6 +170,58 @@ public:
         u32 textureHash = 0;
     };
 
+    struct ChangeGroupRequest
+    {
+    public:
+        u32 instanceID = 0;
+        u32 groupIDStart = 0;
+        u32 groupIDEnd = 0;
+        bool enable = false;
+    };
+
+private:
+        struct ModelOffsets
+        {
+        public:
+            u32 modelIndex = 0;
+            u32 verticesStartIndex = 0;
+            u32 indicesStartIndex = 0;
+
+            u32 decorationSetStartIndex = 0;
+            u32 decorationStartIndex = 0;
+        };
+
+        struct TextureDataOffsets
+        {
+            u32 textureDatasStartIndex = 0;
+        };
+
+        struct TextureUnitOffsets
+        {
+        public:
+            u32 textureUnitsStartIndex = 0;
+        };
+
+        struct AnimationOffsets
+        {
+        public:
+            u32 boneStartIndex = 0;
+            u32 textureTransformStartIndex = 0;
+        };
+
+        struct InstanceOffsets
+        {
+        public:
+            u32 instanceIndex = 0;
+        };
+
+        struct DrawCallOffsets
+        {
+        public:
+            u32 opaqueDrawCallStartIndex = 0;
+            u32 transparentDrawCallStartIndex = 0;
+        };
+
 public:
     ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
     ~ModelRenderer();
@@ -192,15 +232,13 @@ public:
     void Reserve(const ReserveInfo& reserveInfo);
 
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-    void AllocateModel(const Model::ComplexModel& model, ModelReserveOffsets& offsets);
-    void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitReserveOffsets& offsets);
-    void AllocateAnimation(u32 modelID, AnimationReserveOffsets& offsets);
     u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet);
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
-    void AllocateInstance(u32 modelID, InstanceReserveOffsets& offsets);
-    void AllocateDrawCalls(u32 modelID, DrawCallReserveOffsets& offsets, bool isSkybox);
+    void RemoveInstance(u32 instanceID);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
-    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID);
+    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked);
+
+    void RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable);
 
     bool AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset);
     bool SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffset, u32 textureTransformMatrixOffset);
@@ -242,6 +280,15 @@ public:
 private:
     void CreatePermanentResources();
 
+    void AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets);
+    void AllocateTextureData(u32 numTextureDatas, TextureDataOffsets& offsets);
+    void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitOffsets& offsets);
+    void AllocateAnimation(u32 modelID, AnimationOffsets& offsets);
+    void AllocateInstance(u32 modelID, InstanceOffsets& offsets);
+    void AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets, bool isSkybox);
+
+    void DeallocateAnimation(u32 boneStartIndex, u32 numBones, u32 textureTransformStartIndex, u32 numTextureTransforms);
+
     void CompactInstanceRefs();
     void SyncToGPU();
 
@@ -258,6 +305,11 @@ private:
     std::vector<ModelManifest> _modelManifests;
     std::vector<std::unique_ptr<std::mutex>> _modelManifestsInstancesMutexes;
 
+    std::vector<InstanceManifest> _instanceManifests;
+
+    std::mutex _displayInfoManifestsMutex;
+    robin_hood::unordered_map<u32, DisplayInfoManifest> _displayInfoManifests; // The u32 is a PackedDisplayInfo
+
     std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
     std::vector<Model::ComplexModel::Decoration> _modelDecorations;
 
@@ -269,10 +321,9 @@ private:
 
     Renderer::GPUVector<InstanceData> _instanceDatas;
     Renderer::GPUVector<mat4x4> _instanceMatrices;
-    std::vector<u32> _instanceIDToOpaqueDrawCallOffset;
-    std::vector<u32> _instanceIDToTransparentDrawCallOffset;
 
     Renderer::GPUVector<TextureUnit> _textureUnits;
+    Renderer::GPUVector<TextureData> _textureDatas;
 
     Renderer::GPUVector<mat4x4> _boneMatrices;
     Renderer::GPUVector<mat4x4> _textureTransformMatrices;
@@ -304,9 +355,13 @@ private:
     std::vector<TextureLoadRequest> _textureLoadWork;
     robin_hood::unordered_set<u32> _dirtyTextureUnitOffsets;
 
+    moodycamel::ConcurrentQueue<ChangeGroupRequest> _changeGroupRequests;
+    std::vector<ChangeGroupRequest> _changeGroupWork;
+
     std::atomic_bool _instancesDirty = false;
 
     std::mutex _modelOffsetsMutex;
+    std::mutex _textureDataOffsetsMutex;
     std::mutex _textureOffsetsMutex;
     std::mutex _animationOffsetsMutex;
     std::mutex _instanceOffsetsMutex;

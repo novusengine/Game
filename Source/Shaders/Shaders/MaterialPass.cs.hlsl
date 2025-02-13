@@ -190,14 +190,14 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0);
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(pixelVertexData.drawCallID);
+    TextureData textureData = LoadModelTextureData(pixelVertexData.extraID);
 
     // Shade
     float4 color = float4(0, 0, 0, 0);
     float3 specular = float3(0, 0, 0);
     bool isUnlit = false;
 
-    for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
     {
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 
