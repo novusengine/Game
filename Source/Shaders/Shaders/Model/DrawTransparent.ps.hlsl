@@ -11,7 +11,7 @@ struct PSInput
     float4 position : SV_Position;
     uint textureDataID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
-    float3 posViewSpace : TEXCOORD2;
+    float4 posViewSpaceAndOpacity : TEXCOORD2;
     //float3 normal : TEXCOORD2;
 };
 
@@ -45,6 +45,8 @@ PSOutput main(PSInput input)
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
         uint vertexShaderId = materialType & 0xFF;
         uint pixelShaderId = materialType >> 8;
+        uint rgba = textureUnit.rgba;
+        float4 textureUnitColor = float4((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF) / 255.0f;
 
         if (materialType == 0x8000)
             continue;
@@ -58,8 +60,12 @@ PSOutput main(PSInput input)
             texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].Sample(_samplers[texture1SamplerIndex], input.uv01.zw);
         }
 
-        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
-        color = BlendModel(blendingMode, color, shadedColor);
+        // We are not sure if these should be applied here, also see MaterialPass.cs.hlsl
+        texture0Color *= textureUnitColor;
+        texture1Color *= textureUnitColor;
+
+        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular); // It's also possible that textureUnitColor should be applied on this
+        color = BlendModel(blendingMode, color, shadedColor); // Or on this
 
         if (color.a == 0.0f)
         {
@@ -71,6 +77,7 @@ PSOutput main(PSInput input)
     bool isUnlit = textureData.numUnlitTextureUnits;
 
     //color.rgb = Lighting(color.rgb, float3(0.0f, 0.0f, 0.0f), input.normal, 1.0f, !isUnlit) + specular;
+    
     color = saturate(color);
 
     ModelTextureUnit firstTextureUnit = _modelTextureUnits[textureData.textureUnitOffset];
@@ -78,9 +85,10 @@ PSOutput main(PSInput input)
 
     float biggestComponent = max(color.x, max(color.y, color.z));
     color.a = biggestComponent * (blendingMode == 4) + color.a * (blendingMode != 4);
+    color.a *= input.posViewSpaceAndOpacity.a; // Apply per-instance opacity
 
     float clipSpaceDepth = input.position.z / input.position.w;
-    float viewSpaceDepth = input.posViewSpace.z;
+    float viewSpaceDepth = input.posViewSpaceAndOpacity.z;
     float oitWeight = CalculateOITWeight(color, clipSpaceDepth, viewSpaceDepth);
 
     PSOutput output;

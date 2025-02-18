@@ -15,7 +15,7 @@ struct VSOutput
 
     nointerpolation uint textureDataID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
-    float3 posViewSpace : TEXCOORD2;
+    float4 posViewSpaceAndOpacity : TEXCOORD2;
 };
 
 VSOutput main(VSInput input)
@@ -78,7 +78,7 @@ VSOutput main(VSInput input)
     output.position = mul(position, _cameras[0].worldToClip);
     output.textureDataID = textureDataID;
     output.uv01 = UVs;
-    output.posViewSpace = mul(position, _cameras[0].worldToView).xyz;
+    output.posViewSpaceAndOpacity = float4(mul(position, _cameras[0].worldToView).xyz, instanceData.opacity);
 
     return output;
 }

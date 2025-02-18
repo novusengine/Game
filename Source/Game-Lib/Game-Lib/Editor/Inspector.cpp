@@ -496,9 +496,13 @@ namespace Editor
 
                 if (ImGui::Checkbox("Forced Transparency", &model->forcedTransparency))
                 {
-                    modelLoader->SetModelTransparent(*model, model->forcedTransparency);
+                    modelLoader->SetModelTransparent(*model, model->forcedTransparency, model->opacity);
                 }
 
+                if (ImGui::SliderFloat("Opacity", &model->opacity, 0.0f, 1.0f))
+                {
+                    modelLoader->SetModelTransparent(*model, model->forcedTransparency, model->opacity);
+                }
             }
             Util::Imgui::EndGroupPanel();
         }

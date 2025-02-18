@@ -160,6 +160,9 @@ public:
         u32 textureTransformMatrixOffset = InvalidID;
         u32 modelVertexOffset = InvalidID;
         u32 animatedVertexOffset = InvalidID;
+        f32 opacity = 1.0f;
+        u32 padding0;
+        u32 padding1;
     };
 
     struct InstanceDataCPU
@@ -176,6 +179,10 @@ public:
         u16 materialType = 0; // Shader ID
         u32 textureIds[2] = { MODEL_INVALID_TEXTURE_ID, MODEL_INVALID_TEXTURE_ID };
         u16 textureTransformIds[2] = { MODEL_INVALID_TEXTURE_TRANSFORM_ID, MODEL_INVALID_TEXTURE_TRANSFORM_ID };
+        u32 rgba = 0xFFFFFFFF;
+        u32 padding0; 
+        u32 padding1;
+        u32 padding2;
     };
 
     struct PackedAnimatedVertexPositions
@@ -214,6 +221,15 @@ public:
     public:
         u32 instanceID = 0;
         bool transparent = false;
+        f32 opacity = 1.0f;
+    };
+
+    struct ChangeTextureUnitColorRequest
+    {
+    public:
+        u32 instanceID = 0;
+        u32 textureUnitIndex = 0;
+        Color color = Color::White;
     };
 
     struct ChangeSkyboxRequest
@@ -284,7 +300,7 @@ public:
 
     void RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable);
     void RequestChangeVisibility(u32 instanceID, bool visible);
-    void RequestChangeTransparency(u32 instanceID, bool transparent);
+    void RequestChangeTransparency(u32 instanceID, bool transparent, f32 opacity);
     void RequestChangeSkybox(u32 instanceID, bool skybox);
 
     bool AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset);

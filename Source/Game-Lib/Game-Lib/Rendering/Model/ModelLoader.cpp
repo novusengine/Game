@@ -698,20 +698,20 @@ void ModelLoader::SetModelVisible(ECS::Components::Model& model, bool visible)
     _modelRenderer->RequestChangeVisibility(model.instanceID, visible);
 }
 
-void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent)
+void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
-    SetModelTransparent(modelComponent, transparent);
+    SetModelTransparent(modelComponent, transparent, opacity);
 }
 
-void ModelLoader::SetModelTransparent(ECS::Components::Model& model, bool transparent)
+void ModelLoader::SetModelTransparent(ECS::Components::Model& model, bool transparent, f32 opacity)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
-    _modelRenderer->RequestChangeTransparency(model.instanceID, transparent);
+    _modelRenderer->RequestChangeTransparency(model.instanceID, transparent, opacity);
 }
 
 void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)

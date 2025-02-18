@@ -11,6 +11,9 @@ struct ModelInstanceData
     uint textureTransformMatrixOffset;
     uint modelVertexOffset;
     uint animatedVertexOffset;
+    float opacity;
+    uint padding0;
+    uint padding1;
 };
 
 struct ModelDrawCallData
@@ -230,6 +233,10 @@ struct ModelTextureUnit
     uint data1; // (Is Projected Texture (1 bit) + Material Flag (10 bit) + Material Blending Mode (3 bit) + Unused Padding (2 bits)) + Material Type (16 bit)
     uint textureIDs[2];
     uint packedTextureTransformIDs; // u16 textureTransformID[0], u16 textureTransformID[1]
+    uint rgba;
+    uint padding0;
+    uint padding1;
+    uint padding2;
 };
 
 [[vk::binding(12, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;

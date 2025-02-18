@@ -219,11 +219,15 @@ void ModelRenderer::Update(f32 deltaTime)
             InstanceManifest& instanceManifest = _instanceManifests[changeTransparencyRequest.instanceID];
             instanceManifest.transparent = changeTransparencyRequest.transparent;
 
-            ModelManifest& modelManifest = _modelManifests[instanceManifest.modelID];
             if (instanceManifest.transparent)
             {
+                ModelManifest& modelManifest = _modelManifests[instanceManifest.modelID];
                 MakeInstanceTransparent(changeTransparencyRequest.instanceID, instanceManifest, modelManifest);
             }
+
+            InstanceData& instanceData = _instanceDatas[changeTransparencyRequest.instanceID];
+            instanceData.opacity = changeTransparencyRequest.opacity;
+            _instanceDatas.SetDirtyElement(changeTransparencyRequest.instanceID);
         }
         _instancesDirty = true;
     }
@@ -2068,12 +2072,13 @@ void ModelRenderer::RequestChangeVisibility(u32 instanceID, bool visible)
     _changeVisibilityRequests.enqueue(changeVisibilityRequest);
 }
 
-void ModelRenderer::RequestChangeTransparency(u32 instanceID, bool transparent)
+void ModelRenderer::RequestChangeTransparency(u32 instanceID, bool transparent, f32 opacity)
 {
     ChangeTransparencyRequest changeTransparencyRequest =
     {
         .instanceID = instanceID,
         .transparent = transparent,
+        .opacity = opacity
     };
 
     _changeTransparencyRequests.enqueue(changeTransparencyRequest);

@@ -210,6 +210,8 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
         uint vertexShaderId = materialType & 0xFF;
         uint pixelShaderId = materialType >> 8;
+        uint rgba = textureUnit.rgba;
+        float4 textureUnitColor = float4((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF) / 255.0f;
 
         if (materialType == 0x8000)
             continue;
@@ -223,10 +225,14 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
             texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelVertexData.uv1.value, pixelVertexData.uv1.ddx, pixelVertexData.uv1.ddy);
         }
 
+        // We are not sure if these should be applied here, also see DrawTransparent.ps.hlsl
+        texture0Color *= textureUnitColor;
+        texture1Color *= textureUnitColor;
+
         isUnlit |= (materialFlags & 0x1);
 
-        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
-        color = BlendModel(blendingMode, color, shadedColor);
+        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular); // It's also possible that textureUnitColor should be applied on this
+        color = BlendModel(blendingMode, color, shadedColor); // Or on this
     }
 
     // TODO: Don't hardcode this

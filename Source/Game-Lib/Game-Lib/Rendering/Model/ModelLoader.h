@@ -109,8 +109,8 @@ public: // Load Request Helpers
     void SetEntityVisible(entt::entity entity, bool visible);
     void SetModelVisible(ECS::Components::Model& model, bool visible);
 
-    void SetEntityTransparent(entt::entity entity, bool transparent);
-    void SetModelTransparent(ECS::Components::Model& model, bool transparent);
+    void SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity);
+    void SetModelTransparent(ECS::Components::Model& model, bool transparent, f32 opacity);
 
     void EnableGroupForEntity(entt::entity entity, u32 groupID);
     void EnableGroupForModel(ECS::Components::Model& model, u32 groupID);
