@@ -557,12 +557,21 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             params.commandList->PopMarker();
         }
     }
-    else
+    else if (numDrawCalls > 0)
     {
-        if (!params.useInstancedCulling)
+        if (params.useInstancedCulling)
+        {
+            // Reset the counters
+            params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+            params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
+        }
+        else
         {
             // Reset the counter
             params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), numDrawCalls);
+            params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
         }
     }
 }

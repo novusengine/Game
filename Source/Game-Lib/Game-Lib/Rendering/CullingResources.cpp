@@ -74,7 +74,7 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
         _numSurvivingTriangles[i] = _numTriangles;
     }
 
-    if (cullingEnabled)
+    if (cullingEnabled && _numInstances > 0)
     {
         // Drawcalls
 

@@ -71,6 +71,13 @@ public:
         u32 transparentDrawCallOffset = 0;
         u32 numTransparentDrawCalls = 0;
 
+        bool hasTemporarilyTransparentDrawCalls = false;
+        u32 temporarilyTransparentDrawCallOffset = 0; // Opaque renderbatches set up in the transparent resources
+
+        bool hasSkyboxDrawCalls = false;
+        u32 opaqueSkyboxDrawCallOffset = 0;
+        u32 transparentSkyboxDrawCallOffset = 0;
+
         u32 vertexOffset = 0;
         u32 numVertices = 0;
 
@@ -90,17 +97,27 @@ public:
 
         robin_hood::unordered_map<u32, u32> opaqueDrawIDToTextureDataID;
         robin_hood::unordered_map<u32, u32> transparentDrawIDToTextureDataID;
+        robin_hood::unordered_map<u32, u32> opaqueSkyboxDrawIDToTextureDataID;
+        robin_hood::unordered_map<u32, u32> transparentSkyboxDrawIDToTextureDataID;
 
         robin_hood::unordered_map<u32, u32> opaqueDrawIDToGroupID;
         robin_hood::unordered_map<u32, u32> transparentDrawIDToGroupID;
+        robin_hood::unordered_map<u32, u32> opaqueSkyboxDrawIDToGroupID;
+        robin_hood::unordered_map<u32, u32> transparentSkyboxDrawIDToGroupID;
 
-        std::vector<u32> instances;
+        robin_hood::unordered_set<u32> instances;
+        robin_hood::unordered_set<u32> skyboxInstances;
+        robin_hood::unordered_set<u32> originallyTransparentDrawIDs;
     };
 
     struct InstanceManifest
     {
     public:
+        u32 modelID = 0;
         u32 displayInfoPacked = 0;
+        bool visible = true;
+        bool transparent = false;
+        bool skybox = false;
 
         robin_hood::unordered_set<u32> enabledGroupIDs;
     };
@@ -109,8 +126,14 @@ public:
     {
     public:
         bool overrideTextureDatas = false;
+        bool hasTemporarilyTransparentDrawCalls = false;
+        bool hasSkyboxDrawCalls = false;
+
         robin_hood::unordered_map<u32, u32> opaqueDrawIDToTextureDataID;
         robin_hood::unordered_map<u32, u32> transparentDrawIDToTextureDataID;
+
+        robin_hood::unordered_map<u32, u32> opaqueSkyboxDrawIDToTextureDataID;
+        robin_hood::unordered_map<u32, u32> transparentSkyboxDrawIDToTextureDataID;
     };
 
     struct DrawCallData
@@ -179,6 +202,27 @@ public:
         bool enable = false;
     };
 
+    struct ChangeVisibilityRequest
+    {
+    public:
+        u32 instanceID = 0;
+        bool visible = false;
+    };
+
+    struct ChangeTransparencyRequest
+    {
+    public:
+        u32 instanceID = 0;
+        bool transparent = false;
+    };
+
+    struct ChangeSkyboxRequest
+    {
+    public:
+        u32 instanceID = 0;
+        bool skybox = false;
+    };
+
 private:
         struct ModelOffsets
         {
@@ -239,6 +283,9 @@ public:
     void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked);
 
     void RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable);
+    void RequestChangeVisibility(u32 instanceID, bool visible);
+    void RequestChangeTransparency(u32 instanceID, bool transparent);
+    void RequestChangeSkybox(u32 instanceID, bool skybox);
 
     bool AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset);
     bool SetInstanceAnimationData(u32 instanceID, u32 boneMatrixOffset, u32 textureTransformMatrixOffset);
@@ -285,9 +332,12 @@ private:
     void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitOffsets& offsets);
     void AllocateAnimation(u32 modelID, AnimationOffsets& offsets);
     void AllocateInstance(u32 modelID, InstanceOffsets& offsets);
-    void AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets, bool isSkybox);
+    void AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets);
 
     void DeallocateAnimation(u32 boneStartIndex, u32 numBones, u32 textureTransformStartIndex, u32 numTextureTransforms);
+
+    void MakeInstanceTransparent(u32 instanceID, InstanceManifest& instanceManifest, ModelManifest& modelManifest);
+    void MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanceManifest, bool skybox);
 
     void CompactInstanceRefs();
     void SyncToGPU();
@@ -357,6 +407,15 @@ private:
 
     moodycamel::ConcurrentQueue<ChangeGroupRequest> _changeGroupRequests;
     std::vector<ChangeGroupRequest> _changeGroupWork;
+
+    moodycamel::ConcurrentQueue<ChangeVisibilityRequest> _changeVisibilityRequests;
+    std::vector<ChangeVisibilityRequest> _changeVisibilityWork;
+
+    moodycamel::ConcurrentQueue<ChangeTransparencyRequest> _changeTransparencyRequests;
+    std::vector<ChangeTransparencyRequest> _changeTransparencyWork;
+
+    moodycamel::ConcurrentQueue<ChangeSkyboxRequest> _changeSkyboxRequests;
+    std::vector<ChangeSkyboxRequest> _changeSkyboxWork;
 
     std::atomic_bool _instancesDirty = false;
 

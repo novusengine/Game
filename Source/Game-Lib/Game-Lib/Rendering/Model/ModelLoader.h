@@ -106,6 +106,12 @@ public: // Load Request Helpers
     bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID);
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
 
+    void SetEntityVisible(entt::entity entity, bool visible);
+    void SetModelVisible(ECS::Components::Model& model, bool visible);
+
+    void SetEntityTransparent(entt::entity entity, bool transparent);
+    void SetModelTransparent(ECS::Components::Model& model, bool transparent);
+
     void EnableGroupForEntity(entt::entity entity, u32 groupID);
     void EnableGroupForModel(ECS::Components::Model& model, u32 groupID);
 

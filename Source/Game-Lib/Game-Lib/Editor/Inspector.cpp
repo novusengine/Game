@@ -317,13 +317,9 @@ namespace Editor
 
         Util::Imgui::Inspect(*name);
 
-        InspectEntityTransforms(entity);
+        InspectEntityTransform(entity);
 
-        ECS::Components::Model* model = registry->try_get<ECS::Components::Model>(entity);
-        if (model)
-        {
-            Util::Imgui::Inspect(*model);
-        }
+        InspectEntityModel(entity);
 
         // Debug drawing
         DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
@@ -352,16 +348,15 @@ namespace Editor
         }
     }
 
-    void Inspector::InspectEntityTransforms(entt::entity entity)
+    void Inspector::InspectEntityTransform(entt::entity entity)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
         ECS::Components::Transform* transform = registry->try_get<ECS::Components::Transform>(entity);
 
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
-        
         if (transform)
         {
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
             DrawGizmo(registry, entity, *transform);
 
             if (Util::Imgui::BeginGroupPanel("Transform"))
@@ -466,6 +461,46 @@ namespace Editor
 
                 Util::Imgui::EndGroupPanel();
             }
+            ImGui::PopStyleColor();
+        }
+    }
+
+    void Inspector::InspectEntityModel(entt::entity entity)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        ECS::Components::Model* model = registry->try_get<ECS::Components::Model>(entity);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+
+        if (model)
+        {
+            if (Util::Imgui::BeginGroupPanel("Model"))
+            {
+                // ModelID
+                ImGui::Text("ModelID: %u", model->modelID);
+
+                // ModelHash
+                ImGui::Text("ModelHash: %u", model->modelHash);
+
+                // InstanceID
+                ImGui::Text("InstanceID: %u", model->instanceID);
+
+                GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+                ModelLoader* modelLoader = gameRenderer->GetModelLoader();
+
+                if (ImGui::Checkbox("Visible", &model->visible))
+                {
+                    modelLoader->SetModelVisible(*model, model->visible);
+                }
+
+                if (ImGui::Checkbox("Forced Transparency", &model->forcedTransparency))
+                {
+                    modelLoader->SetModelTransparent(*model, model->forcedTransparency);
+                }
+
+            }
+            Util::Imgui::EndGroupPanel();
         }
         ImGui::PopStyleColor();
     }

@@ -80,9 +80,6 @@ void ModelRenderer::Update(f32 deltaTime)
 {
     ZoneScopedN("ModelRenderer::Update");
 
-    if (!CVAR_ModelRendererEnabled.Get())
-        return;
-
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     {
@@ -199,6 +196,53 @@ void ModelRenderer::Update(f32 deltaTime)
         _instancesDirty = true;
     }
 
+    u32 numChangeVisibilityRequests = static_cast<u32>(_changeVisibilityRequests.try_dequeue_bulk(_changeVisibilityWork.begin(), 256));
+    if (numChangeVisibilityRequests > 0)
+    {
+        ZoneScopedN("Change Visibility Requests");
+        for (u32 i = 0; i < numChangeVisibilityRequests; i++)
+        {
+            ChangeVisibilityRequest& changeVisibilityRequest = _changeVisibilityWork[i];
+            InstanceManifest& instanceManifest = _instanceManifests[changeVisibilityRequest.instanceID];
+            instanceManifest.visible = changeVisibilityRequest.visible;
+        }
+        _instancesDirty = true;
+    }
+
+    u32 numChangeTransparencyRequests = static_cast<u32>(_changeTransparencyRequests.try_dequeue_bulk(_changeTransparencyWork.begin(), 256));
+    if (numChangeTransparencyRequests > 0)
+    {
+        ZoneScopedN("Change Transparency Requests");
+        for (u32 i = 0; i < numChangeTransparencyRequests; i++)
+        {
+            ChangeTransparencyRequest& changeTransparencyRequest = _changeTransparencyWork[i];
+            InstanceManifest& instanceManifest = _instanceManifests[changeTransparencyRequest.instanceID];
+            instanceManifest.transparent = changeTransparencyRequest.transparent;
+
+            ModelManifest& modelManifest = _modelManifests[instanceManifest.modelID];
+            if (instanceManifest.transparent)
+            {
+                MakeInstanceTransparent(changeTransparencyRequest.instanceID, instanceManifest, modelManifest);
+            }
+        }
+        _instancesDirty = true;
+    }
+
+    u32 numChangeSkyboxRequests = static_cast<u32>(_changeSkyboxRequests.try_dequeue_bulk(_changeSkyboxWork.begin(), 256));
+    if (numChangeSkyboxRequests > 0)
+    {
+        ZoneScopedN("Change Skybox Requests");
+        for (u32 i = 0; i < numChangeSkyboxRequests; i++)
+        {
+            ChangeSkyboxRequest& changeSkyboxRequest = _changeSkyboxWork[i];
+            InstanceManifest& instanceManifest = _instanceManifests[changeSkyboxRequest.instanceID];
+            instanceManifest.skybox = changeSkyboxRequest.skybox;
+
+            MakeInstanceSkybox(changeSkyboxRequest.instanceID, instanceManifest, instanceManifest.skybox);
+        }
+        _instancesDirty = true;
+    }
+
     CompactInstanceRefs();
     SyncToGPU();
     _instancesDirty = false;
@@ -209,6 +253,7 @@ void ModelRenderer::Clear()
     ZoneScoped;
 
     _modelManifests.clear();
+    _modelManifestsInstancesMutexes.clear();
     _modelIDToNumInstances.clear();
 
     _cullingDatas.Clear();
@@ -391,9 +436,6 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         return;
 
     if (!CVAR_ModelCullingEnabled.Get())
-        return;
-
-    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     struct Data
@@ -621,9 +663,6 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
         return;
 
     if (!CVAR_ModelCullingEnabled.Get())
-        return;
-
-    if (_transparentCullingResources.GetDrawCalls().Count() == 0)
         return;
 
     u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
@@ -859,6 +898,8 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
                 builder.Read(_opaqueSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_opaqueSkyboxCullingResources.GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_opaqueSkyboxCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::GRAPHICS);
 
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -942,12 +983,15 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_textureDatas.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
                 builder.Read(_transparentSkyboxCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_transparentSkyboxCullingResources.GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_transparentSkyboxCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::GRAPHICS);
 
                 builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -1133,22 +1177,17 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
         modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
 
-        bool isSkybox = false; // TODO: In the flow, not dealing with this yet
-
         DrawCallOffsets drawCallOffsets;
-        AllocateDrawCalls(modelOffsets.modelIndex, drawCallOffsets, isSkybox);
+        AllocateDrawCalls(modelOffsets.modelIndex, drawCallOffsets);
 
         modelManifest.opaqueDrawCallOffset = drawCallOffsets.opaqueDrawCallStartIndex;
         modelManifest.transparentDrawCallOffset = drawCallOffsets.transparentDrawCallStartIndex;
 
-        CullingResourcesIndexed<DrawCallData>& opaqueCullingResources = (isSkybox) ? _opaqueSkyboxCullingResources : _opaqueCullingResources;
-        CullingResourcesIndexed<DrawCallData>& transparentCullingResources = (isSkybox) ? _transparentSkyboxCullingResources : _transparentCullingResources;
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas();
 
-        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& opaqueDrawCalls = opaqueCullingResources.GetDrawCalls();
-        const Renderer::GPUVector<DrawCallData>& opaqueDrawCallDatas = opaqueCullingResources.GetDrawCallDatas();
-
-        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = transparentCullingResources.GetDrawCalls();
-        const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = transparentCullingResources.GetDrawCallDatas();
+        const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls();
+        const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas();
 
         u32 numAddedIndices = 0;
 
@@ -1161,8 +1200,13 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
         modelManifest.opaqueDrawIDToTextureDataID.reserve(numRenderBatches);
         modelManifest.transparentDrawIDToTextureDataID.reserve(numRenderBatches);
+        modelManifest.opaqueSkyboxDrawIDToTextureDataID.reserve(numRenderBatches);
+        modelManifest.transparentSkyboxDrawIDToTextureDataID.reserve(numRenderBatches);
+
         modelManifest.opaqueDrawIDToGroupID.reserve(numRenderBatches);
         modelManifest.transparentDrawIDToGroupID.reserve(numRenderBatches);
+        modelManifest.opaqueSkyboxDrawIDToGroupID.reserve(numRenderBatches);
+        modelManifest.transparentSkyboxDrawIDToGroupID.reserve(numRenderBatches);
 
         u32 numTexturesInModel = static_cast<u32>(model.textures.size());
 
@@ -1272,6 +1316,12 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             robin_hood::unordered_map<u32, u32>& drawIDToGroupID = (renderBatch.isTransparent) ? modelManifest.transparentDrawIDToGroupID : modelManifest.opaqueDrawIDToGroupID;
             drawIDToGroupID[curDrawCallOffset] = renderBatch.groupID;
 
+            // If the draw call is transparent, add it to the originallyTransparentDrawIDs
+            if (renderBatch.isTransparent)
+            {
+                modelManifest.originallyTransparentDrawIDs.insert(curDrawCallOffset);
+            }
+
             numAddedDrawCalls++;
         }
     }
@@ -1380,14 +1430,6 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
 
 u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
 {
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    bool isSkybox = false;
-
-    if (registry->valid(entityID))
-    {
-        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID); // TODO: We want to get rid of this
-    }
-
     InstanceOffsets instanceOffsets;
     AllocateInstance(modelID, instanceOffsets);
 
@@ -1415,12 +1457,30 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     // Add Instance to ModelManifest
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
-        manifest.instances.push_back(instanceOffsets.instanceIndex);
+        manifest.instances.insert(instanceOffsets.instanceIndex);
+    }
+
+    // Set up InstanceManifest
+    {
+        InstanceManifest& instanceManifest = _instanceManifests[instanceOffsets.instanceIndex];
+        instanceManifest.modelID = modelID;
     }
 
     if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
         ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayInfoPacked);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    bool isSkybox = false;
+    if (registry->valid(entityID))
+    {
+        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+    }
+
+    if (isSkybox)
+    {
+        RequestChangeSkybox(instanceOffsets.instanceIndex, true);
     }
 
     _instancesDirty = true;
@@ -1438,15 +1498,29 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
     // Remove Instance from ModelManifest
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[instanceData.modelID]);
-        std::erase_if(manifest.instances, [instanceID](u32 i) { return i == instanceID; });
+        manifest.instances.erase(instanceID);
+        manifest.skyboxInstances.erase(instanceID);
     }
 
     std::scoped_lock lock(_instanceOffsetsMutex);
 
+    // Deallocate old animation data
+    if (manifest.isAnimated)
+    {
+        DeallocateAnimation(instanceData.boneMatrixOffset, manifest.numBones, instanceData.textureTransformMatrixOffset, manifest.numTextureTransforms);
+    }
+
     _instanceDatas.Remove(instanceID);
     _instanceMatrices.Remove(instanceID);
 
-    _instanceManifests[instanceID].displayInfoPacked = 0;
+    // Reset InstanceManifest
+    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
+    instanceManifest.modelID = 0;
+    instanceManifest.displayInfoPacked = 0;
+    instanceManifest.visible = true;
+    instanceManifest.transparent = false;
+    instanceManifest.skybox = false;
+    instanceManifest.enabledGroupIDs.clear();
     _instancesDirty = true;
 }
 
@@ -1460,7 +1534,8 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Remove Instance from ModelManifest
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[oldModelID]);
-        std::erase_if(oldManifest.instances, [instanceID](u32 i) { return i == instanceID; });
+        oldManifest.instances.erase(instanceID);
+        oldManifest.skyboxInstances.erase(instanceID);
     }
 
     // Deallocate old animation data
@@ -1474,7 +1549,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Add Instance to ModelManifest
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
-        newManifest.instances.push_back(instanceID);
+        newManifest.instances.insert(instanceID);
     }
 
     // Modify InstanceData
@@ -1501,10 +1576,31 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         instanceMatrix = transformMatrix;
     }
 
+    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
+    instanceManifest.modelID = modelID;
+
     // Replace texture units
     if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
         ReplaceTextureUnits(modelID, model, instanceID, displayInfoPacked);
+    }
+
+    if (instanceManifest.transparent)
+    {
+        MakeInstanceTransparent(instanceID, instanceManifest, newManifest);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    bool isSkybox = false;
+    if (registry->valid(entityID))
+    {
+        isSkybox = registry->all_of<ECS::Components::SkyboxModelTag>(entityID);
+    }
+    instanceManifest.skybox = isSkybox;
+
+    if (isSkybox)
+    {
+        MakeInstanceSkybox(instanceID, instanceManifest, true);
     }
 
     _instancesDirty = true;
@@ -1961,6 +2057,38 @@ void ModelRenderer::RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 gro
     _changeGroupRequests.enqueue(changeGroupRequest);
 }
 
+void ModelRenderer::RequestChangeVisibility(u32 instanceID, bool visible)
+{
+    ChangeVisibilityRequest changeVisibilityRequest =
+    {
+        .instanceID = instanceID,
+        .visible = visible,
+    };
+
+    _changeVisibilityRequests.enqueue(changeVisibilityRequest);
+}
+
+void ModelRenderer::RequestChangeTransparency(u32 instanceID, bool transparent)
+{
+    ChangeTransparencyRequest changeTransparencyRequest =
+    {
+        .instanceID = instanceID,
+        .transparent = transparent,
+    };
+
+    _changeTransparencyRequests.enqueue(changeTransparencyRequest);
+}
+
+void ModelRenderer::RequestChangeSkybox(u32 instanceID, bool skybox)
+{
+    ChangeSkyboxRequest changeSkyboxRequest =
+    {
+        .instanceID = instanceID,
+        .skybox = skybox,
+    };
+    _changeSkyboxRequests.enqueue(changeSkyboxRequest);
+}
+
 bool ModelRenderer::AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset)
 {
     if (_modelManifests.size() <= modelID)
@@ -2249,6 +2377,9 @@ void ModelRenderer::CreatePermanentResources()
     _dirtyTextureUnitOffsets.reserve(256);
 
     _changeGroupWork.resize(256);
+    _changeVisibilityWork.resize(256);
+    _changeTransparencyWork.resize(256);
+    _changeSkyboxWork.resize(256);
 
     static constexpr u32 NumSamplers = 4;
     _samplers.reserve(NumSamplers);
@@ -2433,25 +2564,14 @@ void ModelRenderer::AllocateInstance(u32 modelID, InstanceOffsets& offsets)
     assert(offsets.instanceIndex == instanceMatrixIndex);
 }
 
-void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets, bool isSkybox)
+void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets)
 {
     std::scoped_lock lock(_drawCallOffsetsMutex);
 
     ModelManifest& manifest = _modelManifests[modelID];
 
-    if (isSkybox)
-    {
-        offsets.opaqueDrawCallStartIndex = _opaqueSkyboxCullingResources.AddCount(manifest.numOpaqueDrawCalls);
-        offsets.transparentDrawCallStartIndex = _transparentSkyboxCullingResources.AddCount(manifest.numTransparentDrawCalls);
-    }
-    else
-    {
-        const auto& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
-        const auto& transparentDrawCalls = _opaqueCullingResources.GetDrawCalls();
-
-        offsets.opaqueDrawCallStartIndex = _opaqueCullingResources.AddCount(manifest.numOpaqueDrawCalls);
-        offsets.transparentDrawCallStartIndex = _transparentCullingResources.AddCount(manifest.numTransparentDrawCalls);
-    }
+    offsets.opaqueDrawCallStartIndex = _opaqueCullingResources.AddCount(manifest.numOpaqueDrawCalls);
+    offsets.transparentDrawCallStartIndex = _transparentCullingResources.AddCount(manifest.numTransparentDrawCalls);
 }
 
 void ModelRenderer::DeallocateAnimation(u32 boneStartIndex, u32 numBones, u32 textureTransformStartIndex, u32 numTextureTransforms)
@@ -2462,8 +2582,176 @@ void ModelRenderer::DeallocateAnimation(u32 boneStartIndex, u32 numBones, u32 te
     _textureTransformMatrices.Remove(textureTransformStartIndex, numTextureTransforms);
 }
 
+void ModelRenderer::MakeInstanceTransparent(u32 instanceID, InstanceManifest& instanceManifest, ModelManifest& modelManifest)
+{
+    if (!modelManifest.hasTemporarilyTransparentDrawCalls)
+    {
+        // Allocate drawcalls in the transparent culling resources
+        modelManifest.temporarilyTransparentDrawCallOffset = _transparentCullingResources.AddCount(modelManifest.numOpaqueDrawCalls);
+
+        // Copy the opaque drawcalls to the transparent culling resources
+        auto& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
+        auto& transparentDrawCalls = _transparentCullingResources.GetDrawCalls();
+
+        auto& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas();
+        auto& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas();
+
+        u32 destinationOffset = modelManifest.temporarilyTransparentDrawCallOffset;
+        u32 sourceOffset = modelManifest.opaqueDrawCallOffset;
+
+        void* destinationDrawCalls = &transparentDrawCalls[destinationOffset];
+        void* sourceDrawCalls = &opaqueDrawCalls[sourceOffset];
+        memcpy(destinationDrawCalls, sourceDrawCalls, modelManifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw));
+
+        void* destinationDrawCallDatas = &transparentDrawCallDatas[destinationOffset];
+        void* sourceDrawCallDatas = &opaqueDrawCallDatas[sourceOffset];
+        memcpy(destinationDrawCallDatas, sourceDrawCallDatas, modelManifest.numOpaqueDrawCalls * sizeof(DrawCallData));
+
+        // Set up transparentDrawIDToTextureDataID and transparentDrawIDToGroupID
+        for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
+        {
+            u32 transparentDrawID = modelManifest.temporarilyTransparentDrawCallOffset + drawID;
+            u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
+
+            modelManifest.transparentDrawIDToTextureDataID[transparentDrawID] = modelManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+            modelManifest.transparentDrawIDToGroupID[transparentDrawID] = modelManifest.opaqueDrawIDToGroupID[opaqueDrawID];
+        }
+
+        modelManifest.hasTemporarilyTransparentDrawCalls = true;
+    }
+
+    DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+    if (!displayInfoManifest.hasTemporarilyTransparentDrawCalls)
+    {
+        // Set up transparentDrawIDToTextureDataID
+        for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
+        {
+            u32 transparentDrawID = modelManifest.temporarilyTransparentDrawCallOffset + drawID;
+            u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
+
+            if (displayInfoManifest.overrideTextureDatas)
+            {
+                displayInfoManifest.transparentDrawIDToTextureDataID[transparentDrawID] = displayInfoManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+            }
+        }
+        displayInfoManifest.hasTemporarilyTransparentDrawCalls = true;
+    }
+}
+
+void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanceManifest, bool skybox)
+{
+    ModelManifest& modelManifest = _modelManifests[instanceManifest.modelID];
+    if (skybox)
+    {
+        if (!modelManifest.hasSkyboxDrawCalls)
+        {
+            // Allocate opaque drawcalls in the skybox culling resources
+            modelManifest.opaqueSkyboxDrawCallOffset = _opaqueSkyboxCullingResources.AddCount(modelManifest.numOpaqueDrawCalls);
+            
+            // Copy the opaque drawcalls to the opaque skybox culling resources
+            auto& opaqueDrawCalls = _opaqueCullingResources.GetDrawCalls();
+            auto& opaqueSkyboxDrawCalls = _opaqueSkyboxCullingResources.GetDrawCalls();
+
+            auto& opaqueDrawCallDatas = _opaqueCullingResources.GetDrawCallDatas();
+            auto& opaqueSkyboxDrawCallDatas = _opaqueSkyboxCullingResources.GetDrawCallDatas();
+
+            u32 destinationOffset = modelManifest.opaqueSkyboxDrawCallOffset;
+            u32 sourceOffset = modelManifest.opaqueDrawCallOffset;
+
+            void* destinationDrawCalls = &opaqueSkyboxDrawCalls[destinationOffset];
+            void* sourceDrawCalls = &opaqueDrawCalls[sourceOffset];
+            memcpy(destinationDrawCalls, sourceDrawCalls, modelManifest.numOpaqueDrawCalls * sizeof(Renderer::IndexedIndirectDraw));
+
+            void* destinationDrawCallDatas = &opaqueSkyboxDrawCallDatas[destinationOffset];
+            void* sourceDrawCallDatas = &opaqueDrawCallDatas[sourceOffset];
+            memcpy(destinationDrawCallDatas, sourceDrawCallDatas, modelManifest.numOpaqueDrawCalls * sizeof(DrawCallData));
+
+            // Set up opaqueSkyboxDrawIDToTextureDataID and opaqueSkyboxDrawIDToGroupID
+            for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
+            {
+                u32 opaqueSkyboxDrawID = modelManifest.opaqueSkyboxDrawCallOffset + drawID;
+                u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
+                modelManifest.opaqueSkyboxDrawIDToTextureDataID[opaqueSkyboxDrawID] = modelManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+                modelManifest.opaqueSkyboxDrawIDToGroupID[opaqueSkyboxDrawID] = modelManifest.opaqueDrawIDToGroupID[opaqueDrawID];
+            }
+
+            // Allocate transparent drawcalls in the skybox culling resources
+            modelManifest.transparentSkyboxDrawCallOffset = _transparentSkyboxCullingResources.AddCount(modelManifest.numTransparentDrawCalls);
+
+            // Copy the transparent drawcalls to the transparent skybox culling resources
+            auto& transparentDrawCalls = _transparentCullingResources.GetDrawCalls();
+            auto& transparentSkyboxDrawCalls = _transparentSkyboxCullingResources.GetDrawCalls();
+
+            auto& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas();
+            auto& transparentSkyboxDrawCallDatas = _transparentSkyboxCullingResources.GetDrawCallDatas();
+
+            destinationOffset = modelManifest.transparentSkyboxDrawCallOffset;
+            sourceOffset = modelManifest.transparentDrawCallOffset;
+
+            destinationDrawCalls = &transparentSkyboxDrawCalls[destinationOffset];
+            sourceDrawCalls = &transparentDrawCalls[sourceOffset];
+            memcpy(destinationDrawCalls, sourceDrawCalls, modelManifest.numTransparentDrawCalls * sizeof(Renderer::IndexedIndirectDraw));
+
+            destinationDrawCallDatas = &transparentSkyboxDrawCallDatas[destinationOffset];
+            sourceDrawCallDatas = &transparentDrawCallDatas[sourceOffset];
+            memcpy(destinationDrawCallDatas, sourceDrawCallDatas, modelManifest.numTransparentDrawCalls * sizeof(DrawCallData));
+
+            // Set up transparentSkyboxDrawIDToTextureDataID and transparentSkyboxDrawIDToGroupID
+            for (u32 drawID = 0; drawID < modelManifest.numTransparentDrawCalls; drawID++)
+            {
+                u32 transparentSkyboxDrawID = modelManifest.transparentSkyboxDrawCallOffset + drawID;
+                u32 transparentDrawID = modelManifest.transparentDrawCallOffset + drawID;
+                modelManifest.transparentSkyboxDrawIDToTextureDataID[transparentSkyboxDrawID] = modelManifest.transparentDrawIDToTextureDataID[transparentDrawID];
+                modelManifest.transparentSkyboxDrawIDToGroupID[transparentSkyboxDrawID] = modelManifest.transparentDrawIDToGroupID[transparentDrawID];
+            }
+
+            modelManifest.hasSkyboxDrawCalls = true;
+        }
+
+        DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+        if (!displayInfoManifest.hasSkyboxDrawCalls && displayInfoManifest.overrideTextureDatas)
+        {
+            // Set up opaqueSkyboxDrawIDToTextureDataID
+            for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
+            {
+                u32 opaqueSkyboxDrawID = modelManifest.opaqueSkyboxDrawCallOffset + drawID;
+                u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
+
+                displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID[opaqueSkyboxDrawID] = displayInfoManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+            }
+
+            // Set up transparentSkyboxDrawIDToTextureDataID
+            for (u32 drawID = 0; drawID < modelManifest.numTransparentDrawCalls; drawID++)
+            {
+                u32 transparentSkyboxDrawID = modelManifest.transparentSkyboxDrawCallOffset + drawID;
+                u32 transparentDrawID = modelManifest.transparentDrawCallOffset + drawID;
+
+                displayInfoManifest.transparentSkyboxDrawIDToTextureDataID[transparentSkyboxDrawID] = displayInfoManifest.transparentDrawIDToTextureDataID[transparentDrawID];
+            }
+
+            displayInfoManifest.hasSkyboxDrawCalls = true;
+        }
+
+        // Add the skybox instance
+        modelManifest.skyboxInstances.insert(instanceID);
+
+        // Remove the non skybox instance
+        modelManifest.instances.erase(instanceID);
+    }
+    else
+    {
+        // Remove the skybox instance
+        modelManifest.skyboxInstances.erase(instanceID);
+        
+        // Add the non skybox instance
+        modelManifest.instances.insert(instanceID);
+    }
+}
+
 void ModelRenderer::CompactInstanceRefs()
 {
+    ZoneScopedN("ModelRenderer::CompactInstanceRefs");
+
     if (!_instancesDirty)
         return;
 
@@ -2475,14 +2763,43 @@ void ModelRenderer::CompactInstanceRefs()
         &_transparentSkyboxCullingResources
     };
 
+    static bool cullingResourcesIsTransparent[] = {
+        false,
+        true,
+        false,
+        true
+    };
+
+    static bool cullingResourcesIsSkybox[] = {
+        false,
+        false,
+        true,
+        true
+    };
+
+    static u32 reserveSizes[] = {
+        1000000,
+        100000,
+        1000,
+        1000
+    };
+
     // Loop over all the culling resources
-    bool isTransparent = false;
-    for (auto& cullingResource : cullingResources)
+    for(u32 i = 0; i < 4; i++)
     {
+        ZoneScopedN("CullingResource");
+
+        auto& cullingResource = cullingResources[i];
+        bool isTransparent = cullingResourcesIsTransparent[i];
+        bool isSkybox = cullingResourcesIsSkybox[i];
         u32 numTotalInstances = 0;
 
         auto& instanceRefs = cullingResource->GetInstanceRefs();
-        instanceRefs.Clear();
+        {
+            ZoneScopedN("Clear InstanceRefs");
+            instanceRefs.Clear();
+            instanceRefs.Reserve(reserveSizes[i]);
+        }
 
         const auto& draws = cullingResource->GetDrawCalls();
         const auto& drawDatas = cullingResource->GetDrawCallDatas();
@@ -2490,29 +2807,62 @@ void ModelRenderer::CompactInstanceRefs()
         u32 numDraws = draws.Count();
         for (u32 drawID = 0; drawID < numDraws; drawID++)
         {
+            ZoneScopedN("Draw");
+
             Renderer::IndexedIndirectDraw& draw = draws[drawID];
             DrawCallData& drawData = drawDatas[drawID];
             const ModelManifest& manifest = _modelManifests[drawData.modelID];
 
-            const robin_hood::unordered_map<u32, u32>& drawIDToTextureDataID = (isTransparent) ? manifest.transparentDrawIDToTextureDataID : manifest.opaqueDrawIDToTextureDataID;
+            // Select the correct drawIDToTextureDataID and drawIDToGroupID based on isSkybox and isTransparent
+            const robin_hood::unordered_map<u32, u32>& opaqueDrawIDToTextureDataID = (isSkybox) ? manifest.opaqueSkyboxDrawIDToTextureDataID : manifest.opaqueDrawIDToTextureDataID;
+            const robin_hood::unordered_map<u32, u32>& transparentDrawIDToTextureDataID = (isSkybox) ? manifest.transparentSkyboxDrawIDToTextureDataID : manifest.transparentDrawIDToTextureDataID;
+            const robin_hood::unordered_map<u32, u32>& drawIDToTextureDataID = (isTransparent) ? transparentDrawIDToTextureDataID : opaqueDrawIDToTextureDataID;
+
+            const robin_hood::unordered_map<u32, u32>& opaqueDrawIDToGroupID = (isSkybox) ? manifest.opaqueSkyboxDrawIDToGroupID : manifest.opaqueDrawIDToGroupID;
+            const robin_hood::unordered_map<u32, u32>& transparentDrawIDToGroupID = (isSkybox) ? manifest.transparentSkyboxDrawIDToGroupID : manifest.transparentDrawIDToGroupID;
+            const robin_hood::unordered_map<u32, u32>& drawIDToGroupID = (isTransparent) ? transparentDrawIDToGroupID : opaqueDrawIDToGroupID;
 
             u32 defaultTextureDataID = drawIDToTextureDataID.at(drawID);
 
-            u32 numTotalInstancesInModel = static_cast<u32>(manifest.instances.size());
-            instanceRefs.AddCount(numTotalInstancesInModel);
+            auto& instances = (isSkybox) ? manifest.skyboxInstances : manifest.instances;
+
+            u32 numTotalInstancesInModel = static_cast<u32>(instances.size());
+            {
+                ZoneScopedN("AddCount");
+                instanceRefs.AddCount(numTotalInstancesInModel);
+            }
+
             u32 numEnabledInstancesInDraw = 0;
 
-            for (u32 i = 0; i < numTotalInstancesInModel; i++)
+            // Models with default transparency
+            for(auto& instanceID : instances)
             {
-                u32 instanceID = manifest.instances[i];
-
+                ZoneScopedN("Instance");
                 u32 textureDataID = defaultTextureDataID;
 
                 InstanceManifest& instanceManifest = _instanceManifests[instanceID];
 
+                // Check if this instance is visible
+                if (!instanceManifest.visible)
+                    continue;
+
+                // Don't draw transparent instances in opaque draw calls
+                if (instanceManifest.transparent && !isTransparent)
+                    continue;
+
+                // Don't draw opaque instances in temporarily transparent draw calls
+                if (manifest.hasTemporarilyTransparentDrawCalls)
+                {
+                    bool originallyTransparent = manifest.originallyTransparentDrawIDs.contains(drawID);
+                    if (!originallyTransparent)
+                    {
+                        if (!instanceManifest.transparent && isTransparent && !originallyTransparent && drawID >= manifest.transparentDrawCallOffset)
+                            continue;
+                    }
+                }
+
                 // Check if this instance has this draw enabled
                 {
-                    const robin_hood::unordered_map<u32, u32>& drawIDToGroupID = (isTransparent) ? manifest.transparentDrawIDToGroupID : manifest.opaqueDrawIDToGroupID;
                     u32 groupID = drawIDToGroupID.at(drawID);
 
                     if (groupID != 0)
@@ -2522,35 +2872,47 @@ void ModelRenderer::CompactInstanceRefs()
                     }
                 }
 
-                if (instanceManifest.displayInfoPacked != 0)
                 {
-                    const DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
-                    const robin_hood::unordered_map<u32, u32>& instanceDrawIDToTextureDataID = (isTransparent) ? displayInfoManifest.transparentDrawIDToTextureDataID : displayInfoManifest.opaqueDrawIDToTextureDataID;
-                    textureDataID = instanceDrawIDToTextureDataID.at(drawID);
-                }
+                    ZoneScopedN("Setup InstanceRef");
 
-                InstanceRef& instanceRef = instanceRefs[numTotalInstances + numEnabledInstancesInDraw];
-                instanceRef.drawID = drawID;
-                instanceRef.instanceID = instanceID;
-                instanceRef.extraID = textureDataID;
-                numEnabledInstancesInDraw++;
+                    if (instanceManifest.displayInfoPacked != 0)
+                    {
+                        const DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+
+                        // Select the correct instanceDrawIDToTextureDataID based on isSkybox and isTransparent
+                        const robin_hood::unordered_map<u32, u32>& opaqueDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID : displayInfoManifest.opaqueDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& transparentDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.transparentSkyboxDrawIDToTextureDataID : displayInfoManifest.transparentDrawIDToTextureDataID;
+
+                        const robin_hood::unordered_map<u32, u32>& instanceDrawIDToTextureDataID = (isTransparent || instanceManifest.transparent) ? transparentDrawIDToTextureDataID : opaqueDrawIDToTextureDataID;
+                        textureDataID = instanceDrawIDToTextureDataID.at(drawID);
+                    }
+
+                    InstanceRef& instanceRef = instanceRefs[numTotalInstances + numEnabledInstancesInDraw];
+                    instanceRef.drawID = drawID;
+                    instanceRef.instanceID = instanceID;
+                    instanceRef.extraID = textureDataID;
+                    numEnabledInstancesInDraw++;
+                }
             }
 
-            draw.firstInstance = numTotalInstances;
-            draw.instanceCount = numEnabledInstancesInDraw;
+            {
+                ZoneScopedN("Setup Draw");
+                draw.firstInstance = numTotalInstances;
+                draw.instanceCount = numEnabledInstancesInDraw;
 
-            drawData.baseInstanceLookupOffset = numTotalInstances;
-            numTotalInstances += numEnabledInstancesInDraw;
+                drawData.baseInstanceLookupOffset = numTotalInstances;
+                numTotalInstances += numEnabledInstancesInDraw;
+            }
         }
 
         u32 numInstanceRefs = instanceRefs.Count();
         if (numInstanceRefs > numTotalInstances)
         {
+            ZoneScopedN("Remove InstanceRefs");
             instanceRefs.Remove(numTotalInstances, numInstanceRefs - numTotalInstances);
         }
 
         cullingResource->SetDirty();
-        isTransparent = !isTransparent;
     }
 }
 
