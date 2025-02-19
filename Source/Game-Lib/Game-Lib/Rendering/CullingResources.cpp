@@ -74,7 +74,7 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
         _numSurvivingTriangles[i] = _numTriangles;
     }
 
-    if (cullingEnabled)
+    if (cullingEnabled && _numInstances > 0)
     {
         // Drawcalls
 
@@ -125,75 +125,59 @@ void CullingResourcesBase::Update(f32 deltaTime, bool cullingEnabled)
     }
 }
 
-u32 CullingResourcesBase::Add()
-{
-    return _instanceRefs.Add();
-}
-u32 CullingResourcesBase::AddCount(u32 count)
-{
-    return _instanceRefs.AddCount(count);
-}
-
-void CullingResourcesBase::Remove(u32 index)
-{
-    _instanceRefs.Remove(index);
-}
-
-void CullingResourcesBase::Reserve(u32 count)
-{
-    _instanceRefs.Reserve(count);
-}
-
-bool CullingResourcesBase::SyncToGPU()
+bool CullingResourcesBase::SyncToGPU(bool forceRecount)
 {
     bool gotRecreated = false;
+    
+    if (_instanceRefs.SyncToGPU(_renderer))
     {
-        if (_instanceRefs.SyncToGPU(_renderer))
+        _occluderFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+        _cullingDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+        _geometryFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+        _geometryPassDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+        if (_materialPassDescriptorSet != nullptr)
         {
-            _occluderFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
-            _cullingDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
-            _geometryFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
-
-            u32 numInstanceCapacity = static_cast<u32>(_instanceRefs.Capacity());
-
-            // (Re)create Culled Instance Lookup Table Buffer
-            {
-                Renderer::BufferDesc desc;
-                desc.name = _bufferNamePrefix + "CulledInstanceLookupTableBuffer";
-                desc.size = sizeof(u32) * numInstanceCapacity;
-                desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                _culledInstanceLookupTableBuffer = _renderer->CreateBuffer(_culledInstanceLookupTableBuffer, desc);
-
-                _occluderFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
-                _cullingDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
-                _geometryFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
-                _geometryPassDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
-            }
-
-            // (Re)create Culled DrawCall Bitmask buffer
-            if (_enableTwoStepCulling)
-            {
-                _culledInstanceBitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskSize(numInstanceCapacity);
-                _culledInstanceBitMaskBufferUintsPerView = RenderUtils::CalcCullingBitmaskUints(numInstanceCapacity);
-
-                Renderer::BufferDesc desc;
-                desc.size = _culledInstanceBitMaskBufferSizePerView * Renderer::Settings::MAX_VIEWS;
-                desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                for (u32 i = 0; i < _culledDrawCallsBitMaskBuffer.Num; i++)
-                {
-                    desc.name = _bufferNamePrefix + "CulledDrawCallsBitMaskBuffer" + std::to_string(i);
-                    _culledDrawCallsBitMaskBuffer.Get(i) = _renderer->CreateAndFillBuffer(_culledDrawCallsBitMaskBuffer.Get(i), desc, [](void* mappedMemory, size_t size)
-                    {
-                        memset(mappedMemory, 0, size);
-                    });
-                }
-            }
-
-            gotRecreated = true;
+            _materialPassDescriptorSet->Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
         }
+
+        u32 numInstanceCapacity = static_cast<u32>(_instanceRefs.Capacity());
+
+        // (Re)create Culled Instance Lookup Table Buffer
+        {
+            Renderer::BufferDesc desc;
+            desc.name = _bufferNamePrefix + "CulledInstanceLookupTableBuffer";
+            desc.size = sizeof(u32) * numInstanceCapacity;
+            desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+            _culledInstanceLookupTableBuffer = _renderer->CreateBuffer(_culledInstanceLookupTableBuffer, desc);
+
+            _occluderFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+            _cullingDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+            _geometryFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+            _geometryPassDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+        }
+
+        // (Re)create Culled DrawCall Bitmask buffer
+        if (_enableTwoStepCulling)
+        {
+            _culledInstanceBitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskSize(numInstanceCapacity);
+            _culledInstanceBitMaskBufferUintsPerView = RenderUtils::CalcCullingBitmaskUints(numInstanceCapacity);
+
+            Renderer::BufferDesc desc;
+            desc.size = _culledInstanceBitMaskBufferSizePerView * Renderer::Settings::MAX_VIEWS;
+            desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+            for (u32 i = 0; i < _culledDrawCallsBitMaskBuffer.Num; i++)
+            {
+                desc.name = _bufferNamePrefix + "CulledDrawCallsBitMaskBuffer" + std::to_string(i);
+                _culledDrawCallsBitMaskBuffer.Get(i) = _renderer->CreateAndFillBuffer(_culledDrawCallsBitMaskBuffer.Get(i), desc, [](void* mappedMemory, size_t size)
+                {
+                    memset(mappedMemory, 0, size);
+                });
+            }
+        }
+
+        gotRecreated = true;
     }
 
     return gotRecreated;
@@ -202,27 +186,7 @@ bool CullingResourcesBase::SyncToGPU()
 void CullingResourcesBase::Clear()
 {
     _instanceRefs.Clear();
-}
-
-bool CullingResourcesBase::IsDirty() const
-{
-    return _instanceRefs.IsDirty();
-}
-void CullingResourcesBase::SetDirtyRegion(size_t offset, size_t size)
-{
-    _instanceRefs.SetDirtyRegion(offset, size);
-}
-void CullingResourcesBase::SetDirtyElement(size_t index)
-{
-    _instanceRefs.SetDirtyElement(index);
-}
-void CullingResourcesBase::SetDirtyElements(size_t startIndex, size_t count)
-{
-    _instanceRefs.SetDirtyElements(startIndex, count);
-}
-void CullingResourcesBase::SetDirty()
-{
-    _instanceRefs.SetDirty();
+    _numInstances = 0;
 }
 
 void CullingResourcesBase::ResetCullingStats()
@@ -248,117 +212,99 @@ void CullingResourcesIndexedBase::Init(InitParams& params)
 
 u32 CullingResourcesIndexedBase::Add()
 {
-    u32 baseIndex = CullingResourcesBase::Add();
-    u32 index = _drawCalls.Add();
-#if NC_DEBUG
-    if (baseIndex != index)
-    {
-        NC_LOG_ERROR("CullingResourcesIndexedBase::Add() baseIndex != index");
-    }
-#endif
-    return index;
+    return _drawCalls.Add();
 }
 u32 CullingResourcesIndexedBase::AddCount(u32 count)
 {
-    u32 baseIndex = CullingResourcesBase::AddCount(count);
-    u32 index = _drawCalls.AddCount(count);
-#if NC_DEBUG
-    if (baseIndex != index)
-    {
-        NC_LOG_ERROR("CullingResourcesIndexedBase::AddCount() baseIndex != index");
-    }
-#endif
-    return index;
+    return _drawCalls.AddCount(count);
 }
 
 void CullingResourcesIndexedBase::Remove(u32 index)
 {
-    CullingResourcesBase::Remove(index);
     _drawCalls.Remove(index);
 }
 
 void CullingResourcesIndexedBase::Reserve(u32 count)
 {
-    CullingResourcesBase::Reserve(count);
     _drawCalls.Reserve(count);
 }
 
-bool CullingResourcesIndexedBase::SyncToGPU()
+bool CullingResourcesIndexedBase::SyncToGPU(bool forceRecount)
 {
-    bool gotRecreated = CullingResourcesBase::SyncToGPU();
+    bool gotRecreated = CullingResourcesBase::SyncToGPU(forceRecount);
+    
+    // DrawCalls
+    if (_drawCalls.SyncToGPU(_renderer))
     {
-        // DrawCalls
-        if (_drawCalls.SyncToGPU(_renderer))
+        if (_enableTwoStepCulling)
         {
-            if (_enableTwoStepCulling)
-            {
-                _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-                _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-            }
-            _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
-            if (_materialPassDescriptorSet != nullptr)
-            {
-                _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
-            }
-
-            // (Re)create Culled Instance Counts Buffer
-            {
-                Renderer::BufferDesc desc;
-                desc.name = _bufferNamePrefix + "CulledInstanceCountsBuffer";
-                desc.size = sizeof(u32) * _drawCalls.Capacity();
-                desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                _culledInstanceCountsBuffer = _renderer->CreateBuffer(_culledInstanceCountsBuffer, desc);
-
-                _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-                _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-                _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-            }
-
-            // CulledDrawCallBuffer, one for each view
-            {
-                Renderer::BufferDesc desc;
-                desc.size = sizeof(Renderer::IndexedIndirectDraw) * _drawCalls.Capacity();
-                desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-                desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
-                _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
-
-                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-                _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-            }
-
-            // (Re)create CulledDrawCallCountBuffer
-            {
-                Renderer::BufferDesc desc;
-                desc.name = _bufferNamePrefix + "CulledDrawCallCountsBuffer";
-                desc.size = sizeof(u32);
-                desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                _culledDrawCallCountBuffer = _renderer->CreateBuffer(_culledDrawCallCountBuffer, desc);
-
-                _cullingDescriptorSet.Bind("_culledDrawCallCount"_h, _culledDrawCallCountBuffer);
-            }
-
-            gotRecreated = true;
+            _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+        }
+        _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+        _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+        if (_materialPassDescriptorSet != nullptr)
+        {
+            _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
         }
 
-        if (gotRecreated)
+        // (Re)create Culled Instance Counts Buffer
         {
-            // Count drawcalls, instances and triangles
-            _numInstances = 0;
-            _numTriangles = 0;
+            Renderer::BufferDesc desc;
+            desc.name = _bufferNamePrefix + "CulledInstanceCountsBuffer";
+            desc.size = sizeof(u32) * _drawCalls.Capacity();
+            desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
-            u32 numDrawCalls = static_cast<u32>(_drawCalls.Count()); 
-            for (u32 i = 0; i < numDrawCalls; i++) // TODO: This does not take into account gaps
-            {
-                Renderer::IndexedIndirectDraw& drawCall = _drawCalls[i];
-                _numInstances += drawCall.instanceCount;
-                _numTriangles += (drawCall.indexCount / 3) * drawCall.instanceCount;
-            }
+            _culledInstanceCountsBuffer = _renderer->CreateBuffer(_culledInstanceCountsBuffer, desc);
+
+            _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+            _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+            _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+        }
+
+        // CulledDrawCallBuffer, one for each view
+        {
+            Renderer::BufferDesc desc;
+            desc.size = sizeof(Renderer::IndexedIndirectDraw) * _drawCalls.Capacity();
+            desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+            desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
+            _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
+
+            _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+            _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+            _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+        }
+
+        // (Re)create CulledDrawCallCountBuffer
+        {
+            Renderer::BufferDesc desc;
+            desc.name = _bufferNamePrefix + "CulledDrawCallCountsBuffer";
+            desc.size = sizeof(u32);
+            desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+            _culledDrawCallCountBuffer = _renderer->CreateBuffer(_culledDrawCallCountBuffer, desc);
+
+            _cullingDescriptorSet.Bind("_culledDrawCallCount"_h, _culledDrawCallCountBuffer);
+        }
+
+        gotRecreated = true;
+    }
+
+    if (gotRecreated || forceRecount)
+    {
+        // Count drawcalls, instances and triangles
+        _numInstances = 0;
+        _numTriangles = 0;
+
+        u32 numDrawCalls = static_cast<u32>(_drawCalls.Count()); 
+        for (u32 i = 0; i < numDrawCalls; i++) // TODO: This does not take into account gaps
+        {
+            Renderer::IndexedIndirectDraw& drawCall = _drawCalls[i];
+            _numInstances += drawCall.instanceCount;
+            _numTriangles += (drawCall.indexCount / 3) * drawCall.instanceCount;
         }
     }
+    
     return gotRecreated;
 }
 
@@ -370,27 +316,22 @@ void CullingResourcesIndexedBase::Clear()
 
 bool CullingResourcesIndexedBase::IsDirty() const
 {
-    bool isDirty = CullingResourcesBase::IsDirty();
-    return isDirty || _drawCalls.IsDirty();
+    return _drawCalls.IsDirty();
 }
 void CullingResourcesIndexedBase::SetDirtyRegion(size_t offset, size_t size)
 {
-    CullingResourcesBase::SetDirtyRegion(offset, size);
     _drawCalls.SetDirtyRegion(offset, size);
 }
 void CullingResourcesIndexedBase::SetDirtyElement(size_t index)
 {
-    CullingResourcesBase::SetDirtyElement(index);
     _drawCalls.SetDirtyElement(index);
 }
 void CullingResourcesIndexedBase::SetDirtyElements(size_t startIndex, size_t count)
 {
-    CullingResourcesBase::SetDirtyElements(startIndex, count);
     _drawCalls.SetDirtyElements(startIndex, count);
 }
 void CullingResourcesIndexedBase::SetDirty()
 {
-    CullingResourcesBase::SetDirty();
     _drawCalls.SetDirty();
 }
 
@@ -415,118 +356,100 @@ void CullingResourcesNonIndexedBase::Init(InitParams& params)
 
 u32 CullingResourcesNonIndexedBase::Add()
 {
-    u32 baseIndex = CullingResourcesBase::Add();
-    u32 index = _drawCalls.Add();
-#if NC_DEBUG
-    if (baseIndex != index)
-    {
-        NC_LOG_ERROR("CullingResourcesNonIndexedBase::Add() baseIndex != index");
-    }
-#endif
-    return index;
+    return _drawCalls.Add();
 }
 u32 CullingResourcesNonIndexedBase::AddCount(u32 count)
 {
-    u32 baseIndex = CullingResourcesBase::AddCount(count);
-    u32 index = _drawCalls.AddCount(count);
-#if NC_DEBUG
-    if (baseIndex != index)
-    {
-        NC_LOG_ERROR("CullingResourcesNonIndexedBase::AddCount() baseIndex != index");
-    }
-#endif
-    return index;
+    return _drawCalls.AddCount(count);
 }
 
 void CullingResourcesNonIndexedBase::Remove(u32 index)
 {
-    CullingResourcesBase::Remove(index);
     _drawCalls.Remove(index);
 }
 
 void CullingResourcesNonIndexedBase::Reserve(u32 count)
 {
-    CullingResourcesBase::Reserve(count);
     _drawCalls.Reserve(count);
 }
 
-bool CullingResourcesNonIndexedBase::SyncToGPU()
+bool CullingResourcesNonIndexedBase::SyncToGPU(bool forceRecount)
 {
-    bool gotRecreated = CullingResourcesBase::SyncToGPU();
+    bool gotRecreated = CullingResourcesBase::SyncToGPU(forceRecount);
+    
+    // DrawCalls
+    if (_drawCalls.SyncToGPU(_renderer))
     {
-        // DrawCalls
-        if (_drawCalls.SyncToGPU(_renderer))
+        if (_enableTwoStepCulling)
         {
-            if (_enableTwoStepCulling)
-            {
-                _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-                _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-            }
-            _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
-            if (_materialPassDescriptorSet != nullptr)
-            {
-                _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
-            }
-
-            // (Re)create Culled Instance Counts Buffer
-            {
-                Renderer::BufferDesc desc;
-                desc.name = _bufferNamePrefix + "CulledInstanceCountsBuffer";
-                desc.size = sizeof(u32) * _drawCalls.Count();
-                desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                _culledInstanceCountsBuffer = _renderer->CreateBuffer(_culledInstanceCountsBuffer, desc);
-
-                _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-                _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-                _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
-            }
-
-            // CulledDrawCallBuffer
-            {
-                Renderer::BufferDesc desc;
-                desc.size = sizeof(Renderer::IndirectDraw) * _drawCalls.Count();
-                desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-                desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
-
-                _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
-
-                _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-                _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-                _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
-            }
-
-            // (Re)create CulledDrawCallCountBuffer
-            {
-                Renderer::BufferDesc desc;
-                desc.name = _bufferNamePrefix + "CulledDrawCallCountsBuffer";
-                desc.size = sizeof(u32);
-                desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-
-                _culledDrawCallCountBuffer = _renderer->CreateBuffer(_culledDrawCallCountBuffer, desc);
-
-                _cullingDescriptorSet.Bind("_culledDrawCallCount"_h, _culledDrawCallCountBuffer);
-            }
-
-            gotRecreated = true;
+            _occluderFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+        }
+        _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
+        _geometryPassDescriptorSet.Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+        if (_materialPassDescriptorSet != nullptr)
+        {
+            _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
         }
 
-        if (gotRecreated)
+        // (Re)create Culled Instance Counts Buffer
         {
-            // Count drawcalls and triangles
-            _numInstances = 0;
-            _numTriangles = 0;
+            Renderer::BufferDesc desc;
+            desc.name = _bufferNamePrefix + "CulledInstanceCountsBuffer";
+            desc.size = sizeof(u32) * _drawCalls.Count();
+            desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
-            u32 numDrawCalls = static_cast<u32>(_drawCalls.Count());
-            for (u32 i = 0; i < numDrawCalls; i++) // TODO: This does not take into account gaps
-            {
-                Renderer::IndirectDraw& drawCall = _drawCalls[i];
-                _numInstances += drawCall.instanceCount;
-                _numTriangles += (drawCall.vertexCount / 3) * drawCall.instanceCount;
-            }
+            _culledInstanceCountsBuffer = _renderer->CreateBuffer(_culledInstanceCountsBuffer, desc);
+
+            _occluderFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+            _cullingDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+            _geometryFillDescriptorSet.Bind("_culledInstanceCounts"_h, _culledInstanceCountsBuffer);
+        }
+
+        // CulledDrawCallBuffer
+        {
+            Renderer::BufferDesc desc;
+            desc.size = sizeof(Renderer::IndirectDraw) * _drawCalls.Count();
+            desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+            desc.name = _bufferNamePrefix + "CulledDrawCallBuffer";
+
+            _culledDrawCallsBuffer = _renderer->CreateBuffer(_culledDrawCallsBuffer, desc);
+
+            _cullingDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+            _occluderFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+            _geometryFillDescriptorSet.Bind("_culledDrawCalls"_h, _culledDrawCallsBuffer);
+        }
+
+        // (Re)create CulledDrawCallCountBuffer
+        {
+            Renderer::BufferDesc desc;
+            desc.name = _bufferNamePrefix + "CulledDrawCallCountsBuffer";
+            desc.size = sizeof(u32);
+            desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+
+            _culledDrawCallCountBuffer = _renderer->CreateBuffer(_culledDrawCallCountBuffer, desc);
+
+            _cullingDescriptorSet.Bind("_culledDrawCallCount"_h, _culledDrawCallCountBuffer);
+        }
+
+        gotRecreated = true;
+    }
+
+    if (gotRecreated || forceRecount)
+    {
+        // Count drawcalls and triangles
+        _numInstances = 0;
+        _numTriangles = 0;
+
+        u32 numDrawCalls = static_cast<u32>(_drawCalls.Count());
+        for (u32 i = 0; i < numDrawCalls; i++) // TODO: This does not take into account gaps
+        {
+            Renderer::IndirectDraw& drawCall = _drawCalls[i];
+            _numInstances += drawCall.instanceCount;
+            _numTriangles += (drawCall.vertexCount / 3) * drawCall.instanceCount;
         }
     }
+    
     return gotRecreated;
 }
 
@@ -538,27 +461,22 @@ void CullingResourcesNonIndexedBase::Clear()
 
 bool CullingResourcesNonIndexedBase::IsDirty() const
 {
-    bool isDirty = CullingResourcesBase::IsDirty();
-    return isDirty || _drawCalls.IsDirty();
+    return _drawCalls.IsDirty();
 }
 void CullingResourcesNonIndexedBase::SetDirtyRegion(size_t offset, size_t size)
 {
-    CullingResourcesBase::SetDirtyRegion(offset, size);
     _drawCalls.SetDirtyRegion(offset, size);
 }
 void CullingResourcesNonIndexedBase::SetDirtyElement(size_t index)
 {
-    CullingResourcesBase::SetDirtyElement(index);
     _drawCalls.SetDirtyElement(index);
 }
 void CullingResourcesNonIndexedBase::SetDirtyElements(size_t startIndex, size_t count)
 {
-    CullingResourcesBase::SetDirtyElements(startIndex, count);
     _drawCalls.SetDirtyElements(startIndex, count);
 }
 void CullingResourcesNonIndexedBase::SetDirty()
 {
-    CullingResourcesBase::SetDirty();
     _drawCalls.SetDirty();
 }
 

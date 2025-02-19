@@ -106,6 +106,24 @@ public: // Load Request Helpers
     bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID);
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
 
+    void SetEntityVisible(entt::entity entity, bool visible);
+    void SetModelVisible(ECS::Components::Model& model, bool visible);
+
+    void SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity);
+    void SetModelTransparent(ECS::Components::Model& model, bool transparent, f32 opacity);
+
+    void EnableGroupForEntity(entt::entity entity, u32 groupID);
+    void EnableGroupForModel(ECS::Components::Model& model, u32 groupID);
+
+    void DisableGroupForEntity(entt::entity entity, u32 groupID);
+    void DisableGroupForModel(ECS::Components::Model& model, u32 groupID);
+
+    void DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, u32 groupIDEnd);
+    void DisableGroupsForModel(ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd);
+
+    void DisableAllGroupsForEntity(entt::entity entity);
+    void DisableAllGroupsForModel(ECS::Components::Model& model);
+
 public:
     const Model::ComplexModel* GetModelInfo(u32 modelHash);
     u32 GetModelHashFromModelPath(const std::string& modelPath);

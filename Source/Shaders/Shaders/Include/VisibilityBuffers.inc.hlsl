@@ -6,12 +6,12 @@
 #include "globalData.inc.hlsl"
 
 #if GEOMETRY_PASS
-uint4 PackVisibilityBuffer(uint typeID, uint drawID, uint triangleID, float2 barycentrics, float2 ddxBarycentrics, float2 ddyBarycentrics)
+uint4 PackVisibilityBuffer(uint typeID, uint instanceID, uint triangleID, float2 barycentrics, float2 ddxBarycentrics, float2 ddyBarycentrics)
 {
     // VisibilityBuffer is 4 uints packed like this:
     // X
     //      TriangleID 8 bits (out of 16), we had to split this to fit
-    //      DrawID 20 bits
+    //      InstanceID 20 bits, different types can have the same InstanceID
     //      TypeID 4 bits
     // Y
     //      TriangleID 8 bits (out of 16), the remainder
@@ -29,7 +29,7 @@ uint4 PackVisibilityBuffer(uint typeID, uint drawID, uint triangleID, float2 bar
     uint4 packedVisBuffer;
     // X
     packedVisBuffer.x = (triangleID & 0xFF);
-    packedVisBuffer.x |= drawID << 8;
+    packedVisBuffer.x |= instanceID << 8;
     packedVisBuffer.x |= typeID << 28;
     // Y
     packedVisBuffer.y = (triangleID >> 8);
@@ -78,7 +78,7 @@ struct Barycentrics
 struct VisibilityBuffer
 {
     uint typeID;
-    uint drawID;
+    uint instanceID;
     uint padding;
     uint triangleID;
     Barycentrics barycentrics;
@@ -94,7 +94,7 @@ const VisibilityBuffer UnpackVisibilityBuffer(uint4 data)
     // VisibilityBuffer is 4 uints packed like this:
     // X
     //      TriangleID 8 bits (out of 16), we had to split this to fit
-    //      DrawID 20 bits
+    //      InstanceID 20 bits, different types can have the same InstanceID
     //      TypeID 4 bits
     // Y
     //      TriangleID 8 bits (out of 16), the remainder
@@ -109,7 +109,7 @@ const VisibilityBuffer UnpackVisibilityBuffer(uint4 data)
 
     VisibilityBuffer vBuffer;
     vBuffer.typeID = data.x >> 28;
-    vBuffer.drawID = (data.x & 0x0FFFFF00) >> 8;
+    vBuffer.instanceID = (data.x & 0x0FFFFF00) >> 8;
 
     vBuffer.triangleID = (data.x & 0xFF) | ((data.y & 0xFF) << 8);
 
@@ -126,21 +126,16 @@ const VisibilityBuffer UnpackVisibilityBuffer(uint4 data)
     return vBuffer;
 }
 
-uint GetObjectID(uint typeID, uint drawID)
+uint GetObjectID(uint typeID, uint instanceID)
 {
     if (typeID == ObjectType::Terrain)
     {
-        InstanceData debugCellInstance = _instanceDatas[drawID];
+        InstanceData debugCellInstance = _instanceDatas[instanceID];
 
         return debugCellInstance.globalCellID;
     }
-    else if (typeID == ObjectType::ModelOpaque)
-    {
-        ModelDrawCallData drawCallData = LoadModelDrawCallData(drawID);
-        return drawCallData.instanceID;
-    }
 
-    return drawID;
+    return instanceID;
 }
 
 float InterpolateWithBarycentrics(Barycentrics barycentrics, float v0, float v1, float v2)
@@ -238,6 +233,8 @@ FullBary3 CalcFullBary3(Barycentrics barycentrics, float3 v0, float3 v1, float3 
 struct PixelVertexData
 {
     uint typeID;
+    uint drawCallID; // Same as instanceID for terrain
+    uint extraID; // Only used for models
     FullBary2 uv0;
     FullBary2 uv1; // Only used for models, for terrain it's a copy of uv0
     float3 color; // Only used for terrain, for models it's hardcoded to white
@@ -249,7 +246,7 @@ struct PixelVertexData
 
 PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex)
 {
-    InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
+    InstanceData cellInstance = _instanceDatas[vBuffer.instanceID];
     uint globalCellID = cellInstance.globalCellID;
 
     // Find the cell and chunk
@@ -271,6 +268,8 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     // Interpolate the pixels vertex attributes
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
+    result.drawCallID = vBuffer.instanceID;
+    result.extraID = 0;
 
     // UV
     result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv, vertices[1].uv, vertices[2].uv); // [0..8] This is correct for terrain color textures
@@ -292,12 +291,14 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
 
 PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex)
 {
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
-    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+    InstanceRef instanceRef = GetModelInstanceID(vBuffer.instanceID);
+    uint instanceID = instanceRef.instanceID;
+    uint drawID = instanceRef.drawID;
+
+    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
 
     // Get the VertexIDs of the triangle we're in
-    IndexedDraw draw = _modelDraws[vBuffer.drawID];
+    IndexedDraw draw = _modelDraws[drawID];
     uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
 
     // Get Vertices
@@ -322,6 +323,8 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     // Interpolate the pixels vertex attributes
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
+    result.drawCallID = instanceRef.drawID;
+    result.extraID = instanceRef.extraID;
 
     // UV
     result.uv0 = CalcFullBary2(vBuffer.barycentrics, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
@@ -329,6 +332,8 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
 
     // Models don't have vertex colors
     result.color = float3(1, 1, 1);
+
+    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
 
     // Normal
     float3 vertexNormal = normalize(InterpolateVertexAttribute(vBuffer.barycentrics, vertices[0].normal, vertices[1].normal, vertices[2].normal));
@@ -356,6 +361,7 @@ PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer 
 
     PixelVertexData result;
     result.typeID = vBuffer.typeID;
+    result.drawCallID = 0;
 
     result.uv0.value = float2(0, 0);
     result.uv0.ddx = float2(0, 0);

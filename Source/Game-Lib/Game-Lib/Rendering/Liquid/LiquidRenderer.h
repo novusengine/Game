@@ -135,6 +135,8 @@ private:
     Renderer::GPUVector<Vertex> _vertices;
     Renderer::GPUVector<u16> _indices;
 
+    std::atomic_bool _instancesIsDirty = false;
+
     std::shared_mutex _addLiquidMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
     std::mutex _textureMutex;
 };

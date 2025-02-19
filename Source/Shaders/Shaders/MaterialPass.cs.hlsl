@@ -39,7 +39,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0);
 
-    InstanceData cellInstance = _instanceDatas[vBuffer.drawID];
+    InstanceData cellInstance = _instanceDatas[vBuffer.instanceID];
     uint globalCellID = cellInstance.globalCellID;
     const uint cellID = cellInstance.packedChunkCellID & 0xFFFF;
 
@@ -190,14 +190,14 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0);
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(vBuffer.drawID);
+    TextureData textureData = LoadModelTextureData(pixelVertexData.extraID);
 
     // Shade
     float4 color = float4(0, 0, 0, 0);
     float3 specular = float3(0, 0, 0);
     bool isUnlit = false;
 
-    for (uint textureUnitIndex = drawCallData.textureUnitOffset; textureUnitIndex < drawCallData.textureUnitOffset + drawCallData.numTextureUnits; textureUnitIndex++)
+    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
     {
         ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
 
@@ -210,6 +210,8 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
         uint vertexShaderId = materialType & 0xFF;
         uint pixelShaderId = materialType >> 8;
+        uint rgba = textureUnit.rgba;
+        float4 textureUnitColor = float4((rgba >> 24) & 0xFF, (rgba >> 16) & 0xFF, (rgba >> 8) & 0xFF, rgba & 0xFF) / 255.0f;
 
         if (materialType == 0x8000)
             continue;
@@ -223,10 +225,14 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
             texture1Color = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[1])].SampleGrad(_samplers[texture1SamplerIndex], pixelVertexData.uv1.value, pixelVertexData.uv1.ddx, pixelVertexData.uv1.ddy);
         }
 
+        // We are not sure if these should be applied here, also see DrawTransparent.ps.hlsl
+        texture0Color *= textureUnitColor;
+        texture1Color *= textureUnitColor;
+
         isUnlit |= (materialFlags & 0x1);
 
-        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular);
-        color = BlendModel(blendingMode, color, shadedColor);
+        float4 shadedColor = ShadeModel(pixelShaderId, texture0Color, texture1Color, specular); // It's also possible that textureUnitColor should be applied on this
+        color = BlendModel(blendingMode, color, shadedColor); // Or on this
     }
 
     // TODO: Don't hardcode this
@@ -271,7 +277,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #elif DEBUG_ID == 2 // ObjectID debug output
-    float3 debugColor = IDToColor3(GetObjectID(vBuffer.typeID, vBuffer.drawID));
+    float3 debugColor = IDToColor3(GetObjectID(vBuffer.typeID, vBuffer.instanceID));
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #elif DEBUG_ID == 3 // TriangleID   

@@ -64,9 +64,6 @@ void TerrainRenderer::Update(f32 deltaTime)
 {
     ZoneScoped;
 
-    //if (!CVAR_TerrainRendererEnabled.Get())
-    //    return;
-
     const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
     // Read back from culling counters
@@ -75,31 +72,35 @@ void TerrainRenderer::Update(f32 deltaTime)
     for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
     {
         _numSurvivingDrawCalls[i] = numDrawCalls;
+        _numOccluderDrawCalls[i] = numDrawCalls;
     }
 
-    if (cullingEnabled)
+    if (numDrawCalls > 0)
     {
-        u32* count = static_cast<u32*>(_renderer->MapBuffer(_occluderDrawCountReadBackBuffer));
-        if (count != nullptr)
+        if (cullingEnabled)
         {
-            for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+            u32* count = static_cast<u32*>(_renderer->MapBuffer(_occluderDrawCountReadBackBuffer));
+            if (count != nullptr)
             {
-                _numOccluderDrawCalls[i] = count[i];
+                for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+                {
+                    _numOccluderDrawCalls[i] = count[i];
+                }
             }
+            _renderer->UnmapBuffer(_occluderDrawCountReadBackBuffer);
         }
-        _renderer->UnmapBuffer(_occluderDrawCountReadBackBuffer);
-    }
 
-    {
-        u32* count = static_cast<u32*>(_renderer->MapBuffer(_drawCountReadBackBuffer));
-        if (count != nullptr)
         {
-            for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+            u32* count = static_cast<u32*>(_renderer->MapBuffer(_drawCountReadBackBuffer));
+            if (count != nullptr)
             {
-                _numSurvivingDrawCalls[i] = count[i];
+                for (u32 i = 0; i < Renderer::Settings::MAX_VIEWS; i++)
+                {
+                    _numSurvivingDrawCalls[i] = count[i];
+                }
             }
+            _renderer->UnmapBuffer(_drawCountReadBackBuffer);
         }
-        _renderer->UnmapBuffer(_drawCountReadBackBuffer);
     }
 
     SyncToGPU();

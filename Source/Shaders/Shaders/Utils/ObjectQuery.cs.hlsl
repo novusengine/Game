@@ -1,6 +1,7 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #include "Include/VisibilityBuffers.inc.hlsl"
 #include "Terrain/TerrainShared.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
 
 struct Constants
 {
@@ -34,12 +35,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         uint objectID = 0;
         if (vBuffer.typeID == ObjectType::Terrain)
         {
-            InstanceData instanceData = _instanceDatas[vBuffer.drawID];
+            InstanceData instanceData = _instanceDatas[vBuffer.instanceID];
             objectID = instanceData.packedChunkCellID;
         }
         else
         {
-            objectID = vBuffer.drawID;//GetObjectID(vBuffer.typeID, vBuffer.drawID);
+            InstanceRef instanceRef = GetModelInstanceID(vBuffer.instanceID);
+            objectID = instanceRef.instanceID;
         }
 
         _result[i].value = objectID;

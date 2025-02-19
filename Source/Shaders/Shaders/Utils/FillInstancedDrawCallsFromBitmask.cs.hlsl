@@ -16,6 +16,8 @@ struct InstanceRef
 {
     uint instanceID;
     uint drawID;
+    uint extraID;
+    uint padding;
 };
 
 #if IS_INDEXED

@@ -17,14 +17,14 @@ struct Constants
 struct VSInput
 {
     uint vertexID : SV_VertexID;
-    uint instanceID : SV_InstanceID;
+    uint culledInstanceID : SV_InstanceID;
 };
 
 struct VSOutput
 {
     float4 position : SV_Position;
 #if (!EDITOR_PASS)
-    nointerpolation uint drawCallID : TEXCOORD0;
+    nointerpolation uint4 drawIDInstanceIDTextureDataIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 #endif
 #if (!EDITOR_PASS) && (!SHADOW_PASS)
@@ -34,14 +34,15 @@ struct VSOutput
 
 VSOutput main(VSInput input)
 {
-    uint drawCallID = input.instanceID;
-    ModelVertex vertex = LoadModelVertex(input.vertexID);
+    uint instanceRefID = GetInstanceRefID(input.culledInstanceID);
+    InstanceRef instanceRef = GetModelInstanceID(instanceRefID);
+    uint instanceID = instanceRef.instanceID;
+    uint drawID = instanceRef.drawID;
 
-    ModelDrawCallData drawCallData = LoadModelDrawCallData(drawCallID);
-    ModelInstanceData instanceData = _modelInstanceDatas[drawCallData.instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[drawCallData.instanceID];
+    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
 
     // Skin this vertex
+    ModelVertex vertex = LoadModelVertex(input.vertexID);
     float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertex);
     float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
 
@@ -55,6 +56,7 @@ VSOutput main(VSInput input)
     }
     float3 modelPosition = position.xyz;
 
+    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
     position = mul(position, instanceMatrix);
 
     // Pass data to pixelshader
@@ -62,17 +64,18 @@ VSOutput main(VSInput input)
     output.position = mul(position, _cameras[_constants.viewIndex].worldToClip);
 
 #if !EDITOR_PASS
-    output.drawCallID = drawCallID;
+    output.drawIDInstanceIDTextureDataIDInstanceRefID = int4(drawID, instanceID, instanceRef.extraID, instanceRefID);
 
     float4 UVs = vertex.uv01;
 
     if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
-        uint numTextureUnits = drawCallData.numTextureUnits;
+        TextureData textureData = LoadModelTextureData(instanceRef.extraID);
+        uint numTextureUnits = textureData.numTextureUnits;
 
         if (numTextureUnits > 0)
         {
-            uint textureUnitIndex = drawCallData.textureUnitOffset;
+            uint textureUnitIndex = textureData.textureUnitOffset;
             ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
             uint textureTransformID1 = textureUnit.packedTextureTransformIDs & 0xFFFF;
             uint textureTransformID2 = (textureUnit.packedTextureTransformIDs >> 16) & 0xFFFF;

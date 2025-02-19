@@ -11,6 +11,8 @@ struct InstanceRef
 {
     u32 instanceID;
     u32 drawID;
+    u32 extraID; // For example ModelRenderer uses this for TextureData
+    u32 padding;
 };
 
 class CullingResourcesBase
@@ -28,21 +30,8 @@ public:
 
     virtual void Update(f32 deltaTime, bool cullingEnabled);
 
-    virtual u32 Add();
-    virtual u32 AddCount(u32 count);
-
-    virtual void Remove(u32 index);
-
-    virtual void Reserve(u32 count);
-
-    virtual bool SyncToGPU();
+    virtual bool SyncToGPU(bool forceRecount);
     virtual void Clear();
-
-    virtual bool IsDirty() const;
-    virtual void SetDirtyRegion(size_t offset, size_t size);
-    virtual void SetDirtyElement(size_t index);
-    virtual void SetDirtyElements(size_t startIndex, size_t count);
-    virtual void SetDirty();
 
     virtual u32 GetDrawCallCount() = 0;
     virtual bool IsIndexed() = 0;
@@ -130,21 +119,21 @@ class CullingResourcesIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
-    virtual u32 Add() override;
-    virtual u32 AddCount(u32 count) override;
+    virtual u32 Add();
+    virtual u32 AddCount(u32 count);
 
-    virtual void Remove(u32 index) override;
+    virtual void Remove(u32 index);
 
-    virtual void Reserve(u32 count) override;
+    virtual void Reserve(u32 count);
 
-    bool SyncToGPU() override;
+    bool SyncToGPU(bool forceRecount) override;
     void Clear() override;
 
-    virtual bool IsDirty() const override;
-    virtual void SetDirtyRegion(size_t offset, size_t size) override;
-    virtual void SetDirtyElement(size_t index) override;
-    virtual void SetDirtyElements(size_t startIndex, size_t count) override;
-    virtual void SetDirty() override;
+    virtual bool IsDirty() const;
+    virtual void SetDirtyRegion(size_t offset, size_t size);
+    virtual void SetDirtyElement(size_t index);
+    virtual void SetDirtyElements(size_t startIndex, size_t count);
+    virtual void SetDirty();
 
     u32 GetDrawCallCount() override;
     bool IsIndexed() override { return true; }
@@ -162,21 +151,21 @@ class CullingResourcesNonIndexedBase : public CullingResourcesBase
 public:
     void Init(InitParams& params) override;
 
-    virtual u32 Add() override;
-    virtual u32 AddCount(u32 count) override;
+    virtual u32 Add();
+    virtual u32 AddCount(u32 count);
 
-    virtual void Remove(u32 index) override;
+    virtual void Remove(u32 index);
 
-    virtual void Reserve(u32 count) override;
+    virtual void Reserve(u32 count);
 
-    bool SyncToGPU() override;
+    bool SyncToGPU(bool forceRecount) override;
     void Clear() override;
 
-    virtual bool IsDirty() const override;
-    virtual void SetDirtyRegion(size_t offset, size_t size) override;
-    virtual void SetDirtyElement(size_t index) override;
-    virtual void SetDirtyElements(size_t startIndex, size_t count) override;
-    virtual void SetDirty() override;
+    virtual bool IsDirty() const;
+    virtual void SetDirtyRegion(size_t offset, size_t size);
+    virtual void SetDirtyElement(size_t index);
+    virtual void SetDirtyElements(size_t startIndex, size_t count);
+    virtual void SetDirty();
 
     u32 GetDrawCallCount() override;
     bool IsIndexed() override { return false; }
@@ -201,7 +190,7 @@ public:
         _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
-        SyncToGPU();
+        SyncToGPU(false);
     }
 
     virtual u32 Add() override
@@ -241,9 +230,9 @@ public:
         _drawCallDatas.Reserve(count);
     }
 
-    bool SyncToGPU() override
+    bool SyncToGPU(bool forceRecount) override
     {
-        bool gotRecreated = CullingResourcesIndexedBase::SyncToGPU();
+        bool gotRecreated = CullingResourcesIndexedBase::SyncToGPU(forceRecount);
 
         // DrawCallDatas
         if (_drawCallDatas.SyncToGPU(_renderer))
@@ -319,7 +308,7 @@ public:
         _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
-        SyncToGPU();
+        SyncToGPU(false);
     }
 
     virtual u32 Add() override
@@ -359,9 +348,9 @@ public:
         _drawCallDatas.Reserve(count);
     }
 
-    bool SyncToGPU() override
+    bool SyncToGPU(bool forceRecount) override
     {
-        bool gotRecreated = CullingResourcesNonIndexedBase::SyncToGPU();
+        bool gotRecreated = CullingResourcesNonIndexedBase::SyncToGPU(forceRecount);
 
         // DrawCallDatas
         if (_drawCallDatas.SyncToGPU(_renderer))

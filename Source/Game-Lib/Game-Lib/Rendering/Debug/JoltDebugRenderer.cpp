@@ -153,7 +153,6 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
                 OccluderPassSetup(data, builder, &_indexedCullingResources, frameIndex);
                 data.culledDrawCallCountBuffer = builder.Write(_indexedCullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
                 data.culledInstanceCountsBuffer = builder.Write(_indexedCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                builder.Write(_indexedCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
 
                 builder.Read(_indexedCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
@@ -227,8 +226,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
                 OccluderPassSetup(data, builder, &_cullingResources, frameIndex);
                 data.culledDrawCallCountBuffer = builder.Write(_cullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
                 data.culledInstanceCountsBuffer = builder.Write(_cullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                builder.Write(_cullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
-
+                
                 builder.Read(_cullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -329,9 +327,6 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
 
                 CullingPassSetup(data, builder, &_indexedCullingResources, frameIndex);
                 builder.Read(_indexedCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
-                data.culledInstanceCountsBuffer = builder.Write(_indexedCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                data.culledDrawCallCountBuffer = builder.Write(_indexedCullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                builder.Write(_indexedCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE);
 
                 data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -398,9 +393,6 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
 
                 CullingPassSetup(data, builder, &_cullingResources, frameIndex);
                 builder.Read(_cullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
-                data.culledInstanceCountsBuffer = builder.Write(_cullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                data.culledDrawCallCountBuffer = builder.Write(_cullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-                builder.Write(_cullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE);
 
                 data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -499,9 +491,6 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 
                 GeometryPassSetup(data, builder, &_indexedCullingResources, frameIndex);
                 builder.Read(_indexedCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
-                builder.Read(_indexedCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::GRAPHICS);
-
-                data.culledDrawCallCountBuffer = builder.Write(_indexedCullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::GRAPHICS);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
 
@@ -544,6 +533,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
                 params.useInstancedCulling = true;
+                params.isIndexed = true;
                 params.numCascades = 0;
 
                 GeometryPass(params);
@@ -583,9 +573,6 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 GeometryPassSetup(data, builder, &_cullingResources, frameIndex);
                 builder.Read(_cullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
-                builder.Read(_cullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::GRAPHICS);
-
-                data.culledDrawCallCountBuffer = builder.Write(_cullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::GRAPHICS);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
 
@@ -975,8 +962,8 @@ void JoltDebugRenderer::SyncToGPU()
     }
     _indices.SyncToGPU(_renderer);
 
-    _indexedCullingResources.SyncToGPU();
-    _cullingResources.SyncToGPU();
+    _indexedCullingResources.SyncToGPU(false);
+    _cullingResources.SyncToGPU(false);
 
     BindCullingResource(_indexedCullingResources);
     BindCullingResource(_cullingResources);

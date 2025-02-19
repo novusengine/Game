@@ -19,6 +19,8 @@ struct InstanceRef
 {
 	uint instanceID;
 	uint drawID;
+	uint extraID; // Unused for Jolt
+	uint padding;
 };
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<PackedVertex> _vertices;
