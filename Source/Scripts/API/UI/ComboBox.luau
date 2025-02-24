@@ -1,6 +1,6 @@
-local UIButton = require("API/UI/Button")
+local UIButton = require("@src/API/UI/Button")
 
-local Module = { }
+local comboBoxAPI = { }
 --[[
 usage:
 .NewComboBox(panel, 0, -120, 200, 40, 0, {
@@ -71,7 +71,7 @@ local function SetupComboBoxMethods(comboBoxTable)
     return comboBoxTable
 end
 
-function Module.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTemplateTable)
+function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTemplateTable)
     local comboBoxTable = {}
     
     comboBoxTable.comboBox = parent:NewWidget(posX, posY, layer);
@@ -159,4 +159,4 @@ function Module.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTem
     return comboBoxTable;
 end
 
-return Module
+return comboBoxAPI

@@ -1,13 +1,19 @@
 #include "GlobalHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Util/MapUtil.h"
-#include "Game-Lib/ECS/Singletons/MapDB.h"
+#include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
+#include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Gameplay/Attachment/Defines.h"
+#include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Database/Item.h"
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/UnitUtil.h"
 
 #include <entt/entt.hpp>
 #include <lualib.h>
@@ -50,6 +56,7 @@ namespace Scripting
         ctx.Push(result);
         return 1;
     }
+
     i32 GlobalHandler::SetCursor(lua_State* state)
     {
         LuaState ctx(state);
@@ -69,6 +76,7 @@ namespace Scripting
         ctx.Push(result);
         return 1;
     }
+
     i32 GlobalHandler::GetCurrentMap(lua_State* state)
     {
         LuaState ctx(state);
@@ -78,6 +86,7 @@ namespace Scripting
         ctx.Push(currentMapInternalName.c_str());
         return 1;
     }
+
     i32 GlobalHandler::LoadMap(lua_State* state)
     {
         LuaState ctx(state);
@@ -92,7 +101,7 @@ namespace Scripting
         }
 
         ClientDB::Definitions::Map* map = nullptr;
-        if (!ECS::Util::Map::GetMapFromInternalName(mapInternalName, map))
+        if (!ECS::Util::Database::Map::GetMapFromInternalName(mapInternalName, map))
         {
             ctx.Push(false);
             return 1;
@@ -104,6 +113,100 @@ namespace Scripting
         mapLoader->LoadMap(mapNameHash);
 
         ctx.Push(true);
+        return 1;
+    }
+
+    i32 GlobalHandler::EquipItem(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        u32 itemID = ctx.Get(0, 1);
+        u32 slotIndex = ctx.Get(1, 2) - 1;
+
+        if (itemID == 0 || slotIndex >= (u32)::Database::Item::ItemEquipSlot::Count)
+        {
+            ctx.Push(false);
+            return 1;
+        }
+
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+        auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+        if (!itemStorage->Has(itemID))
+        {
+            ctx.Push(false);
+            return 1;
+        }
+
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
+
+        auto& unitEquipment = gameRegistry->get<ECS::Components::UnitEquipment>(characterSingleton.moverEntity);
+
+        u32 currentItemID = unitEquipment.equipmentSlotToItemID[slotIndex];
+        if (currentItemID == itemID)
+        {
+            ctx.Push(true);
+            return 1;
+        }
+
+        unitEquipment.equipmentSlotToItemID[slotIndex] = itemID;
+        unitEquipment.dirtyEquipmentSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        gameRegistry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
+
+        ctx.Push(true);
+        return 1;
+    }
+
+    i32 GlobalHandler::UnEquipItem(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        u32 slotIndex = ctx.Get(1, 1) - 1;
+
+        if (slotIndex >= (u32)::Database::Item::ItemEquipSlot::Count)
+        {
+            ctx.Push(false);
+            return 1;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+
+        auto& unitEquipment = registry->get<ECS::Components::UnitEquipment>(characterSingleton.moverEntity);
+
+        u32 currentItemID = unitEquipment.equipmentSlotToItemID[slotIndex];
+        if (currentItemID == 0)
+        {
+            ctx.Push(true);
+            return 1;
+        }
+
+        unitEquipment.equipmentSlotToItemID[slotIndex] = 0;
+        unitEquipment.dirtyEquipmentSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        registry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
+
+        ctx.Push(true);
+        return 1;
+    }
+
+    i32 GlobalHandler::GetEquippedItem(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        u32 slotIndex = ctx.Get(1, 1) - 1;
+        u32 itemID = 0;
+        if (slotIndex >= 0 && slotIndex < (u32)::Database::Item::ItemEquipSlot::Count)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+
+            auto& unitEquipment = registry->get<ECS::Components::UnitEquipment>(characterSingleton.moverEntity);
+            itemID = unitEquipment.equipmentSlotToItemID[slotIndex];
+        }
+
+        ctx.Push(itemID);
         return 1;
     }
 }

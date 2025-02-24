@@ -3,9 +3,9 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/Model.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Gameplay/Animation/Defines.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
@@ -35,26 +35,28 @@ namespace Editor
         if (ImGui::Begin(GetName()))
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-            entt::registry& registry = *registries->gameRegistry;
-            entt::registry::context& ctx = registry.ctx();
+            entt::registry& gameRegistry = *registries->gameRegistry;
+            entt::registry& dbRegistry = *registries->dbRegistry;
+            entt::registry::context& gameCtx = gameRegistry.ctx();
+            entt::registry::context& dbCtx = dbRegistry.ctx();
 
-            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& characterSingleton = gameCtx.get<Singletons::CharacterSingleton>();
             if (characterSingleton.moverEntity == entt::null)
             {
                 ImGui::Text("No Active Mover to control animations on");
             }
             else
             {
-                Singletons::ClientDBCollection& clientDBCollection = ctx.get<Singletons::ClientDBCollection>();
-                auto* animationStorage = clientDBCollection.Get(Singletons::ClientDBHash::AnimationData);
+                Singletons::Database::ClientDBSingleton& clientDBSingleton = dbCtx.get<Singletons::Database::ClientDBSingleton>();
+                auto* animationStorage = clientDBSingleton.Get(ClientDBHash::AnimationData);
 
-                auto* animationData = registry.try_get<Components::AnimationData>(characterSingleton.moverEntity);
-                auto* model = registry.try_get<Components::Model>(characterSingleton.moverEntity);
-                auto* networkedEntity = registry.try_get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+                auto* animationData = gameRegistry.try_get<Components::AnimationData>(characterSingleton.moverEntity);
+                auto* model = gameRegistry.try_get<Components::Model>(characterSingleton.moverEntity);
+                auto* unit = gameRegistry.try_get<Components::Unit>(characterSingleton.moverEntity);
                 ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
                 const auto* modelInfo = modelLoader->GetModelInfo(model->modelHash);
 
-                if (animationData && model && networkedEntity && modelInfo)
+                if (animationData && model && unit && modelInfo)
                 {
                     static i32 selectedAnimation = static_cast<i32>(::Animation::Defines::Type::Stand);
                     static i32 selectedKeyBone = static_cast<i32>(::Animation::Defines::Bone::Main);
@@ -110,21 +112,28 @@ namespace Editor
                             }
                             else
                             {
-                                const Model::ComplexModel::AnimationData<vec3>& translationAnimData = skeletonBone.translation;
-                                const Model::ComplexModel::AnimationData<quat>& rotationAnimData = skeletonBone.rotation;
-                                const Model::ComplexModel::AnimationData<vec3>& scaleAnimData = skeletonBone.scale;
-
-                                bool hasTranslation = translationAnimData.globalLoopIndex == -1 && translationAnimData.tracks.size() > sequenceID;
-                                bool hasRotation = rotationAnimData.globalLoopIndex == -1 && rotationAnimData.tracks.size() > sequenceID;
-                                bool hasScale = scaleAnimData.globalLoopIndex == -1 && scaleAnimData.tracks.size() > sequenceID;
-
-                                if (!hasTranslation && !hasRotation && !hasScale)
+                                if (boneIndex == Util::Animation::GetBoneIndexFromKeyBoneID(modelInfo, ::Animation::Defines::Bone::Default))
                                 {
-                                    skeletonHasBone = false;
+                                    skeletonHasBone = true;
                                 }
                                 else
                                 {
-                                    skeletonHasBone = true;
+                                    const Model::ComplexModel::AnimationData<vec3>& translationAnimData = skeletonBone.translation;
+                                    const Model::ComplexModel::AnimationData<quat>& rotationAnimData = skeletonBone.rotation;
+                                    const Model::ComplexModel::AnimationData<vec3>& scaleAnimData = skeletonBone.scale;
+
+                                    bool hasTranslation = translationAnimData.globalLoopIndex == -1 && translationAnimData.tracks.size() > sequenceID;
+                                    bool hasRotation = rotationAnimData.globalLoopIndex == -1 && rotationAnimData.tracks.size() > sequenceID;
+                                    bool hasScale = scaleAnimData.globalLoopIndex == -1 && scaleAnimData.tracks.size() > sequenceID;
+
+                                    if (!hasTranslation && !hasRotation && !hasScale)
+                                    {
+                                        skeletonHasBone = false;
+                                    }
+                                    else
+                                    {
+                                        skeletonHasBone = true;
+                                    }
                                 }
                             }
                         }
@@ -144,14 +153,14 @@ namespace Editor
 
                             if (boneIndex == defaultBoneIndex)
                             {
-                                networkedEntity->overrideAnimation = Type;
+                                unit->overrideAnimation = Type;
                             }
                             else
                             {
                                 popagateToChildren = true;
                             }
 
-                            Util::Animation::SetBoneSequence(registry, modelInfo, *animationData, keyBone, Type, popagateToChildren);
+                            Util::Animation::SetBoneSequence(modelInfo, *animationData, keyBone, Type, popagateToChildren);
                         }
                     }
                     else
@@ -159,37 +168,37 @@ namespace Editor
                         ImGui::Text("This animation is not supported by the model");
                     }
 
-                    if (networkedEntity->overrideAnimation != ::Animation::Defines::Type::Invalid)
+                    if (unit->overrideAnimation != ::Animation::Defines::Type::Invalid)
                     {
                         if (ImGui::Button("Clear Override"))
                         {
-                            networkedEntity->overrideAnimation = ::Animation::Defines::Type::Invalid;
+                            unit->overrideAnimation = ::Animation::Defines::Type::Invalid;
                         }
                     }
 
                     if (ImGui::Button("Toggle Left Hand"))
                     {
-                        bool isLeftHandClosed = Util::Unit::IsHandClosed(registry, characterSingleton.moverEntity, true);
+                        bool isLeftHandClosed = Util::Unit::IsHandClosed(gameRegistry, characterSingleton.moverEntity, true);
                         if (isLeftHandClosed)
                         {
-                            Util::Unit::OpenHand(registry, characterSingleton.moverEntity, true);
+                            Util::Unit::OpenHand(gameRegistry, characterSingleton.moverEntity, true);
                         }
                         else
                         {
-                            Util::Unit::CloseHand(registry, characterSingleton.moverEntity, true);
+                            Util::Unit::CloseHand(gameRegistry, characterSingleton.moverEntity, true);
                         }
                     }
 
                     if (ImGui::Button("Toggle Right Hand"))
                     {
-                        bool isRightHandClosed = Util::Unit::IsHandClosed(registry, characterSingleton.moverEntity, false);
+                        bool isRightHandClosed = Util::Unit::IsHandClosed(gameRegistry, characterSingleton.moverEntity, false);
                         if (isRightHandClosed)
                         {
-                            Util::Unit::OpenHand(registry, characterSingleton.moverEntity, false);
+                            Util::Unit::OpenHand(gameRegistry, characterSingleton.moverEntity, false);
                         }
                         else
                         {
-                            Util::Unit::CloseHand(registry, characterSingleton.moverEntity, false);
+                            Util::Unit::CloseHand(gameRegistry, characterSingleton.moverEntity, false);
                         }
                     }
 

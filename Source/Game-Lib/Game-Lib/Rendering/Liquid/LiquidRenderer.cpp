@@ -1,6 +1,6 @@
 #include "LiquidRenderer.h"
 
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/RenderResources.h"
@@ -73,8 +73,6 @@ void LiquidRenderer::Clear()
 
     _vertices.Clear();
     _indices.Clear();
-
-    _renderer->UnloadTexturesInArray(_textures, 1);
 }
 
 void LiquidRenderer::Reserve(const ReserveInfo& info, LiquidReserveOffsets& reserveOffsets)
@@ -124,58 +122,24 @@ void LiquidRenderer::Load(LoadDesc& desc)
     drawCallData.liquidType = 0;
     drawCallData.uvAnim = hvec2(0.0f, 0.0f);
 
-    // TODO : LOAD LIQUID TEXTURES UP FRONT FROM CDB
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    entt::registry::context& ctx = registry->ctx();
+    auto& clientDBSingleton = ctx.get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* liquidTypes = clientDBSingleton.Get(ClientDBHash::LiquidType);
 
-    // Load textures if they exist
-    //entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    //entt::registry::context& ctx = registry->ctx();
-    //auto& clientDBCollection = ctx.get<ECS::Singletons::ClientDBCollection>();
-    //auto* liquidTypes = clientDBCollection.Get<ClientDB::Definitions::LiquidType>(ECS::Singletons::ClientDBHash::LiquidType);
-    //
     bool isLavaOrSlime = false;
-    //if (liquidTypes->HasRow(desc.typeID))
-    //{
-    //    const ClientDB::Definitions::LiquidType* liquidType = liquidTypes->GetRow(desc.typeID);
-    //
-    //    u16 textureStartIndex = 0;
-    //    u32 textureCount = liquidType->frameCountTextures[0];
-    //
-    //    if (textureCount > std::numeric_limits<u8>().max())
-    //    {
-    //        NC_LOG_CRITICAL("Tried to load a liquid texture with more than 255 frames!");
-    //    }
-    //
-    //    {
-    //        std::scoped_lock lock(_textureMutex);
-    //
-    //        char textureBuffer[256];
-    //        for (u32 i = 0; i < liquidType->frameCountTextures[0]; i++)
-    //        {
-    //            i32 length = StringUtils::FormatString(textureBuffer, 256, liquidType->textures[0].c_str(), i + 1);
-    //        
-    //            Renderer::TextureDesc textureDesc;
-    //            textureDesc.path = "Data/Texture/" + std::string(textureBuffer, length);
-    //        
-    //            u32 index;
-    //            _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
-    //        
-    //            if (i == 0)
-    //            {
-    //                textureStartIndex = static_cast<u16>(index);
-    //            }
-    //        }
-    //    }
-    //
-    //    if (liquidType->soundBank == 2 || liquidType->soundBank == 3)
-    //    {
-    //        isLavaOrSlime = true;
-    //    }
-    //
-    //    drawCallData.textureStartIndex = textureStartIndex;
-    //    drawCallData.textureCount = textureCount;
-    //    drawCallData.liquidType = liquidType->soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
-    //    drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
-    //}
+    if (liquidTypes->Has(desc.typeID))
+    {
+        const auto& liquidType = liquidTypes->Get<ClientDB::Definitions::LiquidType>(desc.typeID);
+
+        const auto& liquidTextureMap = _liquidTypeIDToLiquidTextureMap[desc.typeID];
+        drawCallData.textureStartIndex = liquidTextureMap.baseTextureIndex;
+        drawCallData.textureCount = liquidTextureMap.numFramesForTexture;
+        drawCallData.liquidType = liquidType.soundBank; // This is a workaround for now, but we don't want to rely on soundbank for knowing if this is liquid, lava or slime in the future
+        drawCallData.uvAnim = hvec2(0.0f, 0.0f); // TODO: Load this from Vertex format data
+
+        isLavaOrSlime = liquidType.soundBank == 2 || liquidType.soundBank == 3;
+    }
 
     // Write vertices and calculate bounding box
     vec3 min = vec3(100000, 100000, 100000);
@@ -580,6 +544,63 @@ void LiquidRenderer::CreatePermanentResources()
 
     _depthCopySampler = _renderer->CreateSampler(samplerDesc);
     _copyDescriptorSet.Bind("_sampler"_h, _depthCopySampler);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    entt::registry::context& ctx = registry->ctx();
+    auto& clientDBSingleton = ctx.get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* liquidTypes = clientDBSingleton.Get(ClientDBHash::LiquidType);
+
+    u32 numLiquidTypes = liquidTypes->GetNumRows();
+    _liquidTypeIDToLiquidTextureMap.reserve(numLiquidTypes);
+
+    char textureNameBuffer[512] = { 0 };
+    liquidTypes->Each([this, &liquidTypes, &textureNameBuffer](u32 id, const ClientDB::Definitions::LiquidType& liquidType)
+    {
+        // Ensure we always have a base index for all liquidTypes, default to 0
+        _liquidTypeIDToLiquidTextureMap[id] =
+        {
+            .baseTextureIndex = 0,
+            .numFramesForTexture = 1
+        };
+
+        const std::string& baseTexture = liquidTypes->GetString(liquidType.textures[0]);
+        u32 numFramesForBaseTexture = liquidType.frameCountTextures[0];
+
+        if (baseTexture.length() == 0 || numFramesForBaseTexture == 0)
+            return true;
+
+        if (numFramesForBaseTexture > std::numeric_limits<u8>().max())
+        {
+            NC_LOG_ERROR("Tried to load a liquid texture with more than 255 frames! (\"{0}\", {1})", baseTexture, numFramesForBaseTexture);
+            return true;
+        }
+
+        u32 baseTextureIndex = 0;
+        for (u32 i = 0; i < numFramesForBaseTexture; i++)
+        {
+            i32 length = StringUtils::FormatString(textureNameBuffer, 512, baseTexture.c_str(), i + 1);
+            std::string texturePath = "Data/Texture/" + std::string(textureNameBuffer, length);
+
+            Renderer::TextureDesc textureDesc =
+            {
+                .path = std::move(texturePath)
+            };
+
+            u32 index;
+            _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
+
+            if (i == 0)
+                baseTextureIndex = static_cast<u16>(index);
+        }
+
+        _liquidTypeIDToLiquidTextureMap[id] =
+        {
+            .baseTextureIndex = baseTextureIndex,
+            .numFramesForTexture = numFramesForBaseTexture
+        };
+
+        return true;
+    });
 }
 
 void LiquidRenderer::SyncToGPU()

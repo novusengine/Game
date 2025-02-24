@@ -4,17 +4,19 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
+#include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Util/CameraSaveUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
@@ -122,6 +124,12 @@ bool GameConsoleCommands::HandleReloadScripts(GameConsoleCommandHandler* command
     return false;
 }
 
+bool GameConsoleCommands::HandleRefresh(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    ECS::Util::EventUtil::PushEvent(ECS::Components::RefreshDatabaseEvent{});
+    return false;
+}
+
 bool GameConsoleCommands::HandleSetCursor(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 {
     if (subCommands.size() == 0)
@@ -146,7 +154,7 @@ bool GameConsoleCommands::HandleSaveCamera(GameConsoleCommandHandler* commandHan
         return false;
 
     std::string saveCode;
-    if (Util::CameraSave::GenerateSaveLocation(cameraSaveName, saveCode))
+    if (ECS::Util::Database::Camera::GenerateSaveLocation(cameraSaveName, saveCode))
     {
         gameConsole->PrintSuccess("Camera Save Code : %s : %s", cameraSaveName.c_str(), saveCode.c_str());
     }
@@ -168,7 +176,7 @@ bool GameConsoleCommands::HandleLoadCamera(GameConsoleCommandHandler* commandHan
     if (base64.size() == 0)
         return false;
 
-    if (Util::CameraSave::LoadSaveLocationFromBase64(base64))
+    if (ECS::Util::Database::Camera::LoadSaveLocationFromBase64(base64))
     {
         gameConsole->PrintSuccess("Loaded Camera Code : %s", base64.c_str());
     }
@@ -193,7 +201,7 @@ bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
     auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-    auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
+    auto& unit = registry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
 
     if (networkState.client && networkState.client->IsConnected())
     {
@@ -206,7 +214,7 @@ bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, 
     else
     {
         auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
-        castInfo.target = networkedEntity.targetEntity;
+        castInfo.target = unit.targetEntity;
         castInfo.castTime = 1.0f;
         castInfo.duration = 0.0f;
     }
@@ -297,14 +305,15 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
     const std::string& morphIDAsString = subCommands[0];
     const u32 displayID = std::stoi(morphIDAsString);
 
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
-    auto* creatureDisplayStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* creatureDisplayStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
 
     if (!creatureDisplayStorage->Has(displayID))
         return false;
 
-    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+    ECS::Singletons::NetworkState& networkState = gameRegistry->ctx().get<ECS::Singletons::NetworkState>();
 
     if (networkState.client && networkState.client->IsConnected())
     {
@@ -316,15 +325,38 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
     }
     else
     {
-        auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+        auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-        auto& model = registry->get<ECS::Components::Model>(characterSingleton.moverEntity);
+        auto& model = gameRegistry->get<ECS::Components::Model>(characterSingleton.moverEntity);
         if (!modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, model, ClientDB::Definitions::DisplayInfoType::Creature, displayID))
             return false;
 
         gameConsole->PrintSuccess("Morphed into : %u", displayID);
     }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleFly(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    const std::string& morphIDAsString = subCommands[0];
+    const u32 mode = std::stoi(morphIDAsString);
+    bool enableFlying = mode > 0;
+
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    if (characterSingleton.moverEntity == entt::null)
+    {
+        gameConsole->PrintError("Failed to handle flying command, character does not exist");
+        return true;
+    }
+
+    auto& movementInfo = gameRegistry->get<ECS::Components::MovementInfo>(characterSingleton.moverEntity);
+    movementInfo.movementFlags.flying = enableFlying;
 
     return true;
 }
@@ -586,5 +618,215 @@ bool GameConsoleCommands::HandleSetLevel(GameConsoleCommandHandler* commandHandl
         networkState.client->Send(buffer);
     }
 
+    return true;
+}
+
+bool GameConsoleCommands::HandleSyncItem(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    const std::string& itemIDAsString = subCommands[0];
+    if (!StringUtils::StringIsNumeric(itemIDAsString))
+        return false;
+
+    u32 itemID = std::stoi(itemIDAsString);
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+    if (!itemStorage->Has(itemID))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1024>();
+
+    auto& item = itemStorage->Get<Database::Item::Item>(itemID);
+
+    if (item.statTemplateID > 0)
+    {
+        auto* statTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
+        if (statTemplateStorage->Has(item.statTemplateID))
+        {
+            auto& statTemplate = statTemplateStorage->Get<Database::Item::ItemStatTemplate>(item.statTemplateID);
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
+                return false;
+        }
+    }
+
+    if (item.armorTemplateID > 0)
+    {
+        auto* armorTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);
+        if (armorTemplateStorage->Has(item.armorTemplateID))
+        {
+            auto& armorTemplate = armorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(item.armorTemplateID);
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
+                return false;
+        }
+    }
+
+    if (item.weaponTemplateID > 0)
+    {
+        auto* weaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
+        if (weaponTemplateStorage->Has(item.weaponTemplateID))
+        {
+            auto& weaponTemplate = weaponTemplateStorage->Get<Database::Item::ItemWeaponTemplate>(item.weaponTemplateID);
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
+                return false;
+        }
+    }
+
+    if (item.shieldTemplateID > 0)
+    {
+        auto* shieldTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
+        if (shieldTemplateStorage->Has(item.shieldTemplateID))
+        {
+            auto& shieldTemplate = shieldTemplateStorage->Get<Database::Item::ItemShieldTemplate>(item.shieldTemplateID);
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
+                return false;
+        }
+    }
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemTemplate(buffer, itemStorage, itemID, item))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleForceSyncItems(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+    u32 numItems = itemStorage->GetNumRows();
+    if (numItems == 0)
+        return false;
+
+    auto* statTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
+    auto* armorTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);
+    auto* weaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
+    auto* shieldTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1048576>();
+
+    itemStorage->Each([&](u32 id, const Database::Item::Item& item)
+    {
+        if (item.statTemplateID > 0)
+        {
+            if (statTemplateStorage->Has(item.statTemplateID))
+            {
+                auto& statTemplate = statTemplateStorage->Get<Database::Item::ItemStatTemplate>(item.statTemplateID);
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
+                    return false;
+            }
+        }
+
+        if (item.armorTemplateID > 0)
+        {
+            if (armorTemplateStorage->Has(item.armorTemplateID))
+            {
+                auto& armorTemplate = armorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(item.armorTemplateID);
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
+                    return false;
+            }
+        }
+
+        if (item.weaponTemplateID > 0)
+        {
+            if (weaponTemplateStorage->Has(item.weaponTemplateID))
+            {
+                auto& weaponTemplate = weaponTemplateStorage->Get<Database::Item::ItemWeaponTemplate>(item.weaponTemplateID);
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
+                    return false;
+            }
+        }
+
+        if (item.shieldTemplateID > 0)
+        {
+            if (shieldTemplateStorage->Has(item.shieldTemplateID))
+            {
+                auto& shieldTemplate = shieldTemplateStorage->Get<Database::Item::ItemShieldTemplate>(item.shieldTemplateID);
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
+                    return false;
+            }
+        }
+
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemTemplate(buffer, itemStorage, id, item))
+            return false;
+
+        return true;
+    });
+
+    if (buffer->writtenData == 0)
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleAddItem(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
+{
+    u32 numSubCommands = static_cast<u32>(subCommands.size());
+    if (numSubCommands == 0)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    const std::string& itemIDAsString = subCommands[0];
+    if (!StringUtils::StringIsNumeric(itemIDAsString))
+        return false;
+
+    u32 itemID = std::stoi(itemIDAsString);
+    i32 itemCount = 1;
+
+    if (numSubCommands > 1)
+    {
+        const std::string& itemCountAsString = subCommands[1];
+        if (!StringUtils::StringIsNumeric(itemCountAsString))
+            return false;
+
+        itemCount = std::stoi(itemCountAsString);
+        if (itemCount == 0)
+            return false;
+    }
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+    if (!itemStorage->Has(itemID))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+    if (itemCount > 0)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatAddItem(buffer, itemID, (u32)itemCount))
+            return false;
+    }
+    else
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatRemoveItem(buffer, itemID, (u32)glm::abs(itemCount)))
+            return false;
+    }
+
+    networkState.client->Send(buffer);
     return true;
 }

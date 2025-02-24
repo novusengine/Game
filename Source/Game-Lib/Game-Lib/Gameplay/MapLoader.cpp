@@ -3,8 +3,8 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Inspector.h"
 #include "Game-Lib/ECS/Components/Events.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
-#include "Game-Lib/ECS/Singletons/MapDB.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
@@ -28,6 +28,7 @@
 namespace fs = std::filesystem;
 
 using namespace ECS::Singletons;
+using namespace ECS::Singletons::Database;
 
 void MapLoader::Update(f32 deltaTime)
 {
@@ -60,12 +61,12 @@ void MapLoader::Update(f32 deltaTime)
     }
     else
     {
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& clientDBCollection = registry->ctx().get<ClientDBCollection>();
-        auto& mapDB = registry->ctx().get<MapDB>();
-        auto* mapStorage = clientDBCollection.Get(ClientDBHash::Map);
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
+        auto& mapSingleton = registry->ctx().get<MapSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-        const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapDB.mapInternalNameHashToID;
+        const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapSingleton.mapInternalNameHashToID;
 
         if (!internalNameHashToID.contains(request.internalMapNameHash))
             return;

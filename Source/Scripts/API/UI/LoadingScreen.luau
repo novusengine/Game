@@ -1,6 +1,6 @@
-local UISlider = require('API/UI/Slider')
+local loadingScreenAPI = { }
 
-local Module = { }
+local UISlider = require("@src/API/UI/Slider")
 
 --[[
 usage:
@@ -47,25 +47,10 @@ __LoadingScreenData =
         ["ArathiBasin"]         = "Data/Texture/interface/glues/loadingscreens/loadscreenarathibasin.dds",
         ["WarsongGulch"]        = "Data/Texture/interface/glues/loadingscreens/loadscreenwarsonggulch.dds",
         ["ScarletMonastery"]    = "Data/Texture/interface/glues/loadingscreens/loadscreenmonastery.dds"
-    },
-
-    OnGameUpdated = function(eventID : number, deltaTime : number)
-        local progress = __LoadingScreenData.loadingBarSlider:GetProgress()
-        if (progress >= 1.0) then
-            __LoadingScreenData.loadingScreenPanel:SetEnabled(false)
-            return
-        end
-
-        local rand = math.random(0, 1)
-        local numToAdd = rand * deltaTime
-        progress += numToAdd
-
-        __LoadingScreenData.loadingBarSlider:SetProgress(progress)
-    end
+    }
 }
-RegisterGameEvent(GameEvent.Updated, __LoadingScreenData.OnGameUpdated)
 
-function Module.SetLoadingScreen(texturePath)
+function loadingScreenAPI.SetLoadingScreen(texturePath)
     local texture = texturePath or "Default"
     local nameToTextureVal = __LoadingScreenData.nameToTextureMap[texture]
     texture = nameToTextureVal or texture
@@ -75,4 +60,21 @@ function Module.SetLoadingScreen(texturePath)
     __LoadingScreenData.loadingScreenPanel:SetEnabled(true)
 end
 
-return Module
+local function OnGameUpdated(eventID : number, deltaTime : number)
+
+    local progress = __LoadingScreenData.loadingBarSlider:GetProgress()
+    if (progress >= 1.0) then
+        __LoadingScreenData.loadingScreenPanel:SetEnabled(false)
+        return
+    end
+
+    local rand = math.random(0, 1)
+    local numToAdd = rand * deltaTime
+    progress += numToAdd
+
+    __LoadingScreenData.loadingBarSlider:SetProgress(progress)
+end
+
+RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
+
+return loadingScreenAPI

@@ -1,5 +1,6 @@
 #pragma once
 #include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/Gameplay/Database/Item.h"
 
 #include <Base/Types.h>
 #include <Base/Memory/Bytebuffer.h>
@@ -12,6 +13,11 @@
 #include <functional>
 #include <limits>
 #include <memory>
+
+namespace ClientDB
+{
+    struct Data;
+}
 
 namespace ECS
 {
@@ -41,7 +47,12 @@ namespace ECS
         namespace Entity
         {
             bool BuildMoveMessage(std::shared_ptr<Bytebuffer>& buffer, const vec3& position, const quat& rotation, const Components::MovementFlags& movementFlags, f32 verticalVelocity);
-            bool BuildTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, entt::entity entity);
+            bool BuildTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, GameDefine::ObjectGuid targetGuid);
+        }
+
+        namespace Container
+        {
+            bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u8 srcContainerIndex, u8 destContainerIndex, u8 srcSlotIndex, u8 destSlotIndex);
         }
 
         namespace Spell
@@ -68,6 +79,13 @@ namespace ECS
             bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender);
             bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass);
             bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level);
+            bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Database::Item::Item& item);
+            bool BuildCheatSetItemStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Database::Item::ItemStatTemplate& statTemplate);
+            bool BuildCheatSetItemArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Database::Item::ItemArmorTemplate& armorTemplate);
+            bool BuildCheatSetItemWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Database::Item::ItemWeaponTemplate& weaponTemplate);
+            bool BuildCheatSetItemShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Database::Item::ItemShieldTemplate& shieldTemplate);
+            bool BuildCheatAddItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount);
+            bool BuildCheatRemoveItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount);
         }
     }
 }

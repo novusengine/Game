@@ -96,7 +96,7 @@ namespace ECS::Systems::UI
 
                         if (inputDownEvent != -1)
                         {
-                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, mousePos);
+                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, key, mousePos);
                         }
 
                         if (hasFocusEvent)
@@ -123,7 +123,12 @@ namespace ECS::Systems::UI
                 if (eventInputInfo)
                 {
                     eventInputInfo->isClicked = false;
-                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
+
+                    u32 templateHash = eventInputInfo->onClickTemplateHash;
+                    if (templateHash)
+                    {
+                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
+                    }
 
                     if (eventInputInfo->onMouseUpEvent != -1)
                     {
@@ -132,7 +137,115 @@ namespace ECS::Systems::UI
                         if (isWithin)
                         {
                             auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
-                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, mousePos);
+                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, key, mousePos);
+                        }
+                    }
+                }
+
+                uiSingleton.clickedEntity = entt::null;
+            }
+
+            return false;
+        });
+
+        keybindGroup->AddKeyboardCallback("UI Click", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [&registry, inputManager](i32 key, KeybindAction action, KeybindModifier modifier)
+        {
+            auto& ctx = registry.ctx();
+            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+
+            vec2 mousePos = inputManager->GetMousePosition();
+
+            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+            const vec2& renderSize = renderer->GetRenderSize();
+            mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
+
+            uiSingleton.lastClickPosition = mousePos;
+
+            mousePos = mousePos / renderSize;
+            mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
+            bool isDown = action == KeybindAction::Press;
+            if (isDown)
+            {
+                for (auto& pair : uiSingleton.allHoveredEntities)
+                {
+                    entt::entity entity = pair.second;
+
+                    auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(entity);
+
+                    if (!eventInputInfo)
+                    {
+                        continue;
+                    }
+
+                    auto& widget = registry.get<Components::UI::Widget>(entity);
+
+                    u32 templateHash = eventInputInfo->onClickTemplateHash;
+
+                    i32 inputDownEvent = eventInputInfo->onMouseDownEvent;
+                    i32 inputUpEvent = eventInputInfo->onMouseUpEvent;
+                    i32 heldEvent = eventInputInfo->onMouseHeldEvent;
+                    bool hasInputEvent = inputDownEvent != -1 || inputUpEvent != -1 || heldEvent != -1;
+
+                    i32 focusBeginEvent = eventInputInfo->onFocusBeginEvent;
+                    i32 focusEndEvent = eventInputInfo->onFocusEndEvent;
+                    i32 focusHeldEvent = eventInputInfo->onFocusHeldEvent;
+                    bool isFocusable = widget.IsFocusable();
+                    bool hasFocusEvent = (focusBeginEvent != -1 || focusEndEvent != -1 || focusHeldEvent != -1) && isFocusable;
+
+                    if (templateHash != 0 || hasInputEvent)
+                    {
+                        eventInputInfo->isClicked = true;
+
+                        if (templateHash != 0)
+                        {
+                            ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
+                        }
+
+                        if (inputDownEvent != -1)
+                        {
+                            ECS::Util::UI::CallLuaEvent(inputDownEvent, Scripting::UI::UIInputEvent::MouseDown, widget.scriptWidget, key, mousePos);
+                        }
+
+                        if (hasFocusEvent)
+                        {
+                            ECS::Util::UI::FocusWidgetEntity(&registry, entity);
+                        }
+                        else
+                        {
+                            ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
+                        }
+
+                        uiSingleton.clickedEntity = entity;
+                        return true;
+                    }
+                }
+
+                ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
+            }
+
+            if (!isDown && uiSingleton.clickedEntity != entt::null)
+            {
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.clickedEntity);
+
+                if (eventInputInfo)
+                {
+                    eventInputInfo->isClicked = false;
+
+                    u32 templateHash = eventInputInfo->onClickTemplateHash;
+                    if (templateHash)
+                    {
+                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
+                    }
+
+                    if (eventInputInfo->onMouseUpEvent != -1)
+                    {
+                        auto& rect = registry.get<Components::UI::BoundingRect>(uiSingleton.clickedEntity);
+                        bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+                        if (isWithin)
+                        {
+                            auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
+                            ECS::Util::UI::CallLuaEvent(eventInputInfo->onMouseUpEvent, Scripting::UI::UIInputEvent::MouseUp, widget.scriptWidget, key, mousePos);
                         }
                     }
                 }
@@ -157,26 +270,26 @@ namespace ECS::Systems::UI
         });
 
         keybindGroup->AddAnyUnicodeCallback([&registry](u32 unicode) -> bool
+        {
+            auto& ctx = registry.ctx();
+            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+
+            if (uiSingleton.focusedEntity != entt::null)
             {
-                auto& ctx = registry.ctx();
-                auto& uiSingleton = ctx.get<Singletons::UISingleton>();
-
-                if (uiSingleton.focusedEntity != entt::null)
+                auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton.focusedEntity);
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
+                if (!widget || !eventInputInfo)
                 {
-                    auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton.focusedEntity);
-                    auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
-                    if (!widget || !eventInputInfo)
-                    {
-                        return false;
-                    }
-
-                    ECS::Util::UI::CallUnicodeEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, unicode);
-                    
-                    return true;
+                    return false;
                 }
 
-                return false;
-            });
+                ECS::Util::UI::CallUnicodeEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, unicode);
+                
+                return true;
+            }
+
+            return false;
+        });
 
         keybindGroup->AddKeyboardInputValidator("KeyboardUIInputValidator", [&registry](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
         {
@@ -220,47 +333,53 @@ namespace ECS::Systems::UI
 
         auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
 
+        if (uiSingleton.cursorCanvasEntity != entt::null)
+            transform2DSystem.SetWorldPosition(uiSingleton.cursorCanvasEntity, mousePos);
+
         // Loop over widget roots
-        registry.view<Components::UI::WidgetRoot>().each([&](auto entity)
+        if (!inputManager->IsCursorVirtual())
         {
-            // Loop over children recursively (depth first)
-            transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
+            registry.view<Components::UI::WidgetRoot>().each([&](auto entity)
             {
-                auto& widget = registry.get<Components::UI::Widget>(childEntity);
-
-                if (!widget.IsVisible())
-                    return false;
-
-                if (!widget.IsInteractable())
-                    return true;
-
-                if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
-                    return true;
-
-                auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
-                if (rect == nullptr)
+                // Loop over children recursively (depth first)
+                transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
                 {
+                    auto& widget = registry.get<Components::UI::Widget>(childEntity);
+
+                    if (!widget.IsVisible())
+                        return false;
+
+                    if (!widget.IsInteractable())
+                        return true;
+
+                    if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
+                        return true;
+
+                    auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
+                    if (rect == nullptr)
+                    {
+                        return true;
+                    }
+
+                    bool isWithin = IsWithin(mousePos, rect->min, rect->max);
+
+                    if (isWithin)
+                    {
+                        Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
+
+                        vec2 middlePoint = (rect->min + rect->max) * 0.5f;
+
+                        u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
+                        u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
+                        u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
+
+                        u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
+                        uiSingleton.allHoveredEntities[key] = childEntity;
+                    }
                     return true;
-                }
-
-                bool isWithin = IsWithin(mousePos, rect->min, rect->max);
-
-                if (isWithin)
-                {
-                    Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
-
-                    vec2 middlePoint = (rect->min + rect->max) * 0.5f;
-
-                    u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
-                    u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
-                    u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
-
-                    u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
-                    uiSingleton.allHoveredEntities[key] = childEntity;
-                }
-                return true;
+                });
             });
-        });
+        }
 
         DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
 
@@ -294,6 +413,12 @@ namespace ECS::Systems::UI
             if (uiSingleton.hoveredEntity == entity)
             {
                 // Same entity is being hovered
+                if (eventInputInfo->onHoverHeldEvent != -1)
+                {
+                    auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                    ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverHeldEvent, Scripting::UI::UIInputEvent::HoverHeld, widget.scriptWidget);
+                }
+
                 foundHoverEvent = true;
                 break;
             }
@@ -307,10 +432,13 @@ namespace ECS::Systems::UI
             {
                 auto* oldEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.hoveredEntity);
 
-                oldEventInputInfo->isHovered = false;
                 if (oldEventInputInfo)
                 {
-                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
+                    oldEventInputInfo->isHovered = false;
+
+                    u32 hoverTemplate = oldEventInputInfo->onHoverTemplateHash;
+                    if (hoverTemplate != 0)
+                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
 
                     if (oldEventInputInfo->onHoverEndEvent != -1)
                     {
@@ -321,7 +449,10 @@ namespace ECS::Systems::UI
             }
 
             eventInputInfo->isHovered = true;
-            ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
+
+            u32 hoverTemplate = eventInputInfo->onHoverTemplateHash;
+            if (hoverTemplate != 0)
+                ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
 
             if (eventInputInfo->onHoverBeginEvent != -1)
             {
@@ -343,7 +474,16 @@ namespace ECS::Systems::UI
                 if (oldEventInputInfo)
                 {
                     oldEventInputInfo->isHovered = false;
-                    ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
+
+                    u32 hoverTemplate = oldEventInputInfo->onHoverTemplateHash;
+                    if (hoverTemplate != 0)
+                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
+
+                    if (oldEventInputInfo->onHoverEndEvent != -1)
+                    {
+                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                        ECS::Util::UI::CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvent::HoverEnd, widget.scriptWidget);
+                    }
                 }
 
                 uiSingleton.hoveredEntity = entt::null;

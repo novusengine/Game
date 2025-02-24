@@ -7,22 +7,20 @@ namespace Scripting::UI
 {
     static LuaMethod boxStaticFunctions[] =
     {
-        { "new", BoxMethods::CreateBox },
-
-        { nullptr, nullptr }
+        { "new", BoxMethods::CreateBox }
     };
 
-    static LuaMethod boxMethods[] =
-    {
-        { nullptr, nullptr }
-    };
+    //static LuaMethod boxMethods[] =
+    //{
+    //    { nullptr, nullptr }
+    //};
 
     void Box::Register(lua_State* state)
     {
         LuaMethodTable::Set(state, boxStaticFunctions, "Box");
 
         LuaMetaTable<Box>::Register(state, "BoxMetaTable");
-        LuaMetaTable<Box>::Set(state, boxMethods);
+        //LuaMetaTable<Box>::Set(state, boxMethods);
     }
 
     namespace BoxMethods

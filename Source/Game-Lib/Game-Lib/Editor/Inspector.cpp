@@ -10,7 +10,6 @@
 #include <Game-Lib/Rendering/Debug/DebugRenderer.h>
 #include <Game-Lib/Rendering/PixelQuery.h>
 #include <Game-Lib/Rendering/Camera.h>
-#include <Game-Lib/ECS/Singletons/MapDB.h>
 #include <Game-Lib/ECS/Singletons/TextureSingleton.h>
 #include <Game-Lib/ECS/Singletons/ActiveCamera.h>
 #include <Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h>
@@ -309,6 +308,8 @@ namespace Editor
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
+        ImGui::Text("Entity: %d", entt::to_integral(entity));
+
         ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity);
         if (!name)
         {
@@ -489,19 +490,23 @@ namespace Editor
                 GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
                 ModelLoader* modelLoader = gameRenderer->GetModelLoader();
 
-                if (ImGui::Checkbox("Visible", &model->visible))
+                bool visible = model->flags.visible;
+                if (ImGui::Checkbox("Visible", &visible))
                 {
-                    modelLoader->SetModelVisible(*model, model->visible);
+                    model->flags.visible = visible;
+                    modelLoader->SetModelVisible(*model, model->flags.visible);
                 }
 
-                if (ImGui::Checkbox("Forced Transparency", &model->forcedTransparency))
+                bool forcedTransparency = model->flags.forcedTransparency;
+                if (ImGui::Checkbox("Forced Transparency", &forcedTransparency))
                 {
-                    modelLoader->SetModelTransparent(*model, model->forcedTransparency, model->opacity);
+                    model->flags.forcedTransparency = forcedTransparency;
+                    modelLoader->SetModelTransparent(*model, model->flags.forcedTransparency, model->opacity);
                 }
 
                 if (ImGui::SliderFloat("Opacity", &model->opacity, 0.0f, 1.0f))
                 {
-                    modelLoader->SetModelTransparent(*model, model->forcedTransparency, model->opacity);
+                    modelLoader->SetModelTransparent(*model, model->flags.forcedTransparency, model->opacity);
                 }
             }
             Util::Imgui::EndGroupPanel();

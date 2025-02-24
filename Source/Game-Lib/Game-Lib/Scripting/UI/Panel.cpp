@@ -23,9 +23,7 @@ namespace Scripting::UI
         { "SetHeight", PanelMethods::SetHeight },
 
         { "SetBackground", PanelMethods::SetBackground },
-        { "SetForeground", PanelMethods::SetForeground },
-
-        { nullptr, nullptr }
+        { "SetForeground", PanelMethods::SetForeground }
     };
 
     void Panel::Register(lua_State* state)
@@ -169,6 +167,7 @@ namespace Scripting::UI
             
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& panelMethods = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
 
             const char* texture = ctx.Get(nullptr, 2);
             if (texture)
@@ -197,6 +196,7 @@ namespace Scripting::UI
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& panelMethods = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
 
             const char* texture = ctx.Get(nullptr, 2);
             if (texture)

@@ -1,5 +1,5 @@
 #pragma once
-#include "ClientDBCollection.h"
+#include "ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
@@ -11,14 +11,17 @@
 #include <entt/entt.hpp>
 #include <robinhood/robinhood.h>
 
-namespace ECS::Singletons
+namespace ECS
 {
-    struct MapDB
+    namespace Singletons::Database
     {
-    public:
-        MapDB() { }
+        struct MapSingleton
+        {
+        public:
+            MapSingleton() { }
 
-    public:
-        robin_hood::unordered_map<u32, u32> mapInternalNameHashToID;
-    };
+        public:
+            robin_hood::unordered_map<u32, u32> mapInternalNameHashToID;
+        };
+    }
 }

@@ -1,7 +1,7 @@
 #include "ClientDBUtil.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Container/ConcurrentQueue.h>
@@ -61,9 +61,9 @@ namespace Util::ClientDB
         u32 numTotalClientDBs = static_cast<u32>(clientDBPairs.size_approx());
         u32 numLoadedClientDBs = 0;
 
-        entt::registry::context& ctx = registries->gameRegistry->ctx();
-        auto& clientDBCollection = ctx.emplace<ECS::Singletons::ClientDBCollection>();
-        clientDBCollection.Reserve(numTotalClientDBs);
+        entt::registry::context& ctx = registries->dbRegistry->ctx();
+        auto& clientDBSingleton = ctx.emplace<ECS::Singletons::Database::ClientDBSingleton>();
+        clientDBSingleton.Reserve(numTotalClientDBs);
 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<8388608>();
 
@@ -89,11 +89,11 @@ namespace Util::ClientDB
 
             reader.Read(buffer.get(), reader.Length());
 
-            auto hash = static_cast<ECS::Singletons::ClientDBHash>(discoveredDB.hash);
-            if (!clientDBCollection.Register(hash, discoveredDB.fileName))
+            auto hash = static_cast<ClientDBHash>(discoveredDB.hash);
+            if (!clientDBSingleton.Register(hash, discoveredDB.fileName))
                 continue;
 
-            ::ClientDB::Data* db = clientDBCollection.Get(hash);
+            ::ClientDB::Data* db = clientDBSingleton.Get(hash);
             if (!db->Read(buffer))
             {
                 NC_LOG_ERROR("ClientDBLoader : Failed to load '{0}'. Could not read ClientDB from Buffer.", discoveredDB.fileName);

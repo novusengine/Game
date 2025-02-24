@@ -32,7 +32,8 @@ namespace Util::Attachment
 
         return attachmentIndex;
     }
-    bool CanUseAttachment(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, u16& attachmentIndex)
+
+    bool CanUseAttachment(const Model::ComplexModel* modelInfo, ::Attachment::Defines::Type attachment, u16& attachmentIndex)
     {
         attachmentIndex = Util::Attachment::GetAttachmentIndexFromAttachmentID(modelInfo, attachment);
 
@@ -65,7 +66,7 @@ namespace Util::Attachment
             return false;
 
         u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
-        if (!CanUseAttachment(modelInfo, attachmentData, attachment, attachmentIndex))
+        if (!CanUseAttachment(modelInfo, attachment, attachmentIndex))
             return false;
 
         if (HasActiveAttachment(attachmentData, attachment))

@@ -1,10 +1,10 @@
-local UIStack = require("API/UI/UIStack")
-local UIButton = require("API/UI/Button")
-local UISlider = require("API/UI/Slider")
-local UICheckbox = require("API/UI/Checkbox")
-local UIComboBox = require("API/UI/ComboBox")
-local UIInputBox = require("API/UI/InputBox")
-local UILoadingScreen = require("API/UI/LoadingScreen")
+local UIStack = require("@src/API/UI/UIStack")
+local UIButton = require("@src/API/UI/Button")
+local UISlider = require("@src/API/UI/Slider")
+local UICheckbox = require("@src/API/UI/Checkbox")
+local UIComboBox = require("@src/API/UI/ComboBox")
+local UIInputBox = require("@src/API/UI/InputBox")
+local UILoadingScreen = require("@src/API/UI/LoadingScreen")
 
 -- TODO: Borders :(
 
@@ -14,11 +14,11 @@ local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
     end
 end
 
-local function Demo()
+local function CreateSingleLineDemo()
     local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080);
 
     -- Create a panel
-    local panel = canvas:NewPanel(0, 0, 800, 800, 0, "DialogBox");
+    local panel = canvas:NewPanel(-215, 0, 400, 400, 0, "DialogBox");
     panel:SetAnchor(0.5, 0.5);
     panel:SetRelativePoint(0.5, 0.5);
 
@@ -41,6 +41,40 @@ local function Demo()
     local center = panel:NewText("Center", 0, 0, 0, "DefaultButtonText");
     center:SetAnchor(0.5, 0.5);
     center:SetRelativePoint(0.5, 0.5);
+end
+
+local function CreateMultiLineDemo()
+    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080);
+
+    -- Create a panel
+    local panel = canvas:NewPanel(215, 0, 400, 400, 0, "DialogBox");
+    panel:SetAnchor(0.5, 0.5);
+    panel:SetRelativePoint(0.5, 0.5);
+
+    local bottomLeft = panel:NewText("Bottom Left\nLeft Bottom", 0, 0, 0, "DefaultButtonText");
+    bottomLeft:SetAnchor(0.0, 0.0);
+    bottomLeft:SetRelativePoint(0.0, 0.0);
+
+    local bottomRight = panel:NewText("Bottom Right\nRight Bottom", 0, 0, 0, "DefaultButtonText");
+    bottomRight:SetAnchor(1.0, 0.0);
+    bottomRight:SetRelativePoint(1.0, 0.0);
+
+    local topLeft = panel:NewText("Top Left\nLeft Top\nLeft Left", 0, 0, 0, "DefaultButtonText");
+    topLeft:SetAnchor(0.0, 1.0);
+    topLeft:SetRelativePoint(0.0, 1.0);
+
+    local topRight = panel:NewText("Top Right\nRight Top", 0, 0, 0, "DefaultButtonText");
+    topRight:SetAnchor(1.0, 1.0);
+    topRight:SetRelativePoint(1.0, 1.0);
+
+    local center = panel:NewText("-Center\nCenter-", 0, 0, 0, "DefaultButtonText");
+    center:SetAnchor(0.5, 0.5);
+    center:SetRelativePoint(0.5, 0.5);
+end
+
+local function Demo()
+    CreateSingleLineDemo()
+    CreateMultiLineDemo()
 end
 
 local function CreateGameMenu(stack)
@@ -204,7 +238,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     --CreateOptionsMenu(stack);
 
     --UILoadingScreen.SetLoadingScreen(nil)
-    print('Hello from Demo.luau');
+    --print('Hello from Demo.luau');
 end
 
 local function OnGameUpdated(eventID : number, deltaTime : number)

@@ -6,20 +6,18 @@
 
 namespace Scripting::UI
 {
-    static LuaMethod canvasMethods[] =
-    {
-        //{ "NewPanel", PanelMethods::CreatePanel },
-        //{ "NewText", TextMethods::CreateText },
-
-        { nullptr, nullptr }
-    };
+    //static LuaMethod canvasMethods[] =
+    //{
+    //    //{ "NewPanel", PanelMethods::CreatePanel },
+    //    //{ "NewText", TextMethods::CreateText },
+    //};
 
     void Canvas::Register(lua_State* state)
     {
         LuaMetaTable<Canvas>::Register(state, "CanvasMetaTable");
 
         LuaMetaTable<Canvas>::Set(state, widgetCreationMethods);
-        LuaMetaTable<Canvas>::Set(state, canvasMethods);
+        //LuaMetaTable<Canvas>::Set(state, canvasMethods);
     }
 
     namespace CanvasMethods

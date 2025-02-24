@@ -199,6 +199,7 @@ namespace ECS::Util
             auto& textComp = registry->emplace<ECS::Components::UI::Text>(entity);
             textComp.text = text;
             textComp.layer = layer;
+            ReplaceTextNewLines(textComp.text);
 
             u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
             u32 templateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
@@ -208,7 +209,12 @@ namespace ECS::Util
 
             Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
 
-            vec2 textSize = font->CalculateTextSize(text, textTemplate.size, textTemplate.borderSize);
+            if (textTemplate.setFlags.wrapWidth)
+            {
+                textComp.text = GenWrapText(textComp.text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+            }
+
+            vec2 textSize = font->CalculateTextSize(textComp.text.c_str(), textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
 
             // Set this texts specific template data
@@ -244,8 +250,6 @@ namespace ECS::Util
 
         entt::entity CreateWidget(Scripting::UI::Widget* widget, entt::registry* registry, vec2 pos, u32 layer, entt::entity parent)
         {
-            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
-
             auto& ctx = registry->ctx();
             auto& transform2DSystem = Transform2DSystem::Get(*registry);
             auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -265,6 +269,18 @@ namespace ECS::Util
             widgetComp.scriptWidget = widget;
 
             return entity;
+        }
+
+        bool DestroyWidget(entt::registry* registry, entt::entity entity)
+        {
+            if (!registry->all_of<ECS::Components::UI::Widget>(entity))
+                return false;
+
+            auto& transform2DSystem = Transform2DSystem::Get(*registry);
+            transform2DSystem.ClearParent(entity);
+
+            registry->get_or_emplace<ECS::Components::UI::DestroyWidget>(entity);
+            return true;
         }
 
         void FocusWidgetEntity(entt::registry* registry, entt::entity entity)
@@ -337,10 +353,16 @@ namespace ECS::Util
             textComponent.hasGrown |= newLength > textComponent.text.size();
 
             textComponent.text = newText;
+            ReplaceTextNewLines(textComponent.text);
 
             const ECS::Components::UI::TextTemplate& textTemplate = uiSingleton.textTemplates[textComponent.templateIndex];
 
             Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
+
+            if (textTemplate.setFlags.wrapWidth)
+            {
+                textComponent.text = GenWrapText(textComponent.text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+            }
 
             vec2 textSize = font->CalculateTextSize(textComponent.text, textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
@@ -515,6 +537,15 @@ namespace ECS::Util
             uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
         }
 
+        void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value1, vec2 value2)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value1, value2);
+        }
+
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, f32 value)
         {
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
@@ -549,6 +580,111 @@ namespace ECS::Util
 
             Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
             uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
+        }
+        
+        std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth)
+        {
+            // Early exit if entire text fits within maxWidth
+            f32 totalWidth = 0;
+            for (char c : text)
+            {
+                totalWidth += font->CalculateCharWidth(c, fontSize, borderSize);
+                if (totalWidth > maxWidth) // Early break for large text
+                {
+                    break;
+                }
+            }
+            if (totalWidth <= maxWidth)
+            {
+                return text;
+            }
+
+            std::string wrappedText;
+            wrappedText.reserve(text.size() + text.size() / 4); // Pre-estimate with margin
+
+            f32 currentLineWidth = 0;
+            size_t wordStart = 0;
+            f32 currentWordWidth = 0;
+            std::string buffer; // Batch write buffer
+            buffer.reserve(text.size() + text.size() / 4); // Reserve for buffer to minimize reallocations
+
+            for (size_t i = 0; i < text.length(); ++i)
+            {
+                char c = text[i];
+
+                if (c == ' ' || c == '\n')
+                {
+                    size_t wordLength = i - wordStart;
+
+                    if (currentLineWidth + currentWordWidth > maxWidth)
+                    {
+                        buffer += '\n';
+                        currentLineWidth = 0;
+                    }
+
+                    buffer.append(text, wordStart, wordLength);
+                    currentLineWidth += currentWordWidth;
+
+                    if (c == ' ')
+                    {
+                        buffer += ' ';
+                        currentLineWidth += font->CalculateCharWidth(c, fontSize, borderSize);
+                    }
+                    else // Newline
+                    {
+                        buffer += '\n';
+                        currentLineWidth = 0;
+                    }
+
+                    wordStart = i + 1;
+                    currentWordWidth = 0;
+                }
+                else
+                {
+                    currentWordWidth += font->CalculateCharWidth(c, fontSize, borderSize);
+
+                    // Force break for long words
+                    if (currentWordWidth > maxWidth)
+                    {
+                        buffer.append(text, wordStart, i - wordStart);
+                        buffer += '\n';
+                        wordStart = i;
+                        currentWordWidth = font->CalculateCharWidth(c, fontSize, borderSize);
+                        currentLineWidth = currentWordWidth;
+                    }
+                }
+            }
+
+            // Handle the last word
+            if (wordStart < text.length())
+            {
+                if (currentLineWidth + currentWordWidth > maxWidth)
+                {
+                    buffer += '\n';
+                }
+                buffer.append(text, wordStart, text.length() - wordStart);
+            }
+
+            wrappedText = std::move(buffer); // Efficient assignment
+            return wrappedText;
+        }
+
+        void ReplaceTextNewLines(std::string& input)
+        {
+            size_t write_index = 0;
+            for (size_t i = 0; i < input.size(); ++i)
+            {
+                if (input[i] == '\\' && i + 1 < input.size() && input[i + 1] == 'n')
+                {
+                    input[write_index++] = '\n';
+                    ++i; // Skip 'n'
+                }
+                else
+                {
+                    input[write_index++] = input[i];
+                }
+            }
+            input.resize(write_index);
         }
     }
 }

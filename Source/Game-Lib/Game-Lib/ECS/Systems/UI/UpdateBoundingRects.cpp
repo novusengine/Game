@@ -16,6 +16,9 @@ namespace ECS::Systems::UI
         // Dirty transforms
         transform2DSystem.ProcessMovedEntities([&](entt::entity entity)
         {
+            if (!registry.valid(entity))
+                return;
+
             auto& transform = registry.get<Components::Transform2D>(entity);
             auto* rect = registry.try_get<Components::UI::BoundingRect>(entity);
 

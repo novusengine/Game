@@ -1,6 +1,6 @@
-local UIButton = require("API/UI/Button")
+local UIButton = require("@src/API/UI/Button")
 
-local Module = { }
+local inputBoxAPI = { }
 --[[
 usage:
 .NewInputBox(panel, 0, -170, 200, 40, 0, {
@@ -301,7 +301,7 @@ local function SetupInputBoxMethods(inputBoxTable)
     return inputBoxTable;
 end
 
-function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTemplateTable)
+function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTemplateTable)
     local inputBoxTable = {}
 
     inputBoxTable.inputBox = parent:NewWidget(posX, posY, layer)
@@ -340,7 +340,7 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
 
     inputBoxTable.buttonTextRelativePointX = buttonText:GetRelativePoint()
 
-    inputBoxTable.button:SetOnMouseDown(function(eventID, widget, mouseX, mouseY)
+    inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
         local buttonWorldPosX = inputBoxTable.button:GetWorldPosX()
         local localX = mouseX - buttonWorldPosX
 
@@ -454,4 +454,4 @@ function Module.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTem
     return inputBoxTable;
 end
 
-return Module
+return inputBoxAPI

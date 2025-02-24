@@ -1,16 +1,18 @@
 #include "ModelLoader.h"
 #include "ModelRenderer.h"
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Singletons/Skybox.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Util/JoltStream.h"
@@ -197,6 +199,8 @@ void ModelLoader::Update(f32 deltaTime)
             ZoneScopedN("Discover Task");
             u32 numRequestsCompleted = 0;
 
+            fs::path absolutePath = std::filesystem::absolute(complexModelPath).make_preferred();
+
             WorkRequest workRequest;
             for (u32 i = range.start; i < range.end; i++)
             //for (u32 i = 0; i < maxModelDiscoveryThisTick; i++)
@@ -221,9 +225,14 @@ void ModelLoader::Update(f32 deltaTime)
                 }
                 
                 // Extract the Model from the file and store it as a DiscoveredModel
+                fs::path modelPath = std::move(workRequest.path);
+                fs::path relativePath = fs::relative(modelPath, absolutePath);
+                std::string pathStr = relativePath.string();
+                std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
+
                 DiscoveredModel discoveredModel =
                 {
-                    .name = std::move(workRequest.path),
+                    .name = std::move(pathStr),
                     .modelHash = workRequest.modelHash,
                     .hasShape = false,
                     .model = nullptr
@@ -302,6 +311,8 @@ void ModelLoader::Update(f32 deltaTime)
             for (u32 i = 0; i < numDequeuedLoadRequests; i++)
             {
                 const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
+                if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
+                    continue;
 
                 DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
                 bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
@@ -340,7 +351,10 @@ void ModelLoader::Update(f32 deltaTime)
 
                 const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
                 if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
+                {
+                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false });
                     continue;
+                }
 
                 std::mutex* modelMutex = _modelHashToLoadingMutex[loadRequest.modelHash];
                 std::scoped_lock lock(*modelMutex);
@@ -357,7 +371,10 @@ void ModelLoader::Update(f32 deltaTime)
                 }
 
                 if (loadState == LoadState::Failed)
+                {
+                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false });
                     continue;
+                }
 
                 _internalLoadRequests.enqueue(loadRequest);
             }
@@ -452,8 +469,8 @@ void ModelLoader::Update(f32 deltaTime)
                         {
                             ZoneScopedN("Load Placement / Decoration");
 
-                            bool hasUniqueID = loadRequest.uniqueID != std::numeric_limits<u32>().max();
-                            bool uniqueIDExists = _uniqueIDToinstanceID.contains(loadRequest.uniqueID);
+                            bool hasUniqueID = loadRequest.extraData3 != std::numeric_limits<u32>().max();
+                            bool uniqueIDExists = _uniqueIDToinstanceID.contains(loadRequest.extraData3);
 
                             if (hasUniqueID && uniqueIDExists)
                                 break;
@@ -485,6 +502,7 @@ void ModelLoader::Update(f32 deltaTime)
                                 AddDynamicInstance(loadRequest.entity, loadRequest);
                             }
 
+                            _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = true });
                             break;
                         }
 
@@ -520,6 +538,37 @@ void ModelLoader::Update(f32 deltaTime)
             //_modelRenderer->ModifyInstance(unloadRequest.entity, unloadRequest.instanceID, std::numeric_limits<u32>().max(), nullptr, identity);
         }
     }
+
+    LoadRequestResultInternal loadRequestResult;
+    while (_loadRequestResults.try_dequeue(loadRequestResult))
+    {
+        const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[loadRequestResult.loadRequestIndex];
+        if (loadRequest.entity == entt::null)
+            continue;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        if (!registry->valid(loadRequest.entity) || !registry->all_of<ECS::Components::Model>(loadRequest.entity))
+            continue;
+
+        auto& model = registry->get<ECS::Components::Model>(loadRequest.entity);
+        model.flags.loaded = loadRequestResult.success;
+
+        // Rollback to previous ModelHash if load failed (Defaults to Invalid if no prior model hash was present)
+        bool rollback = false;
+        if (!loadRequestResult.success)
+        {
+            model.flags.loaded = false;
+
+            rollback = loadRequest.extraData2 != std::numeric_limits<u32>().max();
+            model.modelHash = loadRequest.extraData2;
+        }
+
+        ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
+        modelLoadedEvent.flags.loaded = loadRequestResult.success;
+        modelLoadedEvent.flags.rollback = rollback;
+
+        ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
+    }
 }
 
 entt::entity ModelLoader::CreateModelEntity(const std::string& name)
@@ -536,7 +585,7 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
     registry.emplace<ECS::Components::Transform>(entity);
     registry.emplace<ECS::Components::Model>(entity);
 
-    return entt::entity(entity);
+    return entity;
 }
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
@@ -545,33 +594,33 @@ void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 
     loadRequest.type = LoadRequestType::Placement;
     loadRequest.entity = entt::null;
-    loadRequest.uniqueID = placement.uniqueID;
     loadRequest.modelHash = placement.nameHash;
-
-    // Terrain::Placement uses u16::max for doodadSet when the field is unused, but we need to use u32::max for extraData when it is unused
-    bool isDoodadSetPresent = placement.doodadSet != std::numeric_limits<u16>().max();
-    constexpr u32 defaultValue = std::numeric_limits<u32>().max();
-    u32 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (defaultValue * !isDoodadSetPresent);
-    loadRequest.extraData = doodadSet;
 
     loadRequest.spawnPosition = placement.position;
     loadRequest.spawnRotation = placement.rotation;
     loadRequest.scale = static_cast<f32>(placement.scale) / 1024.0f;
+
+    bool isDoodadSetPresent = placement.doodadSet != std::numeric_limits<u16>().max();
+    u32 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (std::numeric_limits<u32>().max() * !isDoodadSetPresent);
+    loadRequest.extraData2 = doodadSet;
+    loadRequest.extraData3 = placement.uniqueID;
 
     _pendingLoadRequests.enqueue(loadRequest);
 }
 
 void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
 {
-    LoadRequestInternal loadRequest;
-    loadRequest.type = LoadRequestType::Decoration;
-    loadRequest.entity = entt::null;
-    loadRequest.instanceID = instanceID;
-    loadRequest.modelHash = decoration.nameID;
-    loadRequest.extraData = decoration.color;
-    loadRequest.spawnPosition = decoration.position;
-    loadRequest.spawnRotation = decoration.rotation;
-    loadRequest.scale = decoration.scale;
+    LoadRequestInternal loadRequest =
+    {
+        .type = LoadRequestType::Decoration,
+        .entity = entt::null,
+        .modelHash = decoration.nameID,
+        .spawnPosition = decoration.position,
+        .spawnRotation = decoration.rotation,
+        .scale = decoration.scale,
+        .extraData1 = instanceID,
+        .extraData2 = decoration.color,
+    };
 
     _pendingLoadRequests.enqueue(loadRequest);
 }
@@ -585,6 +634,9 @@ bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model
     loadRequest.type = LoadRequestType::Model;
     loadRequest.entity = entity;
     loadRequest.modelHash = modelNameHash;
+    loadRequest.extraData2 = model.modelHash;
+
+    model.flags.loaded = false;
     model.modelHash = modelNameHash;
 
     _pendingLoadRequests.enqueue(loadRequest);
@@ -592,75 +644,79 @@ bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model
     return true;
 }
 
-bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID)
+bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash, u8 modelVariant)
 {
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
 
-    u32 modelHash = std::numeric_limits<u32>().max();
-
-    switch (displayInfoType)
+    u32 modelHashToUse = modelHash;
+    if (modelHashToUse == std::numeric_limits<u32>().max())
     {
-        case ClientDB::Definitions::DisplayInfoType::Creature:
+        switch (displayInfoType)
         {
-            auto* creatureDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
-            auto* creatureModelDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureModelData);
-
-            if (!creatureDisplayInfoStorage->Has(displayID))
-                return false;
-
-            const ClientDB::Definitions::CreatureDisplayInfo& creatureDisplayInfo = creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
-            const ClientDB::Definitions::CreatureModelData& creatureModelData = creatureModelDataStorage->Get<ClientDB::Definitions::CreatureModelData>(creatureDisplayInfo.modelID);
-
-            modelHash = creatureModelData.modelHash;
-            break;
-        }
-        
-        case ClientDB::Definitions::DisplayInfoType::GameObject:
-        {
-            break;
-        }
-        
-        case ClientDB::Definitions::DisplayInfoType::Item:
-        {
-            auto* modelFileDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ModelFileData);
-            auto* itemDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayInfo);
-
-            if (!itemDisplayInfoStorage->Has(displayID))
-                return false;
-
-            const ClientDB::Definitions::ItemDisplayInfo& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
-
-            u32 itemModelHash = std::numeric_limits<u32>().max();
-            u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
-
-            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
-            modelFileDataStorage->Each([&itemModelHash, modelResourcesID](u32 id, const ClientDB::Definitions::ModelFileData& modelFileData) -> bool
+            case ClientDB::Definitions::DisplayInfoType::Creature:
             {
-                if (modelFileData.modelResourcesID != modelResourcesID)
-                    return true;
+                auto* creatureDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
+                auto* creatureModelDataStorage = clientDBSingleton.Get(ClientDBHash::CreatureModelData);
 
-                itemModelHash = modelFileData.modelHash;
-                return false;
-            });
+                if (!creatureDisplayInfoStorage->Has(displayID))
+                    return false;
 
-            modelHash = itemModelHash;
-            break;
+                const ClientDB::Definitions::CreatureDisplayInfo& creatureDisplayInfo = creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
+                const ClientDB::Definitions::CreatureModelData& creatureModelData = creatureModelDataStorage->Get<ClientDB::Definitions::CreatureModelData>(creatureDisplayInfo.modelID);
+
+                modelHash = creatureModelData.modelHash;
+                break;
+            }
+
+            case ClientDB::Definitions::DisplayInfoType::GameObject:
+            {
+                break;
+            }
+
+            case ClientDB::Definitions::DisplayInfoType::Item:
+            {
+                auto& itemSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ItemSingleton>();
+                auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
+                auto* itemDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayInfo);
+
+                if (!itemDisplayInfoStorage->Has(displayID))
+                    return false;
+
+                const ClientDB::Definitions::ItemDisplayInfo& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+                u32 itemModelHash = std::numeric_limits<u32>().max();
+                u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
+
+                // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
+                modelFileDataStorage->Each([&modelFileDataStorage, &itemModelHash, modelResourcesID](u32 id, const ClientDB::Definitions::ModelFileData& modelFileData) -> bool
+                {
+                    if (modelFileData.modelResourcesID != modelResourcesID)
+                        return true;
+                    const std::string& modelPath = modelFileDataStorage->GetString(modelFileData.modelPath);
+                    itemModelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+                    return false;
+                });
+
+                modelHash = itemModelHash;
+                break;
+            }
+
+            default: break;
         }
-
-        default: break;
     }
-
     if (!_modelHashToDiscoveredModel.contains(modelHash))
         return false;
 
     LoadRequestInternal loadRequest;
     loadRequest.type = LoadRequestType::DisplayID;
     loadRequest.entity = entity;
-
-    u32 displayInfoPacked = displayID | static_cast<u32>(displayInfoType) << 24;
-    loadRequest.extraData = displayInfoPacked;
     loadRequest.modelHash = modelHash;
+
+    u32 displayInfoPacked = displayID | (static_cast<u32>(displayInfoType) & 0x7) << 23 | (static_cast<u32>(modelVariant) & 0x3F) << 26;
+    loadRequest.extraData1 = displayInfoPacked;
+    loadRequest.extraData2 = model.modelHash;
+    model.flags.loaded = false;
     model.modelHash = modelHash;
 
     _pendingLoadRequests.enqueue(loadRequest);
@@ -677,6 +733,8 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
         .entity = entity,
         .instanceID = model.instanceID
     };
+
+    model.flags.loaded = false;
     model.modelHash = std::numeric_limits<u32>().max();
 
     _unloadRequests.enqueue(unloadRequest);
@@ -811,9 +869,19 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
     return true;
 }
 
-bool ModelLoader::ContainsDiscoveredModel(u32 modelNameHash)
+bool ModelLoader::ContainsDiscoveredModel(u32 modelHash)
 {
-    return _modelHashToDiscoveredModel.contains(modelNameHash);
+    return _modelHashToDiscoveredModel.contains(modelHash);
+}
+
+ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u32 modelHash)
+{
+    if (!_modelHashToDiscoveredModel.contains(modelHash))
+    {
+        NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelHash {0}", modelHash);
+    }
+    
+    return _modelHashToDiscoveredModel[modelHash];
 }
 
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 modelID)
@@ -891,9 +959,11 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     name.nameHash = discoveredModel.modelHash;
 
     u32 modelID = _modelHashToModelID[request.modelHash];
-    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.spawnPosition, request.spawnRotation, request.scale, request.extraData);
+    u32 doodadSet = request.type == LoadRequestType::Placement ? request.extraData2 : std::numeric_limits<u32>().max();
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.spawnPosition, request.spawnRotation, request.scale, doodadSet);
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
+    model.flags.loaded = true;
     model.modelID = modelID;
     model.instanceID = instanceID;
     model.modelHash = request.modelHash;
@@ -905,13 +975,14 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     aabb.extents = modelAABB.extents;
 
     bool hasParent = false;
+    u32 parentInstanceID = request.extraData1;
     {
         std::scoped_lock lock(_instanceIDToModelIDMutex);
-        _uniqueIDToinstanceID[request.uniqueID] = instanceID;
+        _uniqueIDToinstanceID[request.extraData3] = instanceID;
         _instanceIDToModelID[instanceID] = modelID;
         _instanceIDToEntityID[instanceID] = entityID;
 
-        hasParent = request.instanceID != std::numeric_limits<u32>().max() && _instanceIDToEntityID.contains(request.instanceID);
+        hasParent = parentInstanceID != std::numeric_limits<u32>().max() && _instanceIDToEntityID.contains(parentInstanceID);
     }
 
     {
@@ -921,7 +992,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
         if (hasParent)
         {
-            entt::entity parentEntityID = _instanceIDToEntityID[request.instanceID];
+            entt::entity parentEntityID = _instanceIDToEntityID[parentInstanceID];
             tSystem.ParentEntityTo(parentEntityID, entityID);
         }
     }
@@ -987,11 +1058,11 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     auto& transform = registry->get<ECS::Components::Transform>(entityID);
     if (instanceID == std::numeric_limits<u32>().max())
     {
-        instanceID = _modelRenderer->AddInstance(entityID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData);
+        instanceID = _modelRenderer->AddInstance(entityID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData1);
     }
     else
     {
-        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData);
+        _modelRenderer->ModifyInstance(entityID, instanceID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData1);
     }
 
     model.modelID = modelID;
@@ -1012,7 +1083,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
 
-        if (physicsEnabled && registry->all_of<ECS::Components::NetworkedEntity>(entityID))
+        if (physicsEnabled && registry->all_of<ECS::Components::Unit>(entityID))
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
@@ -1037,8 +1108,8 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             {
                 JPH::BodyID bodyID = body->GetID();
 
-                auto& networkedEntity = registry->get<ECS::Components::NetworkedEntity>(entityID);
-                networkedEntity.bodyID = bodyID.GetIndexAndSequenceNumber();
+                auto & unit = registry->get<ECS::Components::Unit>(entityID);
+                unit.bodyID = bodyID.GetIndexAndSequenceNumber();
 
                 // Store the entity ID in the body so we can look it up later
                 body->SetUserData(static_cast<JPH::uint64>(entityID));

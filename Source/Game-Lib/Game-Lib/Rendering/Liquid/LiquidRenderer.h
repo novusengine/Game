@@ -64,6 +64,13 @@ private:
         f32 currentTime;
     };
 
+    struct LiquidTextureMap
+    {
+    public:
+        u32 baseTextureIndex = 0;
+        u32 numFramesForTexture = 0;
+    };
+
 public:
     LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
     ~LiquidRenderer();
@@ -135,8 +142,9 @@ private:
     Renderer::GPUVector<Vertex> _vertices;
     Renderer::GPUVector<u16> _indices;
 
-    std::atomic_bool _instancesIsDirty = false;
+    robin_hood::unordered_map<u32, LiquidTextureMap> _liquidTypeIDToLiquidTextureMap;
 
+    std::atomic_bool _instancesIsDirty = false;
     std::shared_mutex _addLiquidMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
     std::mutex _textureMutex;
 };

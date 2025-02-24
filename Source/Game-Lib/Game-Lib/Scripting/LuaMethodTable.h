@@ -107,7 +107,8 @@ namespace Scripting
             lua_pop(state, 1);
         }
 
-        static void Set(lua_State* state, LuaMethod* methodTable, const char* globalName = nullptr)
+        template <size_t N>
+        static void Set(lua_State* state, const LuaMethod(&methodTable)[N], const char* globalName = nullptr)
         {
             constexpr bool isMethodTable = std::is_same_v<UserDataType, LuaNotMetaTable>;
             const char* name = nullptr;
@@ -165,20 +166,20 @@ namespace Scripting
 
             if (isGlobal)
             {
-                for (; methodTable && methodTable->name; ++methodTable)
+                for (size_t i = 0; i < N; ++i)
                 {
-                    lua_pushcfunction(state, methodTable->func, methodTable->name);
-                    lua_setglobal(state, methodTable->name);
+                    lua_pushcfunction(state, methodTable[i].func, methodTable[i].name);
+                    lua_setglobal(state, methodTable[i].name);
                 }
             }
             else
             {
                 i32 index = lua_gettop(state);
 
-                for (; methodTable && methodTable->name; ++methodTable)
+                for (size_t i = 0; i < N; ++i)
                 {
-                    lua_pushcfunction(state, methodTable->func, methodTable->name);
-                    lua_setfield(state, index, methodTable->name);
+                    lua_pushcfunction(state, methodTable[i].func, methodTable[i].name);
+                    lua_setfield(state, index, methodTable[i].name);
                 }
 
                 lua_pop(state, 1);

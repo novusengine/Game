@@ -1,7 +1,7 @@
 #include "OrbitalCamera.h"
 
 #include "Game-Lib/ECS/Components/MovementInfo.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
@@ -70,7 +70,7 @@ namespace ECS::Systems
                     ECS::Util::CameraUtil::SetCaptureMouse(true);
 
                     InputManager* inputManager = ServiceLocator::GetInputManager();
-                    settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                    settings.prevMousePosition = inputManager->GetMousePosition();
                 }
 
                 settings.mouseLeftDown = true;
@@ -96,7 +96,7 @@ namespace ECS::Systems
                     ECS::Util::CameraUtil::SetCaptureMouse(true);
 
                     InputManager* inputManager = ServiceLocator::GetInputManager();
-                    settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                    settings.prevMousePosition = inputManager->GetMousePosition();
                 }
 
                 settings.mouseRightDown = true;
@@ -141,7 +141,7 @@ namespace ECS::Systems
         });
     }
 
-    void updateCamera(const mat4x4& characterControllerMatrix, vec3 eulerAngles, f32 heightOffset, f32 zoomDistance, vec3& resultPosition, quat& resultRotation)
+    void UpdateCamera(const mat4x4& characterControllerMatrix, vec3 eulerAngles, f32 heightOffset, f32 zoomDistance, vec3& resultPosition, quat& resultRotation)
     {
         // Height offset matrix to move the rotation point up by the specified height
         mat4x4 heightOffsetMatrix = translate(mat4x4(1.0f), vec3(0.0f, heightOffset, 0.0f));
@@ -193,20 +193,30 @@ namespace ECS::Systems
         // Update the camera
         vec3 resultPosition;
         quat resultRotation;
-        updateCamera(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
+        UpdateCamera(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
 
         vec3 resultRotationEuler = glm::eulerAngles(resultRotation);
 
         if (settings.mouseRightDown && characterSingleton.moverEntity != entt::null)
         {
             auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
-            auto& networkedEntity = registry.get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
 
             glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
             f32 yaw = glm::pi<f32>() + glm::radians(camera.yaw);
 
             movementInfo.yaw = yaw;
-            networkedEntity.positionOrRotationIsDirty = true;
+            if (!movementInfo.movementFlags.grounded && movementInfo.movementFlags.flying)
+            {
+                f32 pitch = glm::radians(-glm::clamp(camera.pitch, -45.0f, 89.0f));
+                movementInfo.pitch = pitch;
+            }
+            else
+            {
+                movementInfo.pitch = 0.0f;
+            }
+            
+            unit.positionOrRotationIsDirty = true;
         }
 
         tSystem.SetWorldRotation(activeCamera.entity, resultRotation);
@@ -255,7 +265,7 @@ namespace ECS::Systems
 
         f32 speed = movementInfo.speed;
         speed = speed + ((speed / 20.0f) * position.y);
-        speed = glm::max(speed, 7.1111f);
+        speed = glm::max(speed, 1.0f);
         movementInfo.speed = speed;
     }
 }

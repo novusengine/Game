@@ -69,7 +69,9 @@ local Cursors =
     { "transmogrify", "Data/Texture/interface/cursor/transmogrify.dds" },
     { "unabletransmogrify", "Data/Texture/interface/cursor/unabletransmogrify.dds" },
     { "move", "Data/Texture/interface/cursor/ui-cursor-move.dds" },
-    { "unablemove", "Data/Texture/interface/cursor/unableui-cursor-move.dds" }
+    { "unablemove", "Data/Texture/interface/cursor/unableui-cursor-move.dds" },
+    { "item", "Data/Texture/interface/cursor/item.dds" },
+    { "unableitem", "Data/Texture/interface/cursor/unableitem.dds" }
 }
 
 local function RegisterCursors()

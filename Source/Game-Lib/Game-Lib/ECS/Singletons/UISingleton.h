@@ -31,5 +31,6 @@ namespace ECS::Singletons
         entt::entity clickedEntity = entt::null;
         entt::entity hoveredEntity = entt::null;
         entt::entity focusedEntity = entt::null;
+        entt::entity cursorCanvasEntity = entt::null;
     };
 }

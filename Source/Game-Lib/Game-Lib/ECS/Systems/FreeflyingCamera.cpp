@@ -65,7 +65,7 @@ namespace ECS::Systems
                 ECS::Util::CameraUtil::SetCaptureMouse(true);
 
                 InputManager* inputManager = ServiceLocator::GetInputManager();
-                settings.prevMousePosition = vec2(inputManager->GetMousePositionX(), inputManager->GetMousePositionY());
+                settings.prevMousePosition = inputManager->GetMousePosition();
             }
             return true;
         });

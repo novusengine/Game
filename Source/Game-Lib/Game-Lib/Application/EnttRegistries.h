@@ -5,6 +5,8 @@ struct EnttRegistries
 {
 	entt::registry* gameRegistry;
 	entt::registry* uiRegistry;
+	entt::registry* dbRegistry;
+
 	entt::registry* eventIncomingRegistry;
 	entt::registry* eventOutgoingRegistry;
 };

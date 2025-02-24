@@ -33,8 +33,6 @@ namespace Scripting
 
     static LuaMethod gameEventMethods[] =
     {
-        { "RegisterGameEvent", GameEventHandler::RegisterGameEvent },
-
-        { nullptr, nullptr }
+        { "RegisterGameEvent", GameEventHandler::RegisterGameEvent }
     };
 }

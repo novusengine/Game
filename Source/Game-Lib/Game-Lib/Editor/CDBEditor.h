@@ -1,6 +1,5 @@
 #pragma once
 #include "BaseEditor.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
 
 #include <Base/Types.h>
 
@@ -21,17 +20,37 @@ namespace Editor
         void ShowListView();
         void RenderCreateDatabaseWindow();
         void RenderEditDatabaseWindow();
-
-        // Custom Editors
+        void RenderEditRowsWindow();
 
     private:
+        enum class EditMode : u8
+        {
+            None,
+            CreateDatabase,
+            EditDatabase,
+            EditRows
+        };
+
+        struct EditFieldMapping
+        {
+        public:
+            u32 originalFieldIndex = 0;
+            u32 newFieldIndex = 0;
+        };
+
+        EditMode _editMode = EditMode::None;
+        bool _editWindowOpen = false;
+
         u32 _selectedDBHash = 0;
         u32 _previousSelectedDBHash = 0;
 
-        bool _showCreateDatabaseWindow = false;
         std::string _newDatabaseName = "";
         std::vector<ClientDB::FieldInfo> _newDatabaseFields;
 
-        bool _showEditDatabaseWindow = false;
+        std::string _editOriginalDatabaseName = "";
+        std::string _editDatabaseName = "";
+        std::vector<ClientDB::FieldInfo> _editDatabaseFields;
+        std::vector<EditFieldMapping> _editDatabaseFieldMapping;
+        robin_hood::unordered_map<u32, u32> _editDatabaseFieldToMappingIndex;
     };
 }

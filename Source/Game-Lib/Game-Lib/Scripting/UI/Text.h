@@ -15,12 +15,16 @@ namespace Scripting::UI
     namespace TextMethods
     {
         i32 SetText(lua_State* state);
+        i32 GetSize(lua_State* state);
+        i32 SetColor(lua_State* state);
+        i32 SetWrapWidth(lua_State* state);
     };
 
     static LuaMethod textMethods[] =
     {
         { "SetText", TextMethods::SetText },
-
-        { nullptr, nullptr }
+        { "GetSize", TextMethods::GetSize },
+        { "SetColor", TextMethods::SetColor },
+        { "SetWrapWidth", TextMethods::SetWrapWidth }
     };
 }

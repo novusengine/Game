@@ -44,6 +44,15 @@ namespace Scripting
         void SetGlobal(const char* key, const lua_CFunction value);
         void SetField(const char* key, i32 index = -2);
 
+        template<typename T>
+        void Push(const T& value);
+
+        template<>
+        void Push(const vec3& value);
+
+        template<>
+        void Push(const std::string& value);
+
         void Push();
         void Push(bool value);
         void Push(i32 value);
@@ -51,7 +60,6 @@ namespace Scripting
         void Push(f32 value);
         void Push(f64 value);
         void Push(const char* value);
-        void Push(const vec3& value);
         void Push(lua_CFunction value, const char* debugName = nullptr);
         void PushValue(i32 index = -1);
         void Pop(i32 numPops = 1);
@@ -101,6 +109,16 @@ namespace Scripting
         void SetTable(const char* key, const char* value);
         void SetTable(const char* key, const vec3& value);
         void SetTable(const char* key, const lua_CFunction value);
+
+        void SetTable(i32 key);
+        void SetTable(i32 key, const bool value);
+        void SetTable(i32 key, const i32 value);
+        void SetTable(i32 key, const u32 value);
+        void SetTable(i32 key, const f32 value);
+        void SetTable(i32 key, const f64 value);
+        void SetTable(i32 key, const char* value);
+        void SetTable(i32 key, const vec3& value);
+        void SetTable(i32 key, const lua_CFunction value);
 
         i32 LoadBytecode(const std::string& chunkName, const std::string& bytecode, i32 env = 0);
         i32 Resume(lua_State* from = nullptr, i32 nArg = 0);

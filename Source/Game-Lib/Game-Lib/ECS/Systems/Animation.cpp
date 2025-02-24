@@ -8,6 +8,8 @@
 #include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/AnimationSingleton.h"
+#include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Gameplay/Animation/Defines.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
@@ -25,6 +27,7 @@
 
 AutoCVar_Int CVAR_AnimationSimulationEnabled(CVarCategory::Client | CVarCategory::Rendering, "animationSimulationEnabled", "Enables the Animation Simulation", 1, CVarFlags::EditCheckbox);
 #define ANIMATION_SIMULATION_MT 1
+#define ANIMATION_ENABLE_STATIC_ANIMATION_BILLBOARDING 0
 
 namespace ECS::Systems
 {
@@ -515,6 +518,95 @@ namespace ECS::Systems
         return matrix;
     }
 
+    static void ApplyBoneBillboard(mat4x4& boneMatrix, const mat4x4& localBoneMatrix, ::Animation::Defines::BoneFlags boneBillboardFlags, bool isAnimated, bool isMirrored,const vec3& pivotPoint)
+    {
+        bool hasBillboarding = boneBillboardFlags.SphericalBillboard || boneBillboardFlags.CylindricialBillboardLockX || boneBillboardFlags.CylindricialBillboardLockY || boneBillboardFlags.CylindricialBillboardLockZ;
+        if (!hasBillboarding)
+            return;
+
+        mat4x4 currentBoneMatCopy = boneMatrix;
+        vec3 scaleVector = vec3(glm::length(boneMatrix[0]), glm::length(boneMatrix[1]), glm::length(boneMatrix[2]));
+
+        if (boneBillboardFlags.SphericalBillboard)
+        {
+            if (isAnimated)
+            {
+                vec4 xAxis = localBoneMatrix[0];
+                boneMatrix[0] = vec4(xAxis.y, -xAxis.x, xAxis.z, 0.0f);
+                boneMatrix[0] = glm::normalize(boneMatrix[0]);
+
+                vec4 yAxis = localBoneMatrix[1];
+                if (isMirrored)
+                {
+                    boneMatrix[1] = vec4(-yAxis.y, -yAxis.z, yAxis.x, 0.0f);
+                    boneMatrix[1] = glm::normalize(boneMatrix[1]);
+                }
+                else
+                {
+                    boneMatrix[1] = vec4(yAxis.y, yAxis.z, -yAxis.x, 0.0f);
+                    boneMatrix[1] = glm::normalize(boneMatrix[1]);
+                }
+
+                vec4 zAxis = localBoneMatrix[2];
+                boneMatrix[2] = vec4(zAxis.y, -zAxis.x, zAxis.z, 0.0f);
+                boneMatrix[2] = glm::normalize(boneMatrix[2]);
+            }
+            else
+            {
+                boneMatrix[0] = vec4(0.0f, 1.0f, 0.0f, 0.0f);
+
+                if (isMirrored)
+                {
+                    boneMatrix[1] = vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+                }
+                else
+                {
+                    boneMatrix[1] = vec4(1.0f, 0.0f, 0.0f, 0.0f);
+                }
+
+                boneMatrix[2] = vec4(0.0f, 0.0f, -1.0f, 0.0f);
+            }
+        }
+        else if (boneBillboardFlags.CylindricialBillboardLockX)
+        {
+            boneMatrix[0] = glm::normalize(boneMatrix[0]);
+
+            vec4 newYAxis = vec4(boneMatrix[0][1], -boneMatrix[0][0], 0.0f, 0.0f);
+            boneMatrix[1] = glm::normalize(newYAxis);
+
+            boneMatrix[2] = vec4(glm::cross(vec3(boneMatrix[1]),vec3(boneMatrix[0])), 0.0f);
+        }
+        else if (boneBillboardFlags.CylindricialBillboardLockY)
+        {
+            f32 yAxisLen = glm::length(vec3(boneMatrix[1]));
+            boneMatrix[1] = glm::normalize(boneMatrix[1] * (1.0f / yAxisLen));
+
+            vec4 newXAxis = vec4(-boneMatrix[1][1], 0.0f, boneMatrix[1][0], 0.0f);
+            boneMatrix[0] = glm::normalize(newXAxis);
+
+            boneMatrix[2] = vec4(glm::cross(vec3(boneMatrix[1]), vec3(boneMatrix[0])), 0.0f);
+        }
+        else if (boneBillboardFlags.CylindricialBillboardLockZ)
+        {
+            boneMatrix[2] = glm::normalize(boneMatrix[2]);
+
+            vec4 newYAxis = vec4(boneMatrix[2][1], -boneMatrix[2][0], 0.0f, 0.0f);
+            boneMatrix[1] = glm::normalize(newYAxis);
+
+            boneMatrix[0] = vec4(glm::cross(vec3(boneMatrix[2]), vec3(boneMatrix[1])), 0.0f);
+        }
+
+        vec4 pivotVec4 = vec4(pivotPoint, 1.0f);
+        vec4 pivotVec3 = pivotVec4;
+        pivotVec3.w = 0.0f;
+
+        boneMatrix[0] *= scaleVector.x;
+        boneMatrix[1] *= scaleVector.y;
+        boneMatrix[2] *= scaleVector.z;
+        boneMatrix[3] = (currentBoneMatCopy * pivotVec4) - (boneMatrix * pivotVec3);
+        boneMatrix[3].w = 1.0f;
+    }
+
     void SetupDynamicAnimationInstance(entt::registry& registry, entt::entity entity, const Components::Model& model, const Model::ComplexModel* modelInfo)
     {
         auto& animationData = registry.get_or_emplace<Components::AnimationData>(entity);
@@ -522,8 +614,6 @@ namespace ECS::Systems
         u32 numBones = static_cast<u32>(modelInfo->bones.size());
         u32 numAttachments = static_cast<u32>(modelInfo->attachments.size());
         u32 numTextureTransforms = static_cast<u32>(modelInfo->textureTransforms.size());
-
-        animationData.modelHash = model.modelHash;
 
         animationData.globalLoops.clear();
         animationData.globalLoops.resize(numGlobalLoops);
@@ -567,11 +657,11 @@ namespace ECS::Systems
             u8 skeletonFlags = *reinterpret_cast<const u8*>(&skeletonBone.flags) & 0x7F;
 
             boneInstance.stateIndex = 0;
-            boneInstance.flags |= static_cast<::Animation::Defines::BoneFlags>(skeletonFlags);
+            *reinterpret_cast<u8*>(&boneInstance.flags) |= skeletonFlags;
 
             if (skeletonBone.flags.Transformed)
             {
-                boneInstance.flags |= ::Animation::Defines::BoneFlags::Transformed;
+                boneInstance.flags.Transformed = true;
                 hasAnyTransformedBones = true;
             }
         }
@@ -586,9 +676,9 @@ namespace ECS::Systems
             if (defaultBoneIndex == ::Animation::Defines::InvalidBoneID)
                 defaultBoneIndex = 0;
 
-            if (!Util::Animation::SetBoneSequenceRaw(registry, modelInfo, animationData, defaultBoneIndex, ::Animation::Defines::Type::Stand, false))
+            if (!Util::Animation::SetBoneSequenceRaw(modelInfo, animationData, defaultBoneIndex, ::Animation::Defines::Type::Stand, false))
             {
-                Util::Animation::SetBoneSequenceRaw(registry, modelInfo, animationData, defaultBoneIndex, ::Animation::Defines::Type::Closed, false);
+                Util::Animation::SetBoneSequenceRaw(modelInfo, animationData, defaultBoneIndex, ::Animation::Defines::Type::Closed, false);
             }
         }
     }
@@ -599,8 +689,10 @@ namespace ECS::Systems
         if (!animationSingleton.staticModelIDToEntity.contains(model.modelID))
         {
             dynamicEntity = registry.create();
-            auto& animationStaticInstance = registry.get_or_emplace<Components::AnimationStaticInstance>(dynamicEntity);
+            auto& animationStaticInstance = registry.emplace<Components::AnimationStaticInstance>(dynamicEntity);
             auto& dynamicModel = registry.emplace<Components::Model>(dynamicEntity);
+            auto& dynamicTransform = registry.emplace<Components::Transform>(dynamicEntity);
+            dynamicModel.flags.loaded = true;
             dynamicModel.modelID = model.modelID;
             dynamicModel.instanceID = std::numeric_limits<u32>().max();
             dynamicModel.modelHash = model.modelHash;
@@ -667,8 +759,34 @@ namespace ECS::Systems
             if (modelInfo->modelHeader.numSequences == 0 && modelInfo->modelHeader.numBones == 0 && modelInfo->modelHeader.numTextureTransforms == 0 && modelInfo->modelHeader.numAttachments == 0)
                 return;
 
-            if (animationInitData.flags.isDynamic)
+            bool isDynamic = animationInitData.flags.isDynamic;
+            bool wasStatic = !animationInitData.flags.isDynamic;
+#if ANIMATION_ENABLE_STATIC_ANIMATION_BILLBOARDING
+            if (!isDynamic)
             {
+                u32 numBones = static_cast<u32>(modelInfo->bones.size());
+
+                for (u32 i = 0; i < numBones; i++)
+                {
+                    const auto& bone = modelInfo->bones[i];
+
+                    bool hasBillboarding = bone.flags.SphericalBillboard || bone.flags.CylindricialBillboardLockX || bone.flags.CylindricialBillboardLockY || bone.flags.CylindricialBillboardLockZ;
+                    if (!hasBillboarding)
+                        continue;
+
+                    isDynamic = true;
+                    break;
+                }
+            }
+#endif
+
+            if (isDynamic)
+            {
+                if (wasStatic)
+                {
+                    modelRenderer->AddAnimationInstance(model.instanceID);
+                }
+
                 SetupDynamicAnimationInstance(registry, entity, model, modelInfo);
             }
             else
@@ -686,7 +804,9 @@ namespace ECS::Systems
         ModelRenderer* modelRenderer = ServiceLocator::GetGameRenderer()->GetModelRenderer();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
-        auto simulationView = registry.view<Components::Model, Components::AnimationData>();
+        entt::registry::context& ctx = registry.ctx();
+        auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+        auto simulationView = registry.view<Components::Model, Components::AnimationData, Components::Transform>();
 
 #if ANIMATION_SIMULATION_MT
         auto* viewHandle = simulationView.handle();
@@ -694,10 +814,16 @@ namespace ECS::Systems
         if (numEntitiesToHandle == 0)
             return;
 
+        auto& freeflyingCameraSettings = ctx.get<Singletons::FreeflyingCameraSettings>();
+
+        const auto& camera = registry.get<Components::Camera>(activeCamera.entity);
+        const mat4x4* viewMatrix = &camera.worldToView;
+
         const auto& begin = viewHandle->begin();
         moodycamel::ConcurrentQueue<entt::entity> dirtyEntities(numEntitiesToHandle);
-        enki::TaskSet simulateEntitiesTask(numEntitiesToHandle, [&registry, &simulationView, &begin, &modelLoader, &dirtyEntities, deltaTime](enki::TaskSetPartition range, uint32_t threadNum)
+        enki::TaskSet simulateEntitiesTask(numEntitiesToHandle, [&registry, &simulationView, &begin, &modelLoader, &dirtyEntities, viewMatrix, deltaTime](enki::TaskSetPartition range, uint32_t threadNum)
         {
+            mat4x4 identityMatrix = mat4x4(1.0f);
             for (u32 i = range.start; i < range.end; i++)
             {
                 const auto& val = begin.data() + i;
@@ -709,10 +835,10 @@ namespace ECS::Systems
                 auto components = simulationView.get(entity);
 
                 const auto& model = std::get<0>(components);
-                auto& animationData = std::get<1>(components);
-
-                if (animationData.modelHash != model.modelHash)
+                if (!model.flags.loaded)
                     continue;
+
+                auto& animationData = std::get<1>(components);
 
                 const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
                 if (!modelInfo)
@@ -748,13 +874,15 @@ namespace ECS::Systems
 
                     bool playInReverse = ::Animation::Defines::HasFlag(animationState.currentFlags, ::Animation::Defines::Flags::PlayReversed);
                     bool holdAtEnd = ::Animation::Defines::HasFlag(animationState.currentFlags, ::Animation::Defines::Flags::HoldAtEnd);
+                    
+                    f32 modifiedDeltaTime = deltaTime * animationState.speedModifier;
                     if (playInReverse)
                     {
-                        animationState.progress = glm::max(animationState.progress - deltaTime, 0.0f);
+                        animationState.progress = glm::max(animationState.progress - modifiedDeltaTime, 0.0f);
                     }
                     else
                     {
-                        animationState.progress = glm::min(animationState.progress + deltaTime, duration);
+                        animationState.progress = glm::min(animationState.progress + modifiedDeltaTime, duration);
                     }
 
                     bool hasNextSequence = animationState.nextSequenceIndex != ::Animation::Defines::InvalidSequenceID;
@@ -859,7 +987,7 @@ namespace ECS::Systems
                         if (animationState.timeToTransitionMS > 0)
                         {
                             f32 timeToTransition = static_cast<f32>(animationState.timeToTransitionMS) / 1000.0f;
-                            animationState.transitionTime = glm::min(animationState.transitionTime + deltaTime, timeToTransition);
+                            animationState.transitionTime = glm::min(animationState.transitionTime + modifiedDeltaTime, timeToTransition);
 
                             isFinished = animationState.transitionTime >= timeToTransition;
                             if (isFinished)
@@ -951,6 +1079,10 @@ namespace ECS::Systems
                 {
                     if (numBoneInstances > 0)
                     {
+                        const auto& entityTransform = registry.get<Components::Transform>(entity);
+                        mat4x4 modelViewMatrix = mul(entityTransform.GetMatrix(), *viewMatrix);
+                        mat4x4 invModelViewMatrix = glm::inverse(modelViewMatrix);
+
                         for (u32 i = 0; i < numBoneInstances; i++)
                         {
                             ::Animation::Defines::BoneInstance& boneInstance = animationData.boneInstances[i];
@@ -960,33 +1092,46 @@ namespace ECS::Systems
                                 continue;
 
                             mat4x4 boneMatrix = mat4x4(1.0f);
+                            mat4x4* parentMatrix = &modelViewMatrix;
 
-                            bool isTransformed = ::Animation::Defines::HasBoneFlag(boneInstance.flags, ::Animation::Defines::BoneFlags::Transformed);
+                            bool isTransformed = boneInstance.flags.Transformed;
                             bool hasParent = bone.parentBoneID != -1;
 
-                            if (isTransformed || hasParent)
+                            if (hasParent)
+                            {
+                                parentMatrix = &animationData.boneTransforms[bone.parentBoneID];
+                            }
+
+                            if (isTransformed)
                             {
                                 ::Animation::Defines::State& animationState = animationData.animationStates[boneInstance.stateIndex];
 
-                                if (isTransformed)
+                                quat rotationOffset = quat(1.0f, 0.0f, 0.0f, 0.0f);
+                                if (boneInstance.proceduralRotationOffsetIndex != ::Animation::Defines::InvalidProcedualBoneID)
                                 {
-                                    quat rotationOffset = quat(1.0f, 0.0f, 0.0f, 0.0f);
-                                    if (boneInstance.proceduralRotationOffsetIndex != ::Animation::Defines::InvalidProcedualBoneID)
-                                    {
-                                        rotationOffset = animationData.proceduralRotationOffsets[boneInstance.proceduralRotationOffsetIndex];
-                                    }
-
-                                    boneMatrix = GetBoneMatrix(animationData.globalLoops, animationState, bone, rotationOffset);
+                                    rotationOffset = animationData.proceduralRotationOffsets[boneInstance.proceduralRotationOffsetIndex];
                                 }
 
-                                if (hasParent)
-                                {
-                                    const mat4x4& parentBoneMatrix = animationData.boneTransforms[bone.parentBoneID];
-                                    boneMatrix = mul(boneMatrix, parentBoneMatrix);
-                                }
-
-                                animationData.boneTransforms[i] = boneMatrix;
+                                boneMatrix = GetBoneMatrix(animationData.globalLoops, animationState, bone, rotationOffset);
+                                animationData.boneTransforms[i] = mul(boneMatrix, *parentMatrix);
                             }
+                            else
+                            {
+                                animationData.boneTransforms[i] = *parentMatrix;
+                            }
+
+                            mat4x4& currentMatrix = animationData.boneTransforms[i];
+                            ApplyBoneBillboard(currentMatrix, boneMatrix, boneInstance.flags, isTransformed, false, bone.pivot);
+                        }
+
+                        for (u32 i = 0; i < numBoneInstances; i++)
+                        {
+                            ::Animation::Defines::BoneInstance& boneInstance = animationData.boneInstances[i];
+                        
+                            if (boneInstance.stateIndex == ::Animation::Defines::InvalidStateID)
+                                continue;
+                        
+                            animationData.boneTransforms[i] = mul(animationData.boneTransforms[i], invModelViewMatrix);
                         }
 
                         ::Animation::Defines::BoneInstance& rootBoneInstance = animationData.boneInstances[0];
@@ -1025,7 +1170,7 @@ namespace ECS::Systems
                         for (auto& pair : attachmentData->attachmentToInstance)
                         {
                             u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
-                            if (!::Util::Attachment::CanUseAttachment(modelInfo, *attachmentData, pair.first, attachmentIndex))
+                            if (!::Util::Attachment::CanUseAttachment(modelInfo, pair.first, attachmentIndex))
                                 continue;
 
                             const Model::ComplexModel::Attachment& skeletonAttachment = modelInfo->attachments[attachmentIndex];

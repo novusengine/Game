@@ -10,6 +10,7 @@ namespace ECS::Components
         u32 backward : 1 = 0;
         u32 left : 1 = 0;
         u32 right : 1 = 0;
+        u32 flying : 1 = 0;
         u32 grounded : 1 = 0;
         u32 jumping : 1 = 0;
         u32 justGrounded : 1 = 0;
@@ -26,6 +27,7 @@ namespace ECS::Components
 
     struct MovementInfo
     {
+    public:
         f32 pitch = 0.0f;
         f32 yaw = 0.0f;
 

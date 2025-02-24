@@ -221,6 +221,9 @@ void ECS::TransformSystem::ParentEntityTo(entt::entity parent, entt::entity chil
     ECS::Components::SceneNode& parentNode = owner->get_or_emplace<ECS::Components::SceneNode>(parent, tfp, parent);
     ECS::Components::SceneNode& childNode = owner->get_or_emplace<ECS::Components::SceneNode>(child, tfc, child);
 
+    if (childNode.parent == &parentNode)
+        return;
+
     // its possible the parent gained a scenenode just now, refresh its matrix
     parentNode.RefreshMatrix();
 

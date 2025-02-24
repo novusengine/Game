@@ -25,7 +25,7 @@ public:
         std::string result = std::string(buffer, length);
         _linesToAppend.enqueue(result);
 
-        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h))
+        if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h) && result.size() > 0)
         {
             NC_LOG_INFO("{0]", result);
         }

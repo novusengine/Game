@@ -17,6 +17,7 @@
 
 #include <Base/Util/StringUtils.h>
 
+#include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
 
 #include <entt/entt.hpp>
@@ -30,17 +31,21 @@ namespace Scripting::UI
         { "RegisterTextTemplate", UIHandler::RegisterTextTemplate },
 
         { "GetCanvas", UIHandler::GetCanvas },
+        { "GetMousePos", UIHandler::GetMousePos },
 
         // Utils
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
         { "CalculateTextSize", UIHandler::CalculateTextSize },
+        { "WrapText", UIHandler::WrapText },
 
         { "FocusWidget", UIHandler::FocusWidget },
         { "UnfocusWidget", UIHandler::UnfocusWidget },
         { "IsFocusedWidget", UIHandler::IsFocusedWidget },
         { "GetFocusedWidget", UIHandler::GetFocusedWidget },
 
-        { nullptr, nullptr }
+        { "IsHoveredWidget", UIHandler::IsHoveredWidget },
+
+        { "DestroyWidget", UIHandler::DestroyWidget }
     };
 
     void UIHandler::Register(lua_State* state)
@@ -61,6 +66,27 @@ namespace Scripting::UI
         Box::Register(state);
 
         CreateUIInputEventTable(state);
+
+        // Setup Cursor Canvas
+        {
+            LuaState ctx(state);
+
+            Widget* canvas = ctx.PushUserData<Widget>([](void* x)
+            {
+                // Very sad canvas is gone now :(
+            });
+
+            auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+            uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48));
+            canvas->type = WidgetType::Canvas;
+            canvas->entity = uiSingleton.cursorCanvasEntity;
+
+            canvas->metaTableName = "CanvasMetaTable";
+            luaL_getmetatable(state, "CanvasMetaTable");
+            lua_setmetatable(state, -2);
+
+            ctx.SetGlobal("Cursor");
+        }
     }
 
     void UIHandler::Clear()
@@ -301,6 +327,17 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        textTemplate.wrapWidth = 0.0f;
+        if (ctx.GetTableField("wrapWidth", 2))
+        {
+            f32 wrapWidth = ctx.Get(0.0f, -1);
+            wrapWidth = glm::max(0.0f, wrapWidth);
+
+            textTemplate.wrapWidth = wrapWidth;
+            textTemplate.setFlags.wrapWidth = wrapWidth > 0.0f;
+            ctx.Pop();
+        }
+
         // Event Templates
         if (ctx.GetTableField("onClickTemplate", 2))
         {
@@ -431,6 +468,26 @@ namespace Scripting::UI
         return 1;
     }
 
+    i32 UIHandler::GetMousePos(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+        InputManager* inputManager = ServiceLocator::GetInputManager();
+
+        const vec2& renderSize = renderer->GetRenderSize();
+        auto mousePos = inputManager->GetMousePosition();
+
+        mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
+        mousePos = mousePos / renderSize;
+        mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
+        ctx.Push(mousePos.x);
+        ctx.Push(mousePos.y);
+
+        return 2;
+    }
+
     i32 UIHandler::PixelsToTexCoord(lua_State* state)
     {
         LuaState ctx(state);
@@ -457,7 +514,6 @@ namespace Scripting::UI
 
         return 2;
     }
-
     i32 UIHandler::CalculateTextSize(lua_State* state)
     {
         LuaState ctx(state);
@@ -485,12 +541,60 @@ namespace Scripting::UI
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
         Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
 
-        vec2 textSize = font->CalculateTextSize(text, textTemplate.size, textTemplate.borderSize);
+        std::string textStr = text;
+        ECS::Util::UI::ReplaceTextNewLines(textStr);
+
+        if (textTemplate.setFlags.wrapWidth)
+        {
+            textStr = ECS::Util::UI::GenWrapText(textStr, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+        }
+
+        vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
 
         ctx.Push(textSize.x);
         ctx.Push(textSize.y);
         
         return 2;
+    }
+
+    i32 UIHandler::WrapText(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        const char* text = ctx.Get(nullptr, 1);
+        if (text == nullptr)
+        {
+            luaL_error(state, "Expected text as parameter 1");
+        }
+
+        const char* templateName = ctx.Get(nullptr, 2);
+        if (templateName == nullptr)
+        {
+            luaL_error(state, "Expected text template name as parameter 2");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+        u32 textTemplateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
+
+        const auto& textTemplate = uiSingleton.textTemplates[textTemplateIndex];
+
+        if (textTemplate.wrapWidth == 0)
+        {
+            ctx.Push(text);
+        }
+        else
+        {
+            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+            Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
+
+            std::string result = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+            ctx.Push(result.c_str());
+        }
+
+        return 1;
     }
 
     i32 UIHandler::FocusWidget(lua_State* state)
@@ -571,6 +675,51 @@ namespace Scripting::UI
         return 1;
     }
 
+    i32 UIHandler::IsHoveredWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        bool isHoveredWidget = widget->entity == uiSingleton.hoveredEntity;
+        ctx.Push(isHoveredWidget);
+
+        return 1;
+    }
+
+    i32 UIHandler::DestroyWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+        auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+        if (widgetComp.type != ECS::Components::UI::WidgetType::Panel && widgetComp.type != ECS::Components::UI::WidgetType::Text)
+        {
+            luaL_error(state, "Expected a Panel or Text for DestroyWidget");
+        }
+
+        if (!ECS::Util::UI::DestroyWidget(registry, widget->entity))
+        {
+            luaL_error(state, "Failed to destroy widget");
+        }
+
+        return 0;
+    }
+
     void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
     {
         LuaState ctx(state);
@@ -598,6 +747,23 @@ namespace Scripting::UI
 
         ctx.Push(value);
         ctx.PCall(3);
+    }
+
+    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value1, const vec2& value2)
+    {
+        LuaState ctx(state);
+
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        ctx.Push(static_cast<u32>(inputEvent));
+        lua_pushlightuserdata(state, widget);
+
+        luaL_getmetatable(state, widget->metaTableName.c_str());
+        lua_setmetatable(state, -2);
+
+        ctx.Push(value1);
+        ctx.Push(value2.x);
+        ctx.Push(value2.y);
+        ctx.PCall(5);
     }
 
     void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value)

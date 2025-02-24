@@ -16,6 +16,7 @@ namespace ECS::Components::UI
             u8 color : 1 = 0;
             u8 borderSize : 1 = 0;
             u8 borderColor : 1 = 0;
+            u8 wrapWidth : 1 = 0;
         };
         SetFlags setFlags;
 
@@ -24,6 +25,7 @@ namespace ECS::Components::UI
         Color color;
         f32 borderSize;
         Color borderColor;
+        f32 wrapWidth;
 
         std::string onClickTemplate;
         std::string onHoverTemplate;

@@ -1,9 +1,8 @@
 #include "MapSelector.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
-#include "Game-Lib/ECS/Singletons/MapDB.h"
-#include "Game-Lib/ECS/Util/MapUtil.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -20,6 +19,7 @@
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
+using namespace ECS::Singletons::Database;
 namespace fs = std::filesystem;
 
 namespace Editor
@@ -169,12 +169,12 @@ namespace Editor
         }
 
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-        entt::registry& registry = *registries->gameRegistry;
+        entt::registry& registry = *registries->dbRegistry;
 
         entt::registry::context& ctx = registry.ctx();
 
-        auto& clientDBCollection = ctx.get<ClientDBCollection>();
-        auto* mapStorage = clientDBCollection.Get(ClientDBHash::Map);
+        auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
         // Begin a list box
         ImGui::Text("Select a map (Optionally use the filter below)");
@@ -192,7 +192,6 @@ namespace Editor
         static f32 scrollPosition = 0.0f;
         ImGui::InputText("Filter", &currentFilter);
 
-        bool hadFilterLastFrame = hasFilter;
         hasFilter = currentFilter.length() > 0;
         if (hasFilter)
         {
@@ -223,7 +222,7 @@ namespace Editor
                     while (clipper.Step())
                     {
                         u32 start = clipper.DisplayStart;
-                        u32 count = (clipper.DisplayEnd - clipper.DisplayStart) - 1;
+                        u32 count = (clipper.DisplayEnd - clipper.DisplayStart);
 
                         mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
                         {

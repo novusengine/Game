@@ -3,21 +3,24 @@
 
 #include <Base/Types.h>
 
+#include <Gameplay/GameDefine.h>
+
 #include <entt/fwd.hpp>
 
 namespace ECS::Components
 {
-    struct NetworkedEntity
+    struct Unit
     {
-        entt::entity networkID;
+    public:
+        GameDefine::ObjectGuid networkID;
         entt::entity targetEntity;
+        GameDefine::UnitClass unitClass;
+        GameDefine::UnitRace race;
+        GameDefine::Gender gender;
+
         u32 bodyID = std::numeric_limits<u32>().max();
         ::Animation::Defines::Type overrideAnimation = ::Animation::Defines::Type::Invalid;
 
-        vec3 initialPosition = vec3(0.0f);
-        vec3 desiredPosition = vec3(0.0f);
-        f32 positionProgress = -1.0f;
-        
         bool positionOrRotationIsDirty = false;
     };
 }

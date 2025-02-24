@@ -1,4 +1,4 @@
-local Module = { }
+local buttonAPI = { }
 
 --[[
 usage:
@@ -139,7 +139,7 @@ local function SetupButtonMethods(buttonTable)
     return buttonTable
 end
 
-function Module.NewButton(parent, posX, posY, sizeX, sizeY, layer, buttonTemplateTable)
+function buttonAPI.NewButton(parent, posX, posY, sizeX, sizeY, layer, buttonTemplateTable)
     local buttonTable = {}
 
     local text = buttonTemplateTable["text"] or "";
@@ -156,4 +156,4 @@ function Module.NewButton(parent, posX, posY, sizeX, sizeY, layer, buttonTemplat
     return buttonTable;
 end
 
-return Module
+return buttonAPI

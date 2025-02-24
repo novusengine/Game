@@ -3,20 +3,29 @@
 
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/CastInfo.h"
+#include "Game-Lib/ECS/Components/Container.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Item.h"
+#include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Handlers/PlayerEventHandler.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/UnitUtil.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
@@ -119,8 +128,8 @@ namespace ECS::Systems
 
     bool HandleOnSetMover(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
-        if (!message.buffer->Get(networkID))
+        GameDefine::ObjectGuid networkID;
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -128,7 +137,7 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received SetMover for non-existent entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received SetMover for non-existent entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -142,12 +151,12 @@ namespace ECS::Systems
     }
     bool HandleOnEntityCreate(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
+        GameDefine::ObjectGuid networkID;
         vec3 position = vec3(0.0f);
         quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         vec3 scale = vec3(1.0f);
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         if (!message.buffer->Get(position))
@@ -164,7 +173,7 @@ namespace ECS::Systems
 
         if (networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Create Entity for already existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Create Entity for already existing entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -174,13 +183,16 @@ namespace ECS::Systems
         registry->emplace<Components::Name>(newEntity);
         registry->emplace<Components::Model>(newEntity);
         registry->emplace<Components::MovementInfo>(newEntity);
+        registry->emplace<Components::UnitEquipment>(newEntity);
+        registry->emplace<Components::UnitMovementOverTime>(newEntity);
         registry->emplace<Components::UnitStatsComponent>(newEntity);
+        registry->emplace<Components::AttachmentData>(newEntity);
         auto& displayInfo = registry->emplace<Components::DisplayInfo>(newEntity);
         displayInfo.displayID = 0;
 
-        auto& networkedEntity = registry->emplace<Components::NetworkedEntity>(newEntity);
-        networkedEntity.networkID = networkID;
-        networkedEntity.targetEntity = entt::null;
+        auto& unit = registry->emplace<Components::Unit>(newEntity);
+        unit.networkID = networkID;
+        unit.targetEntity = entt::null;
 
         TransformSystem& transformSystem = TransformSystem::Get(*registry);
         transformSystem.SetWorldPosition(newEntity, position);
@@ -194,9 +206,8 @@ namespace ECS::Systems
     }
     bool HandleOnEntityDestroy(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
-
-        if (!message.buffer->Get(networkID))
+        GameDefine::ObjectGuid networkID;
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -204,7 +215,7 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Delete Entity for unknown entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Delete Entity for unknown entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -229,13 +240,21 @@ namespace ECS::Systems
     }
     bool HandleOnEntityDisplayInfoUpdate(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
+        GameDefine::ObjectGuid networkID;
         u32 displayID = 0;
+        GameDefine::UnitRace race;
+        GameDefine::Gender gender;
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         if (!message.buffer->GetU32(displayID))
+            return false;
+
+        if (!message.buffer->Get(race))
+            return false;
+
+        if (!message.buffer->Get(gender))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -243,14 +262,14 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
         entt::entity entity = networkState.networkIDToEntity[networkID];
         if (!registry->valid(entity))
         {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -259,24 +278,35 @@ namespace ECS::Systems
 
         if (!modelLoader->LoadDisplayIDForEntity(entity, model, ClientDB::Definitions::DisplayInfoType::Creature, displayID))
         {
-            NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", networkID.ToString());
             return true;
         }
 
         auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
         displayInfo.displayID = displayID;
+        displayInfo.race = race;
+        displayInfo.gender = gender;
+
+        // Mark all equipment as dirty
+        auto& unitEquipment = registry->get_or_emplace<Components::UnitEquipment>(entity);
+        for (u32 i = 0; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
+        {
+            Database::Item::ItemEquipSlot equipSlot = static_cast<Database::Item::ItemEquipSlot>(i);
+            unitEquipment.dirtyEquipmentSlots.insert(equipSlot);
+        }
+        registry->get_or_emplace<Components::UnitEquipmentDirty>(entity);
 
         return true;
     }
     bool HandleOnEntityMove(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
+        GameDefine::ObjectGuid networkID;
         vec3 position = vec3(0.0f);
         quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         Components::MovementFlags movementFlags = {};
         f32 verticalVelocity = 0.0f;
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         if (!message.buffer->Get(position))
@@ -296,20 +326,39 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Entity Move for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Entity Move for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
         entt::entity entity = networkState.networkIDToEntity[networkID];
 
-        auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
+        auto& unitMovementOverTime = registry->get<Components::UnitMovementOverTime>(entity);
         auto& transform = registry->get<Components::Transform>(entity);
         auto& movementInfo = registry->get<Components::MovementInfo>(entity);
 
-        networkedEntity.initialPosition = transform.GetWorldPosition();
-        networkedEntity.desiredPosition = position;
-        networkedEntity.positionProgress = 0.0f;
+        unitMovementOverTime.startPos = transform.GetWorldPosition();
+        unitMovementOverTime.endPos = position;
+        unitMovementOverTime.time = 0.0f;
         movementInfo.movementFlags = movementFlags;
+
+        bool isGrounded = movementInfo.movementFlags.grounded;
+        if (isGrounded)
+        {
+            if (movementInfo.movementFlags.jumping || movementInfo.jumpState != Components::JumpState::None)
+            {
+                movementInfo.jumpState = Components::JumpState::None;
+            }
+        }
+        else
+        {
+            bool isInJump = movementInfo.movementFlags.jumping;
+            if (isInJump)
+            {
+                if (movementInfo.jumpState == Components::JumpState::None)
+                    movementInfo.jumpState = Components::JumpState::Begin;
+            }
+        }
+
         movementInfo.verticalVelocity = verticalVelocity;
 
         TransformSystem& transformSystem = TransformSystem::Get(*registry);
@@ -323,13 +372,13 @@ namespace ECS::Systems
     }
     bool HandleOnResourceUpdate(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
+        GameDefine::ObjectGuid networkID;
         Components::PowerType powerType = Components::PowerType::Count;
         f32 powerBaseValue = 0.0f;
         f32 powerCurrentValue = 0.0f;
         f32 powerMaxValue = 0.0f;
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         if (!message.buffer->Get(powerType))
@@ -355,14 +404,14 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
         entt::entity entity = networkState.networkIDToEntity[networkID];
         if (!registry->valid(entity))
         {
-            NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Power Update for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -385,13 +434,13 @@ namespace ECS::Systems
     }
     bool HandleOnEntityTargetUpdate(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
-        entt::entity targetNetworkID = entt::null;
+        GameDefine::ObjectGuid networkID;
+        GameDefine::ObjectGuid targetNetworkID;
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
-        if (!message.buffer->Get(targetNetworkID))
+        if (!message.buffer->Deserialize(targetNetworkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -399,13 +448,13 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Target Update for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Target Update for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
         if (!networkState.networkIDToEntity.contains(targetNetworkID))
         {
-            NC_LOG_WARNING("Network : Received Target Update for non existing target entity ({0})", entt::to_integral(targetNetworkID));
+            NC_LOG_WARNING("Network : Received Target Update for non existing target entity ({0})", targetNetworkID.ToString());
             return true;
         }
 
@@ -414,19 +463,18 @@ namespace ECS::Systems
         entt::entity entity = networkState.networkIDToEntity[networkID];
         entt::entity targetEntity = networkState.networkIDToEntity[targetNetworkID];
 
-        auto& networkedEntity = registry->get<Components::NetworkedEntity>(entity);
-        networkedEntity.targetEntity = targetEntity;
+        auto& unit = registry->get<Components::Unit>(entity);
+        unit.targetEntity = targetEntity;
 
         return true;
     }
-
     bool HandleOnEntityCastSpell(Network::SocketID socketID, Network::Message& message)
     {
-        entt::entity networkID = entt::null;
+        GameDefine::ObjectGuid networkID;
         f32 castTime = 0.0f;
         f32 duration = 0.0f;
 
-        if (!message.buffer->Get(networkID))
+        if (!message.buffer->Deserialize(networkID))
             return false;
 
         if (!message.buffer->GetF32(castTime))
@@ -440,7 +488,7 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(networkID))
         {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
@@ -448,30 +496,489 @@ namespace ECS::Systems
 
         if (!registry->valid(entity))
         {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
-        Components::NetworkedEntity* networkedEntity = registry->try_get<Components::NetworkedEntity>(entity);
-        if (!networkedEntity)
+        Components::Unit* unit = registry->try_get<Components::Unit>(entity);
+        if (!unit)
         {
-            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", entt::to_integral(networkID));
+            NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", networkID.ToString());
             return true;
         }
 
         Components::CastInfo& castInfo = registry->emplace_or_replace<Components::CastInfo>(entity);
 
-        castInfo.target = networkedEntity->targetEntity;
+        castInfo.target = unit->targetEntity;
         castInfo.castTime = castTime;
         castInfo.duration = duration;
 
         return true;
     }
+    
+    bool HandleOnItemCreate(Network::SocketID socketID, Network::Message& message)
+    {
+        GameDefine::ObjectGuid networkID;
+        u32 itemID = 0;
+        u16 count = 0;
+        u16 durability = 0;
 
+        bool didFail = false;
+
+        didFail |= !message.buffer->Deserialize(networkID);
+        didFail |= !message.buffer->GetU32(itemID);
+        didFail |= !message.buffer->GetU16(count);
+        didFail |= !message.buffer->GetU16(durability);
+
+        if (didFail)
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Create Item for already existing item ({0})", networkID.ToString());
+            return true;
+        }
+
+        entt::entity newItemEntity = registry->create();
+
+        auto& item = registry->emplace<Components::Item>(newItemEntity);
+        item.guid = networkID;
+        item.itemID = itemID;
+        item.count = count;
+        item.durability = durability;
+
+        auto& name = registry->emplace<Components::Name>(newItemEntity);
+
+        std::string itemName = networkID.ToString();
+        name.name = itemName;
+        name.fullName = itemName;
+        name.nameHash = StringUtils::fnv1a_32(itemName.c_str(), itemName.size());
+
+        networkState.networkIDToEntity[networkID] = newItemEntity;
+        networkState.entityToNetworkID[newItemEntity] = networkID;
+
+        return true;
+    }
+    bool HandleOnContainerCreate(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 containerIndex = 0;
+        u32 itemID = 0;
+        GameDefine::ObjectGuid networkID;
+        u8 numSlots = 0;
+        u8 numSlotsFree = 0;
+
+        bool didFail = false;
+
+        didFail |= !message.buffer->GetU8(containerIndex);
+        didFail |= !message.buffer->GetU32(itemID);
+        didFail |= !message.buffer->Deserialize(networkID);
+        didFail |= !message.buffer->GetU8(numSlots);
+        didFail |= !message.buffer->GetU8(numSlotsFree);
+
+        if (didFail)
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (networkState.networkIDToEntity.contains(networkID))
+        {
+            NC_LOG_WARNING("Network : Received Create Container for already existing container ({0})", networkID.ToString());
+            return true;
+        }
+
+        Components::Container container =
+        {
+            .itemID = itemID,
+            .numSlots = numSlots,
+            .numFreeSlots = numSlotsFree,
+        };
+        container.items.resize(numSlots);
+
+        u8 numItemsInContainer = numSlots - numSlotsFree;
+        for (u32 i = 0; i < numItemsInContainer; i++)
+        {
+            u8 containerItemIndex = 0;
+            GameDefine::ObjectGuid containerItemNetworkID;
+
+            didFail |= !message.buffer->GetU8(containerItemIndex);
+            didFail |= !message.buffer->Deserialize(containerItemNetworkID);
+
+            container.items[containerItemIndex] = containerItemNetworkID;
+        }
+
+        if (didFail)
+            return false;
+
+        entt::entity newContainerEntity = registry->create();
+
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+        if (containerIndex == 0)
+        {
+            characterSingleton.baseContainerEntity = newContainerEntity;
+
+            auto& name = registry->emplace<Components::Name>(newContainerEntity);
+            std::string containerName = "Player Base Container";
+            name.name = containerName;
+            name.fullName = containerName;
+            name.nameHash = StringUtils::fnv1a_32(containerName.c_str(), containerName.size());
+        }
+        else
+        {
+            auto& name = registry->emplace<Components::Name>(newContainerEntity);
+            std::string containerName = networkID.ToString();
+            name.name = containerName;
+            name.fullName = containerName;
+            name.nameHash = StringUtils::fnv1a_32(containerName.c_str(), containerName.size());
+
+            auto& itemComp = registry->emplace<Components::Item>(newContainerEntity);
+            itemComp.guid = networkID;
+            itemComp.itemID = itemID;
+            itemComp.count = 1;
+            itemComp.durability = numSlots;
+
+            networkState.networkIDToEntity[networkID] = newContainerEntity;
+            networkState.entityToNetworkID[newContainerEntity] = networkID;
+        }
+
+        registry->emplace<Components::Container>(newContainerEntity, container);
+        characterSingleton.containers[containerIndex] = networkID;
+
+        auto* luaManager = ServiceLocator::GetLuaManager();
+        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
+        
+        Scripting::LuaPlayerEventContainerCreateData eventData;
+        eventData.index = containerIndex + 1;
+        eventData.numSlots = container.numSlots;
+        eventData.itemID = container.itemID;
+
+        if (numItemsInContainer > 0)
+        {
+            eventData.items.reserve(numItemsInContainer);
+
+            entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+            auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
+            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+            for (u32 i = 0; i < container.numSlots; i++)
+            {
+                const auto& objectGuid = container.items[i];
+                if (!objectGuid.IsValid())
+                    continue;
+
+                if (!networkState.networkIDToEntity.contains(objectGuid))
+                    continue;
+
+                entt::entity itemEntity = networkState.networkIDToEntity[objectGuid];
+                const auto& item = registry->get<Components::Item>(itemEntity);
+
+                if (!itemStorage->Has(item.itemID))
+                    continue;
+
+                const auto& itemInfo = itemStorage->Get<::Database::Item::Item>(item.itemID);
+
+                auto& eventItemData = eventData.items.emplace_back();
+                eventItemData.slot = i + 1;
+                eventItemData.itemID = item.itemID;
+                eventItemData.count = item.count;
+            }
+        }
+
+        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Scripting::LuaPlayerEvent::ContainerCreate), &eventData);
+        return true;
+    }
+    bool HandleOnContainerAddToSlot(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 containerIndex = 0;
+        u8 slotIndex = 0;
+        GameDefine::ObjectGuid itemNetworkID;
+
+        bool didFail = false;
+
+        didFail |= !message.buffer->GetU8(containerIndex);
+        didFail |= !message.buffer->GetU8(slotIndex);
+        didFail |= !message.buffer->Deserialize(itemNetworkID);
+
+        if (didFail)
+            return false;
+
+        if (containerIndex >= 6)
+        {
+            NC_LOG_WARNING("Network : Received Container Add To Slot for invalid container index ({0})", containerIndex);
+            return true;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (!networkState.networkIDToEntity.contains(itemNetworkID))
+        {
+            NC_LOG_WARNING("Network : Received Container Add To Slot for non existing item ({0})", itemNetworkID.ToString());
+            return true;
+        }
+
+        Components::Container* containerPtr = nullptr;
+        if (containerIndex == 0)
+        {
+            if (!registry->valid(characterSingleton.baseContainerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Add To Slot for non existing base container");
+                return true;
+            }
+
+            auto& baseContainer = registry->get<Components::Container>(characterSingleton.baseContainerEntity);
+            containerPtr = &baseContainer;
+        }
+        else
+        {
+            if (!characterSingleton.containers[containerIndex].IsValid())
+            {
+                NC_LOG_WARNING("Network : Received Container Add To Slot for non existing container ({0})", containerIndex);
+                return true;
+            }
+
+            GameDefine::ObjectGuid containerNetworkID = characterSingleton.containers[containerIndex];
+            if (!networkState.networkIDToEntity.contains(containerNetworkID))
+            {
+                NC_LOG_WARNING("Network : Received Container Add To Slot for non existing container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            entt::entity containerEntity = networkState.networkIDToEntity[containerNetworkID];
+            if (!registry->valid(containerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Add To Slot for invalid container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            auto& container = registry->get<Components::Container>(containerEntity);
+            containerPtr = &container;
+        }
+
+        containerPtr->AddToSlot(slotIndex, itemNetworkID);
+
+        entt::entity itemEntity = networkState.networkIDToEntity[itemNetworkID];
+        auto& item = registry->get<Components::Item>(itemEntity);
+
+        Scripting::LuaPlayerEventContainerAddToSlotData eventData =
+        {
+            .containerIndex = (u32)containerIndex + 1,
+            .slotIndex = (u32)slotIndex + 1u,
+            .itemID = item.itemID,
+            .count = item.count
+        };
+
+        auto* luaManager = ServiceLocator::GetLuaManager();
+        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
+        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Scripting::LuaPlayerEvent::ContainerAddToSlot), &eventData);
+        return true;
+    }
+    bool HandleOnContainerRemoveFromSlot(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 containerIndex = 0;
+        u8 slotIndex = 0;
+
+        bool didFail = false;
+        didFail |= !message.buffer->GetU8(containerIndex);
+        didFail |= !message.buffer->GetU8(slotIndex);
+
+        if (didFail)
+            return false;
+
+        if (containerIndex >= 6)
+        {
+            NC_LOG_WARNING("Network : Received Container Remove From Slot for invalid container index ({0})", containerIndex);
+            return true;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        Components::Container* containerPtr = nullptr;
+        if (containerIndex == 0)
+        {
+            if (!registry->valid(characterSingleton.baseContainerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Remove From Slot for non existing base container");
+                return true;
+            }
+
+            auto& baseContainer = registry->get<Components::Container>(characterSingleton.baseContainerEntity);
+            containerPtr = &baseContainer;
+        }
+        else
+        {
+            if (!characterSingleton.containers[containerIndex].IsValid())
+            {
+                NC_LOG_WARNING("Network : Received Container Remove From Slot for non existing container ({0})", containerIndex);
+                return true;
+            }
+
+            GameDefine::ObjectGuid containerNetworkID = characterSingleton.containers[containerIndex];
+            if (!networkState.networkIDToEntity.contains(containerNetworkID))
+            {
+                NC_LOG_WARNING("Network : Received Container Remove From Slot for non existing container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            entt::entity containerEntity = networkState.networkIDToEntity[containerNetworkID];
+            if (!registry->valid(containerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Remove From Slot for invalid container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            auto& container = registry->get<Components::Container>(containerEntity);
+            containerPtr = &container;
+        }
+
+        GameDefine::ObjectGuid itemNetworkID = containerPtr->GetItem(slotIndex);
+        containerPtr->RemoveFromSlot(slotIndex);
+
+        entt::entity itemEntity = networkState.networkIDToEntity[itemNetworkID];
+        networkState.networkIDToEntity.erase(itemNetworkID);
+        registry->destroy(itemEntity);
+
+        Scripting::LuaPlayerEventContainerRemoveFromSlotData eventData =
+        {
+            .containerIndex = (u32)containerIndex + 1,
+            .slotIndex = (u32)slotIndex + 1u
+        };
+
+        auto* luaManager = ServiceLocator::GetLuaManager();
+        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
+        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Scripting::LuaPlayerEvent::ContainerRemoveFromSlot), &eventData);
+        return true;
+    }
+    bool HandleOnContainerSwapSlots(Network::SocketID socketID, Network::Message& message)
+    {
+        u8 srcContainerIndex = 0;
+        u8 destContainerIndex = 0;
+        u8 srcSlotIndex = 0;
+        u8 dstSlotIndex = 0;
+
+        bool didFail = false;
+
+        didFail |= !message.buffer->GetU8(srcContainerIndex);
+        didFail |= !message.buffer->GetU8(destContainerIndex);
+        didFail |= !message.buffer->GetU8(srcSlotIndex);
+        didFail |= !message.buffer->GetU8(dstSlotIndex);
+
+        if (didFail)
+            return false;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        
+        Components::Container* srcContainer = nullptr;
+        Components::Container* destContainer = nullptr;
+
+        if (srcContainerIndex == 0)
+        {
+            if (!registry->valid(characterSingleton.baseContainerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Swap Slots for non existing base container");
+                return true;
+            }
+
+            auto& baseContainer = registry->get<Components::Container>(characterSingleton.baseContainerEntity);
+            srcContainer = &baseContainer;
+        }
+        else
+        {
+            if (!characterSingleton.containers[srcContainerIndex].IsValid())
+            {
+                NC_LOG_WARNING("Network : Received Container Swap Slots for non existing container ({0})", srcContainerIndex);
+                return true;
+            }
+
+            GameDefine::ObjectGuid containerNetworkID = characterSingleton.containers[srcContainerIndex];
+            if (!networkState.networkIDToEntity.contains(containerNetworkID))
+            {
+                NC_LOG_WARNING("Network : Received Container Swap Slots for non existing container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            entt::entity containerEntity = networkState.networkIDToEntity[containerNetworkID];
+            if (!registry->valid(containerEntity))
+            {
+                NC_LOG_WARNING("Network : Received Container Swap Slots for invalid container entity ({0})", containerNetworkID.ToString());
+                return true;
+            }
+
+            auto& container = registry->get<Components::Container>(containerEntity);
+            srcContainer = &container;
+        }
+
+        if (srcContainerIndex == destContainerIndex)
+        {
+            destContainer = srcContainer;
+        }
+        else
+        {
+            if (destContainerIndex == 0)
+            {
+                if (!registry->valid(characterSingleton.baseContainerEntity))
+                {
+                    NC_LOG_WARNING("Network : Received Container Swap Slots for non existing base container");
+                    return true;
+                }
+
+                auto& baseContainer = registry->get<Components::Container>(characterSingleton.baseContainerEntity);
+                destContainer = &baseContainer;
+            }
+            else
+            {
+                if (!characterSingleton.containers[destContainerIndex].IsValid())
+                {
+                    NC_LOG_WARNING("Network : Received Container Swap Slots for non existing container ({0})", destContainerIndex);
+                    return true;
+                }
+
+                GameDefine::ObjectGuid containerNetworkID = characterSingleton.containers[destContainerIndex];
+                if (!networkState.networkIDToEntity.contains(containerNetworkID))
+                {
+                    NC_LOG_WARNING("Network : Received Container Swap Slots for non existing container entity ({0})", containerNetworkID.ToString());
+                    return true;
+                }
+
+                entt::entity containerEntity = networkState.networkIDToEntity[containerNetworkID];
+                if (!registry->valid(containerEntity))
+                {
+                    NC_LOG_WARNING("Network : Received Container Swap Slots for invalid container entity ({0})", containerNetworkID.ToString());
+                    return true;
+                }
+
+                auto& container = registry->get<Components::Container>(containerEntity);
+                destContainer = &container;
+            }
+        }
+
+        std::swap(srcContainer->items[srcSlotIndex], destContainer->items[dstSlotIndex]);
+
+        Scripting::LuaPlayerEventContainerSwapSlotsData eventData =
+        {
+            .srcContainerIndex = (u32)srcContainerIndex + 1,
+            .destContainerIndex = (u32)destContainerIndex + 1,
+            .srcSlotIndex = (u32)srcSlotIndex + 1u,
+            .destSlotIndex = (u32)dstSlotIndex + 1u,
+        };
+
+        auto* luaManager = ServiceLocator::GetLuaManager();
+        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
+        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Scripting::LuaPlayerEvent::ContainerSwapSlots), &eventData);
+        return true;
+    }
     bool HandleOnSpellCastResult(Network::SocketID socketID, Network::Message& message)
     {
         u8 result;
-
         if (!message.buffer->GetU8(result))
             return false;
 
@@ -498,25 +1005,24 @@ namespace ECS::Systems
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
 
-            auto& networkedEntity = registry->get<Components::NetworkedEntity>(characterSingleton.moverEntity);
+            auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
             auto& castInfo = registry->emplace_or_replace<Components::CastInfo>(characterSingleton.moverEntity);
-            castInfo.target = networkedEntity.targetEntity;
+            castInfo.target = unit.targetEntity;
             castInfo.castTime = castTime;
             castInfo.duration = duration;
         }
 
         return true;
     }
-    
     bool HandleOnCombatEvent(Network::SocketID socketID, Network::Message& message)
     {
         u16 eventID = 0;
-        entt::entity sourceNetworkID = entt::null;
+        GameDefine::ObjectGuid sourceNetworkID;
 
         if (!message.buffer->GetU16(eventID))
             return false;
 
-        if (!message.buffer->Get(sourceNetworkID))
+        if (!message.buffer->Deserialize(sourceNetworkID))
             return false;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -524,7 +1030,7 @@ namespace ECS::Systems
 
         if (!networkState.networkIDToEntity.contains(sourceNetworkID))
         {
-            NC_LOG_WARNING("Network : Received Combat Event for non existing entity ({0})", entt::to_integral(sourceNetworkID));
+            NC_LOG_WARNING("Network : Received Combat Event for non existing entity ({0})", sourceNetworkID.ToString());
             return true;
         }
 
@@ -532,7 +1038,7 @@ namespace ECS::Systems
 
         if (!registry->valid(sourceEntity))
         {
-            NC_LOG_WARNING("Network : Received Combat Event for non existing entity ({0})", entt::to_integral(sourceNetworkID));
+            NC_LOG_WARNING("Network : Received Combat Event for non existing entity ({0})", sourceNetworkID.ToString());
             return true;
         }
 
@@ -542,10 +1048,10 @@ namespace ECS::Systems
             case 0:
             case 1:
             {
-                entt::entity targetNetworkID = entt::null;
+                GameDefine::ObjectGuid targetNetworkID;
                 f32 value = 0.0f;
 
-                if (!message.buffer->Get(targetNetworkID))
+                if (!message.buffer->Deserialize(targetNetworkID))
                     return false;
 
                 if (!message.buffer->GetF32(value))
@@ -553,7 +1059,7 @@ namespace ECS::Systems
 
                 if (!networkState.networkIDToEntity.contains(targetNetworkID))
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -561,7 +1067,7 @@ namespace ECS::Systems
 
                 if (!registry->valid(targetEntity))
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -570,7 +1076,7 @@ namespace ECS::Systems
 
                 if (!sourceName || !targetName)
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for entity without Name Component ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for entity without Name Component ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -590,14 +1096,13 @@ namespace ECS::Systems
 
             case 2:
             {
-                entt::entity targetNetworkID = entt::null;
-
-                if (!message.buffer->Get(targetNetworkID))
+                GameDefine::ObjectGuid targetNetworkID;
+                if (!message.buffer->Deserialize(targetNetworkID))
                     return false;
 
                 if (!networkState.networkIDToEntity.contains(targetNetworkID))
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -605,7 +1110,7 @@ namespace ECS::Systems
 
                 if (!registry->valid(targetEntity))
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for non existing target entity ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -614,7 +1119,7 @@ namespace ECS::Systems
 
                 if (!sourceName || !targetName)
                 {
-                    NC_LOG_WARNING("Network : Received Combat Event for entity without Name Component ({0})", entt::to_integral(targetNetworkID));
+                    NC_LOG_WARNING("Network : Received Combat Event for entity without Name Component ({0})", targetNetworkID.ToString());
                     return true;
                 }
 
@@ -660,8 +1165,13 @@ namespace ECS::Systems
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Shared_EntityTargetUpdate,       Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityTargetUpdate));
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_EntityCastSpell,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnEntityCastSpell));
 
-            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult,      Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnSpellCastResult));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_ItemCreate,               Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnItemCreate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_ContainerCreate,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnContainerCreate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_ContainerAddToSlot,       Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnContainerAddToSlot));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_ContainerRemoveFromSlot,  Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnContainerRemoveFromSlot));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_ContainerSwapSlots,       Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnContainerSwapSlots));
 
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult,      Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnSpellCastResult));
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCombatEvent,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCombatEvent));
         }
     }
@@ -679,7 +1189,6 @@ namespace ECS::Systems
             {
                 if (!networkState.asioThread.joinable())
                 {
-                    
                     networkState.asioThread = std::thread([&] 
                     {
                         if (networkState.asioContext.stopped())
@@ -743,6 +1252,14 @@ namespace ECS::Systems
                     if (!registry.valid(entity))
                         continue;
 
+                    if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
+                    {
+                        for (auto& pair : attachmentData->attachmentToInstance)
+                        {
+                            ::Util::Unit::RemoveItemFromAttachment(registry, entity, pair.first);
+                        }
+                    }
+
                     if (auto* model = registry.try_get<Components::Model>(entity))
                     {
                         if (model->instanceID != std::numeric_limits<u32>().max())
@@ -769,6 +1286,7 @@ namespace ECS::Systems
                 if (networkState.asioThread.joinable())
                     networkState.asioThread.join();
 
+                ServiceLocator::GetLuaManager()->SetDirty();
                 CharacterController::InitCharacterController(registry, true);
             }
 

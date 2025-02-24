@@ -1,6 +1,11 @@
 #include "MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/Util/ServiceLocator.h"
 
+#include <FileFormat/Novus/ClientDB/ClientDB.h>
+
+#include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Define.h>
 
 #include <entt/entt.hpp>
@@ -113,11 +118,27 @@ namespace ECS::Util::MessageBuilder
             return result;
         }
         
-        bool BuildTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, entt::entity target)
+        bool BuildTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, GameDefine::ObjectGuid targetGuid)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Shared_EntityTargetUpdate, [&]()
             {
-                buffer->Put(target);
+                buffer->Serialize(targetGuid);
+            });
+
+            return result;
+        }
+    }
+
+    namespace Container
+    {
+        bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u8 srcContainerIndex, u8 destContainerIndex, u8 srcSlotIndex, u8 destSlotIndex)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_ContainerSwapSlots, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
+            {
+                buffer->PutU8(srcContainerIndex);
+                buffer->PutU8(destContainerIndex);
+                buffer->PutU8(srcSlotIndex);
+                buffer->PutU8(destSlotIndex);
             });
 
             return result;
@@ -267,6 +288,132 @@ namespace ECS::Util::MessageBuilder
             {
                 buffer->Put(Network::CheatCommands::SetLevel);
                 buffer->PutU16(level);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Database::Item::Item& item)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID]()
+            {
+                GameDefine::Database::ItemTemplate itemTemplate =
+                {
+                    .id = itemID,
+                    .displayID = item.displayID,
+                    .bind = item.bind,
+                    .rarity = item.rarity,
+                    .category = item.category,
+                    .type = item.type,
+                    .virtualLevel = item.virtualLevel,
+                    .requiredLevel = item.requiredLevel,
+                    .durability = item.durability,
+                    .iconID = item.iconID,
+
+                    .name = itemStorage->GetString(item.name),
+                    .description = itemStorage->GetString(item.description),
+
+                    .armor = item.armor,
+                    .statTemplateID = item.statTemplateID,
+                    .armorTemplateID = item.armorTemplateID,
+                    .weaponTemplateID = item.weaponTemplateID,
+                    .shieldTemplateID = item.shieldTemplateID
+                };
+
+                buffer->Put(Network::CheatCommands::SetItemTemplate);
+                GameDefine::Database::ItemTemplate::Write(buffer, itemTemplate);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetItemStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Database::Item::ItemStatTemplate& statTemplate)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, statTemplateID]()
+            {
+                GameDefine::Database::ItemStatTemplate itemStatTemplate =
+                {
+                    .id = statTemplateID,
+                    .statTypes = { statTemplate.statTypes[0], statTemplate.statTypes[1], statTemplate.statTypes[2], statTemplate.statTypes[3], statTemplate.statTypes[4], statTemplate.statTypes[5], statTemplate.statTypes[6], statTemplate.statTypes[7] },
+                    .statValues = { statTemplate.statValues[0], statTemplate.statValues[1], statTemplate.statValues[2], statTemplate.statValues[3], statTemplate.statValues[4], statTemplate.statValues[5], statTemplate.statValues[6], statTemplate.statValues[7] }
+                };
+
+                buffer->Put(Network::CheatCommands::SetItemStatTemplate);
+                GameDefine::Database::ItemStatTemplate::Write(buffer, itemStatTemplate);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetItemArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Database::Item::ItemArmorTemplate& armorTemplate)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, armorTemplateID]()
+            {
+                GameDefine::Database::ItemArmorTemplate itemArmorTemplate =
+                {
+                    .id = armorTemplateID,
+                    .equipType = (u8)armorTemplate.equipType,
+                    .bonusArmor = armorTemplate.bonusArmor,
+                };
+
+                buffer->Put(Network::CheatCommands::SetItemArmorTemplate);
+                GameDefine::Database::ItemArmorTemplate::Write(buffer, itemArmorTemplate);
+            });
+
+            return result;
+        }
+        bool BuildCheatSetItemWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Database::Item::ItemWeaponTemplate& weaponTemplate)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, weaponTemplateID]()
+            {
+                GameDefine::Database::ItemWeaponTemplate itemWeaponTemplate =
+                {
+                    .id = weaponTemplateID,
+                    .weaponStyle = (u8)weaponTemplate.weaponStyle,
+                    .minDamage = weaponTemplate.minDamage,
+                    .maxDamage = weaponTemplate.maxDamage,
+                    .speed = weaponTemplate.speed,
+                };
+
+                buffer->Put(Network::CheatCommands::SetItemWeaponTemplate);
+                GameDefine::Database::ItemWeaponTemplate::Write(buffer, itemWeaponTemplate);
+            });
+
+            return result;
+
+        }
+        bool BuildCheatSetItemShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Database::Item::ItemShieldTemplate& shieldTemplate)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, shieldTemplateID]()
+            {
+                GameDefine::Database::ItemShieldTemplate itemShieldTemplate =
+                {
+                    .id = shieldTemplateID,
+                    .bonusArmor = shieldTemplate.bonusArmor,
+                    .block = shieldTemplate.block,
+                };
+
+                buffer->Put(Network::CheatCommands::SetItemShieldTemplate);
+                GameDefine::Database::ItemShieldTemplate::Write(buffer, itemShieldTemplate);
+            });
+
+            return result;
+        }
+        bool BuildCheatAddItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID, itemCount]()
+            {
+                buffer->Put(Network::CheatCommands::AddItem);
+                buffer->PutU32(itemID);
+                buffer->PutU32(itemCount);
+            });
+
+            return result;
+        }
+        bool BuildCheatRemoveItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID, itemCount]()
+            {
+                buffer->Put(Network::CheatCommands::RemoveItem);
+                buffer->PutU32(itemID);
+                buffer->PutU32(itemCount);
             });
 
             return result;

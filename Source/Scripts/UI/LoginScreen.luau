@@ -1,6 +1,6 @@
-local UIButton = require("API/UI/Button")
-local UICheckbox = require("API/UI/Checkbox")
-local UIInputBox = require("API/UI/InputBox")
+local UIButton = require("@src/API/UI/Button")
+local UICheckbox = require("@src/API/UI/Checkbox")
+local UIInputBox = require("@src/API/UI/InputBox")
 
 local function RegisterTemplates()
     UI.RegisterPanelTemplate("LoginBackgroundPanel",
@@ -12,36 +12,36 @@ local function RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf",
         size = 24.0,
-        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.5,
-        borderColor = vec3.new(0.2, 0.2, 0.2),
+        borderColor = vector.create(0.2, 0.2, 0.2),
     });
 
     UI.RegisterTextTemplate("LoginButtonText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf",
         size = 24.0,
-        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.0,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
+        borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("RememberText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf",
         size = 18.0,
-        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.0,
-        borderColor = vec3.new(0.2, 0.2, 0.2),
+        borderColor = vector.create(0.2, 0.2, 0.2),
     });
 
     UI.RegisterTextTemplate("VersionText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf",
         size = 18.0,
-        color = vec3.new(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.5,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
+        borderColor = vector.create(0.0, 0.0, 0.0),
     });
 end
 
@@ -205,9 +205,9 @@ local function CreateLoginScreen()
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    RegisterTemplates();
+    --RegisterTemplates();
 
-    CreateLoginScreen();
+    --CreateLoginScreen();
 end
 
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

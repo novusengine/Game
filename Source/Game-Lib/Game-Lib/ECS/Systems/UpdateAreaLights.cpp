@@ -2,7 +2,7 @@
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/AreaLightInfo.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/DayNightCycle.h"
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -51,7 +51,7 @@ namespace ECS::Systems
 
         u32 lightParamID = light->lightParamsID[0];
 
-        if (lightParamsStorage->Has(lightParamID))
+        if (!lightParamsStorage->Has(lightParamID))
             return lightColor;
 
         auto& lightParams = lightParamsStorage->Get<ClientDB::Definitions::LightParam>(lightParamID);
@@ -97,7 +97,7 @@ namespace ECS::Systems
                 u32 lightDataID = lightDataIDs[i - 1];
 
                 if (!lightDataStorage->Has(lightDataID))
-                    return lightColor;
+                    continue;
 
                 auto& lightData = lightDataStorage->Get<ClientDB::Definitions::LightData>(lightDataID);
 
@@ -154,11 +154,11 @@ namespace ECS::Systems
     {
         entt::registry::context& context = registry.ctx();
         auto& areaLightInfo = context.emplace<Singletons::AreaLightInfo>();
-        auto& clientDBCollection = context.get<Singletons::ClientDBCollection>();
+        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
 
-        auto* lightStorage = clientDBCollection.Get(Singletons::ClientDBHash::Light);
-        auto* lightParamsStorage = clientDBCollection.Get(Singletons::ClientDBHash::LightParams);
-        auto* lightDataStorage = clientDBCollection.Get(Singletons::ClientDBHash::LightData);
+        auto* lightStorage = clientDBSingleton.Get(ClientDBHash::Light);
+        auto* lightParamsStorage = clientDBSingleton.Get(ClientDBHash::LightParams);
+        auto* lightDataStorage = clientDBSingleton.Get(ClientDBHash::LightData);
 
         if (lightStorage)
         {
@@ -210,14 +210,14 @@ namespace ECS::Systems
         auto& activeCamera = context.get<Singletons::ActiveCamera>();
         auto& areaLightInfo = context.get<Singletons::AreaLightInfo>();
         auto& characterSingleton = context.get<Singletons::CharacterSingleton>();
-        auto& clientDBCollection = context.get<Singletons::ClientDBCollection>();
         auto& dayNightCycle = context.get<Singletons::DayNightCycle>();
         auto& freeflyingCameraSettings = context.get<Singletons::FreeflyingCameraSettings>();
 
         MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-        auto* lightStorage = clientDBCollection.Get(Singletons::ClientDBHash::Light);
-        auto* lightParamsStorage = clientDBCollection.Get(Singletons::ClientDBHash::LightParams);
-        auto* lightDataStorage = clientDBCollection.Get(Singletons::ClientDBHash::LightData);
+        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
+        auto* lightStorage = clientDBSingleton.Get(ClientDBHash::Light);
+        auto* lightParamsStorage = clientDBSingleton.Get(ClientDBHash::LightParams);
+        auto* lightDataStorage = clientDBSingleton.Get(ClientDBHash::LightData);
 
         if (!lightStorage || !lightParamsStorage || !lightDataStorage)
             return;

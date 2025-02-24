@@ -18,8 +18,10 @@ namespace Scripting
     {
         Global,
         GameEvent,
+        PlayerEvent,
         UI,
         Database,
+        Game,
         Count
     };
 
@@ -34,6 +36,16 @@ namespace Scripting
         Invalid,
         Loaded,
         Updated,
+        Count
+    };
+
+    enum class LuaPlayerEvent
+    {
+        Invalid,
+        ContainerCreate,
+        ContainerAddToSlot,
+        ContainerRemoveFromSlot,
+        ContainerSwapSlots,
         Count
     };
 
@@ -52,6 +64,48 @@ namespace Scripting
     {
     public:
         f32 deltaTime;
+    };
+
+    struct LuaPlayerEventContainerItemInfo
+    {
+    public:
+        u32 slot;
+        u32 itemID;
+        u32 count;
+    };
+
+    struct LuaPlayerEventContainerCreateData : LuaEventData
+    {
+    public:
+        u32 index;
+        u32 numSlots;
+        u32 itemID;
+        std::vector<LuaPlayerEventContainerItemInfo> items;
+    };
+
+    struct LuaPlayerEventContainerAddToSlotData : LuaEventData
+    {
+    public:
+        u32 containerIndex;
+        u32 slotIndex;
+        u32 itemID;
+        u32 count;
+    };
+
+    struct LuaPlayerEventContainerRemoveFromSlotData : LuaEventData
+    {
+    public:
+        u32 containerIndex;
+        u32 slotIndex;
+    };
+
+    struct LuaPlayerEventContainerSwapSlotsData : LuaEventData
+    {
+    public:
+        u32 srcContainerIndex;
+        u32 destContainerIndex;
+        u32 srcSlotIndex;
+        u32 destSlotIndex;
     };
 
     using LuaGameEventHandlerFn = std::function<void(lua_State*, LuaGameEvent, LuaEventData*)>;

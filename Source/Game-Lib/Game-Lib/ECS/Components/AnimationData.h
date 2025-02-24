@@ -27,8 +27,6 @@ namespace ECS
         struct AnimationData
         {
         public:
-            u32 modelHash = std::numeric_limits<u32>().max();
-
             std::vector<::Animation::Defines::GlobalLoop> globalLoops;
             std::vector<::Animation::Defines::BoneInstance> boneInstances;
             std::vector<::Animation::Defines::State> animationStates;

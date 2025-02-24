@@ -266,6 +266,78 @@ i32 Scripting::UI::WidgetMethods::SetFocusable(lua_State* state)
     return 0;
 }
 
+i32 Scripting::UI::WidgetMethods::IsEnabled(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    bool isEnabled = (widgetComponent.flags & ECS::Components::UI::WidgetFlags::Enabled) == ECS::Components::UI::WidgetFlags::Enabled;
+    ctx.Push(isEnabled);
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::IsVisible(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    bool isVisible = (widgetComponent.flags & ECS::Components::UI::WidgetFlags::Visible) == ECS::Components::UI::WidgetFlags::Visible;
+    ctx.Push(isVisible);
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::IsInteractable(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    bool isInteractable = (widgetComponent.flags & ECS::Components::UI::WidgetFlags::Interactable) == ECS::Components::UI::WidgetFlags::Interactable;
+    ctx.Push(isInteractable);
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::IsFocusable(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComponent = registry->get<ECS::Components::UI::Widget>(widget->entity);
+
+    bool isFocusable = (widgetComponent.flags & ECS::Components::UI::WidgetFlags::Focusable) == ECS::Components::UI::WidgetFlags::Focusable;
+    ctx.Push(isFocusable);
+    return 1;
+}
+
 i32 Scripting::UI::WidgetMethods::GetAnchor(lua_State* state)
 {
     LuaState ctx(state);

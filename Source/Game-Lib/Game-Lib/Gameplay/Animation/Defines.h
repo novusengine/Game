@@ -1531,24 +1531,17 @@ namespace Animation::Defines
         return (flags & flag) == flag;
     }
 
-    enum class BoneFlags : u8
+    struct BoneFlags
     {
-        None = 0,
-
-        IgnoreParentTranslate = 1 << 0,
-        IgnoreParentScale = 1 << 1,
-        IgnoreParentRotation = 1 << 2,
-        SphericalBillboard = 1 << 3,
-        CylindricialBillboardLockX = 1 << 4,
-        CylindricialBillboardLockY = 1 << 5,
-        CylindricialBillboardLockZ = 1 << 6,
-        Transformed = 1 << 7,
+        u8 IgnoreParentTranslate : 1;
+        u8 IgnoreParentScale : 1;
+        u8 IgnoreParentRotation : 1;
+        u8 SphericalBillboard : 1;
+        u8 CylindricialBillboardLockX : 1;
+        u8 CylindricialBillboardLockY : 1;
+        u8 CylindricialBillboardLockZ : 1;
+        u8 Transformed : 1;
     };
-    DECLARE_GENERIC_BITWISE_OPERATORS(BoneFlags);
-    inline bool HasBoneFlag(BoneFlags flags, BoneFlags flag)
-    {
-        return (flags & flag) == flag;
-    }
 
     enum class BlendOverride
     {
@@ -1583,6 +1576,7 @@ namespace Animation::Defines
         Flags nextFlags = Flags::None;
         i8 timesToRepeat = 0;
         u16 timeToTransitionMS = 0;
+        f32 speedModifier = 0.0f;
 
         f32 progress = 0.0f;
         f32 transitionTime = 0.0f;
@@ -1592,7 +1586,7 @@ namespace Animation::Defines
     struct BoneInstance
     {
     public:
-        BoneFlags flags = BoneFlags::None;
+        BoneFlags flags = { 0 };
         u8 proceduralRotationOffsetIndex = InvalidProcedualBoneID;
         i16 stateIndex = InvalidStateID;
     };

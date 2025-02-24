@@ -47,19 +47,26 @@ namespace Scripting::UI
         
         // UI functions
         static i32 GetCanvas(lua_State* state);
+        static i32 GetMousePos(lua_State* state);
 
         // Utils
         static i32 PixelsToTexCoord(lua_State* state);
         static i32 CalculateTextSize(lua_State* state);
+        static i32 WrapText(lua_State* state);
 
         static i32 FocusWidget(lua_State* state);
         static i32 UnfocusWidget(lua_State* state);
         static i32 IsFocusedWidget(lua_State* state);
         static i32 GetFocusedWidget(lua_State* state);
 
+        static i32 IsHoveredWidget(lua_State* state);
+
+        static i32 DestroyWidget(lua_State* state);
+
         // Event calls
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget);
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value);
+        void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value1, const vec2& value2);
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value);
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value);
 

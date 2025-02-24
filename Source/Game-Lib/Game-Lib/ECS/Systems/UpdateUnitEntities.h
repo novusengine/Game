@@ -4,7 +4,7 @@
 
 namespace ECS::Systems
 {
-    class UpdateNetworkedEntity
+    class UpdateUnitEntities
     {
     public:
         static void Init(entt::registry& registry);

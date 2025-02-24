@@ -39,9 +39,7 @@ namespace Scripting::UI
     {
         { "NewPanel", WidgetCreationMethods::CreatePanel },
         { "NewText", WidgetCreationMethods::CreateText },
-        { "NewWidget", WidgetCreationMethods::CreateWidget },
-
-        { nullptr, nullptr }
+        { "NewWidget", WidgetCreationMethods::CreateWidget }
     };
 
     namespace WidgetMethods
@@ -50,6 +48,11 @@ namespace Scripting::UI
         i32 SetVisible(lua_State* state);
         i32 SetInteractable(lua_State* state);
         i32 SetFocusable(lua_State* state);
+
+        i32 IsEnabled(lua_State* state);
+        i32 IsVisible(lua_State* state);
+        i32 IsInteractable(lua_State* state);
+        i32 IsFocusable(lua_State* state);
 
         i32 GetAnchor(lua_State* state);
         i32 GetRelativePoint(lua_State* state);
@@ -81,6 +84,11 @@ namespace Scripting::UI
         { "SetInteractable", WidgetMethods::SetInteractable },
         { "SetFocusable", WidgetMethods::SetFocusable },
 
+        { "IsEnabled", WidgetMethods::IsEnabled },
+        { "IsVisible", WidgetMethods::IsVisible },
+        { "IsInteractable", WidgetMethods::IsInteractable },
+        { "IsFocusable", WidgetMethods::IsFocusable },
+
         { "GetAnchor", WidgetMethods::GetAnchor },
         { "GetRelativePoint", WidgetMethods::GetRelativePoint },
 
@@ -101,9 +109,7 @@ namespace Scripting::UI
 
         { "SetWorldPos", WidgetMethods::SetWorldPos },
         { "SetWorldPosX", WidgetMethods::SetWorldPosX },
-        { "SetWorldPosY", WidgetMethods::SetWorldPosY },
-
-        { nullptr, nullptr }
+        { "SetWorldPosY", WidgetMethods::SetWorldPosY }
     };
 
     namespace WidgetInputMethods
@@ -137,8 +143,6 @@ namespace Scripting::UI
         { "SetOnFocusEnd", WidgetInputMethods::SetOnFocusEnd },
         { "SetOnFocusHeld", WidgetInputMethods::SetOnFocusHeld },
 
-        { "SetOnKeyboard", WidgetInputMethods::SetOnKeyboard },
-
-        { nullptr, nullptr }
+        { "SetOnKeyboard", WidgetInputMethods::SetOnKeyboard }
     };
 }

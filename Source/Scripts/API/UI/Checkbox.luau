@@ -1,4 +1,4 @@
-local Module = { }
+local checkboxAPI = { }
 
 --[[
 usage:
@@ -54,7 +54,7 @@ local function SetupCheckboxMethods(checkboxTable)
     return checkboxTable
 end
 
-function Module.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkboxTemplateTable)
+function checkboxAPI.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkboxTemplateTable)
     local checkboxTable = {}
     
     checkboxTable.checkbox = parent:NewWidget(posX, posY, layer);
@@ -74,4 +74,4 @@ function Module.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkboxTem
     return checkboxTable;
 end
 
-return Module
+return checkboxAPI

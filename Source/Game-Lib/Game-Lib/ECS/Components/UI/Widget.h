@@ -51,4 +51,5 @@ namespace ECS::Components::UI
     struct DirtyWidgetTransform {};
     struct DirtyWidgetData {};
     struct DirtyWidgetFlags {};
+    struct DestroyWidget {};
 }

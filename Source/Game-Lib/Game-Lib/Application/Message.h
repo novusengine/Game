@@ -11,6 +11,7 @@ public:
         Ping,
         DoString,
         ReloadScripts,
+        RefreshDB,
         Exit
     };
 

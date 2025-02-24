@@ -11,10 +11,9 @@ namespace ECS::Util
     namespace EventUtil
     {
         template <typename... Events>
-        inline void PushEventTo(entt::registry& registry, Events&&... events)
+        inline void PushEventTo(entt::registry& registry, entt::entity entity, Events&&... events)
         {
-            entt::entity eventEntity = registry.create();
-            (registry.emplace<std::decay_t<Events>>(eventEntity, std::forward<Events>(events)), ...);
+            (registry.emplace<std::decay_t<Events>>(entity, std::forward<Events>(events)), ...);
         }
 
         template <typename... Events>
@@ -23,7 +22,8 @@ namespace ECS::Util
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             entt::registry* eventRegistry = registries->eventOutgoingRegistry;
 
-            PushEventTo(*eventRegistry, std::forward<Events>(events)...);
+            entt::entity eventEntity = eventRegistry->create();
+            PushEventTo(*eventRegistry, eventEntity, std::forward<Events>(events)...);
         }
 
         template <typename T, typename Handler>

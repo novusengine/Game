@@ -3,12 +3,11 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
-#include "Game-Lib/ECS/Components/NetworkedEntity.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
-#include "Game-Lib/ECS/Singletons/CameraSaveDB.h"
+#include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
@@ -95,8 +94,6 @@ namespace Editor
                     ImGui::NewLine();
                     ImGui::Separator();
 
-                    auto& networkedEntity = registry.get<ECS::Components::NetworkedEntity>(characterSingleton.moverEntity);
-
                     if (ImGui::CollapsingHeader("Basic Info"))
                     {
                         auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
@@ -139,11 +136,12 @@ namespace Editor
                         ImGui::Separator();
                     }
 
-                    if (networkedEntity.targetEntity != entt::null && registry.valid(networkedEntity.targetEntity))
+                    auto& unit = registry.get<ECS::Components::Unit>(characterSingleton.moverEntity);
+                    if (unit.targetEntity != entt::null && registry.valid(unit.targetEntity))
                     {
                         if (ImGui::CollapsingHeader("Target Info"))
                         {
-                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(networkedEntity.targetEntity);
+                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(unit.targetEntity);
                             ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
 
                             for (u32 i = 0; i < (u32)ECS::Components::PowerType::Count; i++)

@@ -1,4 +1,6 @@
 #pragma once
+#include <Gameplay/GameDefine.h>
+
 #include <robinhood/robinhood.h>
 
 #include <asio/asio.hpp>
@@ -33,7 +35,7 @@ namespace ECS::Singletons
         std::array<u16, 6> pingHistory = { 0, 0, 0, 0, 0, 0 };
         u8 pingHistorySize = 0;
 
-        robin_hood::unordered_map<entt::entity, entt::entity> networkIDToEntity;
-        robin_hood::unordered_map<entt::entity, entt::entity> entityToNetworkID;
+        robin_hood::unordered_map<GameDefine::ObjectGuid, entt::entity> networkIDToEntity;
+        robin_hood::unordered_map<entt::entity, GameDefine::ObjectGuid> entityToNetworkID;
     };
 }

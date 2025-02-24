@@ -3,7 +3,7 @@
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Name.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
@@ -15,10 +15,11 @@
 
 namespace Util::Animation
 {
-    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(entt::registry& registry, ::Animation::Defines::Type type)
+    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(::Animation::Defines::Type type)
     {
-        auto& clientDBCollection = registry.ctx().get<ECS::Singletons::ClientDBCollection>();
-        auto* animationDatas = clientDBCollection.Get(ECS::Singletons::ClientDBHash::AnimationData);
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+        auto* animationDatas = clientDBSingleton.Get(ClientDBHash::AnimationData);
 
         if (!animationDatas)
             return nullptr;
@@ -27,9 +28,9 @@ namespace Util::Animation
         return &animationDatas->Get<ClientDB::Definitions::AnimationData>(typeIndex);
     }
 
-    bool HasAnimationSequence(entt::registry& registry, const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType)
+    bool HasAnimationSequence(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType)
     {
-        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(registry, animationType);
+        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 
@@ -149,7 +150,7 @@ namespace Util::Animation
         }
     }
 
-    bool SetBoneSequenceRaw(entt::registry& registry, const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride)
+    bool SetBoneSequenceRaw(const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride, f32 speedModifier)
     {
         u32 numBoneInstances = static_cast<u32>(animationData.boneInstances.size());
         if (boneIndex >= numBoneInstances)
@@ -170,7 +171,7 @@ namespace Util::Animation
             return true;
         }
 
-        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(registry, animationType);
+        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 
@@ -239,7 +240,7 @@ namespace Util::Animation
             }
 
             animationBoneInstance.stateIndex = stateIndex;
-            animationBoneInstance.flags = animationBoneInstance.flags | ::Animation::Defines::BoneFlags::Transformed;
+            animationBoneInstance.flags.Transformed = true;
         }
 
         auto animationFlags = ::Animation::Defines::Flags::None;
@@ -272,7 +273,7 @@ namespace Util::Animation
                 if (!shouldBlend)
                 {
                     const Model::ComplexModel::AnimationSequence& currentSequenceInfo = modelInfo->sequences[animationState.currentSequenceIndex];
-                    shouldBlend |= currentSequenceInfo.flags.blendTransition || currentSequenceInfo.flags.blendTransitionIfActive;
+                    shouldBlend |= currentSequenceInfo.flags.blendTransitionIfActive;
                 }
             }
             else if (blendOverride == ::Animation::Defines::BlendOverride::Start || blendOverride == ::Animation::Defines::BlendOverride::Both)
@@ -283,9 +284,11 @@ namespace Util::Animation
             if (shouldBlend)
             {
                 if (blendTimeStartInMS == 0)
-                    blendTimeStartInMS = 150;
+                    blendTimeStartInMS = animationSequence.blendTimeStart;
             }
         }
+
+        animationState.speedModifier = speedModifier;
 
         if (shouldBlend)
         {
@@ -327,13 +330,13 @@ namespace Util::Animation
         return true;
     }
 
-    bool SetBoneSequence(entt::registry& registry, const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride)
+    bool SetBoneSequence(const Model::ComplexModel* modelInfo, ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationType, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride, f32 speedModifier)
     {
         i16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
         if (boneIndex == ::Animation::Defines::InvalidBoneID)
             return false;
 
-        return SetBoneSequenceRaw(registry, modelInfo, animationData, boneIndex, animationType, propagateToChildren, flags);
+        return SetBoneSequenceRaw(modelInfo, animationData, boneIndex, animationType, propagateToChildren, flags, blendOverride, speedModifier);
     }
 
     bool SetBoneRotation(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, quat offset)
@@ -357,6 +360,33 @@ namespace Util::Animation
         }
 
         return true;
+    }
+
+    bool SetBoneSequenceSpeedModRaw(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, u32 boneIndex, f32 speedModifier)
+    {
+        u32 numBoneInstances = static_cast<u32>(animationData.boneInstances.size());
+        if (boneIndex >= numBoneInstances)
+            return false;
+
+        const ::Animation::Defines::BoneInstance& animationBoneInstance = animationData.boneInstances[boneIndex];
+        if (animationBoneInstance.stateIndex == ::Animation::Defines::InvalidStateID)
+            return false;
+
+        ::Animation::Defines::State& animationState = animationData.animationStates[animationBoneInstance.stateIndex];
+        if (animationState.currentAnimation == ::Animation::Defines::Type::Invalid && animationState.nextAnimation == ::Animation::Defines::Type::Invalid)
+            return false;
+
+        animationState.speedModifier = speedModifier;
+        return true;
+    }
+
+    bool SetBoneSequenceSpeedMod(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, f32 speedModifier)
+    {
+        i16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
+        if (boneIndex == ::Animation::Defines::InvalidBoneID)
+            return false;
+
+        return SetBoneSequenceSpeedModRaw(modelInfo, animationData, boneIndex, speedModifier);
     }
 
     const mat4x4* GetBoneMatrixRaw(::ECS::Components::AnimationData& animationData, u16 boneIndex)

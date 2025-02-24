@@ -1,6 +1,7 @@
-local Module = { }
+local uiStackAPI = { }
 
-local StackMeta = {
+local StackMeta =
+{
     Register = function(self, name, inWidget, slot, push, pop)
         local widgetInfo = {
             widget = inWidget,
@@ -128,7 +129,7 @@ __global_uiStacks = {
     end,
 }
 
-function Module.Get(name)
+function uiStackAPI.Get(name)
     local stack = __global_uiStacks:Get(name)
     if (stack ~= nil) then
         return stack
@@ -137,4 +138,4 @@ function Module.Get(name)
     return __global_uiStacks:Register(name)
 end
 
-return Module
+return uiStackAPI

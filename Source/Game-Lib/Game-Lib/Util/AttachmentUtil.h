@@ -20,7 +20,7 @@ namespace Util::Attachment
 {
     i16 GetAttachmentIndexFromAttachmentID(const Model::ComplexModel* modelInfo, ::Attachment::Defines::Type attachment);
 
-    bool CanUseAttachment(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, u16& attachmentIndex);
+    bool CanUseAttachment(const Model::ComplexModel* modelInfo, ::Attachment::Defines::Type attachment, u16& attachmentIndex);
     bool HasActiveAttachment(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);
     bool GetAttachmentEntity(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, entt::entity& entity);
     bool EnableAttachment(entt::entity parent, const ECS::Components::Model& model, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);

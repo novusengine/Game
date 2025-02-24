@@ -143,6 +143,21 @@ namespace Scripting
         lua_setfield(_state, index, key);
     }
 
+    template<typename T>
+    void LuaState::Push(const T& value) { }
+
+    template<>
+    void LuaState::Push(const vec3& value)
+    {
+        lua_pushvector(_state, value.x, value.y, value.z);
+    }
+
+    template<>
+    void LuaState::Push(const std::string& value)
+    {
+        lua_pushstring(_state, value.c_str());
+    }
+
     void LuaState::Push()
     {
         lua_pushnil(_state);
@@ -176,11 +191,6 @@ namespace Scripting
     void LuaState::Push(const char* value)
     {
         lua_pushstring(_state, value);
-    }
-
-    void LuaState::Push(const vec3& value)
-    {
-        lua_pushvector(_state, value.x, value.y, value.z);
     }
 
     void LuaState::Push(lua_CFunction value, const char* debugName)
@@ -399,6 +409,59 @@ namespace Scripting
     {
         Push(value);
         SetField(key);
+    }
+
+    void LuaState::SetTable(i32 key)
+    {
+        lua_rawseti(_state, -2, key);
+    }
+
+    void LuaState::SetTable(i32 key, const bool value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const i32 value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const u32 value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const f32 value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const f64 value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const char* value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const vec3& value)
+    {
+        Push(value);
+        SetTable(key);
+    }
+
+    void LuaState::SetTable(i32 key, const lua_CFunction value)
+    {
+        Push(value);
+        SetTable(key);
     }
 
     i32 LuaState::LoadBytecode(const std::string& chunkName, const std::string& bytecode, i32 env)

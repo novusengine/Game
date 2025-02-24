@@ -1,4 +1,4 @@
-local Module = { }
+local sliderAPI = { }
 
 --[[
 usage:
@@ -48,7 +48,7 @@ local function SetupSliderMethods(sliderTable)
     return sliderTable
 end
 
-function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplateTable)
+function sliderAPI.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplateTable)
     local sliderTable = {}
     
     sliderTable.slider = parent:NewWidget(posX, posY, layer);
@@ -75,4 +75,4 @@ function Module.NewSlider(parent, posX, posY, sizeX, sizeY, layer, sliderTemplat
     return sliderTable;
 end
 
-return Module
+return sliderAPI

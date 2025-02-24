@@ -6,11 +6,12 @@ namespace ClientDB::Definitions
     struct Map;
 }
 
-namespace ECS::Util
+namespace ECS
 {
-    namespace Map
+    namespace Util::Database::Map
     {
         bool Refresh();
+
         bool GetMapFromInternalNameHash(u32 nameHash, ClientDB::Definitions::Map* map);
         bool GetMapFromInternalName(const std::string& name, ClientDB::Definitions::Map* map);
 

@@ -14,6 +14,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("r", GameConsoleCommands::HandleReloadScripts);
     RegisterCommand("reload", GameConsoleCommands::HandleReloadScripts);
     RegisterCommand("reloadscripts", GameConsoleCommands::HandleReloadScripts);
+    RegisterCommand("refresh", GameConsoleCommands::HandleRefresh);
     RegisterCommand("setcursor", GameConsoleCommands::HandleSetCursor);
     RegisterCommand("savecamera", GameConsoleCommands::HandleSaveCamera);
     RegisterCommand("loadcamera", GameConsoleCommands::HandleLoadCamera);
@@ -23,6 +24,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("kill", GameConsoleCommands::HandleKill);
     RegisterCommand("revive", GameConsoleCommands::HandleRevive);
     RegisterCommand("morph", GameConsoleCommands::HandleMorph);
+    RegisterCommand("fly", GameConsoleCommands::HandleFly);
     RegisterCommand("demorph", GameConsoleCommands::HandleDemorph);
     RegisterCommand("createchar", GameConsoleCommands::HandleCreateChar);
     RegisterCommand("deletechar", GameConsoleCommands::HandleDeleteChar);
@@ -30,6 +32,9 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand("setgender", GameConsoleCommands::HandleSetGender);
     RegisterCommand("setclass", GameConsoleCommands::HandleSetClass);
     RegisterCommand("setlevel", GameConsoleCommands::HandleSetLevel);
+    RegisterCommand("syncitem", GameConsoleCommands::HandleSyncItem);
+    RegisterCommand("forcesyncitems", GameConsoleCommands::HandleForceSyncItems);
+    RegisterCommand("additem", GameConsoleCommands::HandleAddItem);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

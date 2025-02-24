@@ -1,0 +1,358 @@
+declare class point
+    x : number
+end
+
+declare class vec2 extends point
+    y : number
+end
+
+declare class vec3 extends vec2
+    z : number
+end
+
+declare class vec4 extends vec3
+    w : number
+end
+
+declare Engine :
+{
+    Name : string,
+    Version : vector
+}
+
+type GameEvent =
+{
+    Invalid : number,
+    Loaded  : number,
+    Updated : number,
+    Count   : number
+};
+declare GameEvent : GameEvent
+
+type PlayerEvent =
+{
+    Invalid : number,
+    ContainerCreate  : number,
+    ContainerAddToSlot : number,
+    ContainerRemoveFromSlot : number,
+    ContainerSwapSlots : number,
+    Count   : number
+};
+type ContainerItemEventData =
+{
+    slotIndex : number,
+    itemID : number,
+    itemCount : number
+}
+declare PlayerEvent : PlayerEvent
+
+declare function RegisterGameEvent(event : GameEvent, callback : ((event : GameEvent, ...any) -> any)) : ()
+declare function RegisterPlayerEvent(event : PlayerEvent, callback : ((event : PlayerEvent, ...any) -> any)) : ()
+declare function AddCursor(name : string, texture : string) : ()
+declare function SetCursor(name : string) : boolean
+declare function GetCurrentMap() : string
+declare function LoadMap(name : string) : ()
+declare function EquipItem(itemID : number, slotIndex : number) : boolean
+declare function UnequipItem(slotIndex : number) : boolean
+declare function GetEquippedItem(slotIndex : number) : number
+
+type UIInputEvent =
+{
+    Invalid : number,
+    MouseDown : number,
+    MouseUp : number,
+    MouseHeld : number,
+
+    HoverBegin : number,
+    HoverEnd : number,
+    HoverHeld : number,
+
+    FocusBegin : number,
+    FocusEnd : number,
+    FocusHeld : number
+};
+declare UIInputEvent : UIInputEvent;
+
+type UIKeyboardEvent =
+{
+    Invalid : number,
+    Key : number,
+    Unicode : number
+};
+declare UIKeyboardEvent : UIKeyboardEvent;
+
+type InputAction =
+{
+    Invalid : number,
+    Press : number,
+    Release : number,
+    Click : number
+};
+declare InputAction : InputAction;
+
+type MouseEventCallback = ((event : UIInputEvent, widget : Widget, x : number, y : number) -> ())
+
+declare class WidgetInputEvents
+    function SetOnMouseDown(self, callback : MouseEventCallback) : ()
+    function SetOnMouseUp(self, callback : MouseEventCallback) : ()
+    function SetOnMouseHeld(self, callback : MouseEventCallback) : ()
+
+    function SetOnHoverBegin(self, callback : MouseEventCallback) : ()
+    function SetOnHoverEnd(self, callback : MouseEventCallback) : ()
+    function SetOnHoverHeld(self, callback : MouseEventCallback) : ()
+
+    function SetOnFocusBegin(self, callback : MouseEventCallback) : ()
+    function SetOnFocusEnd(self, callback : MouseEventCallback) : ()
+    function SetOnFocusHeld(self, callback : MouseEventCallback) : ()
+
+    function SetOnKeyboard(self, callback : ((widget : Widget, event : UIKeyboardEvent, ...any) -> ())) : ()
+end
+
+declare class Widget extends WidgetInputEvents
+    function NewWidget(self, pos : vec2, layer : number) : Panel
+    function NewPanel(self, pos : vec2, size : vec2, layer : number, template : string) : Panel
+    function NewText(self, text : string, pos : vec2, layer : number, template : string) : Panel
+
+    function SetEnabled(self, enabled : boolean) : ()
+    function SetVisible(self, visible : boolean) : ()
+    function SetInteractable(self, interactable : boolean) : ()
+    function SetFocusable(self, focusable : boolean) : ()
+
+    function GetAnchor(self) : vec2
+    function GetRelativePoint(self) : vec2
+    function SetAnchor(self, anchor : vec2) : ()
+    function SetRelativePoint(self, point : vec2) : ()
+    
+    function GetPos(self) : vec2
+    function GetPosX(self) : number
+    function GetPosY(self) : number
+    function SetPos(self, pos : vec2) : ()
+    function SetPosX(self, x : number) : ()
+    function SetPosY(self, y : number) : ()
+        
+    function GetWorldPos(self) : vec2
+    function GetWorldPosX(self) : number
+    function GetWorldPosY(self) : number
+    function SetWorldPos(self, pos : vec2) : ()
+    function SetWorldPosX(self, x : number) : ()
+    function SetWorldPosY(self, y : number) : ()
+end
+
+declare class Canvas
+    function NewWidget(self, name : string, pos : vec2, layer : number) : Panel
+    function NewPanel(self, name : string, pos : vec2, size : vec2, layer : number, template : string) : Panel
+    function NewText(self, name : string, text : string, pos : vec2, layer : number, template : string) : Panel
+end
+
+declare class Panel extends Widget
+    function GetSize(self) : vec2
+    function GetWidth(self) : number
+    function GetHeight(self) : number
+    function SetSize(self, size : vec2) : ()
+    function SetWidth(self, width : number) : ()
+    function SetHeight(self, height : number) : ()
+
+    function SetBackground(self, background : string) : ()
+    function SetForeground(self, foreground : string) : ()
+end
+
+declare class TextWidget extends Widget
+    function SetText(self, text : string) : ()
+end
+
+declare class EventTemplate
+    onMouseDown : MouseEventCallback
+    onMouseUp : MouseEventCallback
+    onMouseHeld : MouseEventCallback
+
+    onHoverBegin : MouseEventCallback
+    onHoverEnd : MouseEventCallback
+    onHoverHeld : MouseEventCallback
+
+    onFocusBegin : MouseEventCallback
+    onFocusEnd : MouseEventCallback
+    onFocusHeld : MouseEventCallback
+end
+
+declare class PanelTemplate extends EventTemplate
+    background : string?
+    foreground : string?
+    color : vector?
+    cornerRadius : number?
+    texCoords : vec4?
+    nineSliceCoords : vec4?
+    onClickTemplate : string?
+    onHoverTemplate : string?
+    onUninteractableTemplate : string?
+
+    EventTemplate : EventTemplate?
+end
+
+declare class TextTemplate extends EventTemplate
+    font : string?
+    size : number?
+    color : vector?
+    borderSize : number?
+    borderColor : vector?
+
+    EventTemplate : EventTemplate?
+end
+
+declare UI :
+{
+    RegisterPanelTemplate : ((name : string, template : PanelTemplate) -> ()),
+    RegisterTextTemplate : ((name : string, template : TextTemplate) -> ()),
+
+    GetCanvas : ((name : string, pos : vec2, size : vec2) -> Canvas),
+    GetMousePos : (() -> vec2),
+
+    PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
+    CalculateTextSize : ((text : string, template : string) -> vec2),
+    
+    FocusWidget : ((widget : Widget) -> ()),
+    UnfocusWidget : ((widget : Widget) -> ()),
+    IsFocusedWidget : ((widget : Widget) -> boolean),
+    GetFocusedWidget : (() -> Widget),
+
+    IsHoveredWidget : ((widget : Widget) -> boolean),
+
+    DestroyWidget : ((widget : Widget) -> boolean)
+}
+
+declare Cursor : Canvas
+
+declare class Box
+    --min : vec2
+    --max : vec2
+end
+
+declare Box :
+{
+    new : ((min : vec2, max : vec2) -> Box)
+}
+
+declare class ItemInfo
+    DisplayID : number
+    Flags : number
+    Rarity : number
+    Category : number
+    Type : number
+    VirtualLevel : number
+    RequiredLevel : number
+    Durability : number
+    IconID : number
+    Name : string
+    Description : string
+    RequiredText : string
+    SpecialText : string
+    Armor : number
+    StatTemplateID : number
+    ArmorTemplateID : number
+    WeaponTemplateID : number
+    ShieldTemplateID : number
+end
+
+type ItemStatInfo = { ItemStat }
+declare class ItemStat
+    ID : number
+    Value : number
+end
+
+declare class ItemArmorInfo
+    EquipType : number
+    BonusArmor : number
+end
+
+declare class ItemWeaponInfo
+    WeaponStyle : number
+    MinDamage : number
+    MaxDamage : number
+    Speed : number
+end
+
+declare class ItemShieldInfo
+    BonusArmor : number
+    Block : number
+end
+
+declare class ItemDisplayInfo
+    ItemVisual : number
+    ParticleColorID : number
+    ItemRangedDisplayInfoID : number
+    OverrideSwooshSoundKitID : number
+    SheatheTransformMatrixID : number
+    StateSpellVisualKitID : number
+    SheathedSpellVisualKitID : number
+    UnsheathedSpellVisualKitID : number
+    Flags : number
+    ModelResourcesID1 : number
+    ModelResourcesID2 : number
+    MaterialResourcesID1 : number
+    MaterialResourcesID2 : number
+    ModelType1 : number
+    ModelType2 : number
+    GoesetGroup1 : number
+    GoesetGroup2 : number
+    GoesetGroup3 : number
+    GoesetGroup4 : number
+    GoesetGroup5 : number
+    GoesetGroup6 : number
+    GeosetAttachmentGroup1 : number
+    GeosetAttachmentGroup2 : number
+    GeosetAttachmentGroup3 : number
+    GeosetAttachmentGroup4 : number
+    GeosetAttachmentGroup5 : number
+    GeosetAttachmentGroup6 : number
+    GeosetHelmetVis1 : number
+    GeosetHelmetVis2 : number
+end
+
+type ItemEffectType =
+{
+    OnEquip : number,
+    OnUse : number,
+    OnProc : number,
+    OnLooted : number,
+    OnBound : number
+}
+declare ItemEffectType : ItemEffectType;
+
+declare class ItemEffectInfo
+    ItemID : number
+    Slot : number
+    Type : ItemEffectType
+    SpellID : number
+end
+
+declare class SpellInfo
+    Name : string
+    Description : string
+    AuraDescription : string
+end
+
+declare class Icon
+    Texture : number
+end
+
+declare Item :
+{
+    GetItemInfo         : ((itemID : number) -> ItemInfo),
+    GetItemStatInfo     : ((itemStatInfoID : number) -> ItemStatInfo),
+    GetItemArmorInfo    : ((itemArmorInfoID : number) -> ItemArmorInfo),
+    GetItemWeaponInfo   : ((itemWeaponInfoID : number) -> ItemWeaponInfo),
+    GetItemShieldInfo   : ((itemShieldInfoID : number) -> ItemShieldInfo),
+    GetItemDisplayInfo  : ((itemDisplayID : number) -> ItemDisplayInfo),
+    GetItemEffects      : ((itemID : number) -> { ItemEffectInfo } ),
+    GetIconInfo         : ((itemIconID : number) -> Icon)
+}
+
+declare Spell :
+{
+    GetSpellInfo    : ((spellID : number) -> SpellInfo)
+}
+
+declare Container :
+{
+    RequestSwapSlots : ((containerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
+    GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
+}

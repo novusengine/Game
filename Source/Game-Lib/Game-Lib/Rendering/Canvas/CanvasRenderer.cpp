@@ -12,6 +12,8 @@
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Input/InputManager.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/GPUVector.h>
 #include <Renderer/RenderGraph.h>
@@ -44,7 +46,36 @@ void CanvasRenderer::Update(f32 deltaTime)
     ZoneScoped;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-    ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+    registry->view<Widget, DestroyWidget>().each([&](entt::entity entity, Widget& widget)
+    {
+        if (widget.type == WidgetType::Canvas)
+            return;
+
+        if (widget.type == WidgetType::Panel)
+        {
+            auto& panel = registry->get<Panel>(entity);
+
+            if (panel.gpuDataIndex != -1)
+                _panelDrawDatas.Remove(panel.gpuDataIndex);
+
+            if (panel.gpuVertexIndex != -1)
+                _vertices.Remove(panel.gpuVertexIndex, 6);
+        }
+        else if (widget.type == WidgetType::Text)
+        {
+            auto& text = registry->get<Text>(entity);
+
+            if (text.gpuDataIndex != -1)
+                _charDrawDatas.Remove(text.gpuDataIndex, text.numCharsNonWhitespace);
+
+            if (text.gpuVertexIndex != -1)
+                _vertices.Remove(text.gpuVertexIndex, text.numCharsNonWhitespace * 6); // * 6 because 6 vertices per char
+        }
+
+        registry->destroy(entity);
+    });
+    registry->clear<DestroyWidget>();
 
     // Dirty widget flags
     registry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
@@ -426,17 +457,20 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
 
         // Count how many non whitspace characters there are
         i32 numCharsNonWhitespace = 0;
+        i32 numCharsNewLine = 0;
         for (; countIt != coundEndIt; countIt++)
         {
             unsigned int c = *countIt;
 
-            if (c != ' ')
-            {
-                numCharsNonWhitespace++;
-            }
+            bool isNewLine = c == '\n';
+            numCharsNewLine += 1 * isNewLine;
+
+            bool isNonWhiteSpace = c != ' ' && c != '\r' && !isNewLine;
+            numCharsNonWhitespace += 1 * isNonWhiteSpace;
         }
 
         text.numCharsNonWhitespace = numCharsNonWhitespace;
+        text.numCharsNewLine = numCharsNewLine;
         text.sizeChanged = false;
     }
 
@@ -465,12 +499,12 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
-    vec2 penPos = vec2(0.0f, 0.0f);// fontScale* metrics.ascenderY);
-    f32 textWidth = 0.0f;
+    f32 textLineHeightOffset = (fontSize * static_cast<f32>(metrics.lineHeight)) * text.numCharsNewLine;
+    vec2 penPos = vec2(0.0f, textLineHeightOffset);// fontScale* metrics.ascenderY);
 
     u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
     for (; it != endIt; it++)
-    {
+    {   
         u32 c = *it;
 
         // Skip carriage return characters
@@ -482,7 +516,6 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
         // Handle newline characters
         if (c == '\n')
         {
-            textWidth = std::max(textWidth, penPos.x);
             penPos.x = 0.0f;
             penPos.y -= fontSize * static_cast<f32>(metrics.lineHeight);
             continue;
@@ -634,14 +667,16 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
         utf8::iterator countEndIt(text.text.end(), text.text.begin(), text.text.end());
 
         text.numCharsNonWhitespace = 0;
+        text.numCharsNewLine = 0;
         for (; countIt != countEndIt; countIt++)
         {
             unsigned int c = *countIt;
 
-            if (c != ' ')
-            {
-                text.numCharsNonWhitespace++;
-            }
+            bool isNewLine = c == '\n';
+            text.numCharsNewLine += 1 * isNewLine;
+
+            bool isNonWhiteSpace = c != ' ' && c != '\r' && !isNewLine;
+            text.numCharsNonWhitespace += 1 * isNonWhiteSpace;
         }
 
         text.sizeChanged = false;
@@ -683,6 +718,9 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
     for (; it != endIt; it++)
     {
         unsigned int c = *it;
+
+        if (c == '\n' || c == '\r')
+            continue;
 
         Renderer::Glyph glyph = font->GetGlyph(c);
 

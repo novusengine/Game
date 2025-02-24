@@ -71,15 +71,22 @@ private:
     public:
         LoadRequestType type = LoadRequestType::Invalid;
         entt::entity entity = entt::null;
-        u32 instanceID = std::numeric_limits<u32>().max();
-        
-        u32 uniqueID = std::numeric_limits<u32>().max();
-        u32 modelHash = std::numeric_limits<u32>().max();
-        u32 extraData = std::numeric_limits<u32>().max();
 
+        u32 modelHash = std::numeric_limits<u32>().max();
         vec3 spawnPosition = vec3(0.0f, 0.0f, 0.0f);
         quat spawnRotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         f32 scale = 1.0f;
+
+        u32 extraData1 = std::numeric_limits<u32>().max();
+        u32 extraData2 = std::numeric_limits<u32>().max();
+        u32 extraData3 = std::numeric_limits<u32>().max();
+    };
+
+    struct LoadRequestResultInternal
+    {
+    public:
+        u32 loadRequestIndex = std::numeric_limits<u32>().max();
+        bool success = false;
     };
 
     struct WorkRequest
@@ -103,7 +110,7 @@ public: // Load Request Helpers
     void LoadPlacement(const Terrain::Placement& placement);
     void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
     bool LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash);
-    bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID);
+    bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
 
     void SetEntityVisible(entt::entity entity, bool visible);
@@ -130,7 +137,8 @@ public:
     bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
     bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
 
-    bool ContainsDiscoveredModel(u32 modelNameHash);
+    bool ContainsDiscoveredModel(u32 modelHash);
+    DiscoveredModel& GetDiscoveredModel(u32 modelHash);
     DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);
 
     bool DiscoveredModelsComplete() { return _discoveredModelsComplete; }
@@ -151,6 +159,7 @@ private:
 
     moodycamel::ConcurrentQueue<WorkRequest> _discoveredModelPendingWorkRequests;
 
+    moodycamel::ConcurrentQueue<LoadRequestResultInternal> _loadRequestResults;
     std::vector<LoadRequestInternal> _pendingLoadRequestsVector;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingLoadRequests;
 

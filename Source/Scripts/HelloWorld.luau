@@ -1,9 +1,13 @@
-local ItemUtil = require("API/Game/ItemUtil")
+local ItemUtil = require("@src/API/Game/ItemUtil")
+local Bag = require("@src/API/Game/Bag")
+local PlayerContainers = require("@src/API/Game/PlayerContainers")
+
+local GameTooltip = require("@src/API/Game/GameTooltip")
 
 local function OnGameLoaded(eventID : number, motd : string)
     local luaRamUsage : number = gcinfo()
-    local version : Vector3 = Engine.Version
-
+    local version : vector = Engine.Version
+    
     local rarityText1 = ItemUtil.GetRarityText(ItemUtil.Rarity.Poor)
     local rarityText2 = ItemUtil.GetRarityText(ItemUtil.Rarity.Epic)
     local rarityText3 = ItemUtil.GetRarityText(ItemUtil.Rarity.Unique)
@@ -21,11 +25,13 @@ local function OnGameLoaded(eventID : number, motd : string)
     local typeText3 = ItemUtil.GetCategoryTypeText(ItemUtil.Category.Weapon, ItemUtil.CategoryType.Weapon.FishingPole)
 
     local weaponStyle1 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Unspecified)
-    local weaponStyle2 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.One_Hand)
-    local weaponStyle3 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Two_Hand)
-    local weaponStyle4 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Ranged)
-    local weaponStyle5 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Wand)
-    local weaponStyle6 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Tool)
+    local weaponStyle2 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.OneHand)
+    local weaponStyle3 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.TwoHand)
+    local weaponStyle4 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.MainHand)
+    local weaponStyle5 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.OffHand)
+    local weaponStyle6 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Ranged)
+    local weaponStyle7 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Wand)
+    local weaponStyle8 = ItemUtil.GetWeaponStyleText(ItemUtil.WeaponStyle.Tool)
 
     local weaponStyleFromWeaponCategoryType1 = ItemUtil.GetWeaponStyleTextFromWeaponCategoryType(ItemUtil.CategoryType.Weapon.Weapon)
     local weaponStyleFromWeaponCategoryType2 = ItemUtil.GetWeaponStyleTextFromWeaponCategoryType(ItemUtil.CategoryType.Weapon.Sword_1H)
@@ -56,7 +62,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     print(`TypeText2 : {categoryText2} - {typeText2}`)
     print(`TypeText3 : {categoryText3} - {typeText3}`)
 
-    print(`Weapon Styles : {weaponStyle1} - {weaponStyle2} - {weaponStyle3} - {weaponStyle4} - {weaponStyle5} - {weaponStyle6}`)
+    print(`Weapon Styles : {weaponStyle1} - {weaponStyle2} - {weaponStyle3} - {weaponStyle4} - {weaponStyle5} - {weaponStyle6} - {weaponStyle7} - {weaponStyle8}`)
     print(`Weapon Styles from Weapon Category Types 1 : {weaponStyleFromWeaponCategoryType1} - {weaponStyleFromWeaponCategoryType2} - {weaponStyleFromWeaponCategoryType3} - {weaponStyleFromWeaponCategoryType4} - {weaponStyleFromWeaponCategoryType5} - {weaponStyleFromWeaponCategoryType6}`)
     print(`Weapon Styles from Weapon Category Types 2 : {weaponStyleFromWeaponCategoryType7} - {weaponStyleFromWeaponCategoryType8} - {weaponStyleFromWeaponCategoryType9} - {weaponStyleFromWeaponCategoryType10} - {weaponStyleFromWeaponCategoryType11} - {weaponStyleFromWeaponCategoryType12}`)
     print(`Weapon Styles from Weapon Category Types 3 : {weaponStyleFromWeaponCategoryType13} - {weaponStyleFromWeaponCategoryType14} - {weaponStyleFromWeaponCategoryType15} - {weaponStyleFromWeaponCategoryType16} - {weaponStyleFromWeaponCategoryType17}`)

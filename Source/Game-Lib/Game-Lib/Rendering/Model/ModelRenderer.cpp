@@ -10,7 +10,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Tags.h"
-#include "Game-Lib/ECS/Singletons/ClientDBCollection.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/TextureSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 
@@ -1612,15 +1612,15 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
 void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked)
 {
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    auto& clientDBCollection = registry->ctx().get<ECS::Singletons::ClientDBCollection>();
-    auto& textureSingleton = registry->ctx().get<ECS::Singletons::TextureSingleton>();
-
-    auto* textureFileDataStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::TextureFileData);
-    auto* creatureDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfo);
-    auto* creatureDisplayInfoExtraStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::CreatureDisplayInfoExtra);
-    auto* itemDisplayInfoStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayInfo);
-    auto* itemDisplayModelMaterialStorage = clientDBCollection.Get(ECS::Singletons::ClientDBHash::ItemDisplayModelMaterialResources);
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& textureSingleton = gameRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
+    auto* textureFileDataStorage = clientDBSingleton.Get(ClientDBHash::TextureFileData);
+    auto* creatureDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
+    auto* creatureDisplayInfoExtraStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfoExtra);
+    auto* itemDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayInfo);
+    auto* itemDisplayModelMaterialStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayModelMaterialResources);
 
     const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
     const ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
@@ -1630,37 +1630,37 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
 
     if (!_displayInfoManifests.contains(displayInfoPacked))
     {
-        auto displayInfoType = static_cast<ClientDB::Definitions::DisplayInfoType>(displayInfoPacked >> 24);
+        auto displayInfoType = static_cast<ClientDB::Definitions::DisplayInfoType>((displayInfoPacked >> 23) & 0x7);
         u32 displayID = displayInfoPacked & 0xFFFFFF;
 
         switch (displayInfoType)
         {
-        case ClientDB::Definitions::DisplayInfoType::Creature:
-        {
-            if (creatureDisplayInfoStorage)
+            case ClientDB::Definitions::DisplayInfoType::Creature:
             {
-                creatureDisplayInfo = &creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
-
-                if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
+                if (creatureDisplayInfoStorage)
                 {
-                    creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(creatureDisplayInfo->extendedDisplayInfoID);
+                    creatureDisplayInfo = &creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
+
+                    if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
+                    {
+                        creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(creatureDisplayInfo->extendedDisplayInfoID);
+                    }
                 }
+
+                break;
             }
 
-            break;
-        }
-
-        case ClientDB::Definitions::DisplayInfoType::Item:
-        {
-            if (itemDisplayInfoStorage)
+            case ClientDB::Definitions::DisplayInfoType::Item:
             {
-                itemDisplayInfo = &itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+                if (itemDisplayInfoStorage)
+                {
+                    itemDisplayInfo = &itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+                }
+
+                break;
             }
 
-            break;
-        }
-
-        default: return;
+            default: return;
         }
 
         bool hasDynamicTextureUnits = false;
@@ -1687,21 +1687,21 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
 
                     switch (cTexture.type)
                     {
-                    case Model::ComplexModel::Texture::Type::Skin:
-                    case Model::ComplexModel::Texture::Type::ObjectSkin:
-                    case Model::ComplexModel::Texture::Type::WeaponBlade:
-                    case Model::ComplexModel::Texture::Type::CharacterHair:
-                    case Model::ComplexModel::Texture::Type::CharacterFacialHair:
-                    case Model::ComplexModel::Texture::Type::SkinExtra:
-                    case Model::ComplexModel::Texture::Type::MonsterSkin1:
-                    case Model::ComplexModel::Texture::Type::MonsterSkin2:
-                    case Model::ComplexModel::Texture::Type::MonsterSkin3:
-                    {
-                        hasDynamicTextureUnits = true;
-                        break;
-                    }
+                        case Model::ComplexModel::Texture::Type::Skin:
+                        case Model::ComplexModel::Texture::Type::ObjectSkin:
+                        case Model::ComplexModel::Texture::Type::WeaponBlade:
+                        case Model::ComplexModel::Texture::Type::CharacterHair:
+                        case Model::ComplexModel::Texture::Type::CharacterFacialHair:
+                        case Model::ComplexModel::Texture::Type::SkinExtra:
+                        case Model::ComplexModel::Texture::Type::MonsterSkin1:
+                        case Model::ComplexModel::Texture::Type::MonsterSkin2:
+                        case Model::ComplexModel::Texture::Type::MonsterSkin3:
+                        {
+                            hasDynamicTextureUnits = true;
+                            break;
+                        }
 
-                    default: break;
+                        default: break;
                     }
 
                     if (hasDynamicTextureUnits)
@@ -1781,144 +1781,144 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                     {
                         switch (displayID)
                         {
-                        case 49: // Human Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
-                        }
-                        case 50: // Human Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00941.dds"_h;
-                        }
-                        case 51: // Orc Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00111.dds"_h;
-                        }
-                        case 52: // Orc Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00102.dds"_h;
-                        }
-                        case 53: // Dwarf Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-156637.dds"_h;
-                        }
-                        case 54: // Dwarf Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-156636.dds"_h;
-                        }
-                        case 55: // Night Elf Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00405.dds"_h;
-                        }
-                        case 56: // Night Elf Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00404.dds"_h;
-                        }
-                        case 57: // Undead Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00046.dds"_h;
-                        }
-                        case 58: // Undead Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00262.dds"_h;
-                        }
-                        case 59: // Tauren Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-00382.dds"_h;
-                        }
-                        case 60: // Tauren Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-02034.dds"_h;
-                        }
-                        case 1563: // Gnome Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-01202.dds"_h;
-                        }
-                        case 1564: // Gnome Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-01822.dds"_h;
-                        }
-                        case 1478: // Troll Male
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-02639.dds"_h;
-                        }
-                        case 1479: // Troll Female
-                        {
-                            return "textures/bakednpctextures/creaturedisplayextra-01118.dds"_h;
-                        }
+                            case 49: // Human Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
+                            }
+                            case 50: // Human Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00941.dds"_h;
+                            }
+                            case 51: // Orc Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00111.dds"_h;
+                            }
+                            case 52: // Orc Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00102.dds"_h;
+                            }
+                            case 53: // Dwarf Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-156637.dds"_h;
+                            }
+                            case 54: // Dwarf Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-156636.dds"_h;
+                            }
+                            case 55: // Night Elf Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00405.dds"_h;
+                            }
+                            case 56: // Night Elf Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00404.dds"_h;
+                            }
+                            case 57: // Undead Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-01059.dds"_h;
+                            }
+                            case 58: // Undead Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00262.dds"_h;
+                            }
+                            case 59: // Tauren Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-00382.dds"_h;
+                            }
+                            case 60: // Tauren Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-02034.dds"_h;
+                            }
+                            case 1563: // Gnome Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-01202.dds"_h;
+                            }
+                            case 1564: // Gnome Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-01822.dds"_h;
+                            }
+                            case 1478: // Troll Male
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-02639.dds"_h;
+                            }
+                            case 1479: // Troll Female
+                            {
+                                return "textures/bakednpctextures/creaturedisplayextra-01118.dds"_h;
+                            }
 
-                        default: return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
+                            default: return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
                         }
                     };
                     static auto GetRaceHairTextureForDisplayID = [](u32 displayID) -> u32
                     {
                         switch (displayID)
                         {
-                        case 49: // Human Male
-                        {
-                            return "character/human/hair00_01.dds"_h;
-                        }
-                        case 50: // Human Female
-                        {
-                            return "character/human/hair00_01.dds"_h;
-                        }
-                        case 51: // Orc Male
-                        {
-                            return "character/orc/hair00_00.dds"_h;
-                        }
-                        case 52: // Orc Female
-                        {
-                            return "character/orc/hair00_00.dds"_h;
-                        }
-                        case 53: // Dwarf Male
-                        {
-                            return "character/dwarf/hair00_05.dds"_h;
-                        }
-                        case 54: // Dwarf Female
-                        {
-                            return "character/dwarf/hair00_05.dds"_h;
-                        }
-                        case 55: // Night Elf Male
-                        {
-                            return "character/nightelf/hair00_06.dds"_h;
-                        }
-                        case 56: // Night Elf Female
-                        {
-                            return "character/nightelf/hair00_06.dds"_h;
-                        }
-                        case 57: // Undead Male
-                        {
-                            return "character/scourge/hair00_05.dds"_h;
-                        }
-                        case 58: // Undead Female
-                        {
-                            return "character/scourge/hair00_05.dds"_h;
-                        }
-                        case 59: // Tauren Male
-                        {
-                            return "character/tauren/scalplowerhair00_00.dds"_h;
-                        }
-                        case 60: // Tauren Female
-                        {
-                            return "character/tauren/scalplowerhair00_00.dds"_h;
-                        }
-                        case 1563: // Gnome Male
-                        {
-                            return "character/gnome/hair00_00.dds"_h;
-                        }
-                        case 1564: // Gnome Female
-                        {
-                            return "character/gnome/hair00_00.dds"_h;
-                        }
-                        case 1478: // Troll Male
-                        {
-                            return "character/troll/hair00_07.dds"_h;
-                        }
-                        case 1479: // Troll Female
-                        {
-                            return "character/troll/hair00_07.dds"_h;
-                        }
+                            case 49: // Human Male
+                            {
+                                return "character/human/hair00_01.dds"_h;
+                            }
+                            case 50: // Human Female
+                            {
+                                return "character/human/hair00_01.dds"_h;
+                            }
+                            case 51: // Orc Male
+                            {
+                                return "character/orc/hair00_00.dds"_h;
+                            }
+                            case 52: // Orc Female
+                            {
+                                return "character/orc/hair00_00.dds"_h;
+                            }
+                            case 53: // Dwarf Male
+                            {
+                                return "character/dwarf/hair00_05.dds"_h;
+                            }
+                            case 54: // Dwarf Female
+                            {
+                                return "character/dwarf/hair00_05.dds"_h;
+                            }
+                            case 55: // Night Elf Male
+                            {
+                                return "character/nightelf/hair00_06.dds"_h;
+                            }
+                            case 56: // Night Elf Female
+                            {
+                                return "character/nightelf/hair00_06.dds"_h;
+                            }
+                            case 57: // Undead Male
+                            {
+                                return "character/scourge/hair00_05.dds"_h;
+                            }
+                            case 58: // Undead Female
+                            {
+                                return "character/scourge/hair00_05.dds"_h;
+                            }
+                            case 59: // Tauren Male
+                            {
+                                return "character/tauren/scalplowerhair00_00.dds"_h;
+                            }
+                            case 60: // Tauren Female
+                            {
+                                return "character/tauren/scalplowerhair00_00.dds"_h;
+                            }
+                            case 1563: // Gnome Male
+                            {
+                                return "character/gnome/hair00_00.dds"_h;
+                            }
+                            case 1564: // Gnome Female
+                            {
+                                return "character/gnome/hair00_00.dds"_h;
+                            }
+                            case 1478: // Troll Male
+                            {
+                                return "character/troll/hair00_07.dds"_h;
+                            }
+                            case 1479: // Troll Female
+                            {
+                                return "character/troll/hair00_07.dds"_h;
+                            }
 
-                        default: return "character/human/hair00_01.dds"_h;
+                            default: return "character/human/hair00_01.dds"_h;
                         }
                     };
 
@@ -1946,14 +1946,15 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                         {
                             u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
 
+                            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from materialResourcesID -> List<TextureHash>
                             itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](const u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
-                                {
-                                    if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 2)
-                                        return true;
+                            {
+                                if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 2)
+                                    return true;
 
-                                    textureHash = row.textureHash[0];
-                                    return false;
-                                });
+                                textureHash = row.textureHash[0];
+                                return false;
+                            });
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::WeaponBlade)
@@ -1962,14 +1963,15 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                         {
                             u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
 
+                            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from materialResourcesID -> List<TextureHash>
                             itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
-                                {
-                                    if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 3)
-                                        return true;
+                            {
+                                if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 3)
+                                    return true;
 
-                                    textureHash = row.textureHash[0];
-                                    return false;
-                                });
+                                textureHash = row.textureHash[0];
+                                return false;
+                            });
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
@@ -2048,7 +2050,7 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
     instanceManifest.displayInfoPacked = displayInfoPacked;
 }
 
-void ModelRenderer::RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable)
+void ModelRenderer::RequestChangeGroup  (u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable)
 {
     ChangeGroupRequest changeGroupRequest =
     {
@@ -2885,10 +2887,10 @@ void ModelRenderer::CompactInstanceRefs()
                         const DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
 
                         // Select the correct instanceDrawIDToTextureDataID based on isSkybox and isTransparent
-                        const robin_hood::unordered_map<u32, u32>& opaqueDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID : displayInfoManifest.opaqueDrawIDToTextureDataID;
-                        const robin_hood::unordered_map<u32, u32>& transparentDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.transparentSkyboxDrawIDToTextureDataID : displayInfoManifest.transparentDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestOpaqueDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID : displayInfoManifest.opaqueDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestTransparentDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.transparentSkyboxDrawIDToTextureDataID : displayInfoManifest.transparentDrawIDToTextureDataID;
 
-                        const robin_hood::unordered_map<u32, u32>& instanceDrawIDToTextureDataID = (isTransparent || instanceManifest.transparent) ? transparentDrawIDToTextureDataID : opaqueDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& instanceDrawIDToTextureDataID = (isTransparent || instanceManifest.transparent) ? displayInfoManifestTransparentDrawIDToTextureDataID : displayInfoManifestOpaqueDrawIDToTextureDataID;
                         textureDataID = instanceDrawIDToTextureDataID.at(drawID);
                     }
 

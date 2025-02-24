@@ -49,6 +49,8 @@ private:
 
     bool Init();
     bool Render(f32 deltaTime, f32& timeSpentWaiting);
+
+    void RefreshDatabases();
     void SaveCDB();
 
     void Cleanup();

@@ -232,6 +232,9 @@ namespace ECS::Components
                 {
                     prevSibling->nextSibling = nextSibling;
                     nextSibling->prevSibling = prevSibling;
+
+                    if (parent->firstChild == this)
+                        parent->firstChild = prevSibling;
                 }
 
                 nextSibling = nullptr;

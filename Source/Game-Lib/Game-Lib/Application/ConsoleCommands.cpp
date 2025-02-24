@@ -60,3 +60,9 @@ void ConsoleCommands::CommandReloadScripts(Application& app, std::vector<std::st
     MessageInbound message(MessageInbound::Type::ReloadScripts);
     app.PassMessage(message);
 }
+
+void ConsoleCommands::CommandRefreshDB(Application& app, std::vector<std::string>& subCommands)
+{
+    MessageInbound message(MessageInbound::Type::RefreshDB);
+    app.PassMessage(message);
+}

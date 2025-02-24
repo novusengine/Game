@@ -1,4 +1,4 @@
-local Module = { }
+local templatesAPI = { }
 
 --[[local function UIInputEventHandler(eventID, widget, ...)
     if (eventID == UIInputEvent.MouseDown) then
@@ -20,12 +20,18 @@ local Module = { }
     end
   end]]
 
-function Module.RegisterTemplates()
+function templatesAPI.RegisterTemplates()
     -- Dialog Box
     UI.RegisterPanelTemplate("DialogBox",
     {
         background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 0.0,
+    });
+
+    UI.RegisterPanelTemplate("DialogBoxRound",
+    {
+        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        cornerRadius = 2.0,
     });
 
     -- Dialog Box Header
@@ -44,9 +50,9 @@ function Module.RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
-        color = vec3.new(255.0/255.0, 239.0/255.0, 0.0/255.0),
+        color = vector.create(255.0/255.0, 239.0/255.0, 0.0/255.0),
         borderSize = 0.3,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
+        borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     local buttonMinX, buttonMinY = UI.PixelsToTexCoord(1, 1, 128, 32);
@@ -89,7 +95,7 @@ function Module.RegisterTemplates()
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 22.0,
         borderSize = 1.0,
-        borderColor = vec3.new(0.0, 0.0, 0.0),
+        borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     -- Minimize Button
@@ -216,7 +222,7 @@ function Module.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultComboBoxDisabledPanel", 
     {
-        color = vec3.new(0.5, 0.5, 0.5),
+        color = vector.create(0.5, 0.5, 0.5),
     });
 
     UI.RegisterPanelTemplate("DefaultComboBoxNextPanel", 
@@ -267,4 +273,4 @@ function Module.RegisterTemplates()
     --UI.RegisterButtonTemplate("InheritedMenuButton", inheritedMenuButtonTemplate);
 end
 
-return Module
+return templatesAPI

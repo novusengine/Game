@@ -1,5 +1,6 @@
 #include "Scheduler.h"
 
+#include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/AreaLightInfo.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
@@ -7,8 +8,6 @@
 #include "Game-Lib/ECS/Singletons/EngineStats.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
-#include "Game-Lib/ECS/Components/Camera.h"
-
 #include "Game-Lib/ECS/Systems/Animation.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
@@ -18,7 +17,7 @@
 #include "Game-Lib/ECS/Systems/FreeflyingCamera.h"
 #include "Game-Lib/ECS/Systems/OrbitalCamera.h"
 #include "Game-Lib/ECS/Systems/NetworkConnection.h"
-#include "Game-Lib/ECS/Systems/UpdateNetworkedEntity.h"
+#include "Game-Lib/ECS/Systems/UpdateUnitEntities.h"
 #include "Game-Lib/ECS/Systems/UpdatePhysics.h"
 #include "Game-Lib/ECS/Systems/UpdateScripts.h"
 #include "Game-Lib/ECS/Systems/UpdateSkyboxes.h"
@@ -27,6 +26,9 @@
 #include "Game-Lib/ECS/Systems/CharacterController.h"
 #include "Game-Lib/ECS/Systems/UI/HandleInput.h"
 #include "Game-Lib/ECS/Systems/UI/UpdateBoundingRects.h"
+#include "Game-Lib/ECS/Util/EventUtil.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
 
 #include <Renderer/RenderSettings.h>
 
@@ -47,7 +49,7 @@ namespace ECS
 
         Systems::NetworkConnection::Init(gameRegistry);
         Systems::Animation::Init(gameRegistry);
-        Systems::UpdateNetworkedEntity::Init(gameRegistry);
+        Systems::UpdateUnitEntities::Init(gameRegistry);
         Systems::UpdatePhysics::Init(gameRegistry);
         Systems::DrawDebugMesh::Init(gameRegistry);
         Systems::FreeflyingCamera::Init(gameRegistry);
@@ -82,26 +84,25 @@ namespace ECS
 
         joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-            Systems::UpdateDayNightCycle::Update(gameRegistry, clampedDeltaTime);
-            Systems::NetworkConnection::Update(gameRegistry, clampedDeltaTime);
-            Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
-            Systems::Animation::Update(gameRegistry, clampedDeltaTime);
-            Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
-            Systems::UpdateNetworkedEntity::Update(gameRegistry, clampedDeltaTime);
-            Systems::FreeflyingCamera::Update(gameRegistry, clampedDeltaTime);
-            Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);
-            Systems::CalculateCameraMatrices::Update(gameRegistry, clampedDeltaTime);
-            Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
-            Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
-            Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);
-            Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
-            Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
-            Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateDayNightCycle::Update(gameRegistry, clampedDeltaTime);
+        Systems::NetworkConnection::Update(gameRegistry, clampedDeltaTime);
+        Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
+        Systems::Animation::Update(gameRegistry, clampedDeltaTime);
+        Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateUnitEntities::Update(gameRegistry, clampedDeltaTime);
+        Systems::FreeflyingCamera::Update(gameRegistry, clampedDeltaTime);
+        Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);
+        Systems::CalculateCameraMatrices::Update(gameRegistry, clampedDeltaTime);
+        Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);
+        Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);
 
-            // Note: For now UpdateScripts should always be run last
-            Systems::UpdateScripts::Update(gameRegistry, clampedDeltaTime);
+        // Note: For now UpdateScripts should always be run last
+        Systems::UpdateScripts::Update(gameRegistry, clampedDeltaTime);
         
-
         if (joltState.updateTimer >= Singletons::JoltState::FixedDeltaTime)
         {
             joltState.updateTimer -= Singletons::JoltState::FixedDeltaTime;
@@ -112,5 +113,6 @@ namespace ECS
 
         Systems::UI::UpdateBoundingRects::Update(uiRegistry, clampedDeltaTime);
         Systems::UI::HandleInput::Update(uiRegistry, clampedDeltaTime);
+        Systems::UI::UpdateBoundingRects::Update(uiRegistry, clampedDeltaTime); // Run Twice to update any entities added during HandleInput::Update
     }
 }

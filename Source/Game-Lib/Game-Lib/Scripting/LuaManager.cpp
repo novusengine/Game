@@ -2,12 +2,13 @@
 #include "LuaDefines.h"
 #include "LuaState.h"
 #include "Handlers/DatabaseHandler.h"
-#include "Handlers/UIHandler.h"
 #include "Handlers/GameEventHandler.h"
+#include "Handlers/GameHandler.h"
 #include "Handlers/GlobalHandler.h"
+#include "Handlers/PlayerEventHandler.h"
 #include "Handlers/UIHandler.h"
-#include "Systems/LuaSystemBase.h"
 #include "Systems/GenericSystem.h"
+#include "Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -27,6 +28,8 @@ AutoCVar_String CVAR_ScriptDir(CVarCategory::Client, "scriptingDirectory", "defi
 AutoCVar_String CVAR_ScriptExtension(CVarCategory::Client, "scriptingExtension", "defines the file extension to recognized as a script file", ".luau");
 AutoCVar_String CVAR_ScriptMotd(CVarCategory::Client, "scriptingMotd", "defines the message of the day passed in the GameLoaded Event", "Welcome to Novuscore");
 
+LUAU_FASTFLAG(LuauVector2Constructor)
+
 namespace Scripting
 {
     LuaManager::LuaManager() : _internalState(nullptr), _publicState(nullptr)
@@ -37,11 +40,15 @@ namespace Scripting
 
     void LuaManager::Init()
     {
+        FFlag::LuauVector2Constructor.value = true;
+
         _luaHandlers.resize(static_cast<u32>(LuaHandlerType::Count));
         SetLuaHandler(LuaHandlerType::Global, new GlobalHandler());
         SetLuaHandler(LuaHandlerType::GameEvent, new GameEventHandler());
+        SetLuaHandler(LuaHandlerType::PlayerEvent, new PlayerEventHandler());
         SetLuaHandler(LuaHandlerType::UI, new UI::UIHandler());
         SetLuaHandler(LuaHandlerType::Database, new Database::DatabaseHandler());
+        SetLuaHandler(LuaHandlerType::Game, new Game::GameHandler());
 
         Prepare();
 
@@ -73,9 +80,6 @@ namespace Scripting
 
                 auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
                 gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
-
-                //auto uiHandler = GetLuaHandler<UI::UIHandler*>(LuaHandlerType::UI);
-                //uiHandler->Clear();
             }
             else
             {
@@ -118,9 +122,8 @@ namespace Scripting
         {
             compileOptions.optimizationLevel = 1;
             compileOptions.debugLevel = 2;
+            compileOptions.typeInfoLevel = 1;
             compileOptions.coverageLevel = 2;
-            compileOptions.vectorLib = "Vector3";
-            compileOptions.vectorCtor = "new";
         }
 
         Luau::ParseOptions parseOptions;
@@ -186,6 +189,11 @@ namespace Scripting
         {
             luaL_error(state, "error requiring module, global 'path' missing");
             return 0;
+        }
+
+        if (StringUtils::BeginsWith(name, "@src/"))
+        {
+            name = name.substr(5);
         }
 
         std::string scriptPath = std::string(scriptDirPath) + "/" + name + ".luau";
@@ -272,6 +280,23 @@ namespace Scripting
         return 1;
     }
 
+    u32 GetPathDepth(const std::string& rootPath, const std::string& filePath)
+    {
+        std::string relativePath = filePath.substr(rootPath.length());
+
+        u32 depth = 0;
+        for (char c : relativePath)
+        {
+            // Handle both forward and backslashes
+            if (c == '/' || c == '\\')
+            {
+                depth++;
+            }
+        }
+
+        return depth;
+    }
+
     bool LuaManager::LoadScripts()
     {
         const char* scriptDir = CVAR_ScriptDir.Get();
@@ -280,6 +305,8 @@ namespace Scripting
         fs::path scriptAPIDirectory = scriptDirectory / "API";
         fs::path scriptBootstrapDirectory = scriptDirectory / "Bootstrap";
         std::string scriptDirectoryAsString = scriptDirectory.string();
+        std::string scriptAPIDirectoryAsString = scriptAPIDirectory.string();
+        std::string scriptBootstrapDirectoryAsString = scriptBootstrapDirectory.string();
 
         if (!fs::exists(scriptDirectory))
         {
@@ -320,10 +347,12 @@ namespace Scripting
 
         // TODO : Figure out if this catches hidden folders, and if so exclude them
         // TODO : Should we use a custom file extension for "include" files? Force load any files that for example use ".ext"
-        std::vector<fs::path> paths;
-        std::vector<fs::path> apiPaths;
+        std::vector<std::pair<u32, fs::path>> paths;
+        std::vector<std::pair<u32, fs::path>> apiPaths;
+        std::vector<std::pair<u32, fs::path>> boostrapPaths;
         paths.reserve(1024);
         apiPaths.reserve(1024);
+        boostrapPaths.reserve(1024);
 
         fs::recursive_directory_iterator fsScriptAPIDir { scriptAPIDirectory };
         for (const auto& dirEntry : fsScriptAPIDir)
@@ -335,8 +364,11 @@ namespace Scripting
             if (path.extension() != scriptExtension)
                 continue;
 
-            apiPaths.push_back(dirEntry.path());
+            std::string pathStr = path.string();
+            u32 depth = GetPathDepth(scriptAPIDirectoryAsString, pathStr);
+            apiPaths.push_back({ depth, path });
         }
+        std::sort(apiPaths.begin(), apiPaths.end());
 
         fs::recursive_directory_iterator fsScriptBootstrapDir { scriptBootstrapDirectory };
         for (const auto& dirEntry : fsScriptBootstrapDir)
@@ -348,8 +380,11 @@ namespace Scripting
             if (path.extension() != scriptExtension)
                 continue;
 
-            paths.push_back(dirEntry.path());
+            std::string pathStr = path.string();
+            u32 depth = GetPathDepth(scriptBootstrapDirectoryAsString, pathStr);
+            boostrapPaths.push_back({ depth, path });
         }
+        std::sort(boostrapPaths.begin(), boostrapPaths.end());
 
         fs::recursive_directory_iterator fsScriptDir { scriptDirectory };
         for (const auto& dirEntry : fsScriptDir)
@@ -368,17 +403,18 @@ namespace Scripting
             if (StringUtils::BeginsWith(relativePathAsString, "API/") || StringUtils::BeginsWith(relativePathAsString, "Bootstrap/"))
                 continue;
 
-            paths.push_back(dirEntry.path());
+            std::string pathStr = path.string();
+            u32 depth = GetPathDepth(scriptBootstrapDirectoryAsString, pathStr);
+            paths.push_back({ depth, path });
         }
+        std::sort(paths.begin(), paths.end());
 
         Luau::CompileOptions compileOptions;
         {
             compileOptions.optimizationLevel = 1;
             compileOptions.debugLevel = 2;
+            compileOptions.typeInfoLevel = 1;
             compileOptions.coverageLevel = 2;
-            compileOptions.vectorLib = "vec3";
-            compileOptions.vectorType = "vec3";
-            compileOptions.vectorCtor = "new";
         }
         Luau::ParseOptions parseOptions;
 
@@ -389,7 +425,7 @@ namespace Scripting
 
         for (auto& path : apiPaths)
         {
-            const std::string pathAsStr = path.string();
+            const std::string pathAsStr = path.second.string();
             FileReader reader(pathAsStr);
 
             if (!reader.Open())
@@ -408,14 +444,14 @@ namespace Scripting
             LuaBytecodeEntry bytecodeEntry
             {
                 false,
-                path.filename().string(),
+                path.second.filename().string(),
                 pathAsStr,
                 Luau::compile(luaCode, compileOptions, parseOptions)
             };
 
             u32 index = static_cast<u32>(stateInfo.apiBytecodeList.size());
 
-            fs::path relPath = fs::relative(path, scriptDirectory);
+            fs::path relPath = fs::relative(path.second, scriptDirectory);
             std::string scriptPath = scriptDirectoryAsString + "/" + relPath.string();
             std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
 
@@ -425,9 +461,9 @@ namespace Scripting
             stateInfo._luaAPIPathToBytecodeIndex[pathHash] = index;
         }
 
-        for (auto& path : paths)
+        for (auto& path : boostrapPaths)
         {
-            const std::string pathAsStr = path.string();
+            const std::string pathAsStr = path.second.string();
             FileReader reader(pathAsStr);
 
             if (!reader.Open())
@@ -446,14 +482,51 @@ namespace Scripting
             LuaBytecodeEntry bytecodeEntry
             {
                 false,
-                path.filename().string(),
+                path.second.filename().string(),
                 pathAsStr,
                 Luau::compile(luaCode, compileOptions, parseOptions)
             };
 
             u32 index = static_cast<u32>(stateInfo.bytecodeList.size());
 
-            fs::path relPath = fs::relative(path, scriptDirectory);
+            fs::path relPath = fs::relative(path.second, scriptDirectory);
+            std::string scriptPath = scriptDirectoryAsString + "/" + relPath.string();
+            std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
+
+            StringUtils::StringHash pathHash = StringUtils::fnv1a_32(scriptPath.c_str(), scriptPath.size());
+
+            stateInfo.bytecodeList.push_back(bytecodeEntry);
+        }
+
+        for (auto& path : paths)
+        {
+            const std::string pathAsStr = path.second.string();
+            FileReader reader(pathAsStr);
+
+            if (!reader.Open())
+                continue;
+
+            u32 bufferSize = static_cast<u32>(reader.Length());
+            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+            reader.Read(buffer.get(), bufferSize);
+
+            std::string luaCode;
+            luaCode.resize(bufferSize);
+
+            if (!buffer->GetString(luaCode, bufferSize))
+                continue;
+
+            LuaBytecodeEntry bytecodeEntry
+            {
+                false,
+                path.second.filename().string(),
+                pathAsStr,
+                Luau::compile(luaCode, compileOptions, parseOptions)
+            };
+
+            u32 index = static_cast<u32>(stateInfo.bytecodeList.size());
+
+            fs::path relPath = fs::relative(path.second, scriptDirectory);
             std::string scriptPath = scriptDirectoryAsString + "/" + relPath.string();
             std::replace(scriptPath.begin(), scriptPath.end(), '\\', '/');
 

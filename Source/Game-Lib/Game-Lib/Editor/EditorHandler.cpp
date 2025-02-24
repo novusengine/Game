@@ -15,6 +15,7 @@
 #include "SkyboxSelector.h"
 #include "TerrainTools.h"
 #include "Viewport.h"
+#include "ItemEditor.h"
 
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
@@ -55,6 +56,7 @@ namespace Editor
         _editors.push_back(new NetworkedInfo());
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
+        _editors.push_back(new ItemEditor());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);
@@ -118,17 +120,18 @@ namespace Editor
             return wasConsumedByImGui;
         });
 
-        imguiKeybindGroup->AddMousePositionValidator([](f32 x, f32 y) -> bool
+        imguiKeybindGroup->AddMousePositionValidator([this](f32 x, f32 y) -> bool
         {
             auto& io = ImGui::GetIO();
-            bool wasConsumedByImGui = io.MouseHoveredViewport;
+            bool wasConsumedByImGui = _editorMode && io.MouseHoveredViewport;
 
             return wasConsumedByImGui;
         });
 
         imguiKeybindGroup->AddMouseScrollValidator([this](f32 x, f32 y) -> bool
         {
-            bool wasConsumedByImGui = _editorMode;
+            auto& io = ImGui::GetIO();
+            bool wasConsumedByImGui = (_editorMode && io.MouseHoveredViewport) || io.WantCaptureMouse || ImGuizmo::IsOver();
 
             return wasConsumedByImGui;
         });

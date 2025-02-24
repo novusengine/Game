@@ -140,8 +140,8 @@ namespace ECS::Components
                 anchorOffset = anchor * parentTransform->size;
             }
 
-            vec2 finalPosition = position + anchorOffset - relativePointOffset;
-            return Math::AffineMatrix::TransformMatrix(vec3(finalPosition, 0), rotation, vec3(scale, 1));
+            vec2 finalPosition = (position - relativePointOffset) + anchorOffset;
+            return Math::AffineMatrix::TransformMatrix(vec3(finalPosition, 0.0f), rotation, vec3(scale, 1.0f));
         }
 
         void SetDirty(ECS::Transform2DSystem& dirtyQueue, entt::entity ownerEntity)
@@ -272,6 +272,9 @@ namespace ECS::Components
                 {
                     prevSibling->nextSibling = nextSibling;
                     nextSibling->prevSibling = prevSibling;
+
+                    if (parent->firstChild == this)
+                        parent->firstChild = prevSibling;
                 }
 
                 nextSibling = nullptr;
