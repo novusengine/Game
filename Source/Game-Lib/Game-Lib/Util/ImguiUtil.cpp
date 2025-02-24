@@ -866,7 +866,7 @@ namespace Util
             f32 centerAlignPos = (ImGui::GetWindowWidth() - ImGui::CalcTextSize(headerName.c_str()).x) * 0.5f;
             ImGui::SetCursorPosX(centerAlignPos);
 
-            ImGui::TextWrapped(headerName.c_str());
+            ImGui::TextWrapped("%s", headerName.c_str());
         }
 
         void FloatSlider(const std::string& text, f32* valuePtr, f32 minVal, f32 maxVal, f32 step, f32 fastStep,
@@ -878,7 +878,7 @@ namespace Util
             f32 arrowSpacing = frameHeight - 2.0f * arrowSize;
             f32 spacing = ImGui::GetStyle().ItemInnerSpacing.x;
 
-            ImGui::TextWrapped(text.c_str());
+            ImGui::TextWrapped("%s", text.c_str());
 
             if (sliderWidth == ImGui::GetWindowWidth())
                 sliderWidth -= frameHeight;
@@ -939,7 +939,7 @@ namespace Util
         void ColorPicker(const std::string& name, Color* valuePtr, vec2 size, const std::string& append)
         {
             // Make name optional?
-            //ImGui::TextWrapped((name).c_str());
+            //ImGui::TextWrapped("%s", (name).c_str());
 
             ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
             ImGui::PushStyleColor(ImGuiCol_Button, *reinterpret_cast<ImVec4*>(valuePtr));

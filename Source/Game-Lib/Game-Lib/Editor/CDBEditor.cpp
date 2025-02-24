@@ -301,7 +301,7 @@ namespace Editor
                 ImGui::SetCursorPosY(startY);
 
                 // Render field index
-                ImGui::Text("%zu", i + 1);
+                ImGui::Text("%d", i + 1);
                 ImGui::SameLine(0.0f, 8.0f);
 
                 // Make field name and type draggable
@@ -539,7 +539,7 @@ namespace Editor
                 ImGui::SetCursorPosY(startY);
 
                 // Render field index
-                ImGui::Text("%zu", i + 1);
+                ImGui::Text("%d", i + 1);
                 ImGui::SameLine(0.0f, 8.0f);
 
                 // Make field name and type draggable
@@ -1050,7 +1050,7 @@ namespace Editor
 
                 if (!errorMsg.empty())
                 {
-                    ImGui::TextColored(ImVec4(1, 0, 0, 1), errorMsg.c_str());
+                    ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", errorMsg.c_str());
                 }
 
                 if (ImGui::Button("Confirm"))
@@ -1122,7 +1122,7 @@ namespace Editor
 
                         // ID Column
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("%zu", idEntry.id);
+                        ImGui::Text("%d", idEntry.id);
 
                         u32 rowOffset = idEntry.index;
 

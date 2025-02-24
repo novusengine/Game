@@ -47,12 +47,6 @@ namespace Scripting
         template<typename T>
         void Push(const T& value);
 
-        template<>
-        void Push(const vec3& value);
-
-        template<>
-        void Push(const std::string& value);
-
         void Push();
         void Push(bool value);
         void Push(i32 value);
@@ -139,4 +133,10 @@ namespace Scripting
     private:
         lua_State* _state;
     };
+
+    template<>
+    void LuaState::Push<vec3>(const vec3& value);
+
+    template<>
+    void LuaState::Push<std::string>(const std::string& value);
 }

@@ -144,16 +144,21 @@ namespace Scripting
     }
 
     template<typename T>
-    void LuaState::Push(const T& value) { }
+    void LuaState::Push(const T& value)
+    {
+        static_assert(sizeof(T) == 0, "Push not supported for this type");
+    }
 
+    // Specialization for vec3
     template<>
-    void LuaState::Push(const vec3& value)
+    void LuaState::Push<vec3>(const vec3& value)
     {
         lua_pushvector(_state, value.x, value.y, value.z);
     }
 
+    // Specialization for std::string
     template<>
-    void LuaState::Push(const std::string& value)
+    void LuaState::Push<std::string>(const std::string& value)
     {
         lua_pushstring(_state, value.c_str());
     }
