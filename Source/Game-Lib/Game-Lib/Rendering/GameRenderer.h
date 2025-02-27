@@ -23,6 +23,7 @@ class InputManager;
 class TerrainRenderer;
 class TerrainLoader;
 class TerrainManipulator;
+class TextureRenderer;
 class ModelRenderer;
 class ModelLoader;
 class MapLoader;
@@ -63,6 +64,7 @@ public:
     MaterialRenderer* GetMaterialRenderer() { return _materialRenderer; }
     ModelRenderer* GetModelRenderer() { return _modelRenderer; }
     TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
+    TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
     SkyboxRenderer* GetSkyboxRenderer() { return _skyboxRenderer; }
 
     LiquidLoader* GetLiquidLoader() { return _liquidLoader; }
@@ -105,6 +107,8 @@ private:
     TerrainRenderer* _terrainRenderer = nullptr;
     TerrainLoader* _terrainLoader = nullptr;
     TerrainManipulator* _terrainManipulator = nullptr;
+
+    TextureRenderer* _textureRenderer = nullptr;
 
     ModelRenderer* _modelRenderer = nullptr;
     ModelLoader* _modelLoader = nullptr;

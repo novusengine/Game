@@ -2,73 +2,23 @@
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderSettings.h>
+#include <Renderer/RenderStates.h>
 #include <Renderer/RenderGraphResources.h>
 #include <Renderer/CommandList.h>
 
 #include <Renderer/Descriptors/VertexShaderDesc.h>
 #include <Renderer/Descriptors/PixelShaderDesc.h>
 
-std::string GetTexTypeName(Renderer::ImageDesc imageDesc)
-{
-    Renderer::ImageComponentType componentType = Renderer::ToImageComponentType(imageDesc.format);
-    std::string componentTypeName = "";
-
-    switch (componentType)
-    {
-    case Renderer::ImageComponentType::FLOAT:
-    case Renderer::ImageComponentType::SNORM:
-    case Renderer::ImageComponentType::UNORM:
-        componentTypeName = "float";
-        break;
-    case Renderer::ImageComponentType::SINT:
-        componentTypeName = "int";
-        break;
-    case Renderer::ImageComponentType::UINT:
-        componentTypeName = "uint";
-        break;
-    }
-
-    u8 componentCount = Renderer::ToImageComponentCount(imageDesc.format);
-    if (componentCount > 1)
-    {
-        componentTypeName += std::to_string(componentCount);
-    }
-
-    return componentTypeName;
-}
-
-std::string GetTexTypeName(Renderer::DepthImageDesc imageDesc)
-{
-    Renderer::ImageComponentType componentType = Renderer::ToImageComponentType(imageDesc.format);
-    std::string componentTypeName = "";
-
-    switch (componentType)
-    {
-    case Renderer::ImageComponentType::FLOAT:
-    case Renderer::ImageComponentType::SNORM:
-    case Renderer::ImageComponentType::UNORM:
-        componentTypeName = "float";
-        break;
-    case Renderer::ImageComponentType::SINT:
-        componentTypeName = "int";
-        break;
-    case Renderer::ImageComponentType::UINT:
-        componentTypeName = "uint";
-        break;
-    }
-
-    u8 componentCount = Renderer::ToImageComponentCount(imageDesc.format);
-    if (componentCount > 1)
-    {
-        componentTypeName += std::to_string(componentCount);
-    }
-
-    return componentTypeName;
-}
-
 void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.output;
+    commandList.BeginRenderPass(renderPassDesc);
 
     const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
@@ -78,17 +28,17 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "Blit";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.output;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.output);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -109,12 +59,14 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -128,12 +80,20 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResour
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
     commandList.PopMarker();
 }
 
 void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.output;
+    commandList.BeginRenderPass(renderPassDesc);
 
     const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
@@ -143,17 +103,17 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "DepthBlit";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.output;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.output);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -168,12 +128,14 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -187,12 +149,20 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphR
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
     commandList.PopMarker();
 }
 
 void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params)
 {
     commandList.PushMarker("Overlay", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.baseImage;
+    commandList.BeginRenderPass(renderPassDesc);
 
     const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.overlayImage);
 
@@ -202,17 +172,17 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "Overlay";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.baseImage;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -239,12 +209,14 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -258,12 +230,20 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphRes
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
     commandList.PopMarker();
 }
 
 void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params)
 {
     commandList.PushMarker("DepthOverlay", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.baseImage;
+    commandList.BeginRenderPass(renderPassDesc);
 
     // Setup pipeline
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -276,17 +256,17 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "DepthOverlay";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.baseImage;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -307,12 +287,14 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -326,12 +308,20 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGra
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
     commandList.PopMarker();
 }
 
 void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params)
 {
     commandList.PushMarker("PictureInPicture", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.baseImage;
+    commandList.BeginRenderPass(renderPassDesc); // Maybe this could use offset and size instead of viewport and scissorregion?
 
     // Set viewport and scissor
     f32 width = static_cast<f32>(params.targetRegion.right - params.targetRegion.left);
@@ -348,17 +338,17 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "PictureInPicture";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.baseImage;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -385,12 +375,14 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -404,6 +396,7 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
 
     // Reset the viewport and scissor
     vec2 renderSize = renderer->GetRenderSize();
@@ -416,6 +409,13 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, Renderer::Rende
 void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params)
 {
     commandList.PushMarker("DepthPictureInPicture", Color::White);
+
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.baseImage;
+    commandList.BeginRenderPass(renderPassDesc);
 
     // Set viewport and scissor
     f32 width = static_cast<f32>(params.targetRegion.right) - static_cast<f32>(params.targetRegion.left);
@@ -435,17 +435,17 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
-    std::string texTypeName = GetTexTypeName(imageDesc);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", texTypeName);
+    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
+    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
     pipelineDesc.debugName = "DepthPictureInPicture";
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
     pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
 
-    pipelineDesc.renderTargets[0] = params.baseImage;
+    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
+    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
 
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
@@ -466,12 +466,14 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     {
         vec4 colorMultiplier;
         vec4 additiveColor;
+        vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
     constants->colorMultiplier = params.colorMultiplier;
     constants->additiveColor = params.additiveColor;
+    constants->uvOffsetAndExtent = vec4(0.0f, 0.0f, 1.0f, 1.0f);
 
     u32 channelRedirectors = params.channelRedirectors.r;
     channelRedirectors |= (params.channelRedirectors.g << 8);
@@ -485,6 +487,7 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::
     commandList.Draw(3, 1, 0, 0);
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
 
     // Reset the viewport and scissor
     vec2 renderSize = renderer->GetRenderSize();

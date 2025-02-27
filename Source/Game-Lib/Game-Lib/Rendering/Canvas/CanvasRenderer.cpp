@@ -198,14 +198,14 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             // Set up pipelines
             Renderer::GraphicsPipelineID panelPipeline;
             {
-                Renderer::GraphicsPipelineDesc desc;
-                graphResources.InitializePipelineDesc(desc);
+                Renderer::GraphicsPipelineDesc pipelineDesc;
 
                 // Rasterizer state
-                desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+                pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
 
                 // Render targets.
-                desc.renderTargets[0] = data.target;
+                const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.target);
+                pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
                 // Shader
                 Renderer::VertexShaderDesc vertexShaderDesc;
@@ -214,29 +214,29 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                 Renderer::PixelShaderDesc pixelShaderDesc;
                 pixelShaderDesc.path = "UI/Panel.ps.hlsl";
 
-                desc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-                desc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+                pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+                pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
                 // Blending
-                desc.states.blendState.renderTargets[0].blendEnable = true;
-                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-                desc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
-                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+                pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+                pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+                pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+                pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
+                pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
 
-                panelPipeline = _renderer->CreatePipeline(desc);
+                panelPipeline = _renderer->CreatePipeline(pipelineDesc);
             }
 
             Renderer::GraphicsPipelineID textPipeline;
             {
-                Renderer::GraphicsPipelineDesc desc;
-                graphResources.InitializePipelineDesc(desc);
+                Renderer::GraphicsPipelineDesc pipelineDesc;
 
                 // Rasterizer state
-                desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+                pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
 
                 // Render targets.
-                desc.renderTargets[0] = data.target;
+                const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.target);
+                pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
                 // Shader
                 Renderer::VertexShaderDesc vertexShaderDesc;
@@ -245,23 +245,26 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                 Renderer::PixelShaderDesc pixelShaderDesc;
                 pixelShaderDesc.path = "UI/Text.ps.hlsl";
 
-                desc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-                desc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+                pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+                pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
                 // Blending
-                desc.states.blendState.renderTargets[0].blendEnable = true;
-                desc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-                desc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-                desc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-                desc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+                pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+                pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+                pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+                pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+                pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
 
-                textPipeline = _renderer->CreatePipeline(desc);
+                textPipeline = _renderer->CreatePipeline(pipelineDesc);
             }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
 
             Renderer::GraphicsPipelineID currentPipeline;
+            Renderer::RenderPassDesc currentRenderPassDesc;
+            graphResources.InitializeRenderPassDesc(currentRenderPassDesc);
+            currentRenderPassDesc.renderTargets[0] = data.target;
 
             // Loop over widget roots
             registry->view<Widget, WidgetRoot>().each([&](auto entity, auto& widget)
@@ -283,6 +286,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                         if (_lastRenderedWidgetType != WidgetType::None)
                         {
                             commandList.EndPipeline(currentPipeline);
+                            commandList.EndRenderPass(currentRenderPassDesc);
                         }
 
                         _lastRenderedWidgetType = childWidget.type;
@@ -296,6 +300,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                             currentPipeline = textPipeline;
                         }
 
+                        commandList.BeginRenderPass(currentRenderPassDesc);
                         commandList.BeginPipeline(currentPipeline);
                         commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
                     }
@@ -321,6 +326,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             if (_lastRenderedWidgetType != WidgetType::None)
             {
                 commandList.EndPipeline(currentPipeline);
+                commandList.EndRenderPass(currentRenderPassDesc);
             }
         });
 }
@@ -646,9 +652,8 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
     const vec2& widgetSize = transform.GetSize();
 
     Renderer::TextureID textureID = _renderer->GetTextureID(_textures, drawData.packed.x);
-    i32 texWidth = _renderer->GetTextureWidth(textureID);
-    i32 texHeight = _renderer->GetTextureHeight(textureID);
-    vec2 texSize = vec2(texWidth, texHeight);
+    Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(textureID);
+    vec2 texSize = vec2(textureBaseDesc.width, textureBaseDesc.height);
 
     vec2 textureScaleToWidgetSize = texSize / widgetSize;
     drawData.textureScaleToWidgetSize = hvec2(textureScaleToWidgetSize.x, textureScaleToWidgetSize.y);

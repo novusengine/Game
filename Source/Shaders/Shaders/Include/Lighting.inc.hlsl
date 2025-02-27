@@ -74,7 +74,7 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
     // Point Lights
 
     // Combine
-    float3 color = materialColor * (ambientColor + directionalColor);
+    float3 color = materialColor * (ambientColor + (directionalColor * 0.5f));
 
     return color;
 }

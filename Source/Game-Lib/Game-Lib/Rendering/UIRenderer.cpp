@@ -44,7 +44,14 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             commandList.ImageBarrier(data.color);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+            // Render targets
+            renderPassDesc.renderTargets[0] = data.color;
+            commandList.BeginRenderPass(renderPassDesc);
+
+            /*Renderer::GraphicsPipelineDesc pipelineDesc;
             graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Rasterizer state
@@ -70,7 +77,7 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
             pixelShaderDesc.path = "UI/Panel.ps.hlsl";
             pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
-            Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
+            Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);*/
 
             // Set viewport
             vec2 renderTargetSize = graphResources.GetImageDimensions(data.color);
@@ -79,9 +86,10 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
             commandList.SetViewport(0, 0, renderTargetSize.x, renderTargetSize.y, 0.0f, 1.0f);
             commandList.SetScissorRect(0, static_cast<u32>(renderTargetSize.x), 0, static_cast<u32>(renderTargetSize.y));
 
-            commandList.BeginPipeline(activePipeline);
+            //commandList.BeginPipeline(activePipeline);
             commandList.DrawImgui();
-            commandList.EndPipeline(activePipeline);
+            //commandList.EndPipeline(activePipeline);
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 

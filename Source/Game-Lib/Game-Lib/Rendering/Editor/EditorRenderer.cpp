@@ -64,8 +64,15 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+            // Render targets
+            renderPassDesc.renderTargets[0] = data.sceneColor;
+            renderPassDesc.depthStencil = data.depth;
+            commandList.BeginRenderPass(renderPassDesc);
+
             Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Shaders
             Renderer::VertexShaderDesc vertexShaderDesc;
@@ -94,9 +101,11 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
 
             // Render targets
-            pipelineDesc.renderTargets[0] = data.sceneColor;
+            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.sceneColor);
+            pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
-            pipelineDesc.depthStencil = data.depth;
+            const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(data.depth);
+            pipelineDesc.states.depthStencilFormat = depthDesc.format;
 
             // Set pipeline
             Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
@@ -121,6 +130,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             commandList.Draw(6, 1, 0, 0);
 
             commandList.EndPipeline(pipeline);
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 

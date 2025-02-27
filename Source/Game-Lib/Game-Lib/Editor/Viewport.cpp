@@ -135,8 +135,8 @@ namespace Editor
             ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
 
             RenderResources& resources = gameRenderer->GetRenderResources();
-            void* imageHandle = renderer->GetImguiImageHandle(resources.sceneColor);
-            ImGui::Image(imageHandle, contentRegionAvail, vec2(0, 0), vec2(1, 1));
+            ImTextureID textureID = renderer->GetImguiTextureID(resources.sceneColor);
+            ImGui::Image(textureID, contentRegionAvail, vec2(0, 0), vec2(1, 1));
 
             vec2 viewportMin = ImGui::GetItemRectMin();
             vec2 viewportMax = ImGui::GetItemRectMax();

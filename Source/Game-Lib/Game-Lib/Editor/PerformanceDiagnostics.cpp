@@ -325,7 +325,7 @@ namespace Editor
         if (ImGui::BeginChild("##SurvivingInstances", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             f32 textWidth = ImGui::CalcTextSize(text.c_str()).x;
-            f32 windowWidth = ImGui::GetWindowContentRegionWidth();
+            f32 windowWidth = ImGui::GetWindowContentRegionMax().x;
             f32 textPos = windowWidth - textWidth;
 
             ImGui::Text("Instances");
@@ -373,7 +373,7 @@ namespace Editor
         if (ImGui::BeginChild("##SurvivingTriangles", ImVec2(0, (constraint < 0.f) ? 0 : constraint), true, ImGuiWindowFlags_HorizontalScrollbar))
         {
             f32 textWidth = ImGui::CalcTextSize(text.c_str()).x;
-            f32 windowWidth = ImGui::GetWindowContentRegionWidth();
+            f32 windowWidth = ImGui::GetWindowContentRegionMax().x;
             f32 textPos = windowWidth - textWidth;
 
             ImGui::Text("Triangles");
@@ -826,7 +826,7 @@ namespace Editor
         i32 strLength = StringUtils::FormatString(str, sizeof(str), "%s / %s (%.0f%%)", StringUtils::FormatThousandSeparator(survivedDrawCalls).c_str(), StringUtils::FormatThousandSeparator(drawCalls).c_str(), percent);
 
         f32 textWidth = ImGui::CalcTextSize(str).x;
-        f32 windowWidth = ImGui::GetWindowContentRegionWidth();
+        f32 windowWidth = ImGui::GetWindowContentRegionMax().x;
 
         f32 textPos = windowWidth - textWidth;
 

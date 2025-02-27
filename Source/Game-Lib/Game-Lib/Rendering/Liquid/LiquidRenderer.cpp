@@ -634,8 +634,19 @@ void LiquidRenderer::SyncToGPU()
 
 void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
 {
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.rt0;
+    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
+    {
+        renderPassDesc.renderTargets[1] = params.rt1;
+    }
+    renderPassDesc.depthStencil = params.depth;
+    commandList.BeginRenderPass(renderPassDesc);
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -675,12 +686,16 @@ void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rende
     pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
 
     // Render targets
-    pipelineDesc.renderTargets[0] = params.rt0;
+    const Renderer::ImageDesc& rt0Desc = graphResources.GetImageDesc(params.rt0);
+    pipelineDesc.states.renderTargetFormats[0] = rt0Desc.format;
+
     if (params.rt1 != Renderer::ImageMutableResource::Invalid())
     {
-        pipelineDesc.renderTargets[1] = params.rt1;
+        const Renderer::ImageDesc& rt1Desc = graphResources.GetImageDesc(params.rt1);
+        pipelineDesc.states.renderTargetFormats[1] = rt1Desc.format;
     }
-    pipelineDesc.depthStencil = params.depth;
+    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
+    pipelineDesc.states.depthStencilFormat = depthDesc.format;
 
     // Draw
     Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
@@ -704,4 +719,5 @@ void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rende
     }
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
 }

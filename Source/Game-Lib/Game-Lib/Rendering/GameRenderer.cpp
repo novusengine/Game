@@ -6,6 +6,7 @@
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
 #include "Terrain/TerrainManipulator.h"
+#include "Texture/TextureRenderer.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
 #include "Liquid/LiquidRenderer.h"
@@ -113,7 +114,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
     glfwSetWindowAspectRatio(_window->GetWindow(), 16, 9);
-    glfwMaximizeWindow(_window->GetWindow());
+    //glfwMaximizeWindow(_window->GetWindow());
 
     KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);
@@ -130,9 +131,9 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
 
+    _renderer->InitWindow(_window);
     InitImgui();
     _renderer->InitDebug();
-    _renderer->InitWindow(_window);
 
     _debugRenderer = new DebugRenderer(_renderer);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
@@ -147,6 +148,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
     _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
+
+    _textureRenderer = new TextureRenderer(_renderer, _debugRenderer);
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
 
@@ -183,6 +186,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     // Reset the memory in the frameAllocator
     _frameAllocator[_frameIndex]->Reset();
 
+    _textureRenderer->Update(deltaTime);
     _skyboxRenderer->Update(deltaTime);
     _mapLoader->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
@@ -297,6 +301,8 @@ f32 GameRenderer::Render()
             });
     }
     _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
+
+    _textureRenderer->AddTexturePass(&renderGraph, _resources, _frameIndex);
 
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
@@ -491,7 +497,7 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.debugName = "SceneColor";
     sceneColorDesc.dimensions = vec2(1.0f, 1.0f);
     sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
-    sceneColorDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
+    sceneColorDesc.format = _renderer->GetSwapChainImageFormat();
     sceneColorDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
     sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f); // Sky blue
 

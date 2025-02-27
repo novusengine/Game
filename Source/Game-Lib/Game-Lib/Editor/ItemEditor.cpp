@@ -38,8 +38,8 @@ namespace Editor
         std::string label;
     };
 
-    static std::map<u32, void*> g_images;
-    static ImTextureID g_currentIconTextureID = nullptr;
+    static std::map<u32, u64> g_images;
+    static ImTextureID g_currentIconTextureID = 0;
     static bool g_iconPickerEnabled = false;
 
     static i32 g_currentItemIndex = 0;
@@ -59,7 +59,7 @@ namespace Editor
     static bool g_shieldTemplateEditorEnabled = false;
 
     // Dummy icon functions
-    ImTextureID GetIconTexture(u32 iconID)
+    u64 GetIconTexture(u32 iconID)
     {
         if (!g_images[iconID])
         {
@@ -77,7 +77,7 @@ namespace Editor
             textureDesc.path = iconStorage->GetString(icon.texture);
 
             Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-            g_images[iconID] = renderer->GetImguiImageHandle(textureID);
+            g_images[iconID] = renderer->GetImguiTextureID(textureID);
         }
 
         return g_images[iconID];
@@ -226,7 +226,7 @@ namespace Editor
 
                         iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const ::Database::Shared::Icon& icon) -> bool
                         {
-                            if (ImGui::ImageButton(GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
+                            if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
                             {
                                 itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
                                 isItemDirty = true;
@@ -274,7 +274,7 @@ namespace Editor
                                 u32 id = g_filteredIconIDs[i];
                                 const auto& icon = iconStorage->Get<::Database::Shared::Icon>(id);
 
-                                if (ImGui::ImageButton(GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
+                                if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
                                 {
                                     itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
                                     isItemDirty = true;

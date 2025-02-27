@@ -17,7 +17,7 @@ namespace Editor
         void ShowListViewWithIcons();
 
     private:
-        void* _mapIcons[5] = { nullptr };
+        u64 _mapIcons[5] = { 0 };
         vec2 _mapIconSizes[5];
 
         u32 _currentSelectedMapID = 0;
