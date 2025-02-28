@@ -843,8 +843,15 @@ void JoltDebugRenderer::DrawText3D(JPH::RVec3Arg inPosition, const std::string_v
 
 void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
 {
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    renderPassDesc.renderTargets[0] = params.rt0;
+    renderPassDesc.depthStencil = params.depth;
+    commandList.BeginRenderPass(renderPassDesc);
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     // Shader
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -865,9 +872,12 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
-    pipelineDesc.renderTargets[0] = params.rt0;
+    const Renderer::ImageDesc& desc = graphResources.GetImageDesc(params.rt0);
+    pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
-    pipelineDesc.depthStencil = params.depth;
+    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
+    pipelineDesc.states.depthStencilFormat = depthDesc.format;
+
     Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
 
     commandList.BeginPipeline(pipeline);
@@ -905,6 +915,7 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
     }
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
 }
 
 void JoltDebugRenderer::CreatePermanentResources()

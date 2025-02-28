@@ -29,7 +29,7 @@ namespace Editor
     {
     }
 
-    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const ClientDB::Definitions::Map& map, std::string& filter, u32& selectedMapID, u32& popupMapID, void** mapIcons)
+    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const ClientDB::Definitions::Map& map, std::string& filter, u32& selectedMapID, u32& popupMapID, ImTextureID* mapIcons)
     {
         static const char* InstanceTypeToName[] =
         {
@@ -127,8 +127,9 @@ namespace Editor
                 fs::path path = fs::absolute("Data/Texture/interface/worldmap/worldmap-icon.dds");
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-                _mapIcons[0] = renderer->GetImguiImageHandle(textureID);
-                _mapIconSizes[0] = ImVec2(static_cast<f32>(renderer->GetTextureWidth(textureID)), static_cast<f32>(renderer->GetTextureHeight(textureID)));
+                _mapIcons[0] = renderer->GetImguiTextureID(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                _mapIconSizes[0] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
             // Load Dungeon Map Icon
@@ -136,8 +137,9 @@ namespace Editor
                 fs::path path = fs::absolute("Data/Texture/interface/minimap/dungeon_icon.dds");
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-                _mapIcons[1] = renderer->GetImguiImageHandle(textureID);
-                _mapIconSizes[1] = ImVec2(static_cast<f32>(renderer->GetTextureWidth(textureID)), static_cast<f32>(renderer->GetTextureHeight(textureID)));
+                _mapIcons[1] = renderer->GetImguiTextureID(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                _mapIconSizes[1] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
             // Load Raid Map Icon
@@ -145,8 +147,9 @@ namespace Editor
                 fs::path path = fs::absolute("Data/Texture/interface/minimap/raid_icon.dds");
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-                _mapIcons[2] = renderer->GetImguiImageHandle(textureID);
-                _mapIconSizes[2] = ImVec2(static_cast<f32>(renderer->GetTextureWidth(textureID)), static_cast<f32>(renderer->GetTextureHeight(textureID)));
+                _mapIcons[2] = renderer->GetImguiTextureID(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                _mapIconSizes[2] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
             // Load Battleground Map Icon
@@ -154,8 +157,9 @@ namespace Editor
                 fs::path path = fs::absolute("Data/Texture/interface/battlefieldframe/ui-battlefield-icon.dds");
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-                _mapIcons[3] = renderer->GetImguiImageHandle(textureID);
-                _mapIconSizes[3] = ImVec2(static_cast<f32>(renderer->GetTextureWidth(textureID)), static_cast<f32>(renderer->GetTextureHeight(textureID)));
+                _mapIcons[3] = renderer->GetImguiTextureID(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                _mapIconSizes[3] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
             // Load Arena Map Icon
@@ -163,8 +167,9 @@ namespace Editor
                 fs::path path = fs::absolute("Data/Texture/interface/calendar/ui-calendar-event-pvp.dds");
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-                _mapIcons[4] = renderer->GetImguiImageHandle(textureID);
-                _mapIconSizes[4] = ImVec2(static_cast<f32>(renderer->GetTextureWidth(textureID)), static_cast<f32>(renderer->GetTextureHeight(textureID)));
+                _mapIcons[4] = renderer->GetImguiTextureID(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                _mapIconSizes[4] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
         }
 
@@ -210,7 +215,7 @@ namespace Editor
                 {
                     mapStorage->Each([this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
                     {
-                        DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                        DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                         return true;
                     });
                 }
@@ -226,7 +231,7 @@ namespace Editor
 
                         mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
                         {
-                            DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                            DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                             return true;
                         });
                     }

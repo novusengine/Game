@@ -44,44 +44,21 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             commandList.ImageBarrier(data.color);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-            //pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
 
             // Render targets
-            pipelineDesc.renderTargets[0] = data.color;
-
-            // Blending
-            pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-            pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-            pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-            pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
-            pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-
-            // Panel Shaders
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "UI/Panel.vs.hlsl";
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "UI/Panel.ps.hlsl";
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-            Renderer::GraphicsPipelineID activePipeline = _renderer->CreatePipeline(pipelineDesc);
+            renderPassDesc.renderTargets[0] = data.color;
+            commandList.BeginRenderPass(renderPassDesc);
 
             // Set viewport
             vec2 renderTargetSize = graphResources.GetImageDimensions(data.color);
 
-            //vec2 windowSize = _renderer->GetWindowSize();
             commandList.SetViewport(0, 0, renderTargetSize.x, renderTargetSize.y, 0.0f, 1.0f);
             commandList.SetScissorRect(0, static_cast<u32>(renderTargetSize.x), 0, static_cast<u32>(renderTargetSize.y));
 
-            commandList.BeginPipeline(activePipeline);
             commandList.DrawImgui();
-            commandList.EndPipeline(activePipeline);
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 

@@ -172,14 +172,21 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
 
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+            // Render targets
+            renderPassDesc.renderTargets[0] = data.color;
+            commandList.BeginRenderPass(renderPassDesc);
+
             Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Rasterizer state
             pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
 
             // Render targets.
-            pipelineDesc.renderTargets[0] = data.color;
+            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.color);
+            pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
             // Shader
             Renderer::VertexShaderDesc vertexShaderDesc;
@@ -243,6 +250,8 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.EndPipeline(pipeline);
                 }
             }
+
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 
@@ -304,8 +313,15 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender3D);
 
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+            // Render targets
+            renderPassDesc.renderTargets[0] = data.color;
+            renderPassDesc.depthStencil = data.depth;
+            commandList.BeginRenderPass(renderPassDesc);
+
             Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Shader
             Renderer::VertexShaderDesc vertexShaderDesc;
@@ -326,9 +342,11 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
             pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
             pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
-            pipelineDesc.renderTargets[0] = data.color;
+            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.color);
+            pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
-            pipelineDesc.depthStencil = data.depth;
+            const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(data.depth);
+            pipelineDesc.states.depthStencilFormat = depthDesc.format;
 
             // Solid
             {
@@ -395,6 +413,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                     commandList.EndPipeline(pipeline);
                 }
             }
+
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 

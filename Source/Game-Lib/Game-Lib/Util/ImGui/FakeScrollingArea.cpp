@@ -6,7 +6,7 @@
 
 bool FakeScrollingArea::Begin()
 {
-    const f32 windowWidth = ImGui::GetWindowContentRegionWidth();
+    const f32 windowWidth = ImGui::GetWindowContentRegionMax().x;
     const i32 itemsPerRow = static_cast<i32>(windowWidth / _itemSize.x);
     _totalRows = (_totalItems + itemsPerRow - 1) / itemsPerRow;
 

@@ -1007,8 +1007,18 @@ void TerrainRenderer::SyncToGPU()
 
 void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, DrawParams& params)
 {
+    Renderer::RenderPassDesc renderPassDesc;
+    graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+    // Render targets
+    if (!params.shadowPass)
+    {
+        renderPassDesc.renderTargets[0] = params.visibilityBuffer;
+    }
+    renderPassDesc.depthStencil = params.depth;
+    commandList.BeginRenderPass(renderPassDesc);
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
-    graphResources.InitializePipelineDesc(pipelineDesc);
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
@@ -1042,9 +1052,11 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     // Render targets
     if (!params.shadowPass)
     {
-        pipelineDesc.renderTargets[0] = params.visibilityBuffer;
+        const Renderer::ImageDesc& desc = graphResources.GetImageDesc(params.visibilityBuffer);
+        pipelineDesc.states.renderTargetFormats[0] = desc.format;
     }
-    pipelineDesc.depthStencil = params.depth;
+    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
+    pipelineDesc.states.depthStencilFormat = depthDesc.format;
 
     // Set pipeline
     Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
@@ -1082,6 +1094,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     }
 
     commandList.EndPipeline(pipeline);
+    commandList.EndRenderPass(renderPassDesc);
 }
 
 void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params)

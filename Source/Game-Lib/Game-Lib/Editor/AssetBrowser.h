@@ -99,11 +99,11 @@ namespace Editor
         std::string _searchedString;
         std::vector<fs::path> _searchedFiles;
 
-        std::map<int, void*> _images;
+        std::map<int, u64> _images;
         std::map<int, vec2> _imagesSize;
 
-        void* _defaultImageHandle = nullptr;
-        void* _currentImage = nullptr;
+        u64 _defaultImageHandle = 0;
+        u64 _currentImage = 0;
         vec2 _currentSize;
 
         f32 _averageFontWidth = -1.f;

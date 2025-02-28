@@ -57,8 +57,14 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, SkyboxPass);
 
+            Renderer::RenderPassDesc renderPassDesc;
+            graphResources.InitializeRenderPassDesc(renderPassDesc);
+
+            // Render targets
+            renderPassDesc.renderTargets[0] = data.skyboxColor;
+            commandList.BeginRenderPass(renderPassDesc);
+
             Renderer::GraphicsPipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
 
             // Shaders
             Renderer::VertexShaderDesc vertexShaderDesc;
@@ -79,7 +85,8 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
 
             // Render targets
-            pipelineDesc.renderTargets[0] = data.skyboxColor;
+            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.skyboxColor);
+            pipelineDesc.states.renderTargetFormats[0] = desc.format;
 
             // Set pipeline
             Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
@@ -94,6 +101,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             commandList.Draw(3, 1, 0, 0);
 
             commandList.EndPipeline(pipeline);
+            commandList.EndRenderPass(renderPassDesc);
         });
 }
 

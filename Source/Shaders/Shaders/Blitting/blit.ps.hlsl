@@ -9,6 +9,7 @@ struct Constants
 {
     float4 colorMultiplier;
     float4 additiveColor;
+    float4 uvOffsetAndExtent;
     uint channelRedirectors;
 };
 
@@ -25,6 +26,8 @@ float4 main(VSOutput input) : SV_Target
     _texture.GetDimensions(dimensions.x, dimensions.y);
 
     float2 uv = float2(input.uv.x, 1.0 - input.uv.y);
+    uv = uv * _constants.uvOffsetAndExtent.zw + _constants.uvOffsetAndExtent.xy;
+
     int3 location = int3(uv * dimensions, 0);
 
     float4 color = ToFloat4(_texture.Load(location), 1.0f);

@@ -132,7 +132,7 @@ namespace Editor
 
                     ImGui::Text("Camera Save List (Names)");
 
-                    if (ImGui::ListBoxHeader("##camerasavelistbox"))
+                    if (ImGui::BeginListBox("##camerasavelistbox"))
                     {
                         u32 numCameraSaves = cameraSaveStorage->GetNumRows();
 
@@ -153,7 +153,7 @@ namespace Editor
                             return true;
                         });
 
-                        ImGui::ListBoxFooter();
+                        ImGui::EndListBox();
                     }
 
 

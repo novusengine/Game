@@ -327,18 +327,18 @@ namespace Editor
         ImGuiID viewport;
         ImGuiID assetBrowser = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.3f, NULL, &viewport);
 
-        ImGui::DockBuilderDockWindow(_inspector->GetName(), inspector, 0);
+        ImGui::DockBuilderDockWindow(_inspector->GetName(), inspector);
         
-        ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy, 0);
-        ImGui::DockBuilderDockWindow("Map", hierarchy, 1);
-        ImGui::DockBuilderDockWindow("Performance", hierarchy, 2);
-        ImGui::DockBuilderDockWindow("Camera Info", hierarchy, 3);
+        ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy);
+        ImGui::DockBuilderDockWindow("Map", hierarchy);
+        ImGui::DockBuilderDockWindow("Performance", hierarchy);
+        ImGui::DockBuilderDockWindow("Camera Info", hierarchy);
 
-        ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), belowHierarchy, 0);
+        ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), belowHierarchy);
 
-        ImGui::DockBuilderDockWindow(_viewport->GetName(), viewport, 0);
+        ImGui::DockBuilderDockWindow(_viewport->GetName(), viewport);
 
-        ImGui::DockBuilderDockWindow(_assetBrowser->GetName(), assetBrowser, 0);
+        ImGui::DockBuilderDockWindow(_assetBrowser->GetName(), assetBrowser);
 
         ImGui::DockBuilderFinish(_mainDockID);
 

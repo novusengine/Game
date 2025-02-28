@@ -42,7 +42,7 @@ namespace Editor
         Renderer::TextureDesc textureDesc;
         textureDesc.path = "Data/Texture/interface/icons/ability_gouge.dds";
         Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
-        _defaultImageHandle = _renderer->GetImguiImageHandle(textureID);
+        _defaultImageHandle = _renderer->GetImguiTextureID(textureID);
     }
 
     void AssetBrowser::DrawImGui()
@@ -152,7 +152,8 @@ namespace Editor
 
                     if (useFileRow)
                     {
-                        ImVec2 itemSize(ImGui::GetWindowContentRegionWidth(),
+                       
+                        ImVec2 itemSize(ImGui::GetWindowContentRegionMax().x,
                             ImGui::GetStyle().FramePadding.y * 2 + ImGui::GetTextLineHeightWithSpacing());
 
                         FakeScrollingArea scrollingArea(itemSize, static_cast<i32>(_searchedFiles.size()));
@@ -327,7 +328,7 @@ namespace Editor
     bool AssetBrowser::CanDisplayMore(ImVec2 size)
     {
         f32 posX = ImGui::GetCursorPosX();
-        f32 availableX = ImGui::GetWindowContentRegionWidth();
+        f32 availableX = ImGui::GetWindowContentRegionMax().x;
 
         return ((availableX - posX) > size.x);
     }
@@ -399,9 +400,12 @@ namespace Editor
                 Renderer::TextureDesc textureDesc;
                 textureDesc.path = item.string();
                 Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
-                _images[i] = _renderer->GetImguiImageHandle(textureID);
-                _imagesSize[i] = ImVec2(static_cast<f32>(_renderer->GetTextureWidth(textureID)),
-                    static_cast<f32>(_renderer->GetTextureHeight(textureID)));
+                _images[i] = _renderer->GetImguiTextureID(textureID);
+
+                Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(textureID);
+
+                _imagesSize[i] = ImVec2(static_cast<f32>(textureBaseDesc.width),
+                    static_cast<f32>(textureBaseDesc.height));
             }
 
             _currentImage = _images[i];
