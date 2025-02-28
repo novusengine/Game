@@ -199,10 +199,10 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
 
     // Set the scissor rectangle using pixel coordinates: left, right, top, bottom
     commandList.SetScissorRect(
-        static_cast<int>(pixelOffset.x),
-        static_cast<int>(pixelOffset.x + pixelExtent.x),
-        static_cast<int>(pixelOffset.y),
-        static_cast<int>(pixelOffset.y + pixelExtent.y)
+        static_cast<i32>(pixelOffset.x),
+        static_cast<i32>(pixelOffset.x + pixelExtent.x),
+        static_cast<i32>(pixelOffset.y),
+        static_cast<i32>(pixelOffset.y + pixelExtent.y)
     );
 
     Renderer::ImageFormat format = _renderer->GetTextureDesc(dst).format;
