@@ -215,7 +215,7 @@ namespace Editor
                 {
                     mapStorage->Each([this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
                     {
-                        DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                        DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                         return true;
                     });
                 }
@@ -231,7 +231,7 @@ namespace Editor
 
                         mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
                         {
-                            DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, _mapIcons);
+                            DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                             return true;
                         });
                     }
