@@ -226,6 +226,7 @@ namespace Editor
 
                         iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const ::Database::Shared::Icon& icon) -> bool
                         {
+                            ImGui::PushID(id);
                             if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
                             {
                                 itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
@@ -244,6 +245,7 @@ namespace Editor
                             if (isNextIconOnSameLine)
                                 ImGui::SameLine();
 
+                            ImGui::PopID();
                             return true;
                         });
                     }
@@ -274,6 +276,7 @@ namespace Editor
                                 u32 id = g_filteredIconIDs[i];
                                 const auto& icon = iconStorage->Get<::Database::Shared::Icon>(id);
 
+                                ImGui::PushID(id);
                                 if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
                                 {
                                     itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
@@ -291,6 +294,8 @@ namespace Editor
                                 bool isNextIconOnSameLine = (++numIconsAdded % g_desiredIconsPerRow) != 0;
                                 if (isNextIconOnSameLine)
                                     ImGui::SameLine();
+
+                                ImGui::PopID();
                             }
                         }
                     }
