@@ -83,5 +83,4 @@ private:
     robin_hood::unordered_set<Renderer::TextureID::type> _texturesNeedingMipResolve;
 
     Renderer::TextureID _debugTexture;
-    const bool _debugEveryFrame = true;
 };

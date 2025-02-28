@@ -85,11 +85,6 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                 vec2 renderSize = _renderer->GetRenderSize();
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-
-                if (_debugEveryFrame)
-                {
-                    _renderTextureToTextureRequests.enqueue_bulk(_renderTextureToTextureWork.begin(), numRenderTextureToTextureRequests);
-                }
             }
         });
 }
@@ -252,7 +247,7 @@ void TextureRenderer::ResolveMips(Renderer::RenderGraphResources& graphResources
     commandList.BeginTextureComputeWritePass(renderPassDesc);
     commandList.BeginPipeline(_mipDownsamplerPipeline);
 
-    descriptorSet.BindRead("imgSrc", textureID);// , 0);
+    descriptorSet.BindReadWrite("imgSrc", textureID);// , 0);
     descriptorSet.BindWrite("imgDst", textureID, 1, 12);
     descriptorSet.BindWrite("imgDst5", textureID, 6);
 
