@@ -230,9 +230,37 @@ function CreateOptionsMenu(stack)
     --stack:Push("OptionsMenu")
 end
 
+local function CreateClippingDemo()
+    local canvas = UI.GetCanvas("ClippingDemo", 0, 0, 1920, 1080);
+
+    -- Create a panel
+    local clippingParent = canvas:NewPanel(215, 0, 400, 400, 0, "DebugRed");
+    clippingParent:SetAnchor(0.5, 0.5);
+    clippingParent:SetRelativePoint(0.5, 0.5);
+
+    clippingParent:SetClipChildren(true);
+    clippingParent:SetClipRect(0, 0, 1, 1);
+    clippingParent:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
+    
+    --clippingParent:SetClipMaskTexture(nil);
+    --clippingParent:SetClipChildren(false);
+
+    local clippingChild = clippingParent:NewPanel(0, 0, 300, 400, 0, "DebugBlue");
+    clippingChild:SetAnchor(0.5, 0.0);
+    clippingChild:SetRelativePoint(0.5, 0.5);
+
+    -- Create a text
+    --local clippingText = canvas::NewText("Test text", 0, 0, 0, "DefaultButtonText");
+
+    --clippingText:SetClipChildren(true);
+    --clippingText:SetClipRect(0, 0, 1, 1);
+    --clippingText:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
+end
+
 local function OnGameLoaded(eventID : number, motd : string)
     local stack = UIStack.Get("Menu")
 
+    --CreateClippingDemo();
     --Demo();
     --CreateGameMenu(stack);
     --CreateOptionsMenu(stack);

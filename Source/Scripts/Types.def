@@ -122,6 +122,13 @@ declare class Widget extends WidgetInputEvents
     function GetRelativePoint(self) : vec2
     function SetAnchor(self, anchor : vec2) : ()
     function SetRelativePoint(self, point : vec2) : ()
+
+    function IsClipChildren(self) : boolean
+    function SetClipChildren(self, clipChildren : boolean) : ()
+    function GetClipRect(self) : (number, number, number, number)
+    function SetClipRect(self, minX : number, minY : number, maxX : number, maxY : number) : ()
+    function GetClipMaskTexture(self) : string
+    function SetClipMaskTexture(self, texturePath : string) : ()
     
     function GetPos(self) : vec2
     function GetPosX(self) : number

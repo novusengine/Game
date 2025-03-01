@@ -10,7 +10,7 @@ struct VertexInput
 struct VertexOutput
 {
     float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0 ;
+    float4 uvAndScreenPos : TEXCOORD0;
     uint drawDataID : TEXCOORD1;
 };
 
@@ -23,7 +23,9 @@ VertexOutput main(VertexInput input)
 
     VertexOutput output;
     output.position = float4(position, 0.0f, 1.0f);
-    output.uv = uv;
+
+    float2 screenPos = (position + 1.0f) * 0.5f;
+    output.uvAndScreenPos = float4(uv, screenPos);
     output.drawDataID = input.drawDataID;
 
     return output;

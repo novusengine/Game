@@ -1,6 +1,8 @@
 #include "CanvasRenderer.h"
 #include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/UI/BoundingRect.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Text.h"
@@ -46,6 +48,7 @@ void CanvasRenderer::Update(f32 deltaTime)
     ZoneScoped;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& transformSystem = ECS::Transform2DSystem::Get(*registry);
 
     registry->view<Widget, DestroyWidget>().each([&](entt::entity entity, Widget& widget)
     {
@@ -144,6 +147,101 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
     });
 
+    // Dirty child clippers
+    vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+    registry->view<DirtyChildClipper>().each([&](entt::entity entity)
+    {
+        auto& clipper = registry->get<Clipper>(entity);
+
+        if (clipper.clipChildren)
+        {
+            auto& rect = registry->get<BoundingRect>(entity);
+
+            vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
+            vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
+
+            vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
+            vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
+
+            // Set childrens data depending on this widget
+            transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
+            {
+                auto& childWidget = registry->get<Widget>(childEntity);
+
+                if (childWidget.type == WidgetType::Panel)
+                {
+                    auto& childPanel = registry->get<Panel>(childEntity);
+                    auto& panelData = _panelDrawDatas[childPanel.gpuDataIndex];
+
+                    panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+                    panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+                    panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+
+                    _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
+                }
+                
+            });
+        }
+        else
+        {
+            // Set childrens data depending on themselves
+            transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
+            {
+                auto& childWidget = registry->get<Widget>(childEntity);
+
+                if (childWidget.type == WidgetType::Panel)
+                {
+                    auto& clipper = registry->get<Clipper>(childEntity);
+                    auto& rect = registry->get<BoundingRect>(childEntity);
+
+                    vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
+                    vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
+
+                    vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
+                    vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
+
+                    auto& childPanel = registry->get<Panel>(childEntity);
+                    auto& panelData = _panelDrawDatas[childPanel.gpuDataIndex];
+
+                    panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+                    panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+                    panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+
+                    _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
+                }
+            });
+        }
+    });
+
+    // Dirty clippers, set data depending on themselves
+    registry->view<DirtyClipper>().each([&](entt::entity entity)
+    {
+        auto& clipper = registry->get<Clipper>(entity);
+        if (clipper.clipChildren)
+            return;
+
+        auto& widget = registry->get<Widget>(entity);
+        if (widget.type == WidgetType::Panel)
+        {
+            auto& rect = registry->get<BoundingRect>(entity);
+
+            vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
+            vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
+
+            vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
+            vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
+
+            auto& panel = registry->get<Panel>(entity);
+            auto& panelData = _panelDrawDatas[panel.gpuDataIndex];
+
+            panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+            panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+            panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+
+            _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
+        }
+    });
+
     if (_vertices.SyncToGPU(_renderer))
     {
         _descriptorSet.Bind("_vertices", _vertices.GetBuffer());
@@ -161,6 +259,8 @@ void CanvasRenderer::Update(f32 deltaTime)
 
     registry->clear<DirtyWidgetData>();
     registry->clear<DirtyWidgetFlags>();
+    registry->clear<DirtyChildClipper>();
+    registry->clear<DirtyClipper>();
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -590,68 +690,29 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
 
     // Update draw data
     auto& drawData = _panelDrawDatas[panel.gpuDataIndex];
-    drawData.packed.z = panelTemplate.color.ToRGBA32();
+    drawData.packed0.z = panelTemplate.color.ToRGBA32();
     drawData.cornerRadiusAndBorder = vec4(cornerRadius, 0.0f, 0.0f);
 
     // Update textures
-    if (panelTemplate.background.empty())
+    u16 textureIndex = 0;
+    u16 additiveTextureIndex = 1;
+
+    if (!panelTemplate.background.empty())
     {
-        drawData.packed.x = 0;
-    }
-    else
-    {
-        u32 textureNameHash = StringUtils::fnv1a_32(panelTemplate.background.c_str(), panelTemplate.background.size());
-
-        if (_textureNameHashToIndex.contains(textureNameHash))
-        {
-            // Use already loaded texture
-            drawData.packed.x = _textureNameHashToIndex[textureNameHash];
-        }
-        else
-        {
-            // Load texture
-            Renderer::TextureDesc desc;
-            desc.path = panelTemplate.background;
-
-            u32 textureIndex;
-            _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
-
-            _textureNameHashToIndex[textureNameHash] = textureIndex;
-            drawData.packed.x = textureIndex;
-        }
+        textureIndex = LoadTexture(panelTemplate.background);
     }
 
-    if (panelTemplate.foreground.empty())
+    if (!panelTemplate.foreground.empty())
     {
-        drawData.packed.y = 1;
+        additiveTextureIndex = LoadTexture(panelTemplate.foreground);
     }
-    else
-    {
-        u32 textureNameHash = StringUtils::fnv1a_32(panelTemplate.foreground.c_str(), panelTemplate.foreground.size());
 
-        if (_textureNameHashToIndex.contains(textureNameHash))
-        {
-            // Use already loaded texture
-            drawData.packed.y = _textureNameHashToIndex[textureNameHash];
-        }
-        else
-        {
-            // Load texture
-            Renderer::TextureDesc desc;
-            desc.path = panelTemplate.foreground;
-
-            u32 textureIndex;
-            _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
-
-            _textureNameHashToIndex[textureNameHash] = textureIndex;
-            drawData.packed.y = textureIndex;
-        }
-    }
+    drawData.packed0.x = (textureIndex & 0xFFFF) | ((additiveTextureIndex & 0xFFFF) << 16);
 
     // Nine slicing
     const vec2& widgetSize = transform.GetSize();
 
-    Renderer::TextureID textureID = _renderer->GetTextureID(_textures, drawData.packed.x);
+    Renderer::TextureID textureID = _renderer->GetTextureID(_textures, textureIndex);
     Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(textureID);
     vec2 texSize = vec2(textureBaseDesc.width, textureBaseDesc.height);
 
@@ -778,4 +839,25 @@ vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize) const
     constexpr vec2 screenSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
     return vec2(2.0 * pixelSize.x / screenSize.x, 2.0 * pixelSize.y / screenSize.y);
+}
+
+u32 CanvasRenderer::LoadTexture(std::string_view path)
+{
+    u32 textureNameHash = StringUtils::fnv1a_32(path.data(), path.size());
+
+    if (_textureNameHashToIndex.contains(textureNameHash))
+    {
+        // Use already loaded texture
+        return _textureNameHashToIndex[textureNameHash];
+    }
+    
+    // Load texture
+    Renderer::TextureDesc desc;
+    desc.path = path;
+
+    u32 textureIndex;
+    _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
+
+    _textureNameHashToIndex[textureNameHash] = textureIndex;
+    return textureIndex;
 }

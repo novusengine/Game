@@ -114,7 +114,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
     glfwSetWindowAspectRatio(_window->GetWindow(), 16, 9);
-    glfwMaximizeWindow(_window->GetWindow());
+    //glfwMaximizeWindow(_window->GetWindow());
 
     KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
     debugKeybindGroup->SetActive(true);

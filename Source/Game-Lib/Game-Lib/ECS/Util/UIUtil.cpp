@@ -3,6 +3,7 @@
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/PanelTemplate.h"
@@ -77,6 +78,9 @@ namespace ECS::Util
             widgetComp.type = ECS::Components::UI::WidgetType::Canvas;
             widgetComp.scriptWidget = widget;
 
+            // Clipper
+            registry->emplace<ECS::Components::UI::Clipper>(entity);
+
             // Canvas
             //auto& canvasComp = registry->emplace<ECS::Components::UI::Canvas>(entity);
 
@@ -122,6 +126,9 @@ namespace ECS::Util
             widgetComp.scriptWidget = widget;
 
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
+
+            // Clipper
+            registry->emplace<ECS::Components::UI::Clipper>(entity);
 
             // Panel
             auto& panelComp = registry->emplace<ECS::Components::UI::Panel>(entity);
@@ -194,6 +201,9 @@ namespace ECS::Util
             widgetComp.scriptWidget = widget;
 
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
+
+            // Clipper
+            registry->emplace<ECS::Components::UI::Clipper>(entity);
 
             // Text
             auto& textComp = registry->emplace<ECS::Components::UI::Text>(entity);

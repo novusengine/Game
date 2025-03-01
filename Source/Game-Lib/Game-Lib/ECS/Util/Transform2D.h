@@ -447,7 +447,7 @@ void ECS::Transform2DSystem::IterateChildrenRecursiveBreadth(entt::entity entity
             do
             {
                 // Apply the callback to the current child node
-                callback(c);
+                callback(c->ownerEntity);
 
                 // Enqueue this child node for further processing
                 nodeQueue.push(c);

@@ -59,16 +59,20 @@ private:
     vec2 PixelPosToNDC(const vec2& pixelPosition) const;
     vec2 PixelSizeToNDC(const vec2& pixelPosition) const;
 
+    u32 LoadTexture(std::string_view path);
+
 private:
     struct PanelDrawData
     {
     public:
-        uvec3 packed; // x: textureIndex, y: additiveTextureIndex, z: color
+        uvec3 packed0; // x: textureIndex & additiveTextureIndex, y: clipMaskTextureIndex, z: color
         hvec2 textureScaleToWidgetSize = hvec2(0.0f, 0.0f);
         vec4 texCoord; // uv
         vec4 slicingCoord; // uv
         //vec4 color; // xyz: color, w: unused
         vec4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
+        hvec4 clipRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
+        hvec4 clipMaskRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
     };
 
     struct CharDrawData

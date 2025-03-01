@@ -60,6 +60,13 @@ namespace Scripting::UI
         i32 SetAnchor(lua_State* state);
         i32 SetRelativePoint(lua_State* state);
 
+        i32 IsClipChildren(lua_State* state);
+        i32 SetClipChildren(lua_State* state);
+        i32 GetClipRect(lua_State* state);
+        i32 SetClipRect(lua_State* state);
+        i32 GetClipMaskTexture(lua_State* state);
+        i32 SetClipMaskTexture(lua_State* state);
+
         i32 GetPos(lua_State* state);
         i32 GetPosX(lua_State* state);
         i32 GetPosY(lua_State* state);
@@ -94,6 +101,13 @@ namespace Scripting::UI
 
         { "SetAnchor", WidgetMethods::SetAnchor },
         { "SetRelativePoint", WidgetMethods::SetRelativePoint },
+
+        { "IsClipChildren", WidgetMethods::IsClipChildren },
+        { "SetClipChildren", WidgetMethods::SetClipChildren },
+        { "GetClipRect", WidgetMethods::GetClipRect },
+        { "SetClipRect", WidgetMethods::SetClipRect },
+        { "GetClipMaskTexture", WidgetMethods::GetClipMaskTexture },
+        { "SetClipMaskTexture", WidgetMethods::SetClipMaskTexture },
 
         { "GetPos", WidgetMethods::GetPos },
         { "GetPosX", WidgetMethods::GetPosX },

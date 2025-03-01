@@ -1,5 +1,6 @@
 #include "Widget.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
@@ -418,6 +419,167 @@ i32 Scripting::UI::WidgetMethods::SetRelativePoint(lua_State* state)
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
     ts.SetRelativePoint(widget->entity, vec2(x, y));
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::IsClipChildren(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    ctx.Push(clipper.clipChildren);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::SetClipChildren(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    bool clipChildren = ctx.Get(false, 2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    clipper.clipChildren = clipChildren;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(widget->entity);
+    if (!clipper.clipChildren)
+    {
+        // Also needs to reenable clipping on the widget itself after it disables on all children
+        registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+    }
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetClipRect(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    ctx.Push(clipper.clipRegionMin.x);
+    ctx.Push(clipper.clipRegionMin.y);
+    ctx.Push(clipper.clipRegionMax.x);
+    ctx.Push(clipper.clipRegionMax.y);
+
+    return 4;
+}
+
+i32 Scripting::UI::WidgetMethods::SetClipRect(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    f32 minX = ctx.Get(0.0f, 2);
+    f32 minY = ctx.Get(0.0f, 3);
+    f32 maxX = ctx.Get(1.0f, 4);
+    f32 maxY = ctx.Get(1.0f, 5);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    clipper.clipRegionMin = vec2(minX, minY);
+    clipper.clipRegionMax = vec2(maxX, maxY);
+
+    if (clipper.clipChildren)
+    {
+        registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(widget->entity);
+    }
+    else
+    {
+        registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+    }
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetClipMaskTexture(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    if (clipper.hasClipMaskTexture)
+    {
+        ctx.Push();
+    }
+    else
+    {
+        ctx.Push(clipper.clipMaskTexture.c_str());
+    }
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::SetClipMaskTexture(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
+
+    const char* texture = ctx.Get(nullptr, 2);
+    if (texture == nullptr)
+    {
+        clipper.hasClipMaskTexture = false;
+        clipper.clipMaskTexture.clear();
+    }
+    else
+    {
+        clipper.hasClipMaskTexture = true;
+        clipper.clipMaskTexture = texture;
+    }
+
+    if (clipper.clipChildren)
+    {
+        registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(widget->entity);
+    }
+    else
+    {
+        registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+    }
 
     return 0;
 }

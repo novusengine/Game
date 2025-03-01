@@ -21,6 +21,25 @@ local templatesAPI = { }
   end]]
 
 function templatesAPI.RegisterTemplates()
+    -- Debug panels
+    UI.RegisterPanelTemplate("DebugRed",
+    {
+        cornerRadius = 0.0,
+        color = vector.create(1.0, 0.0, 0.0),
+    });
+
+    UI.RegisterPanelTemplate("DebugGreen",
+    {
+        cornerRadius = 0.0,
+        color = vector.create(0.0, 1.0, 0.0),
+    });
+
+    UI.RegisterPanelTemplate("DebugBlue",
+    {
+        cornerRadius = 0.0,
+        color = vector.create(0.0, 0.0, 1.0),
+    });
+
     -- Dialog Box
     UI.RegisterPanelTemplate("DialogBox",
     {

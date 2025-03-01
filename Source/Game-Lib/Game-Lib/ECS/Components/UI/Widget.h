@@ -37,6 +37,7 @@ namespace ECS::Components::UI
     public:
         WidgetType type;
         WidgetFlags flags = WidgetFlags::Default;
+
         Scripting::UI::Widget* scriptWidget = nullptr;
 
         // Non mutable helper functions
@@ -51,5 +52,6 @@ namespace ECS::Components::UI
     struct DirtyWidgetTransform {};
     struct DirtyWidgetData {};
     struct DirtyWidgetFlags {};
+    struct DirtyWidgetClipper {};
     struct DestroyWidget {};
 }
