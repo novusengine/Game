@@ -78,8 +78,10 @@ private:
     struct CharDrawData
     {
     public:
-        uvec4 packed0; // x: textureIndex, y: charIndex, z: textColor, w: borderColor
+        uvec4 packed0; // x: textureIndex & clipMaskTextureIndex, y: charIndex, z: textColor, w: borderColor
         vec4 packed1; // x: borderSize, y: padding, zw: unitRangeXY
+        hvec4 clipRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
+        hvec4 clipMaskRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
     };
 
 private:

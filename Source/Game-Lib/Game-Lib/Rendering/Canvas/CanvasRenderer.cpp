@@ -179,6 +179,20 @@ void CanvasRenderer::Update(f32 deltaTime)
 
                     _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
                 }
+                else if (childWidget.type == WidgetType::Text)
+                {
+                    auto& childText = registry->get<Text>(childEntity);
+                    
+                    for (u32 i = 0; i < childText.numCharsNonWhitespace; i++)
+                    {
+                        auto& textData = _charDrawDatas[childText.gpuDataIndex + i];
+
+                        textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+                        textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+                        textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+                    }
+                    _charDrawDatas.SetDirtyElements(childText.gpuDataIndex, childText.numCharsNonWhitespace);
+                }
                 
             });
         }
@@ -188,18 +202,17 @@ void CanvasRenderer::Update(f32 deltaTime)
             transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
             {
                 auto& childWidget = registry->get<Widget>(childEntity);
+                auto& clipper = registry->get<Clipper>(childEntity);
+                auto& rect = registry->get<BoundingRect>(childEntity);
+
+                vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
+                vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
+
+                vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
+                vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
 
                 if (childWidget.type == WidgetType::Panel)
                 {
-                    auto& clipper = registry->get<Clipper>(childEntity);
-                    auto& rect = registry->get<BoundingRect>(childEntity);
-
-                    vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
-                    vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
-
-                    vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
-                    vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
-
                     auto& childPanel = registry->get<Panel>(childEntity);
                     auto& panelData = _panelDrawDatas[childPanel.gpuDataIndex];
 
@@ -208,6 +221,20 @@ void CanvasRenderer::Update(f32 deltaTime)
                     panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
 
                     _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
+                }
+                else if (childWidget.type == WidgetType::Text)
+                {
+                    auto& childText = registry->get<Text>(childEntity);
+
+                    for (u32 i = 0; i < childText.numCharsNonWhitespace; i++)
+                    {
+                        auto& textData = _charDrawDatas[childText.gpuDataIndex + i];
+
+                        textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+                        textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+                        textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+                    }
+                    _charDrawDatas.SetDirtyElements(childText.gpuDataIndex, childText.numCharsNonWhitespace);
                 }
             });
         }
@@ -220,17 +247,17 @@ void CanvasRenderer::Update(f32 deltaTime)
         if (clipper.clipChildren)
             return;
 
+        auto& rect = registry->get<BoundingRect>(entity);
+
+        vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
+        vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
+
+        vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
+        vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
+
         auto& widget = registry->get<Widget>(entity);
         if (widget.type == WidgetType::Panel)
         {
-            auto& rect = registry->get<BoundingRect>(entity);
-
-            vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
-            vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
-
-            vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
-            vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
-
             auto& panel = registry->get<Panel>(entity);
             auto& panelData = _panelDrawDatas[panel.gpuDataIndex];
 
@@ -239,6 +266,20 @@ void CanvasRenderer::Update(f32 deltaTime)
             panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
 
             _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
+        }
+        else if (widget.type == WidgetType::Text)
+        {
+            auto& text = registry->get<Text>(entity);
+
+            for (u32 i = 0; i < text.numCharsNonWhitespace; i++)
+            {
+                auto& textData = _charDrawDatas[text.gpuDataIndex + i];
+
+                textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
+                textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
+                textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+            }
+            _charDrawDatas.SetDirtyElements(text.gpuDataIndex, text.numCharsNonWhitespace);
         }
     });
 
@@ -796,8 +837,7 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
         }
 
         auto& drawData = _charDrawDatas[text.gpuDataIndex + charIndex];
-        drawData.packed0.x = fontTextureIndex;
-        drawData.packed0.y = charIndex;
+        drawData.packed0.x = (fontTextureIndex & 0xFFFF) | ((charIndex & 0xFFFF) << 16);
         drawData.packed0.z = textTemplate.color.ToRGBA32();
         drawData.packed0.w = textTemplate.borderColor.ToRGBA32();
 

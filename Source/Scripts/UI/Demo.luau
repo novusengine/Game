@@ -241,7 +241,7 @@ local function CreateClippingDemo()
     clippingParent:SetClipChildren(true);
     clippingParent:SetClipRect(0, 0, 1, 1);
     clippingParent:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
-    
+
     --clippingParent:SetClipMaskTexture(nil);
     --clippingParent:SetClipChildren(false);
 
@@ -250,10 +250,8 @@ local function CreateClippingDemo()
     clippingChild:SetRelativePoint(0.5, 0.5);
 
     -- Create a text
-    --local clippingText = canvas::NewText("Test text", 0, 0, 0, "DefaultButtonText");
-
-    --clippingText:SetClipChildren(true);
-    --clippingText:SetClipRect(0, 0, 1, 1);
+    local clippingText = clippingParent:NewText("Test text", 100, 30, 0, "DefaultButtonText");
+    --clippingText:SetClipRect(0, 0, 1, 0.3);
     --clippingText:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
 end
 

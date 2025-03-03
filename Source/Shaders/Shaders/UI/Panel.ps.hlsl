@@ -126,8 +126,8 @@ float4 main(VertexOutput input) : SV_Target
     float2 clipMaskRegionMax = float2(f16tof32(drawData.packed1.w), f16tof32(drawData.packed1.w >> 16));
     float2 maskUV = (screenPos - clipMaskRegionMin) / (clipMaskRegionMax - clipMaskRegionMin);
 
-    uint clipmaskTextureIndex = drawData.packed0.y;
-    float clipMask = _textures[clipmaskTextureIndex].Sample(_sampler, maskUV).a;
+    uint clipMaskTextureIndex = drawData.packed0.y;
+    float clipMask = _textures[clipMaskTextureIndex].Sample(_sampler, maskUV).a;
     if (clipMask < 0.5f)
     {
         discard;
