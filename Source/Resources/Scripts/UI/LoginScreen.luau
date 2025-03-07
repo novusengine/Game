@@ -208,6 +208,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     --RegisterTemplates();
 
     --CreateLoginScreen();
+    print("Hello World!!!!")
 end
 
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

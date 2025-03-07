@@ -10,22 +10,23 @@
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
-#include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
 #include "Game-Lib/ECS/Util/Database/IconUtil.h"
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Database/LightUtil.h"
+#include "Game-Lib/ECS/Util/Database/MapUtil.h"
+#include "Game-Lib/ECS/Util/Database/TextureUtil.h"
+#include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/TextureUtil.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
@@ -462,18 +463,20 @@ bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
 
 void Application::RefreshDatabases()
 {
-    ECS::Util::Database::Camera::Refresh();
-    ECS::Util::Database::Cursor::Refresh();
-    ECS::Util::Database::Icon::Refresh();
-    ECS::Util::Database::Map::Refresh();
-    ECS::Util::Database::Light::Refresh();
-    ECS::Util::Database::Item::Refresh();
+    ECSUtil::Icon::Refresh();
+    ECSUtil::Camera::Refresh();
+    ECSUtil::Cursor::Refresh();
+    ECSUtil::Map::Refresh();
+    ECSUtil::Light::Refresh();
+    ECSUtil::Texture::Refresh();
+    ECSUtil::Item::Refresh();
+    ECSUtil::UnitCustomization::Refresh();
 }
 
 void Application::SaveCDB()
 {
     entt::registry::context& ctx = _registries.dbRegistry->ctx();
-    auto& clientDBSingleton = ctx.get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
 
     std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
 

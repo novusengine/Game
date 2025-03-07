@@ -1,18 +1,25 @@
 #include "ModelRenderer.h"
 
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/DisplayInfo.h"
+#include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Components/Tags.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/UnitCustomizationSingleton.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
+#include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Rendering/CullUtils.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
-#include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Components/Model.h"
-#include "Game-Lib/ECS/Components/Tags.h"
-#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/ECS/Singletons/TextureSingleton.h"
-#include "Game-Lib/ECS/Util/Transforms.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -80,12 +87,13 @@ void ModelRenderer::Update(f32 deltaTime)
 {
     ZoneScopedN("ModelRenderer::Update");
 
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
 
     {
         ZoneScopedN("Update Transform Matrices");
 
-        registry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
+        gameRegistry->view<ECS::Components::Transform, ECS::Components::Model, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Transform& transform, ECS::Components::Model& model, ECS::Components::DirtyTransform& dirtyTransform)
         {
             u32 instanceID = model.instanceID;
             if (instanceID == std::numeric_limits<u32>::max())
@@ -116,7 +124,7 @@ void ModelRenderer::Update(f32 deltaTime)
     {
         ZoneScopedN("Texture Load Requests");
     
-        auto& textureSingleton = registry->ctx().get<ECS::Singletons::TextureSingleton>();
+        auto& textureSingleton = dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
     
         Renderer::TextureDesc textureDesc;
         textureDesc.path.reserve(128);
@@ -194,6 +202,64 @@ void ModelRenderer::Update(f32 deltaTime)
         }
 
         _instancesDirty = true;
+    }
+
+    u32 numChangeSkinTextureRequests = static_cast<u32>(_changeSkinTextureRequests.try_dequeue_bulk(_changeSkinTextureWork.begin(), 256));
+    if (numChangeSkinTextureRequests > 0)
+    {
+        ZoneScopedN("Change Skin Texture Requests");
+
+        for (u32 i = 0; i < numChangeSkinTextureRequests; i++)
+        {
+            ChangeSkinTextureRequest& changeSkinTextureRequest = _changeSkinTextureWork[i];
+
+            InstanceManifest& instanceManifest = _instanceManifests[changeSkinTextureRequest.instanceID];
+            if (!_displayInfoManifests.contains(instanceManifest.displayInfoPacked))
+                continue;
+
+            const auto& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+            u32 textureArrayIndex = changeSkinTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeSkinTextureRequest.textureID, _textures);
+
+            for (u64 textureUnitAddress : displayInfoManifest.skinTextureUnits)
+            {
+                u32 textureUnitOffset = textureUnitAddress & 0xFFFFFFFF;
+                u32 textureIndex = (textureUnitAddress >> 32) & 0xFFFFFFFF;
+
+                TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
+                textureUnit.textureIds[textureIndex] = textureArrayIndex;
+                
+                _textureUnits.SetDirtyElement(textureUnitOffset);
+            }
+        }
+    }
+
+    u32 numChangeHairTextureRequests = static_cast<u32>(_changeHairTextureRequests.try_dequeue_bulk(_changeHairTextureWork.begin(), 256));
+    if (numChangeHairTextureRequests > 0)
+    {
+        ZoneScopedN("Change Hair Texture Requests");
+
+        for (u32 i = 0; i < numChangeHairTextureRequests; i++)
+        {
+            ChangeHairTextureRequest& changeHairTextureRequest = _changeHairTextureWork[i];
+
+            InstanceManifest& instanceManifest = _instanceManifests[changeHairTextureRequest.instanceID];
+            if (!_displayInfoManifests.contains(instanceManifest.displayInfoPacked))
+                continue;
+
+            const auto& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+            u32 textureArrayIndex = changeHairTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeHairTextureRequest.textureID, _textures);
+
+            for (u64 textureUnitAddress : displayInfoManifest.hairTextureUnits)
+            {
+                u32 textureUnitOffset = textureUnitAddress & 0xFFFFFFFF;
+                u32 textureIndex = (textureUnitAddress >> 32) & 0xFFFFFFFF;
+
+                TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
+                textureUnit.textureIds[textureIndex] = textureArrayIndex;
+                
+                _textureUnits.SetDirtyElement(textureUnitOffset);
+            }
+        }
     }
 
     u32 numChangeVisibilityRequests = static_cast<u32>(_changeVisibilityRequests.try_dequeue_bulk(_changeVisibilityWork.begin(), 256));
@@ -1103,11 +1169,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     ZoneScopedN("ModelRenderer::LoadModel");
 
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-
-    entt::registry* registry = registries->gameRegistry;
-
-    entt::registry::context& ctx = registry->ctx();
-    auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
+    auto& textureSingleton = registries->dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
 
     ModelOffsets modelOffsets;
     AllocateModel(model, modelOffsets);
@@ -1472,7 +1534,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
     if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
-        ReplaceTextureUnits(modelID, model, instanceOffsets.instanceIndex, displayInfoPacked);
+        ReplaceTextureUnits(entityID, modelID, model, instanceOffsets.instanceIndex, displayInfoPacked);
     }
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1586,7 +1648,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Replace texture units
     if (model && displayInfoPacked != std::numeric_limits<u32>().max())
     {
-        ReplaceTextureUnits(modelID, model, instanceID, displayInfoPacked);
+        ReplaceTextureUnits(entityID, modelID, model, instanceID, displayInfoPacked);
     }
 
     if (instanceManifest.transparent)
@@ -1610,12 +1672,14 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     _instancesDirty = true;
 }
 
-void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked)
+void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
-    auto& textureSingleton = gameRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    auto& itemSingleton = dbRegistry->ctx().get<ECS::Singletons::ItemSingleton>();
+    auto& textureSingleton = dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
+    auto& unitCustomizationSingleton = dbRegistry->ctx().get<ECS::Singletons::UnitCustomizationSingleton>();
     auto* textureFileDataStorage = clientDBSingleton.Get(ClientDBHash::TextureFileData);
     auto* creatureDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
     auto* creatureDisplayInfoExtraStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfoExtra);
@@ -1625,6 +1689,8 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
     const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
     const ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
     const ClientDB::Definitions::ItemDisplayInfo* itemDisplayInfo = nullptr;
+    ECS::Components::DisplayInfo* unitDisplayInfo = nullptr;
+    ECS::Components::UnitCustomization* unitCustomization = nullptr;
 
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -1644,6 +1710,12 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                     if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
                     {
                         creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(creatureDisplayInfo->extendedDisplayInfoID);
+                    }
+
+                    if (gameRegistry->valid(entityID))
+                    {
+                        unitDisplayInfo = gameRegistry->try_get<ECS::Components::DisplayInfo>(entityID);
+                        unitCustomization = gameRegistry->try_get<ECS::Components::UnitCustomization>(entityID);
                     }
                 }
 
@@ -1716,6 +1788,32 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
         if (!hasDynamicTextureUnits)
             return;
 
+        bool isPrebaked = false;
+        bool useCustomSkin = false;
+
+        GameDefine::UnitRace unitRace = GameDefine::UnitRace::None;
+        GameDefine::Gender gender = GameDefine::Gender::None;
+
+        if (creatureDisplayInfoExtra)
+        {
+            isPrebaked = textureSingleton.textureHashToPath.contains(creatureDisplayInfoExtra->bakedTextureHash);
+            useCustomSkin = !isPrebaked;
+
+            unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->displayRaceID);
+            gender = static_cast<GameDefine::Gender>(creatureDisplayInfoExtra->displaySexID);
+        }
+        else if (creatureDisplayInfo)
+        {
+            if (unitCustomizationSingleton.modelIDToUnitModelInfo.contains(creatureDisplayInfo->modelID))
+            {
+                auto& unitModelInfo = unitCustomizationSingleton.modelIDToUnitModelInfo[creatureDisplayInfo->modelID];
+                unitRace = unitModelInfo.race;
+                gender = unitModelInfo.gender;
+
+                useCustomSkin = true;
+            }
+        }
+
         u32 numRenderBatches = static_cast<u32>(model->modelData.renderBatches.size());
         u32 textureTransformLookupTableSize = static_cast<u32>(model->textureTransformLookupTable.size());
 
@@ -1777,184 +1875,47 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                     Model::ComplexModel::Texture& cTexture = model->textures[textureIndex];
                     u32 textureHash = cTexture.textureHash;
 
-                    static auto GetRaceSkinTextureForDisplayID = [](u32 displayID) -> u32
-                    {
-                        switch (displayID)
-                        {
-                            case 49: // Human Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
-                            }
-                            case 50: // Human Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00941.dds"_h;
-                            }
-                            case 51: // Orc Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00111.dds"_h;
-                            }
-                            case 52: // Orc Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00102.dds"_h;
-                            }
-                            case 53: // Dwarf Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-156637.dds"_h;
-                            }
-                            case 54: // Dwarf Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-156636.dds"_h;
-                            }
-                            case 55: // Night Elf Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00405.dds"_h;
-                            }
-                            case 56: // Night Elf Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00404.dds"_h;
-                            }
-                            case 57: // Undead Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-01059.dds"_h;
-                            }
-                            case 58: // Undead Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00262.dds"_h;
-                            }
-                            case 59: // Tauren Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-00382.dds"_h;
-                            }
-                            case 60: // Tauren Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-02034.dds"_h;
-                            }
-                            case 1563: // Gnome Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-01202.dds"_h;
-                            }
-                            case 1564: // Gnome Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-01822.dds"_h;
-                            }
-                            case 1478: // Troll Male
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-02639.dds"_h;
-                            }
-                            case 1479: // Troll Female
-                            {
-                                return "textures/bakednpctextures/creaturedisplayextra-01118.dds"_h;
-                            }
-
-                            default: return "textures/bakednpctextures/creaturedisplayextra-00030.dds"_h;
-                        }
-                    };
-                    static auto GetRaceHairTextureForDisplayID = [](u32 displayID) -> u32
-                    {
-                        switch (displayID)
-                        {
-                            case 49: // Human Male
-                            {
-                                return "character/human/hair00_01.dds"_h;
-                            }
-                            case 50: // Human Female
-                            {
-                                return "character/human/hair00_01.dds"_h;
-                            }
-                            case 51: // Orc Male
-                            {
-                                return "character/orc/hair00_00.dds"_h;
-                            }
-                            case 52: // Orc Female
-                            {
-                                return "character/orc/hair00_00.dds"_h;
-                            }
-                            case 53: // Dwarf Male
-                            {
-                                return "character/dwarf/hair00_05.dds"_h;
-                            }
-                            case 54: // Dwarf Female
-                            {
-                                return "character/dwarf/hair00_05.dds"_h;
-                            }
-                            case 55: // Night Elf Male
-                            {
-                                return "character/nightelf/hair00_06.dds"_h;
-                            }
-                            case 56: // Night Elf Female
-                            {
-                                return "character/nightelf/hair00_06.dds"_h;
-                            }
-                            case 57: // Undead Male
-                            {
-                                return "character/scourge/hair00_05.dds"_h;
-                            }
-                            case 58: // Undead Female
-                            {
-                                return "character/scourge/hair00_05.dds"_h;
-                            }
-                            case 59: // Tauren Male
-                            {
-                                return "character/tauren/scalplowerhair00_00.dds"_h;
-                            }
-                            case 60: // Tauren Female
-                            {
-                                return "character/tauren/scalplowerhair00_00.dds"_h;
-                            }
-                            case 1563: // Gnome Male
-                            {
-                                return "character/gnome/hair00_00.dds"_h;
-                            }
-                            case 1564: // Gnome Female
-                            {
-                                return "character/gnome/hair00_00.dds"_h;
-                            }
-                            case 1478: // Troll Male
-                            {
-                                return "character/troll/hair00_07.dds"_h;
-                            }
-                            case 1479: // Troll Female
-                            {
-                                return "character/troll/hair00_07.dds"_h;
-                            }
-
-                            default: return "character/human/hair00_01.dds"_h;
-                        }
-                    };
-
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                     {
                         textureHash = cTexture.textureHash;
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::Skin)
                     {
-                        u32 skinHash = cTexture.textureHash;
-                        if (creatureDisplayInfoExtra)
+                        if (isPrebaked)
                         {
-                            skinHash = creatureDisplayInfoExtra->bakedTextureHash;
+                            textureHash = creatureDisplayInfoExtra->bakedTextureHash;
                         }
-                        else
+                        else if (useCustomSkin)
                         {
-                            skinHash = GetRaceSkinTextureForDisplayID(displayID);
-                        }
+                            if (unitDisplayInfo)
+                            {
+                                u64 textureUnitAddress = textureUnitOffset | (static_cast<u64>(j) << 32);
+                                displayInfoManifest.skinTextureUnits.push_back(textureUnitAddress);
+                            }
 
-                        textureHash = skinHash;
+                            _textureUnits[textureUnitOffset].textureIds[j] = MODEL_INVALID_TEXTURE_ID;
+                        }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::ObjectSkin)
                     {
                         if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
                         {
                             u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+                            u64 itemDisplayModelMaterialKey = ECSUtil::Item::CreateItemDisplayModelMaterialResourcesKey(displayID, 0, (u8)cTexture.type, materialResourcesID);
 
-                            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from materialResourcesID -> List<TextureHash>
-                            itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](const u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
+                            if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(itemDisplayModelMaterialKey))
                             {
-                                if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 2)
-                                    return true;
+                                u32 modelMaterialResourcesRowID = itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[itemDisplayModelMaterialKey];
 
-                                textureHash = row.textureHash[0];
-                                return false;
-                            });
+                                if (itemDisplayModelMaterialStorage->Has(modelMaterialResourcesRowID))
+                                {
+                                    if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
+                                    {
+                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        textureHash = textureHashes[0];
+                                    }
+                                }
+                            }
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::WeaponBlade)
@@ -1962,21 +1923,43 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
                         if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
                         {
                             u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+                            u64 itemDisplayModelMaterialKey = ECSUtil::Item::CreateItemDisplayModelMaterialResourcesKey(displayID, 0, (u8)cTexture.type, materialResourcesID);
 
-                            // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from materialResourcesID -> List<TextureHash>
-                            itemDisplayModelMaterialStorage->Each([&textureHash, materialResourcesID, displayID](u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row) -> bool
+                            if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(itemDisplayModelMaterialKey))
                             {
-                                if (row.materialResourcesID != materialResourcesID || row.displayID != displayID || row.modelIndex != 0 || row.textureType != 3)
-                                    return true;
+                                u32 modelMaterialResourcesRowID = itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[itemDisplayModelMaterialKey];
 
-                                textureHash = row.textureHash[0];
-                                return false;
-                            });
+                                if (itemDisplayModelMaterialStorage->Has(modelMaterialResourcesRowID))
+                                {
+                                    if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
+                                    {
+                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        textureHash = textureHashes[0];
+                                    }
+                                }
+                            }
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::CharacterHair)
                     {
-                        textureHash = GetRaceHairTextureForDisplayID(displayID);
+                        if (useCustomSkin)
+                        {
+                            u64 textureUnitAddress = textureUnitOffset | (static_cast<u64>(j) << 32);
+                            displayInfoManifest.hairTextureUnits.push_back(textureUnitAddress);
+
+                            _textureUnits[textureUnitOffset].textureIds[j] = MODEL_INVALID_TEXTURE_ID;
+                        }
+                        else if (creatureDisplayInfoExtra)
+                        {
+                            if (unitRace != GameDefine::UnitRace::None && gender != GameDefine::Gender::None)
+                            {
+                                Renderer::TextureID hairTextureID;
+                                if (ECSUtil::UnitCustomization::GetHairTexture(unitCustomizationSingleton, unitRace, gender, creatureDisplayInfoExtra->hairStyleID, creatureDisplayInfoExtra->hairColorID, hairTextureID))
+                                {
+                                    _textureUnits[textureUnitOffset].textureIds[j] = _renderer->AddTextureToArray(hairTextureID, _textures);
+                                }
+                            }
+                        }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin1)
                     {
@@ -2050,7 +2033,7 @@ void ModelRenderer::ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model,
     instanceManifest.displayInfoPacked = displayInfoPacked;
 }
 
-void ModelRenderer::RequestChangeGroup  (u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable)
+void ModelRenderer::RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable)
 {
     ChangeGroupRequest changeGroupRequest =
     {
@@ -2061,6 +2044,28 @@ void ModelRenderer::RequestChangeGroup  (u32 instanceID, u32 groupIDStart, u32 g
     };
 
     _changeGroupRequests.enqueue(changeGroupRequest);
+}
+
+void ModelRenderer::RequestChangeSkinTexture(u32 instanceID, Renderer::TextureID textureID)
+{
+    ChangeSkinTextureRequest changeSkinTextureRequest =
+    {
+        .instanceID = instanceID,
+        .textureID = textureID,
+    };
+
+    _changeSkinTextureRequests.enqueue(changeSkinTextureRequest);
+}
+
+void ModelRenderer::RequestChangeHairTexture(u32 instanceID, Renderer::TextureID textureID)
+{
+    ChangeHairTextureRequest changeHairTextureRequest =
+    {
+        .instanceID = instanceID,
+        .textureID = textureID,
+    };
+
+    _changeHairTextureRequests.enqueue(changeHairTextureRequest);
 }
 
 void ModelRenderer::RequestChangeVisibility(u32 instanceID, bool visible)
@@ -2384,6 +2389,8 @@ void ModelRenderer::CreatePermanentResources()
     _dirtyTextureUnitOffsets.reserve(256);
 
     _changeGroupWork.resize(256);
+    _changeSkinTextureWork.resize(256);
+    _changeHairTextureWork.resize(256);
     _changeVisibilityWork.resize(256);
     _changeTransparencyWork.resize(256);
     _changeSkyboxWork.resize(256);

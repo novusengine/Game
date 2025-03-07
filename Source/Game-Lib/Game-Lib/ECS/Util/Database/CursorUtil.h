@@ -1,10 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-namespace ECS
+namespace ECSUtil::Cursor
 {
-    namespace Util::Database::Cursor
-    {
-        bool Refresh();
-    }
+    bool Refresh();
 }

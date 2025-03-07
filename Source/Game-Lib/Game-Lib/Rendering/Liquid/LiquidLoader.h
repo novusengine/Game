@@ -1,7 +1,8 @@
 #pragma once
-
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
+
+#include <FileFormat/Novus/Map/MapChunk.h>
 
 #include <enkiTS/TaskScheduler.h>
 
@@ -27,7 +28,9 @@ private:
         u32 numInstances;
         u32 numVertices;
         u32 numIndices;
-        const Map::LiquidInfo* liquidInfo;
+
+        Map::Chunk::LiquidHeader liquidHeader;
+        std::shared_ptr<Bytebuffer> buffer;
     };
 
 public:
@@ -37,7 +40,7 @@ public:
     void Clear();
     void Update(f32 deltaTime);
 
-    void LoadFromChunk(u16 chunkX, u16 chunkY, const Map::LiquidInfo* liquidInfo);
+    void LoadFromChunk(u16 chunkX, u16 chunkY, std::shared_ptr<Bytebuffer>& buffer, const Map::Chunk::LiquidHeader& liquidHeader);
 
 private:
     void LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset);

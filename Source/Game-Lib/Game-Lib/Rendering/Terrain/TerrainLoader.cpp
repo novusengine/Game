@@ -53,7 +53,7 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
 {
     _chunkIDToLoadedID.reserve(4096);
     _chunkIDToBodyID.reserve(4096);
-    _chunkIDToChunkPtr.reserve(4096);
+    _chunkIDToChunkInfo.reserve(4096);
 }
 
 void TerrainLoader::Clear()
@@ -95,13 +95,17 @@ void TerrainLoader::Clear()
     _chunkIDToLoadedID.clear();
     _chunkIDToBodyID.clear();
     
-    for (auto& pair : _chunkIDToChunkPtr)
+    for (auto& pair : _chunkIDToChunkInfo)
     {
-        if (pair.second)
-            delete pair.second;
+        auto& chunkInfo = pair.second;
+
+        chunkInfo.chunk = nullptr;
+
+        if (chunkInfo.data)
+            chunkInfo.data.reset();
     }
     
-    _chunkIDToChunkPtr.clear();
+    _chunkIDToChunkInfo.clear();
     
     ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
     ServiceLocator::GetGameRenderer()->GetLiquidLoader()->Clear();
@@ -181,10 +185,10 @@ void TerrainLoader::Update(f32 deltaTime)
         auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
-        u32 maxChunkLoadsThisTick = glm::min(numPendingRequests, 8u);
+        u32 maxChunkLoadsThisTick = glm::min(numPendingRequests, 64u);
 
         TerrainReserveOffsets reserveOffsets;
-        _terrainRenderer->Reserve(maxChunkLoadsThisTick, reserveOffsets);
+        _terrainRenderer->AllocateChunks(maxChunkLoadsThisTick, reserveOffsets);
         _chunkIDToLoadedID.reserve(_chunkIDToLoadedID.size() + maxChunkLoadsThisTick);
         _chunkIDToBodyID.reserve(_chunkIDToBodyID.size() + maxChunkLoadsThisTick);
 
@@ -207,20 +211,22 @@ void TerrainLoader::Update(f32 deltaTime)
                 u32 chunkX = workRequest.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
                 u32 chunkY = workRequest.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
-                Map::Chunk* chunk = new Map::Chunk();
+                Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(workRequest.data->GetDataPointer());
+                if (chunk->header.type != FileHeader::Type::MapChunk)
                 {
-                    ZoneScopedN("Read Chunk");
-                    if (!Map::Chunk::Read(workRequest.data, *chunk))
-                    {
-                        NC_LOG_WARNING("TerrainLoader : Failed to Read Map Chunk ({0}, {1})", workRequest.chunkID, workRequest.chunkHash);
-                        delete chunk;
-                        continue;
-                    }
+                    NC_LOG_ERROR("TerrainLoader : Invalid Chunk Header");
+                    continue;
+                }
+
+                if (chunk->header.version != Map::Chunk::CURRENT_VERSION)
+                {
+                    NC_LOG_ERROR("TerrainLoader : Invalid Chunk Version. Expected {0} but got {1}", Map::Chunk::CURRENT_VERSION, chunk->header.version);
+                    continue;
                 }
 
                 u32 physicsBodyID = JPH::BodyID::cInvalidBodyID;
 
-                u32 numPhysicsBytes = static_cast<u32>(chunk->physicsData.size());
+                u32 numPhysicsBytes = chunk->physicsHeader.numBytes;
                 if (physicsEnabled && numPhysicsBytes > 0)
                 {
                     ZoneScopedN("Load Physics");
@@ -229,8 +235,8 @@ void TerrainLoader::Update(f32 deltaTime)
 
                     {
                         ZoneScopedN("Read Shape");
-                        std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(chunk->physicsData.data(), numPhysicsBytes);
-                        JoltStreamIn streamIn(physicsBuffer);
+                        Bytebuffer physicsBuffer = Bytebuffer(chunk->physicsHeader.GetPhysicsData(workRequest.data), numPhysicsBytes);
+                        JoltStreamIn streamIn(&physicsBuffer);
 
                         {
                             ZoneScopedN("Restore Shape");
@@ -275,7 +281,7 @@ void TerrainLoader::Update(f32 deltaTime)
                     
                     {
                         std::scoped_lock lock(_chunkLoadingMutex);
-                        _chunkIDToChunkPtr[workRequest.chunkID] = chunk;
+                        _chunkIDToChunkInfo[workRequest.chunkID] = { .chunk = chunk, .data = workRequest.data };
                         _chunkIDToLoadedID[workRequest.chunkID] = chunkDataID;
 
                         if (physicsBodyID != JPH::BodyID::cInvalidBodyID)
@@ -285,14 +291,11 @@ void TerrainLoader::Update(f32 deltaTime)
                     {
                         ZoneScopedN("Load Chunk Placements");
 
-                        for (const Terrain::Placement& placement : chunk->mapObjectPlacements)
+                        u32 numPlacements = chunk->placementHeader.numPlacements;
+                        for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
                         {
-                            _modelLoader->LoadPlacement(placement);
-                        }
-
-                        for (const Terrain::Placement& placement : chunk->complexModelPlacements)
-                        {
-                            _modelLoader->LoadPlacement(placement);
+                            auto* placement = chunk->placementHeader.GetPlacement(workRequest.data, placementIndex);
+                            _modelLoader->LoadPlacement(*placement);
                         }
                     }
 
@@ -300,17 +303,16 @@ void TerrainLoader::Update(f32 deltaTime)
                     {
                         ZoneScopedN("Process Chunk Liquid");
 
-                        u32 numLiquidHeaders = static_cast<u32>(chunk->liquidInfo.headers.size());
-
+                        u32 numLiquidHeaders = static_cast<u32>(chunk->liquidHeader.numHeaders);
                         if (numLiquidHeaders != 0 && numLiquidHeaders != 256)
                         {
-                            NC_LOG_CRITICAL("LiquidInfo should always contain either 0 or 256 liquid headers, but it contained {0} liquid headers", numLiquidHeaders);
+                            NC_LOG_CRITICAL("LiquidHeader should always contain either 0 or 256 liquid headers, but it contained {0} liquid headers", numLiquidHeaders);
                         }
 
                         if (numLiquidHeaders == 256)
                         {
                             ZoneScopedN("Load Chunk Liquid");
-                            _liquidLoader->LoadFromChunk(chunkX, chunkY, &chunk->liquidInfo);
+                            _liquidLoader->LoadFromChunk(chunkX, chunkY, workRequest.data, chunk->liquidHeader);
                         }
                     }
                 }
@@ -325,11 +327,6 @@ void TerrainLoader::Update(f32 deltaTime)
         taskScheduler->WaitforTask(&loadChunksTask);
 
         u32 numChunksLoadedAfter = _numChunksLoaded;
-        if (numChunksLoadedAfter > numChunksLoadedBefore)
-        {
-            NC_LOG_INFO("TerrainLoader : Loaded {0}/{1} chunks", numChunksLoadedAfter, numChunksToLoad);
-        }
-
         bool finishedLoadThisFrame = numChunksLoadedBefore < numChunksToLoad && numChunksLoadedAfter >= numChunksToLoad;
         if (finishedLoadThisFrame)
         {
@@ -341,6 +338,8 @@ void TerrainLoader::Update(f32 deltaTime)
 
             u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
             ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
+
+            NC_LOG_INFO("TerrainLoader : Loaded {0}/{1} chunks", numChunksLoadedAfter, numChunksLoadedAfter);
         }
     }
 }
@@ -415,7 +414,7 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
     }
 
     TerrainReserveOffsets reserveOffsets;
-    _terrainRenderer->Reserve(numChunksToLoad, reserveOffsets);
+    _terrainRenderer->AllocateChunks(numChunksToLoad, reserveOffsets);
 
     enki::TaskSet loadChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
     {
@@ -455,9 +454,12 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 
                 u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
 
-                for (Terrain::Placement& placement : chunk->complexModelPlacements)
+                u32 numPlacements = chunk->placementHeader.numPlacements;
+                for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
                 {
-                    _modelLoader->LoadPlacement(placement);
+                    u64 placementDataOffset = chunk->placementHeader.dataOffset + (placementIndex * sizeof(Terrain::Placement));
+                    auto* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[placementDataOffset]);
+                    _modelLoader->LoadPlacement(*placement);
                 }
             }
         }
@@ -558,7 +560,6 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     Clear();
 
-
     const auto& storage = registry->storage<entt::entity>(); // Access internal entity storage
     NC_LOG_INFO("Allocated Entities {0}", storage.free_list());
 
@@ -617,6 +618,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     
     NC_LOG_INFO("TerrainLoader : Finished Chunk Queueing");
 
+    _terrainRenderer->Reserve(numChunksToLoad);
     return true;
 }
 
@@ -640,7 +642,7 @@ void TerrainLoader::IOLoadCallback(bool result, std::shared_ptr<Bytebuffer> buff
 
         _pendingWorkRequests.enqueue(workRequest);
 
-        NC_LOG_INFO("TerrainLoader : Loaded ({0}, {1})", chunkID, path);
+        //NC_LOG_INFO("TerrainLoader : Loaded ({0}, {1})", chunkID, path);
     }
     else
     {

@@ -12,160 +12,157 @@
 #include <entt/entt.hpp>
 
 using namespace ClientDB;
-using namespace ECS::Singletons::Database;
+using namespace ECS::Singletons;
 
-namespace ECS
+namespace ECSUtil::Map
 {
-    namespace Util::Database::Map
+    bool Refresh()
     {
-        bool Refresh()
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        entt::registry::context& ctx = registry->ctx();
+
+        auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
+        if (!ctx.find<MapSingleton>())
+            ctx.emplace<MapSingleton>();
+
+        auto& mapSingleton = ctx.get<MapSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+
+        u32 numRecords = mapStorage->GetNumRows();
+        mapSingleton.mapInternalNameHashToID.clear();
+        mapSingleton.mapInternalNameHashToID.reserve(numRecords);
+
+        mapStorage->Each([&mapSingleton, &mapStorage](u32 id, const Definitions::Map& map) -> bool
         {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            entt::registry::context& ctx = registry->ctx();
+            const std::string& mapInternalName = mapStorage->GetString(map.internalName);
+            u32 nameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
 
-            auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
-            if (!ctx.find<MapSingleton>())
-                ctx.emplace<MapSingleton>();
-
-            auto& mapSingleton = ctx.get<MapSingleton>();
-            auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
-
-            u32 numRecords = mapStorage->GetNumRows();
-            mapSingleton.mapInternalNameHashToID.clear();
-            mapSingleton.mapInternalNameHashToID.reserve(numRecords);
-
-            mapStorage->Each([&mapSingleton, &mapStorage](u32 id, const ClientDB::Definitions::Map& map) -> bool
-            {
-                const std::string& mapInternalName = mapStorage->GetString(map.internalName);
-                u32 nameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
-
-                mapSingleton.mapInternalNameHashToID[nameHash] = id;
-                return true;
-            });
-
+            mapSingleton.mapInternalNameHashToID[nameHash] = id;
             return true;
-        }
+        });
 
-        bool GetMapFromInternalNameHash(u32 nameHash, ClientDB::Definitions::Map* map)
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            entt::registry::context& ctx = registry->ctx();
+        return true;
+    }
 
-            auto& mapSingleton = ctx.get<MapSingleton>();
+    bool GetMapFromInternalNameHash(u32 nameHash, Definitions::Map* map)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        entt::registry::context& ctx = registry->ctx();
 
-            if (!mapSingleton.mapInternalNameHashToID.contains(nameHash))
-                return false;
+        auto& mapSingleton = ctx.get<MapSingleton>();
 
-            return true;
-        }
-        bool GetMapFromInternalName(const std::string& name, ClientDB::Definitions::Map* map)
-        {
-            u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
-            return GetMapFromInternalNameHash(nameHash, map);
-        }
+        if (!mapSingleton.mapInternalNameHashToID.contains(nameHash))
+            return false;
 
-        u32 GetMapIDFromInternalName(const std::string& internalName)
-        {
-            u32 result = std::numeric_limits<u32>().max();
+        return true;
+    }
+    bool GetMapFromInternalName(const std::string& name, Definitions::Map* map)
+    {
+        u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+        return GetMapFromInternalNameHash(nameHash, map);
+    }
 
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            entt::registry::context& ctx = registry->ctx();
-            auto& mapSingleton = ctx.get<MapSingleton>();
+    u32 GetMapIDFromInternalName(const std::string& internalName)
+    {
+        u32 result = std::numeric_limits<u32>().max();
 
-            u32 nameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
-            if (!mapSingleton.mapInternalNameHashToID.contains(nameHash))
-                return result;
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        entt::registry::context& ctx = registry->ctx();
+        auto& mapSingleton = ctx.get<MapSingleton>();
 
-            result = mapSingleton.mapInternalNameHashToID[nameHash];
+        u32 nameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+        if (!mapSingleton.mapInternalNameHashToID.contains(nameHash))
             return result;
-        }
 
-        bool AddMap(const std::string& internalName, const std::string& name, Definitions::Map& map)
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
-            auto& mapSingleton = registry->ctx().get<MapSingleton>();
+        result = mapSingleton.mapInternalNameHashToID[nameHash];
+        return result;
+    }
 
-            u32 mapInternalNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
-            if (mapSingleton.mapInternalNameHashToID.contains(mapInternalNameHash))
-                return false;
+    bool AddMap(const std::string& internalName, const std::string& name, Definitions::Map& map)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
+        auto& mapSingleton = registry->ctx().get<MapSingleton>();
 
-            auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+        u32 mapInternalNameHash = StringUtils::fnv1a_32(internalName.c_str(), internalName.length());
+        if (mapSingleton.mapInternalNameHashToID.contains(mapInternalNameHash))
+            return false;
 
-            map.internalName = mapStorage->AddString(internalName);
-            map.name = mapStorage->AddString(name);
-            u32 mapID = mapStorage->Add(map);
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-            mapSingleton.mapInternalNameHashToID[mapInternalNameHash] = mapID;
-            return true;
-        }
+        map.internalName = mapStorage->AddString(internalName);
+        map.name = mapStorage->AddString(name);
+        u32 mapID = mapStorage->Add(map);
 
-        bool RemoveMap(u32 mapID)
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        mapSingleton.mapInternalNameHashToID[mapInternalNameHash] = mapID;
+        return true;
+    }
 
-            auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
-            auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+    bool RemoveMap(u32 mapID)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
 
-            if (!mapStorage->Has(mapID))
-                return false;
+        auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-            const auto& map = mapStorage->Get<Definitions::Map>(mapID);
+        if (!mapStorage->Has(mapID))
+            return false;
 
-            const std::string& mapInternalName = mapStorage->GetString(map.name);
-            u32 internalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
+        const auto& map = mapStorage->Get<Definitions::Map>(mapID);
 
-            auto& mapSingleton = registry->ctx().get<MapSingleton>();
-            mapSingleton.mapInternalNameHashToID.erase(internalNameHash);
+        const std::string& mapInternalName = mapStorage->GetString(map.name);
+        u32 internalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
 
-            mapStorage->Remove(mapID);
+        auto& mapSingleton = registry->ctx().get<MapSingleton>();
+        mapSingleton.mapInternalNameHashToID.erase(internalNameHash);
 
-            return true;
-        }
+        mapStorage->Remove(mapID);
 
-        bool SetMapInternalName(const std::string& internalName, const std::string& name)
-        {
-            u32 mapID = GetMapIDFromInternalName(internalName);
-            return SetMapInternalName(mapID, name);
-        }
-        bool SetMapInternalName(u32 mapID, const std::string& name)
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            entt::registry::context& ctx = registry->ctx();
+        return true;
+    }
 
-            auto& mapSingleton = ctx.get<MapSingleton>();
-            u32 internalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+    bool SetMapInternalName(const std::string& internalName, const std::string& name)
+    {
+        u32 mapID = GetMapIDFromInternalName(internalName);
+        return SetMapInternalName(mapID, name);
+    }
+    bool SetMapInternalName(u32 mapID, const std::string& name)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        entt::registry::context& ctx = registry->ctx();
 
-            if (mapSingleton.mapInternalNameHashToID.contains(internalNameHash))
-                return false;
+        auto& mapSingleton = ctx.get<MapSingleton>();
+        u32 internalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
 
-            auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
-            auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+        if (mapSingleton.mapInternalNameHashToID.contains(internalNameHash))
+            return false;
 
-            if (!mapStorage->Has(mapID))
-                return false;
+        auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-            auto& map = mapStorage->Get<Definitions::Map>(mapID);
-            const std::string& previousInternalName = mapStorage->GetString(map.internalName);
-            u32 previousInternalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
+        if (!mapStorage->Has(mapID))
+            return false;
 
-            map.name = mapStorage->AddString(name);
+        auto& map = mapStorage->Get<Definitions::Map>(mapID);
+        const std::string& previousInternalName = mapStorage->GetString(map.internalName);
+        u32 previousInternalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
 
-            mapSingleton.mapInternalNameHashToID.erase(previousInternalNameHash);
-            mapSingleton.mapInternalNameHashToID[internalNameHash] = mapID;
+        map.name = mapStorage->AddString(name);
 
-            return true;
-        }
+        mapSingleton.mapInternalNameHashToID.erase(previousInternalNameHash);
+        mapSingleton.mapInternalNameHashToID[internalNameHash] = mapID;
 
-        void MarkDirty()
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            entt::registry::context& ctx = registry->ctx();
+        return true;
+    }
 
-            auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
-            auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+    void MarkDirty()
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        entt::registry::context& ctx = registry->ctx();
 
-            mapStorage->MarkDirty();
-        }
+        auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+
+        mapStorage->MarkDirty();
     }
 }

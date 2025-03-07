@@ -170,6 +170,11 @@ gameTooltipAPI.SetItem = function(itemID)
         gameTooltipAPI.AddLine(itemVirtualLevelText, "GameTooltipMediumText", gameTooltipAPI.yellowColor)
     end
 
+    if (itemInfo.Bind > 0) then
+        local itemBindText = ItemUtil.GetBindTypeText(itemInfo.Bind)
+        gameTooltipAPI.AddLine(itemBindText, "GameTooltipMediumText")
+    end
+
     if itemInfo.Category == ItemUtil.Category.Container then
         if itemInfo.Durability > 0 then
             local itemDurabilityText = tostring(itemInfo.Durability) .. " Slot Bag"

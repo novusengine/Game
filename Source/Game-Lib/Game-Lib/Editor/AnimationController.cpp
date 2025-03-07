@@ -47,7 +47,7 @@ namespace Editor
             }
             else
             {
-                Singletons::Database::ClientDBSingleton& clientDBSingleton = dbCtx.get<Singletons::Database::ClientDBSingleton>();
+                Singletons::ClientDBSingleton& clientDBSingleton = dbCtx.get<Singletons::ClientDBSingleton>();
                 auto* animationStorage = clientDBSingleton.Get(ClientDBHash::AnimationData);
 
                 auto* animationData = gameRegistry.try_get<Components::AnimationData>(characterSingleton.moverEntity);

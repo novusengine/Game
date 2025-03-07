@@ -1,7 +1,7 @@
 #include "TextureUtil.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Singletons/TextureSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/DebugHandler.h>
@@ -22,13 +22,23 @@ namespace Util::Texture
         std::string path;
     };
 
+    bool IsValidExtension(fs::path extension)
+    {
+        static const fs::path ddsFileExtension = ".dds";
+        static const fs::path pngFileExtension = ".png";
+        static const fs::path jpgFileExtension = ".jpg";
+        static const fs::path jpegFileExtension = ".jpeg";
+
+        return extension.compare(ddsFileExtension) == 0 || extension.compare(pngFileExtension) == 0 || extension.compare(jpgFileExtension) == 0 || extension.compare(jpegFileExtension) == 0;
+    }
+
     void DiscoverAll()
     {
         NC_LOG_INFO("TextureLoader : Scanning for textures");
 
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
 
-        entt::registry* registry = registries->gameRegistry;
+        entt::registry* registry = registries->dbRegistry;
         entt::registry::context& ctx = registry->ctx();
 
         auto& textureSingleton = ctx.emplace<ECS::Singletons::TextureSingleton>();
@@ -52,7 +62,7 @@ namespace Util::Texture
 
         std::for_each(std::execution::par, std::begin(paths), std::end(paths), [&subStrIndex, &texturePairs](const std::filesystem::path& path)
         {
-            if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
+            if (!path.has_extension() || !IsValidExtension(path.extension()))
                 return;
 
             std::string texturePath = path.string().substr(subStrIndex);

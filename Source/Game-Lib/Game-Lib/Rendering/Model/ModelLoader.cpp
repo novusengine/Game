@@ -648,7 +648,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
 
     u32 modelHashToUse = modelHash;
     if (modelHashToUse == std::numeric_limits<u32>().max())
@@ -677,7 +677,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
 
             case ClientDB::Definitions::DisplayInfoType::Item:
             {
-                auto& itemSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ItemSingleton>();
+                auto& itemSingleton = dbRegistry->ctx().get<ECS::Singletons::ItemSingleton>();
                 auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
                 auto* itemDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayInfo);
 
@@ -748,7 +748,7 @@ void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
     SetModelVisible(modelComponent, visible);
 }
 
-void ModelLoader::SetModelVisible(ECS::Components::Model& model, bool visible)
+void ModelLoader::SetModelVisible(const ECS::Components::Model& model, bool visible)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
@@ -764,7 +764,7 @@ void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f3
     SetModelTransparent(modelComponent, transparent, opacity);
 }
 
-void ModelLoader::SetModelTransparent(ECS::Components::Model& model, bool transparent, f32 opacity)
+void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool transparent, f32 opacity)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
@@ -780,7 +780,7 @@ void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
     EnableGroupForModel(modelComponent, groupID);
 }
 
-void ModelLoader::EnableGroupForModel(ECS::Components::Model& model, u32 groupID)
+void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 groupID)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
@@ -796,7 +796,7 @@ void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
     DisableGroupForModel(modelComponent, groupID);
 }
 
-void ModelLoader::DisableGroupForModel(ECS::Components::Model& model, u32 groupID)
+void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 groupID)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
@@ -812,7 +812,7 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
     DisableGroupsForModel(modelComponent, groupIDStart, groupIDEnd);
 }
 
-void ModelLoader::DisableGroupsForModel(ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
+void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
@@ -828,12 +828,42 @@ void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
     DisableAllGroupsForModel(modelComponent);
 }
 
-void ModelLoader::DisableAllGroupsForModel(ECS::Components::Model& model)
+void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
 {
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
     _modelRenderer->RequestChangeGroup(model.instanceID, 1, std::numeric_limits<u32>().max(), false);
+}
+
+void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+    SetSkinTextureForModel(modelComponent, textureID);
+}
+
+void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeSkinTexture(model.instanceID, textureID);
+}
+
+void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+    SetHairTextureForModel(modelComponent, textureID);
+}
+
+void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeHairTexture(model.instanceID, textureID);
 }
 
 const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
@@ -929,7 +959,7 @@ bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
         if (physicsEnabled && numPhysicsBytes > 0)
         {
             std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(discoveredModel.model->physicsData.data(), numPhysicsBytes);
-            JoltStreamIn streamIn(physicsBuffer);
+            JoltStreamIn streamIn(physicsBuffer.get());
 
             JPH::Shape::IDToShapeMap shapeMap;
             JPH::Shape::IDToMaterialMap materialMap;

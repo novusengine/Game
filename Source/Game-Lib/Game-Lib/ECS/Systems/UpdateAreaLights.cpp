@@ -154,7 +154,7 @@ namespace ECS::Systems
     {
         entt::registry::context& context = registry.ctx();
         auto& areaLightInfo = context.emplace<Singletons::AreaLightInfo>();
-        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
+        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
 
         auto* lightStorage = clientDBSingleton.Get(ClientDBHash::Light);
         auto* lightParamsStorage = clientDBSingleton.Get(ClientDBHash::LightParams);
@@ -214,7 +214,7 @@ namespace ECS::Systems
         auto& freeflyingCameraSettings = context.get<Singletons::FreeflyingCameraSettings>();
 
         MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
+        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
         auto* lightStorage = clientDBSingleton.Get(ClientDBHash::Light);
         auto* lightParamsStorage = clientDBSingleton.Get(ClientDBHash::LightParams);
         auto* lightDataStorage = clientDBSingleton.Get(ClientDBHash::LightData);

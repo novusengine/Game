@@ -6,34 +6,32 @@
 
 #include <entt/entt.hpp>
 
-namespace ECS
+namespace ECSUtil::Cursor
 {
-    namespace Util::Database::Cursor
+    bool Refresh()
     {
-        bool Refresh()
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& ctx = registry->ctx();
+        auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
+
+        if (!clientDBSingleton.Has(ClientDBHash::Cursor))
         {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& ctx = registry->ctx();
-            auto& clientDBSingleton = ctx.get<Singletons::Database::ClientDBSingleton>();
+            clientDBSingleton.Register(ClientDBHash::Cursor, "Cursor");
 
-            if (!clientDBSingleton.Has(ClientDBHash::Cursor))
+            auto* cursorStorage = clientDBSingleton.Get(ClientDBHash::Cursor);
+            cursorStorage->Initialize({
+                { "Name",       ClientDB::FieldType::StringRef },
+                { "Texture",    ClientDB::FieldType::StringRef }
+            });
+
+            struct CursorEntry
             {
-                clientDBSingleton.Register(ClientDBHash::Cursor, "Cursor");
+                std::string name;
+                std::string texture;
+            };
 
-                auto* cursorStorage = clientDBSingleton.Get(ClientDBHash::Cursor);
-                cursorStorage->Initialize({
-                    { "Name",       ClientDB::FieldType::StringRef },
-                    { "Texture",    ClientDB::FieldType::StringRef }
-                });
-
-                struct CursorEntry
-                {
-                    std::string name;
-                    std::string texture;
-                };
-
-                static std::vector<CursorEntry> cursorEntries =
-                {
+            static std::vector<CursorEntry> cursorEntries =
+            {
                         { "architect", "Data/Texture/interface/cursor/architect.dds" },
                         { "argusteleporter", "Data/Texture/interface/cursor/argusteleporter.dds" },
                         { "attack", "Data/Texture/interface/cursor/attack.dds" },
@@ -108,21 +106,20 @@ namespace ECS
                         { "unableitem", "Data/Texture/interface/cursor/unableitem.dds" },
                 };
 
-                for (const CursorEntry& cursorEntry : cursorEntries)
+            for (const CursorEntry& cursorEntry : cursorEntries)
+            {
+                ::Database::Shared::Cursor entry =
                 {
-                    ::Database::Shared::Cursor entry =
-                    {
-                        .name = cursorStorage->AddString(cursorEntry.name),
-                        .texture = cursorStorage->AddString(cursorEntry.texture)
-                    };
+                    .name = cursorStorage->AddString(cursorEntry.name),
+                    .texture = cursorStorage->AddString(cursorEntry.texture)
+                };
 
-                    cursorStorage->Add(entry);
-                }
-
-                cursorStorage->MarkDirty();
+                cursorStorage->Add(entry);
             }
 
-            return true;
+            cursorStorage->MarkDirty();
         }
+
+        return true;
     }
 }

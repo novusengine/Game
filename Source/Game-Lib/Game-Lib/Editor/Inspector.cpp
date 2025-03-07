@@ -10,10 +10,10 @@
 #include <Game-Lib/Rendering/Debug/DebugRenderer.h>
 #include <Game-Lib/Rendering/PixelQuery.h>
 #include <Game-Lib/Rendering/Camera.h>
-#include <Game-Lib/ECS/Singletons/TextureSingleton.h>
 #include <Game-Lib/ECS/Singletons/ActiveCamera.h>
 #include <Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game-Lib/ECS/Singletons/RenderState.h>
+#include <Game-Lib/ECS/Singletons/Database/TextureSingleton.h>
 #include <Game-Lib/ECS/Components/Camera.h>
 #include <Game-Lib/ECS/Components/Model.h>
 #include <Game-Lib/ECS/Components/Name.h>

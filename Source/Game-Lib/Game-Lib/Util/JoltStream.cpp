@@ -3,7 +3,7 @@
 #include <Base/Util/DebugHandler.h>
 
 
-JoltStreamIn::JoltStreamIn(std::shared_ptr<Bytebuffer>& buffer)
+JoltStreamIn::JoltStreamIn(Bytebuffer* buffer)
 {
     _buffer = buffer;
     _isEOF = false;
@@ -35,7 +35,7 @@ bool JoltStreamIn::IsFailed() const
     return false;
 }
 
-JoltStreamOut::JoltStreamOut(std::shared_ptr<Bytebuffer>& buffer)
+JoltStreamOut::JoltStreamOut(Bytebuffer* buffer)
 {
     _buffer = buffer;
     _didFail = false;

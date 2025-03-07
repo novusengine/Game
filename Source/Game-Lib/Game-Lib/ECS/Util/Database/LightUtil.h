@@ -1,10 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-namespace ECS
+namespace ECSUtil::Light
 {
-    namespace Util::Database::Light
-    {
-        bool Refresh();
-    }
+    bool Refresh();
 }

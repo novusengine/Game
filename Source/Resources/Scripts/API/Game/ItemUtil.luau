@@ -144,6 +144,14 @@ export type Rarity =
     Unique: number
 }
 
+export type BindType =
+{
+    None: number,
+    BindOnPickup: number,
+    BindOnEquip: number,
+    BindOnUse: number
+}
+
 export type WeaponStyle =
 {
     Unspecified: number,
@@ -401,6 +409,29 @@ itemUtilAPI.GetRarityColor = function(rarity : number) : number
     local rarityIndex = if rarity > 0 and rarity <= numRarityColors then rarity else itemUtilAPI.Rarity.Poor
 
     return itemUtilAPI.RarityColors[rarityIndex]
+end
+
+itemUtilAPI.BindType =
+{
+    None            = 0,
+    BindOnPickup    = 1,
+    BindOnEquip     = 2,
+    BindOnUse       = 3
+}
+
+itemUtilAPI.BindTypeNames =
+{
+    "None",
+    "Binds when picked up",
+    "Binds when equipped",
+    "Binds when used"
+}
+
+itemUtilAPI.GetBindTypeText = function(bindType : number) : string
+    local numBindTypeNames = #itemUtilAPI.BindTypeNames
+    local bindTypeIndex = if bindType > 0 and bindType <= numBindTypeNames then bindType + 1 else 1
+
+    return itemUtilAPI.BindTypeNames[bindTypeIndex]
 end
 
 itemUtilAPI.Category = 

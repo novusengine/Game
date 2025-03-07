@@ -10,6 +10,8 @@
 #include <FileFormat/Novus/Map/MapChunk.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
+#include <Renderer/Descriptors/TextureDesc.h>
+
 #include <entt/entt.hpp>
 #include <enkiTS/TaskScheduler.h>
 #include <Jolt/Jolt.h>
@@ -114,22 +116,28 @@ public: // Load Request Helpers
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
 
     void SetEntityVisible(entt::entity entity, bool visible);
-    void SetModelVisible(ECS::Components::Model& model, bool visible);
+    void SetModelVisible(const ECS::Components::Model& model, bool visible);
 
     void SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity);
-    void SetModelTransparent(ECS::Components::Model& model, bool transparent, f32 opacity);
+    void SetModelTransparent(const ECS::Components::Model& model, bool transparent, f32 opacity);
 
     void EnableGroupForEntity(entt::entity entity, u32 groupID);
-    void EnableGroupForModel(ECS::Components::Model& model, u32 groupID);
+    void EnableGroupForModel(const ECS::Components::Model& model, u32 groupID);
 
     void DisableGroupForEntity(entt::entity entity, u32 groupID);
-    void DisableGroupForModel(ECS::Components::Model& model, u32 groupID);
+    void DisableGroupForModel(const ECS::Components::Model& model, u32 groupID);
 
     void DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, u32 groupIDEnd);
-    void DisableGroupsForModel(ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd);
+    void DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd);
 
     void DisableAllGroupsForEntity(entt::entity entity);
-    void DisableAllGroupsForModel(ECS::Components::Model& model);
+    void DisableAllGroupsForModel(const ECS::Components::Model& model);
+
+    void SetSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID);
+    void SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID);
+
+    void SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID);
+    void SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID);
 
 public:
     const Model::ComplexModel* GetModelInfo(u32 modelHash);

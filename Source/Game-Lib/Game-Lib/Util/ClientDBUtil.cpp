@@ -29,8 +29,6 @@ namespace Util::ClientDB
 
     void DiscoverAll()
     {
-        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-
         fs::path relativeParentPath = "Data/ClientDB";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
         fs::create_directories(absolutePath);
@@ -61,8 +59,9 @@ namespace Util::ClientDB
         u32 numTotalClientDBs = static_cast<u32>(clientDBPairs.size_approx());
         u32 numLoadedClientDBs = 0;
 
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         entt::registry::context& ctx = registries->dbRegistry->ctx();
-        auto& clientDBSingleton = ctx.emplace<ECS::Singletons::Database::ClientDBSingleton>();
+        auto& clientDBSingleton = ctx.emplace<ECS::Singletons::ClientDBSingleton>();
         clientDBSingleton.Reserve(numTotalClientDBs);
 
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<8388608>();

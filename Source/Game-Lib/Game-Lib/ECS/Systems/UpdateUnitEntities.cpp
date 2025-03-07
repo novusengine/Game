@@ -6,17 +6,25 @@
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/UnitCustomizationSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/TextureUtil.h"
+#include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Gameplay/Animation/Defines.h"
+#include "Game-Lib/Gameplay/Database/Unit.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
@@ -86,59 +94,123 @@ namespace ECS::Systems
         TransformSystem& transformSystem = TransformSystem::Get(registry);
         auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+        auto& unitCustomizationSingleton = dbRegistry->ctx().get<Singletons::UnitCustomizationSingleton>();
+        auto& textureSingleton = dbRegistry->ctx().get<Singletons::TextureSingleton>();
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelLoader* modelLoader = gameRenderer->GetModelLoader();
 
         auto modelLoadedEventView = registry.view<Components::ModelLoadedEvent>();
-        modelLoadedEventView.each([&](entt::entity entity, Components::ModelLoadedEvent& modelLoadedEvent)
+        if (modelLoadedEventView.size() > 0)
         {
-            auto& model = registry.get<Components::Model>(entity);
-            auto* name = registry.try_get<Components::Name>(entity);
+            auto* unitRaceStorage = clientDBSingleton.Get(ClientDBHash::UnitRace);
+            auto* creatureDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
+            auto* creatureDisplayInfoExtraStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfoExtra);
+            auto* unitTextureSectionStorage = clientDBSingleton.Get(ClientDBHash::UnitTextureSection);
+            auto* unitCustomizationOptionStorage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationOption);
+            auto* unitCustomizationGeosetStorage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationGeoset);
+            auto* unitCustomizationMaterialStorage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationMaterial);
+            auto* unitRaceCustomizationChoiceStorage = clientDBSingleton.Get(ClientDBHash::UnitRaceCustomizationChoice);
 
-            auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
-            NC_LOG_INFO("Entity \"{0}\" Loaded New Model \"{1}\"", name->name, discoveredModel.name);
-
-            if (modelLoadedEvent.flags.loaded)
+            modelLoadedEventView.each([&](entt::entity entity, Components::ModelLoadedEvent& modelLoadedEvent)
             {
-                modelLoader->DisableAllGroupsForModel(model);
-            }
+                auto& model = registry.get<Components::Model>(entity);
+                auto* name = registry.try_get<Components::Name>(entity);
 
-            if (auto* modelQueuedGeometryGroups = registry.try_get<Components::ModelQueuedGeometryGroups>(entity))
-            {
                 if (modelLoadedEvent.flags.loaded)
                 {
-                    for (u32 groupID : modelQueuedGeometryGroups->enabledGroupIDs)
+                    auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
+                    NC_LOG_INFO("Entity \"{0}\" Loaded New Model \"{1}\"", name->name, discoveredModel.name);
+
+                    modelLoader->DisableAllGroupsForModel(model);
+
+                    if (auto* unitCustomization = registry.try_get<Components::UnitCustomization>(entity))
                     {
-                        modelLoader->EnableGroupForModel(model, groupID);
+                        unitCustomization->flags = { 0 };
+                        unitCustomization->componentSectionsInUse = { 0 };
+
+                        auto& displayInfo = registry.get<Components::DisplayInfo>(entity);
+                        if (auto* displayInfoRow = creatureDisplayInfoStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfo>(displayInfo.displayID))
+                        {
+                            if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfoExtra>(displayInfoRow->extendedDisplayInfoID))
+                            {
+                                unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(displayInfoExtraRow->bakedTextureHash);
+
+                                displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->displayRaceID);
+                                displayInfo.gender = static_cast<GameDefine::Gender>(displayInfoExtraRow->displaySexID);
+
+                                unitCustomization->skinID = displayInfoExtraRow->skinID;
+                                unitCustomization->faceID = displayInfoExtraRow->faceID;
+                                unitCustomization->facialHairID = displayInfoExtraRow->facialHairID;
+                                unitCustomization->hairStyleID = displayInfoExtraRow->hairStyleID;
+                                unitCustomization->hairColorID = displayInfoExtraRow->hairColorID;
+                            }
+                            else
+                            {
+                                if (unitCustomizationSingleton.modelIDToUnitModelInfo.contains(displayInfoRow->modelID))
+                                {
+                                    auto& unitModelInfo = unitCustomizationSingleton.modelIDToUnitModelInfo[displayInfoRow->modelID];
+                                    displayInfo.race = unitModelInfo.race;
+                                    displayInfo.gender = unitModelInfo.gender;
+
+                                    unitCustomization->flags.useCustomSkin = true;
+                                }
+                            }
+                        }
+
+                        if (unitCustomization->flags.useCustomSkin)
+                        {
+                            unitCustomization->flags.forceRefresh = true;
+                            registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
+                        }
+                    }
+
+                    if (auto* modelQueuedGeometryGroups = registry.try_get<Components::ModelQueuedGeometryGroups>(entity))
+                    {
+                        for (u32 groupID : modelQueuedGeometryGroups->enabledGroupIDs)
+                        {
+                            modelLoader->EnableGroupForModel(model, groupID);
+                        }
+
+                        registry.erase<Components::ModelQueuedGeometryGroups>(entity);
+                    }
+                    else
+                    {
+                        registry.emplace_or_replace<ECS::Components::UnitRebuildGeosets>(entity);
+                    }
+
+                    if (auto* unitEquipment = registry.try_get<Components::UnitEquipment>(entity))
+                    {
+                        bool isDirty = false;
+                        for (u32 i = (u32)Database::Item::ItemEquipSlot::Helm; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
+                        {
+                            u32 equipSlotIndex = i;
+
+                            u32 itemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
+                            if (itemID == 0)
+                                continue;
+
+                            unitEquipment->dirtyEquipmentSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
+                            isDirty = true;
+                        }
+
+                        if (isDirty)
+                        {
+                            registry.get_or_emplace<Components::UnitEquipmentDirty>(entity);
+                        }
                     }
                 }
-
-                registry.erase<Components::ModelQueuedGeometryGroups>(entity);
-            }
-
-            if (auto* unitEquipment = registry.try_get<Components::UnitEquipment>(entity))
-            {
-                if (modelLoadedEvent.flags.loaded)
+                else
                 {
-                    bool isDirty = false;
-                    for (u32 i = (u32)Database::Item::ItemEquipSlot::Helm; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
-                    {
-                        u32 equipSlotIndex = i;
-                        u32 itemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
-                        if (itemID == 0)
-                            continue;
-
-                        unitEquipment->dirtyEquipmentSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
-                        isDirty = true;
-                    }
-
-                    if (isDirty)
-                    {
-                        registry.get_or_emplace<Components::UnitEquipmentDirty>(entity);
-                    }
+                    if (registry.all_of<Components::ModelQueuedGeometryGroups>(entity))
+                        registry.erase<Components::ModelQueuedGeometryGroups>(entity);
                 }
-            }
-        });
-        registry.clear<Components::ModelLoadedEvent>();
+            });
+
+            registry.clear<Components::ModelLoadedEvent>();
+        }
 
         auto unitMovementOverTimeView = registry.view<Components::Transform, Components::Unit, Components::UnitMovementOverTime>();
         unitMovementOverTimeView.each([&](entt::entity entity, Components::Transform& transform, Components::Unit& unit, Components::UnitMovementOverTime& unitMovementOverTime)
@@ -249,37 +321,43 @@ namespace ECS::Systems
                 auto& animationData = registry.get<Components::AnimationData>(entity);
 
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
-                Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::SpineLow, rotation);
+                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::SpineLow, rotation);
             }
             if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
             {
                 auto& animationData = registry.get<Components::AnimationData>(entity);
 
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
-                Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Head, rotation);
+                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Head, rotation);
             }
             if (HandleUpdateOrientation(movementInfo.rootRotationSettings, deltaTime))
             {
                 auto& animationData = registry.get<Components::AnimationData>(entity);
 
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.rootRotationSettings.x), 0.0f));
-                Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Default, rotation);
+                ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Default, rotation);
             }
         });
 
-        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
-        auto unitEquipmentView = registry.view<const Components::Unit, const Components::DisplayInfo, Components::UnitEquipment, Components::UnitEquipmentDirty>();
-        unitEquipmentView.each([&](entt::entity entity, const Components::Unit& unit, const Components::DisplayInfo& displayInfo, Components::UnitEquipment& unitEquipment)
+        auto unitEquipmentView = registry.view<const Components::Unit, const Components::DisplayInfo, const Components::Model, const Components::UnitCustomization, Components::UnitEquipment, Components::UnitEquipmentDirty>();
+        unitEquipmentView.each([&](entt::entity entity, const Components::Unit& unit, const Components::DisplayInfo& displayInfo, const Components::Model& model, const Components::UnitCustomization& unitCustomization, Components::UnitEquipment& unitEquipment)
         {
+            if (!model.flags.loaded)
+                return;
+
             bool needToRefreshGeometry = false;
+            bool needToRefreshSkin = false;
 
             for (const Database::Item::ItemEquipSlot equipSlot : unitEquipment.dirtyEquipmentSlots)
             {
                 u32 itemID = unitEquipment.equipmentSlotToItemID[(u32)equipSlot];
 
                 needToRefreshGeometry |= equipSlot != ::Database::Item::ItemEquipSlot::MainHand && equipSlot != ::Database::Item::ItemEquipSlot::OffHand && equipSlot != ::Database::Item::ItemEquipSlot::Ranged;
+                needToRefreshSkin |= equipSlot == ::Database::Item::ItemEquipSlot::Chest || equipSlot == ::Database::Item::ItemEquipSlot::Shirt || equipSlot == ::Database::Item::ItemEquipSlot::Tabard || 
+                    equipSlot == ::Database::Item::ItemEquipSlot::Bracers || equipSlot == ::Database::Item::ItemEquipSlot::Gloves || equipSlot == ::Database::Item::ItemEquipSlot::Belt || 
+                    equipSlot == ::Database::Item::ItemEquipSlot::Pants || equipSlot == ::Database::Item::ItemEquipSlot::Boots;
 
                 if (itemID == 0)
                 {
@@ -312,42 +390,197 @@ namespace ECS::Systems
                     {
                         entt::entity itemEntity = entt::null;
 
-                        if (::Util::Unit::AddWeaponToHand(registry, characterSingleton.moverEntity, item, false, itemEntity))
-                            ::Util::Unit::CloseHand(registry, characterSingleton.moverEntity, false);
+                        if (::Util::Unit::AddWeaponToHand(registry, entity, item, false, itemEntity))
+                            ::Util::Unit::CloseHand(registry, entity, false);
                     }
                     else if (equipSlot == ::Database::Item::ItemEquipSlot::OffHand)
                     {
                         entt::entity itemEntity = entt::null;
 
-                        if (::Util::Unit::AddWeaponToHand(registry, characterSingleton.moverEntity, item, true, itemEntity))
-                            ::Util::Unit::CloseHand(registry, characterSingleton.moverEntity, true);
+                        if (::Util::Unit::AddWeaponToHand(registry, entity, item, true, itemEntity))
+                            ::Util::Unit::CloseHand(registry, entity, true);
                     }
                     else if (equipSlot == ::Database::Item::ItemEquipSlot::Helm)
                     {
                         entt::entity itemEntity = entt::null;
 
-                        ::Util::Unit::AddHelm(registry, characterSingleton.moverEntity, item, displayInfo.race, displayInfo.gender, itemEntity);
+                        ::Util::Unit::AddHelm(registry, entity, item, displayInfo.race, displayInfo.gender, itemEntity);
                     }
                     else if (equipSlot == ::Database::Item::ItemEquipSlot::Shoulders)
                     {
                         entt::entity shoulderLeftEntity = entt::null;
                         entt::entity shoulderRightEntity = entt::null;
 
-                        ::Util::Unit::AddShoulders(registry, characterSingleton.moverEntity, item, shoulderLeftEntity, shoulderRightEntity);
+                        ::Util::Unit::AddShoulders(registry, entity, item, shoulderLeftEntity, shoulderRightEntity);
                     }
                 }
             }
 
-            if (needToRefreshGeometry)
+            if (unitCustomization.flags.useCustomSkin)
             {
-                auto& model = registry.get<Components::Model>(entity);
+                if (needToRefreshGeometry)
+                    registry.emplace_or_replace<ECS::Components::UnitRebuildGeosets>(entity);
 
-                ::Util::Unit::DisableAllGeometryGroups(registry, entity, model);
-                ::Util::Unit::RefreshGeometryGroups(registry, entity, model);
+                if (needToRefreshSkin)
+                    registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
             }
+
             unitEquipment.dirtyEquipmentSlots.clear();
         });
         
         registry.clear<Components::UnitEquipmentDirty>();
+
+        auto unitRebuildGeosetsView = registry.view<const Components::Unit, const Components::Model, ECS::Components::UnitRebuildGeosets>();
+        unitRebuildGeosetsView.each([&](entt::entity entity, const Components::Unit& unit, const Components::Model& model)
+        {
+            if (!model.flags.loaded)
+                return;
+
+            ::Util::Unit::DisableAllGeometryGroups(registry, entity, model);
+            ::Util::Unit::RefreshGeometryGroups(registry, entity, clientDBSingleton, unitCustomizationSingleton, model);
+        });
+
+        registry.clear<Components::UnitRebuildGeosets>();
+
+
+        TextureRenderer* textureRenderer = ServiceLocator::GetGameRenderer()->GetTextureRenderer();
+        auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
+
+        auto UnitRebuildSkinTextureView = registry.view<const Components::Unit, Components::UnitCustomization, const Components::Model, Components::DisplayInfo, ECS::Components::UnitRebuildSkinTexture>();
+        UnitRebuildSkinTextureView.each([&](entt::entity entity, const Components::Unit& unit, Components::UnitCustomization& unitCustomization, const Components::Model& model, Components::DisplayInfo& displayInfo)
+        {
+            if (!model.flags.loaded)
+                return;
+
+            ::Util::Unit::RefreshSkinTexture(*dbRegistry, entity, clientDBSingleton, unitCustomizationSingleton, displayInfo, unitCustomization, model);
+
+            if (auto* unitEquipment = registry.try_get<Components::UnitEquipment>(entity))
+            {
+                if (!unitCustomization.flags.hasGloveModel)
+                {
+                    u32 glovesID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    if (glovesID > 0)
+                    {
+                        if (itemStorage->Has(glovesID))
+                        {
+                            auto& item = itemStorage->Get<Database::Item::Item>(glovesID);
+                            if (item.displayID > 0)
+                            {
+                                ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                            }
+                        }
+                    }
+                }
+
+                u32 shirtID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Shirt];
+                if (shirtID > 0)
+                {
+                    if (itemStorage->Has(shirtID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(shirtID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                u32 bracersID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Bracers];
+                if (bracersID > 0)
+                {
+                    if (itemStorage->Has(bracersID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(bracersID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                u32 bootsID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Boots];
+                if (bootsID > 0)
+                {
+                    if (itemStorage->Has(bootsID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(bootsID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                u32 pantsID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Pants];
+                if (pantsID > 0)
+                {
+                    if (itemStorage->Has(pantsID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(pantsID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                u32 chestID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Chest];
+                if (chestID > 0)
+                {
+                    if (itemStorage->Has(chestID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(chestID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                if (unitCustomization.flags.hasGloveModel)
+                {
+                    u32 glovesID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    if (glovesID > 0)
+                    {
+                        if (itemStorage->Has(glovesID))
+                        {
+                            auto& item = itemStorage->Get<Database::Item::Item>(glovesID);
+                            if (item.displayID > 0)
+                            {
+                                ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                            }
+                        }
+                    }
+                }
+
+                u32 beltID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Belt];
+                if (beltID > 0)
+                {
+                    if (itemStorage->Has(beltID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(beltID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+
+                u32 tabardID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Tabard];
+                if (tabardID > 0)
+                {
+                    if (itemStorage->Has(tabardID))
+                    {
+                        auto& item = itemStorage->Get<Database::Item::Item>(tabardID);
+                        if (item.displayID > 0)
+                        {
+                            ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
+                        }
+                    }
+                }
+            }
+        });
+
+        registry.clear<Components::UnitRebuildSkinTexture>();
     }
 }

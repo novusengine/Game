@@ -240,7 +240,7 @@ declare Box :
 
 declare class ItemInfo
     DisplayID : number
-    Flags : number
+    Bind : number
     Rarity : number
     Category : number
     Type : number

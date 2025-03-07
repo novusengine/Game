@@ -154,7 +154,7 @@ bool GameConsoleCommands::HandleSaveCamera(GameConsoleCommandHandler* commandHan
         return false;
 
     std::string saveCode;
-    if (ECS::Util::Database::Camera::GenerateSaveLocation(cameraSaveName, saveCode))
+    if (ECSUtil::Camera::GenerateSaveLocation(cameraSaveName, saveCode))
     {
         gameConsole->PrintSuccess("Camera Save Code : %s : %s", cameraSaveName.c_str(), saveCode.c_str());
     }
@@ -176,7 +176,7 @@ bool GameConsoleCommands::HandleLoadCamera(GameConsoleCommandHandler* commandHan
     if (base64.size() == 0)
         return false;
 
-    if (ECS::Util::Database::Camera::LoadSaveLocationFromBase64(base64))
+    if (ECSUtil::Camera::LoadSaveLocationFromBase64(base64))
     {
         gameConsole->PrintSuccess("Loaded Camera Code : %s", base64.c_str());
     }
@@ -307,7 +307,7 @@ bool GameConsoleCommands::HandleMorph(GameConsoleCommandHandler* commandHandler,
 
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     auto* creatureDisplayStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
 
     if (!creatureDisplayStorage->Has(displayID))
@@ -639,7 +639,7 @@ bool GameConsoleCommands::HandleSyncItem(GameConsoleCommandHandler* commandHandl
     u32 itemID = std::stoi(itemIDAsString);
 
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
     if (!itemStorage->Has(itemID))
@@ -709,7 +709,7 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsoleCommandHandler* comman
         return false;
 
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
     u32 numItems = itemStorage->GetNumRows();
@@ -809,7 +809,7 @@ bool GameConsoleCommands::HandleAddItem(GameConsoleCommandHandler* commandHandle
     }
 
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
     if (!itemStorage->Has(itemID))

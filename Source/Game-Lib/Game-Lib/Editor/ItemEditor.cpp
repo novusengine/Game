@@ -22,7 +22,7 @@
 AutoCVar_Int CVAR_ItemEditorEnabled(CVarCategory::Database, "itemEditorEnabled", "Enables the item editor", false, CVarFlags::EditCheckbox);
 
 using namespace ClientDB;
-using namespace ECS::Singletons::Database;
+using namespace ECS::Singletons;
 
 namespace Editor
 {
@@ -38,30 +38,28 @@ namespace Editor
         std::string label;
     };
 
-    static std::map<u32, u64> g_images;
-    static ImTextureID g_currentIconTextureID = 0;
-    static bool g_iconPickerEnabled = false;
+    static robin_hood::unordered_map<u32, u64> images;
+    static bool iconPickerEnabled = false;
 
-    static i32 g_currentItemIndex = 0;
-    static std::string g_itemFilter = "";
+    static i32 currentItemIndex = 0;
+    static std::string itemFilter = "";
+    static std::string iconFilter = "";
+    static std::string lastFilterValue = "";
 
-    static std::string g_iconFilter = "";
-    static std::string g_lastFilterValue = "";
+    static f32 iconSize = 32.0;
+    static i32 desiredIconsPerRow = 9;
+    static i32 desiredVisibleRows = 10;
+    static std::vector<u32> filteredIconIDs;
 
-    static f32 g_iconSize = 32.0;
-    static i32 g_desiredIconsPerRow = 9;
-    static i32 g_desiredVisibleRows = 10;
-    static std::vector<u32> g_filteredIconIDs;
-
-    static bool g_statTemplateEditorEnabled = false;
-    static bool g_armorTemplateEditorEnabled = false;
-    static bool g_weaponTemplateEditorEnabled = false;
-    static bool g_shieldTemplateEditorEnabled = false;
+    static bool statTemplateEditorEnabled = false;
+    static bool armorTemplateEditorEnabled = false;
+    static bool weaponTemplateEditorEnabled = false;
+    static bool shieldTemplateEditorEnabled = false;
 
     // Dummy icon functions
     u64 GetIconTexture(u32 iconID)
     {
-        if (!g_images[iconID])
+        if (!images[iconID])
         {
             auto* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
 
@@ -77,39 +75,39 @@ namespace Editor
             textureDesc.path = iconStorage->GetString(icon.texture);
 
             Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
-            g_images[iconID] = renderer->GetImguiTextureID(textureID);
+            images[iconID] = renderer->GetImguiTextureID(textureID);
         }
 
-        return g_images[iconID];
+        return images[iconID];
     }
 
     void OpenIconPicker()
     {
-        g_iconPickerEnabled = true;
+        iconPickerEnabled = true;
         ImGui::OpenPopup("Icon Picker##ItemEditor");
     }
 
     void OpenStatTemplateEditor()
     {
-        g_statTemplateEditorEnabled = true;
+        statTemplateEditorEnabled = true;
         ImGui::OpenPopup("Stat Template Editor##ItemEditor");
     }
 
     void OpenArmorTemplateEditor()
     {
-        g_armorTemplateEditorEnabled = true;
+        armorTemplateEditorEnabled = true;
         ImGui::OpenPopup("Armor Template Editor##ItemEditor");
     }
 
     void OpenWeaponTemplateEditor()
     {
-        g_weaponTemplateEditorEnabled = true;
+        weaponTemplateEditorEnabled = true;
         ImGui::OpenPopup("Weapon Template Editor##ItemEditor");
     }
 
     void OpenShieldTemplateEditor()
     {
-        g_shieldTemplateEditorEnabled = true;
+        shieldTemplateEditorEnabled = true;
         ImGui::OpenPopup("Shield Template Editor##ItemEditor");
     }
 
@@ -168,26 +166,26 @@ namespace Editor
         bool isItemWeaponDirty = false;
         bool isItemShieldDirty = false;
 
-        if (ImGui::BeginPopupModal("Icon Picker##ItemEditor", &g_iconPickerEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal("Icon Picker##ItemEditor", &iconPickerEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
             ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
             ImGui::Text("Filter (ID or Name)");
-            if (ImGui::InputText("##Icon Filter (ID or Name)", &g_iconFilter))
+            if (ImGui::InputText("##Icon Filter (ID or Name)", &iconFilter))
             {
                 // Update cache if filter changes
-                if (g_iconFilter.length() > 0 && g_iconFilter != g_lastFilterValue)
+                if (iconFilter.length() > 0 && iconFilter != lastFilterValue)
                 {
-                    g_lastFilterValue = g_iconFilter;
-                    g_filteredIconIDs.clear();
-                    g_filteredIconIDs.reserve(iconStorage->GetNumRows());
+                    lastFilterValue = iconFilter;
+                    filteredIconIDs.clear();
+                    filteredIconIDs.reserve(iconStorage->GetNumRows());
 
                     iconStorage->Each([&iconStorage](u32 id, const ::Database::Shared::Icon& icon) -> bool
                     {
                         const std::string& iconPath = iconStorage->GetString(icon.texture);
-                        if (std::to_string(id).find(g_iconFilter) != std::string::npos || iconPath.find(g_iconFilter) != std::string::npos)
+                        if (std::to_string(id).find(iconFilter) != std::string::npos || iconPath.find(iconFilter) != std::string::npos)
                         {
-                            g_filteredIconIDs.push_back(id);
+                            filteredIconIDs.push_back(id);
                         }
                         return true;
                     });
@@ -196,14 +194,14 @@ namespace Editor
 
             ImGui::PopItemWidth();
 
-            bool hasFilter = g_iconFilter.length() > 0;
+            bool hasFilter = iconFilter.length() > 0;
 
             const f32 padX = ImGui::GetStyle().WindowPadding.x;
             const f32 padY = ImGui::GetStyle().WindowPadding.y;
             const f32 scrollbarW = ImGui::GetStyle().ScrollbarSize;
 
-            f32 popupWidth = 100.0f + (g_desiredIconsPerRow * (g_iconSize + ImGui::GetStyle().FramePadding.x)) + (2 * padX) + scrollbarW;
-            f32 popupHeight = (g_desiredVisibleRows * ((g_iconSize + ImGui::GetStyle().FramePadding.y + padY) - 1));
+            f32 popupWidth = 100.0f + (desiredIconsPerRow * (iconSize + ImGui::GetStyle().FramePadding.x)) + (2 * padX) + scrollbarW;
+            f32 popupHeight = (desiredVisibleRows * ((iconSize + ImGui::GetStyle().FramePadding.y + padY) - 1));
             ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight), ImGuiCond_Always);
 
             ImGui::BeginChild("IconGrid", ImVec2(popupWidth, popupHeight), true);
@@ -211,7 +209,7 @@ namespace Editor
             if (!hasFilter)
             {
                 i32 totalIcons = iconStorage->GetNumRows();
-                i32 totalRows = (totalIcons + g_desiredIconsPerRow - 1) / g_desiredIconsPerRow; // Round up
+                i32 totalRows = (totalIcons + desiredIconsPerRow - 1) / desiredIconsPerRow; // Round up
 
                 ImGuiListClipper clipper;
                 clipper.Begin(totalRows);
@@ -220,16 +218,17 @@ namespace Editor
                 {
                     for (i32 row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                     {
-                        i32 startIndex = row * g_desiredIconsPerRow;
-                        i32 endIndex = glm::min(startIndex + g_desiredIconsPerRow, totalIcons);
+                        i32 startIndex = row * desiredIconsPerRow;
+                        i32 endIndex = glm::min(startIndex + desiredIconsPerRow, totalIcons);
                         i32 numIconsAdded = 0;
 
                         iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const ::Database::Shared::Icon& icon) -> bool
                         {
                             ImGui::PushID(id);
-                            if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
+
+                            if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
                             {
-                                itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
+                                itemStorage->Get<Database::Item::Item>(currentItemIndex).iconID = id;
                                 isItemDirty = true;
                             }
 
@@ -241,7 +240,7 @@ namespace Editor
                                 ImGui::EndTooltip();
                             }
 
-                            bool isNextIconOnSameLine = (++numIconsAdded % g_desiredIconsPerRow) != 0;
+                            bool isNextIconOnSameLine = (++numIconsAdded % desiredIconsPerRow) != 0;
                             if (isNextIconOnSameLine)
                                 ImGui::SameLine();
 
@@ -253,33 +252,34 @@ namespace Editor
             }
             else
             {
-                i32 totalFilteredIcons = static_cast<i32>(g_filteredIconIDs.size());
-                i32 totalRows = (totalFilteredIcons + g_desiredIconsPerRow - 1) / g_desiredIconsPerRow;
+                i32 totalFilteredIcons = static_cast<i32>(filteredIconIDs.size());
+                i32 totalRows = (totalFilteredIcons + desiredIconsPerRow - 1) / desiredIconsPerRow;
                 if (totalRows > 0)
                 {
                     i32 numIconsAdded = 0;
 
                     ImGuiListClipper clipper;
                     clipper.Begin(totalRows);
-                    clipper.ItemsHeight = (g_iconSize + ImGui::GetStyle().FramePadding.y + padY) - 1;
+                    clipper.ItemsHeight = (iconSize + ImGui::GetStyle().FramePadding.y + padY) - 1;
 
                     while (clipper.Step())
                     {
                         for (i32 row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                         {
-                            i32 startIndex = row * g_desiredIconsPerRow;
-                            i32 endIndex = glm::min(startIndex + g_desiredIconsPerRow, totalFilteredIcons);
+                            i32 startIndex = row * desiredIconsPerRow;
+                            i32 endIndex = glm::min(startIndex + desiredIconsPerRow, totalFilteredIcons);
                             i32 numIconsAdded = 0;
 
                             for (i32 i = startIndex; i < endIndex; ++i)
                             {
-                                u32 id = g_filteredIconIDs[i];
+                                u32 id = filteredIconIDs[i];
                                 const auto& icon = iconStorage->Get<::Database::Shared::Icon>(id);
 
                                 ImGui::PushID(id);
-                                if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(g_iconSize, g_iconSize)))
+
+                                if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
                                 {
-                                    itemStorage->Get<Database::Item::Item>(g_currentItemIndex).iconID = id;
+                                    itemStorage->Get<Database::Item::Item>(currentItemIndex).iconID = id;
                                     isItemDirty = true;
                                 }
 
@@ -291,7 +291,7 @@ namespace Editor
                                     ImGui::EndTooltip();
                                 }
 
-                                bool isNextIconOnSameLine = (++numIconsAdded % g_desiredIconsPerRow) != 0;
+                                bool isNextIconOnSameLine = (++numIconsAdded % desiredIconsPerRow) != 0;
                                 if (isNextIconOnSameLine)
                                     ImGui::SameLine();
 
@@ -306,7 +306,7 @@ namespace Editor
             ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopupModal("Stat Template Editor##ItemEditor", &g_statTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal("Stat Template Editor##ItemEditor", &statTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
             static std::vector<Option> StatTypeOptions =
             {
@@ -320,7 +320,7 @@ namespace Editor
                 {.id = 7, .label = "Spirit" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
+            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
             auto& currentStatTemplate = itemStatTemplateStorage->Get<Database::Item::ItemStatTemplate>(currentItem.statTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.statTemplateID);
@@ -379,7 +379,7 @@ namespace Editor
             ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopupModal("Armor Template Editor##ItemEditor", &g_armorTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal("Armor Template Editor##ItemEditor", &armorTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
             static std::vector<Option> EquipTypeOptions =
             {
@@ -404,7 +404,7 @@ namespace Editor
                 {.id = 18, .label = "Ammo" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
+            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
             auto& currentArmorTemplate = itemArmorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(currentItem.armorTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.armorTemplateID);
@@ -442,7 +442,7 @@ namespace Editor
             ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopupModal("Weapon Template Editor##ItemEditor", &g_weaponTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal("Weapon Template Editor##ItemEditor", &weaponTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
             static std::vector<Option> WeaponStyleOptions =
             {
@@ -456,7 +456,7 @@ namespace Editor
                 {.id = 8,  .label = "Tool" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
+            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
             auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<Database::Item::ItemWeaponTemplate>(currentItem.weaponTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.weaponTemplateID);
@@ -522,9 +522,9 @@ namespace Editor
             ImGui::EndPopup();
         }
 
-        if (ImGui::BeginPopupModal("Shield Template Editor##ItemEditor", &g_shieldTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+        if (ImGui::BeginPopupModal("Shield Template Editor##ItemEditor", &shieldTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
+            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
             auto& currentShieldTemplate = itemShieldTemplateStorage->Get<Database::Item::ItemShieldTemplate>(currentItem.shieldTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.shieldTemplateID);
@@ -567,24 +567,24 @@ namespace Editor
             ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
             ImGui::Text("Filter (ID or Name)");
-            ImGui::InputText("##Item Filter (ID or Name)", &g_itemFilter);
+            ImGui::InputText("##Item Filter (ID or Name)", &itemFilter);
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
-            std::string currentItemlabel = std::to_string(g_currentItemIndex) + " - " + itemStorage->GetString(currentItem.name);
+            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
+            std::string currentItemlabel = std::to_string(currentItemIndex) + " - " + itemStorage->GetString(currentItem.name);
 
             ImGui::Text("Select Item");
-            if (ImGui::BeginCombo("##Select Item", g_currentItemIndex >= 0 ? currentItemlabel.c_str() : "None"))
+            if (ImGui::BeginCombo("##Select Item", currentItemIndex >= 0 ? currentItemlabel.c_str() : "None"))
             {
                 char comboLabel[128];
                 itemStorage->Each([&](u32 id, Database::Item::Item& item) -> bool
                 {
                     std::snprintf(comboLabel, sizeof(comboLabel), "%u - %s", id, itemStorage->GetString(item.name).c_str());
-                    if (std::strstr(comboLabel, g_itemFilter.c_str()) != nullptr)
+                    if (std::strstr(comboLabel, itemFilter.c_str()) != nullptr)
                     {
-                        bool isSelected = (g_currentItemIndex == id);
+                        bool isSelected = (currentItemIndex == id);
                         if (ImGui::Selectable(comboLabel, isSelected))
                         {
-                            g_currentItemIndex = id;
+                            currentItemIndex = id;
                         }
                         if (isSelected)
                         {
@@ -605,9 +605,9 @@ namespace Editor
         ImGui::Separator();
 
         // If an item is selected, show the editing UI.
-        if (g_currentItemIndex >= 0)
+        if (currentItemIndex >= 0)
         {
-            auto& item = itemStorage->Get<Database::Item::Item>(g_currentItemIndex);
+            auto& item = itemStorage->Get<Database::Item::Item>(currentItemIndex);
 
             // Group: General Information
             {
@@ -656,12 +656,12 @@ namespace Editor
                     static std::vector<Option> BindOptions =
                     {
                         {.id = 0, .label = "None" },
-                        {.id = 1, .label = "Bind on Pickup" },
-                        {.id = 2, .label = "Bind on Equip" },
-                        {.id = 3, .label = "Bind on Use" }
+                        {.id = 1, .label = "Binds when pickup up" },
+                        {.id = 2, .label = "Binds when equipped" },
+                        {.id = 3, .label = "Binds when used" }
                     };
 
-                    const std::string& currentLabel = BindOptions[0].label;
+                    const std::string& currentLabel = BindOptions[item.bind].label;
                     if (RenderOptionDropdown<u8>("Bind", currentLabel.c_str(), item.bind, BindOptions))
                     {
                         isItemDirty = true;

@@ -5,28 +5,28 @@
 
 #include <Gameplay/GameDefine.h>
 
-namespace ECS
+namespace ECSUtil::Item
 {
-    namespace Util::Database::Item
-    {
-        bool Refresh();
+    bool Refresh();
 
-        bool ItemHasStatTemplate(const Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
-        u32 GetItemStatTemplateID(Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
+    bool ItemHasStatTemplate(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
+    u32 GetItemStatTemplateID(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
 
-        bool ItemHasArmorTemplate(const Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
-        u32 GetItemArmorTemplateID(Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
+    bool ItemHasArmorTemplate(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
+    u32 GetItemArmorTemplateID(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
 
-        bool ItemHasWeaponTemplate(const Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
-        u32 GetItemWeaponTemplateID(Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
+    bool ItemHasWeaponTemplate(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
+    u32 GetItemWeaponTemplateID(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
 
-        bool ItemHasShieldTemplate(const Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
-        u32 GetItemShieldTemplateID(Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
+    bool ItemHasShieldTemplate(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
+    u32 GetItemShieldTemplateID(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
 
-        bool ItemHasAnyEffects(const Singletons::Database::ItemSingleton& itemSingleton, u32 itemID);
-        const u32* GetItemEffectIDs(Singletons::Database::ItemSingleton& itemSingleton, u32 itemID, u32& count);
+    bool ItemHasAnyEffects(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
+    const u32* GetItemEffectIDs(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID, u32& count);
 
-        u32 GetModelHashForHelm(Singletons::Database::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::Gender gender, u8& variant);
-        void GetModelHashesForShoulders(Singletons::Database::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u32& modelHashLeftShoulder, u32& modelHashRightShoulder);
-    }
+    u32 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::Gender gender, u8& variant);
+    void GetModelHashesForShoulders(ECS::Singletons::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u32& modelHashLeftShoulder, u32& modelHashRightShoulder);
+
+    u64 CreateItemDisplayMaterialResourcesKey(u32 displayID, u8 componentSection, u32 materialResourcesID);
+    u64 CreateItemDisplayModelMaterialResourcesKey(u32 displayID, u8 modelIndex, u8 textureType, u32 materialResourcesID);
 }

@@ -1,11 +1,11 @@
 #include "TerrainRenderer.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
-#include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Singletons/TextureSingleton.h"
 
 #include <Base/Util/Timer.h>
 #include <Base/CVarSystem/CVarSystem.h>
@@ -578,7 +578,52 @@ void TerrainRenderer::Clear()
     _renderer->UnloadTexturesInArray(_alphaTextures, 1);
 }
 
-void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffsets)
+void TerrainRenderer::Reserve(u32 numChunks)
+{
+    ZoneScoped;
+    u32 numCells = numChunks * Terrain::CHUNK_NUM_CELLS;
+
+    u32 chunkDataStartIndex = 0;
+    u32 chunkBoundingBoxStartIndex = 0;
+
+    u32 instanceDataStartIndex = 0;
+    u32 cellDataStartIndex = 0;
+    u32 cellHeightRangeStartIndex = 0;
+    u32 cellBoundingBoxStartIndex = 0;
+
+    u32 chunkVertexStartIndex = 0;
+
+    // First we do an exclusive lock for operations that might reallocate
+    {
+        std::unique_lock lock(_addChunkMutex);
+        _chunkDatas.Reserve(numChunks);
+        _chunkBoundingBoxes.reserve(numChunks);
+
+        _instanceDatas.Reserve(numCells);
+        _cellDatas.Reserve(numCells);
+        _cellHeightRanges.Reserve(numCells);
+        _cellBoundingBoxes.reserve(numCells);
+        
+        _vertices.Reserve(numCells * Terrain::CELL_NUM_VERTICES);
+    }
+
+#if NC_DEBUG
+    if (chunkDataStartIndex != chunkBoundingBoxStartIndex)
+    {
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk data start index {0} does not match chunk bounding box start index {1}, this will probably result in weird terrain", chunkDataStartIndex, chunkBoundingBoxStartIndex);
+    }
+    if (instanceDataStartIndex != cellDataStartIndex || instanceDataStartIndex != cellHeightRangeStartIndex || instanceDataStartIndex != cellBoundingBoxStartIndex)
+    {
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Instance data start index {0} does not match cell data start index {1}, cell height range start index {2} or cell bounding box start index {3}, this will probably result in weird terrain", instanceDataStartIndex, cellDataStartIndex, cellHeightRangeStartIndex, cellBoundingBoxStartIndex);
+    }
+    if (chunkVertexStartIndex != (chunkDataStartIndex * Terrain::CHUNK_NUM_CELLS) * Terrain::CELL_NUM_VERTICES)
+    {
+        NC_LOG_ERROR("TerrainRenderer::Reserve: Chunk vertex start index {0} does not match chunk data index {1} * Terrain::CELL_NUM_VERTICES {2}, this will probably result in weird terrain", chunkVertexStartIndex, chunkDataStartIndex, chunkDataStartIndex * Terrain::CELL_NUM_VERTICES);
+    }
+#endif
+}
+
+void TerrainRenderer::AllocateChunks(u32 numChunks, TerrainReserveOffsets& reserveOffsets)
 {
     ZoneScoped;
     u32 numCells = numChunks * Terrain::CHUNK_NUM_CELLS;
@@ -605,7 +650,7 @@ void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffse
         cellHeightRangeStartIndex = _cellHeightRanges.AddCount(numCells);
         cellBoundingBoxStartIndex = static_cast<u32>(_cellBoundingBoxes.size());
         _cellBoundingBoxes.resize(_cellBoundingBoxes.size() + numCells);
-        
+
         chunkVertexStartIndex = _vertices.AddCount(numCells * Terrain::CELL_NUM_VERTICES);
     }
 
@@ -629,20 +674,25 @@ void TerrainRenderer::Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffse
     reserveOffsets.vertexDataStartOffset = chunkVertexStartIndex;
 }
 
-u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataIndex, u32 cellDataStartIndex, u32 vertexDataStartIndex)
+u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos)
 {
     ZoneScoped;
 
-    EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-    entt::registry* registry = registries->gameRegistry;
+    TerrainReserveOffsets reserveOffsets;
+    AllocateChunks(1, reserveOffsets);
 
-    entt::registry::context& ctx = registry->ctx();
-    auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
+    return AddChunk(chunkHash, chunk, chunkGridPos, reserveOffsets.chunkDataStartOffset, reserveOffsets.cellDataStartOffset, reserveOffsets.vertexDataStartOffset);
+}
+
+u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset)
+{
+    EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+    auto& textureSingleton = registries->dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
 
     // Load the chunk alpha map texture
     u32 alphaMapTextureIndex = 0;
 
-    u32 alphaMapStringID = chunk->chunkAlphaMapTextureHash;
+    u32 alphaMapStringID = static_cast<u32>(chunk->chunkAlphaMapTextureHash);
     if (alphaMapStringID != std::numeric_limits<u32>().max())
     {
         if (textureSingleton.textureHashToPath.contains(alphaMapStringID))
@@ -670,14 +720,12 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     {
         std::shared_lock lock(_addChunkMutex);
 
-        ChunkData& chunkData = _chunkDatas[chunkDataIndex];
+        ChunkData& chunkData = _chunkDatas[chunkDataStartOffset];
         chunkData.alphaMapID = alphaMapTextureIndex;
 
         for (u32 cellID = 0; cellID < Terrain::CHUNK_NUM_CELLS; cellID++)
         {
-            const Map::Cell& cell = chunk->cells[cellID];
-
-            u32 cellDataIndex = cellDataStartIndex + cellID;
+            u32 cellDataIndex = cellDataStartOffset + cellID;
 
             InstanceData& instanceData = _instanceDatas[cellDataIndex];
             instanceData.packedChunkCellID = (chunkGridIndex << 16) | (cellID & 0xffff);
@@ -689,18 +737,18 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             }
 
             CellData& cellData = _cellDatas[cellDataIndex];
-            cellData.hole = cell.hole;
+            cellData.hole = chunk->cellsData.holes[cellID];
 
             // Handle textures
             u8 layerCount = 0;
-            for (const Map::Cell::LayerData& layer : cell.layers)
+            for (const u32 layerTextureID : chunk->cellsData.layerTextureIDs[cellID])
             {
-                if (layer.textureID == 0 || layer.textureID == Terrain::TEXTURE_ID_INVALID)
+                if (layerTextureID == 0 || layerTextureID == Terrain::TEXTURE_ID_INVALID)
                 {
                     break;
                 }
 
-                const std::string& texturePath = textureSingleton.textureHashToPath[layer.textureID];
+                const std::string& texturePath = textureSingleton.textureHashToPath[layerTextureID];
                 if (texturePath.size() == 0)
                     continue;
 
@@ -717,7 +765,21 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             }
 
             // Copy Vertex Data
-            memcpy(&_vertices[vertexDataStartIndex + (cellID * Terrain::CELL_TOTAL_GRID_SIZE)], &cell.vertexData[0], sizeof(Map::Cell::VertexData) * Terrain::CELL_TOTAL_GRID_SIZE);
+            for (u32 vertexIndex = 0; vertexIndex < Terrain::CELL_TOTAL_GRID_SIZE; vertexIndex++)
+            {
+                TerrainVertex& terrainVertex = _vertices[vertexDataStartOffset + (cellID * Terrain::CELL_TOTAL_GRID_SIZE) + vertexIndex];
+                terrainVertex.normal[0] = chunk->cellsData.normals[cellID][vertexIndex][0];
+                terrainVertex.normal[1] = chunk->cellsData.normals[cellID][vertexIndex][1];
+                terrainVertex.normal[2] = chunk->cellsData.normals[cellID][vertexIndex][2];
+
+                terrainVertex.color[0] = chunk->cellsData.colors[cellID][vertexIndex][0];
+                terrainVertex.color[1] = chunk->cellsData.colors[cellID][vertexIndex][1];
+                terrainVertex.color[2] = chunk->cellsData.colors[cellID][vertexIndex][2];
+
+                terrainVertex.height = chunk->cellsData.heightField[cellID][vertexIndex];
+            }
+
+            //memcpy(&_vertices[vertexDataStartIndex + (cellID * Terrain::CELL_TOTAL_GRID_SIZE)], &cell.vertexData[0], sizeof(Map::Cell::VertexData) * Terrain::CELL_TOTAL_GRID_SIZE);
 
             // Calculate bounding boxes and upload height ranges
             {
@@ -729,12 +791,14 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
                 vec3 min;
                 vec3 max;
 
+                vec2 cellHeightBounds = chunk->cellsData.heightBounds[cellID];
+
                 min.x = flippedChunkOrigin.x - (cellX * Terrain::CELL_SIZE);
-                min.y = cell.cellMinHeight;
+                min.y = cellHeightBounds.x;
                 min.z = flippedChunkOrigin.y - (cellY * Terrain::CELL_SIZE);
 
                 max.x = flippedChunkOrigin.x - ((cellX + 1) * Terrain::CELL_SIZE);
-                max.y = cell.cellMaxHeight;
+                max.y = cellHeightBounds.y;
                 max.z = flippedChunkOrigin.y - ((cellY + 1) * Terrain::CELL_SIZE);
 
                 Geometry::AABoundingBox& boundingBox = _cellBoundingBoxes[cellDataIndex];
@@ -745,12 +809,12 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
                 boundingBox.extents = aabbMax - boundingBox.center;
 
                 CellHeightRange& heightRange = _cellHeightRanges[cellDataIndex];
-                heightRange.min = cell.cellMinHeight;
-                heightRange.max = cell.cellMaxHeight;
+                heightRange.min = cellHeightBounds.x;
+                heightRange.max = cellHeightBounds.y;
             }
         }
 
-        Geometry::AABoundingBox& chunkBoundingBox = _chunkBoundingBoxes[chunkDataIndex];
+        Geometry::AABoundingBox& chunkBoundingBox = _chunkBoundingBoxes[chunkDataStartOffset];
         {
             f32 chunkMinY = chunk->heightHeader.gridMinHeight;
             f32 chunkMaxY = chunk->heightHeader.gridMaxHeight;
@@ -769,7 +833,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
         }
     }
 
-    return chunkDataIndex;
+    return chunkDataStartOffset;
 }
 
 void TerrainRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder)

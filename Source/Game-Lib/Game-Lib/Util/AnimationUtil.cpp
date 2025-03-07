@@ -18,7 +18,7 @@ namespace Util::Animation
     const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(::Animation::Defines::Type type)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-        auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+        auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
         auto* animationDatas = clientDBSingleton.Get(ClientDBHash::AnimationData);
 
         if (!animationDatas)

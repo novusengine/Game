@@ -3,9 +3,11 @@
 
 #include <entt/fwd.hpp>
 
+#include <limits>
+
 namespace Attachment::Defines
 {
-    static constexpr i16 InvalidAttachmentIndex = -1;
+    static constexpr u16 InvalidAttachmentIndex = std::numeric_limits<u16>().max();
 
     enum class Type : i16
     {

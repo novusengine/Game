@@ -28,7 +28,6 @@
 namespace fs = std::filesystem;
 
 using namespace ECS::Singletons;
-using namespace ECS::Singletons::Database;
 
 void MapLoader::Update(f32 deltaTime)
 {

@@ -101,7 +101,7 @@ namespace Scripting
         }
 
         ClientDB::Definitions::Map* map = nullptr;
-        if (!ECS::Util::Database::Map::GetMapFromInternalName(mapInternalName, map))
+        if (!ECSUtil::Map::GetMapFromInternalName(mapInternalName, map))
         {
             ctx.Push(false);
             return 1;
@@ -130,7 +130,7 @@ namespace Scripting
         }
 
         entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-        auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+        auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
         if (!itemStorage->Has(itemID))

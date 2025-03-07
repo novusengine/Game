@@ -19,7 +19,6 @@
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
-using namespace ECS::Singletons::Database;
 namespace fs = std::filesystem;
 
 namespace Editor

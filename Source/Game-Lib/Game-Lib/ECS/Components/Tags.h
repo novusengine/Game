@@ -5,4 +5,6 @@ namespace ECS::Components
 {
     struct SkyboxModelTag {};
     struct AnimatingTag {};
+    struct UnitRebuildSkinTexture {};
+    struct UnitRebuildGeosets {};
 }

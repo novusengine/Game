@@ -12,6 +12,7 @@
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/Item.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
@@ -183,6 +184,7 @@ namespace ECS::Systems
         registry->emplace<Components::Name>(newEntity);
         registry->emplace<Components::Model>(newEntity);
         registry->emplace<Components::MovementInfo>(newEntity);
+        registry->emplace<Components::UnitCustomization>(newEntity);
         registry->emplace<Components::UnitEquipment>(newEntity);
         registry->emplace<Components::UnitMovementOverTime>(newEntity);
         registry->emplace<Components::UnitStatsComponent>(newEntity);
@@ -286,15 +288,6 @@ namespace ECS::Systems
         displayInfo.displayID = displayID;
         displayInfo.race = race;
         displayInfo.gender = gender;
-
-        // Mark all equipment as dirty
-        auto& unitEquipment = registry->get_or_emplace<Components::UnitEquipment>(entity);
-        for (u32 i = 0; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
-        {
-            Database::Item::ItemEquipSlot equipSlot = static_cast<Database::Item::ItemEquipSlot>(i);
-            unitEquipment.dirtyEquipmentSlots.insert(equipSlot);
-        }
-        registry->get_or_emplace<Components::UnitEquipmentDirty>(entity);
 
         return true;
     }
@@ -661,7 +654,7 @@ namespace ECS::Systems
             eventData.items.reserve(numItemsInContainer);
 
             entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
             auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
             for (u32 i = 0; i < container.numSlots; i++)
@@ -1300,11 +1293,15 @@ namespace ECS::Systems
             Network::SocketMessageEvent messageEvent;
             while (messageEvents.try_dequeue(messageEvent))
             {
-                auto* messageHeader = reinterpret_cast<Network::MessageHeader*>(messageEvent.message.buffer->GetDataPointer());
-
-                // Invoke MessageHandler here
-                if (networkState.gameMessageRouter->CallHandler(messageEvent.socketID, messageEvent.message))
-                    continue;
+                Network::MessageHeader messageHeader;
+                if (networkState.gameMessageRouter->GetMessageHeader(messageEvent.message, messageHeader))
+                {
+                    if (networkState.gameMessageRouter->HasValidHandlerForHeader(messageHeader))
+                    {
+                        if (networkState.gameMessageRouter->CallHandler(messageEvent.socketID, messageHeader, messageEvent.message))
+                            continue;
+                    }
+                }
 
                 // Failed to Call Handler, Close Socket
                 {

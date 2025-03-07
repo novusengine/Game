@@ -1,7 +1,17 @@
 #include "TextureRenderer.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/DisplayInfo.h"
+#include "Game-Lib/ECS/Components/Tags.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
+#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
+#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
 #define A_CPU
 #include "Game-Lib/Rendering/Downsampler/ffx_a.h"
 #include "Game-Lib/Rendering/Downsampler/ffx_spd.h"
@@ -32,10 +42,73 @@ void TextureRenderer::Update(f32 deltaTime)
 
     if (ImGui::Begin("TextureRenderer Debug"))
     {
-        if (_debugTexture != Renderer::TextureID::Invalid())
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
+
+        if (gameRegistry->valid(characterSingleton.moverEntity))
         {
-            u64 textureHandle = _renderer->GetImguiTextureID(_debugTexture);
-            ImGui::Image((ImTextureID)textureHandle, ImVec2(256, 256));
+            if (auto* unitCustomization = gameRegistry->try_get<ECS::Components::UnitCustomization>(characterSingleton.moverEntity))
+            {
+                if (unitCustomization->skinTextureID != Renderer::TextureID::Invalid())
+                {
+                    u64 textureHandle = _renderer->GetImguiTextureID(unitCustomization->skinTextureID);
+                    ImGui::Image((ImTextureID)textureHandle, ImVec2(512, 512));
+                }
+
+                bool isDirtyTexture = false;
+                bool isDirtyGeoset = false;
+
+                i32 skinID = unitCustomization->skinID;
+                ImGui::Text("Skin ID");
+                if (ImGui::InputInt("##Skin ID", &skinID, 1, 1))
+                {
+                    unitCustomization->skinID = skinID;
+                    isDirtyTexture = true;
+                }
+
+                i32 faceID = unitCustomization->faceID;
+                ImGui::Text("Face ID");
+                if (ImGui::InputInt("##Face ID", &faceID, 1, 1))
+                {
+                    unitCustomization->faceID = faceID;
+                    isDirtyTexture = true;
+                }
+
+                i32 hairStyleID = unitCustomization->hairStyleID;
+                ImGui::Text("Hair Style ID");
+                if (ImGui::InputInt("##Hair Style ID", &hairStyleID, 1, 1))
+                {
+                    unitCustomization->flags.hairChanged = true;
+                    unitCustomization->hairStyleID = hairStyleID;
+                    isDirtyGeoset = true;
+                }
+
+                i32 hairColorID = unitCustomization->hairColorID;
+                ImGui::Text("Hair Color ID");
+                if (ImGui::InputInt("##Hair Color ID", &hairColorID, 1, 1))
+                {
+                    unitCustomization->flags.hairChanged = true;
+                    unitCustomization->hairColorID = hairColorID;
+                }
+
+                i32 piercingsID = unitCustomization->piercingsID;
+                ImGui::Text("Piercing ID");
+                if (ImGui::InputInt("##Piercing ID", &piercingsID, 1, 1))
+                {
+                    unitCustomization->piercingsID = piercingsID;
+                    isDirtyGeoset = true;
+                }
+
+                if (isDirtyTexture || unitCustomization->flags.hairChanged)
+                {
+                    gameRegistry->emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(characterSingleton.moverEntity);
+                }
+
+                if (isDirtyGeoset)
+                {
+                    gameRegistry->emplace_or_replace<ECS::Components::UnitRebuildGeosets>(characterSingleton.moverEntity);
+                }
+            }
         }
     }
     ImGui::End();
@@ -89,13 +162,13 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
         });
 }
 
-Renderer::TextureID TextureRenderer::MakeRenderableCopy(Renderer::TextureID texture)
+Renderer::TextureID TextureRenderer::MakeRenderableCopy(Renderer::TextureID texture, u32 width, u32 height)
 {
     Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(texture);
 
     Renderer::DataTextureDesc desc;
-    desc.width = textureBaseDesc.width;
-    desc.height = textureBaseDesc.height;
+    desc.width = width > 0 ? width : textureBaseDesc.width;
+    desc.height = height > 0 ? height : textureBaseDesc.height;
     desc.layers = textureBaseDesc.layers;
     desc.mipLevels = textureBaseDesc.mipLevels;
 
@@ -139,9 +212,21 @@ void TextureRenderer::CreatePermanentResources()
     });
     _mipResolveDescriptorSet.Bind("spdGlobalAtomic", _mipAtomicBuffer);
 
+    // Blit sampler
+    Renderer::SamplerDesc blitSamplerDesc;
+    blitSamplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+    blitSamplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+    blitSamplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
+    blitSamplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
+    blitSamplerDesc.minLOD = 0.f;
+    blitSamplerDesc.maxLOD = 16.f;
+
+    _blitSampler = _renderer->CreateSampler(blitSamplerDesc);
+    _descriptorSet.Bind("_sampler"_h, _blitSampler);
+
     // Mip resolve sampler
     Renderer::SamplerDesc mipDownSamplerDesc;
-    mipDownSamplerDesc.filter = Renderer::SamplerFilter::MINIMUM_MIN_MAG_MIP_LINEAR;
+    mipDownSamplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
     mipDownSamplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
     mipDownSamplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
     mipDownSamplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -160,22 +245,6 @@ void TextureRenderer::CreatePermanentResources()
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
     _mipDownsamplerPipeline = _renderer->CreatePipeline(pipelineDesc);
-
-    // DEBUG
-    // Load a texture
-    Renderer::TextureDesc textureDesc;
-    textureDesc.path = "Data/Texture/character/human/female/humanfemaleskin00_04.dds";
-
-    Renderer::TextureID baseTexture = _renderer->LoadTexture(textureDesc);
-
-    _debugTexture = MakeRenderableCopy(baseTexture);
-
-    // Load a texture to layer on top
-    Renderer::TextureDesc overlayDesc;
-    overlayDesc.path = "Data/Texture/character/human/female/humanfemalenakedtorsoskin00_09.dds";
-    Renderer::TextureID overlayTexture = _renderer->LoadTexture(overlayDesc);
-
-    RequestRenderTextureToTexture(_debugTexture, vec2(0.25f, 0.25f), vec2(0.75f, 0.75f), overlayTexture, vec2(0.25f, 0.25f), vec2(0.75f, 0.75f));
 }
 
 void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DescriptorSetResource& descriptorSet, Renderer::TextureID dst, const vec2& dstRectMin, const vec2& dstRectMax, Renderer::TextureID src, const vec2& srcRectMin, const vec2& srcRectMax)
@@ -307,10 +376,8 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Blitting/blit.ps.hlsl";
+    pixelShaderDesc.path = "Blitting/blitSample.ps.hlsl";
 
-    std::string textureTypeName = GetTextureTypeName(format);
-    pixelShaderDesc.AddPermutationField("TEX_TYPE", textureTypeName);
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
@@ -322,6 +389,14 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
 
     // Render targets
     pipelineDesc.states.renderTargetFormats[0] = format;
+
+    // Blending
+    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::MAX;
 
     // Set pipeline
     return _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline

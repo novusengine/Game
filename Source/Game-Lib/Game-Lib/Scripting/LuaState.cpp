@@ -1,6 +1,4 @@
 #include "LuaState.h"
-#include "Handlers/GameEventHandler.h"
-#include "Handlers/GlobalHandler.h"
 
 #include <Base/Util/DebugHandler.h>
 

@@ -9,10 +9,21 @@
 
 #include <entt/fwd.hpp>
 
-namespace ECS::Components
+namespace ECS
 {
-    struct AnimationData;
-    struct Model;
+    namespace Components
+    {
+        struct AnimationData;
+        struct DisplayInfo;
+        struct Model;
+        struct UnitCustomization;
+    }
+
+    namespace Singletons
+    {
+        struct ClientDBSingleton;
+        struct UnitCustomizationSingleton;
+    }
 }
 
 namespace Model
@@ -37,10 +48,11 @@ namespace Util::Unit
     bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
     bool RemoveItemFromAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment);
 
-    void EnableGeometryGroup(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model, u32 groupID);
-    void DisableGeometryGroups(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model, u32 startGroupID, u32 endGroupID = 0);
-    void DisableAllGeometryGroups(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model);
-    void RefreshGeometryGroups(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model);
+    void EnableGeometryGroup(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model, u32 groupID);
+    void DisableGeometryGroups(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model, u32 startGroupID, u32 endGroupID = 0);
+    void DisableAllGeometryGroups(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model);
+    void RefreshGeometryGroups(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::Model& model);
+    void RefreshSkinTexture(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::DisplayInfo& displayInfo, ::ECS::Components::UnitCustomization& unitCustomization, const ::ECS::Components::Model& model);
 
     ::Animation::Defines::Type GetIdleAnimation(bool isSwimming, bool stealthed);
     ::Animation::Defines::Type GetMoveForwardAnimation(f32 speed, bool isSwimming, bool stealthed);

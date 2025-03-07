@@ -32,7 +32,7 @@ public:
 
     // Takes a textureID, creates a new renderable texture and queues up a copy operation so it will contain the same data
     // TextureID is immediately useable
-    Renderer::TextureID MakeRenderableCopy(Renderer::TextureID texture);
+    Renderer::TextureID MakeRenderableCopy(Renderer::TextureID texture, u32 width = 0, u32 height = 0);
 
     // Requests a render operation draw a region of a texture to a region of another texture
     // The region is specified in UV
@@ -72,6 +72,7 @@ private:
 
     Renderer::ComputePipelineID _mipDownsamplerPipeline;
     Renderer::BufferID _mipAtomicBuffer;
+    Renderer::SamplerID _blitSampler;
     Renderer::SamplerID _mipResolveSampler;
     
     Renderer::DescriptorSet _descriptorSet;
@@ -81,6 +82,4 @@ private:
     std::vector<RenderTextureToTextureRequest> _renderTextureToTextureWork;
 
     robin_hood::unordered_set<Renderer::TextureID::type> _texturesNeedingMipResolve;
-
-    Renderer::TextureID _debugTexture;
 };

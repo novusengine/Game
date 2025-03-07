@@ -129,6 +129,9 @@ public:
         bool hasTemporarilyTransparentDrawCalls = false;
         bool hasSkyboxDrawCalls = false;
 
+        std::vector<u64> skinTextureUnits;
+        std::vector<u64> hairTextureUnits;
+
         robin_hood::unordered_map<u32, u32> opaqueDrawIDToTextureDataID;
         robin_hood::unordered_map<u32, u32> transparentDrawIDToTextureDataID;
 
@@ -207,6 +210,20 @@ public:
         u32 groupIDStart = 0;
         u32 groupIDEnd = 0;
         bool enable = false;
+    };
+
+    struct ChangeSkinTextureRequest
+    {
+    public:
+        u32 instanceID = 0;
+        Renderer::TextureID textureID;
+    };
+
+    struct ChangeHairTextureRequest
+    {
+    public:
+        u32 instanceID = 0;
+        Renderer::TextureID textureID;
     };
 
     struct ChangeVisibilityRequest
@@ -296,9 +313,11 @@ public:
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
     void RemoveInstance(u32 instanceID);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
-    void ReplaceTextureUnits(u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked);
+    void ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked);
 
     void RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable);
+    void RequestChangeSkinTexture(u32 instanceID, Renderer::TextureID textureID);
+    void RequestChangeHairTexture(u32 instanceID, Renderer::TextureID textureID);
     void RequestChangeVisibility(u32 instanceID, bool visible);
     void RequestChangeTransparency(u32 instanceID, bool transparent, f32 opacity);
     void RequestChangeSkybox(u32 instanceID, bool skybox);
@@ -423,6 +442,12 @@ private:
 
     moodycamel::ConcurrentQueue<ChangeGroupRequest> _changeGroupRequests;
     std::vector<ChangeGroupRequest> _changeGroupWork;
+
+    moodycamel::ConcurrentQueue<ChangeSkinTextureRequest> _changeSkinTextureRequests;
+    std::vector<ChangeSkinTextureRequest> _changeSkinTextureWork;
+
+    moodycamel::ConcurrentQueue<ChangeHairTextureRequest> _changeHairTextureRequests;
+    std::vector<ChangeHairTextureRequest> _changeHairTextureWork;
 
     moodycamel::ConcurrentQueue<ChangeVisibilityRequest> _changeVisibilityRequests;
     std::vector<ChangeVisibilityRequest> _changeVisibilityWork;

@@ -13,7 +13,7 @@
 
 namespace ECS
 {
-    namespace Singletons::Database
+    namespace Singletons
     {
         struct CameraSaveSingleton
         {

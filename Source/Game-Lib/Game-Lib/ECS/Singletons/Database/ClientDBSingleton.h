@@ -33,6 +33,7 @@ enum class ClientDBHash : u32
     CreatureDisplayInfoExtra            = GetHash("CreatureDisplayInfoExtra"_h),
     CreatureModelData                   = GetHash("CreatureModelData"_h),
     Item                                = GetHash("Item"_h),
+    ItemStatTypes                       = GetHash("ItemStatTypes"_h),
     ItemStatTemplate                    = GetHash("ItemStatTemplate"_h),
     ItemArmorTemplate                   = GetHash("ItemArmorTemplate"_h),
     ItemWeaponTemplate                  = GetHash("ItemWeaponTemplate"_h),
@@ -41,6 +42,12 @@ enum class ClientDBHash : u32
     ItemDisplayInfo                     = GetHash("ItemDisplayInfo"_h),
     ItemDisplayMaterialResources        = GetHash("ItemDisplayInfoMaterialRes"_h),
     ItemDisplayModelMaterialResources   = GetHash("ItemDisplayInfoModelMatRes"_h),
+    UnitRace                            = GetHash("UnitRace"_h),
+    UnitTextureSection                  = GetHash("UnitTextureSection"_h),
+    UnitCustomizationOption             = GetHash("UnitCustomizationOption"_h),
+    UnitCustomizationGeoset             = GetHash("UnitCustomizationGeoset"_h),
+    UnitCustomizationMaterial           = GetHash("UnitCustomizationMaterial"_h),
+    UnitRaceCustomizationChoice         = GetHash("UnitRaceCustomizationChoice"_h),
     Spell                               = GetHash("Spell"_h),
     Light                               = GetHash("Light"_h),
     LightData                           = GetHash("LightData"_h),
@@ -51,7 +58,7 @@ enum class ClientDBHash : u32
 
 namespace ECS
 {
-    namespace Singletons::Database
+    namespace Singletons
     {
         struct ClientDBSingleton
         {

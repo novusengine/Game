@@ -31,7 +31,7 @@ namespace Scripting::Database
             i32 spellID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::Spell))
                 return 0;
 

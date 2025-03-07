@@ -26,7 +26,6 @@
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
-using namespace ECS::Singletons::Database;
 
 namespace Editor
 {
@@ -157,10 +156,10 @@ namespace Editor
                     }
 
 
-                    bool hasSelectedCamera = ECS::Util::Database::Camera::HasCameraSave(currentSelectedSaveNameHash);
+                    bool hasSelectedCamera = ECSUtil::Camera::HasCameraSave(currentSelectedSaveNameHash);
                     if (hasSelectedCamera)
                     {
-                        u32 id = ECS::Util::Database::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
+                        u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
                         const auto& cameraSave = cameraSaveStorage->Get<::Database::Shared::CameraSave>(id);
 
                         const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
@@ -175,13 +174,13 @@ namespace Editor
                     {
                         if (hasSelectedCamera)
                         {
-                            u32 id = ECS::Util::Database::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
+                            u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
 
                             const auto& cameraSave = cameraSaveStorage->Get<::Database::Shared::CameraSave>(id);
                             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                             const std::string& cameraSaveCode = cameraSaveStorage->GetString(cameraSave.code);
 
-                            if (ECS::Util::Database::Camera::LoadSaveLocationFromBase64(cameraSaveCode))
+                            if (ECSUtil::Camera::LoadSaveLocationFromBase64(cameraSaveCode))
                             {
                                 NC_LOG_INFO("[CameraInfo] Loaded Camera Save {0}", cameraSaveName);
                             }
@@ -198,7 +197,7 @@ namespace Editor
                     {
                         if (hasSelectedCamera)
                         {
-                            ECS::Util::Database::Camera::RemoveCameraSave(currentSelectedSaveNameHash);
+                            ECSUtil::Camera::RemoveCameraSave(currentSelectedSaveNameHash);
                         }
                     }
 
@@ -210,7 +209,7 @@ namespace Editor
 
                     if (ImGui::Button("Add Location"))
                     {
-                        if (ECS::Util::Database::Camera::AddCameraSave(currentSaveName))
+                        if (ECSUtil::Camera::AddCameraSave(currentSaveName))
                         {
                             currentSaveName.clear();
                         }

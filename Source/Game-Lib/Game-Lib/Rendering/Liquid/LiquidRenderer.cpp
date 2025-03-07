@@ -124,7 +124,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     entt::registry::context& ctx = registry->ctx();
-    auto& clientDBSingleton = ctx.get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
     auto* liquidTypes = clientDBSingleton.Get(ClientDBHash::LiquidType);
 
     bool isLavaOrSlime = false;
@@ -547,7 +547,7 @@ void LiquidRenderer::CreatePermanentResources()
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     entt::registry::context& ctx = registry->ctx();
-    auto& clientDBSingleton = ctx.get<ECS::Singletons::Database::ClientDBSingleton>();
+    auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
     auto* liquidTypes = clientDBSingleton.Get(ClientDBHash::LiquidType);
 
     u32 numLiquidTypes = liquidTypes->GetNumRows();

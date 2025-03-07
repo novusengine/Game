@@ -10,7 +10,7 @@
 class JoltStreamIn : public JPH::StreamIn
 {
 public:
-    JoltStreamIn(std::shared_ptr<Bytebuffer>& buffer);
+    JoltStreamIn(Bytebuffer* buffer);
     ~JoltStreamIn();
 
     virtual void ReadBytes(void* outData, size_t inNumBytes) override;
@@ -19,13 +19,13 @@ public:
 
 private:
     bool _isEOF = false;
-    std::shared_ptr<Bytebuffer> _buffer = nullptr;
+    Bytebuffer* _buffer = nullptr;
 };
 
 class JoltStreamOut : public JPH::StreamOut
 {
 public:
-    JoltStreamOut(std::shared_ptr<Bytebuffer>& buffer);
+    JoltStreamOut(Bytebuffer* buffer);
     ~JoltStreamOut();
 
     virtual void WriteBytes(const void* inData, size_t inNumBytes) override;
@@ -33,5 +33,5 @@ public:
 
 private:
     bool _didFail = false;
-    std::shared_ptr<Bytebuffer> _buffer = nullptr;
+    Bytebuffer* _buffer = nullptr;
 };

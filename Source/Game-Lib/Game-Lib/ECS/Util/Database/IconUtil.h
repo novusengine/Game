@@ -1,10 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-namespace ECS
+namespace ECSUtil::Icon
 {
-    namespace Util::Database::Icon
-    {
-        bool Refresh();
-    }
+    bool Refresh();
 }

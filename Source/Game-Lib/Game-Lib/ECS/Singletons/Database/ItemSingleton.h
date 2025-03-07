@@ -10,7 +10,7 @@
 
 namespace ECS
 {
-    namespace Singletons::Database
+    namespace Singletons
     {
         struct ItemSingleton
         {
@@ -40,6 +40,12 @@ namespace ECS
                 std::array<u32, NumArraySlots> sideToModelHash = { };
             };
 
+            struct ItemDisplayInfoComponentSectionData
+            {
+            public:
+                robin_hood::unordered_map<u8, u32> componentSectionToTextureHash;
+            };
+
         public:
             ItemSingleton() {}
 
@@ -54,6 +60,9 @@ namespace ECS
 
             robin_hood::unordered_map<u32, HelmModelMapping> helmModelResourcesIDToModelMapping;
             robin_hood::unordered_map<u32, ShoulderModelMapping> shoulderModelResourcesIDToModelMapping;
+
+            robin_hood::unordered_map<u64, u32> itemDisplayInfoMaterialResourcesKeyToID;
+            robin_hood::unordered_map<u32, ItemDisplayInfoComponentSectionData> itemDisplayInfoToComponentSectionData;
         };
     }
 }

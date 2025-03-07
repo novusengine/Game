@@ -17,6 +17,7 @@ namespace Database::Shared
         ClientDB::StringRef name;
         ClientDB::StringRef texture;
     };
+
     struct Icon
     {
     public:

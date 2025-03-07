@@ -51,7 +51,7 @@ namespace Scripting::Database
             i32 itemID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::Item))
                 return 0;
 
@@ -96,7 +96,7 @@ namespace Scripting::Database
             i32 templateID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::ItemStatTemplate))
                 return 0;
 
@@ -136,7 +136,7 @@ namespace Scripting::Database
             i32 templateID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::ItemArmorTemplate))
                 return 0;
 
@@ -162,7 +162,7 @@ namespace Scripting::Database
             i32 templateID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::ItemWeaponTemplate))
                 return 0;
 
@@ -190,7 +190,7 @@ namespace Scripting::Database
             i32 templateID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::ItemShieldTemplate))
                 return 0;
 
@@ -216,7 +216,7 @@ namespace Scripting::Database
             i32 itemDisplayInfoID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::ItemDisplayInfo))
                 return 0;
 
@@ -243,12 +243,12 @@ namespace Scripting::Database
                 ctx.SetTable("MaterialResourcesID2", itemDisplayInfo.materialResourcesID[1]);
                 ctx.SetTable("ModelType1", itemDisplayInfo.modelType[0]);
                 ctx.SetTable("ModelType2", itemDisplayInfo.modelType[1]);
-                ctx.SetTable("GoesetGroup1", itemDisplayInfo.goesetGroup[0]);
-                ctx.SetTable("GoesetGroup2", itemDisplayInfo.goesetGroup[1]);
-                ctx.SetTable("GoesetGroup3", itemDisplayInfo.goesetGroup[2]);
-                ctx.SetTable("GoesetGroup4", itemDisplayInfo.goesetGroup[3]);
-                ctx.SetTable("GoesetGroup5", itemDisplayInfo.goesetGroup[4]);
-                ctx.SetTable("GoesetGroup6", itemDisplayInfo.goesetGroup[5]);
+                ctx.SetTable("GeosetGroup1", itemDisplayInfo.geosetGroup[0]);
+                ctx.SetTable("GeosetGroup2", itemDisplayInfo.geosetGroup[1]);
+                ctx.SetTable("GeosetGroup3", itemDisplayInfo.geosetGroup[2]);
+                ctx.SetTable("GeosetGroup4", itemDisplayInfo.geosetGroup[3]);
+                ctx.SetTable("GeosetGroup5", itemDisplayInfo.geosetGroup[4]);
+                ctx.SetTable("GeosetGroup6", itemDisplayInfo.geosetGroup[5]);
                 ctx.SetTable("GeosetAttachmentGroup1", itemDisplayInfo.geosetAttachmentGroup[0]);
                 ctx.SetTable("GeosetAttachmentGroup2", itemDisplayInfo.geosetAttachmentGroup[1]);
                 ctx.SetTable("GeosetAttachmentGroup3", itemDisplayInfo.geosetAttachmentGroup[2]);
@@ -269,7 +269,7 @@ namespace Scripting::Database
             i32 itemID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::Item) || !clientDBSingleton.Has(ClientDBHash::ItemEffects))
                 return 0;
 
@@ -277,10 +277,10 @@ namespace Scripting::Database
             if (!db->Has(itemID))
                 return 0;
 
-            auto& itemSingleton = registry->ctx().get<ECS::Singletons::Database::ItemSingleton>();
+            auto& itemSingleton = registry->ctx().get<ECS::Singletons::ItemSingleton>();
 
             u32 effectCount = 0;
-            const u32* effectIDs = ECS::Util::Database::Item::GetItemEffectIDs(itemSingleton, itemID, effectCount);
+            const u32* effectIDs = ECSUtil::Item::GetItemEffectIDs(itemSingleton, itemID, effectCount);
 
             auto* itemEffectsStorage = clientDBSingleton.Get(ClientDBHash::ItemEffects);
             ctx.CreateTableAndPopulate([&ctx, &itemEffectsStorage, itemID, effectIDs, effectCount]()
@@ -312,7 +312,7 @@ namespace Scripting::Database
             i32 iconID = ctx.Get(0);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
-            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::Database::ClientDBSingleton>();
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
             if (!clientDBSingleton.Has(ClientDBHash::Icon))
                 return 0;
 

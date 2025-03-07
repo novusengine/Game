@@ -23,6 +23,8 @@
 
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+
 #include <map>
 #include <numeric>
 
@@ -294,12 +296,14 @@ namespace ECS::Systems::UI
         keybindGroup->AddKeyboardInputValidator("KeyboardUIInputValidator", [&registry](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
         {
             auto& ctx = registry.ctx();
-            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+            auto* uiSingleton = ctx.find<Singletons::UISingleton>();
+            if (!uiSingleton)
+                return false;
 
-            if (uiSingleton.focusedEntity != entt::null)
+            if (uiSingleton->focusedEntity != entt::null)
             {
-                auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton.focusedEntity);
-                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.focusedEntity);
+                auto* widget = registry.try_get<Components::UI::Widget>(uiSingleton->focusedEntity);
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton->focusedEntity);
                 if (!widget || !eventInputInfo)
                 {
                     return false;
@@ -398,71 +402,76 @@ namespace ECS::Systems::UI
         }*/
 
         // Debug draw all hovered entities
+        bool imGuiWantsMouseInput = ImGui::GetIO().WantCaptureMouse;
+
         bool foundHoverEvent = false;
-        for (auto& pair : uiSingleton.allHoveredEntities)
+        if (!imGuiWantsMouseInput)
         {
-            entt::entity entity = pair.second;
-
-            auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(entity);
-
-            if (!eventInputInfo)
+            for (auto& pair : uiSingleton.allHoveredEntities)
             {
-                continue;
-            }
+                entt::entity entity = pair.second;
 
-            if (uiSingleton.hoveredEntity == entity)
-            {
-                // Same entity is being hovered
-                if (eventInputInfo->onHoverHeldEvent != -1)
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(entity);
+
+                if (!eventInputInfo)
                 {
-                    auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                    ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverHeldEvent, Scripting::UI::UIInputEvent::HoverHeld, widget.scriptWidget);
+                    continue;
                 }
 
+                if (uiSingleton.hoveredEntity == entity)
+                {
+                    // Same entity is being hovered
+                    if (eventInputInfo->onHoverHeldEvent != -1)
+                    {
+                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                        ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverHeldEvent, Scripting::UI::UIInputEvent::HoverHeld, widget.scriptWidget);
+                    }
+
+                    foundHoverEvent = true;
+                    break;
+                }
+
+                if (eventInputInfo->onHoverTemplateHash == 0 && eventInputInfo->onHoverBeginEvent == -1)
+                {
+                    continue;
+                }
+
+                if (uiSingleton.hoveredEntity != entt::null)
+                {
+                    auto* oldEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.hoveredEntity);
+
+                    if (oldEventInputInfo)
+                    {
+                        oldEventInputInfo->isHovered = false;
+
+                        u32 hoverTemplate = oldEventInputInfo->onHoverTemplateHash;
+                        if (hoverTemplate != 0)
+                            ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
+
+                        if (oldEventInputInfo->onHoverEndEvent != -1)
+                        {
+                            auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
+                            ECS::Util::UI::CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvent::HoverEnd, widget.scriptWidget);
+                        }
+                    }
+                }
+
+                eventInputInfo->isHovered = true;
+
+                u32 hoverTemplate = eventInputInfo->onHoverTemplateHash;
+                if (hoverTemplate != 0)
+                    ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
+
+                if (eventInputInfo->onHoverBeginEvent != -1)
+                {
+                    auto& widget = registry.get<Components::UI::Widget>(entity);
+                    ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvent::HoverBegin, widget.scriptWidget);
+                }
+
+                uiSingleton.hoveredEntity = entity;
                 foundHoverEvent = true;
                 break;
             }
-
-            if (eventInputInfo->onHoverTemplateHash == 0 && eventInputInfo->onHoverBeginEvent == -1)
-            {
-                continue;
-            }
-                
-            if (uiSingleton.hoveredEntity != entt::null)
-            {
-                auto* oldEventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.hoveredEntity);
-
-                if (oldEventInputInfo)
-                {
-                    oldEventInputInfo->isHovered = false;
-
-                    u32 hoverTemplate = oldEventInputInfo->onHoverTemplateHash;
-                    if (hoverTemplate != 0)
-                        ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.hoveredEntity, *oldEventInputInfo);
-
-                    if (oldEventInputInfo->onHoverEndEvent != -1)
-                    {
-                        auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
-                        ECS::Util::UI::CallLuaEvent(oldEventInputInfo->onHoverEndEvent, Scripting::UI::UIInputEvent::HoverEnd, widget.scriptWidget);
-                    }
-                }
-            }
-
-            eventInputInfo->isHovered = true;
-
-            u32 hoverTemplate = eventInputInfo->onHoverTemplateHash;
-            if (hoverTemplate != 0)
-                ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
-
-            if (eventInputInfo->onHoverBeginEvent != -1)
-            {
-                auto& widget = registry.get<Components::UI::Widget>(entity);
-                ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvent::HoverBegin, widget.scriptWidget);
-            }
-
-            uiSingleton.hoveredEntity = entity;
-            foundHoverEvent = true;
-            break;
         }
 
         if (!foundHoverEvent)

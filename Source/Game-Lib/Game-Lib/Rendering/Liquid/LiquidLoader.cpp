@@ -102,37 +102,38 @@ vec2 GetCellPosition(u32 chunkID, u32 cellID)
     return vec2(cellWorldPos.x, -cellWorldPos.y);
 }
 
-void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, const Map::LiquidInfo* liquidInfo)
+void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, std::shared_ptr<Bytebuffer>& buffer, const Map::Chunk::LiquidHeader& liquidHeader)
 {
     if (!CVAR_LiquidLoaderEnabled.Get())
         return;
 
-    if (liquidInfo->headers.size() == 0)
+    if (liquidHeader.numHeaders == 0)
         return;
 
     LoadRequestInternal request;
     request.chunkX = chunkX;
     request.chunkY = chunkY;
-    request.liquidInfo = liquidInfo;
+    request.liquidHeader = liquidHeader;
+    request.buffer = buffer;
 
     u32 instanceIndex = 0;
     u32 numVertices = 0;
     u32 numIndices = 0;
 
-    for (u32 i = 0; i < liquidInfo->headers.size(); i++)
+    for (u32 i = 0; i < liquidHeader.numHeaders; i++)
     {
-        const Map::CellLiquidHeader& header = liquidInfo->headers[i];
-        u32 numInstances = (header.packedData & 0x7F);
+        const Map::CellLiquidHeader* header = liquidHeader.GetHeader(buffer, i);
+        u32 numInstances = (header->packedData & 0x7F);
 
         u32 start = instanceIndex;
         u32 end = instanceIndex + numInstances;
 
         for (u32 j = start; j < end; j++)
         {
-            const Map::CellLiquidInstance& liquidInstance = liquidInfo->instances[j];
+            const Map::CellLiquidInstance* liquidInstance = liquidHeader.GetInstance(buffer, j);
 
-            u8 height = liquidInstance.packedSize >> 4;
-            u8 width = liquidInstance.packedSize & 0xF;
+            u8 height = liquidInstance->packedSize >> 4;
+            u8 width = liquidInstance->packedSize & 0xF;
 
             if (width == 0 || height == 0)
                 continue;
@@ -156,22 +157,21 @@ void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, const Map::LiquidInfo* 
 
 void LiquidLoader::LoadRequest(LoadRequestInternal& request, std::atomic<u32>& instanceOffset, std::atomic<u32>& vertexOffset, std::atomic<u32>& indexOffset)
 {
-    const Map::LiquidInfo* liquidInfo = request.liquidInfo;
     u32 chunkID = (request.chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE) + request.chunkX;
 
-    u32 numTotalInstances = static_cast<u32>(liquidInfo->instances.size());
+    u32 numTotalInstances = static_cast<u32>(request.numInstances);
     if (numTotalInstances == 0)
         return;
 
     u32 instanceStartIndex = instanceOffset.fetch_add(numTotalInstances);
 
     u32 instanceIndex = 0;
-    for (u32 i = 0; i < liquidInfo->headers.size(); i++)
+    for (u32 i = 0; i < request.liquidHeader.numHeaders; i++)
     {
-        const Map::CellLiquidHeader& header = liquidInfo->headers[i];
+        const Map::CellLiquidHeader* header = request.liquidHeader.GetHeader(request.buffer, i);
 
         u16 cellID = i;
-        u32 numInstances = (header.packedData & 0x7F);
+        u32 numInstances = (header->packedData & 0x7F);
 
         u32 start = instanceIndex;
         u32 end = instanceIndex + numInstances;
@@ -179,40 +179,40 @@ void LiquidLoader::LoadRequest(LoadRequestInternal& request, std::atomic<u32>& i
 
         for (u32 j = start; j < end; j++)
         {
-            const Map::CellLiquidInstance& liquidInstance = liquidInfo->instances[j];
+            const Map::CellLiquidInstance* liquidInstance = request.liquidHeader.GetInstance(request.buffer, j);
 
-            u8 posX = liquidInstance.packedOffset & 0xF;
-            u8 posY = liquidInstance.packedOffset >> 4;
+            u8 posX = liquidInstance->packedOffset & 0xF;
+            u8 posY = liquidInstance->packedOffset >> 4;
 
-            u8 width = liquidInstance.packedSize & 0xF;
-            u8 height = liquidInstance.packedSize >> 4;
+            u8 width = liquidInstance->packedSize & 0xF;
+            u8 height = liquidInstance->packedSize >> 4;
 
             u32 vertexCount = (width + 1) * (height + 1);
             u32 bitMapBytes = (width * height + 7) / 8;
 
-            bool hasVertexData = liquidInstance.packedData >> 7;
-            bool hasBitmapData = (liquidInstance.packedData >> 6) & 0x1;
-            u16 liquidVertexFormat = liquidInstance.packedData & 0x3F;
+            bool hasVertexData = liquidInstance->packedData >> 7;
+            bool hasBitmapData = (liquidInstance->packedData >> 6) & 0x1;
+            u16 liquidVertexFormat = liquidInstance->packedData & 0x3F;
 
             const f32* heightMap = nullptr;
             const u8* bitMap = nullptr;
 
-            size_t vertexDataSize = liquidInfo->vertexData.size();
+            size_t vertexDataSize = request.liquidHeader.numVertexBytes;
             if (vertexDataSize > 0 && hasVertexData)
             {
-                heightMap = reinterpret_cast<const f32*>(&liquidInfo->vertexData[liquidInstance.vertexDataOffset]);
+                heightMap = reinterpret_cast<const f32*>(request.liquidHeader.GetVertexBytes(request.buffer, liquidInstance->vertexDataOffset));
             }
 
-            size_t bitmapDataSize = liquidInfo->bitmapData.size();
+            size_t bitmapDataSize = request.liquidHeader.numBitmapBytes;
             if (bitmapDataSize > 0 && hasBitmapData)
             {
-                bitMap = &liquidInfo->bitmapData[liquidInstance.bitmapDataOffset];
+                bitMap = request.liquidHeader.GetBitmapBytes(request.buffer, liquidInstance->bitmapDataOffset);
             }
 
             LiquidRenderer::LoadDesc desc;
             desc.chunkID = chunkID;
             desc.cellID = cellID;
-            desc.typeID = liquidInstance.liquidTypeID;
+            desc.typeID = liquidInstance->liquidTypeID;
 
             desc.posX = posX;
             desc.posY = posY;
@@ -235,7 +235,7 @@ void LiquidLoader::LoadRequest(LoadRequestInternal& request, std::atomic<u32>& i
 
             desc.cellPos = GetCellPosition(chunkID, cellID);
 
-            desc.defaultHeight = liquidInstance.height;
+            desc.defaultHeight = liquidInstance->height;
             desc.heightMap = heightMap;
             desc.bitMap = bitMap;
 

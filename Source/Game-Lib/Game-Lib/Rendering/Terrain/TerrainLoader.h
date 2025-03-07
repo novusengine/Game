@@ -55,6 +55,13 @@ private:
         std::shared_ptr<Bytebuffer> data = nullptr;
     };
 
+    struct ChunkInfo
+    {
+    public:
+        Map::Chunk* chunk = nullptr;
+        std::shared_ptr<Bytebuffer> data = nullptr;
+    };
+
 public:
     TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader);
     
@@ -87,7 +94,7 @@ private:
 
     robin_hood::unordered_map<u32, u32> _chunkIDToLoadedID;
     robin_hood::unordered_map<u32, u32> _chunkIDToBodyID;
-    robin_hood::unordered_map<u32, Map::Chunk*> _chunkIDToChunkPtr;
+    robin_hood::unordered_map<u32, ChunkInfo> _chunkIDToChunkInfo;
 
     std::mutex _chunkLoadingMutex;
 };

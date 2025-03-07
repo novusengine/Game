@@ -3,6 +3,8 @@
 
 #include <Base/Types.h>
 
+#include <robinhood/robinhood.h>
+
 #include <vector>
 
 namespace enki
@@ -13,7 +15,6 @@ namespace enki
 namespace Scripting
 {
     class GenericSystem;
-    class GameEventHandler;
 
     struct LuaBytecodeEntry
     {
@@ -69,7 +70,6 @@ namespace Scripting
         friend LuaHandlerBase;
         friend LuaSystemBase;
         friend GenericSystem;
-        friend GameEventHandler;
 
         void Prepare();
         bool LoadScripts();

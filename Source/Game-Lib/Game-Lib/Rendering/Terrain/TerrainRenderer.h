@@ -49,8 +49,11 @@ public:
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     void Clear();
-    void Reserve(u32 numChunks, TerrainReserveOffsets& reserveOffsets);
-    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataIndex, u32 cellDataStartIndex, u32 vertexDataStartIndex);
+    void Reserve(u32 numChunks);
+    void AllocateChunks(u32 numChunks, TerrainReserveOffsets& reserveOffsets);
+
+    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
+    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
 
     Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);

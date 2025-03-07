@@ -10,6 +10,7 @@
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
@@ -707,8 +708,8 @@ namespace ECS::Systems
 
             auto& displayInfo = registry.get_or_emplace<Components::DisplayInfo>(characterSingleton.moverEntity);
             displayInfo.displayID = 50;
-            displayInfo.race = GameDefine::UnitRace::Human;
-            displayInfo.gender = GameDefine::Gender::Female;
+
+            auto& unitCustomization = registry.get_or_emplace<Components::UnitCustomization>(characterSingleton.moverEntity);
 
             auto& unitStatsComponent = registry.get_or_emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
             unitStatsComponent.currentHealth = 50.0f;
@@ -718,17 +719,6 @@ namespace ECS::Systems
 
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
             modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, ClientDB::Definitions::DisplayInfoType::Creature, 50);
-
-            ::Util::Unit::DisableAllGeometryGroups(registry, characterSingleton.moverEntity, moverModel);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 1);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 101);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 201);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 301);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 401);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 501);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 702);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 1301);
-            ::Util::Unit::EnableGeometryGroup(registry, characterSingleton.moverEntity, moverModel, 1501);
         }
 
         f32 width = 0.4166f;
@@ -761,7 +751,10 @@ namespace ECS::Systems
         JPH::CharacterVirtualSettings characterSettings;
         characterSettings.mShape = shapeResult.Get();
         characterSettings.mBackFaceMode = JPH::EBackFaceMode::IgnoreBackFaces;
+        characterSettings.mPredictiveContactDistance = 0.2f;
+        characterSettings.mPenetrationRecoverySpeed = 1.0f;
         characterSettings.mMaxSlopeAngle = MaxWallClimbAngle;
+        characterSettings.mEnhancedInternalEdgeRemoval = false;
 
         if (characterSingleton.character)
             delete characterSingleton.character;
@@ -778,7 +771,6 @@ namespace ECS::Systems
         }
 
         characterSingleton.character->SetMass(1000000.0f);
-        characterSingleton.character->SetPenetrationRecoverySpeed(0.5f);
         characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
         characterSingleton.character->SetPosition(newPosition);
 
