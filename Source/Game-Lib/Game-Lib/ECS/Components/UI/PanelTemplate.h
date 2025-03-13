@@ -24,8 +24,8 @@ namespace ECS::Components::UI
 
         std::string background;
         std::string foreground;
-        Color color;
-        f32 cornerRadius;
+        Color color = Color::White;
+        f32 cornerRadius = 0.0f;
         ::UI::Box texCoords;
         ::UI::Box nineSliceCoords;
 

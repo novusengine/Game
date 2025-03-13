@@ -258,6 +258,67 @@ namespace ECS::Systems::UI
             return false;
         });
 
+        keybindGroup->AddMouseScrollCallback([&registry, inputManager](f32 xPos, f32 yPos)
+        {
+            auto& ctx = registry.ctx();
+            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
+
+            vec2 mousePos = inputManager->GetMousePosition();
+
+            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+            const vec2& renderSize = renderer->GetRenderSize();
+            mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
+
+            mousePos = mousePos / renderSize;
+            mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+
+            for (auto& pair : uiSingleton.allHoveredEntities)
+            {
+                entt::entity entity = pair.second;
+
+                auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(entity);
+
+                if (!eventInputInfo)
+                {
+                    continue;
+                }
+
+                auto& widget = registry.get<Components::UI::Widget>(entity);
+
+                i32 scrollEvent = eventInputInfo->onMouseScrollEvent;
+
+                bool hasInputEvent = scrollEvent != -1;
+
+                i32 focusBeginEvent = eventInputInfo->onFocusBeginEvent;
+                i32 focusEndEvent = eventInputInfo->onFocusEndEvent;
+                i32 focusHeldEvent = eventInputInfo->onFocusHeldEvent;
+                bool isFocusable = widget.IsFocusable();
+                bool hasFocusEvent = (focusBeginEvent != -1 || focusEndEvent != -1 || focusHeldEvent != -1) && isFocusable;
+
+                if (hasInputEvent)
+                {
+                    vec2 scrollPos = vec2(xPos, yPos);
+                    ECS::Util::UI::CallLuaEvent(scrollEvent, Scripting::UI::UIInputEvent::MouseScroll, widget.scriptWidget, scrollPos);
+
+                    if (hasFocusEvent)
+                    {
+                        ECS::Util::UI::FocusWidgetEntity(&registry, entity);
+                    }
+                    else
+                    {
+                        ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
+                    }
+
+                    uiSingleton.clickedEntity = entity;
+                    return true;
+                }
+            }
+
+            ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
+
+            return false;
+        });
+
         keybindGroup->AddMouseInputValidator("MouseUIInputValidator", [&registry](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
         {
             auto& ctx = registry.ctx();

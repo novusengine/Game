@@ -9,6 +9,8 @@
 #include <Renderer/Font.h>
 #include <Renderer/GPUVector.h>
 
+#include <entt/fwd.hpp>
+
 namespace Renderer
 {
     class RenderGraph;
@@ -25,6 +27,8 @@ namespace ECS
             struct PanelTemplate;
             struct Text;
             struct TextTemplate;
+            struct Clipper;
+            struct BoundingRect;
         }
     }
 }
@@ -50,8 +54,8 @@ private:
     void UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
     void UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate); // Returns the size of the text in pixels
 
-    void UpdatePanelData(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
-    void UpdateTextData(ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate);
+    void UpdatePanelData(entt::entity entity, ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
+    void UpdateTextData(entt::entity entity, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate);
 
     void RenderPanel(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, ECS::Components::UI::Widget& widget, ECS::Components::UI::Panel& panel);
     void RenderText(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, ECS::Components::UI::Widget& widget, ECS::Components::UI::Text& text);

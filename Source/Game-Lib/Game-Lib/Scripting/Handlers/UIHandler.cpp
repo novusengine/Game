@@ -32,8 +32,10 @@ namespace Scripting::UI
 
         { "GetCanvas", UIHandler::GetCanvas },
         { "GetMousePos", UIHandler::GetMousePos },
+        
 
         // Utils
+        { "GetTextureSize", UIHandler::GetTextureSize },
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
         { "CalculateTextSize", UIHandler::CalculateTextSize },
         { "WrapText", UIHandler::WrapText },
@@ -96,6 +98,13 @@ namespace Scripting::UI
 
         ECS::Transform2DSystem::Get(*registry).Clear();
         ServiceLocator::GetGameRenderer()->GetCanvasRenderer()->Clear();
+
+        if (registry->ctx().contains<ECS::Singletons::UISingleton>())
+        {
+            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+            uiSingleton.panelTemplates.clear();
+            uiSingleton.textTemplates.clear();
+        }
     }
 
     // UI
@@ -129,6 +138,14 @@ namespace Scripting::UI
         {
             vec3 color = ctx.Get(vec3(1, 1, 1), -1);
             panelTemplate.color = Color(color.x, color.y, color.z);
+            panelTemplate.setFlags.color = 1;
+            ctx.Pop();
+        }
+
+        if (ctx.GetTableField("alpha", 2))
+        {
+            f32 alpha = ctx.Get(1.0f, -1);
+            panelTemplate.color.a = alpha;
             panelTemplate.setFlags.color = 1;
             ctx.Pop();
         }
@@ -488,6 +505,32 @@ namespace Scripting::UI
         return 2;
     }
 
+    i32 UIHandler::GetTextureSize(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+
+        const char* texturePath = ctx.Get(nullptr, 1);
+        if (texturePath == nullptr)
+        {
+            ctx.Push();
+            ctx.Push();
+        }
+        else
+        {
+            Renderer::TextureDesc textureDesc;
+            textureDesc.path = texturePath;
+            Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
+
+            Renderer::TextureBaseDesc baseDesc = renderer->GetTextureDesc(textureID);
+            ctx.Push(baseDesc.width);
+            ctx.Push(baseDesc.height);
+        }
+
+        return 2;
+    }
+
     i32 UIHandler::PixelsToTexCoord(lua_State* state)
     {
         LuaState ctx(state);
@@ -573,6 +616,8 @@ namespace Scripting::UI
             luaL_error(state, "Expected text template name as parameter 2");
         }
 
+        f32 wrapWidth = ctx.Get(-1.0f, 3);
+
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
@@ -580,21 +625,30 @@ namespace Scripting::UI
         u32 textTemplateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
 
         const auto& textTemplate = uiSingleton.textTemplates[textTemplateIndex];
+        if (wrapWidth == -1.0f)
+        {
+            wrapWidth = textTemplate.wrapWidth;
+        }
 
-        if (textTemplate.wrapWidth == 0)
+        Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+        Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
+
+        std::string textStr = text;
+        if (wrapWidth == 0)
         {
             ctx.Push(text);
         }
         else
         {
-            Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
-            Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
-
-            std::string result = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
-            ctx.Push(result.c_str());
+            textStr = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, wrapWidth);
+            ctx.Push(textStr.c_str());
         }
 
-        return 1;
+        vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
+        ctx.Push(textSize.x);
+        ctx.Push(textSize.y);
+
+        return 3;
     }
 
     i32 UIHandler::FocusWidget(lua_State* state)

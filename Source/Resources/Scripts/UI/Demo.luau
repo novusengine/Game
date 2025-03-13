@@ -208,10 +208,11 @@ function CreateOptionsMenu(stack)
     end)
 
     local testComboBox = UIComboBox.NewComboBox(panel, 0, -120, 200, 40, 0, {
-        options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"}
+        options = {"Foo", "Bar", "Fizz", "Buzz", "FizzBuzz"},
+        disableButtons = true,
     });
-    testComboBox.comboBox:SetAnchor(0.5, 1.0);
-    testComboBox.button:SetRelativePoint(0.5, 1.0);
+    --testComboBox.comboBox:SetAnchor(0.5, 1.0);
+    --testComboBox.button:SetRelativePoint(0.5, 1.0);
     testComboBox:SetOnValueChanged(function(table, index)
         return true; -- Returning false will prevent the value from changing
     end);

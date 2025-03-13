@@ -66,6 +66,7 @@ float4 main(VertexOutput input) : SV_Target
     float2 clipRegionMax = float2(f16tof32(drawData.packed1.y), f16tof32(drawData.packed1.y >> 16));
     if (ShouldDiscard(screenPos, clipRegionMin, clipRegionMax))
     {
+        //return float4(1, 0, 0, 0.3f);
         discard;
     }
 
@@ -93,10 +94,17 @@ float4 main(VertexOutput input) : SV_Target
     float4 colorMultiplier = PackedUnormsToFloat4(packedColor);
 
     float4 color = _textures[textureIndex].Sample(_sampler, scaledUV);
-    color.rgb *= colorMultiplier.rgb;
+    color *= colorMultiplier;
 
     float4 additiveColor = _textures[additiveTextureIndex].Sample(_sampler, scaledUV);
+    float additiveIntensity = dot(additiveColor.rgb, float3(0.299, 0.587, 0.114)) * 2.5f; // Constants from https://en.wikipedia.org/wiki/Grayscale#Luma_coding_in_video_systems
+    additiveIntensity = saturate(additiveIntensity);
+
+    // Add the additive color to the base color
     color.rgb += additiveColor.rgb;
+
+    // Blend in the intensity
+    color.a = max(color.a, additiveIntensity);
 
     float2 cornerRadius = drawData.cornerRadiusAndBorder.xy; // Specified in UV space
 

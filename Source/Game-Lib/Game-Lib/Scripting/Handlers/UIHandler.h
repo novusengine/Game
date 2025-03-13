@@ -13,14 +13,15 @@ namespace Scripting::UI
         MouseDown = 1,
         MouseUp = 2,
         MouseHeld = 3,
+        MouseScroll = 4,
 
-        HoverBegin = 4,
-        HoverEnd = 5,
-        HoverHeld = 6,
+        HoverBegin = 5,
+        HoverEnd = 6,
+        HoverHeld = 7,
 
-        FocusBegin = 7,
-        FocusEnd = 8,
-        FocusHeld = 9,
+        FocusBegin = 8,
+        FocusEnd = 9,
+        FocusHeld = 10,
 
         Count
     };
@@ -48,6 +49,7 @@ namespace Scripting::UI
         // UI functions
         static i32 GetCanvas(lua_State* state);
         static i32 GetMousePos(lua_State* state);
+        static i32 GetTextureSize(lua_State* state);
 
         // Utils
         static i32 PixelsToTexCoord(lua_State* state);

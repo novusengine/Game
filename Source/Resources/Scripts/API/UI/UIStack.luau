@@ -1,9 +1,50 @@
+type StackAPI =
+{
+    Get : (name : string) -> Stack,
+
+    nameToIndex : { [string]: number },
+    stacks : { Stack },
+}
+
+type Stack =
+{
+    Register : (self : Stack, name : string, inWidget : Widget, slot : number, push : () -> (), pop : () -> ()) -> (),
+    Get : (self : Stack, name : string) -> WidgetInfo | nil,
+
+    Push : (self : Stack, name : string) -> (),
+    Pop : (self : Stack) -> (),
+    Clear : (self : Stack) -> (),
+    Count : (self : Stack) -> number,
+
+    name : string,
+    nameToIndex : { [string]: number },
+    widgets : { WidgetInfo },
+    indexStack : { number },
+    slots : { number },
+}
+
+type WidgetInfo =
+{
+    widget : Widget,
+    slot : number,
+    onPush : () -> (),
+    onPop : () -> (),
+}
+
+type UiStacks = {
+    Register : (self : StackAPI, stackName : string) -> Stack,
+    Get : (self : StackAPI, name : string) -> Stack,
+
+    nameToIndex : { [string]: number },
+    stacks : { Stack },
+}
+
 local uiStackAPI = { }
 
 local StackMeta =
 {
-    Register = function(self, name, inWidget, slot, push, pop)
-        local widgetInfo = {
+    Register = function(self : Stack, name : string, inWidget : Widget, slot : number, push : () -> (), pop : () -> ())
+        local widgetInfo : Widget = {
             widget = inWidget,
             slot = slot,
             onPush = push,
@@ -14,7 +55,7 @@ local StackMeta =
         local index = #self.widgets
         self.nameToIndex[name] = index
     end,
-    Get = function(self, name)
+    Get = function(self : Stack, name : string)
         local index = self.nameToIndex[name]
         if (index == nil) then
             return nil
@@ -22,7 +63,7 @@ local StackMeta =
         return self.widgets[index]
     end,
 
-    Push = function(self, name)
+    Push = function(self : Stack, name : string)
         local widgetIndex = self.nameToIndex[name]
         if (widgetIndex == nil) then
             error(`UIStack: Tried to Push nonexistent widget ({name}) into UIStack ({self.name})`)
@@ -53,13 +94,13 @@ local StackMeta =
             widgetInfo.widget:SetEnabled(true)
         end
     end,
-    Pop = function(self)
+    Pop = function(self : Stack)
         local count = self:Count()
         if (count == 0) then
             return
         end
 
-        local widgetIndex = table.remove(self.indexStack, count)
+        local widgetIndex : number = table.remove(self.indexStack, count)
 
         local widgetInfo = self.widgets[widgetIndex]
         self.slots[widgetInfo.slot] = nil
@@ -71,7 +112,7 @@ local StackMeta =
             widgetInfo.widget:SetEnabled(false)
         end
     end,
-    Clear = function(self)
+    Clear = function(self : Stack)
         for slot, widgetIndex in self.slots do
             local widgetInfo = self.widgets[widgetIndex]
 
@@ -85,11 +126,11 @@ local StackMeta =
         table.clear(self.slots)
         table.clear(self.indexStack)
     end,
-    Count = function(self)
+    Count = function(self : Stack)
         return #self.indexStack
     end,
 
-    Refresh = function(self)
+    Refresh = function(self : Stack)
         table.clear(self.indexStack)
 
         for slot, widgetIndex in self.slots do
@@ -99,12 +140,12 @@ local StackMeta =
     end
 }
 
-__global_uiStacks = {
+local uiStacks : UiStacks = {
     nameToIndex = { },
     stacks = { },
 
-    Register = function(self, stackName)
-        local stack = {
+    Register = function(self : StackAPI, stackName : string)
+        local stack : Stack = {
             name = stackName,
             nameToIndex = {}, 
             widgets = {},
@@ -120,7 +161,7 @@ __global_uiStacks = {
 
         return stack;
     end,
-    Get = function(self, name)
+    Get = function(self : StackAPI, name : string)
         local index = self.nameToIndex[name]
         if (index == nil) then
             return nil
@@ -129,8 +170,10 @@ __global_uiStacks = {
     end,
 }
 
-function uiStackAPI.Get(name)
-    local stack = __global_uiStacks:Get(name)
+__global_uiStacks = uiStacks
+
+function uiStackAPI.Get(name : string)
+    local stack : Stack = __global_uiStacks:Get(name)
     if (stack ~= nil) then
         return stack
     end

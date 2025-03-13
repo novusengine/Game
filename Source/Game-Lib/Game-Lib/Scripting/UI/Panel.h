@@ -9,7 +9,6 @@ namespace Scripting::UI
     {
     public:
         static void Register(lua_State* state);
-
     };
 
     namespace PanelMethods
@@ -22,5 +21,8 @@ namespace Scripting::UI
         i32 SetHeight(lua_State* state);
         i32 SetBackground(lua_State* state);
         i32 SetForeground(lua_State* state);
+        i32 SetTexCoords(lua_State* state);
+        i32 SetColor(lua_State* state);
+        i32 SetAlpha(lua_State* state);
     };
 }

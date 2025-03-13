@@ -46,6 +46,7 @@ float4 main(VertexOutput input) : SV_Target
     float2 clipRegionMax = float2(f16tof32(drawData.packed2.y), f16tof32(drawData.packed2.y >> 16));
     if (ShouldDiscard(screenPos, clipRegionMin, clipRegionMax))
     {
+        //return float4(1.0f, 0.0f, 0.0f, 0.3f);
         discard;
     }
 

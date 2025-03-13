@@ -16,8 +16,10 @@ local function RefreshComboBox(comboBoxTable)
     local index = comboBoxTable.selectedOption;
     comboBoxTable.button:SetText(comboBoxTable.options[index]);
 
-    comboBoxTable.prevButton:SetInteractable(index > 1);
-    comboBoxTable.nextButton:SetInteractable(index < #comboBoxTable.options);
+    if (comboBoxTable.prevButton ~= nil) then
+        comboBoxTable.prevButton:SetInteractable(index > 1);
+        comboBoxTable.nextButton:SetInteractable(index < #comboBoxTable.options);
+    end
 end
 
 local function SetupComboBoxMethods(comboBoxTable)
@@ -68,13 +70,19 @@ local function SetupComboBoxMethods(comboBoxTable)
         comboBoxTable.selectionPanel:SetEnabled(false);
     end
 
+    comboBoxTable.SetAnchor = function(self, x, y)
+        self.button:SetAnchor(x, y);
+    end
+    comboBoxTable.SetRelativePoint = function(self, x, y)
+        self.button:SetRelativePoint(x, y);
+    end
+
     return comboBoxTable
 end
 
 function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboBoxTemplateTable)
     local comboBoxTable = {}
     
-    comboBoxTable.comboBox = parent:NewWidget(posX, posY, layer);
     comboBoxTable.onValueChanged = nil;
 
     local options = comboBoxTemplateTable["options"] or { "None" };
@@ -82,7 +90,7 @@ function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboB
         panelTemplate = "DefaultComboBoxPanel",
         textTemplate = "YellowText",
     };
-
+    local disableButtons = comboBoxTemplateTable["disableButtons"] or false;
     local prevButtonTemplate = comboBoxTemplateTable["prevButtonTemplate"] or {
         panelTemplate = "DefaultComboBoxPrevPanel",
         textTemplate = "DefaultButtonText",
@@ -93,25 +101,27 @@ function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboB
     };
     comboBoxTable.selectedOption = comboBoxTemplateTable["selectedOption"] or 1;
 
-    local sideButtonsSizeX = sizeY; -- Square button
+    local sideButtonsSizeX = if not disableButtons then sizeY else 0; -- Square button
     local middleButtonSizeX = sizeX - (sideButtonsSizeX * 2.0);
 
-    local sideButtonPosXOffset = (middleButtonSizeX / 2.0);
+    local offsetX = if not disableButtons then sideButtonsSizeX else 0
 
     -- Background
-    comboBoxTable.button = UIButton.NewButton(comboBoxTable.comboBox, 0, 0, middleButtonSizeX, sizeY, 0, buttonTemplate);
+    comboBoxTable.button = UIButton.NewButton(parent, offsetX + posX, posY, middleButtonSizeX, sizeY, layer, buttonTemplate);
     comboBoxTable.options = options;
     
     comboBoxTable.button:SetText(comboBoxTable.options[comboBoxTable.selectedOption]);
 
-    -- Previous
-    comboBoxTable.prevButton = UIButton.NewButton(comboBoxTable.comboBox, -sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, prevButtonTemplate);
-    comboBoxTable.prevButton:SetAnchor(0.5, 0.0);
-    comboBoxTable.prevButton:SetRelativePoint(1.0, 1.0);
-    -- Next
-    comboBoxTable.nextButton = UIButton.NewButton(comboBoxTable.comboBox, sideButtonPosXOffset, 0, sideButtonsSizeX, sizeY, 0, nextButtonTemplate);
-    comboBoxTable.nextButton:SetAnchor(0.5, 0.0);
-    comboBoxTable.nextButton:SetRelativePoint(0.0, 1.0);
+    if (not disableButtons) then
+        -- Previous
+        comboBoxTable.prevButton = UIButton.NewButton(comboBoxTable.button, 0, 0, sideButtonsSizeX, sizeY, 0, prevButtonTemplate);
+        comboBoxTable.prevButton:SetAnchor(0.0, 0.5);
+        comboBoxTable.prevButton:SetRelativePoint(1.0, 0.5);
+        -- Next
+        comboBoxTable.nextButton = UIButton.NewButton(comboBoxTable.button, 0, 0, sideButtonsSizeX, sizeY, 0, nextButtonTemplate);
+        comboBoxTable.nextButton:SetAnchor(1.0, 0.5);
+        comboBoxTable.nextButton:SetRelativePoint(0.0, 0.5);
+    end
 
     -- Selection panel
     local selectionButtonHeight = comboBoxTemplateTable["selectionButtonHeight"] or 30;
@@ -128,6 +138,7 @@ function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboB
     comboBoxTable.selectionPanel:SetEnabled(false);
     comboBoxTable.selectionPanel:SetAnchor(0.5, 0.0);
     comboBoxTable.selectionPanel:SetRelativePoint(0.5, 1.0);
+    comboBoxTable.selectionPanel:SetAlpha(0.0);
 
     local yPos = -selectionPanelPaddingY / 2.0;
     comboBoxTable.selectionButtons = {};
@@ -152,11 +163,13 @@ function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboB
 
     comboBoxTable = SetupComboBoxMethods(comboBoxTable);
 
-    comboBoxTable.prevButton:SetOnMouseUp(comboBoxTable.Previous);
-    comboBoxTable.nextButton:SetOnMouseUp(comboBoxTable.Next);
+    if (not disableButtons) then
+        comboBoxTable.prevButton:SetOnMouseUp(comboBoxTable.Previous);
+        comboBoxTable.nextButton:SetOnMouseUp(comboBoxTable.Next);
+    end
     RefreshComboBox(comboBoxTable);
 
     return comboBoxTable;
 end
 
-return comboBoxAPI
+return comboBoxAPI;

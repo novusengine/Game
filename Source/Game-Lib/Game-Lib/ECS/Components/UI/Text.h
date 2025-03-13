@@ -6,6 +6,7 @@ namespace ECS::Components::UI
     struct Text
     {
     public:
+        std::string rawText;
         std::string text;
         u32 layer;
 

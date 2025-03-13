@@ -38,10 +38,6 @@ namespace Scripting::UI
             i32 layer = ctx.Get(0, 6);
 
             const char* templateName = ctx.Get(nullptr, 7);
-            if (templateName == nullptr)
-            {
-                luaL_error(state, "Template name is null");
-            }
 
             Panel* panel = ctx.PushUserData<Panel>([](void* x)
             {
@@ -51,10 +47,13 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
-            u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-            if (!uiSingleton.templateHashToPanelTemplateIndex.contains(templateNameHash))
+            if (templateName != nullptr)
             {
-                luaL_error(state, "Tried to use template name '%s' but no panel template with that name has been registered", templateName);
+                u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+                if (!uiSingleton.templateHashToPanelTemplateIndex.contains(templateNameHash))
+                {
+                    luaL_error(state, "Tried to use template name '%s' but no panel template with that name has been registered", templateName);
+                }
             }
 
             entt::entity entity = ECS::Util::UI::CreatePanel(panel, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, templateName, parent->entity);
@@ -889,6 +888,29 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseHeld(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseHeldEvent = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetInputMethods::SetOnMouseScroll(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    i32 callback = -1;
+    if (lua_type(state, 2) == LUA_TFUNCTION)
+    {
+        callback = ctx.GetRef(2);
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
+    eventInputInfo.onMouseScrollEvent = callback;
 
     return 0;
 }

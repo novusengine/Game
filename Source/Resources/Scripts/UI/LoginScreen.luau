@@ -1,6 +1,7 @@
 local UIButton = require("@src/API/UI/Button")
 local UICheckbox = require("@src/API/UI/Checkbox")
 local UIInputBox = require("@src/API/UI/InputBox")
+local UIStack = require("@src/API/UI/UIStack")
 
 local function RegisterTemplates()
     UI.RegisterPanelTemplate("LoginBackgroundPanel",
@@ -26,15 +27,6 @@ local function RegisterTemplates()
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
-    UI.RegisterTextTemplate("RememberText",
-    {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
-        size = 18.0,
-        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
-        borderSize = 1.0,
-        borderColor = vector.create(0.2, 0.2, 0.2),
-    });
-
     UI.RegisterTextTemplate("VersionText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf",
@@ -51,7 +43,7 @@ local function Login(accountInputBox, passwordInputBox)
     passwordInputBox:SetText("");
 end
 
-local function CreateLoginScreen()
+local function CreateLoginScreen(stack)
     -- Create Canvas
     local canvas = UI.GetCanvas("LoginScreen", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
     
@@ -85,7 +77,7 @@ local function CreateLoginScreen()
     rememberCheckbox:Click();
 
     -- Remember Text
-    local rememberText = rememberCheckbox.background:NewText("Remember Account", 10, 0, 0, "RememberText");
+    local rememberText = rememberCheckbox.background:NewText("Remember Account", 10, 0, 0, "SmallYellowButtonText");
     rememberText:SetAnchor(1.0, 0.5);
     rememberText:SetRelativePoint(0.0, 0.5);
 
@@ -104,13 +96,6 @@ local function CreateLoginScreen()
     passwordText:SetRelativePoint(0.5, 0.0);
 
     -- Login Button
-    UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
-        panelTemplate = "DefaultButtonPanel",
-        textTemplate = "LoginButtonText",
-        text = "Login",
-    });
-
-
     local loginButton = UIButton.NewButton(panel, 0, -260, 250, 40, 0, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "LoginButtonText",
@@ -202,13 +187,16 @@ local function CreateLoginScreen()
     passwordInputBox:SetOnTab(function(table)
         UI.FocusWidget(accountNameInputBox.button);
     end);
+
+    stack:Register("GameMenu", panel, 0); -- Name, widget, slot, onPush, onPop
+    --stack:Push("GameMenu");
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    --RegisterTemplates();
+    local stack = UIStack.Get("Menu");
+    RegisterTemplates();
 
-    --CreateLoginScreen();
-    print("Hello World!!!!")
+    CreateLoginScreen(stack);
 end
 
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

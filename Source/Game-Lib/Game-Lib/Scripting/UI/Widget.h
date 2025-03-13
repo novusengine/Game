@@ -131,6 +131,7 @@ namespace Scripting::UI
         i32 SetOnMouseDown(lua_State* state);
         i32 SetOnMouseUp(lua_State* state);
         i32 SetOnMouseHeld(lua_State* state);
+        i32 SetOnMouseScroll(lua_State* state);
 
         i32 SetOnHoverBegin(lua_State* state);
         i32 SetOnHoverEnd(lua_State* state);
@@ -148,6 +149,7 @@ namespace Scripting::UI
         { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
         { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },
         { "SetOnMouseHeld", WidgetInputMethods::SetOnMouseHeld },
+        { "SetOnMouseScroll", WidgetInputMethods::SetOnMouseScroll },
 
         { "SetOnHoverBegin", WidgetInputMethods::SetOnHoverBegin },
         { "SetOnHoverEnd", WidgetInputMethods::SetOnHoverEnd },

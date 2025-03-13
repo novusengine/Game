@@ -8,7 +8,7 @@ namespace ECS::Components::UI
     public:
         u32 layer;
 
-        u32 templateIndex;
+        i32 templateIndex = -1;
 
         i32 gpuVertexIndex = -1;
         i32 gpuDataIndex = -1;

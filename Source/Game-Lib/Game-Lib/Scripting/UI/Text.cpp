@@ -22,6 +22,23 @@ namespace Scripting::UI
 
     namespace TextMethods
     {
+        i32 GetText(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
+            ctx.Push(textComponent.text);
+
+            return 1;
+        }
         i32 SetText(lua_State* state)
         {
             LuaState ctx(state);
@@ -41,9 +58,28 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
+            textComponent.rawText = text;
             ECS::Util::UI::RefreshText(registry, widget->entity, text);
 
             return 0;
+        }
+
+        i32 GetRawText(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
+            ctx.Push(textComponent.rawText);
+
+            return 1;
         }
 
         i32 GetSize(lua_State* state)
@@ -62,6 +98,23 @@ namespace Scripting::UI
             ctx.Push(size.x);
             ctx.Push(size.y);
             return 2;
+        }
+
+        i32 GetColor(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            ctx.Push(vec3(textTemplate.color.r, textTemplate.color.g, textTemplate.color.b));
+
+            return 1;
         }
 
         i32 SetColor(lua_State* state)
@@ -85,6 +138,23 @@ namespace Scripting::UI
             return 0;
         }
 
+        i32 GetWrapWidth(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            ctx.Push(textTemplate.wrapWidth);
+
+            return 1;
+        }
+
         i32 SetWrapWidth(lua_State* state)
         {
             LuaState ctx(state);
@@ -105,7 +175,7 @@ namespace Scripting::UI
             textTemplate.setFlags.wrapWidth = wrapWidth >= 0;
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            ECS::Util::UI::RefreshText(registry, widget->entity, textComponent.text);
+            ECS::Util::UI::RefreshText(registry, widget->entity, textComponent.rawText);
 
             return 0;
         }

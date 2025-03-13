@@ -23,7 +23,12 @@ namespace Scripting::UI
         { "SetHeight", PanelMethods::SetHeight },
 
         { "SetBackground", PanelMethods::SetBackground },
-        { "SetForeground", PanelMethods::SetForeground }
+        { "SetForeground", PanelMethods::SetForeground },
+
+        { "SetTexCoords", PanelMethods::SetTexCoords },
+
+        { "SetColor", PanelMethods::SetColor },
+        { "SetAlpha", PanelMethods::SetAlpha }
     };
 
     void Panel::Register(lua_State* state)
@@ -166,19 +171,19 @@ namespace Scripting::UI
             }
             
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& panelMethods = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
 
             const char* texture = ctx.Get(nullptr, 2);
             if (texture)
             {
-                panelMethods.background = texture;
-                panelMethods.setFlags.background = true;
+                panelTemplate.background = texture;
+                panelTemplate.setFlags.background = true;
             }
             else
             {
-                panelMethods.background = "";
-                panelMethods.setFlags.background = false;
+                panelTemplate.background = "";
+                panelTemplate.setFlags.background = false;
             }
 
             return 0;
@@ -195,20 +200,96 @@ namespace Scripting::UI
             }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& panelMethods = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
 
             const char* texture = ctx.Get(nullptr, 2);
             if (texture)
             {
-                panelMethods.foreground = texture;
-                panelMethods.setFlags.foreground = true;
+                panelTemplate.foreground = texture;
+                panelTemplate.setFlags.foreground = true;
             }
             else
             {
-                panelMethods.foreground = "";
-                panelMethods.setFlags.foreground = false;
+                panelTemplate.foreground = "";
+                panelTemplate.setFlags.foreground = false;
             }
+
+            return 0;
+        }
+
+        i32 SetTexCoords(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+
+            f32 minX = ctx.Get(0.0f, 2);
+            f32 minY = ctx.Get(0.0f, 3);
+            f32 maxX = ctx.Get(1.0f, 4);
+            f32 maxY = ctx.Get(1.0f, 5);
+
+            panelTemplate.setFlags.texCoords = true;
+            panelTemplate.texCoords.min = vec2(minX, minY);
+            panelTemplate.texCoords.max = vec2(maxX, maxY);
+
+            return 0;
+        }
+
+        i32 SetColor(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+
+            vec3 colorVec = ctx.Get(vec3(0,0,0), 2);
+            f32 alpha = ctx.Get(-1.0f, 3);
+
+            Color colorWithAlpha = Color(colorVec.r, colorVec.g, colorVec.b, panelTemplate.color.a);
+            if (alpha >= 0.0f)
+            {
+                colorWithAlpha.a = alpha;
+            }
+            panelTemplate.color = colorWithAlpha;
+            panelTemplate.setFlags.color = 1;
+
+            return 0;
+        }
+
+        i32 SetAlpha(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+
+            f32 alpha = ctx.Get(-1.0f, 2);
+            panelTemplate.color.a = alpha;
+            panelTemplate.setFlags.color = 1;
 
             return 0;
         }

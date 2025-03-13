@@ -120,6 +120,20 @@ void CanvasRenderer::Update(f32 deltaTime)
     });
     registry->clear<DirtyWidgetTransform>();
 
+    // Update clipper data
+    registry->view<DirtyChildClipper>().each([&](entt::entity entity)
+    {
+        auto& clipper = registry->get<Clipper>(entity);
+
+        transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
+        {
+            auto& childClipper = registry->get<Clipper>(childEntity);
+            childClipper.clipRegionOverrideEntity = (clipper.clipChildren) ? entity : entt::null;
+
+            registry->emplace_or_replace<DirtyWidgetData>(childEntity);
+        });
+    });
+
     // Dirty widget datas
     registry->view<DirtyWidgetData>().each([&](entt::entity entity)
     {
@@ -135,151 +149,15 @@ void CanvasRenderer::Update(f32 deltaTime)
             auto& panel = registry->get<Panel>(entity);
             auto& panelTemplate = registry->get<PanelTemplate>(entity);
 
-            UpdatePanelData(transform, panel, panelTemplate);
+            UpdatePanelData(entity, transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
             auto& text = registry->get<Text>(entity);
             auto& textTemplate = registry->get<TextTemplate>(entity);
 
-            UpdateTextData(text, textTemplate);
+            UpdateTextData(entity, text, textTemplate);
             text.hasGrown = false;
-        }
-    });
-
-    // Dirty child clippers
-    vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-    registry->view<DirtyChildClipper>().each([&](entt::entity entity)
-    {
-        auto& clipper = registry->get<Clipper>(entity);
-
-        if (clipper.clipChildren)
-        {
-            auto& rect = registry->get<BoundingRect>(entity);
-
-            vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
-            vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
-
-            vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
-            vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
-
-            // Set childrens data depending on this widget
-            transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
-            {
-                auto& childWidget = registry->get<Widget>(childEntity);
-
-                if (childWidget.type == WidgetType::Panel)
-                {
-                    auto& childPanel = registry->get<Panel>(childEntity);
-                    auto& panelData = _panelDrawDatas[childPanel.gpuDataIndex];
-
-                    panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-                    panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-                    panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-
-                    _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
-                }
-                else if (childWidget.type == WidgetType::Text)
-                {
-                    auto& childText = registry->get<Text>(childEntity);
-                    
-                    for (u32 i = 0; i < childText.numCharsNonWhitespace; i++)
-                    {
-                        auto& textData = _charDrawDatas[childText.gpuDataIndex + i];
-
-                        textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-                        textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-                        textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-                    }
-                    _charDrawDatas.SetDirtyElements(childText.gpuDataIndex, childText.numCharsNonWhitespace);
-                }
-                
-            });
-        }
-        else
-        {
-            // Set childrens data depending on themselves
-            transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
-            {
-                auto& childWidget = registry->get<Widget>(childEntity);
-                auto& clipper = registry->get<Clipper>(childEntity);
-                auto& rect = registry->get<BoundingRect>(childEntity);
-
-                vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
-                vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
-
-                vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
-                vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
-
-                if (childWidget.type == WidgetType::Panel)
-                {
-                    auto& childPanel = registry->get<Panel>(childEntity);
-                    auto& panelData = _panelDrawDatas[childPanel.gpuDataIndex];
-
-                    panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-                    panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-                    panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-
-                    _panelDrawDatas.SetDirtyElement(childPanel.gpuDataIndex);
-                }
-                else if (childWidget.type == WidgetType::Text)
-                {
-                    auto& childText = registry->get<Text>(childEntity);
-
-                    for (u32 i = 0; i < childText.numCharsNonWhitespace; i++)
-                    {
-                        auto& textData = _charDrawDatas[childText.gpuDataIndex + i];
-
-                        textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-                        textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-                        textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-                    }
-                    _charDrawDatas.SetDirtyElements(childText.gpuDataIndex, childText.numCharsNonWhitespace);
-                }
-            });
-        }
-    });
-
-    // Dirty clippers, set data depending on themselves
-    registry->view<DirtyClipper>().each([&](entt::entity entity)
-    {
-        auto& clipper = registry->get<Clipper>(entity);
-        if (clipper.clipChildren)
-            return;
-
-        auto& rect = registry->get<BoundingRect>(entity);
-
-        vec2 scaledClipRegionMin = (rect.min + (rect.max - rect.min) * clipper.clipRegionMin) / referenceSize;
-        vec2 scaledClipRegionMax = (rect.min + (rect.max - rect.min) * clipper.clipRegionMax) / referenceSize;
-
-        vec2 scaledClipMaskRegionMin = rect.min / referenceSize;
-        vec2 scaledClipMaskRegionMax = rect.max / referenceSize;
-
-        auto& widget = registry->get<Widget>(entity);
-        if (widget.type == WidgetType::Panel)
-        {
-            auto& panel = registry->get<Panel>(entity);
-            auto& panelData = _panelDrawDatas[panel.gpuDataIndex];
-
-            panelData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-            panelData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-            panelData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-
-            _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
-        }
-        else if (widget.type == WidgetType::Text)
-        {
-            auto& text = registry->get<Text>(entity);
-
-            for (u32 i = 0; i < text.numCharsNonWhitespace; i++)
-            {
-                auto& textData = _charDrawDatas[text.gpuDataIndex + i];
-
-                textData.packed0.y = (clipper.hasClipMaskTexture) ? LoadTexture(clipper.clipMaskTexture) : 0;
-                textData.clipRegionRect = vec4(scaledClipRegionMin, scaledClipRegionMax);
-                textData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
-            }
-            _charDrawDatas.SetDirtyElements(text.gpuDataIndex, text.numCharsNonWhitespace);
         }
     });
 
@@ -527,9 +405,6 @@ void CanvasRenderer::CreatePermanentResources()
 
     _charDrawDatas.SetDebugName("CharDrawDatas");
     _charDrawDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
-
-    //_data.textVertices.SetDebugName("TextVertices");
-    //_data.textVertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 }
 
 void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
@@ -719,7 +594,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
     _vertices.SetDirtyElements(text.gpuVertexIndex, text.numCharsNonWhitespace * 6);
 }
 
-void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
+void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Transform2D& transform, Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
     // Add draw data if necessary
     if (panel.gpuDataIndex == -1)
@@ -762,10 +637,37 @@ void CanvasRenderer::UpdatePanelData(ECS::Components::Transform2D& transform, Pa
     drawData.texCoord = vec4(panelTemplate.texCoords.min, panelTemplate.texCoords.max);
     drawData.slicingCoord = vec4(panelTemplate.nineSliceCoords.min, panelTemplate.nineSliceCoords.max);
 
+    // Clipping
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    // Get the correct clipper
+    auto* clipper = &registry->get<Clipper>(entity);
+    BoundingRect* boundingRect = &registry->get<BoundingRect>(entity);
+    
+    vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+    vec2 clipRegionMin = vec2(0.0f, 0.0f);
+    vec2 clipRegionMax = vec2(1.0f, 1.0f);
+
+    if (clipper->clipRegionOverrideEntity != entt::null)
+    {
+        boundingRect = &registry->get<BoundingRect>(clipper->clipRegionOverrideEntity);
+        clipper = &registry->get<Clipper>(clipper->clipRegionOverrideEntity);
+
+        clipRegionMin = (boundingRect->min + (boundingRect->max - boundingRect->min) * clipper->clipRegionMin) / referenceSize;
+        clipRegionMax = (boundingRect->min + (boundingRect->max - boundingRect->min) * clipper->clipRegionMax) / referenceSize;
+    }
+
+    vec2 scaledClipMaskRegionMin = boundingRect->min / referenceSize;
+    vec2 scaledClipMaskRegionMax = boundingRect->max / referenceSize;
+    
+    drawData.packed0.y = (clipper->hasClipMaskTexture) ? LoadTexture(clipper->clipMaskTexture) : 0;
+    drawData.clipRegionRect = vec4(clipRegionMin, clipRegionMax);
+    drawData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+
     _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
 }
 
-void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplate& textTemplate)
+void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Components::UI::TextTemplate& textTemplate)
 {
     if (text.sizeChanged)
     {
@@ -818,6 +720,28 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
         _textureIDToFontTexturesIndex[static_cast<Renderer::TextureID::type>(fontTextureID)] = fontTextureIndex;
     }
 
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    // Get the correct clipper
+    auto* clipper = &registry->get<Clipper>(entity);
+    BoundingRect* boundingRect = &registry->get<BoundingRect>(entity);
+
+    vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+    vec2 clipRegionMin = vec2(0.0f, 0.0f);
+    vec2 clipRegionMax = vec2(1.0f, 1.0f);
+
+    if (clipper->clipRegionOverrideEntity != entt::null)
+    {
+        boundingRect = &registry->get<BoundingRect>(clipper->clipRegionOverrideEntity);
+        clipper = &registry->get<Clipper>(clipper->clipRegionOverrideEntity);
+
+        clipRegionMin = (boundingRect->min + (boundingRect->max - boundingRect->min) * clipper->clipRegionMin) / referenceSize;
+        clipRegionMax = (boundingRect->min + (boundingRect->max - boundingRect->min) * clipper->clipRegionMax) / referenceSize;
+    }
+
+    vec2 scaledClipMaskRegionMin = boundingRect->min / referenceSize;
+    vec2 scaledClipMaskRegionMax = boundingRect->max / referenceSize;
+
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
@@ -847,6 +771,11 @@ void CanvasRenderer::UpdateTextData(Text& text, ECS::Components::UI::TextTemplat
         f32 distanceRange = font->upperPixelRange - font->lowerPixelRange;
         drawData.packed1.z = distanceRange / font->width;
         drawData.packed1.w = distanceRange / font->height;
+
+        // Clipping
+        drawData.packed0.y = (clipper->hasClipMaskTexture) ? LoadTexture(clipper->clipMaskTexture) : 0;
+        drawData.clipRegionRect = vec4(clipRegionMin, clipRegionMax);
+        drawData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
 
         charIndex++;
     }

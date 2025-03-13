@@ -62,6 +62,7 @@ type UIInputEvent =
     MouseDown : number,
     MouseUp : number,
     MouseHeld : number,
+    MouseScroll : number,
 
     HoverBegin : number,
     HoverEnd : number,
@@ -91,11 +92,13 @@ type InputAction =
 declare InputAction : InputAction;
 
 type MouseEventCallback = ((event : UIInputEvent, widget : Widget, x : number, y : number) -> ())
+type KeyboardEventCallback = ((widget : Widget, event : UIKeyboardEvent, ...any) -> ())
 
 declare class WidgetInputEvents
     function SetOnMouseDown(self, callback : MouseEventCallback) : ()
     function SetOnMouseUp(self, callback : MouseEventCallback) : ()
     function SetOnMouseHeld(self, callback : MouseEventCallback) : ()
+    function SetOnMouseScroll(self, callback : MouseEventCallback) : ()
 
     function SetOnHoverBegin(self, callback : MouseEventCallback) : ()
     function SetOnHoverEnd(self, callback : MouseEventCallback) : ()
@@ -105,7 +108,7 @@ declare class WidgetInputEvents
     function SetOnFocusEnd(self, callback : MouseEventCallback) : ()
     function SetOnFocusHeld(self, callback : MouseEventCallback) : ()
 
-    function SetOnKeyboard(self, callback : ((widget : Widget, event : UIKeyboardEvent, ...any) -> ())) : ()
+    function SetOnKeyboard(self, callback : KeyboardEventCallback) : ()
 end
 
 declare class Widget extends WidgetInputEvents
@@ -161,24 +164,34 @@ declare class Panel extends Widget
 
     function SetBackground(self, background : string) : ()
     function SetForeground(self, foreground : string) : ()
+    
+    function SetTexCoords(self, minX : number, minY : number, maxX : number, maxY : number) : ()
+    function SetColor(self, color : vec3, alpha : number?) : ()
+    function SetAlpha(self, alpha : number) : ()    
 end
 
 declare class TextWidget extends Widget
+    function GetText(self) : string
     function SetText(self, text : string) : ()
+    function GetRawText(self) : string
+    function GetSize(self) : vec2
+    function GetColor(self) : vec3
+    function SetColor(self, color : vec3) : ()
+    function GetWrapWidth(self) : number
 end
 
 declare class EventTemplate
-    onMouseDown : MouseEventCallback
-    onMouseUp : MouseEventCallback
-    onMouseHeld : MouseEventCallback
+    onMouseDown : MouseEventCallback?
+    onMouseUp : MouseEventCallback?
+    onMouseHeld : MouseEventCallback?
 
-    onHoverBegin : MouseEventCallback
-    onHoverEnd : MouseEventCallback
-    onHoverHeld : MouseEventCallback
+    onHoverBegin : MouseEventCallback?
+    onHoverEnd : MouseEventCallback?
+    onHoverHeld : MouseEventCallback?
 
-    onFocusBegin : MouseEventCallback
-    onFocusEnd : MouseEventCallback
-    onFocusHeld : MouseEventCallback
+    onFocusBegin : MouseEventCallback?
+    onFocusEnd : MouseEventCallback?
+    onFocusHeld : MouseEventCallback?
 end
 
 declare class PanelTemplate extends EventTemplate
@@ -212,9 +225,11 @@ declare UI :
 
     GetCanvas : ((name : string, pos : vec2, size : vec2) -> Canvas),
     GetMousePos : (() -> vec2),
+    GetTextureSize : ((path : string) -> vec2),
 
     PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
     CalculateTextSize : ((text : string, template : string) -> vec2),
+    WrapText : ((text : string, template : string, wrapWidth : number?) -> (string, vec2)),
     
     FocusWidget : ((widget : Widget) -> ()),
     UnfocusWidget : ((widget : Widget) -> ()),

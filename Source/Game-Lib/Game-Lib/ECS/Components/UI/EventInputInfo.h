@@ -19,6 +19,7 @@ namespace ECS::Components::UI
         i32 onMouseDownEvent = -1;
         i32 onMouseUpEvent = -1;
         i32 onMouseHeldEvent = -1;
+        i32 onMouseScrollEvent = -1;
 
         i32 onHoverBeginEvent = -1;
         i32 onHoverEndEvent = -1;

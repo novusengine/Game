@@ -134,43 +134,47 @@ namespace ECS::Util
             auto& panelComp = registry->emplace<ECS::Components::UI::Panel>(entity);
             panelComp.layer = layer;
 
-            u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
-            u32 templateIndex = uiSingleton.templateHashToPanelTemplateIndex[templateNameHash];
-            panelComp.templateIndex = templateIndex;
-
-            const ECS::Components::UI::PanelTemplate& panelTemplate = uiSingleton.panelTemplates[templateIndex];
-
             // Set this texts specific template data
             ECS::Components::UI::PanelTemplate& panelTemplateComp = registry->emplace<ECS::Components::UI::PanelTemplate>(entity);
-            panelTemplateComp = panelTemplate;
+
+            // Copy template if provided
+            if (templateName != nullptr)
+            {
+                u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
+                u32 templateIndex = uiSingleton.templateHashToPanelTemplateIndex[templateNameHash];
+
+                const ECS::Components::UI::PanelTemplate& panelTemplate = uiSingleton.panelTemplates[templateIndex];
+                panelTemplateComp = panelTemplate;
+                panelComp.templateIndex = templateIndex;
+            }
 
             // Event Input Info
             auto& eventInputInfo = registry->emplace<ECS::Components::UI::EventInputInfo>(entity);
 
-            if (!panelTemplate.onClickTemplate.empty())
+            if (!panelTemplateComp.onClickTemplate.empty())
             {
-                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplate.onClickTemplate, eventInputInfo.onClickTemplateHash);
+                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplateComp.onClickTemplate, eventInputInfo.onClickTemplateHash);
             }
-            if (!panelTemplate.onHoverTemplate.empty())
+            if (!panelTemplateComp.onHoverTemplate.empty())
             {
-                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplate.onHoverTemplate, eventInputInfo.onHoverTemplateHash);
+                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplateComp.onHoverTemplate, eventInputInfo.onHoverTemplateHash);
             }
-            if (!panelTemplate.onUninteractableTemplate.empty())
+            if (!panelTemplateComp.onUninteractableTemplate.empty())
             {
-                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplate.onUninteractableTemplate, eventInputInfo.onUninteractableTemplateHash);
+                SetTemplateEventHash(uiSingleton.templateHashToPanelTemplateIndex, templateName, panelTemplateComp.onUninteractableTemplate, eventInputInfo.onUninteractableTemplateHash);
             }
 
-            eventInputInfo.onMouseDownEvent = panelTemplate.onMouseDownEvent;
-            eventInputInfo.onMouseUpEvent = panelTemplate.onMouseUpEvent;
-            eventInputInfo.onMouseHeldEvent = panelTemplate.onMouseHeldEvent;
+            eventInputInfo.onMouseDownEvent = panelTemplateComp.onMouseDownEvent;
+            eventInputInfo.onMouseUpEvent = panelTemplateComp.onMouseUpEvent;
+            eventInputInfo.onMouseHeldEvent = panelTemplateComp.onMouseHeldEvent;
 
-            eventInputInfo.onHoverBeginEvent = panelTemplate.onHoverBeginEvent;
-            eventInputInfo.onHoverEndEvent = panelTemplate.onHoverEndEvent;
-            eventInputInfo.onHoverHeldEvent = panelTemplate.onHoverHeldEvent;
+            eventInputInfo.onHoverBeginEvent = panelTemplateComp.onHoverBeginEvent;
+            eventInputInfo.onHoverEndEvent = panelTemplateComp.onHoverEndEvent;
+            eventInputInfo.onHoverHeldEvent = panelTemplateComp.onHoverHeldEvent;
 
-            eventInputInfo.onFocusBeginEvent = panelTemplate.onFocusBeginEvent;
-            eventInputInfo.onFocusEndEvent = panelTemplate.onFocusEndEvent;
-            eventInputInfo.onFocusHeldEvent = panelTemplate.onFocusHeldEvent;
+            eventInputInfo.onFocusBeginEvent = panelTemplateComp.onFocusBeginEvent;
+            eventInputInfo.onFocusEndEvent = panelTemplateComp.onFocusEndEvent;
+            eventInputInfo.onFocusHeldEvent = panelTemplateComp.onFocusHeldEvent;
 
             return entity;
         }
@@ -207,9 +211,10 @@ namespace ECS::Util
 
             // Text
             auto& textComp = registry->emplace<ECS::Components::UI::Text>(entity);
-            textComp.text = text;
+            textComp.rawText = text;
             textComp.layer = layer;
-            ReplaceTextNewLines(textComp.text);
+            ReplaceTextNewLines(textComp.rawText);
+            textComp.text = textComp.rawText;
 
             u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
             u32 templateIndex = uiSingleton.templateHashToTextTemplateIndex[templateNameHash];
@@ -221,7 +226,7 @@ namespace ECS::Util
 
             if (textTemplate.setFlags.wrapWidth)
             {
-                textComp.text = GenWrapText(textComp.text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+                textComp.text = GenWrapText(textComp.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
             }
 
             vec2 textSize = font->CalculateTextSize(textComp.text.c_str(), textTemplate.size, textTemplate.borderSize);
@@ -267,11 +272,14 @@ namespace ECS::Util
             entt::entity entity = registry->create();
 
             // Transform
+            auto& parentTransformComp = registry->get<ECS::Components::Transform2D>(parent);
+            const vec2& parentSize = parentTransformComp.GetSize();
             auto& transformComp = registry->emplace<ECS::Components::Transform2D>(entity);
 
             transform2DSystem.ParentEntityTo(parent, entity);
             transform2DSystem.SetLayer(entity, layer);
             transform2DSystem.SetLocalPosition(entity, pos);
+            transform2DSystem.SetSize(entity, parentSize);
 
             // Widget
             auto& widgetComp = registry->emplace<ECS::Components::UI::Widget>(entity);
@@ -357,22 +365,22 @@ namespace ECS::Util
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(entity);
 
-            size_t newLength = newText.size();
-
-            textComponent.sizeChanged |= newLength != textComponent.text.size();
-            textComponent.hasGrown |= newLength > textComponent.text.size();
+            size_t oldLength = textComponent.text.size();
 
             textComponent.text = newText;
             ReplaceTextNewLines(textComponent.text);
 
-            const ECS::Components::UI::TextTemplate& textTemplate = uiSingleton.textTemplates[textComponent.templateIndex];
+            const ECS::Components::UI::TextTemplate& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(entity);
 
             Renderer::Font* font = Renderer::Font::GetFont(renderer, textTemplate.font);
 
             if (textTemplate.setFlags.wrapWidth)
             {
-                textComponent.text = GenWrapText(textComponent.text, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+                textComponent.text = GenWrapText(textComponent.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
             }
+
+            textComponent.sizeChanged |= oldLength != textComponent.text.size();
+            textComponent.hasGrown |= oldLength < textComponent.text.size();
 
             vec2 textSize = font->CalculateTextSize(textComponent.text, textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
@@ -421,9 +429,15 @@ namespace ECS::Util
                 auto& panel = registry->get<ECS::Components::UI::Panel>(entity);
                 auto& panelTemplateComp = registry->get<ECS::Components::UI::PanelTemplate>(entity);
 
-                auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
-
-                panelTemplateComp = panelTemplate;
+                if (panel.templateIndex == -1)
+                {
+                    panelTemplateComp = ECS::Components::UI::PanelTemplate();
+                }
+                else
+                {
+                    auto& panelTemplate = uiSingleton.panelTemplates[panel.templateIndex];
+                    panelTemplateComp = panelTemplate;
+                }
 
                 if (panelTemplateComp.setFlags.texCoords)
                 {
@@ -621,6 +635,9 @@ namespace ECS::Util
             for (size_t i = 0; i < text.length(); ++i)
             {
                 char c = text[i];
+
+                if (!font->IsValidGlyph(c))
+                    continue;
 
                 if (c == ' ' || c == '\n')
                 {

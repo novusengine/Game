@@ -117,6 +117,16 @@ function templatesAPI.RegisterTemplates()
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
+    UI.RegisterTextTemplate("SmallYellowButtonText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        size = 18.0,
+        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 1.0,
+        borderColor = vector.create(0.2, 0.2, 0.2),
+    });
+
+
     -- Minimize Button
     
     local minimizeButtonMinX, minimizeButtonMinY = UI.PixelsToTexCoord(6, 7, 32, 32);
