@@ -429,7 +429,7 @@ namespace ECS::Systems
             {
                 ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
                 auto& moverModel = registry.get<Components::Model>(characterSingleton.moverEntity);
-                modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, ClientDB::Definitions::DisplayInfoType::Creature, 50);
+                modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, Database::Unit::DisplayInfoType::Creature, 50);
             }
         });
 
@@ -718,7 +718,7 @@ namespace ECS::Systems
             transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
 
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, ClientDB::Definitions::DisplayInfoType::Creature, 50);
+            modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, Database::Unit::DisplayInfoType::Creature, 50);
         }
 
         f32 width = 0.4166f;

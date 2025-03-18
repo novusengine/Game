@@ -753,11 +753,13 @@ namespace ECS::Systems
         initView.each([&](entt::entity entity, Components::Model& model, Components::AnimationInitData& animationInitData)
         {
             const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
-            if (!modelInfo)
-                return;
+            if (!modelInfo || (modelInfo->modelHeader.numSequences == 0 && modelInfo->modelHeader.numBones == 0 && modelInfo->modelHeader.numTextureTransforms == 0 && modelInfo->modelHeader.numAttachments == 0))
+            {
+                if (registry.all_of<Components::AnimationData>(entity))
+                    registry.remove<Components::AnimationData>(entity);
 
-            if (modelInfo->modelHeader.numSequences == 0 && modelInfo->modelHeader.numBones == 0 && modelInfo->modelHeader.numTextureTransforms == 0 && modelInfo->modelHeader.numAttachments == 0)
                 return;
+            }
 
             bool isDynamic = animationInitData.flags.isDynamic;
             bool wasStatic = !animationInitData.flags.isDynamic;

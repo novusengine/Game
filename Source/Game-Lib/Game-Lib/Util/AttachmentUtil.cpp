@@ -10,8 +10,6 @@
 
 #include <Base/Util/StringUtils.h>
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
-
 #include <entt/entt.hpp>
 #include "AttachmentUtil.h"
 

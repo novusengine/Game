@@ -19,6 +19,7 @@
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 
+#include <entt/entt.hpp>
 #include <imgui.h>
 
 

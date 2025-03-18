@@ -1,12 +1,11 @@
 #include "Spell.h"
 
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/Gameplay/Database/Spell.h"
 #include "Game-Lib/Scripting/LuaMethodTable.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -39,7 +38,7 @@ namespace Scripting::Database
             if (!db->Has(spellID))
                 spellID = 0;
 
-            const auto& spellInfo = db->Get<::Database::Spell::Spell>(spellID);
+            const auto& spellInfo = db->Get<Generated::SpellRecord>(spellID);
 
             // Name, Icon, Description RequiredText, SpecialText
             const std::string& name = db->GetString(spellInfo.name);

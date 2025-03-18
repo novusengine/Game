@@ -27,6 +27,8 @@
 
 #include <Input/InputManager.h>
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Descriptors/ImageDesc.h>
@@ -1686,9 +1688,9 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
     auto* itemDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayInfo);
     auto* itemDisplayModelMaterialStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayModelMaterialResources);
 
-    const ClientDB::Definitions::CreatureDisplayInfo* creatureDisplayInfo = nullptr;
-    const ClientDB::Definitions::CreatureDisplayInfoExtra* creatureDisplayInfoExtra = nullptr;
-    const ClientDB::Definitions::ItemDisplayInfo* itemDisplayInfo = nullptr;
+    const Generated::CreatureDisplayInfoRecord* creatureDisplayInfo = nullptr;
+    const Generated::CreatureDisplayInfoExtraRecord* creatureDisplayInfoExtra = nullptr;
+    const Generated::ItemDisplayInfoRecord* itemDisplayInfo = nullptr;
     ECS::Components::DisplayInfo* unitDisplayInfo = nullptr;
     ECS::Components::UnitCustomization* unitCustomization = nullptr;
 
@@ -1696,20 +1698,20 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
     if (!_displayInfoManifests.contains(displayInfoPacked))
     {
-        auto displayInfoType = static_cast<ClientDB::Definitions::DisplayInfoType>((displayInfoPacked >> 23) & 0x7);
+        auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((displayInfoPacked >> 23) & 0x7);
         u32 displayID = displayInfoPacked & 0xFFFFFF;
 
         switch (displayInfoType)
         {
-            case ClientDB::Definitions::DisplayInfoType::Creature:
+            case Database::Unit::DisplayInfoType::Creature:
             {
                 if (creatureDisplayInfoStorage)
                 {
-                    creatureDisplayInfo = &creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
+                    creatureDisplayInfo = &creatureDisplayInfoStorage->Get<Generated::CreatureDisplayInfoRecord>(displayID);
 
                     if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
                     {
-                        creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<ClientDB::Definitions::CreatureDisplayInfoExtra>(creatureDisplayInfo->extendedDisplayInfoID);
+                        creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<Generated::CreatureDisplayInfoExtraRecord>(creatureDisplayInfo->extendedDisplayInfoID);
                     }
 
                     if (gameRegistry->valid(entityID))
@@ -1722,11 +1724,11 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                 break;
             }
 
-            case ClientDB::Definitions::DisplayInfoType::Item:
+            case Database::Unit::DisplayInfoType::Item:
             {
                 if (itemDisplayInfoStorage)
                 {
-                    itemDisplayInfo = &itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+                    itemDisplayInfo = &itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(displayID);
                 }
 
                 break;
@@ -1796,11 +1798,12 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
         if (creatureDisplayInfoExtra)
         {
-            isPrebaked = textureSingleton.textureHashToPath.contains(creatureDisplayInfoExtra->bakedTextureHash);
+            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+            isPrebaked = textureSingleton.textureHashToPath.contains(bakedTextureHash);
             useCustomSkin = !isPrebaked;
 
-            unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->displayRaceID);
-            gender = static_cast<GameDefine::Gender>(creatureDisplayInfoExtra->displaySexID);
+            unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->raceID);
+            gender = static_cast<GameDefine::Gender>(creatureDisplayInfoExtra->gender);
         }
         else if (creatureDisplayInfo)
         {
@@ -1883,7 +1886,8 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (isPrebaked)
                         {
-                            textureHash = creatureDisplayInfoExtra->bakedTextureHash;
+                            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+                            textureHash = bakedTextureHash;
                         }
                         else if (useCustomSkin)
                         {
@@ -1900,7 +1904,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
                         {
-                            u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+                            u32 materialResourcesID = itemDisplayInfo->modelMaterialResourcesID[0];
                             u64 itemDisplayModelMaterialKey = ECSUtil::Item::CreateItemDisplayModelMaterialResourcesKey(displayID, 0, (u8)cTexture.type, materialResourcesID);
 
                             if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(itemDisplayModelMaterialKey))
@@ -1922,7 +1926,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (itemDisplayInfo && itemDisplayModelMaterialStorage && textureFileDataStorage)
                         {
-                            u32 materialResourcesID = itemDisplayInfo->materialResourcesID[0];
+                            u32 materialResourcesID = itemDisplayInfo->modelMaterialResourcesID[0];
                             u64 itemDisplayModelMaterialKey = ECSUtil::Item::CreateItemDisplayModelMaterialResourcesKey(displayID, 0, (u8)cTexture.type, materialResourcesID);
 
                             if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(itemDisplayModelMaterialKey))

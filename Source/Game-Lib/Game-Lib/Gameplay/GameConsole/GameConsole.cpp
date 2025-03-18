@@ -12,8 +12,9 @@
 #include <Renderer/RenderSettings.h>
 
 #include <GLFW/glfw3.h>
+#include <imgui_internal.h>
 
-AutoCVar_Int CVAR_GameConsoleEnabled(CVarCategory::Client, "consoleEnabled", "enable game console", 1, CVarFlags::EditReadOnly | CVarFlags::DoNotSave);
+AutoCVar_Int CVAR_GameConsoleEnabled(CVarCategory::Client, "consoleEnabled", "enable game console", 1, CVarFlags::Hidden | CVarFlags::DoNotSave);
 AutoCVar_Int CVAR_GameConsoleDuplicateToTerminal(CVarCategory::Client, "consoleDuplicateToTerminal", "enable printing to terminal", 1, CVarFlags::EditCheckbox);
 
 GameConsole::GameConsole()
@@ -22,24 +23,44 @@ GameConsole::GameConsole()
 
     InputManager* inputManager = ServiceLocator::GetInputManager();
     KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-    keybindGroup->AddKeyboardCallback("Enable Game Console", GLFW_KEY_BACKSLASH, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
-        {
-            Toggle();
-            return true;
-        });
-    keybindGroup->AddKeyboardCallback("Close Game Console", GLFW_KEY_ESCAPE, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
-        {
-            Disable();
-            return false;
-        });
+    keybindGroup->AddKeyboardCallback("Enable Game Console", GLFW_KEY_BACKSLASH, KeybindAction::Release, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+    {
+        Toggle();
+        return true;
+    });
 
     Disable();
     _commandHandler = new GameConsoleCommandHandler();
+    _commandHistory.reserve(CommandHistoryMaxSize);
 }
 
 GameConsole::~GameConsole()
 {
     delete _commandHandler;
+}
+
+bool MatchesCommand(const std::string& command, const std::string& _searchText)
+{
+    if (_searchText.empty())
+        return true; // Show all if empty
+
+    // Case-insensitive comparison
+    auto caseInsensitiveFind = [](const std::string& str, const std::string& sub) -> bool
+        {
+            return std::search(str.begin(), str.end(), sub.begin(), sub.end(),
+                [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }) != str.end();
+        };
+
+    // Prioritize prefix match
+    if (command.size() >= _searchText.size() &&
+        std::equal(_searchText.begin(), _searchText.end(), command.begin(),
+            [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }))
+    {
+        return true;
+    }
+
+    // Fallback to case-insensitive substring match
+    return caseInsensitiveFind(command, _searchText);
 }
 
 void GameConsole::Render(f32 deltaTime)
@@ -56,16 +77,27 @@ void GameConsole::Render(f32 deltaTime)
         _lines.push_back(lineToAppend);
     }
 
-    //f32 heightOffset = ImGui::GetWindowHeight();
     f32 height = glm::mix(0.0f, 300.f, _visibleProgressTimer);
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y /*+ heightOffset */));
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x, viewport->Pos.y));
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, height));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.14f, 0.14f, 0.14f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.14f, 0.14f, 0.14f, 0.85f));
     if (ImGui::Begin("GameConsole", reinterpret_cast<bool*>(isGameConsoleEnabled), ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove))
     {
+        ImGuiWindow* gameConsoleWindow = ImGui::GetCurrentWindow();
+
+        if (ImGui::IsKeyReleased(ImGuiKey_Escape))
+        {
+            Disable();
+        }
+        else if (ImGui::IsKeyReleased(ImGuiKey_Tab))
+        {
+            ImGuiID inputFieldID = gameConsoleWindow->GetID("##ConsoleInputField");
+            ImGui::ActivateItemByID(inputFieldID);
+        }
+
         ImGui::SetWindowFontScale(1.0f);
 
         const f32 reservedHeight = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
@@ -86,25 +118,200 @@ void GameConsole::Render(f32 deltaTime)
 
         ImGui::PushItemWidth(Renderer::Settings::SCREEN_WIDTH);
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.50f, 0.50f, 0.50f, 0.50f));
-        bool handleInput = ImGui::InputText("##", &_searchText, ImGuiInputTextFlags_EnterReturnsTrue);
+
+        if (_textFieldHasFocus && !_commandHistory.empty())
+        {
+            bool wasModified = false;
+
+            if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+            {
+                if (ImGui::IsKeyReleased(ImGuiKey_UpArrow))
+                {
+                    i32 numCommandsInHistory = static_cast<i32>(_commandHistory.size());
+                    if (_commandHistoryIndex == -1)
+                    {
+                        _commandHistoryIndex = _commandHistoryDefaultIndex;
+                    }
+                    else if (--_commandHistoryIndex < 0)
+                    {
+                        _commandHistoryIndex = numCommandsInHistory - 1;
+                    }
+
+                    _searchText = _commandHistory[_commandHistoryIndex];
+                    wasModified = true;
+                }
+                else if (ImGui::IsKeyReleased(ImGuiKey_DownArrow))
+                {
+                    if (_commandHistoryIndex == -1)
+                        _commandHistoryIndex = _commandHistoryDefaultIndex;
+
+                    i32 numCommandsInHistory = static_cast<i32>(_commandHistory.size());
+                    if (++_commandHistoryIndex >= numCommandsInHistory)
+                        _commandHistoryIndex = 0;
+
+                    _searchText = _commandHistory[_commandHistoryIndex];
+                    wasModified = true;
+                }
+            }
+
+            if (wasModified)
+            {
+                ImGuiWindow* window = ImGui::GetCurrentWindow();
+                ImGuiID inputFieldID = window->GetID("##ConsoleInputField");
+                ImGui::GetInputTextState(inputFieldID)->ReloadUserBufAndMoveToEnd();
+            }
+        }
+
+        u32 searchTextLength = static_cast<u32>(_searchText.length());
+        bool handleInput = ImGui::InputText("##ConsoleInputField", &_searchText, ImGuiInputTextFlags_EnterReturnsTrue);
+
         ImGui::PopStyleColor();
         ImGui::PopItemWidth();
 
-        if (handleInput)
+        if (handleInput && searchTextLength > 0)
         {
-            if (_commandHandler->HandleCommand(this, _searchText))
+            bool searchTextIsOnlySpaces = std::all_of(_searchText.begin(), _searchText.end(), [](unsigned char ch) { return std::isspace(ch); });
+            if (!searchTextIsOnlySpaces)
             {
+                u32 numCommandsInHistory = static_cast<u32>(_commandHistory.size());
+                if (numCommandsInHistory < CommandHistoryMaxSize)
+                {
+                    if (numCommandsInHistory == 0 || _commandHistory.back() != _searchText)
+                    {
+                        _commandHistoryIndex = -1;
+                        _commandHistoryDefaultIndex = numCommandsInHistory;
+                        _commandHistory.push_back(_searchText);
+                    }
+                }
+                else
+                {
+                    _commandHistoryIndex = -1;
+                    _commandHistoryDefaultIndex = _commandHistoryUpdateIndex;
+                    _commandHistory[_commandHistoryUpdateIndex++] = _searchText;
+
+                    if (_commandHistoryUpdateIndex >= CommandHistoryMaxSize)
+                        _commandHistoryUpdateIndex = 0;
+                }
+
+                _commandHandler->HandleCommand(this, _searchText);
+
                 _lines.push_back(_searchText);
             }
 
             _searchText = "";
+            ImGuiID inputFieldID = gameConsoleWindow->GetID("##ConsoleInputField");
+            ImGui::GetInputTextState(inputFieldID)->ReloadUserBufAndMoveToEnd();
         }
 
-        ImGui::SetItemDefaultFocus();
+        // Auto-completion suggestions based on the current input
+        if (_searchText.empty())
+        {
+            _lastSearchTextHash = std::numeric_limits<u32>().max();
+            _suggestionSelectedIndex = 0;
+            _commandHashSuggestions.clear();
+        }
+        else
+        {
+            const auto& commands = _commandHandler->GetCommandEntries();
+
+            u32 searchHash = StringUtils::fnv1a_32(_searchText.c_str(), _searchText.length());
+            if (searchHash != _lastSearchTextHash)
+            {
+                _commandHashSuggestions.clear();
+
+                if (!commands.contains(searchHash))
+                {
+                    for (const auto& command : commands)
+                    {
+                        if (MatchesCommand(command.second.nameWithAliases, _searchText))
+                        {
+                            _commandHashSuggestions.push_back(command.first);
+                        }
+                    }
+                }
+
+                _lastSearchTextHash = searchHash;
+                _suggestionSelectedIndex = 0;
+            }
+            
+            if (!_commandHashSuggestions.empty())
+            {
+                // Position the popup right below the input field.
+                ImVec2 inputPos = ImGui::GetItemRectMin();
+                ImVec2 inputSize = ImGui::GetItemRectSize();
+                ImVec2 popupPos = ImVec2(inputPos.x, (inputPos.y + inputSize.y));
+                ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
+
+                bool tabReleased = ImGui::IsKeyReleased(ImGuiKey_Tab);
+
+                if (ImGui::BeginPopup("SuggestionsPopup",
+                    ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize))
+                {
+                    u32 numSuggestions = static_cast<u32>(_commandHashSuggestions.size());
+
+                    if (!ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
+                    {
+                        if (ImGui::IsKeyReleased(ImGuiKey_UpArrow))
+                        {
+                            if (--_suggestionSelectedIndex < 0)
+                                _suggestionSelectedIndex = static_cast<i32>(numSuggestions) - 1;
+                        }
+                        else if (ImGui::IsKeyReleased(ImGuiKey_DownArrow))
+                        {
+                            if (++_suggestionSelectedIndex >= static_cast<i32>(numSuggestions))
+                                _suggestionSelectedIndex = 0;
+                        }
+                    }
+
+                    for (u32 suggestionIndex = 0; suggestionIndex < numSuggestions; suggestionIndex++)
+                    {
+                        const auto suggestion = _commandHashSuggestions[suggestionIndex];
+                        const auto& command = commands.at(suggestion);
+
+                        bool isSelected = suggestionIndex == _suggestionSelectedIndex;
+                        if (ImGui::Selectable(command.nameWithAliases.data()) || (isSelected && tabReleased))
+                        {
+                            _searchText = command.name;
+
+                            ImGuiID inputFieldID = gameConsoleWindow->GetID("##ConsoleInputField");
+                            ImGui::GetInputTextState(inputFieldID)->ReloadUserBufAndMoveToEnd();
+
+                            ImGui::CloseCurrentPopup();
+                            break;
+                        }
+                        ImVec2 min = ImGui::GetItemRectMin();
+
+                        if (command.help.length() > 0)
+                        {
+                            ImGui::SameLine();
+                            ImGui::TextDisabled("- %s", command.help.data());
+                        }
+
+                        if (isSelected)
+                        {
+                            static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
+
+                            ImVec2 max = ImGui::GetItemRectMax();
+                            ImGui::GetWindowDrawList()->AddRectFilled(min, max, hoveredColor);
+                        }
+                        
+                        // Insert a tiny line under each suggestion except the last
+                        if (suggestionIndex < numSuggestions - 1)
+                            ImGui::Separator();
+                    }
+                    ImGui::EndPopup();
+                }
+                ImGui::OpenPopup("SuggestionsPopup");
+            }
+        }
+
         if (handleInput)
         {
             ImGui::SetKeyboardFocusHere(-1);
         }
+
+        _textFieldHasFocus = ImGui::IsItemActive();
     }
     ImGui::End();
     ImGui::PopStyleColor();
@@ -120,7 +327,7 @@ void GameConsole::Clear()
 
 void GameConsole::Toggle()
 {
-    if (CVAR_GameConsoleEnabled.Get())
+    if (IsEnabled())
     {
         Disable();
     }
@@ -128,6 +335,11 @@ void GameConsole::Toggle()
     {
         Enable();
     }
+}
+
+bool GameConsole::IsEnabled()
+{
+    return CVAR_GameConsoleEnabled.Get();
 }
 
 void GameConsole::Enable()

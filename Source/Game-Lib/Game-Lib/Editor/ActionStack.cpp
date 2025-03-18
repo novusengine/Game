@@ -19,7 +19,7 @@ namespace Editor
     }
 
     ActionStackEditor::ActionStackEditor(u32 maxSize)
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly)
         , _maxSize(maxSize)
     {
 

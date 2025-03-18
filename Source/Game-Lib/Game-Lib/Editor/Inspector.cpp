@@ -102,7 +102,7 @@ namespace Editor
     };
 
     Inspector::Inspector()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly)
     {
         InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);

@@ -1,6 +1,8 @@
 #pragma once
 #include <Base/Types.h>
 
+#include <Meta/Generated/Game/LuaEnum.h>
+
 struct lua_State;
 typedef i32 (*lua_CFunction)(lua_State* L);
 
@@ -26,14 +28,6 @@ namespace Scripting
     {
         Invalid,
         Reload
-    };
-
-    enum class LuaGameEvent
-    {
-        Invalid,
-        Loaded,
-        Updated,
-        Count
     };
 
     enum class LuaPlayerEvent
@@ -105,5 +99,5 @@ namespace Scripting
         u32 destSlotIndex;
     };
 
-    using LuaGameEventHandlerFn = std::function<void(lua_State*, LuaGameEvent, LuaEventData*)>;
+    using LuaGameEventHandlerFn = std::function<void(lua_State*, Generated::LuaGameEventEnum, LuaEventData*)>;
 }

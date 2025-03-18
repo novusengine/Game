@@ -3,15 +3,25 @@
 
 namespace Editor
 {
+    enum BaseEditorFlags : u32
+    {
+        BaseEditorFlags_None = 0,
+        BaseEditorFlags_DefaultVisible = 1 << 0,
+        BaseEditorFlags_HideInMenuBar = 1 << 1,
+        BaseEditorFlags_EditorOnly = 1 << 2
+    };
+    typedef std::underlying_type_t<BaseEditorFlags> BaseEditorFlags_t;
+
     class BaseEditor
     {
     public:
-        BaseEditor(const char* name, bool defaultVisible);
+        BaseEditor(const char* name, BaseEditorFlags_t flags = BaseEditorFlags_None);
 
         void UpdateVisibility();
 
         virtual const char* GetName() = 0;
         virtual void Show();
+        virtual void Hide();
 
         virtual void Update(f32 deltaTime) {};
         virtual void OnModeUpdate(bool mode) {};
@@ -30,6 +40,8 @@ namespace Editor
         bool OpenRightClickMenu();
         bool IsMouseInsideWindow();
 
+        bool IsHiddenInMenuBar();
+        bool IsEditorOnly();
         bool IsHorizontal();
         bool& IsVisible();
         void SetIsVisible(bool isVisible);
@@ -38,6 +50,6 @@ namespace Editor
     protected:
         bool _isVisible;
         bool _lastIsVisible;
-        bool _defaultVisible;
+        BaseEditorFlags_t _flags;
     };
 }

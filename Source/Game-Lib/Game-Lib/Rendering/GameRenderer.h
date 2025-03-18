@@ -19,6 +19,7 @@ namespace Novus
 struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
+struct ImGuiStyle;
 class InputManager;
 class TerrainRenderer;
 class TerrainLoader;
@@ -39,6 +40,13 @@ class UIRenderer;
 class PixelQuery;
 class EffectRenderer;
 class ShadowRenderer;
+
+struct ImGuiTheme
+{
+public:
+    std::string name;
+    ImGuiStyle* style = nullptr;
+};
 
 class GameRenderer
 {
@@ -77,12 +85,17 @@ public:
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
 
+    const std::vector<ImGuiTheme>& GetImguiThemes() { return _imguiThemes; }
+    bool IsCurrentTheme(u32 themeNameHash) { return _currentThemeHash == themeNameHash; }
+    bool SetImguiTheme(u32 themeNameHash);
+
     Novus::Window* GetWindow() { return _window; }
     const std::string& GetGPUName();
 
 private:
     void CreatePermanentResources();
 
+    void CreateImguiThemes();
     void InitImgui();
 
 private:
@@ -127,6 +140,10 @@ private:
     UIRenderer* _uiRenderer = nullptr;
     EffectRenderer* _effectRenderer = nullptr;
     ShadowRenderer* _shadowRenderer = nullptr;
+
+    u32 _currentThemeHash = std::numeric_limits<u32>().max();
+    std::vector<ImGuiTheme> _imguiThemes;
+    robin_hood::unordered_map<u32, u32> _themeNameHashToIndex;
 
     robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;
 };

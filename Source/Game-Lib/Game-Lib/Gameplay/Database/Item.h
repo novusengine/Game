@@ -1,38 +1,8 @@
 #pragma once
-#include "Shared.h"
-
 #include <Base/Types.h>
 
 namespace Database::Item
 {
-    struct Item
-    {
-    public:
-        u32 displayID;
-        u8 bind;
-        u8 rarity;
-        u8 category;
-        u8 type;
-        u16 virtualLevel;
-        u16 requiredLevel;
-        u32 durability;
-        u32 iconID;
-        u32 name;
-        u32 description;
-        u32 armor;
-        u32 statTemplateID;
-        u32 armorTemplateID;
-        u32 weaponTemplateID;
-        u32 shieldTemplateID;
-    };
-
-    struct ItemStatTemplate
-    {
-    public:
-        u8 statTypes[8];
-        i32 statValues[8];
-    };
-
     enum class ItemEquipSlot : u8
     {
         Helm,
@@ -57,7 +27,7 @@ namespace Database::Item
         Count
     };
 
-    enum class ItemArmorEquipType : u32
+    enum class ItemArmorEquipType : u8
     {
         Helm        = 1,
         Necklace    = 2,
@@ -79,14 +49,7 @@ namespace Database::Item
         Ammo        = 18
     };
 
-    struct ItemArmorTemplate
-    {
-    public:
-        ItemArmorEquipType equipType;
-        u32 bonusArmor;
-    };
-
-    enum class ItemWeaponStyle : u32
+    enum class ItemWeaponStyle : u8
     {
         Unspecified = 1,
         OneHand     = 2,
@@ -98,22 +61,6 @@ namespace Database::Item
         Tool        = 8
     };
 
-    struct ItemWeaponTemplate
-    {
-    public:
-        ItemWeaponStyle weaponStyle;
-        u32 minDamage;
-        u32 maxDamage;
-        f32 speed;
-    };
-
-    struct ItemShieldTemplate
-    {
-    public:
-        u32 bonusArmor;
-        u32 block;
-    };
-
     enum class ItemEffectType : u8
     {
         OnEquip,
@@ -121,13 +68,5 @@ namespace Database::Item
         OnProc,
         OnLooted,
         OnBound
-    };
-    struct ItemEffect
-    {
-    public:
-        u32 itemID;
-        u8 slot;
-        ItemEffectType type;
-        u32 spellID;
     };
 }

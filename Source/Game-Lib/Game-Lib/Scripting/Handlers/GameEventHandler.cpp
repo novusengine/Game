@@ -17,8 +17,8 @@ namespace Scripting
 
         // Set Event Handlers
         {
-            SetEventHandler(static_cast<u32>(LuaGameEvent::Loaded), std::bind(&GameEventHandler::OnGameLoaded, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-            SetEventHandler(static_cast<u32>(LuaGameEvent::Updated), std::bind(&GameEventHandler::OnGameUpdated, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::Loaded), std::bind(&GameEventHandler::OnGameLoaded, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::Updated), std::bind(&GameEventHandler::OnGameUpdated, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         }
 
         CreateGameEventTable(state);
@@ -26,9 +26,9 @@ namespace Scripting
 
     void GameEventHandler::SetEventHandler(u32 eventID, EventHandlerFn fn)
     {
-        LuaGameEvent gameEventID = static_cast<LuaGameEvent>(eventID);
+        Generated::LuaGameEventEnum gameEventID = static_cast<Generated::LuaGameEventEnum>(eventID);
 
-        if (gameEventID == LuaGameEvent::Invalid || gameEventID >= LuaGameEvent::Count)
+        if (gameEventID == Generated::LuaGameEventEnum::Invalid || gameEventID >= Generated::LuaGameEventEnum::Count)
         {
             return;
         }
@@ -40,9 +40,9 @@ namespace Scripting
         if (eventID >= _eventToFuncHandlerList.size())
             return;
 
-        LuaGameEvent gameEventID = static_cast<LuaGameEvent>(eventID);
+        Generated::LuaGameEventEnum gameEventID = static_cast<Generated::LuaGameEventEnum>(eventID);
 
-        if (gameEventID == LuaGameEvent::Invalid || gameEventID >= LuaGameEvent::Count)
+        if (gameEventID == Generated::LuaGameEventEnum::Invalid || gameEventID >= Generated::LuaGameEventEnum::Count)
         {
             return;
         }
@@ -68,8 +68,8 @@ namespace Scripting
 
         u32 eventID = ctx.Get(0u, 1);
 
-        LuaGameEvent gameEventID = static_cast<LuaGameEvent>(eventID);
-        if (gameEventID == LuaGameEvent::Invalid || gameEventID >= LuaGameEvent::Count)
+        Generated::LuaGameEventEnum gameEventID = static_cast<Generated::LuaGameEventEnum>(eventID);
+        if (gameEventID == Generated::LuaGameEventEnum::Invalid || gameEventID >= Generated::LuaGameEventEnum::Count)
         {
             return 0;
         }
@@ -137,12 +137,12 @@ namespace Scripting
     {
         LuaState ctx(state);
 
-        ctx.CreateTableAndPopulate("GameEvent", [&]()
+        ctx.CreateTableAndPopulate(Generated::LuaGameEventEnumMeta::EnumName.data(), [&]()
         {
-            ctx.SetTable("Invalid", 0u);
-            ctx.SetTable("Loaded",  1u);
-            ctx.SetTable("Updated", 2u);
-            ctx.SetTable("Count",   3u);
+            for (const auto& pair : Generated::LuaGameEventEnumMeta::EnumList)
+            {
+                ctx.SetTable(pair.first.data(), pair.second);
+            }
         });
     }
 }

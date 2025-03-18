@@ -2,8 +2,9 @@
 
 #include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <Game-Lib/Util/CameraSaveUtil.h>
@@ -25,16 +26,12 @@ namespace ECSUtil::Camera
             clientDBSingleton.Register(ClientDBHash::CameraSave, "CameraSave");
 
             auto* cameraSaveStorage = clientDBSingleton.Get(ClientDBHash::CameraSave);
-            cameraSaveStorage->Initialize({
-                { "Name",   ClientDB::FieldType::StringRef },
-                { "Code",   ClientDB::FieldType::StringRef }
-            });
+            cameraSaveStorage->Initialize<Generated::CameraSaveRecord>();
 
-            ::Database::Shared::CameraSave cameraSave =
-            {
-                .name = cameraSaveStorage->AddString("Default"),
-                .code = cameraSaveStorage->AddString("RGVmYXVsdAAAAAAAAAAAIEEAACDBAADwQQAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAA==")
-            };
+            Generated::CameraSaveRecord cameraSave;
+            cameraSave.name = cameraSaveStorage->AddString("Default");
+            cameraSave.code = cameraSaveStorage->AddString("RGVmYXVsdAAAAAAAAAAAIEEAACDBAADwQQAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAA==");
+
             cameraSaveStorage->Replace(0, cameraSave);
 
             cameraSaveStorage->MarkDirty();
@@ -48,7 +45,7 @@ namespace ECSUtil::Camera
         u32 numRecords = cameraSaveStorage->GetNumRows();
         cameraSaveSingleton.cameraSaveNameHashToID.reserve(numRecords);
 
-        cameraSaveStorage->Each([&cameraSaveSingleton, &cameraSaveStorage](u32 id, const ::Database::Shared::CameraSave& cameraSave) -> bool
+        cameraSaveStorage->Each([&cameraSaveSingleton, &cameraSaveStorage](u32 id, const Generated::CameraSaveRecord& cameraSave) -> bool
         {
             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
             u32 nameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
@@ -126,11 +123,9 @@ namespace ECSUtil::Camera
         auto& cameraSaveSingleton = ctx.get<ECS::Singletons::CameraSaveSingleton>();
         auto* cameraSaveStorage = clientDBSingleton.Get(ClientDBHash::CameraSave);
 
-        ::Database::Shared::CameraSave cameraSave =
-        {
-            .name = cameraSaveStorage->AddString(cameraName),
-            .code = cameraSaveStorage->AddString(saveCode)
-        };
+        Generated::CameraSaveRecord cameraSave;
+        cameraSave.name = cameraSaveStorage->AddString(cameraName);
+        cameraSave.code = cameraSaveStorage->AddString(saveCode);
 
         u32 cameraID = cameraSaveStorage->Add(cameraSave);
         cameraSaveSingleton.cameraSaveNameHashToID[cameraNameHash] = cameraID;

@@ -1,12 +1,12 @@
 #pragma once
 #include "Game-Lib/Application/IOLoader.h"
 #include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/Gameplay/Database/Unit.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
 #include <Base/Container/SafeUnorderedMap.h>
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
@@ -112,7 +112,7 @@ public: // Load Request Helpers
     void LoadPlacement(const Terrain::Placement& placement);
     void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
     bool LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash);
-    bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
+    bool LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
     void UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model);
 
     void SetEntityVisible(entt::entity entity, bool visible);

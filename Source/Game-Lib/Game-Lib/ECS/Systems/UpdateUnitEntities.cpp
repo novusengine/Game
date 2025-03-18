@@ -29,6 +29,8 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -132,14 +134,15 @@ namespace ECS::Systems
                         unitCustomization->componentSectionsInUse = { 0 };
 
                         auto& displayInfo = registry.get<Components::DisplayInfo>(entity);
-                        if (auto* displayInfoRow = creatureDisplayInfoStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfo>(displayInfo.displayID))
+                        if (auto* displayInfoRow = creatureDisplayInfoStorage->TryGet<Generated::CreatureDisplayInfoRecord>(displayInfo.displayID))
                         {
-                            if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfoExtra>(displayInfoRow->extendedDisplayInfoID))
+                            if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<Generated::CreatureDisplayInfoExtraRecord>(displayInfoRow->extendedDisplayInfoID))
                             {
-                                unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(displayInfoExtraRow->bakedTextureHash);
+                                u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(displayInfoExtraRow->bakedTexture);
+                                unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(bakedTextureHash);
 
-                                displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->displayRaceID);
-                                displayInfo.gender = static_cast<GameDefine::Gender>(displayInfoExtraRow->displaySexID);
+                                displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->raceID);
+                                displayInfo.gender = static_cast<GameDefine::Gender>(displayInfoExtraRow->gender);
 
                                 unitCustomization->skinID = displayInfoExtraRow->skinID;
                                 unitCustomization->faceID = displayInfoExtraRow->faceID;
@@ -384,7 +387,7 @@ namespace ECS::Systems
                 }
                 else
                 {
-                    auto& item = itemStorage->Get<Database::Item::Item>(itemID);
+                    auto& item = itemStorage->Get<Generated::ItemRecord>(itemID);
 
                     if (equipSlot == ::Database::Item::ItemEquipSlot::MainHand)
                     {
@@ -463,7 +466,7 @@ namespace ECS::Systems
                     {
                         if (itemStorage->Has(glovesID))
                         {
-                            auto& item = itemStorage->Get<Database::Item::Item>(glovesID);
+                            auto& item = itemStorage->Get<Generated::ItemRecord>(glovesID);
                             if (item.displayID > 0)
                             {
                                 ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -477,7 +480,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(shirtID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(shirtID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(shirtID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -490,7 +493,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(bracersID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(bracersID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(bracersID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -503,7 +506,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(bootsID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(bootsID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(bootsID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -516,7 +519,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(pantsID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(pantsID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(pantsID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -529,7 +532,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(chestID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(chestID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(chestID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -544,7 +547,7 @@ namespace ECS::Systems
                     {
                         if (itemStorage->Has(glovesID))
                         {
-                            auto& item = itemStorage->Get<Database::Item::Item>(glovesID);
+                            auto& item = itemStorage->Get<Generated::ItemRecord>(glovesID);
                             if (item.displayID > 0)
                             {
                                 ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -558,7 +561,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(beltID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(beltID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(beltID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -571,7 +574,7 @@ namespace ECS::Systems
                 {
                     if (itemStorage->Has(tabardID))
                     {
-                        auto& item = itemStorage->Get<Database::Item::Item>(tabardID);
+                        auto& item = itemStorage->Get<Generated::ItemRecord>(tabardID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);

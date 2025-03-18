@@ -22,9 +22,14 @@
 namespace Editor
 {
     PerformanceDiagnostics::PerformanceDiagnostics()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
+    }
+
+    void PerformanceDiagnostics::OnModeUpdate(bool mode)
+    {
+        SetIsVisible(mode);
     }
 
     void PerformanceDiagnostics::DrawImGui()
@@ -45,7 +50,7 @@ namespace Editor
         const std::string& cpuName = cpuInfo.GetPrettyName();
         const std::string& gpuName = gameRenderer->GetGPUName();
 
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             static bool enableStretching = true;
 

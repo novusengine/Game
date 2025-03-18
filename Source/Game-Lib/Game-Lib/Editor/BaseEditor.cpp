@@ -11,10 +11,11 @@ namespace Editor
 {
     const CVarCategory CVAR_CATEGORY = CVarCategory::Client;
 
-    BaseEditor::BaseEditor(const char* name, bool defaultVisible)
-        : _defaultVisible(defaultVisible)
+    BaseEditor::BaseEditor(const char* name, BaseEditorFlags_t flags)
     {
         CVarSystem* cvarSystem = CVarSystem::Get();
+
+        _flags = flags;
 
         std::string cvarName = name;
         cvarName.append("IsOpen");
@@ -24,9 +25,10 @@ namespace Editor
         CVarParameter* cvar = cvarSystem->GetCVar(CVAR_CATEGORY, cvarName.c_str());
         if (cvar == nullptr)
         {
-            cvarSystem->CreateIntCVar(CVAR_CATEGORY, cvarName.c_str(), "Is window open", defaultVisible, defaultVisible, CVarFlags::RuntimeCreated | CVarFlags::Hidden);
+            bool isDefaultVisible = (_flags & BaseEditorFlags_DefaultVisible) != 0;
+            cvarSystem->CreateIntCVar(CVAR_CATEGORY, cvarName.c_str(), "Is window open", isDefaultVisible, isDefaultVisible, CVarFlags::RuntimeCreated | CVarFlags::Hidden);
             
-            _isVisible = defaultVisible;
+            _isVisible = isDefaultVisible;
             cvarSystem->MarkDirty();
             return;
         }
@@ -44,6 +46,8 @@ namespace Editor
 
             std::string cvarName = GetName();
             cvarName.append("IsOpen");
+            std::string::iterator end_pos = std::remove(cvarName.begin(), cvarName.end(), ' ');
+            cvarName.erase(end_pos, cvarName.end());
             
             cvarSystem->SetIntCVar(CVAR_CATEGORY, cvarName.c_str(), _isVisible);
             cvarSystem->MarkDirty();
@@ -54,6 +58,11 @@ namespace Editor
     void BaseEditor::Show()
     {
         _isVisible = true;
+    }
+
+    void BaseEditor::Hide()
+    {
+        _isVisible = false;
     }
 
     bool BaseEditor::OpenMenu(const char* title)
@@ -101,6 +110,18 @@ namespace Editor
             ImGui::IsWindowHovered());
     }
 
+    bool BaseEditor::IsHiddenInMenuBar()
+    {
+        bool isHiddenInMenuBar = (_flags & BaseEditorFlags_HideInMenuBar) != 0;
+        return isHiddenInMenuBar;
+    }
+
+    bool BaseEditor::IsEditorOnly()
+    {
+        bool isEditorOnly = (_flags & BaseEditorFlags_EditorOnly) != 0;
+        return isEditorOnly;
+    }
+
     bool BaseEditor::IsHorizontal()
     {
         return (ImGui::GetWindowWidth() >= ImGui::GetWindowHeight());
@@ -118,6 +139,7 @@ namespace Editor
 
     void BaseEditor::Reset()
     {
-        _isVisible = _defaultVisible;
+        bool defaultVisible = (_flags & BaseEditorFlags_DefaultVisible) != 0;
+        _isVisible = defaultVisible;
     }
 }

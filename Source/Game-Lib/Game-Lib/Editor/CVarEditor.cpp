@@ -14,7 +14,7 @@
 namespace Editor
 {
     CVarEditor::CVarEditor()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_HideInMenuBar)
     {
 
     }
@@ -27,7 +27,8 @@ namespace Editor
 
             static std::string searchText = "";
 
-            ImGui::InputText("Filter", &searchText);
+            ImGui::Text("Filter");
+            ImGui::InputText("##CVarFilter", &searchText);
             static bool bShowAdvanced = false;
             ImGui::Checkbox("Advanced", &bShowAdvanced);
             static bool bShowHidden = false;

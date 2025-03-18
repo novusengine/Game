@@ -2,10 +2,7 @@
 #include "LiquidRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Base/CVarSystem/CVarSystem.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
-
-AutoCVar_Int CVAR_LiquidLoaderEnabled(CVarCategory::Client, "liquidLoaderEnabled", "enable liquid loading", 1, CVarFlags::EditCheckbox);
 
 LiquidLoader::LiquidLoader(LiquidRenderer* liquidRenderer)
     : _liquidRenderer(liquidRenderer) { }
@@ -29,9 +26,6 @@ void LiquidLoader::Clear()
 void LiquidLoader::Update(f32 deltaTime)
 {
     ZoneScoped;
-
-    if (!CVAR_LiquidLoaderEnabled.Get())
-        return;
 
     enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
@@ -104,9 +98,6 @@ vec2 GetCellPosition(u32 chunkID, u32 cellID)
 
 void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, std::shared_ptr<Bytebuffer>& buffer, const Map::Chunk::LiquidHeader& liquidHeader)
 {
-    if (!CVAR_LiquidLoaderEnabled.Get())
-        return;
-
     if (liquidHeader.numHeaders == 0)
         return;
 

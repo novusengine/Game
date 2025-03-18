@@ -35,8 +35,6 @@
 
 namespace Editor
 {
-    AutoCVar_Int CVAR_EditorEnabled(CVarCategory::Client, "editorEnable", "enable editor mode for the client", 1, CVarFlags::EditCheckbox);
-
     EditorHandler::EditorHandler()
     {
         InputManager* inputManager = ServiceLocator::GetInputManager();
@@ -201,16 +199,14 @@ namespace Editor
 
             if (ImGui::BeginMenu("Window"))
             {
+                bool isEditorMode = _editorMode;
+
                 for (BaseEditor* editor : _editors)
                 {
-                    if (editor->IsVisible())
-                    {
-                        if (ImGui::MenuItem(editor->GetName()))
-                        {
-                            editor->Show();
-                        }
-                    }
-                    else
+                    if (editor->IsHiddenInMenuBar())
+                        continue;
+
+                    if (!isEditorMode && editor->IsEditorOnly())
                     {
                         ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(170, 170, 170, 255));
                         if (ImGui::MenuItem(editor->GetName()))
@@ -227,6 +223,14 @@ namespace Editor
                             ImGui::EndTooltip();
                         }
                         ImGui::PopStyleColor();
+                    }
+                    else
+                    {
+                        if (ImGui::MenuItem(editor->GetName()))
+                        {
+                            bool visible = !editor->IsVisible();
+                            editor->SetIsVisible(visible);
+                        }
                     }
                 }
 
@@ -246,6 +250,24 @@ namespace Editor
             for (BaseEditor* editor : _editors)
             {
                 editor->DrawImGuiMenuBar();
+            }
+
+            if (ImGui::BeginMenu("Theme"))
+            {
+                const auto& themes = gameRenderer->GetImguiThemes();
+
+                for (const auto& theme : themes)
+                {
+                    u32 nameHash = StringUtils::fnv1a_32(theme.name.c_str(), theme.name.length());
+                    bool isSelected = gameRenderer->IsCurrentTheme(nameHash);
+
+                    if (ImGui::MenuItem(theme.name.c_str(), nullptr, isSelected))
+                    {
+                        gameRenderer->SetImguiTheme(nameHash);
+                    }
+                }
+
+                ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Help"))

@@ -27,6 +27,7 @@ namespace Editor
 
         virtual const char* GetName() override { return "Performance"; }
 
+        virtual void OnModeUpdate(bool mode) override;
         virtual void DrawImGui() override;
 
     private:

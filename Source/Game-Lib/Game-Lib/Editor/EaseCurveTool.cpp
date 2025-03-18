@@ -57,14 +57,14 @@ namespace Editor
         }
     };
 
-    EaseCurveTool::EaseCurveTool() : BaseEditor(GetName(), false)
+    EaseCurveTool::EaseCurveTool() : BaseEditor(GetName(), BaseEditorFlags_EditorOnly)
     {
 
     }
 
     void EaseCurveTool::DrawImGui()
     {
-        if (ImGui::Begin(GetName(), NULL, ImGuiWindowFlags_AlwaysAutoResize))
+        if (ImGui::Begin(GetName(), &IsVisible(), ImGuiWindowFlags_AlwaysAutoResize))
         {
             if (OpenMenu("Settings"))
             {

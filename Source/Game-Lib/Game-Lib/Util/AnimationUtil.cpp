@@ -9,13 +9,13 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
 namespace Util::Animation
 {
-    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(::Animation::Defines::Type type)
+    const Generated::AnimationDataRecord* GetAnimationDataRec(::Animation::Defines::Type type)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
@@ -25,12 +25,12 @@ namespace Util::Animation
             return nullptr;
 
         u32 typeIndex = static_cast<u32>(type);
-        return &animationDatas->Get<ClientDB::Definitions::AnimationData>(typeIndex);
+        return &animationDatas->Get<Generated::AnimationDataRecord>(typeIndex);
     }
 
     bool HasAnimationSequence(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType)
     {
-        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(animationType);
+        const ::Generated::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 
@@ -171,7 +171,7 @@ namespace Util::Animation
             return true;
         }
 
-        const ::ClientDB::Definitions::AnimationData* animationDataRec = GetAnimationDataRec(animationType);
+        const ::Generated::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 
@@ -190,7 +190,7 @@ namespace Util::Animation
         if (sequenceID == ::Animation::Defines::InvalidSequenceID)
             return false;
 
-        ClientDB::Definitions::AnimationData::Flags animationDataFlags = animationDataRec->flags[0];
+        auto animationDataFlags = static_cast<Database::Unit::AnimationDataFlags>(animationDataRec->flags);
         bool splitBody = animationDataFlags.IsSplitBodyBehavior;
 
         i16 defaultBoneIndex = GetBoneIndexFromKeyBoneID(modelInfo, ::Animation::Defines::Bone::Default);

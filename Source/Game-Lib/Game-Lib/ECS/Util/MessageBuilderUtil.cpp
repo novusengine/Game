@@ -292,7 +292,7 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Database::Item::Item& item)
+        bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID]()
             {
@@ -303,7 +303,7 @@ namespace ECS::Util::MessageBuilder
                     .bind = item.bind,
                     .rarity = item.rarity,
                     .category = item.category,
-                    .type = item.type,
+                    .type = item.categoryType,
                     .virtualLevel = item.virtualLevel,
                     .requiredLevel = item.requiredLevel,
                     .durability = item.durability,
@@ -325,24 +325,19 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSetItemStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Database::Item::ItemStatTemplate& statTemplate)
+        bool BuildCheatSetItemStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Generated::ItemStatTemplateRecord& statTemplate)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, statTemplateID]()
             {
-                GameDefine::Database::ItemStatTemplate itemStatTemplate =
-                {
-                    .id = statTemplateID,
-                    .statTypes = { statTemplate.statTypes[0], statTemplate.statTypes[1], statTemplate.statTypes[2], statTemplate.statTypes[3], statTemplate.statTypes[4], statTemplate.statTypes[5], statTemplate.statTypes[6], statTemplate.statTypes[7] },
-                    .statValues = { statTemplate.statValues[0], statTemplate.statValues[1], statTemplate.statValues[2], statTemplate.statValues[3], statTemplate.statValues[4], statTemplate.statValues[5], statTemplate.statValues[6], statTemplate.statValues[7] }
-                };
-
                 buffer->Put(Network::CheatCommands::SetItemStatTemplate);
-                GameDefine::Database::ItemStatTemplate::Write(buffer, itemStatTemplate);
+
+                buffer->PutU32(statTemplateID);
+                buffer->Serialize(statTemplate);
             });
 
             return result;
         }
-        bool BuildCheatSetItemArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Database::Item::ItemArmorTemplate& armorTemplate)
+        bool BuildCheatSetItemArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Generated::ItemArmorTemplateRecord& armorTemplate)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, armorTemplateID]()
             {
@@ -359,7 +354,7 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSetItemWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Database::Item::ItemWeaponTemplate& weaponTemplate)
+        bool BuildCheatSetItemWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Generated::ItemWeaponTemplateRecord& weaponTemplate)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, weaponTemplateID]()
             {
@@ -367,8 +362,8 @@ namespace ECS::Util::MessageBuilder
                 {
                     .id = weaponTemplateID,
                     .weaponStyle = (u8)weaponTemplate.weaponStyle,
-                    .minDamage = weaponTemplate.minDamage,
-                    .maxDamage = weaponTemplate.maxDamage,
+                    .minDamage = weaponTemplate.damageRange.x,
+                    .maxDamage = weaponTemplate.damageRange.y,
                     .speed = weaponTemplate.speed,
                 };
 
@@ -379,7 +374,7 @@ namespace ECS::Util::MessageBuilder
             return result;
 
         }
-        bool BuildCheatSetItemShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Database::Item::ItemShieldTemplate& shieldTemplate)
+        bool BuildCheatSetItemShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Generated::ItemShieldTemplateRecord& shieldTemplate)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, shieldTemplateID]()
             {

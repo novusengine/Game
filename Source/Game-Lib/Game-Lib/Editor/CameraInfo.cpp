@@ -7,7 +7,6 @@
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Util/CameraSaveUtil.h"
 #include "Game-Lib/Util/CameraSaveUtil.h"
 #include "Game-Lib/Util/MapUtil.h"
@@ -16,6 +15,8 @@
 #include <Base/Math/Math.h>
 
 #include <FileFormat/Shared.h>
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -30,24 +31,24 @@ using namespace ECS::Singletons;
 namespace Editor
 {
     CameraInfo::CameraInfo()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
     }
 
     void CameraInfo::DrawImGui()
     {
-        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-        entt::registry& gameRegistry = *registries->gameRegistry;
-        entt::registry& dbRegistry = *registries->dbRegistry;
-        entt::registry::context& gameCtx = gameRegistry.ctx();
-        entt::registry::context& dbCtx = dbRegistry.ctx();
-
-        auto& activeCamera = gameCtx.get<ActiveCamera>();
-        auto& settings = gameCtx.get<FreeflyingCameraSettings>();
-
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            entt::registry& gameRegistry = *registries->gameRegistry;
+            entt::registry& dbRegistry = *registries->dbRegistry;
+            entt::registry::context& gameCtx = gameRegistry.ctx();
+            entt::registry::context& dbCtx = dbRegistry.ctx();
+
+            auto& activeCamera = gameCtx.get<ActiveCamera>();
+            auto& settings = gameCtx.get<FreeflyingCameraSettings>();
+
             if (activeCamera.entity != entt::null)
             {
                 auto& cameraTransform = gameRegistry.get<ECS::Components::Transform>(activeCamera.entity);
@@ -135,7 +136,7 @@ namespace Editor
                     {
                         u32 numCameraSaves = cameraSaveStorage->GetNumRows();
 
-                        cameraSaveStorage->Each([&cameraSaveStorage](u32 id, const ::Database::Shared::CameraSave& cameraSave) -> bool
+                        cameraSaveStorage->Each([&cameraSaveStorage](u32 id, const Generated::CameraSaveRecord& cameraSave) -> bool
                         {
                             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                             u32 cameraSaveNameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
@@ -160,7 +161,7 @@ namespace Editor
                     if (hasSelectedCamera)
                     {
                         u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
-                        const auto& cameraSave = cameraSaveStorage->Get<::Database::Shared::CameraSave>(id);
+                        const auto& cameraSave = cameraSaveStorage->Get<Generated::CameraSaveRecord>(id);
 
                         const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                         ImGui::Text("Selected Save : %s", cameraSaveName.c_str());
@@ -176,7 +177,7 @@ namespace Editor
                         {
                             u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
 
-                            const auto& cameraSave = cameraSaveStorage->Get<::Database::Shared::CameraSave>(id);
+                            const auto& cameraSave = cameraSaveStorage->Get<Generated::CameraSaveRecord>(id);
                             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                             const std::string& cameraSaveCode = cameraSaveStorage->GetString(cameraSave.code);
 

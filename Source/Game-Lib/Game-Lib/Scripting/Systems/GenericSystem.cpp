@@ -18,7 +18,7 @@ namespace Scripting
 
         LuaGameEventUpdatedData eventData;
         eventData.deltaTime = deltaTime;
-        gameEventHandler->CallEvent(state, static_cast<u32>(LuaGameEvent::Updated), &eventData);
+        gameEventHandler->CallEvent(state, static_cast<u32>(Generated::LuaGameEventEnum::Updated), &eventData);
     }
 
     void GenericSystem::Run(f32 deltaTime, lua_State* state)

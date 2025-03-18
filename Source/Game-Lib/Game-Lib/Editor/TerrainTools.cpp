@@ -5,7 +5,7 @@
 namespace Editor
 {
     TerrainTools::TerrainTools()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly)
     {
 
     }
@@ -17,7 +17,7 @@ namespace Editor
 
     void TerrainTools::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             Util::Imgui::GroupHeader("Brush Types (TODO)");
             if (ImGui::BeginTable("Brush Type Table", 2))

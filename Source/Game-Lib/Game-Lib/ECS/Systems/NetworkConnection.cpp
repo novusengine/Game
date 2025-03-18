@@ -278,7 +278,7 @@ namespace ECS::Systems
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         auto& model = registry->get<ECS::Components::Model>(entity);
 
-        if (!modelLoader->LoadDisplayIDForEntity(entity, model, ClientDB::Definitions::DisplayInfoType::Creature, displayID))
+        if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, displayID))
         {
             NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", networkID.ToString());
             return true;
@@ -672,7 +672,7 @@ namespace ECS::Systems
                 if (!itemStorage->Has(item.itemID))
                     continue;
 
-                const auto& itemInfo = itemStorage->Get<::Database::Item::Item>(item.itemID);
+                const auto& itemInfo = itemStorage->Get<Generated::ItemRecord>(item.itemID);
 
                 auto& eventItemData = eventData.items.emplace_back();
                 eventItemData.slot = i + 1;

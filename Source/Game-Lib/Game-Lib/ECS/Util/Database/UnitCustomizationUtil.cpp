@@ -11,6 +11,8 @@
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/entt.hpp>
 
 #include <filesystem>
@@ -63,15 +65,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitRace, "UnitRace");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitRace);
-            storage->Initialize({
-                { "Prefix", ClientDB::FieldType::StringRef },
-                { "NameInternal", ClientDB::FieldType::StringRef },
-                { "Name", ClientDB::FieldType::StringRef },
-                { "Flags", ClientDB::FieldType::I32 },
-                { "Faction", ClientDB::FieldType::I32 },
-                { "MaleDisplayID", ClientDB::FieldType::I32 },
-                { "FemaleDisplayID", ClientDB::FieldType::I32 }
-            });
+            storage->Initialize<Generated::UnitRaceRecord>();
 
             storage->MarkDirty();
         }
@@ -81,13 +75,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitTextureSection, "UnitTextureSection");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitTextureSection);
-            storage->Initialize({
-                { "Type", ClientDB::FieldType::I8 },
-                { "PosX", ClientDB::FieldType::I16 },
-                { "PosY", ClientDB::FieldType::I16 },
-                { "Width", ClientDB::FieldType::I16 },
-                { "Height", ClientDB::FieldType::I16 }
-            });
+            storage->Initialize<Generated::UnitTextureSectionRecord>();
 
             storage->MarkDirty();
         }
@@ -97,10 +85,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitCustomizationOption, "UnitCustomizationOption");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationOption);
-            storage->Initialize({
-                { "Name", ClientDB::FieldType::StringRef },
-                { "Flags", ClientDB::FieldType::I32 },
-            });
+            storage->Initialize<Generated::UnitCustomizationOptionRecord>();
 
             storage->MarkDirty();
         }
@@ -110,10 +95,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitCustomizationGeoset, "UnitCustomizationGeoset");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationGeoset);
-            storage->Initialize({
-                { "GeosetType", ClientDB::FieldType::I8 },
-                { "GeosetValue", ClientDB::FieldType::I8 },
-            });
+            storage->Initialize<Generated::UnitCustomizationGeosetRecord>();
 
             storage->MarkDirty();
         }
@@ -123,10 +105,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitCustomizationMaterial, "UnitCustomizationMaterial");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitCustomizationMaterial);
-            storage->Initialize({
-                { "TextureSection", ClientDB::FieldType::I8 },
-                { "MaterialResourcesID", ClientDB::FieldType::I32 },
-            });
+            storage->Initialize<Generated::UnitCustomizationMaterialRecord>();
 
             storage->MarkDirty();
         }
@@ -136,17 +115,7 @@ namespace ECSUtil::UnitCustomization
             clientDBSingleton.Register(ClientDBHash::UnitRaceCustomizationChoice, "UnitRaceCustomizationChoice");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::UnitRaceCustomizationChoice);
-            storage->Initialize({
-                { "RaceID", ClientDB::FieldType::I8 },
-                { "Gender", ClientDB::FieldType::I8 },
-                { "CustomizationOptionID", ClientDB::FieldType::I32 },
-                { "CustomizationOptionData1", ClientDB::FieldType::I16 },
-                { "CustomizationOptionData2", ClientDB::FieldType::I16 },
-                { "CustomizationGeosetID", ClientDB::FieldType::I32 },
-                { "CustomizationMaterialID1", ClientDB::FieldType::I32 },
-                { "CustomizationMaterialID2", ClientDB::FieldType::I32 },
-                { "CustomizationMaterialID3", ClientDB::FieldType::I32 },
-            });
+            storage->Initialize<Generated::UnitRaceCustomizationChoiceRecord>();
 
             storage->MarkDirty();
         }
@@ -165,18 +134,18 @@ namespace ECSUtil::UnitCustomization
         u32 numUnitRaceRows = unitRaceStorage->GetNumRows();
         unitCustomizationSingleton.modelIDToUnitModelInfo.clear();
         unitCustomizationSingleton.modelIDToUnitModelInfo.reserve(numUnitRaceRows);
-        unitRaceStorage->Each([&](u32 id, Database::Unit::UnitRace& row)
+        unitRaceStorage->Each([&](u32 id, Generated::UnitRaceRecord& row)
         {
             u32 maleModelID = 0;
             u32 femaleModelID = 0;
 
-            if (auto* creatureDisplayInfo = creatureDisplayInfoStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfo>(row.maleDisplayID))
+            if (auto* creatureDisplayInfo = creatureDisplayInfoStorage->TryGet<Generated::CreatureDisplayInfoRecord>(row.maleDisplayID))
             {
                 if (creatureModelDataStorage->Has(creatureDisplayInfo->modelID))
                     maleModelID = creatureDisplayInfo->modelID;
             }
 
-            if (auto* creatureDisplayInfo = creatureDisplayInfoStorage->TryGet<ClientDB::Definitions::CreatureDisplayInfo>(row.femaleDisplayID))
+            if (auto* creatureDisplayInfo = creatureDisplayInfoStorage->TryGet<Generated::CreatureDisplayInfoRecord>(row.femaleDisplayID))
             {
                 if (creatureModelDataStorage->Has(creatureDisplayInfo->modelID))
                     femaleModelID = creatureDisplayInfo->modelID;
@@ -226,16 +195,16 @@ namespace ECSUtil::UnitCustomization
         u32 numUnitTextureSectionRows = unitTextureSectionStorage->GetNumRows();
         unitCustomizationSingleton.unitTextureSectionTypeToID.clear();
         unitCustomizationSingleton.unitTextureSectionTypeToID.reserve(numUnitTextureSectionRows);
-        unitTextureSectionStorage->Each([&](u32 id, const ::Database::Unit::UnitTextureSection& unitTextureSection)
+        unitTextureSectionStorage->Each([&](u32 id, const Generated::UnitTextureSectionRecord& unitTextureSection)
         {
-            unitCustomizationSingleton.unitTextureSectionTypeToID[unitTextureSection.type] = id;
+            unitCustomizationSingleton.unitTextureSectionTypeToID[static_cast<Database::Unit::TextureSectionType>(unitTextureSection.section)] = id;
             return true;
         });
 
         u32 numUnitCustomizationMaterialRows = unitCustomizationMaterialStorage->GetNumRows();
         unitCustomizationSingleton.customizationMaterialIDToTextureID.clear();
         unitCustomizationSingleton.customizationMaterialIDToTextureID.reserve(numUnitCustomizationMaterialRows);
-        unitCustomizationMaterialStorage->Each([&](u32 id, const ::Database::Unit::UnitCustomizationMaterial& unitCustomizationMaterial)
+        unitCustomizationMaterialStorage->Each([&](u32 id, const Generated::UnitCustomizationMaterialRecord& unitCustomizationMaterial)
         {
             if (id == 0)
                 return true;
@@ -258,7 +227,7 @@ namespace ECSUtil::UnitCustomization
         u32 numCustomizationGeosetRows = unitCustomizationGeosetStorage->GetNumRows();
         unitCustomizationSingleton.geosetIDToGeosetKey.clear();
         unitCustomizationSingleton.geosetIDToGeosetKey.reserve(numCustomizationGeosetRows);
-        unitCustomizationGeosetStorage->Each([&](u32 id, const ::Database::Unit::UnitCustomizationGeoset& unitCustomizationGeoset)
+        unitCustomizationGeosetStorage->Each([&](u32 id, const Generated::UnitCustomizationGeosetRecord& unitCustomizationGeoset)
         {
             u16 key = (unitCustomizationGeoset.geosetType * 100) + unitCustomizationGeoset.geosetValue;
             unitCustomizationSingleton.geosetIDToGeosetKey[id] = key;
@@ -289,11 +258,13 @@ namespace ECSUtil::UnitCustomization
         unitCustomizationSingleton.choiceIDToTextureSectionID3.reserve(numUnitRaceCustomizationChoiceRows);
         unitCustomizationSingleton.choiceIDToTextureHash3.clear();
         unitCustomizationSingleton.choiceIDToTextureHash3.reserve(numUnitRaceCustomizationChoiceRows);
-        unitRaceCustomizationChoiceStorage->Each([&](u32 id, const ::Database::Unit::UnitRaceCustomizationChoice& unitRaceCustomizationChoice)
+        unitRaceCustomizationChoiceStorage->Each([&](u32 id, const Generated::UnitRaceCustomizationChoiceRecord& unitRaceCustomizationChoice)
         {
+            if (id == 0) return true;
+
             auto unitRace = static_cast<GameDefine::UnitRace>(unitRaceCustomizationChoice.raceID);
             auto gender = static_cast<GameDefine::Gender>(unitRaceCustomizationChoice.gender + 1);
-            auto customizationOption = static_cast<::Database::Unit::CustomizationOption>(unitRaceCustomizationChoice.customizationOptionID);
+            auto customizationOption = static_cast<Database::Unit::CustomizationOption>(unitRaceCustomizationChoice.customizationOptionID);
 
             u32 baseCustomizationOptionKey = CreateCustomizationKey(unitRace, gender, customizationOption);
             unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList[baseCustomizationOptionKey].push_back(id);
@@ -307,8 +278,8 @@ namespace ECSUtil::UnitCustomization
 
             if (unitRaceCustomizationChoice.customizationMaterialID1 > 0 && unitCustomizationMaterialStorage->Has(unitRaceCustomizationChoice.customizationMaterialID1))
             {
-                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<::Database::Unit::UnitCustomizationMaterial>(unitRaceCustomizationChoice.customizationMaterialID1);
-                unitCustomizationSingleton.choiceIDToTextureSectionID1[id] = customizationMaterial.textureSectionID;
+                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<Generated::UnitCustomizationMaterialRecord>(unitRaceCustomizationChoice.customizationMaterialID1);
+                unitCustomizationSingleton.choiceIDToTextureSectionID1[id] = customizationMaterial.textureSection;
 
                 if (textureSingleton.materialResourcesIDToTextureHashes.contains(customizationMaterial.materialResourcesID))
                 {
@@ -319,8 +290,8 @@ namespace ECSUtil::UnitCustomization
 
             if (unitRaceCustomizationChoice.customizationMaterialID2 > 0 && unitCustomizationMaterialStorage->Has(unitRaceCustomizationChoice.customizationMaterialID2))
             {
-                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<::Database::Unit::UnitCustomizationMaterial>(unitRaceCustomizationChoice.customizationMaterialID2);
-                unitCustomizationSingleton.choiceIDToTextureSectionID2[id] = customizationMaterial.textureSectionID;
+                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<Generated::UnitCustomizationMaterialRecord>(unitRaceCustomizationChoice.customizationMaterialID2);
+                unitCustomizationSingleton.choiceIDToTextureSectionID2[id] = customizationMaterial.textureSection;
 
                 if (textureSingleton.materialResourcesIDToTextureHashes.contains(customizationMaterial.materialResourcesID))
                 {
@@ -331,8 +302,8 @@ namespace ECSUtil::UnitCustomization
 
             if (unitRaceCustomizationChoice.customizationMaterialID3 > 0 && unitCustomizationMaterialStorage->Has(unitRaceCustomizationChoice.customizationMaterialID3))
             {
-                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<::Database::Unit::UnitCustomizationMaterial>(unitRaceCustomizationChoice.customizationMaterialID3);
-                unitCustomizationSingleton.choiceIDToTextureSectionID3[id] = customizationMaterial.textureSectionID;
+                const auto& customizationMaterial = unitCustomizationMaterialStorage->Get<Generated::UnitCustomizationMaterialRecord>(unitRaceCustomizationChoice.customizationMaterialID3);
+                unitCustomizationSingleton.choiceIDToTextureSectionID3[id] = customizationMaterial.textureSection;
 
                 if (textureSingleton.materialResourcesIDToTextureHashes.contains(customizationMaterial.materialResourcesID))
                 {
@@ -363,12 +334,13 @@ namespace ECSUtil::UnitCustomization
         extensionStrs[1].reserve(16);
         extensionStrs[2].reserve(16);
 
-        for (u32 customizationOptionIndex = (u32)::Database::Unit::CustomizationOption::Start; customizationOptionIndex < (u32)::Database::Unit::CustomizationOption::Count; customizationOptionIndex++)
+        for (u32 customizationOptionIndex = (u32)Database::Unit::CustomizationOption::Start; customizationOptionIndex < (u32)Database::Unit::CustomizationOption::Count; customizationOptionIndex++)
         {
-            auto customizationOption = static_cast<::Database::Unit::CustomizationOption>(customizationOptionIndex);
-            const auto& unitCustomizationOption = unitCustomizationOptionStorage->Get<::Database::Unit::UnitCustomizationOption>(customizationOptionIndex);
+            auto customizationOption = static_cast<Database::Unit::CustomizationOption>(customizationOptionIndex);
+            const auto& unitCustomizationOption = unitCustomizationOptionStorage->Get<Generated::UnitCustomizationOptionRecord>(customizationOptionIndex);
             
-            if (unitCustomizationOption.flags.isGeosetOption)
+            auto unitCustomizationFlags = *reinterpret_cast<const Database::Unit::UnitCustomizationOptionFlags*>(&unitCustomizationOption.flags);
+            if (unitCustomizationFlags.isGeosetOption)
                 continue;
 
             for (u32 raceIndex = (u32)GameDefine::UnitRace::Start; raceIndex <= (u32)GameDefine::UnitRace::Count; raceIndex++)
@@ -387,7 +359,7 @@ namespace ECSUtil::UnitCustomization
 
                     for (u32 choiceID : choiceIDList)
                     {
-                        const auto& unitCustomizationChoice = unitRaceCustomizationChoiceStorage->Get<::Database::Unit::UnitRaceCustomizationChoice>(choiceID);
+                        const auto& unitCustomizationChoice = unitRaceCustomizationChoiceStorage->Get<Generated::UnitRaceCustomizationChoiceRecord>(choiceID);
 
                         bool choiceHasTexture[3] = { unitCustomizationSingleton.choiceIDToTextureHash1.contains(choiceID), unitCustomizationSingleton.choiceIDToTextureHash2.contains(choiceID), unitCustomizationSingleton.choiceIDToTextureHash3.contains(choiceID) };
                         if (!choiceHasTexture[0] && !choiceHasTexture[1] && !choiceHasTexture[2])
@@ -398,17 +370,17 @@ namespace ECSUtil::UnitCustomization
                         u8 numOptionChoices = 1;
                         u8 numOptionVariants = 1;
 
-                        if (unitCustomizationOption.flags.isBaseSkin)
+                        if (unitCustomizationFlags.isBaseSkin)
                         {
                             numOptionChoices = 1;
                             numOptionVariants = static_cast<u8>(unitCustomizationChoice.customizationOptionData1);
                         }
-                        else if (unitCustomizationOption.flags.isBaseSkinOption)
+                        else if (unitCustomizationFlags.isBaseSkinOption)
                         {
                             numOptionChoices = static_cast<u8>(unitCustomizationChoice.customizationOptionData1);
                             numOptionVariants = static_cast<u8>(unitCustomizationChoice.customizationOptionData2);
                         }
-                        else if (unitCustomizationOption.flags.isHairTextureColorOption)
+                        else if (unitCustomizationFlags.isHairTextureColorOption)
                         {
                             numOptionChoices = 1;
                             numOptionVariants = static_cast<u8>(unitCustomizationChoice.customizationOptionData1);
@@ -553,7 +525,7 @@ namespace ECSUtil::UnitCustomization
 
     bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
     {
-        u32 customizationKey = CreateCustomizationKey(race, gender, ::Database::Unit::CustomizationOption::Skin, 0, skinID, 0);
+        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Skin, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
             return false;
 
@@ -563,7 +535,7 @@ namespace ECSUtil::UnitCustomization
     
     bool GetBaseSkinBraTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
     {
-        u32 customizationKey = CreateCustomizationKey(race, gender, ::Database::Unit::CustomizationOption::SkinBra, 0, skinID, 0);
+        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::SkinBra, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
             return false;
 
@@ -573,7 +545,7 @@ namespace ECSUtil::UnitCustomization
 
     bool GetBaseSkinUnderwearTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
     {
-        u32 customizationKey = CreateCustomizationKey(race, gender, ::Database::Unit::CustomizationOption::SkinUnderwear, 0, skinID, 0);
+        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::SkinUnderwear, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
             return false;
 
@@ -583,7 +555,7 @@ namespace ECSUtil::UnitCustomization
 
     bool GetBaseSkinFaceTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, u8 faceID, u8 variant, Renderer::TextureID& textureID)
     {
-        u32 customizationKey = CreateCustomizationKey(race, gender, ::Database::Unit::CustomizationOption::Face, faceID, skinID, variant);
+        u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Face, faceID, skinID, variant);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
             return false;
 
@@ -613,20 +585,20 @@ namespace ECSUtil::UnitCustomization
 
     void WriteBaseSkin(ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, Renderer::TextureID skinTextureID, Renderer::TextureID baseSkinTextureID, vec2 srcMin, vec2 srcMax)
     {
-        WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, skinTextureID, baseSkinTextureID, Database::Unit::UnitTextureSection::Type::FullBody, srcMin, srcMax);
+        WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, skinTextureID, baseSkinTextureID, Database::Unit::TextureSectionType::FullBody, srcMin, srcMax);
     }
 
-    void WriteTextureToSkin(ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, Renderer::TextureID skinTextureID, Renderer::TextureID textureID, Database::Unit::UnitTextureSection::Type textureSectionType, vec2 srcMin, vec2 srcMax)
+    void WriteTextureToSkin(ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, Renderer::TextureID skinTextureID, Renderer::TextureID textureID, Database::Unit::TextureSectionType textureSectionType, vec2 srcMin, vec2 srcMax)
     {
         TextureRenderer* textureRenderer = ServiceLocator::GetGameRenderer()->GetTextureRenderer();
 
         auto* unitTextureSectionStorage = clientDBSingleton.Get(ClientDBHash::UnitTextureSection);
         u32 textureSectionID = unitCustomizationSingleton.unitTextureSectionTypeToID[textureSectionType];
-        const auto& textureSection = unitTextureSectionStorage->Get<Database::Unit::UnitTextureSection>(textureSectionID);
+        const auto& textureSection = unitTextureSectionStorage->Get<Generated::UnitTextureSectionRecord>(textureSectionID);
 
         static f32 skinTextureSize = 512.0f;
-        vec2 destMin = vec2(textureSection.posX, textureSection.posY) / skinTextureSize;
-        vec2 destMax = vec2(textureSection.posX + textureSection.width, textureSection.posY + textureSection.height) / skinTextureSize;
+        vec2 destMin = vec2(textureSection.position.x, textureSection.position.y) / skinTextureSize;
+        vec2 destMax = vec2(textureSection.position.x + textureSection.size.x, textureSection.position.y + textureSection.size.y) / skinTextureSize;
 
         textureRenderer->RequestRenderTextureToTexture(skinTextureID, destMin, destMax, textureID, srcMin, srcMax);
     }
@@ -643,7 +615,7 @@ namespace ECSUtil::UnitCustomization
         const auto& componentSectionData = itemSingleton.itemDisplayInfoToComponentSectionData[itemDisplayID];
         for (const auto& pair : componentSectionData.componentSectionToTextureHash)
         {
-            auto componentSection = static_cast<Database::Unit::UnitTextureSection::Type>(pair.first);
+            auto componentSection = static_cast<Database::Unit::TextureSectionType>(pair.first);
             u32 textureHash = pair.second;
 
             Renderer::TextureID textureID = Renderer::TextureID::Invalid();
@@ -671,7 +643,7 @@ namespace ECSUtil::UnitCustomization
         }
     }
 
-    bool GetChoiceIDFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, ::Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u32& choiceID)
+    bool GetChoiceIDFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u32& choiceID)
     {
         u32 baseCustomizationKey = CreateCustomizationKey(race, gender, customizationOption);
         if (!unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList.contains(baseCustomizationKey))
@@ -684,7 +656,7 @@ namespace ECSUtil::UnitCustomization
         choiceID = choiceIDList[customizationOptionValue];
         return true;
     }
-    bool GetGeosetFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, ::Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u16& geoset)
+    bool GetGeosetFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u16& geoset)
     {
         u32 baseCustomizationKey = CreateCustomizationKey(race, gender, customizationOption);
         if (!unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList.contains(baseCustomizationKey))
@@ -726,7 +698,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    u32 CreateCustomizationKey(GameDefine::UnitRace race, GameDefine::Gender gender, ::Database::Unit::CustomizationOption customizationOption, u8 choiceIndex, u8 variationIndex, u8 materialIndex)
+    u32 CreateCustomizationKey(GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 choiceIndex, u8 variationIndex, u8 materialIndex)
     {
         // Key (Race, Gender, Customization Option, ChoiceIndex, VariantIndex, TextureIndex)
         // Race 6 Bits (64 Values)

@@ -1,14 +1,6 @@
 #pragma once
-#include "ClientDBSingleton.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
-#include "Game-Lib/Util/ServiceLocator.h"
-
 #include <Base/Types.h>
 
-#include <FileFormat/Novus/ClientDB/ClientDB.h>
-#include <FileFormat/Novus/ClientDB/Definitions.h>
-
-#include <entt/entt.hpp>
 #include <robinhood/robinhood.h>
 
 namespace ECS

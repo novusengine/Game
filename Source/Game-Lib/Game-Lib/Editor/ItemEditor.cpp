@@ -9,6 +9,8 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>
 
@@ -19,15 +21,13 @@
 
 #include <string>
 
-AutoCVar_Int CVAR_ItemEditorEnabled(CVarCategory::Database, "itemEditorEnabled", "Enables the item editor", false, CVarFlags::EditCheckbox);
-
 using namespace ClientDB;
 using namespace ECS::Singletons;
 
 namespace Editor
 {
     ItemEditor::ItemEditor()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
     }
@@ -69,7 +69,7 @@ namespace Editor
 
             auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
             auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
-            const auto& icon = iconStorage->Get<::Database::Shared::Icon>(iconID);
+            const auto& icon = iconStorage->Get<Generated::IconRecord>(iconID);
 
             Renderer::TextureDesc textureDesc;
             textureDesc.path = iconStorage->GetString(icon.texture);
@@ -180,7 +180,7 @@ namespace Editor
                     filteredIconIDs.clear();
                     filteredIconIDs.reserve(iconStorage->GetNumRows());
 
-                    iconStorage->Each([&iconStorage](u32 id, const ::Database::Shared::Icon& icon) -> bool
+                    iconStorage->Each([&iconStorage](u32 id, const Generated::IconRecord& icon) -> bool
                     {
                         const std::string& iconPath = iconStorage->GetString(icon.texture);
                         if (std::to_string(id).find(iconFilter) != std::string::npos || iconPath.find(iconFilter) != std::string::npos)
@@ -222,13 +222,13 @@ namespace Editor
                         i32 endIndex = glm::min(startIndex + desiredIconsPerRow, totalIcons);
                         i32 numIconsAdded = 0;
 
-                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const ::Database::Shared::Icon& icon) -> bool
+                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const Generated::IconRecord& icon) -> bool
                         {
                             ImGui::PushID(id);
 
                             if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
                             {
-                                itemStorage->Get<Database::Item::Item>(currentItemIndex).iconID = id;
+                                itemStorage->Get<Generated::ItemRecord>(currentItemIndex).iconID = id;
                                 isItemDirty = true;
                             }
 
@@ -273,13 +273,13 @@ namespace Editor
                             for (i32 i = startIndex; i < endIndex; ++i)
                             {
                                 u32 id = filteredIconIDs[i];
-                                const auto& icon = iconStorage->Get<::Database::Shared::Icon>(id);
+                                const auto& icon = iconStorage->Get<Generated::IconRecord>(id);
 
                                 ImGui::PushID(id);
 
                                 if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
                                 {
-                                    itemStorage->Get<Database::Item::Item>(currentItemIndex).iconID = id;
+                                    itemStorage->Get<Generated::ItemRecord>(currentItemIndex).iconID = id;
                                     isItemDirty = true;
                                 }
 
@@ -320,60 +320,43 @@ namespace Editor
                 {.id = 7, .label = "Spirit" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
-            auto& currentStatTemplate = itemStatTemplateStorage->Get<Database::Item::ItemStatTemplate>(currentItem.statTemplateID);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentStatTemplate = itemStatTemplateStorage->Get<Generated::ItemStatTemplateRecord>(currentItem.statTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.statTemplateID);
             ImGui::Separator();
 
             ImGui::Columns(2, nullptr, false);
-            for (u32 i = 0; i < 8; i += 2)
+            for (u32 statIndex = 0; statIndex < 4; statIndex++)
             {
+                ImGui::PushID(statIndex);
+                ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+
+                u8 currentStatID = currentStatTemplate.statTypeID[statIndex];
+
+                const std::string& currentLabel = StatTypeOptions[currentStatID].label;
+                if (RenderOptionDropdown<u8>("StatType", currentLabel.c_str(), currentStatTemplate.statTypeID[statIndex], StatTypeOptions))
                 {
-                    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-
-                    u8 currentStatID = currentStatTemplate.statTypes[i];
-
-                    const std::string& currentLabel = StatTypeOptions[currentStatID].label;
-                    if (RenderOptionDropdown<u8>("Stat " + std::to_string(i + 1), currentLabel.c_str(), currentStatTemplate.statTypes[i], StatTypeOptions))
-                    {
-                        isItemStatsDirty = true;
-                    }
-
-                    if (ImGui::InputScalar(("##StatValue-" + std::to_string(i + 1)).c_str(), ImGuiDataType_U32, &currentStatTemplate.statValues[i]))
-                    {
-                        isItemStatsDirty = true;
-                    }
-
-                    ImGui::PopItemWidth();
+                    isItemStatsDirty = true;
                 }
 
-                ImGui::NextColumn();
-
+                if (ImGui::InputScalar("##StatValue", ImGuiDataType_U32, &currentStatTemplate.value[statIndex]))
                 {
-                    ImGui::PushID(i + 1);
-                    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-
-                    u8 currentStatID = currentStatTemplate.statTypes[i + 1];
-
-                    const std::string& currentLabel = StatTypeOptions[currentStatID].label;
-                    if (RenderOptionDropdown<u8>("Stat " + std::to_string(i + 2), currentLabel.c_str(), currentStatTemplate.statTypes[i + 1], StatTypeOptions))
-                    {
-                        isItemStatsDirty = true;
-                    }
-
-                    if (ImGui::InputScalar(("##StatValue-" + std::to_string(i + 2)).c_str(), ImGuiDataType_U32, &currentStatTemplate.statValues[i + 1]))
-                    {
-                        isItemStatsDirty = true;
-                    }
-
-                    ImGui::PopItemWidth();
-                    ImGui::PopID();
+                    isItemStatsDirty = true;
                 }
 
-                ImGui::Dummy(ImVec2(0.0f, 10.0f));
+                ImGui::PopItemWidth();
+                ImGui::PopID();
+
+                bool isOdd = (statIndex % 2) != 0;
+                if (isOdd)
+                    ImGui::SameLine();
+
                 ImGui::NextColumn();
             }
+
+            ImGui::Dummy(ImVec2(0.0f, 10.0f));
+            ImGui::NextColumn();
 
             ImGui::Columns(1);
             ImGui::EndPopup();
@@ -404,8 +387,8 @@ namespace Editor
                 {.id = 18, .label = "Ammo" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
-            auto& currentArmorTemplate = itemArmorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(currentItem.armorTemplateID);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentArmorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(currentItem.armorTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.armorTemplateID);
             ImGui::Separator();
@@ -416,7 +399,7 @@ namespace Editor
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
                 const std::string& currentLabel = EquipTypeOptions[(u32)currentArmorTemplate.equipType].label;
-                if (RenderOptionDropdown<Database::Item::ItemArmorEquipType>("Equip Type", currentLabel.c_str(), currentArmorTemplate.equipType, EquipTypeOptions))
+                if (RenderOptionDropdown<u8>("Equip Type", currentLabel.c_str(), currentArmorTemplate.equipType, EquipTypeOptions))
                 {
                     isItemArmorDirty = true;
                 }
@@ -446,18 +429,18 @@ namespace Editor
         {
             static std::vector<Option> WeaponStyleOptions =
             {
-                {.id = 1,  .label = "Unspecified" },
-                {.id = 2,  .label = "One-Hand" },
-                {.id = 3,  .label = "Two-Hand" },
-                {.id = 4,  .label = "Main Hand" },
-                {.id = 5,  .label = "Off Hand" },
-                {.id = 6,  .label = "Ranged" },
-                {.id = 7,  .label = "Wand" },
-                {.id = 8,  .label = "Tool" }
+                {.id = 1, .label = "Unspecified" },
+                {.id = 2, .label = "One-Hand" },
+                {.id = 3, .label = "Two-Hand" },
+                {.id = 4, .label = "Main Hand" },
+                {.id = 5, .label = "Off Hand" },
+                {.id = 6, .label = "Ranged" },
+                {.id = 7, .label = "Wand" },
+                {.id = 8, .label = "Tool" }
             };
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
-            auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<Database::Item::ItemWeaponTemplate>(currentItem.weaponTemplateID);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(currentItem.weaponTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.weaponTemplateID);
             ImGui::Separator();
@@ -468,7 +451,7 @@ namespace Editor
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
                 const std::string& currentLabel = WeaponStyleOptions[(u32)currentWeaponTemplate.weaponStyle - 1].label;
-                if (RenderOptionDropdown<Database::Item::ItemWeaponStyle>("Weapon Style", currentLabel.c_str(), currentWeaponTemplate.weaponStyle, WeaponStyleOptions))
+                if (RenderOptionDropdown<u8>("Weapon Style", currentLabel.c_str(), currentWeaponTemplate.weaponStyle, WeaponStyleOptions))
                 {
                     isItemWeaponDirty = true;
                 }
@@ -496,7 +479,7 @@ namespace Editor
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
                 ImGui::Text("Min Damage");
-                if (ImGui::InputScalar("##MinDamage", ImGuiDataType_U32, &currentWeaponTemplate.minDamage))
+                if (ImGui::InputScalar("##MinDamage", ImGuiDataType_U32, &currentWeaponTemplate.damageRange.x))
                 {
                     isItemWeaponDirty = true;
                 }
@@ -510,7 +493,7 @@ namespace Editor
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
                 ImGui::Text("Max Damage");
-                if (ImGui::InputScalar("##MaxDamage", ImGuiDataType_U32, &currentWeaponTemplate.maxDamage))
+                if (ImGui::InputScalar("##MaxDamage", ImGuiDataType_U32, &currentWeaponTemplate.damageRange.y))
                 {
                     isItemWeaponDirty = true;
                 }
@@ -524,8 +507,8 @@ namespace Editor
 
         if (ImGui::BeginPopupModal("Shield Template Editor##ItemEditor", &shieldTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
-            auto& currentShieldTemplate = itemShieldTemplateStorage->Get<Database::Item::ItemShieldTemplate>(currentItem.shieldTemplateID);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentShieldTemplate = itemShieldTemplateStorage->Get<Generated::ItemShieldTemplateRecord>(currentItem.shieldTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.shieldTemplateID);
             ImGui::Separator();
@@ -569,14 +552,14 @@ namespace Editor
             ImGui::Text("Filter (ID or Name)");
             ImGui::InputText("##Item Filter (ID or Name)", &itemFilter);
 
-            auto& currentItem = itemStorage->Get<Database::Item::Item>(currentItemIndex);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
             std::string currentItemlabel = std::to_string(currentItemIndex) + " - " + itemStorage->GetString(currentItem.name);
 
             ImGui::Text("Select Item");
             if (ImGui::BeginCombo("##Select Item", currentItemIndex >= 0 ? currentItemlabel.c_str() : "None"))
             {
                 char comboLabel[128];
-                itemStorage->Each([&](u32 id, Database::Item::Item& item) -> bool
+                itemStorage->Each([&](u32 id, Generated::ItemRecord& item) -> bool
                 {
                     std::snprintf(comboLabel, sizeof(comboLabel), "%u - %s", id, itemStorage->GetString(item.name).c_str());
                     if (std::strstr(comboLabel, itemFilter.c_str()) != nullptr)
@@ -607,7 +590,7 @@ namespace Editor
         // If an item is selected, show the editing UI.
         if (currentItemIndex >= 0)
         {
-            auto& item = itemStorage->Get<Database::Item::Item>(currentItemIndex);
+            auto& item = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
 
             // Group: General Information
             {
@@ -635,7 +618,7 @@ namespace Editor
 
                     if (ImGui::IsItemHovered())
                     {
-                        auto& currentIcon = iconStorage->Get<::Database::Shared::Icon>(item.iconID);
+                        auto& currentIcon = iconStorage->Get<Generated::IconRecord>(item.iconID);
 
                         ImGui::BeginTooltip();
                         ImGui::Text("ID: %u", item.iconID);
@@ -710,7 +693,7 @@ namespace Editor
                     const std::string& currentLabel = CategoryOptions[item.category - 1].label;
                     if (RenderOptionDropdown<u8>("Category", currentLabel.c_str(), item.category, CategoryOptions))
                     {
-                        item.type = 1;
+                        item.categoryType = 1;
                         isItemDirty = true;
                     }
                 }
@@ -803,8 +786,8 @@ namespace Editor
                     };
 
                     const std::vector<Option>& typeOptions = CategoryTypeOptions[item.category - 1];
-                    const std::string& currentLabel = CategoryTypeOptions[item.category - 1][item.type - 1].label;
-                    if (RenderOptionDropdown<u8>("Category Type", currentLabel.c_str(), item.type, typeOptions))
+                    const std::string& currentLabel = CategoryTypeOptions[item.category - 1][item.categoryType - 1].label;
+                    if (RenderOptionDropdown<u8>("Category Type", currentLabel.c_str(), item.categoryType, typeOptions))
                     {
                         isItemDirty = true;
                     }
@@ -1053,11 +1036,7 @@ namespace Editor
 
     void ItemEditor::DrawImGui()
     {
-        bool* itemEditorEnabled = reinterpret_cast<bool*>(CVAR_ItemEditorEnabled.GetPtr());
-        if (*itemEditorEnabled == false)
-            return;
-
-        if (ImGui::Begin(GetName(), itemEditorEnabled))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             RenderItemEditor();
         }

@@ -60,7 +60,7 @@ namespace Scripting
             eventData.motd = CVAR_ScriptMotd.Get();
 
             auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-            gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
+            gameEventHandler->CallEvent(_internalState, static_cast<u32>(Generated::LuaGameEventEnum::Loaded), &eventData);
         }
     }
 
@@ -79,7 +79,7 @@ namespace Scripting
                 eventData.motd = CVAR_ScriptMotd.Get();
 
                 auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-                gameEventHandler->CallEvent(_internalState, static_cast<u32>(LuaGameEvent::Loaded), &eventData);
+                gameEventHandler->CallEvent(_internalState, static_cast<u32>(Generated::LuaGameEventEnum::Loaded), &eventData);
             }
             else
             {

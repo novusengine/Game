@@ -7,7 +7,6 @@
 #include <Base/Math/Geometry.h>
 
 #include <FileFormat/Shared.h>
-#include <FileFormat/Novus/ClientDB/Definitions.h>
 #include <FileFormat/Novus/Model/ComplexModel.h>
 
 #include <Renderer/DescriptorSet.h>

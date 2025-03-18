@@ -9,7 +9,8 @@
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -130,7 +131,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
     bool isLavaOrSlime = false;
     if (liquidTypes->Has(desc.typeID))
     {
-        const auto& liquidType = liquidTypes->Get<ClientDB::Definitions::LiquidType>(desc.typeID);
+        const auto& liquidType = liquidTypes->Get<Generated::LiquidTypeRecord>(desc.typeID);
 
         const auto& liquidTextureMap = _liquidTypeIDToLiquidTextureMap[desc.typeID];
         drawCallData.textureStartIndex = liquidTextureMap.baseTextureIndex;
@@ -554,7 +555,7 @@ void LiquidRenderer::CreatePermanentResources()
     _liquidTypeIDToLiquidTextureMap.reserve(numLiquidTypes);
 
     char textureNameBuffer[512] = { 0 };
-    liquidTypes->Each([this, &liquidTypes, &textureNameBuffer](u32 id, const ClientDB::Definitions::LiquidType& liquidType)
+    liquidTypes->Each([this, &liquidTypes, &textureNameBuffer](u32 id, const Generated::LiquidTypeRecord& liquidType)
     {
         // Ensure we always have a base index for all liquidTypes, default to 0
         _liquidTypeIDToLiquidTextureMap[id] =
@@ -564,7 +565,7 @@ void LiquidRenderer::CreatePermanentResources()
         };
 
         const std::string& baseTexture = liquidTypes->GetString(liquidType.textures[0]);
-        u32 numFramesForBaseTexture = liquidType.frameCountTextures[0];
+        u32 numFramesForBaseTexture = liquidType.frameCounts[0];
 
         if (baseTexture.length() == 0 || numFramesForBaseTexture == 0)
             return true;

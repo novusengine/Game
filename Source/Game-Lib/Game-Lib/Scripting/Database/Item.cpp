@@ -8,7 +8,7 @@
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -59,7 +59,7 @@ namespace Scripting::Database
             if (!db->Has(itemID))
                 itemID = 0;
 
-            const auto& itemInfo = db->Get<::Database::Item::Item>(itemID);
+            const auto& itemInfo = db->Get<Generated::ItemRecord>(itemID);
 
             // Name, Icon, Description RequiredText, SpecialText
             const std::string& name = db->GetString(itemInfo.name);
@@ -71,7 +71,7 @@ namespace Scripting::Database
                 ctx.SetTable("Bind", itemInfo.bind);
                 ctx.SetTable("Rarity", itemInfo.rarity);
                 ctx.SetTable("Category", itemInfo.category);
-                ctx.SetTable("Type", itemInfo.type);
+                ctx.SetTable("Type", itemInfo.categoryType);
                 ctx.SetTable("VirtualLevel", itemInfo.virtualLevel);
                 ctx.SetTable("RequiredLevel", itemInfo.requiredLevel);
                 ctx.SetTable("Durability", itemInfo.durability);
@@ -104,22 +104,21 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<::Database::Item::ItemStatTemplate>(templateID);
+            const auto& templateInfo = db->Get<Generated::ItemStatTemplateRecord>(templateID);
 
             ctx.CreateTableAndPopulate([&ctx, &templateInfo]()
             {
                 u32 numStatsAdded = 0;
-                for (u32 i = 1; i <= 8; i++)
+
+                for (u32 statIndex = 0; statIndex < 8; ++statIndex)
                 {
-                    u32 statID = templateInfo.statTypes[i - 1];
-                    i32 statValue = templateInfo.statValues[i - 1];
-                    if (statID == 0 || statValue == 0)
+                    if (templateInfo.statTypeID[statIndex] == 0 || templateInfo.value[statIndex] == 0)
                         continue;
 
-                    ctx.CreateTableAndPopulate([&ctx, statID, statValue]()
+                    ctx.CreateTableAndPopulate([&ctx, &templateInfo, statIndex]()
                     {
-                        ctx.SetTable("ID", statID);
-                        ctx.SetTable("Value", statValue);
+                        ctx.SetTable("ID", templateInfo.statTypeID[statIndex]);
+                        ctx.SetTable("Value", templateInfo.value[statIndex]);
                     });
 
                     ctx.SetTable(++numStatsAdded);
@@ -144,7 +143,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<::Database::Item::ItemArmorTemplate>(templateID);
+            const auto& templateInfo = db->Get<Generated::ItemArmorTemplateRecord>(templateID);
 
             ctx.CreateTableAndPopulate([&ctx, &templateInfo]()
             {
@@ -170,13 +169,13 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<::Database::Item::ItemWeaponTemplate>(templateID);
+            const auto& templateInfo = db->Get<Generated::ItemWeaponTemplateRecord>(templateID);
 
             ctx.CreateTableAndPopulate([&ctx, &templateInfo]()
             {
                 ctx.SetTable("WeaponStyle", (u32)templateInfo.weaponStyle);
-                ctx.SetTable("MinDamage", templateInfo.minDamage);
-                ctx.SetTable("MaxDamage", templateInfo.maxDamage);
+                ctx.SetTable("MinDamage", templateInfo.damageRange.x);
+                ctx.SetTable("MaxDamage", templateInfo.damageRange.y);
                 ctx.SetTable("Speed", templateInfo.speed);
             });
 
@@ -198,7 +197,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<::Database::Item::ItemShieldTemplate>(templateID);
+            const auto& templateInfo = db->Get<Generated::ItemShieldTemplateRecord>(templateID);
 
             ctx.CreateTableAndPopulate([&ctx, &templateInfo]()
             {
@@ -224,39 +223,22 @@ namespace Scripting::Database
             if (!db->Has(itemDisplayInfoID))
                 itemDisplayInfoID = 0;
 
-            const auto& itemDisplayInfo = db->Get<ClientDB::Definitions::ItemDisplayInfo>(itemDisplayInfoID);
+            const auto& itemDisplayInfo = db->Get<Generated::ItemDisplayInfoRecord>(itemDisplayInfoID);
 
             ctx.CreateTableAndPopulate([&ctx, &itemDisplayInfo]()
             {
-                ctx.SetTable("ItemVisual", itemDisplayInfo.itemVisual);
-                ctx.SetTable("ParticleColorID", itemDisplayInfo.particleColorID);
                 ctx.SetTable("ItemRangedDisplayInfoID", itemDisplayInfo.itemRangedDisplayInfoID);
-                ctx.SetTable("OverrideSwooshSoundKitID", itemDisplayInfo.overrideSwooshSoundKitID);
-                ctx.SetTable("SheatheTransformMatrixID", itemDisplayInfo.sheatheTransformMatrixID);
-                ctx.SetTable("StateSpellVisualKitID", itemDisplayInfo.stateSpellVisualKitID);
-                ctx.SetTable("SheathedSpellVisualKitID", itemDisplayInfo.sheathedSpellVisualKitID);
-                ctx.SetTable("UnsheathedSpellVisualKitID", itemDisplayInfo.unsheathedSpellVisualKitID);
                 ctx.SetTable("Flags", itemDisplayInfo.flags);
                 ctx.SetTable("ModelResourcesID1", itemDisplayInfo.modelResourcesID[0]);
                 ctx.SetTable("ModelResourcesID2", itemDisplayInfo.modelResourcesID[1]);
-                ctx.SetTable("MaterialResourcesID1", itemDisplayInfo.materialResourcesID[0]);
-                ctx.SetTable("MaterialResourcesID2", itemDisplayInfo.materialResourcesID[1]);
-                ctx.SetTable("ModelType1", itemDisplayInfo.modelType[0]);
-                ctx.SetTable("ModelType2", itemDisplayInfo.modelType[1]);
-                ctx.SetTable("GeosetGroup1", itemDisplayInfo.geosetGroup[0]);
-                ctx.SetTable("GeosetGroup2", itemDisplayInfo.geosetGroup[1]);
-                ctx.SetTable("GeosetGroup3", itemDisplayInfo.geosetGroup[2]);
-                ctx.SetTable("GeosetGroup4", itemDisplayInfo.geosetGroup[3]);
-                ctx.SetTable("GeosetGroup5", itemDisplayInfo.geosetGroup[4]);
-                ctx.SetTable("GeosetGroup6", itemDisplayInfo.geosetGroup[5]);
-                ctx.SetTable("GeosetAttachmentGroup1", itemDisplayInfo.geosetAttachmentGroup[0]);
-                ctx.SetTable("GeosetAttachmentGroup2", itemDisplayInfo.geosetAttachmentGroup[1]);
-                ctx.SetTable("GeosetAttachmentGroup3", itemDisplayInfo.geosetAttachmentGroup[2]);
-                ctx.SetTable("GeosetAttachmentGroup4", itemDisplayInfo.geosetAttachmentGroup[3]);
-                ctx.SetTable("GeosetAttachmentGroup5", itemDisplayInfo.geosetAttachmentGroup[4]);
-                ctx.SetTable("GeosetAttachmentGroup6", itemDisplayInfo.geosetAttachmentGroup[5]);
-                ctx.SetTable("GeosetHelmetVis1", itemDisplayInfo.geosetHelmetVis[0]);
-                ctx.SetTable("GeosetHelmetVis2", itemDisplayInfo.geosetHelmetVis[1]);
+                ctx.SetTable("MaterialResourcesID1", itemDisplayInfo.modelMaterialResourcesID[0]);
+                ctx.SetTable("MaterialResourcesID2", itemDisplayInfo.modelMaterialResourcesID[1]);
+                ctx.SetTable("GeosetGroup1", itemDisplayInfo.modelGeosetGroups[0]);
+                ctx.SetTable("GeosetGroup2", itemDisplayInfo.modelGeosetGroups[1]);
+                ctx.SetTable("GeosetGroup3", itemDisplayInfo.modelGeosetGroups[2]);
+                ctx.SetTable("GeosetGroup4", itemDisplayInfo.modelGeosetGroups[3]);
+                ctx.SetTable("GeosetVisID1", itemDisplayInfo.modelGeosetVisIDs[0]);
+                ctx.SetTable("GeosetVisID2", itemDisplayInfo.modelGeosetVisIDs[1]);
             });
 
             return 1;
@@ -288,14 +270,14 @@ namespace Scripting::Database
                 for (u32 i = 1; i <= effectCount; i++)
                 {
                     u32 effectID = effectIDs[i - 1];
-                    const auto& itemEffect = itemEffectsStorage->Get<::Database::Item::ItemEffect>(effectID);
+                    const auto& itemEffect = itemEffectsStorage->Get<Generated::ItemEffectRecord>(effectID);
 
                     ctx.CreateTableAndPopulate([&ctx, &itemEffect]()
                     {
                         ctx.SetTable("ItemID", itemEffect.itemID);
-                        ctx.SetTable("Slot", itemEffect.slot);
-                        ctx.SetTable("Type", static_cast<u32>(itemEffect.type));
-                        ctx.SetTable("SpellID", itemEffect.spellID);
+                        ctx.SetTable("Slot", itemEffect.effectSlot);
+                        ctx.SetTable("Type", static_cast<u32>(itemEffect.effectType));
+                        ctx.SetTable("SpellID", itemEffect.effectSpellID);
                     });
 
                     ctx.SetTable(i);
@@ -320,7 +302,7 @@ namespace Scripting::Database
             if (!db->Has(iconID))
                 iconID = 0;
 
-            const auto& icon = db->Get<::Database::Shared::Icon>(iconID);
+            const auto& icon = db->Get<Generated::IconRecord>(iconID);
             const std::string& texture = db->GetString(icon.texture);
 
             ctx.CreateTableAndPopulate([&ctx, &texture]()

@@ -15,7 +15,7 @@
 namespace Editor
 {
     Hierarchy::Hierarchy()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly)
     {
 
     }
@@ -49,7 +49,7 @@ namespace Editor
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             Util::Imgui::ItemRowsBackground();
             auto view = registry->view<ECS::Components::Name>();

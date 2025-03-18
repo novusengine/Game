@@ -12,9 +12,9 @@ namespace ECS::Components
     struct AttachmentData;
 }
 
-namespace ClientDB::Definitions
+namespace Generated
 {
-    struct AnimationData;
+    struct AnimationDataRecord;
 }
 
 namespace Model
@@ -24,7 +24,7 @@ namespace Model
 
 namespace Util::Animation
 {
-    const ::ClientDB::Definitions::AnimationData* GetAnimationDataRec(::Animation::Defines::Type type);
+    const Generated::AnimationDataRecord* GetAnimationDataRec(::Animation::Defines::Type type);
     bool HasAnimationSequence(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType);
     ::Animation::Defines::SequenceID GetFirstSequenceForAnimation(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationID);
     ::Animation::Defines::SequenceID GetSequenceIndexForAnimation(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType, i8& timesToRepeat);

@@ -10,8 +10,6 @@
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
-
 #include <Network/Client.h>
 
 #include <entt/entt.hpp>

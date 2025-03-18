@@ -25,7 +25,7 @@
 
 #include <Base/Util/StringUtils.h>
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -224,7 +224,7 @@ namespace Util::Unit
                 animation = GetMoveForwardAnimation(speed, isFlying, isStealthed);
             }
 
-            auto blendOverride = isFlying ? ::Animation::Defines::BlendOverride::Auto : ::Animation::Defines::BlendOverride::Start;
+            auto blendOverride = isFlying ? ::Animation::Defines::BlendOverride::Auto : ::Animation::Defines::BlendOverride::None;
             return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, animation, false, ::Animation::Defines::Flags::None, blendOverride, speedModifier);
         }
         else
@@ -335,7 +335,7 @@ namespace Util::Unit
         return didOpenFingers;
     }
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity)
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity)
     {
         itemEntity = entt::null;
 
@@ -350,7 +350,7 @@ namespace Util::Unit
         if (item.displayID == 0 || !itemDisplayInfoStorage->Has(item.displayID))
             return false;
 
-        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(item.displayID);
+        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(item.displayID);
         u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
         if (!itemSingleton.helmModelResourcesIDToModelMapping.contains(modelResourcesID))
@@ -361,8 +361,9 @@ namespace Util::Unit
         if (!hasArmorTemplate)
             return false;
 
-        auto& armorTemplate = itemArmorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(item.armorTemplateID);
-        if (armorTemplate.equipType != Database::Item::ItemArmorEquipType::Helm)
+        auto& armorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
+        auto equipType = static_cast<Database::Item::ItemArmorEquipType>(armorTemplate.equipType);
+        if (equipType != Database::Item::ItemArmorEquipType::Helm)
             return false;
 
         u8 helmVariant = 0;
@@ -370,7 +371,7 @@ namespace Util::Unit
         return AddItemToAttachment(registry, entity, ::Attachment::Defines::Type::Helm, item.displayID, itemEntity, itemModelHash, helmVariant);
     }
 
-    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity)
+    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity)
     {
         shoulderLeftEntity = entt::null;
         shoulderRightEntity = entt::null;
@@ -386,7 +387,7 @@ namespace Util::Unit
         if (item.displayID == 0 || !itemDisplayInfoStorage->Has(item.displayID))
             return false;
 
-        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(item.displayID);
+        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(item.displayID);
         u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
         if (!itemSingleton.shoulderModelResourcesIDToModelMapping.contains(modelResourcesID))
@@ -397,8 +398,9 @@ namespace Util::Unit
         if (!hasArmorTemplate)
             return false;
 
-        auto& armorTemplate = itemArmorTemplateStorage->Get<Database::Item::ItemArmorTemplate>(item.armorTemplateID);
-        if (armorTemplate.equipType != Database::Item::ItemArmorEquipType::Shoulders)
+        auto& armorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
+        auto equipType = static_cast<Database::Item::ItemArmorEquipType>(armorTemplate.equipType);
+        if (equipType != Database::Item::ItemArmorEquipType::Shoulders)
             return false;
 
         u32 shoulderLeftModelHash;
@@ -423,7 +425,7 @@ namespace Util::Unit
         return result;
     }
 
-    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, const bool isOffHand, entt::entity& itemEntity)
+    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity)
     {
         itemEntity = entt::null;
             
@@ -450,8 +452,8 @@ namespace Util::Unit
 
         if (hasWeaponTemplate)
         {
-            auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Database::Item::ItemWeaponTemplate>(item.weaponTemplateID);
-            Database::Item::ItemWeaponStyle weaponStyle = itemWeaponTemplate.weaponStyle;
+            auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(item.weaponTemplateID);
+            auto weaponStyle = static_cast<Database::Item::ItemWeaponStyle>(itemWeaponTemplate.weaponStyle);
 
             bool canWearInOffHand = weaponStyle == Database::Item::ItemWeaponStyle::Unspecified || weaponStyle == Database::Item::ItemWeaponStyle::OneHand || 
                                     weaponStyle == Database::Item::ItemWeaponStyle::OffHand     || weaponStyle == Database::Item::ItemWeaponStyle::Tool;
@@ -521,7 +523,7 @@ namespace Util::Unit
         auto& attachedModel = registry.emplace<Components::Model>(attachedEntity);
         transformSystem.ParentEntityTo(attachmentEntity, attachedEntity);
         
-        if (!modelLoader->LoadDisplayIDForEntity(attachedEntity, attachedModel, ClientDB::Definitions::DisplayInfoType::Item, displayID, modelHash, modelVariant))
+        if (!modelLoader->LoadDisplayIDForEntity(attachedEntity, attachedModel, Database::Unit::DisplayInfoType::Item, displayID, modelHash, modelVariant))
         {
             // Force load cube?
             u32 modelHash = "spells/errorcube.complexmodel"_h;
@@ -673,7 +675,7 @@ namespace Util::Unit
             if (itemID == 0)
                 return 0;
 
-            const auto& itemInfo = itemStorage->Get<::Database::Item::Item>(itemID);
+            const auto& itemInfo = itemStorage->Get<::Generated::ItemRecord>(itemID);
             return itemInfo.displayID;
         };
 
@@ -701,12 +703,12 @@ namespace Util::Unit
 
         if (glovesDisplayID > 0)
         {
-            auto* glovesDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(glovesDisplayID);
-            if (glovesDisplayInfo && glovesDisplayInfo->geosetGroup[0])
+            auto* glovesDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(glovesDisplayID);
+            if (glovesDisplayInfo && glovesDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 401, 499);
 
-                u32 geometryGroupID = 401 + glovesDisplayInfo->geosetGroup[0];
+                u32 geometryGroupID = 401 + glovesDisplayInfo->modelGeosetGroups[0];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
 
                 unitCustomization.flags.hasGloveModel = true;
@@ -716,17 +718,17 @@ namespace Util::Unit
         bool chestEnabled800 = false;
         if (!unitCustomization.flags.hasGloveModel && chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(chestDisplayID);
-            if (chestDisplayInfo && chestDisplayInfo->geosetGroup[0])
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[0])
             {
-                u32 geometryGroupID = 801 + chestDisplayInfo->geosetGroup[0];
+                u32 geometryGroupID = 801 + chestDisplayInfo->modelGeosetGroups[0];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
 
                 chestEnabled800 = true;
             }
         }
 
-        auto* tabardDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(tabardDisplayID);
+        auto* tabardDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(tabardDisplayID);
         if (tabardDisplayInfo)
         {
             if (!(tabardDisplayInfo->flags & 0x100000))
@@ -737,10 +739,10 @@ namespace Util::Unit
         }
         else if (chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(chestDisplayID);
-            if (chestDisplayInfo && chestDisplayInfo->geosetGroup[3])
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[3])
             {
-                u32 geometryGroupID = 2201 + chestDisplayInfo->geosetGroup[3];
+                u32 geometryGroupID = 2201 + chestDisplayInfo->modelGeosetGroups[3];
                 DisableGeometryGroups(registry, entity, model, 2200, 2299);
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
@@ -748,7 +750,7 @@ namespace Util::Unit
         
         unitCustomization.flags.hasBeltModel = false;
 
-        auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(beltDisplayID);
+        auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(beltDisplayID);
         if (beltDisplayInfo)
             unitCustomization.flags.hasBeltModel = beltDisplayInfo->flags & 0x200;
 
@@ -757,8 +759,8 @@ namespace Util::Unit
 
         if (chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(chestDisplayID);
-            if (chestDisplayInfo && chestDisplayInfo->geosetGroup[2])
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[2])
             {
                 unitCustomization.flags.hasChestDress = true;
                 unitCustomization.flags.hasPantsDress = false;
@@ -768,14 +770,14 @@ namespace Util::Unit
                 DisableGeometryGroups(registry, entity, model, 1100, 1199);
                 DisableGeometryGroups(registry, entity, model, 1300, 1399);
 
-                u32 geometryGroupID = 1301 + chestDisplayInfo->geosetGroup[2];
+                u32 geometryGroupID = 1301 + chestDisplayInfo->modelGeosetGroups[2];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
         }
         else if (pantsDisplayID > 0)
         {
-            auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(pantsDisplayID);
-            if (pantsDisplayInfo && pantsDisplayInfo->geosetGroup[2])
+            auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+            if (pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[2])
             {
                 unitCustomization.flags.hasChestDress = false;
                 unitCustomization.flags.hasPantsDress = true;
@@ -785,7 +787,7 @@ namespace Util::Unit
                 DisableGeometryGroups(registry, entity, model, 1100, 1199);
                 DisableGeometryGroups(registry, entity, model, 1300, 1399);
 
-                u32 geometryGroupID = 1301 + pantsDisplayInfo->geosetGroup[2];
+                u32 geometryGroupID = 1301 + pantsDisplayInfo->modelGeosetGroups[2];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
         }
@@ -793,28 +795,28 @@ namespace Util::Unit
         bool hasDress = unitCustomization.flags.hasChestDress || unitCustomization.flags.hasPantsDress;
         if (!hasDress)
         {
-            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(bootsDisplayID);
-            if (bootsDisplayInfo && bootsDisplayInfo->geosetGroup[0])
+            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(bootsDisplayID);
+            if (bootsDisplayInfo && bootsDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 501, 599);
                 EnableGeometryGroup(registry, entity, model, 901);
 
-                u32 geometryGroupID = 501 + bootsDisplayInfo->geosetGroup[0];
+                u32 geometryGroupID = 501 + bootsDisplayInfo->modelGeosetGroups[0];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
             else
             {
-                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(pantsDisplayID);
-                u32 geometryGroupID = pantsDisplayInfo && pantsDisplayInfo->geosetGroup[1] ? 901 + pantsDisplayInfo->geosetGroup[1] : 901;
+                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+                u32 geometryGroupID = pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[1] ? 901 + pantsDisplayInfo->modelGeosetGroups[1] : 901;
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
 
             if (!unitCustomization.flags.hasGloveModel && !chestEnabled800)
             {
-                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(shirtDisplayID);
-                if (shirtDisplayInfo && shirtDisplayInfo->geosetGroup[0])
+                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(shirtDisplayID);
+                if (shirtDisplayInfo && shirtDisplayInfo->modelGeosetGroups[0])
                 {
-                    u32 geometryGroupID = 801 + shirtDisplayInfo->geosetGroup[0];
+                    u32 geometryGroupID = 801 + shirtDisplayInfo->modelGeosetGroups[0];
                     EnableGeometryGroup(registry, entity, model, geometryGroupID);
                 }
             }
@@ -823,14 +825,14 @@ namespace Util::Unit
         // Boots
         {
             bool bootsFlag = false;
-            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(bootsDisplayID);
+            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(bootsDisplayID);
             if (bootsDisplayInfo)
                 bootsFlag = (bootsDisplayInfo->flags & 0x100000) == 0;
 
             u32 bootsGeometryGroupID = 0;
-            if (bootsDisplayInfo && bootsDisplayInfo->geosetGroup[1])
+            if (bootsDisplayInfo && bootsDisplayInfo->modelGeosetGroups[1])
             {
-                bootsGeometryGroupID = 2000 + bootsDisplayInfo->geosetGroup[1];
+                bootsGeometryGroupID = 2000 + bootsDisplayInfo->modelGeosetGroups[1];
             }
             else
             {
@@ -840,10 +842,10 @@ namespace Util::Unit
         }
 
         bool showsTabard = false;
-        if (!hasDress && tabardDisplayID > 0 && tabardDisplayInfo && tabardDisplayInfo->geosetGroup[0])
+        if (!hasDress && tabardDisplayID > 0 && tabardDisplayInfo && tabardDisplayInfo->modelGeosetGroups[0])
         {
             showsTabard = true;
-            u32 geometryGroupID = unitCustomization.flags.hasBeltModel ? 1203 : 1201 + tabardDisplayInfo->geosetGroup[0];
+            u32 geometryGroupID = unitCustomization.flags.hasBeltModel ? 1203 : 1201 + tabardDisplayInfo->modelGeosetGroups[0];
             EnableGeometryGroup(registry, entity, model, geometryGroupID);
         }
         else if (tabardDisplayID > 0)
@@ -864,19 +866,19 @@ namespace Util::Unit
         {
             if (chestDisplayID)
             {
-                auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(chestDisplayID);
-                if (chestDisplayInfo && chestDisplayInfo->geosetGroup[1])
+                auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+                if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[1])
                 {
-                    u32 geometryGroupID = 1001 + chestDisplayInfo->geosetGroup[1];
+                    u32 geometryGroupID = 1001 + chestDisplayInfo->modelGeosetGroups[1];
                     EnableGeometryGroup(registry, entity, model, geometryGroupID);
                 }
             }
             else if (shirtDisplayID)
             {
-                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(shirtDisplayID);
-                if (shirtDisplayInfo && shirtDisplayInfo->geosetGroup[1])
+                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(shirtDisplayID);
+                if (shirtDisplayInfo && shirtDisplayInfo->modelGeosetGroups[1])
                 {
-                    u32 geometryGroupID = 1001 + shirtDisplayInfo->geosetGroup[1];
+                    u32 geometryGroupID = 1001 + shirtDisplayInfo->modelGeosetGroups[1];
                     EnableGeometryGroup(registry, entity, model, geometryGroupID);
                 }
             }
@@ -886,10 +888,10 @@ namespace Util::Unit
         {
             if (pantsDisplayID)
             {
-                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(pantsDisplayID);
-                if (pantsDisplayInfo && pantsDisplayInfo->geosetGroup[0])
+                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+                if (pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[0])
                 {
-                    u32 geometryGroup = pantsDisplayInfo->geosetGroup[0];
+                    u32 geometryGroup = pantsDisplayInfo->modelGeosetGroups[0];
                     u32 geometryGroupID = 1001 + geometryGroup;
 
                     if (geometryGroup > 2)
@@ -907,24 +909,24 @@ namespace Util::Unit
 
         if (cloakDisplayID)
         {
-            auto* cloakDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(cloakDisplayID);
-            if (cloakDisplayInfo && cloakDisplayInfo->geosetGroup[0])
+            auto* cloakDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(cloakDisplayID);
+            if (cloakDisplayInfo && cloakDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 1500, 1599);
 
-                u32 geometryGroupID = 1501 + cloakDisplayInfo->geosetGroup[0];
+                u32 geometryGroupID = 1501 + cloakDisplayInfo->modelGeosetGroups[0];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
         }
 
         if (beltDisplayID)
         {
-            auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<ClientDB::Definitions::ItemDisplayInfo>(beltDisplayID);
-            if (beltDisplayInfo && beltDisplayInfo->geosetGroup[0])
+            auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(beltDisplayID);
+            if (beltDisplayInfo && beltDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 1800, 1899);
 
-                u32 geometryGroupID = 1801 + beltDisplayInfo->geosetGroup[0];
+                u32 geometryGroupID = 1801 + beltDisplayInfo->modelGeosetGroups[0];
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
         }
@@ -960,37 +962,37 @@ namespace Util::Unit
             Renderer::TextureID skinBraTextureID;
             if (ECSUtil::UnitCustomization::GetBaseSkinBraTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, skinBraTextureID))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinBraTextureID, Database::Unit::UnitTextureSection::Type::TorsoUpper);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinBraTextureID, Database::Unit::TextureSectionType::TorsoUpper);
             }
 
             Renderer::TextureID skinUnderwearTextureID;
             if (ECSUtil::UnitCustomization::GetBaseSkinUnderwearTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, skinUnderwearTextureID))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinUnderwearTextureID, Database::Unit::UnitTextureSection::Type::LegUpper);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinUnderwearTextureID, Database::Unit::TextureSectionType::LegUpper);
             }
 
             Renderer::TextureID skinFaceTextureID1;
             if (ECSUtil::UnitCustomization::GetBaseSkinFaceTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, unitCustomization.faceID, 0, skinFaceTextureID1))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinFaceTextureID1, Database::Unit::UnitTextureSection::Type::HeadLower);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinFaceTextureID1, Database::Unit::TextureSectionType::HeadLower);
             }
 
             Renderer::TextureID skinFaceTextureID2;
             if (ECSUtil::UnitCustomization::GetBaseSkinFaceTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, unitCustomization.faceID, 1, skinFaceTextureID2))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinFaceTextureID2, Database::Unit::UnitTextureSection::Type::HeadUpper);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinFaceTextureID2, Database::Unit::TextureSectionType::HeadUpper);
             }
 
             Renderer::TextureID skinHairTextureID2;
             if (ECSUtil::UnitCustomization::GetBaseSkinHairTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.hairStyleID, unitCustomization.hairColorID, 2, skinHairTextureID2))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinHairTextureID2, Database::Unit::UnitTextureSection::Type::HeadUpper);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinHairTextureID2, Database::Unit::TextureSectionType::HeadUpper);
             }
 
             Renderer::TextureID skinHairTextureID1;
             if (ECSUtil::UnitCustomization::GetBaseSkinHairTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.hairStyleID, unitCustomization.hairColorID, 1, skinHairTextureID1))
             {
-                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinHairTextureID1, Database::Unit::UnitTextureSection::Type::HeadLower);
+                ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinHairTextureID1, Database::Unit::TextureSectionType::HeadLower);
             }
 
             if (unitCustomization.flags.hairChanged || unitCustomization.flags.forceRefresh)

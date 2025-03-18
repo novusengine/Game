@@ -18,8 +18,9 @@
 #include <Base/Memory/FileReader.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
-#include <FileFormat/Novus/ClientDB/Definitions.h>
 #include <FileFormat/Novus/Map/Map.h>
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -74,8 +75,8 @@ void MapLoader::Update(f32 deltaTime)
         if (!mapStorage->Has(mapID))
             return;
 
-        const ClientDB::Definitions::Map& currentMap = mapStorage->Get<ClientDB::Definitions::Map>(mapID);
-        const std::string& mapInternalName = mapStorage->GetString(currentMap.internalName);
+        const auto& currentMap = mapStorage->Get<Generated::MapRecord>(mapID);
+        const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
         
         fs::path relativeParentPath = "Data/Map";
         fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();

@@ -15,14 +15,14 @@ using namespace ECS;
 namespace Editor
 {
     Clock::Clock()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
     }
 
     void Clock::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             entt::registry& registry = *registries->gameRegistry;

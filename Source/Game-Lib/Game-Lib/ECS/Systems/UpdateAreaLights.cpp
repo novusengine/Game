@@ -14,7 +14,7 @@
 
 #include <Base/CVarSystem/CVarSystem.h>
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -43,18 +43,18 @@ namespace ECS::Systems
         return glm::mix(color1Vec, color2Vec, blend);
     }
 
-    AreaLightColorData GetLightColorData(const Singletons::AreaLightInfo& areaLightInfo, const Singletons::DayNightCycle& dayNightCycle, ClientDB::Data* lightParamsStorage, ClientDB::Data* lightDataStorage, const ClientDB::Definitions::Light* light)
+    AreaLightColorData GetLightColorData(const Singletons::AreaLightInfo& areaLightInfo, const Singletons::DayNightCycle& dayNightCycle, ClientDB::Data* lightParamsStorage, ClientDB::Data* lightDataStorage, const Generated::LightRecord* light)
     {
         AreaLightColorData lightColor;
         if (!light)
             return lightColor;
 
-        u32 lightParamID = light->lightParamsID[0];
+        u32 lightParamID = light->paramIDs[0];
 
         if (!lightParamsStorage->Has(lightParamID))
             return lightColor;
 
-        auto& lightParams = lightParamsStorage->Get<ClientDB::Definitions::LightParam>(lightParamID);
+        auto& lightParams = lightParamsStorage->Get<Generated::LightParamRecord>(lightParamID);
 
         if (!areaLightInfo.lightParamIDToLightData.contains(lightParamID))
             return lightColor;
@@ -73,7 +73,7 @@ namespace ECS::Systems
             if (!lightDataStorage->Has(lightDataID))
                 return lightColor;
 
-            auto& lightData = lightDataStorage->Get<ClientDB::Definitions::LightData>(lightDataID);
+            auto& lightData = lightDataStorage->Get<Generated::LightDataRecord>(lightDataID);
 
             lightColor.ambientColor = UnpackU32BGRToColor(lightData.ambientColor);
             lightColor.diffuseColor = UnpackU32BGRToColor(lightData.diffuseColor);
@@ -99,7 +99,7 @@ namespace ECS::Systems
                 if (!lightDataStorage->Has(lightDataID))
                     continue;
 
-                auto& lightData = lightDataStorage->Get<ClientDB::Definitions::LightData>(lightDataID);
+                auto& lightData = lightDataStorage->Get<Generated::LightDataRecord>(lightDataID);
 
                 if (lightData.timestamp <= timeInSecondsAsU32)
                 {
@@ -114,8 +114,8 @@ namespace ECS::Systems
             u32 currentLightDataID = lightDataIDs[currentLightDataIndex];
             u32 nextLightDataID = lightDataIDs[nextLightDataIndex];
 
-            auto& currentLightData = lightDataStorage->Get<ClientDB::Definitions::LightData>(currentLightDataID);
-            auto& nextLightData = lightDataStorage->Get<ClientDB::Definitions::LightData>(nextLightDataID);
+            auto& currentLightData = lightDataStorage->Get<Generated::LightDataRecord>(currentLightDataID);
+            auto& nextLightData = lightDataStorage->Get<Generated::LightDataRecord>(nextLightDataID);
 
             u32 currentTimestamp = currentLightData.timestamp;
             u32 nextTimestamp = nextLightData.timestamp;
@@ -167,7 +167,7 @@ namespace ECS::Systems
             areaLightInfo.mapIDToLightIDs.clear();
             areaLightInfo.mapIDToLightIDs.reserve(numMaps);
 
-            lightStorage->Each([&](u32 id, const ClientDB::Definitions::Light& light) -> bool
+            lightStorage->Each([&](u32 id, const Generated::LightRecord& light) -> bool
             {
                 u16 mapID = light.mapID;
 
@@ -188,7 +188,7 @@ namespace ECS::Systems
             areaLightInfo.lightParamIDToLightData.clear();
             areaLightInfo.lightParamIDToLightData.reserve(numLightParams);
 
-            lightDataStorage->Each([&](u32 id, const ClientDB::Definitions::LightData& lightData) -> bool
+            lightDataStorage->Each([&](u32 id, const Generated::LightDataRecord& lightData) -> bool
             {
                 u16 lightParamID = lightData.lightParamID;
 
@@ -224,7 +224,7 @@ namespace ECS::Systems
 
         u32 currentMapID = mapLoader->GetCurrentMapID();
         bool forceDefaultLight = currentMapID == std::numeric_limits<u32>().max();
-        const auto* defaultLight = &lightStorage->Get<ClientDB::Definitions::Light>(1);
+        const auto* defaultLight = &lightStorage->Get<Generated::LightRecord>(1);
 
         if (!forceDefaultLight)
         {
@@ -249,7 +249,7 @@ namespace ECS::Systems
 
                 for (u16 lightID : lightIDs)
                 {
-                    const auto& light = lightStorage->Get<ClientDB::Definitions::Light>(lightID);
+                    const auto& light = lightStorage->Get<Generated::LightRecord>(lightID);
 
                     const vec3& lightPosition = light.position;
                     if (lightPosition.x == 0 && lightPosition.y == 0 && lightPosition.z == 0)

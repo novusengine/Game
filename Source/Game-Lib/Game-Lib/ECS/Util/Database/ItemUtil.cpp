@@ -4,10 +4,11 @@
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
-#include "Game-Lib/Gameplay/Database/Spell.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -34,182 +35,122 @@ namespace ECSUtil::Item
         auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
 
         if (!clientDBSingleton.Has(ClientDBHash::Item))
-            {
-                clientDBSingleton.Register(ClientDBHash::Item, "Item");
+        {
+            clientDBSingleton.Register(ClientDBHash::Item, "Item");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::Item);
-                storage->Initialize({
-                    { "DisplayID",          ClientDB::FieldType::I32 },
-                    { "Bind",               ClientDB::FieldType::I8 },
-                    { "Rarity",             ClientDB::FieldType::I8 },
-                    { "Category",           ClientDB::FieldType::I8 },
-                    { "Type",               ClientDB::FieldType::I8 },
-                    { "VirtualLevel",       ClientDB::FieldType::I16 },
-                    { "RequiredLevel",      ClientDB::FieldType::I16 },
-                    { "Durability",         ClientDB::FieldType::I32 },
-                    { "IconID",             ClientDB::FieldType::I32 },
-                    { "Name",               ClientDB::FieldType::StringRef },
-                    { "Description",        ClientDB::FieldType::StringRef },
-                    { "Armor",              ClientDB::FieldType::StringRef },
-                    { "StatTemplateID",     ClientDB::FieldType::I32 },
-                    { "ArmorTemplateID",    ClientDB::FieldType::I32 },
-                    { "WeaponTemplateID",   ClientDB::FieldType::I32 },
-                    { "ShieldTemplateID",   ClientDB::FieldType::I32 },
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::Item);
+            storage->Initialize<Generated::ItemRecord>();
 
-                ::Database::Item::Item defaultItem =
-                {
-                    .displayID = 0,
-                    .bind = 0,
-                    .rarity = 1,
-                    .category = 1,
-                    .type = 1,
-                    .virtualLevel = 0,
-                    .requiredLevel = 0,
-                    .durability = 0,
-                    .iconID = 0,
-                    .name = storage->AddString("Default"),
-                    .description = storage->AddString(""),
-                    .armor = storage->AddString(""),
-                    .statTemplateID = 0,
-                    .armorTemplateID = 0,
-                    .weaponTemplateID = 0,
-                    .shieldTemplateID = 0,
-                };
+            Generated::ItemRecord defaultItem;
+            defaultItem.displayID = 0;
+            defaultItem.bind = 0;
+            defaultItem.rarity = 1;
+            defaultItem.category = 1;
+            defaultItem.categoryType = 1;
+            defaultItem.virtualLevel = 0;
+            defaultItem.requiredLevel = 0;
+            defaultItem.durability = 0;
+            defaultItem.iconID = 0;
+            defaultItem.name = storage->AddString("Default");
+            defaultItem.description = storage->AddString("");
+            defaultItem.armor = storage->AddString("");
+            defaultItem.statTemplateID = 0;
+            defaultItem.armorTemplateID = 0;
+            defaultItem.weaponTemplateID = 0;
+            defaultItem.shieldTemplateID = 0;
 
-                storage->Replace(0, defaultItem);
-                storage->MarkDirty();
-            }
+            storage->Replace(0, defaultItem);
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemStatTemplate))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemStatTemplate, "ItemStatTemplate");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemStatTemplate, "ItemStatTemplate");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
-                storage->Initialize({
-                    { "StatTypeID1",    ClientDB::FieldType::I8 },
-                    { "StatTypeID2",    ClientDB::FieldType::I8 },
-                    { "StatTypeID3",    ClientDB::FieldType::I8 },
-                    { "StatTypeID4",    ClientDB::FieldType::I8 },
-                    { "StatTypeID5",    ClientDB::FieldType::I8 },
-                    { "StatTypeID6",    ClientDB::FieldType::I8 },
-                    { "StatTypeID7",    ClientDB::FieldType::I8 },
-                    { "StatTypeID8",    ClientDB::FieldType::I8 },
-                    { "StatValue1",     ClientDB::FieldType::I32 },
-                    { "StatValue2",     ClientDB::FieldType::I32 },
-                    { "StatValue3",     ClientDB::FieldType::I32 },
-                    { "StatValue4",     ClientDB::FieldType::I32 },
-                    { "StatValue5",     ClientDB::FieldType::I32 },
-                    { "StatValue6",     ClientDB::FieldType::I32 },
-                    { "StatValue7",     ClientDB::FieldType::I32 },
-                    { "StatValue8",     ClientDB::FieldType::I32 },
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
+            storage->Initialize<Generated::ItemStatTemplateRecord>();
 
-                storage->MarkDirty();
-            }
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemArmorTemplate))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemArmorTemplate, "ItemArmorTemplate");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemArmorTemplate, "ItemArmorTemplate");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);
-                storage->Initialize({
-                    { "EquipType",      ClientDB::FieldType::I32 },
-                    { "BonusArmor",     ClientDB::FieldType::I32 }
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);
+            storage->Initialize<Generated::ItemArmorTemplateRecord>();
 
-                storage->MarkDirty();
-            }
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemWeaponTemplate))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemWeaponTemplate, "ItemWeaponTemplate");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemWeaponTemplate, "ItemWeaponTemplate");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
-                storage->Initialize({
-                    { "WeaponStyle",    ClientDB::FieldType::I32 },
-                    { "MinDamage",      ClientDB::FieldType::I32 },
-                    { "MaxDamage",      ClientDB::FieldType::I32 },
-                    { "Speed",          ClientDB::FieldType::F32 }
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
+            storage->Initialize<Generated::ItemWeaponTemplateRecord>();
 
-                ::Database::Item::ItemWeaponTemplate defaultWeaponTemplate =
-                {
-                    .weaponStyle = ::Database::Item::ItemWeaponStyle::Unspecified,
-                    .minDamage = 0,
-                    .maxDamage = 0,
-                    .speed = 1.0f
-                };
+            Generated::ItemWeaponTemplateRecord defaultWeaponTemplate;
+            defaultWeaponTemplate.weaponStyle = static_cast<u8>(::Database::Item::ItemWeaponStyle::Unspecified);
+            defaultWeaponTemplate.damageRange.x = 0;
+            defaultWeaponTemplate.damageRange.y = 0;
+            defaultWeaponTemplate.speed = 1.0f;
 
-                storage->Replace(0, defaultWeaponTemplate);
-                storage->MarkDirty();
-            }
+            storage->Replace(0, defaultWeaponTemplate);
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemShieldTemplate))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemShieldTemplate, "ItemShieldTemplate");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemShieldTemplate, "ItemShieldTemplate");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
-                storage->Initialize({
-                    { "BonusArmor", ClientDB::FieldType::I32 },
-                    { "Block",      ClientDB::FieldType::I32 }
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
+            storage->Initialize<Generated::ItemShieldTemplateRecord>();
 
-                storage->MarkDirty();
-            }
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemStatTypes))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemStatTypes, "ItemStatTypes");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemStatTypes, "ItemStatTypes");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTypes);
-                storage->Initialize({
-                    { "Name",     ClientDB::FieldType::StringRef },
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTypes);
+            storage->Initialize<Generated::ItemStatTypeRecord>();
 
-                ClientDB::StringRef defaultStatTypeName = storage->AddString("Unknown");
-                storage->Replace(0, defaultStatTypeName);
+            Generated::ItemStatTypeRecord defaultStatType;
+            defaultStatType.name = storage->AddString("Unknown Stat");
+            defaultStatType.description = storage->AddString("This is an unknown stat");
+            storage->Replace(0, defaultStatType);
 
-                storage->MarkDirty();
-            }
+            storage->MarkDirty();
+        }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemEffects))
-            {
-                clientDBSingleton.Register(ClientDBHash::ItemEffects, "ItemEffects");
+        {
+            clientDBSingleton.Register(ClientDBHash::ItemEffects, "ItemEffects");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::ItemEffects);
-                storage->Initialize({
-                    { "ItemID",     ClientDB::FieldType::I32 },
-                    { "Slot",       ClientDB::FieldType::I8 },
-                    { "Type",       ClientDB::FieldType::I8 },
-                    { "SpellID",    ClientDB::FieldType::I32 }
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::ItemEffects);
+            storage->Initialize<Generated::ItemEffectRecord>();
 
-                storage->MarkDirty();
-            }
+            storage->MarkDirty();
+        }
 
         // TODO : Move this to SpellUtil (When we make it)
         if (!clientDBSingleton.Has(ClientDBHash::Spell))
-            {
-                clientDBSingleton.Register(ClientDBHash::Spell, "Spell");
+        {
+            clientDBSingleton.Register(ClientDBHash::Spell, "Spell");
 
-                auto* storage = clientDBSingleton.Get(ClientDBHash::Spell);
-                storage->Initialize({
-                    { "Name",               ClientDB::FieldType::StringRef },
-                    { "Description",        ClientDB::FieldType::StringRef },
-                    { "AuraDescription",    ClientDB::FieldType::StringRef },
-                });
+            auto* storage = clientDBSingleton.Get(ClientDBHash::Spell);
+            storage->Initialize<Generated::SpellRecord>();
 
-                ::Database::Spell::Spell defaultSpell =
-                {
-                    .name = storage->AddString("Unused"),
-                    .description = storage->AddString("Unused"),
-                    .auraDescription = storage->AddString("Unused")
-                };
+            Generated::SpellRecord defaultSpell;
+            defaultSpell.name = storage->AddString("Unused");
+            defaultSpell.description = storage->AddString("Unused");
+            defaultSpell.auraDescription = storage->AddString("Unused");
 
-                storage->Replace(0, defaultSpell);
-                storage->MarkDirty();
-            }
+            storage->Replace(0, defaultSpell);
+            storage->MarkDirty();
+        }
 
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
         auto* itemStatTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
@@ -231,7 +172,7 @@ namespace ECSUtil::Item
         itemSingleton.itemIDToEffectMapping.reserve(numItems);
         itemSingleton.itemEffectIDs.reserve(numItemEffects);
 
-        itemStorage->Each([&](u32 id, ::Database::Item::Item& item) -> bool
+        itemStorage->Each([&](u32 id, Generated::ItemRecord& item) -> bool
         {
             itemSingleton.itemIDs.insert(id);
 
@@ -251,9 +192,9 @@ namespace ECSUtil::Item
         });
 
         std::map<u32, std::vector<u32>> itemIDToEffectIDs;
-        itemEffectsStorage->Each([&](u32 id, ::Database::Item::ItemEffect& itemEffect) -> bool
+        itemEffectsStorage->Each([&](u32 id, Generated::ItemEffectRecord& itemEffect) -> bool
         {
-            if (itemEffect.spellID == 0)
+            if (itemEffect.effectSpellID == 0)
                 return true;
 
             itemIDToEffectIDs[itemEffect.itemID].push_back(id);
@@ -269,10 +210,10 @@ namespace ECSUtil::Item
             {
                 std::ranges::sort(pair.second, [&itemEffectsStorage](const u32 itemEffectIDA, const u32 itemEffectIDB)
                 {
-                    const auto& itemEffectA = itemEffectsStorage->Get<::Database::Item::ItemEffect>(itemEffectIDA);
-                    const auto& itemEffectB = itemEffectsStorage->Get<::Database::Item::ItemEffect>(itemEffectIDB);
+                    const auto& itemEffectA = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectIDA);
+                    const auto& itemEffectB = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectIDB);
 
-                    return itemEffectA.slot < itemEffectB.slot;
+                    return itemEffectA.effectSlot < itemEffectB.effectSlot;
                 });
             }
 
@@ -282,16 +223,16 @@ namespace ECSUtil::Item
 
                 std::erase_if(pair.second, [&itemEffectsStorage, &spellStorage, &itemEffectSlotSeen](const u32 itemEffectID)
                 {
-                    const auto& itemEffect = itemEffectsStorage->Get<::Database::Item::ItemEffect>(itemEffectID);
-                    bool spellDoesNotExist = !spellStorage->Has(itemEffect.spellID);
+                    const auto& itemEffect = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectID);
+                    bool spellDoesNotExist = !spellStorage->Has(itemEffect.effectSpellID);
                     if (spellDoesNotExist)
                         return true;
 
-                    bool effectSlotInUse = itemEffectSlotSeen.contains(itemEffect.slot);
+                    bool effectSlotInUse = itemEffectSlotSeen.contains(itemEffect.effectSlot);
                     if (effectSlotInUse)
                         return true;
 
-                    itemEffectSlotSeen.insert(itemEffect.slot);
+                    itemEffectSlotSeen.insert(itemEffect.effectSlot);
                     return false;
                 });
             }
@@ -312,65 +253,65 @@ namespace ECSUtil::Item
 
         auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
         itemSingleton.helmModelResourcesIDToModelMapping.reserve(256);
-        modelFileDataStorage->Each([&](u32 id, const ClientDB::Definitions::ModelFileData& modelFileData) -> bool
+        modelFileDataStorage->Each([&](u32 id, const Generated::ModelFileDataRecord& modelFileData) -> bool
+        {
+            static constexpr const char* HelmPathPrefix = "item/objectcomponents/head/";
+            static constexpr const char* ShoulderPathPrefix = "item/objectcomponents/shoulder/";
+            static constexpr u32 ShoulderPathSubStrIndex = sizeof("item/objectcomponents/shoulder/") - 1;
+
+            const std::string& modelPath = modelFileDataStorage->GetString(modelFileData.model);
+
+            if (StringUtils::BeginsWith(modelPath, HelmPathPrefix))
             {
-                static constexpr const char* HelmPathPrefix = "item/objectcomponents/head/";
-                static constexpr const char* ShoulderPathPrefix = "item/objectcomponents/shoulder/";
-                static constexpr u32 ShoulderPathSubStrIndex = sizeof("item/objectcomponents/shoulder/") - 1;
-
-                const std::string& modelPath = modelFileDataStorage->GetString(modelFileData.modelPath);
-
-                if (StringUtils::BeginsWith(modelPath, HelmPathPrefix))
+                static constexpr const char* HelmRacePrefix[(u32)GameDefine::UnitRace::Count] =
                 {
-                    static constexpr const char* HelmRacePrefix[(u32)GameDefine::UnitRace::Count] =
-                    {
-                        "hu",
-                        "or",
-                        "dw",
-                        "ni",
-                        "sc",
-                        "ta",
-                        "gn",
-                        "tr"
-                    };
+                    "hu",
+                    "or",
+                    "dw",
+                    "ni",
+                    "sc",
+                    "ta",
+                    "gn",
+                    "tr"
+                };
 
-                    u32 modelExtensionLength = static_cast<u32>(Model::FILE_EXTENSION.size());
-                    u32 modelPathLength = static_cast<u32>(modelPath.size());
-                    u32 modelHelmIdentifierSize = 3;
-                    u32 modelHelmIdentifierRaceSize = 2;
-                    u32 modelPathCmpIndex = modelPathLength - modelExtensionLength - modelHelmIdentifierSize;
+                u32 modelExtensionLength = static_cast<u32>(Model::FILE_EXTENSION.size());
+                u32 modelPathLength = static_cast<u32>(modelPath.size());
+                u32 modelHelmIdentifierSize = 3;
+                u32 modelHelmIdentifierRaceSize = 2;
+                u32 modelPathCmpIndex = modelPathLength - modelExtensionLength - modelHelmIdentifierSize;
 
-                    for (u32 i = 0; i < (u32)GameDefine::UnitRace::Count; i++)
-                    {
-                        const char* racePrefix = HelmRacePrefix[i];
-                        if (strncmp(modelPath.c_str() + modelPathCmpIndex, racePrefix, modelHelmIdentifierRaceSize) != 0)
-                            continue;
-
-                        char genderIdentifier = *(modelPath.c_str() + modelPathCmpIndex + modelHelmIdentifierRaceSize);
-                        bool isFemale = genderIdentifier == 'f';
-                        u8 raceGenderMapping = (i * 2) + isFemale;
-
-                        auto& helmMapping = itemSingleton.helmModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
-                        u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPathLength);
-
-                        helmMapping.raceGenderToModelHash[raceGenderMapping] = modelHash;
-                        break;
-                    }
-                }
-                else if (StringUtils::BeginsWith(modelPath, "item/objectcomponents/shoulder/"))
+                for (u32 i = 0; i < (u32)GameDefine::UnitRace::Count; i++)
                 {
-                    char sideIdentifier = *(modelPath.c_str() + ShoulderPathSubStrIndex);
+                    const char* racePrefix = HelmRacePrefix[i];
+                    if (strncmp(modelPath.c_str() + modelPathCmpIndex, racePrefix, modelHelmIdentifierRaceSize) != 0)
+                        continue;
 
-                    auto& shoulderMapping = itemSingleton.shoulderModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
+                    char genderIdentifier = *(modelPath.c_str() + modelPathCmpIndex + modelHelmIdentifierRaceSize);
+                    bool isFemale = genderIdentifier == 'f';
+                    u8 raceGenderMapping = (i * 2) + isFemale;
 
-                    bool isRightSide = sideIdentifier == 'r';
-                    u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+                    auto& helmMapping = itemSingleton.helmModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
+                    u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPathLength);
 
-                    shoulderMapping.sideToModelHash[isRightSide] = modelHash;
+                    helmMapping.raceGenderToModelHash[raceGenderMapping] = modelHash;
+                    break;
                 }
+            }
+            else if (StringUtils::BeginsWith(modelPath, "item/objectcomponents/shoulder/"))
+            {
+                char sideIdentifier = *(modelPath.c_str() + ShoulderPathSubStrIndex);
 
-                return true;
-            });
+                auto& shoulderMapping = itemSingleton.shoulderModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
+
+                bool isRightSide = sideIdentifier == 'r';
+                u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+
+                shoulderMapping.sideToModelHash[isRightSide] = modelHash;
+            }
+
+            return true;
+        });
 
 
         auto& textureSingleton = ctx.get<ECS::Singletons::TextureSingleton>();
@@ -389,27 +330,27 @@ namespace ECSUtil::Item
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.clear();
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.reserve(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.size() + numRecords);
 
-            itemDisplayMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayMaterialResourcesStorage](u32 id, const ClientDB::Definitions::ItemDisplayMaterialResources& row)
+            itemDisplayMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayMaterialResourcesStorage](u32 id, const Generated::ItemDisplayInfoMaterialResourceRecord& row)
             {
                 if (id == 0) return true;
 
-                u64 key = CreateItemDisplayMaterialResourcesKey(row.displayID, row.componentSection, row.materialResourcesID);
+                u64 key = CreateItemDisplayMaterialResourcesKey(row.displayInfoID, row.componentSection, row.materialResourcesID);
                 if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(key))
                 {
-                    const auto& existingRow = itemDisplayMaterialResourcesStorage->Get<ClientDB::Definitions::ItemDisplayMaterialResources>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
+                    const auto& existingRow = itemDisplayMaterialResourcesStorage->Get<Generated::ItemDisplayInfoMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
 
                     // Skip Duplicate Data
-                    if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayID == row.displayID && existingRow.componentSection == row.componentSection)
+                    if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayInfoID == row.displayInfoID && existingRow.componentSection == row.componentSection)
                         return true;
 
                     NC_LOG_ERROR("Encountered Key Collision for ItemDisplayMaterialResources: {0}", key);
-                    NC_LOG_ERROR("Entry 1: (MaterialResourcesID : {1}, DisplayID : {2}, ComponentSection : {3})", key, existingRow.materialResourcesID, existingRow.displayID, existingRow.componentSection);
-                    NC_LOG_ERROR("Entry 2: (MaterialResourcesID : {1}, DisplayID : {2}, ComponentSection : {3})", key, row.materialResourcesID, row.displayID, row.componentSection);
+                    NC_LOG_ERROR("Entry 1: (MaterialResourcesID : {1}, DisplayID : {2}, ComponentSection : {3})", key, existingRow.materialResourcesID, existingRow.displayInfoID, existingRow.componentSection);
+                    NC_LOG_ERROR("Entry 2: (MaterialResourcesID : {1}, DisplayID : {2}, ComponentSection : {3})", key, row.materialResourcesID, row.displayInfoID, row.componentSection);
                 }
 
                 itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key] = id;
 
-                auto& componentSectionData = itemSingleton.itemDisplayInfoToComponentSectionData[row.displayID];
+                auto& componentSectionData = itemSingleton.itemDisplayInfoToComponentSectionData[row.displayInfoID];
                 if (textureSingleton.materialResourcesIDToTextureHashes.contains(row.materialResourcesID))
                 {
                     u32 textureHash = textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID][0];
@@ -428,22 +369,22 @@ namespace ECSUtil::Item
             u32 numRecords = itemDisplayModelMaterialResourcesStorage->GetNumRows();
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.reserve(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.size() + numRecords);
 
-            itemDisplayModelMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayModelMaterialResourcesStorage](u32 id, const ClientDB::Definitions::ItemDisplayModelMaterialResources& row)
+            itemDisplayModelMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayModelMaterialResourcesStorage](u32 id, const Generated::ItemDisplayInfoModelMaterialResourceRecord& row)
             {
                 if (id == 0) return true;
 
-                u64 key = CreateItemDisplayModelMaterialResourcesKey(row.displayID, row.modelIndex, row.textureType, row.materialResourcesID);
+                u64 key = CreateItemDisplayModelMaterialResourcesKey(row.displayInfoID, row.modelIndex, row.textureType, row.materialResourcesID);
                 if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(key))
                 {
-                    const auto& existingRow = itemDisplayModelMaterialResourcesStorage->Get<ClientDB::Definitions::ItemDisplayModelMaterialResources>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
+                    const auto& existingRow = itemDisplayModelMaterialResourcesStorage->Get<Generated::ItemDisplayInfoModelMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
 
                     // Skip Duplicate Data
-                    if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayID == row.displayID && existingRow.textureType == row.textureType && existingRow.modelIndex == row.modelIndex)
+                    if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayInfoID == row.displayInfoID && existingRow.textureType == row.textureType && existingRow.modelIndex == row.modelIndex)
                         return true;
 
                     NC_LOG_ERROR("Encountered Key Collision for ItemDisplayModelMaterialResources: {0}", key);
-                    NC_LOG_ERROR("Entry 1: (MaterialResourcesID : {1}, DisplayID : {2}, TextureType : {3}, ModelIndex : {4})", existingRow.materialResourcesID, existingRow.displayID, existingRow.textureType, existingRow.modelIndex);
-                    NC_LOG_ERROR("Entry 2: (MaterialResourcesID : {1}, DisplayID : {2}, TextureType : {3}, ModelIndex : {4})", row.materialResourcesID, row.displayID, row.textureType, row.modelIndex);
+                    NC_LOG_ERROR("Entry 1: (MaterialResourcesID : {1}, DisplayID : {2}, TextureType : {3}, ModelIndex : {4})", existingRow.materialResourcesID, existingRow.displayInfoID, existingRow.textureType, existingRow.modelIndex);
+                    NC_LOG_ERROR("Entry 2: (MaterialResourcesID : {1}, DisplayID : {2}, TextureType : {3}, ModelIndex : {4})", row.materialResourcesID, row.displayInfoID, row.textureType, row.modelIndex);
                 }
 
                 itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key] = id;

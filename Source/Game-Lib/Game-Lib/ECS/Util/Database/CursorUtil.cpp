@@ -1,8 +1,9 @@
 #include "CursorUtil.h"
 
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -19,10 +20,7 @@ namespace ECSUtil::Cursor
             clientDBSingleton.Register(ClientDBHash::Cursor, "Cursor");
 
             auto* cursorStorage = clientDBSingleton.Get(ClientDBHash::Cursor);
-            cursorStorage->Initialize({
-                { "Name",       ClientDB::FieldType::StringRef },
-                { "Texture",    ClientDB::FieldType::StringRef }
-            });
+            cursorStorage->Initialize<Generated::CursorRecord>();
 
             struct CursorEntry
             {
@@ -108,11 +106,9 @@ namespace ECSUtil::Cursor
 
             for (const CursorEntry& cursorEntry : cursorEntries)
             {
-                ::Database::Shared::Cursor entry =
-                {
-                    .name = cursorStorage->AddString(cursorEntry.name),
-                    .texture = cursorStorage->AddString(cursorEntry.texture)
-                };
+                Generated::CursorRecord entry;
+                entry.name = cursorStorage->AddString(cursorEntry.name);
+                entry.texture = cursorStorage->AddString(cursorEntry.texture);
 
                 cursorStorage->Add(entry);
             }

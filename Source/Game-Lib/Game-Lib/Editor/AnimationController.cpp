@@ -13,7 +13,7 @@
 #include "Game-Lib/Util/UnitUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -25,14 +25,14 @@ using namespace ECS;
 namespace Editor
 {
     AnimationController::AnimationController()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
     }
 
     void AnimationController::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             entt::registry& gameRegistry = *registries->gameRegistry;
@@ -61,7 +61,7 @@ namespace Editor
                     static i32 selectedAnimation = static_cast<i32>(::Animation::Defines::Type::Stand);
                     static i32 selectedKeyBone = static_cast<i32>(::Animation::Defines::Bone::Main);
                     static ::Animation::Defines::SequenceID selectedSequenceID = ::Animation::Defines::InvalidSequenceID;
-                    static ClientDB::Definitions::AnimationData::Flags originalAnimFlags = { 0 };
+                    static Database::Unit::AnimationDataFlags originalAnimFlags = { 0 };
                     static bool sequenceIsFallback = false;
                     static bool skeletonHasBone = true;
 
@@ -75,10 +75,10 @@ namespace Editor
 
                         if (animationStorage->Has(selectedAnimation))
                         {
-                            auto& animationDataRec = animationStorage->Get<ClientDB::Definitions::AnimationData>(selectedAnimation);
+                            auto& animationDataRec = animationStorage->Get<Generated::AnimationDataRecord>(selectedAnimation);
 
                             sequenceID = Util::Animation::GetFirstSequenceForAnimation(modelInfo, Type);
-                            originalAnimFlags = animationDataRec.flags[0];
+                            originalAnimFlags = *reinterpret_cast<Database::Unit::AnimationDataFlags*>(&animationDataRec.flags);
 
                             if (sequenceID == ::Animation::Defines::InvalidSequenceID && animationDataRec.fallback != 0)
                             {

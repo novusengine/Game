@@ -2,6 +2,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
@@ -14,6 +15,8 @@
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <lualib.h>
@@ -100,7 +103,7 @@ namespace Scripting
             return 1;
         }
 
-        ClientDB::Definitions::Map* map = nullptr;
+        Generated::MapRecord* map = nullptr;
         if (!ECSUtil::Map::GetMapFromInternalName(mapInternalName, map))
         {
             ctx.Push(false);

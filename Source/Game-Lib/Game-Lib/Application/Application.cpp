@@ -19,7 +19,6 @@
 #include "Game-Lib/ECS/Util/Database/TextureUtil.h"
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaManager.h"
@@ -57,6 +56,7 @@ AutoCVar_Int CVAR_CpuReportDetailLevel(CVarCategory::Client, "cpuReportDetailLev
 AutoCVar_Int CVAR_ApplicationNumThreads(CVarCategory::Client, "numThreads", "number of threads used for multi threading, 0 = number of hardware threads", 0);
 AutoCVar_Int CVAR_ClientDBSaveMethod(CVarCategory::Client, "clientDBSaveMethod", "specifies when clientDBs are saved. (0 = Immediately, 1 = Every x Seconds, 2 = On Shutdown, 3+ = Disabled, default is 1)", 1);
 AutoCVar_Float CVAR_ClientDBSaveTimer(CVarCategory::Client, "clientDBSaveTimer", "specifies how often clientDBs are saved when using save method 1 (Specified in seconds, default is 5 seconds)", 5.0f);
+AutoCVar_String CVAR_ImguiTheme(CVarCategory::Client, "imguiTheme", "specifies the current imgui theme", "Blue Teal", CVarFlags::Hidden);
 
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application()

@@ -11,6 +11,8 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
+#include <Input/InputManager.h>
+
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -34,7 +36,7 @@ namespace Editor
     };
 
     SkyboxSelector::SkyboxSelector()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
         SkyboxSelectorData* data = new SkyboxSelectorData();
         _data = data;
@@ -85,7 +87,7 @@ namespace Editor
         max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
         bool isSelected = selectedSkyboxID == skyboxID;
-        bool isHovered = ImGui::IsMouseHoveringRect(min, max);
+        bool isHovered = !ServiceLocator::GetInputManager()->IsCursorVirtual() && ImGui::IsMouseHoveringRect(min, max);
         static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
         if (!isSelected && isHovered)
@@ -259,7 +261,7 @@ namespace Editor
 
     void SkyboxSelector::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             ShowListView();
         }

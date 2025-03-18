@@ -7,7 +7,8 @@
 #include <Base/Util/StringUtils.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
-#include <FileFormat/Novus/ClientDB/Definitions.h>
+
+#include <Meta/Generated/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -32,9 +33,9 @@ namespace ECSUtil::Map
         mapSingleton.mapInternalNameHashToID.clear();
         mapSingleton.mapInternalNameHashToID.reserve(numRecords);
 
-        mapStorage->Each([&mapSingleton, &mapStorage](u32 id, const Definitions::Map& map) -> bool
+        mapStorage->Each([&mapSingleton, &mapStorage](u32 id, const Generated::MapRecord& map) -> bool
         {
-            const std::string& mapInternalName = mapStorage->GetString(map.internalName);
+            const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
             u32 nameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
 
             mapSingleton.mapInternalNameHashToID[nameHash] = id;
@@ -44,7 +45,7 @@ namespace ECSUtil::Map
         return true;
     }
 
-    bool GetMapFromInternalNameHash(u32 nameHash, Definitions::Map* map)
+    bool GetMapFromInternalNameHash(u32 nameHash, Generated::MapRecord* map)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         entt::registry::context& ctx = registry->ctx();
@@ -56,7 +57,7 @@ namespace ECSUtil::Map
 
         return true;
     }
-    bool GetMapFromInternalName(const std::string& name, Definitions::Map* map)
+    bool GetMapFromInternalName(const std::string& name, Generated::MapRecord* map)
     {
         u32 nameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
         return GetMapFromInternalNameHash(nameHash, map);
@@ -78,7 +79,7 @@ namespace ECSUtil::Map
         return result;
     }
 
-    bool AddMap(const std::string& internalName, const std::string& name, Definitions::Map& map)
+    bool AddMap(const std::string& internalName, const std::string& name, Generated::MapRecord& map)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& clientDBSingleton = registry->ctx().get<ClientDBSingleton>();
@@ -90,7 +91,7 @@ namespace ECSUtil::Map
 
         auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
 
-        map.internalName = mapStorage->AddString(internalName);
+        map.nameInternal = mapStorage->AddString(internalName);
         map.name = mapStorage->AddString(name);
         u32 mapID = mapStorage->Add(map);
 
@@ -108,7 +109,7 @@ namespace ECSUtil::Map
         if (!mapStorage->Has(mapID))
             return false;
 
-        const auto& map = mapStorage->Get<Definitions::Map>(mapID);
+        const auto& map = mapStorage->Get<Generated::MapRecord>(mapID);
 
         const std::string& mapInternalName = mapStorage->GetString(map.name);
         u32 internalNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
@@ -143,8 +144,8 @@ namespace ECSUtil::Map
         if (!mapStorage->Has(mapID))
             return false;
 
-        auto& map = mapStorage->Get<Definitions::Map>(mapID);
-        const std::string& previousInternalName = mapStorage->GetString(map.internalName);
+        auto& map = mapStorage->Get<Generated::MapRecord>(mapID);
+        const std::string& previousInternalName = mapStorage->GetString(map.nameInternal);
         u32 previousInternalNameHash = StringUtils::fnv1a_32(name.c_str(), name.length());
 
         map.name = mapStorage->AddString(name);

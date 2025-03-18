@@ -19,7 +19,7 @@ namespace ECS
             robin_hood::unordered_map<u32, Database::Unit::UnitModelInfo> modelIDToUnitModelInfo;
             robin_hood::unordered_map<u32, GameDefine::UnitRace> displayIDToUnitRace;
 
-            robin_hood::unordered_map<::Database::Unit::UnitTextureSection::Type, u32> unitTextureSectionTypeToID;
+            robin_hood::unordered_map<::Database::Unit::TextureSectionType, u32> unitTextureSectionTypeToID;
             robin_hood::unordered_map<u32, std::vector<u32>> unitBaseCustomizationKeyToChoiceIDList;
 
             robin_hood::unordered_map<u32, u32> unitCustomizationKeyToTextureHash;

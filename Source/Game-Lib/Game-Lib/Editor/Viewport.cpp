@@ -25,12 +25,12 @@
 #include <imgui/imgui_internal.h>
 #include <imgui/imguizmo/ImGuizmo.h>
 
-AutoCVar_Int CVAR_IsEditorMode(CVarCategory::Client, "isEditorMode", "enable editor mode", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_IsEditorMode(CVarCategory::Client, "isEditorMode", "enable editor mode", 0, CVarFlags::Hidden);
 
 namespace Editor
 {
     Viewport::Viewport()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly)
     {
         _lastPanelSize = vec2(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 

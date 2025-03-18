@@ -9,6 +9,10 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
+#include <Input/InputManager.h>
+
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -24,11 +28,11 @@ namespace fs = std::filesystem;
 namespace Editor
 {
     MapSelector::MapSelector()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible)
     {
     }
 
-    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const ClientDB::Definitions::Map& map, std::string& filter, u32& selectedMapID, u32& popupMapID, ImTextureID* mapIcons)
+    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map, std::string& filter, u32& selectedMapID, u32& popupMapID, ImTextureID* mapIcons)
     {
         static const char* InstanceTypeToName[] =
         {
@@ -79,7 +83,7 @@ namespace Editor
         max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
         bool isSelected = selectedMapID == mapID;
-        bool isHovered = ImGui::IsMouseHoveringRect(min, max);
+        bool isHovered = !ServiceLocator::GetInputManager()->IsCursorVirtual() && ImGui::IsMouseHoveringRect(min, max);
         static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
         if (!isSelected && isHovered)
@@ -194,7 +198,7 @@ namespace Editor
         static std::string currentFilter;
         static bool hasFilter = false;
         static f32 scrollPosition = 0.0f;
-        ImGui::InputText("Filter", &currentFilter);
+        ImGui::InputText("##Filter", &currentFilter);
 
         hasFilter = currentFilter.length() > 0;
         if (hasFilter)
@@ -212,7 +216,7 @@ namespace Editor
             {
                 if (hasFilter)
                 {
-                    mapStorage->Each([this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
+                    mapStorage->Each([this, &mapStorage](u32 id, const Generated::MapRecord& map) -> bool
                     {
                         DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                         return true;
@@ -228,7 +232,7 @@ namespace Editor
                         u32 start = clipper.DisplayStart;
                         u32 count = (clipper.DisplayEnd - clipper.DisplayStart);
 
-                        mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Definitions::Map& map) -> bool
+                        mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Generated::MapRecord& map) -> bool
                         {
                             DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                             return true;
@@ -244,8 +248,8 @@ namespace Editor
 
                     if (ImGui::BeginPopupEx(popupContextID, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
                     {
-                        const auto& map = mapStorage->Get<Definitions::Map>(popupMapID);
-                        const std::string& mapInternalName = mapStorage->GetString(map.internalName);
+                        const auto& map = mapStorage->Get<Generated::MapRecord>(popupMapID);
+                        const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
                         const std::string& mapName = mapStorage->GetString(map.name);
 
                         ImGui::Text("Actions for %s", mapName.c_str());
@@ -287,8 +291,8 @@ namespace Editor
         {
             MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 
-            const auto& map = mapStorage->Get<Definitions::Map>(_currentSelectedMapID);
-            const std::string& mapInternalName = mapStorage->GetString(map.internalName);
+            const auto& map = mapStorage->Get<Generated::MapRecord>(_currentSelectedMapID);
+            const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
 
             u32 internalMapNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
             mapLoader->LoadMap(internalMapNameHash);
@@ -304,7 +308,7 @@ namespace Editor
 
     void MapSelector::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             ShowListViewWithIcons();
         }

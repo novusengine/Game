@@ -41,14 +41,14 @@ using namespace ECS::Singletons;
 namespace Editor
 {
     NetworkedInfo::NetworkedInfo()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
 
     }
 
     void NetworkedInfo::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
             entt::registry& registry = *registries->gameRegistry;

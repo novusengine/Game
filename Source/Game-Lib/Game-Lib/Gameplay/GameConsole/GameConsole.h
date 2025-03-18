@@ -14,6 +14,9 @@ public:
     void Render(f32 deltaTime);
     void Clear();
     void Toggle();
+    bool IsEnabled();
+
+    GameConsoleCommandHandler* GetCommandHandler() { return _commandHandler; }
 
 public:
     template <typename... Args>
@@ -27,7 +30,7 @@ public:
 
         if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client, "consoleDuplicateToTerminal"_h) && result.size() > 0)
         {
-            NC_LOG_INFO("{0]", result);
+            NC_LOG_INFO("{0}", result);
         }
     }
 
@@ -104,10 +107,21 @@ private:
 
 private:
     static constexpr size_t FormatBufferSize = 1024;
+    static constexpr size_t CommandHistoryMaxSize = 16;
     f32 _visibleProgressTimer = 0;
+    bool _textFieldHasFocus = false;
 
     std::string _searchText;
     std::vector<std::string> _lines;
+    std::vector<std::string> _commandHistory;
+
+    u32 _lastSearchTextHash = std::numeric_limits<u32>().max();
+    i32 _suggestionSelectedIndex = 0;
+    std::vector<u32> _commandHashSuggestions;
+
+    i32 _commandHistoryIndex = -1;
+    i32 _commandHistoryDefaultIndex = -1;
+    u32 _commandHistoryUpdateIndex = 0;
     moodycamel::ConcurrentQueue<std::string> _linesToAppend;
 
     GameConsoleCommandHandler* _commandHandler = nullptr;

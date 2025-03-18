@@ -25,6 +25,8 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/entt.hpp>
 
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
@@ -644,7 +646,7 @@ bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model
     return true;
 }
 
-bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, ClientDB::Definitions::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash, u8 modelVariant)
+bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash, u8 modelVariant)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -655,7 +657,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     {
         switch (displayInfoType)
         {
-            case ClientDB::Definitions::DisplayInfoType::Creature:
+            case Database::Unit::DisplayInfoType::Creature:
             {
                 auto* creatureDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::CreatureDisplayInfo);
                 auto* creatureModelDataStorage = clientDBSingleton.Get(ClientDBHash::CreatureModelData);
@@ -663,19 +665,19 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 if (!creatureDisplayInfoStorage->Has(displayID))
                     return false;
 
-                const ClientDB::Definitions::CreatureDisplayInfo& creatureDisplayInfo = creatureDisplayInfoStorage->Get<ClientDB::Definitions::CreatureDisplayInfo>(displayID);
-                const ClientDB::Definitions::CreatureModelData& creatureModelData = creatureModelDataStorage->Get<ClientDB::Definitions::CreatureModelData>(creatureDisplayInfo.modelID);
+                const auto& creatureDisplayInfo = creatureDisplayInfoStorage->Get<Generated::CreatureDisplayInfoRecord>(displayID);
+                const auto& creatureModelData = creatureModelDataStorage->Get<Generated::CreatureModelDataRecord>(creatureDisplayInfo.modelID);
 
-                modelHash = creatureModelData.modelHash;
+                modelHash = creatureModelDataStorage->GetStringHash(creatureModelData.model);
                 break;
             }
 
-            case ClientDB::Definitions::DisplayInfoType::GameObject:
+            case Database::Unit::DisplayInfoType::GameObject:
             {
                 break;
             }
 
-            case ClientDB::Definitions::DisplayInfoType::Item:
+            case Database::Unit::DisplayInfoType::Item:
             {
                 auto& itemSingleton = dbRegistry->ctx().get<ECS::Singletons::ItemSingleton>();
                 auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
@@ -684,17 +686,17 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 if (!itemDisplayInfoStorage->Has(displayID))
                     return false;
 
-                const ClientDB::Definitions::ItemDisplayInfo& itemDisplayInfo = itemDisplayInfoStorage->Get<ClientDB::Definitions::ItemDisplayInfo>(displayID);
+                const auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(displayID);
                 u32 itemModelHash = std::numeric_limits<u32>().max();
                 u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
                 // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
-                modelFileDataStorage->Each([&modelFileDataStorage, &itemModelHash, modelResourcesID](u32 id, const ClientDB::Definitions::ModelFileData& modelFileData) -> bool
+                modelFileDataStorage->Each([&modelFileDataStorage, &itemModelHash, modelResourcesID](u32 id, const Generated::ModelFileDataRecord& modelFileData) -> bool
                 {
                     if (modelFileData.modelResourcesID != modelResourcesID)
                         return true;
-                    const std::string& modelPath = modelFileDataStorage->GetString(modelFileData.modelPath);
-                    itemModelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+
+                    itemModelHash = modelFileDataStorage->GetStringHash(modelFileData.model);
                     return false;
                 });
 
@@ -705,6 +707,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
             default: break;
         }
     }
+
     if (!_modelHashToDiscoveredModel.contains(modelHash))
         return false;
 

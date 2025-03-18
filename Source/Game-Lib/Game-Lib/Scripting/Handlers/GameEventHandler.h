@@ -10,7 +10,7 @@ namespace Scripting
     class GameEventHandler : public LuaEventHandlerBase
     {
     public:
-        GameEventHandler() : LuaEventHandlerBase(static_cast<u32>(LuaGameEvent::Count)) { }
+        GameEventHandler() : LuaEventHandlerBase(static_cast<u32>(Generated::LuaGameEventEnum::Count)) { }
 
     public:
         void SetEventHandler(u32 eventID, EventHandlerFn fn);

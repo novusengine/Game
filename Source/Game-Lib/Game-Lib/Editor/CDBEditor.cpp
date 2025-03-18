@@ -9,6 +9,8 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
+#include <Input/InputManager.h>
+
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -24,7 +26,7 @@ namespace fs = std::filesystem;
 namespace Editor
 {
     CDBEditor::CDBEditor()
-        : BaseEditor(GetName(), true)
+        : BaseEditor(GetName())
     {
     }
 
@@ -54,7 +56,7 @@ namespace Editor
             max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
             bool isSelected = selectedDBHash == dbHashAsInteger;
-            bool isHovered = ImGui::IsMouseHoveringRect(min, max);
+            bool isHovered = !ServiceLocator::GetInputManager()->IsCursorVirtual() && ImGui::IsMouseHoveringRect(min, max);
             static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
             if (!isSelected && isHovered)
@@ -256,7 +258,7 @@ namespace Editor
 
             if (ImGui::Button("Add Field"))
             {
-                _newDatabaseFields.push_back({ "", FieldType::I32 });
+                _newDatabaseFields.push_back({ "", FieldType::i32 });
             }
 
             ImGui::Separator();
@@ -452,7 +454,7 @@ namespace Editor
             u32 numFields = static_cast<u32>(_editDatabaseFields.size());
             if (ImGui::Button("Add Field"))
             {
-                _editDatabaseFields.push_back({ "", FieldType::I32 });
+                _editDatabaseFields.push_back({ "", FieldType::i32 });
             }
 
             ImGui::Separator();
@@ -552,6 +554,15 @@ namespace Editor
 
                 ImGui::PushItemWidth(100.0f);
                 RenderFieldTypeSelector("##FieldType", _editDatabaseFields[i].type);
+                ImGui::PopItemWidth();
+                ImGui::SameLine();
+
+                ImGui::PushItemWidth(50.0f);
+                if (ImGui::InputScalar("##FieldCount", ImGuiDataType_U8, &_editDatabaseFields[i].count))
+                {
+                    // Editing logic if necessary
+                }
+
                 ImGui::PopItemWidth();
                 ImGui::SameLine();
 
@@ -657,6 +668,12 @@ namespace Editor
                             errorMessage += "Field names can only contain alphanumeric characters.";
                             break;
                         }
+
+                        if (field.count == 0)
+                        {
+                            errorMessage += "Field count must be greater than 0.";
+                            break;
+                        }
                     }
                 }
 
@@ -713,7 +730,33 @@ namespace Editor
                             bool canMakeMapping = false;
 
                             // Check if we have a way to map old -> new based on FieldType (Integer -> Integer, Float -> Float, StringRef -> StringRef)
-                            canMakeMapping |= oldFieldInfo.type >= FieldType::I8 && oldFieldInfo.type <= FieldType::F64 && newFieldInfo.type >= FieldType::I8 && newFieldInfo.type <= FieldType::F64;
+                            canMakeMapping |= oldFieldInfo.type >= FieldType::i8 && oldFieldInfo.type <= FieldType::f64 && newFieldInfo.type >= FieldType::i8 && newFieldInfo.type <= FieldType::f64;
+                            canMakeMapping |= oldFieldInfo.type >= FieldType::i8 && oldFieldInfo.type <= FieldType::f64 && newFieldInfo.type >= FieldType::u8 && newFieldInfo.type <= FieldType::u64;
+
+                            canMakeMapping |= oldFieldInfo.type >= FieldType::u8 && oldFieldInfo.type <= FieldType::u64 && newFieldInfo.type >= FieldType::u8 && newFieldInfo.type <= FieldType::u64;
+                            canMakeMapping |= oldFieldInfo.type >= FieldType::u8 && oldFieldInfo.type <= FieldType::u64 && newFieldInfo.type >= FieldType::i8 && newFieldInfo.type <= FieldType::f64;
+
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec2 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec2 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::uvec2 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec3 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec3 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec3 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec3 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::uvec3 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec3 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec4 && (newFieldInfo.type >= FieldType::vec4 || newFieldInfo.type >= FieldType::ivec4 || newFieldInfo.type <= FieldType::uvec4);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec4 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::vec4 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec4 && (newFieldInfo.type >= FieldType::vec4 || newFieldInfo.type >= FieldType::ivec4 || newFieldInfo.type <= FieldType::uvec4);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec4 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::ivec4 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::uvec4 && (newFieldInfo.type >= FieldType::vec4 || newFieldInfo.type >= FieldType::ivec4 || newFieldInfo.type <= FieldType::uvec4);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::uvec4 && (newFieldInfo.type >= FieldType::vec2 || newFieldInfo.type >= FieldType::ivec2 || newFieldInfo.type <= FieldType::uvec2);
+                            canMakeMapping |= oldFieldInfo.type == FieldType::uvec4 && (newFieldInfo.type >= FieldType::vec3 || newFieldInfo.type >= FieldType::ivec3 || newFieldInfo.type <= FieldType::uvec3);
+
                             canMakeMapping |= oldFieldInfo.type == FieldType::StringRef && newFieldInfo.type == FieldType::StringRef;
 
                             if (canMakeMapping)
@@ -746,7 +789,7 @@ namespace Editor
                             auto& oldData = oldStorage->GetData();
                             auto& newData = newStorage->GetData();
 
-                            u8 oldFieldData[8] = { };
+                            u8 oldFieldData[1024] = { };
 
                             for (u32 i = 0; i < numOldRows; i++)
                             {
@@ -765,111 +808,343 @@ namespace Editor
                                     u32 newRowFieldOffset = newRowOffset + newFieldOffset;
 
                                     // Promote all Integers/StringRef to I64, all floats to F64
-                                    switch (oldField.type)
+                                    memset(oldFieldData, 0, 1024);
+
+                                    // Field Count is the minimum of the two fields, in case of array fields
+                                    u32 fieldCount = glm::min(oldField.count, newField.count);
+                                    for (u32 fieldArrIndex = 0; fieldArrIndex < fieldCount; fieldArrIndex++)
                                     {
-                                        case FieldType::I8:
+                                        switch (oldField.type)
                                         {
-                                            i8 val = oldData[oldRowFieldOffset];
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = static_cast<i64>(val);
-                                            break;
-                                        }
-                                        case FieldType::I16:
-                                        {
-                                            i16 val = *reinterpret_cast<i16*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = static_cast<i64>(val);
-                                            break;
-                                        }
-                                        case FieldType::I32:
-                                        {
-                                            i32 val = *reinterpret_cast<i32*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = static_cast<i64>(val);
-                                            break;
-                                        }
-                                        case FieldType::I64:
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = val;
-                                            break;
+                                            case FieldType::i8:
+                                            {
+                                                i8 val = oldData[oldRowFieldOffset + (1 * fieldArrIndex)];
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                                break;
+                                            }
+                                            case FieldType::u8:
+                                            {
+                                                u8 val = oldData[oldRowFieldOffset + (1 * fieldArrIndex)];
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<u64>(val);
+                                                break;
+                                            }
+                                            case FieldType::i16:
+                                            {
+                                                i16 val = *reinterpret_cast<i16*>(&oldData[oldRowFieldOffset + (2 * fieldArrIndex)]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                                break;
+                                            }
+                                            case FieldType::u16:
+                                            {
+                                                u16 val = *reinterpret_cast<u16*>(&oldData[oldRowFieldOffset + (2 * fieldArrIndex)]);
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<u64>(val);
+                                                break;
+                                            }
+                                            case FieldType::i32:
+                                            {
+                                                i32 val = *reinterpret_cast<i32*>(&oldData[oldRowFieldOffset + (4 * fieldArrIndex)]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                                break;
+                                            }
+                                            case FieldType::u32:
+                                            {
+                                                u32 val = *reinterpret_cast<u32*>(&oldData[oldRowFieldOffset + (4 * fieldArrIndex)]);
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<u64>(val);
+                                                break;
+                                            }
+                                            case FieldType::i64:
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+                                            case FieldType::u64:
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+
+                                            case FieldType::f32:
+                                            {
+                                                f32 val = *reinterpret_cast<f32*>(&oldData[oldRowFieldOffset + (4 * fieldArrIndex)]);
+                                                *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<f64>(val);
+                                                break;
+                                            }
+                                            case FieldType::f64:
+                                            {
+                                                f64 val = *reinterpret_cast<f64*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+
+                                            case FieldType::StringRef:
+                                            {
+                                                i32 val = *reinterpret_cast<i32*>(&oldData[oldRowFieldOffset + (4 * fieldArrIndex)]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                                break;
+                                            }
+
+                                            case FieldType::vec2:
+                                            {
+                                                vec2 val = *reinterpret_cast<vec2*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<vec2*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+                                            case FieldType::vec3:
+                                            {
+                                                vec3 val = *reinterpret_cast<vec3*>(&oldData[oldRowFieldOffset + (12 * fieldArrIndex)]);
+                                                *reinterpret_cast<vec3*>(&oldFieldData[fieldArrIndex * 12]) = val;
+                                                break;
+                                            }
+                                            case FieldType::vec4:
+                                            {
+                                                vec4 val = *reinterpret_cast<vec4*>(&oldData[oldRowFieldOffset + (16 * fieldArrIndex)]);
+                                                *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]) = val;
+                                                break;
+                                            }
+
+                                            case FieldType::ivec2:
+                                            {
+                                                ivec2 val = *reinterpret_cast<ivec2*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<ivec2*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+                                            case FieldType::ivec3:
+                                            {
+                                                ivec3 val = *reinterpret_cast<ivec3*>(&oldData[oldRowFieldOffset + (12 * fieldArrIndex)]);
+                                                *reinterpret_cast<ivec3*>(&oldFieldData[fieldArrIndex * 12]) = val;
+                                                break;
+                                            }
+                                            case FieldType::ivec4:
+                                            {
+                                                ivec4 val = *reinterpret_cast<ivec4*>(&oldData[oldRowFieldOffset + (16 * fieldArrIndex)]);
+                                                *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]) = val;
+                                                break;
+                                            }
+
+                                            case FieldType::uvec2:
+                                            {
+                                                uvec2 val = *reinterpret_cast<uvec2*>(&oldData[oldRowFieldOffset + (8 * fieldArrIndex)]);
+                                                *reinterpret_cast<uvec2*>(&oldFieldData[fieldArrIndex * 8]) = val;
+                                                break;
+                                            }
+                                            case FieldType::uvec3:
+                                            {
+                                                uvec3 val = *reinterpret_cast<uvec3*>(&oldData[oldRowFieldOffset + (12 * fieldArrIndex)]);
+                                                *reinterpret_cast<uvec3*>(&oldFieldData[fieldArrIndex * 12]) = val;
+                                                break;
+                                            }
+                                            case FieldType::uvec4:
+                                            {
+                                                uvec4 val = *reinterpret_cast<uvec4*>(&oldData[oldRowFieldOffset + (16 * fieldArrIndex)]);
+                                                *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]) = val;
+                                                break;
+                                            }
                                         }
 
-                                        case FieldType::F32:
+                                        // Check if we need to transform oldFieldData from Integer Bits -> Floating Bits or Floating Bits -> Integer Bits
+                                        if (oldField.type >= FieldType::i8 && oldField.type <= FieldType::i64)
                                         {
-                                            f32 val = *reinterpret_cast<f32*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<f64*>(&oldFieldData[0]) = static_cast<f64>(val);
-                                            break;
+                                            if (newField.type >= FieldType::f32 && newField.type <= FieldType::f64)
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<f64>(val);
+                                            }
+                                            else if (newField.type >= FieldType::u8 && newField.type <= FieldType::u64)
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<u64>(val);
+                                            }
                                         }
-                                        case FieldType::F64:
+                                        if (oldField.type >= FieldType::u8 && oldField.type <= FieldType::u64)
                                         {
-                                            f64 val = *reinterpret_cast<f64*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<f64*>(&oldFieldData[0]) = val;
-                                            break;
+                                            if (newField.type >= FieldType::f32 && newField.type <= FieldType::f64)
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<f64>(val);
+                                            }
+                                            else if (newField.type >= FieldType::i8 && newField.type <= FieldType::i64)
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                            }
+                                        }
+                                        else if (oldField.type >= FieldType::f32 && oldField.type <= FieldType::f64)
+                                        {
+                                            if (newField.type >= FieldType::i8 && newField.type <= FieldType::i64)
+                                            {
+                                                f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<i64>(val);
+                                            }
+                                            else if (newField.type >= FieldType::u8 && newField.type <= FieldType::u64)
+                                            {
+                                                f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]) = static_cast<u64>(val);
+                                            }
+                                        }
+                                        else if (oldField.type >= FieldType::vec2 && oldField.type <= FieldType::vec4)
+                                        {
+                                            if (newField.type >= FieldType::ivec2 && newField.type <= FieldType::ivec4)
+                                            {
+                                                vec4 val = *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<ivec4>(val);
+                                            }
+                                            else if (newField.type >= FieldType::uvec2 && newField.type <= FieldType::uvec4)
+                                            {
+                                                vec4 val = *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<uvec4>(val);
+                                            }
+                                        }
+                                        else if (oldField.type >= FieldType::ivec2 && oldField.type <= FieldType::ivec4)
+                                        {
+                                            if (newField.type >= FieldType::vec2 && newField.type <= FieldType::vec4)
+                                            {
+                                                ivec4 val = *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<vec4>(val);
+                                            }
+                                            else if (newField.type >= FieldType::uvec2 && newField.type <= FieldType::uvec4)
+                                            {
+                                                ivec4 val = *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<uvec4>(val);
+                                            }
+                                        }
+                                        else if (oldField.type >= FieldType::uvec2 && oldField.type <= FieldType::uvec4)
+                                        {
+                                            if (newField.type >= FieldType::vec2 && newField.type <= FieldType::vec4)
+                                            {
+                                                uvec4 val = *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<vec4>(val);
+                                            }
+                                            else if (newField.type >= FieldType::ivec2 && newField.type <= FieldType::ivec4)
+                                            {
+                                                uvec4 val = *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]) = static_cast<ivec4>(val);
+                                            }
                                         }
 
-                                        case FieldType::StringRef:
+                                        // Set the row's field based on the type of the new field (oldFieldData is assured to either be I64 or F64)
+                                        switch (newField.type)
                                         {
-                                            i32 val = *reinterpret_cast<i32*>(&oldData[oldRowFieldOffset]);
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = static_cast<i64>(val);
-                                        }
-                                    }
+                                            case FieldType::i8:
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i8*>(&newData[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<i8>(val);
+                                                break;
+                                            }
+                                            case FieldType::u8:
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u8*>(&newData[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<u8>(val);
+                                                break;
+                                            }
+                                            case FieldType::i16:
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i16*>(&newData[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<i16>(val);
+                                                break;
+                                            }
+                                            case FieldType::u16:
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u16*>(&newData[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<u16>(val);
+                                                break;
+                                            }
+                                            case FieldType::i32:
+                                            case FieldType::StringRef:
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<i32>(val);
+                                                break;
+                                            }
+                                            case FieldType::u32:
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<u32>(val);
+                                                break;
+                                            }
+                                            case FieldType::i64:
+                                            {
+                                                i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<i64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::u64:
+                                            {
+                                                u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<u64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
 
-                                    // Check if we need to transform oldFieldData from Integer Bits -> Floating Bits or Floating Bits -> Integer Bits
-                                    if (oldField.type >= FieldType::I8 && oldField.type <= FieldType::I64)
-                                    {
-                                        if (newField.type >= FieldType::F32 && newField.type <= FieldType::F64)
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<f64*>(&oldFieldData[0]) = static_cast<f64>(val);
-                                        }
-                                    }
-                                    else if (oldField.type >= FieldType::F32 && oldField.type <= FieldType::F64)
-                                    {
-                                        if (newField.type >= FieldType::I8 && newField.type <= FieldType::I64)
-                                        {
-                                            f64 val = *reinterpret_cast<f64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<i64*>(&oldFieldData[0]) = static_cast<i64>(val);
-                                        }
-                                    }
+                                            case FieldType::f32:
+                                            {
+                                                f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<f32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<f32>(val);
+                                                break;
+                                            }
+                                            case FieldType::f64:
+                                            {
+                                                f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<f64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
 
-                                    // Set the row's field based on the type of the new field (oldFieldData is assured to either be I64 or F64)
-                                    switch (newField.type)
-                                    {
-                                        case FieldType::I8:
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<i8*>(&newData[newRowFieldOffset]) = static_cast<i8>(val);
-                                            break;
-                                        }
-                                        case FieldType::I16:
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<i16*>(&newData[newRowFieldOffset]) = static_cast<i16>(val);
-                                            break;
-                                        }
-                                        case FieldType::I32:
-                                        case FieldType::StringRef:
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<i32*>(&newData[newRowFieldOffset]) = static_cast<i32>(val);
-                                            break;
-                                        }
-                                        case FieldType::I64:
-                                        {
-                                            i64 val = *reinterpret_cast<i64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<i64*>(&newData[newRowFieldOffset]) = val;
-                                            break;
-                                        }
+                                            case FieldType::vec2:
+                                            {
+                                                vec2 val = *reinterpret_cast<vec2*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<vec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::vec3:
+                                            {
+                                                vec3 val = *reinterpret_cast<vec3*>(&oldFieldData[fieldArrIndex * 12]);
+                                                *reinterpret_cast<vec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::vec4:
+                                            {
+                                                vec4 val = *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<vec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
 
-                                        case FieldType::F32:
-                                        {
-                                            f64 val = *reinterpret_cast<f64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<f32*>(&newData[newRowFieldOffset]) = static_cast<f32>(val);
-                                            break;
-                                        }
-                                        case FieldType::F64:
-                                        {
-                                            f64 val = *reinterpret_cast<f64*>(&oldFieldData[0]);
-                                            *reinterpret_cast<f64*>(&newData[newRowFieldOffset]) = val;
-                                            break;
+                                            case FieldType::ivec2:
+                                            {
+                                                ivec2 val = *reinterpret_cast<ivec2*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<ivec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::ivec3:
+                                            {
+                                                ivec3 val = *reinterpret_cast<ivec3*>(&oldFieldData[fieldArrIndex * 12]);
+                                                *reinterpret_cast<ivec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::ivec4:
+                                            {
+                                                ivec4 val = *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<ivec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+
+                                            case FieldType::uvec2:
+                                            {
+                                                uvec2 val = *reinterpret_cast<uvec2*>(&oldFieldData[fieldArrIndex * 8]);
+                                                *reinterpret_cast<uvec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::uvec3:
+                                            {
+                                                uvec3 val = *reinterpret_cast<uvec3*>(&oldFieldData[fieldArrIndex * 12]);
+                                                *reinterpret_cast<uvec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
+                                            case FieldType::uvec4:
+                                            {
+                                                uvec4 val = *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]);
+                                                *reinterpret_cast<uvec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -949,64 +1224,126 @@ namespace Editor
 
             bool recalculateColumnWidth = prevHash != hash;
             if (recalculateColumnWidth)
+            {
+                columnWidthCache.clear();
+
+                // Compute initial column widths
+                columnWidthCache[0] = 70.0f; // ID column
+                for (size_t i = 0; i < fields.size(); ++i)
                 {
-                    columnWidthCache.clear();
+                    f32 width = COLUMN_MIN_WIDTH;
+                    const FieldInfo& field = fields[i];
 
-                    // Compute initial column widths
-                    columnWidthCache[0] = 70.0f; // ID column
-                    for (size_t i = 0; i < fields.size(); ++i)
+                    f32 columnNameWidth = ImGui::CalcTextSize(field.name.c_str()).x + (ImGui::GetStyle().FramePadding.x * 2) + 5.0f;
+                    width = glm::max(width, columnNameWidth);
+
+                    // Scan all rows to determine the max width for this field
+                    for (const IDListEntry& idEntry : idList)
                     {
-                        f32 width = COLUMN_MIN_WIDTH;
-                        const FieldInfo& field = fields[i];
+                        if (!db->Has(idEntry.id))
+                            continue;
 
-                        f32 columnNameWidth = ImGui::CalcTextSize(field.name.c_str()).x + (ImGui::GetStyle().FramePadding.x * 2) + 5.0f;
-                        width = glm::max(width, columnNameWidth);
+                        u32 rowOffset = idEntry.index;
+                        u32 fieldOffset = fieldOffsets[i];
+                        u32 fieldMultiplier = 1;
 
-                        // Scan all rows to determine the max width for this field
-                        for (const IDListEntry& idEntry : idList)
+                        std::string content;
+                        switch (field.type)
                         {
-                            if (!db->Has(idEntry.id))
-                                continue;
+                            case FieldType::i8:
+                                content = std::to_string(*reinterpret_cast<i8*>(&data[rowOffset + fieldOffset]));
+                                break;
+                            case FieldType::u8:
+                                content = std::to_string(*reinterpret_cast<u8*>(&data[rowOffset + fieldOffset]));
+                                break;
 
-                            u32 rowOffset = idEntry.index;
-                            u32 fieldOffset = fieldOffsets[i];
+                            case FieldType::i16:
+                                content = std::to_string(*reinterpret_cast<i16*>(&data[rowOffset + fieldOffset]));
+                                break;
+                            case FieldType::u16:
+                                content = std::to_string(*reinterpret_cast<u16*>(&data[rowOffset + fieldOffset]));
+                                break;
 
-                            std::string content;
-                            switch (field.type)
-                            {
-                                case FieldType::I8:
-                                    content = std::to_string(*reinterpret_cast<i8*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::I16:
-                                    content = std::to_string(*reinterpret_cast<i16*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::I32:
-                                    content = std::to_string(*reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::I64:
-                                    content = std::to_string(*reinterpret_cast<i64*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::F32:
-                                    content = std::to_string(*reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::F64:
-                                    content = std::to_string(*reinterpret_cast<f64*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                case FieldType::StringRef:
-                                    content = db->GetString(*reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]));
-                                    break;
-                                default:
-                                    content = "Unsupported";
-                                    break;
-                            }
+                            case FieldType::i32:
+                            case FieldType::ivec2:
+                            case FieldType::ivec3:
+                            case FieldType::ivec4:
+                                content = std::to_string(*reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]));
+                                break;
 
-                            f32 textWidth = COLUMN_MIN_WIDTH + ImGui::CalcTextSize(content.c_str()).x + (ImGui::GetStyle().FramePadding.x * 2) + 5.0f;
-                            width = glm::max(width, textWidth);
+                            case FieldType::u32:
+                            case FieldType::uvec2:
+                            case FieldType::uvec3:
+                            case FieldType::uvec4:
+                                content = std::to_string(*reinterpret_cast<u32*>(&data[rowOffset + fieldOffset]));
+                                break;
+
+                            case FieldType::i64:
+                                content = std::to_string(*reinterpret_cast<i64*>(&data[rowOffset + fieldOffset]));
+                                break;
+                            case FieldType::u64:
+                                content = std::to_string(*reinterpret_cast<u64*>(&data[rowOffset + fieldOffset]));
+                                break;
+
+                            case FieldType::f32:
+                            case FieldType::vec2:
+                            case FieldType::vec3:
+                            case FieldType::vec4:
+                                content = std::to_string(*reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]));
+                                break;
+
+                            case FieldType::f64:
+                                content = std::to_string(*reinterpret_cast<f64*>(&data[rowOffset + fieldOffset]));
+                                break;
+
+                            case FieldType::StringRef:
+                                content = db->GetString(*reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]));
+                                break;
+
+                            default:
+                                content = "Unsupported";
+                                break;
                         }
 
-                        columnWidthCache[i + 1] = width; // Cache column width
+
+                        switch (field.type)
+                        {
+                            case FieldType::vec2:
+                            case FieldType::ivec2:
+                            case FieldType::uvec2:
+                            {
+                                fieldMultiplier = 2;
+                                break;
+                            }
+
+                            case FieldType::vec3:
+                            case FieldType::ivec3:
+                            case FieldType::uvec3:
+                            {
+                                fieldMultiplier = 3;
+                                break;
+                            }
+
+                            case FieldType::vec4:
+                            case FieldType::ivec4:
+                            case FieldType::uvec4:
+                            {
+                                fieldMultiplier = 4;
+                                break;
+                            }
+
+                            default: break;
+                        }
+
+                        fieldMultiplier *= field.count;
+
+                        f32 textWidth = (COLUMN_MIN_WIDTH + ImGui::CalcTextSize(content.c_str()).x  + (ImGui::GetStyle().FramePadding.x * 2) + 5.0f) * fieldMultiplier;
+                        width = glm::max(width, textWidth);
                     }
+
+                    columnWidthCache[i + 1] = width; // Cache column width
                 }
+            }
 
             f32 totalWidth = 0.0f;
             for (const auto& [index, width] : columnWidthCache)
@@ -1141,87 +1478,243 @@ namespace Editor
                             // Render appropriate editor based on FieldType
                             switch (fieldInfo.type)
                             {
-                                case FieldType::I8:
+                                case FieldType::i8:
                                 {
-                                    i32 value = *reinterpret_cast<i8*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputInt(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &value, 0))
+                                    i8* value = reinterpret_cast<i8*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S8, value, fieldInfo.count, 0))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<i8*>(&data[rowOffset + fieldOffset]) = static_cast<i8>(value);
                                     }
 
                                     break;
                                 }
-                                case FieldType::I16:
+                                case FieldType::u8:
                                 {
-                                    i32 value = *reinterpret_cast<i16*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputInt(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &value, 0))
+                                    u8* value = reinterpret_cast<u8*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U8, value, fieldInfo.count, 0))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<i16*>(&data[rowOffset + fieldOffset]) = static_cast<i16>(value);
                                     }
 
                                     break;
                                 }
-                                case FieldType::I32:
+                                case FieldType::i16:
                                 {
-                                    i32 value = *reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputInt(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &value, 0))
+                                    i16* value = reinterpret_cast<i16*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S16, value, fieldInfo.count, 0))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]) = static_cast<i32>(value);
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::u16:
+                                {
+                                    u16* value = reinterpret_cast<u16*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U16, value, fieldInfo.count, 0))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::i32:
+                                {
+                                    i32* value = reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S32, value, fieldInfo.count, 0))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::u32:
+                                {
+                                    u32* value = reinterpret_cast<u32*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U32, value, fieldInfo.count, 0))
+                                    {
+                                        markAsDirty = true;
                                     }
 
                                     break;
                                 }
 
-                                case FieldType::I64:
+                                case FieldType::i64:
                                 {
-                                    i64 value = *reinterpret_cast<i64*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputScalar(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S64, &value))
+                                    i64* value = reinterpret_cast<i64*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S64, value, fieldInfo.count))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<i64*>(&data[rowOffset + fieldOffset]) = static_cast<i64>(value);
                                     }
                                     break;
                                 }
 
-                                case FieldType::F32:
+                                case FieldType::u64:
                                 {
-                                    f32 value = *reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputFloat(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &value, 0.0f))
+                                    u64* value = reinterpret_cast<u64*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U64, value, fieldInfo.count))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]) = static_cast<f32>(value);
+                                    }
+                                    break;
+                                }
+
+                                case FieldType::f32:
+                                {
+                                    f32* value = reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_Float, value, fieldInfo.count))
+                                    {
+                                        markAsDirty = true;
                                     }
 
                                     break;
                                 }
-                                case FieldType::F64:
+                                case FieldType::f64:
                                 {
-                                    f64 value = *reinterpret_cast<f64*>(&data[rowOffset + fieldOffset]);
-                                    if (ImGui::InputDouble(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &value, 0.0))
+                                    f64* value = reinterpret_cast<f64*>(&data[rowOffset + fieldOffset]);
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_Double, value, fieldInfo.count))
                                     {
                                         markAsDirty = true;
-                                        *reinterpret_cast<f64*>(&data[rowOffset + fieldOffset]) = static_cast<f64>(value);
                                     }
 
                                     break;
                                 }
                                 case FieldType::StringRef:
                                 {
-                                    i32 value = *reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
-                                    const std::string& stringVal = db->GetString(value);
+                                    // Pop Default Item Width
+                                    ImGui::PopItemWidth();
 
-                                    std::string str = stringVal;
-                                    ImGui::InputText(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), &str);
+                                    f32 availableWidthPerString = static_cast<f32>(ImGui::GetContentRegionAvail().x / fieldInfo.count);
+                                    u32 baseOffset = rowOffset + fieldOffset;
+                                    
+                                    for (u32 stringRefIndex = 0; stringRefIndex < fieldInfo.count; stringRefIndex++)
+                                    {
+                                        i32 value = *reinterpret_cast<i32*>(&data[baseOffset + (stringRefIndex * 4)]);
+                                        std::string str = db->GetString(value);
 
-                                    if (ImGui::IsItemDeactivatedAfterEdit())
+                                        ImGui::SetNextItemWidth(availableWidthPerString);
+                                        ImGui::InputText(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i) + "_" + std::to_string(stringRefIndex)).c_str(), &str);
+                                        if (ImGui::IsItemDeactivatedAfterEdit())
+                                        {
+                                            u32 stringRefVal = db->AddString(str);
+                                            *reinterpret_cast<i32*>(&data[baseOffset + (stringRefIndex * 4)]) = stringRefVal;
+
+                                            markAsDirty = true;
+                                        }
+
+                                        if (stringRefIndex < static_cast<u32>(fieldInfo.count) - 1u)
+                                            ImGui::SameLine();
+                                    }
+
+                                    break;
+                                }
+
+                                case FieldType::vec2:
+                                {
+                                    f32* value = reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 2 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_Float, value, components))
                                     {
                                         markAsDirty = true;
+                                    }
 
-                                        u32 stringRefVal = db->AddString(str);
-                                        *reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]) = stringRefVal;
+                                    break;
+                                }
+                                case FieldType::vec3:
+                                {
+                                    f32* value = reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 3 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_Float, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::vec4:
+                                {
+                                    f32* value = reinterpret_cast<f32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 4 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_Float, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+
+                                case FieldType::ivec2:
+                                {
+                                    i32* value = reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 2 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S32, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::ivec3:
+                                {
+                                    i32* value = reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 3 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S32, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::ivec4:
+                                {
+                                    i32* value = reinterpret_cast<i32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 4 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_S32, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+
+                                case FieldType::uvec2:
+                                {
+                                    u32* value = reinterpret_cast<u32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 2 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U32, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::uvec3:
+                                {
+                                    u32* value = reinterpret_cast<u32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 3 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U32, value, components))
+                                    {
+                                        markAsDirty = true;
+                                    }
+
+                                    break;
+                                }
+                                case FieldType::uvec4:
+                                {
+                                    u32* value = reinterpret_cast<u32*>(&data[rowOffset + fieldOffset]);
+                                    u32 components = 4 * fieldInfo.count;
+
+                                    if (ImGui::InputScalarN(("##" + std::to_string(idEntry.id) + "_" + std::to_string(i)).c_str(), ImGuiDataType_U32, value, components))
+                                    {
+                                        markAsDirty = true;
                                     }
 
                                     break;
@@ -1234,7 +1727,8 @@ namespace Editor
                                 }
                             }
 
-                            ImGui::PopItemWidth(); // Restore the previous item width
+                            if (fieldInfo.type != FieldType::StringRef)
+                                ImGui::PopItemWidth(); // Restore the previous item width
                         }
                     }
                 }
@@ -1254,7 +1748,7 @@ namespace Editor
 
     void CDBEditor::DrawImGui()
     {
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
             ShowListView();
         }

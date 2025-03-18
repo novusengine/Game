@@ -51,11 +51,9 @@ namespace ECS::Util
 
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                glfwSetCursorPos(window->GetWindow(), static_cast<f64>(width) / 2.0, static_cast<f64>(height) / 2.0);
 
                 auto* inputManager = ServiceLocator::GetInputManager();
                 inputManager->SetCursorVirtual(true);
-                inputManager->SetMousePosition(static_cast<f32>(width) / 2.0f, static_cast<f32>(height) / 2.0f);
             }
             else
             {

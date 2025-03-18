@@ -17,7 +17,7 @@
 namespace Editor
 {
     AssetBrowser::AssetBrowser()
-        : BaseEditor(GetName(), true),
+        : BaseEditor(GetName(), BaseEditorFlags_DefaultVisible | BaseEditorFlags_EditorOnly),
           _tree(nullptr),
           _currentNode(nullptr)
     {
@@ -47,11 +47,11 @@ namespace Editor
 
     void AssetBrowser::DrawImGui()
     {
-        if (_averageFontWidth < 0.f)
-            CalculateAverageFontWidth();
-
-        if (ImGui::Begin(GetName()))
+        if (ImGui::Begin(GetName(), &IsVisible()))
         {
+            if (_averageFontWidth < 0.f)
+                CalculateAverageFontWidth();
+
             ImGui::Text("Actual data folder : %s", _topPath.string().c_str());
             if (_currentNode)
             {

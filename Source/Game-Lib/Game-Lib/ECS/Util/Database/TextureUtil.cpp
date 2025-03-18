@@ -1,12 +1,12 @@
-#include "IconUtil.h"
+#include "TextureUtil.h"
 
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
-#include "Game-Lib/Gameplay/Database/Shared.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/entt.hpp>
-#include "TextureUtil.h"
 
 namespace ECSUtil::Texture
 {
@@ -22,11 +22,7 @@ namespace ECSUtil::Texture
             clientDBSingleton.Register(ClientDBHash::ItemDisplayMaterialResources, "ItemDisplayMaterialResources");
 
             auto* itemDisplayMaterialResourcesStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayMaterialResources);
-            itemDisplayMaterialResourcesStorage->Initialize({
-                { "DisplayID",              ClientDB::FieldType::I32 },
-                { "ComponentSection",       ClientDB::FieldType::I8 },
-                { "MaterialResourcesID",    ClientDB::FieldType::I32 }
-                });
+            itemDisplayMaterialResourcesStorage->Initialize<Generated::ItemDisplayInfoMaterialResourceRecord>();
         }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemDisplayMaterialResources))
@@ -34,29 +30,23 @@ namespace ECSUtil::Texture
             clientDBSingleton.Register(ClientDBHash::ItemDisplayModelMaterialResources, "ItemDisplayModelMaterialResources");
 
             auto* itemDisplayModelMaterialResourcesStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayModelMaterialResources);
-            itemDisplayModelMaterialResourcesStorage->Initialize({
-                { "DisplayID",              ClientDB::FieldType::I32    },
-                { "ModelIndex",             ClientDB::FieldType::I8     },
-                { "TextureType",            ClientDB::FieldType::I8     },
-                { "MaterialResourcesID",    ClientDB::FieldType::I32    }
-                });
+            itemDisplayModelMaterialResourcesStorage->Initialize<Generated::ItemDisplayInfoModelMaterialResourceRecord>();
         }
 
+        auto* textureFileDataStorage = clientDBSingleton.Get(ClientDBHash::TextureFileData);
+        u32 numRecords = textureFileDataStorage->GetNumRows();
+
+        textureSingleton.materialResourcesIDToTextureHashes.clear();
+        textureSingleton.materialResourcesIDToTextureHashes.reserve(numRecords);
+
+        textureFileDataStorage->Each([&textureFileDataStorage, &textureSingleton](u32 id, const Generated::TextureFileDataRecord& row)
         {
-            auto* textureFileDataStorage = clientDBSingleton.Get(ClientDBHash::TextureFileData);
-            u32 numRecords = textureFileDataStorage->GetNumRows();
+            if (id == 0) return true;
 
-            textureSingleton.materialResourcesIDToTextureHashes.clear();
-            textureSingleton.materialResourcesIDToTextureHashes.reserve(numRecords);
-
-            textureFileDataStorage->Each([&textureSingleton](u32 id, const ClientDB::Definitions::TextureFileData& row)
-                {
-                    if (id == 0) return true;
-
-                    textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID].push_back(row.textureHash);
-                    return true;
-                });
-        }
+            u32 textureHash = textureFileDataStorage->GetStringHash(row.texture);
+            textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID].push_back(textureHash);
+            return true;
+        });
 
         return true;
     }

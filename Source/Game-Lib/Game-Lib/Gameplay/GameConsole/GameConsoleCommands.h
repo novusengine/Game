@@ -1,35 +1,39 @@
 #pragma once
 #include <Base/Types.h>
 
+#include <Meta/Generated/Commands.h>
+
 class GameConsoleCommandHandler;
 class GameConsole;
+
 class GameConsoleCommands
 {
 public:
-    static bool HandleHelp(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandlePing(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleDoString(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleLogin(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleReloadScripts(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleRefresh(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSetCursor(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSaveCamera(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleLoadCamera(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleClearMap(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleCast(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleDamage(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleKill(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleRevive(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleMorph(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleFly(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleDemorph(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleCreateChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleDeleteChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSetRace(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSetGender(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSetClass(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSetLevel(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleSyncItem(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleForceSyncItems(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
-    static bool HandleAddItem(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleLogin(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleCast(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleDamage(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleKill(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleRevive(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleCreateChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleDeleteChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleSetClass(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    //static bool HandleSetLevel(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands);
+    
+    static bool HandleHelp(GameConsole* gameConsole, Generated::HelpCommand& command);
+    static bool HandlePing(GameConsole* gameConsole, Generated::PingCommand& command);
+    static bool HandleLua(GameConsole* gameConsole, Generated::LuaCommand& command);
+    static bool HandleReloadScripts(GameConsole* gameConsole, Generated::ReloadScriptsCommand& command);
+    static bool HandleRefreshDB(GameConsole* gameConsole, Generated::RefreshDBCommand& command);
+    static bool HandleSaveCamera(GameConsole* gameConsole, Generated::SaveCameraCommand& command);
+    static bool HandleLoadCameraByCode(GameConsole* gameConsole, Generated::LoadCameraByCodeCommand& command);
+    static bool HandleClearMap(GameConsole* gameConsole, Generated::ClearMapCommand& command);
+    static bool HandleMorph(GameConsole* gameConsole, Generated::MorphCommand& command);
+    static bool HandleDemorph(GameConsole* gameConsole, Generated::DemorphCommand& command);
+    static bool HandleFly(GameConsole* gameConsole, Generated::FlyCommand& command);
+    static bool HandleSetRace(GameConsole* gameConsole, Generated::SetRaceCommand& command);
+    static bool HandleSetGender(GameConsole* gameConsole, Generated::SetGenderCommand& command);
+    static bool HandleSyncItem(GameConsole* gameConsole, Generated::SyncItemCommand& command);
+    static bool HandleForceSyncItems(GameConsole* gameConsole, Generated::ForceSyncItemsCommand& command);
+    static bool HandleAddItem(GameConsole* gameConsole, Generated::AddItemCommand& command);
+    static bool HandleRemoveItem(GameConsole* gameConsole, Generated::RemoveItemCommand& command);
 };

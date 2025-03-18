@@ -7,6 +7,8 @@
 
 #include <Gameplay/GameDefine.h>
 
+#include <Meta/Generated/ClientDB.h>
+
 #include <entt/fwd.hpp>
 
 namespace ECS
@@ -41,9 +43,9 @@ namespace Util::Unit
     bool CloseHand(entt::registry& registry, entt::entity entity, bool isOffHand);
     bool OpenHand(entt::registry& registry, entt::entity entity, bool isOffHand);
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity);
-    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
-    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Database::Item::Item& item, const bool isOffHand, entt::entity& itemEntity);
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity);
+    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
+    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
 
     bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
     bool RemoveItemFromAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment);
