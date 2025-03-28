@@ -26,6 +26,7 @@ namespace Scripting::UI
         std::string metaTableName;
 
         entt::entity entity;
+        entt::entity canvasEntity;
     };
 
     namespace WidgetCreationMethods

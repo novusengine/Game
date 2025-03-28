@@ -2,7 +2,9 @@
 
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
+#include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -135,7 +137,7 @@ namespace ECS::Systems::UI
                     if (eventInputInfo->onMouseUpEvent != -1)
                     {
                         auto& rect = registry.get<Components::UI::BoundingRect>(uiSingleton.clickedEntity);
-                        bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+                        bool isWithin = IsWithin(mousePos, rect.hoveredMin, rect.hoveredMax);
                         if (isWithin)
                         {
                             auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
@@ -243,7 +245,7 @@ namespace ECS::Systems::UI
                     if (eventInputInfo->onMouseUpEvent != -1)
                     {
                         auto& rect = registry.get<Components::UI::BoundingRect>(uiSingleton.clickedEntity);
-                        bool isWithin = IsWithin(mousePos, rect.min, rect.max);
+                        bool isWithin = IsWithin(mousePos, rect.hoveredMin, rect.hoveredMax);
                         if (isWithin)
                         {
                             auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
@@ -379,6 +381,75 @@ namespace ECS::Systems::UI
         });
     }
 
+    // This function is called on a canvas to find all hovered entities within it
+    // It's recursive because we can have Panels with a RenderTarget canvas as a texture
+    // When it finds one of those we need to offset the panel position and call this function again on the nested canvas
+    void RecursivelyFindHoveredInCanvas(entt::registry& registry, entt::entity entity, const vec2& mousePos, std::map<u64, entt::entity>& allHoveredEntities, const vec2& parentMin, const vec2& parentMax)
+    {
+        auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
+        //auto& boundingRect = registry.get<Components::UI::BoundingRect>(entity);
+        //bool isWithin = IsWithin(mousePos, boundingRect.min, boundingRect.max);
+        
+        // Loop over children recursively (depth first)
+        transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
+        {
+            auto& widget = registry.get<Components::UI::Widget>(childEntity);
+
+            if (!widget.IsVisible())
+                return false;
+
+            if (!widget.IsInteractable())
+                return true;
+
+            if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
+                return true;
+
+            auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
+            if (rect == nullptr)
+            {
+                return true;
+            }
+
+            // Offset the rect by the parents position
+            vec2 min = rect->min + parentMin;
+            vec2 max = rect->max + parentMin;
+
+            // Cap it so we can't go outside the parent max and interact with clipped children
+            max = glm::min(max, parentMax);
+
+            // Update hoveredMin and hoveredMax
+            rect->hoveredMin = min;
+            rect->hoveredMax = max;
+
+            bool isWithin = IsWithin(mousePos, min, max);
+
+            if (isWithin)
+            {
+                Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
+
+                vec2 middlePoint = (min + max) * 0.5f;
+
+                u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
+                u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
+                u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
+
+                u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
+                allHoveredEntities[key] = childEntity;
+            }
+
+            if (widget.type == Components::UI::WidgetType::Panel)
+            {
+                auto& panelTemplate = registry.get<Components::UI::PanelTemplate>(childEntity);
+                if (panelTemplate.setFlags.backgroundRT)
+                {
+                    RecursivelyFindHoveredInCanvas(registry, panelTemplate.backgroundRTEntity, mousePos, allHoveredEntities, min, max);
+                }
+            }
+
+            return true;
+        });
+    }
+
     void HandleInput::Update(entt::registry& registry, f32 deltaTime)
     {
         auto& ctx = registry.ctx();
@@ -404,9 +475,10 @@ namespace ECS::Systems::UI
         // Loop over widget roots
         if (!inputManager->IsCursorVirtual())
         {
-            registry.view<Components::UI::WidgetRoot>().each([&](auto entity)
+            registry.view<Components::UI::Canvas>(entt::exclude<Components::UI::CanvasRenderTargetTag>).each([&](auto entity, auto& canvas)
             {
-                // Loop over children recursively (depth first)
+                RecursivelyFindHoveredInCanvas(registry, entity, mousePos, uiSingleton.allHoveredEntities, vec2(0,0), renderSize);
+                /*// Loop over children recursively (depth first)
                 transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
                 {
                     auto& widget = registry.get<Components::UI::Widget>(childEntity);
@@ -442,7 +514,7 @@ namespace ECS::Systems::UI
                         uiSingleton.allHoveredEntities[key] = childEntity;
                     }
                     return true;
-                });
+                });*/
             });
         }
 

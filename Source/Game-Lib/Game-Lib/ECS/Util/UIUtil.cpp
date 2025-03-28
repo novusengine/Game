@@ -28,7 +28,7 @@ namespace ECS::Util
 {
     namespace UI
     {
-        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size)
+        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)
         {
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
@@ -40,10 +40,10 @@ namespace ECS::Util
                 return entity;
             }
 
-            return CreateCanvas(widget, registry, name, pos, size);
+            return CreateCanvas(widget, registry, name, pos, size, isRenderTexture);
         }
 
-        entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, entt::entity parent)
+        entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)
         {
             auto& ctx = registry->ctx();
             auto& transform2DSystem = Transform2DSystem::Get(*registry);
@@ -53,14 +53,6 @@ namespace ECS::Util
             // Transform
             auto& transformComp = registry->emplace<ECS::Components::Transform2D>(entity);
 
-            if (parent != entt::null)
-            {
-                transform2DSystem.ParentEntityTo(parent, entity);
-            }
-            else
-            {
-                registry->emplace<ECS::Components::UI::WidgetRoot>(entity);
-            }
             transform2DSystem.SetLocalPosition(entity, pos);
             transform2DSystem.SetSize(entity, size);
 
@@ -82,7 +74,25 @@ namespace ECS::Util
             registry->emplace<ECS::Components::UI::Clipper>(entity);
 
             // Canvas
-            //auto& canvasComp = registry->emplace<ECS::Components::UI::Canvas>(entity);
+            auto& canvasComp = registry->emplace<ECS::Components::UI::Canvas>(entity);
+            canvasComp.name = name;
+
+            if (isRenderTexture)
+            {
+                Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
+
+                Renderer::DataTextureDesc desc;
+                desc.debugName = name;
+                desc.format = renderer->GetSwapChainImageFormat();
+                desc.width = size.x;
+                desc.height = size.y;
+                desc.layers = 1;
+                desc.mipLevels = 1;
+                desc.renderable = true;
+
+                canvasComp.renderTexture = renderer->CreateDataTexture(desc);
+                registry->emplace<ECS::Components::UI::CanvasRenderTargetTag>(entity);
+            }
 
             return entity;
         }
@@ -415,6 +425,9 @@ namespace ECS::Util
             {
                 ApplyTemplateAdditively(registry, entity, eventInputInfo.onUninteractableTemplateHash);
             }
+
+            auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget.scriptWidget->canvasEntity);
         }
 
         void ResetTemplate(entt::registry* registry, entt::entity entity)
@@ -478,7 +491,11 @@ namespace ECS::Util
                 u32 templateIndex = uiSingleton.templateHashToPanelTemplateIndex[templateHash];
                 auto& panelTemplate = uiSingleton.panelTemplates[templateIndex];
 
-                if (panelTemplate.setFlags.background)
+                if (panelTemplate.setFlags.backgroundRT)
+                {
+                    panelTemplateComp.backgroundRT = panelTemplate.backgroundRT;
+                }
+                else if (panelTemplate.setFlags.background)
                 {
                     panelTemplateComp.background = panelTemplate.background;
                 }

@@ -1,5 +1,19 @@
 
+#include "globalData.inc.hlsl"
+
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<float4> _vertices;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<float3> _widgetWorldPositions;
+
+struct PanelDrawData
+{
+    uint4 packed0; // x: textureIndex & additiveTextureIndex, y: clipMaskTextureIndex, z: color, w: textureScaleToWidgetSizeXY
+    float4 texCoord;
+    float4 slicingCoord;
+    float4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
+    uint4 packed1; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
+    int4 packed2; // x: worldPositionIndex, yzw: unused
+};
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<PanelDrawData> _panelDrawDatas;
 
 struct VertexInput
 {
@@ -21,10 +35,29 @@ VertexOutput main(VertexInput input)
     float2 position = vertex.xy;
     float2 uv = vertex.zw;
 
-    VertexOutput output;
-    output.position = float4(position, 0.0f, 1.0f);
+    PanelDrawData drawData = _panelDrawDatas[input.drawDataID];
+    int worldPositionIndex = drawData.packed2.x;
+    float4 finalPos;
 
-    float2 screenPos = (position + 1.0f) * 0.5f;
+    if (worldPositionIndex >= 0)
+    {
+        float3 worldPos = _widgetWorldPositions[worldPositionIndex];
+
+        // Transform the world position to clip space.
+        float4 clipPos = mul(float4(worldPos, 1.0), _cameras[0].worldToClip);
+        clipPos.xyz /= clipPos.w; // Perform perspective division.
+
+        finalPos = float4(clipPos.xy + position, 0.0, 1.0);
+    }
+    else
+    {
+        finalPos = float4(position, 0.0, 1.0);
+    }
+
+    VertexOutput output;
+    output.position = finalPos;
+
+    float2 screenPos = (finalPos.xy + 1.0f) * 0.5f;
     output.uvAndScreenPos = float4(uv, screenPos);
     output.drawDataID = input.drawDataID;
 

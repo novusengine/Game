@@ -135,7 +135,7 @@ namespace ECS::Components
             vec2 anchorOffset = vec2(0, 0);
 
             Transform2D* parentTransform = GetParentTransform();
-            if (parentTransform)
+            if (parentTransform && !ignoreParent)
             {
                 anchorOffset = anchor * parentTransform->size;
             }
@@ -189,9 +189,20 @@ namespace ECS::Components
         Transform2D* GetParentTransform() const;
         u32 GetHierarchyDepth() const;
 
+        bool GetIgnoreParent() const
+        {
+            return ignoreParent;
+        }
+
+        void SetIgnoreParent(bool ignore)
+        {
+            ignoreParent = ignore;
+        }
+
         struct SceneNode2D* ownerNode{ nullptr };
 
     private:
+        bool ignoreParent = false; // Gets set when the widget is childed to a worldspace position
         vec2 position = vec2(0.0f, 0.0f);
         quat rotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         vec2 scale = vec2(1.0f, 1.0f);
@@ -200,6 +211,8 @@ namespace ECS::Components
         vec2 size = vec2(1.0f, 1.0f);
         vec2 anchor = vec2(0.0f, 0.0f); // This is the point on the parent widget that we will anchor to
         vec2 relativePoint = vec2(0.0f, 0.0f); // This is the point on this widget that we will anchor to the parent
+
+        friend struct SceneNode2D;
     };
 
     //scene node component that holds the information for parenting and children of a given entity or node
@@ -341,7 +354,7 @@ namespace ECS::Components
         //recalculates the matrix. If the scene-node has a parent, it gets transform root from it
         inline void RefreshMatrix()
         {
-            if (parent)
+            if (parent && !transform->ignoreParent)
             {
                 matrix = Math::AffineMatrix::MatrixMul(parent->matrix, transform->GetLocalMatrix());
             }

@@ -8,10 +8,11 @@ struct PanelDrawData
     float4 slicingCoord;
     float4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
     uint4 packed1; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
+    int4 packed2; // x: worldPositionIndex, y: half2 anchorPos, z: half2 relativePos
 };
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<PanelDrawData> _panelDrawDatas;
-[[vk::binding(2, PER_PASS)]] SamplerState _sampler;
-[[vk::binding(3, PER_PASS)]] Texture2D<float4> _textures[4096];
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<PanelDrawData> _panelDrawDatas;
+[[vk::binding(3, PER_PASS)]] SamplerState _sampler;
+[[vk::binding(4, PER_PASS)]] Texture2D<float4> _textures[4096];
 
 float NineSliceAxis(float coord, float pixelSizeUV, float texCoordMin, float texCoordMax, float borderSizeMin, float borderSizeMax)
 {
@@ -141,6 +142,9 @@ float4 main(VertexOutput input) : SV_Target
         discard;
     }
     color.a *= clipMask;
+
+    // Multiply the color channels by alpha for pre-multiplied alpha output
+    color.rgb *= color.a;
 
     return saturate(color);
 }

@@ -10,15 +10,15 @@ local UILoadingScreen = require("@src/API/UI/LoadingScreen")
 
 local function OnButtonEvent(button : Button, eventID : ButtonEvent, ...)
     if (eventID == ButtonEvent.Hovered) then
-
+        print("Hovered!");
     end
 end
 
 local function CreateSingleLineDemo()
-    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080);
+    local canvas : Canvas = UI.GetCanvas("SingleLineDemo", 0, 0, 400, 400, true);
 
     -- Create a panel
-    local panel = canvas:NewPanel(-215, 0, 400, 400, 0, "DialogBox");
+    local panel = canvas:NewPanel(0, 0, 400, 400, 0, "DialogBox");
     panel:SetAnchor(0.5, 0.5);
     panel:SetRelativePoint(0.5, 0.5);
 
@@ -41,15 +41,42 @@ local function CreateSingleLineDemo()
     local center = panel:NewText("Center", 0, 0, 0, "DefaultButtonText");
     center:SetAnchor(0.5, 0.5);
     center:SetRelativePoint(0.5, 0.5);
+
+    -- Test button
+    local supportButton = UIButton.NewButton(panel, 0, 70, 250, 40, 0, {
+        text = "Test"
+    });
+    supportButton:SetAnchor(0.5, 0.5);
+    supportButton:SetRelativePoint(0.5, 0.5);
+    supportButton:SetOnMouseUp(function(eventID, widget, ...)
+        print("SingleLineButton");
+    end);
+
+    return canvas;
 end
 
-local function CreateMultiLineDemo()
-    local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080);
+local function CreateMultiLineDemo(rtCanvas : Canvas)
+    local canvas : Canvas = UI.GetCanvas("MultiLineDemo", 0, 0, 1920, 1080);
+
+    -- Create a panel displaying the single line demo
+    --local singleLinePanel = canvas:NewPanel(0, 0, 400, 400, 0, "DialogBox");
+    --singleLinePanel:SetAnchor(0.5, 0.5);
+    --singleLinePanel:SetRelativePoint(0.5, 0.5);
+    --singleLinePanel:SetBackground(rtCanvas);
+    --singleLinePanel:DebugSetWorldTransformIndex(0);
 
     -- Create a panel
-    local panel = canvas:NewPanel(215, 0, 400, 400, 0, "DialogBox");
-    panel:SetAnchor(0.5, 0.5);
-    panel:SetRelativePoint(0.5, 0.5);
+    local panel = canvas:NewPanel(0, 0, 400, 400, 0, "DialogBox");
+    --panel:SetAnchor(0.5, 0.5);
+    --panel:SetRelativePoint(0.5, 0.5);
+
+    panel:SetAnchor(0.0, 0.0);
+    panel:SetRelativePoint(1.0, 0.0);
+    panel:DebugSetWorldTransformIndex(0);
+
+    local middlePanel = panel:NewPanel(0, 0, 50, 50, 0, "DialogBox");
+    middlePanel:SetAnchor(0.0, 0.0);
+    middlePanel:SetRelativePoint(0.0, 0.0);
 
     local bottomLeft = panel:NewText("Bottom Left\nLeft Bottom", 0, 0, 0, "DefaultButtonText");
     bottomLeft:SetAnchor(0.0, 0.0);
@@ -70,11 +97,21 @@ local function CreateMultiLineDemo()
     local center = panel:NewText("-Center\nCenter-", 0, 0, 0, "DefaultButtonText");
     center:SetAnchor(0.5, 0.5);
     center:SetRelativePoint(0.5, 0.5);
+
+    -- Test button
+    --local supportButton = UIButton.NewButton(panel, 0, 70, 250, 40, 0, {
+    --    text = "Test"
+    --});
+    --supportButton:SetAnchor(0.5, 0.5);
+    --supportButton:SetRelativePoint(0.5, 0.5);
+    --supportButton:SetOnMouseUp(function(eventID, widget, ...)
+    --    print("MultiLineButton");
+    --end);
 end
 
 local function Demo()
-    CreateSingleLineDemo()
-    CreateMultiLineDemo()
+    local rtCanvas = CreateSingleLineDemo()
+    CreateMultiLineDemo(rtCanvas)
 end
 
 local function CreateGameMenu(stack)
@@ -260,7 +297,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     local stack = UIStack.Get("Menu")
 
     --CreateClippingDemo();
-    --Demo();
+    Demo();
     --CreateGameMenu(stack);
     --CreateOptionsMenu(stack);
 
@@ -270,6 +307,14 @@ end
 
 local function OnGameUpdated(eventID : number, deltaTime : number)
     
+end
+
+local function OnUnitEnterRange(unitID : number)
+    print("Unit Enter Range: " .. unitID);
+end
+
+local function OnUnitExitRange(unitID : number)
+    print("Unit Exit Range: " .. unitID);
 end
 
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

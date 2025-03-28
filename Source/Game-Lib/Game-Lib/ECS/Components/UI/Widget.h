@@ -37,6 +37,7 @@ namespace ECS::Components::UI
     public:
         WidgetType type;
         WidgetFlags flags = WidgetFlags::Default;
+        i32 worldTransformIndex = -1;
 
         Scripting::UI::Widget* scriptWidget = nullptr;
 
@@ -48,10 +49,10 @@ namespace ECS::Components::UI
         inline bool IsResizable() const { return IsInteractable() && (flags & WidgetFlags::Resizable) == WidgetFlags::Resizable; }
     };
 
-    struct WidgetRoot {};
     struct DirtyWidgetTransform {};
     struct DirtyWidgetData {};
     struct DirtyWidgetFlags {};
     struct DirtyWidgetClipper {};
+    struct DirtyWidgetWorldTransformIndex {};
     struct DestroyWidget {};
 }

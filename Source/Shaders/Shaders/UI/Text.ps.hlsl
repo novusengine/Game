@@ -6,12 +6,13 @@ struct CharDrawData
     uint4 packed0; // x: textureIndex & charIndex, y: clipMaskTextureIndex, z: textColor, w: borderColor
     float4 packed1; // x: borderSize, y: padding, zw: unitRangeXY
     uint4 packed2; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
+    int4 packed3; // x: worldPositionIndex, yzw: unused
 };
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<CharDrawData> _charDrawDatas;
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<CharDrawData> _charDrawDatas;
 
-[[vk::binding(2, PER_PASS)]] SamplerState _sampler;
-[[vk::binding(3, PER_PASS)]] Texture2D<float4> _fontTextures[4096];
-[[vk::binding(4, PER_PASS)]] Texture2D<float4> _textures[4096];
+[[vk::binding(3, PER_PASS)]] SamplerState _sampler;
+[[vk::binding(4, PER_PASS)]] Texture2D<float4> _fontTextures[4096];
+[[vk::binding(5, PER_PASS)]] Texture2D<float4> _textures[4096];
 
 struct VertexOutput
 {
@@ -39,6 +40,7 @@ bool ShouldDiscard(float2 pos, float2 clipMin, float2 clipMax)
 
 float4 main(VertexOutput input) : SV_Target
 {
+    //return float4(1.0f, 0.0f, 0.0f, 0.3f);
     CharDrawData drawData = _charDrawDatas[input.charDrawDataID];
 
     float2 screenPos = input.uvAndScreenPos.zw;
@@ -102,5 +104,8 @@ float4 main(VertexOutput input) : SV_Target
     }
     color.a *= clipMask;
 
-    return color;
+    // Multiply the color channels by alpha for pre-multiplied alpha output
+    color.rgb *= color.a;
+
+    return saturate(color);
 }
