@@ -37,7 +37,7 @@ namespace ECS::Components::UI
     public:
         WidgetType type;
         WidgetFlags flags = WidgetFlags::Default;
-        i32 worldTransformIndex = -1;
+        u32 worldTransformIndex = std::numeric_limits<u32>().max();
 
         Scripting::UI::Widget* scriptWidget = nullptr;
 

@@ -138,10 +138,6 @@ void CanvasRenderer::Update(f32 deltaTime)
         {
             auto& panel = uiRegistry->get<Panel>(entity);
             auto& panelTemplate = uiRegistry->get<PanelTemplate>(entity);
-            if (widget.worldTransformIndex != -1)
-            {
-                volatile int asd = 123;
-            }
 
             // In pixel units
             vec2 panelPos = transform.GetWorldPosition();
@@ -150,7 +146,7 @@ void CanvasRenderer::Update(f32 deltaTime)
             // Convert to clip space units
             panelSize = PixelSizeToNDC(panelSize, size);
 
-            if (widget.worldTransformIndex != -1)
+            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
             {
                 panelPos = (panelPos / refSize) * 2.0f;
             }
@@ -237,6 +233,22 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->clear<DirtyWidgetFlags>();
     uiRegistry->clear<DirtyChildClipper>();
     uiRegistry->clear<DirtyClipper>();
+}
+
+u32 CanvasRenderer::ReserveWorldTransform()
+{
+    return _widgetWorldPositions.Add();
+}
+
+void CanvasRenderer::ReleaseWorldTransform(u32 index)
+{
+    _widgetWorldPositions.Remove(index);
+}
+
+void CanvasRenderer::UpdateWorldTransform(u32 index, const vec3& position)
+{
+    _widgetWorldPositions[index] = vec4(position, 1.0);
+    _widgetWorldPositions.SetDirtyElement(index);
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -471,7 +483,7 @@ void CanvasRenderer::CreatePermanentResources()
     _widgetWorldPositions.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
     // Push a debug position
-    _widgetWorldPositions.Add(vec3(0, 0, 0));
+    _widgetWorldPositions.Add(vec4(0, 0, 0, 1));
 
     // Create pipelines
     Renderer::ImageFormat renderTargetFormat = _renderer->GetSwapChainImageFormat();
@@ -698,7 +710,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
 
             vec2 planeMin;
             vec2 planeMax;
-            if (widget.worldTransformIndex != -1)
+            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
             {
                 planeMin = (vec2(planeLeft, planeBottom) / refSize) * 2.0f;
                 planeMax = (vec2(planeRight, planeTop) / refSize) * 2.0f;
@@ -791,8 +803,8 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     BoundingRect* boundingRect = &registry->get<BoundingRect>(entity);
     
     vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-    vec2 clipRegionMin = vec2(0.0f, 0.0f);
-    vec2 clipRegionMax = vec2(1.0f, 1.0f);
+    vec2 clipRegionMin = clipper->clipRegionMin;
+    vec2 clipRegionMax = clipper->clipRegionMax;
 
     if (clipper->clipRegionOverrideEntity != entt::null)
     {

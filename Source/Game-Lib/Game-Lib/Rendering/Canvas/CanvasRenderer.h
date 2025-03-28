@@ -47,6 +47,10 @@ public:
 
     //CanvasTextureID AddTexture(Renderer::TextureID textureID);
 
+    u32 ReserveWorldTransform();
+    void ReleaseWorldTransform(u32 index);
+    void UpdateWorldTransform(u32 index, const vec3& position);
+
     void AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
 private:
@@ -105,7 +109,7 @@ private:
     
     Renderer::GPUVector<CharDrawData> _charDrawDatas;
 
-    Renderer::GPUVector<vec3> _widgetWorldPositions;
+    Renderer::GPUVector<vec4> _widgetWorldPositions;
    
     Renderer::Font* _font;
     Renderer::SamplerID _sampler;
