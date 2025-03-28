@@ -1,14 +1,16 @@
 #include "Panel.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/PanelTemplate.h"
+#include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Text.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
 
 namespace Scripting::UI
 {
@@ -28,7 +30,9 @@ namespace Scripting::UI
         { "SetTexCoords", PanelMethods::SetTexCoords },
 
         { "SetColor", PanelMethods::SetColor },
-        { "SetAlpha", PanelMethods::SetAlpha }
+        { "SetAlpha", PanelMethods::SetAlpha },
+
+        { "DebugSetWorldTransformIndex", PanelMethods::DebugSetWorldTransformIndex }
     };
 
     void Panel::Register(lua_State* state)
@@ -113,6 +117,8 @@ namespace Scripting::UI
 
             ts.SetSize(widget->entity, vec2(x, y));
 
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
             return 0;
         }
 
@@ -134,6 +140,8 @@ namespace Scripting::UI
             vec2 size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
             size.x = x;
             ts.SetSize(widget->entity, size);
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
             return 0;
         }
@@ -157,6 +165,8 @@ namespace Scripting::UI
             size.y = y;
             ts.SetSize(widget->entity, size);
 
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
             return 0;
         }
 
@@ -169,22 +179,59 @@ namespace Scripting::UI
             {
                 luaL_error(state, "Widget is null");
             }
-            
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(widget->entity);
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
 
-            const char* texture = ctx.Get(nullptr, 2);
-            if (texture)
+            if (lua_isstring(state, 2))
             {
-                panelTemplate.background = texture;
-                panelTemplate.setFlags.background = true;
+                const char* texture = ctx.Get(nullptr, 2);
+                if (texture)
+                {
+                    panelTemplate.background = texture;
+                    panelTemplate.backgroundRT = Renderer::TextureID::Invalid();
+                    panelTemplate.backgroundRTEntity = entt::null;
+                    panelTemplate.setFlags.background = true;
+                    panelTemplate.setFlags.backgroundRT = false;
+                }
+                else
+                {
+                    panelTemplate.background = "";
+                    panelTemplate.backgroundRT = Renderer::TextureID::Invalid();
+                    panelTemplate.backgroundRTEntity = entt::null;
+                    panelTemplate.setFlags.background = false;
+                    panelTemplate.setFlags.backgroundRT = false;
+                }
+            }
+            else if (lua_isuserdata(state, 2))
+            {
+                Canvas* canvas = ctx.GetUserData<Canvas>(nullptr, 2);
+                if (canvas)
+                {
+                    auto& canvasComp = registry->get<ECS::Components::UI::Canvas>(canvas->entity);
+
+                    if (canvasComp.renderTexture == Renderer::TextureID::Invalid())
+                    {
+                        luaL_error(state, "Tried to SetBackground using a canvas that is not a RenderTarget Canvas");
+                    }
+                    
+                    panelTemplate.backgroundRT = canvasComp.renderTexture;
+                    panelTemplate.backgroundRTEntity = canvas->entity;
+                    panelTemplate.setFlags.background = false;
+                    panelTemplate.setFlags.backgroundRT = true;
+                }
+                else
+                {
+                    luaL_error(state, "Expected parameter 2 to be either a string or a Canvas");
+                }
             }
             else
             {
-                panelTemplate.background = "";
-                panelTemplate.setFlags.background = false;
+                luaL_error(state, "Expected parameter 2 to be either a string or a Canvas");
             }
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
             return 0;
         }
@@ -215,6 +262,8 @@ namespace Scripting::UI
                 panelTemplate.setFlags.foreground = false;
             }
 
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
             return 0;
         }
 
@@ -241,6 +290,8 @@ namespace Scripting::UI
             panelTemplate.setFlags.texCoords = true;
             panelTemplate.texCoords.min = vec2(minX, minY);
             panelTemplate.texCoords.max = vec2(maxX, maxY);
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
             return 0;
         }
@@ -270,6 +321,8 @@ namespace Scripting::UI
             panelTemplate.color = colorWithAlpha;
             panelTemplate.setFlags.color = 1;
 
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
             return 0;
         }
 
@@ -290,6 +343,34 @@ namespace Scripting::UI
             f32 alpha = ctx.Get(-1.0f, 2);
             panelTemplate.color.a = alpha;
             panelTemplate.setFlags.color = 1;
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
+            return 0;
+        }
+
+        i32 DebugSetWorldTransformIndex(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            i32 index = ctx.Get(-1, 2);
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+            widgetComp.worldTransformIndex = index;
+
+            auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+            transform.SetIgnoreParent(index != -1);
+
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
             return 0;
         }

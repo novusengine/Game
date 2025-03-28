@@ -1,5 +1,6 @@
 #include "UIHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -79,7 +80,7 @@ namespace Scripting::UI
             });
 
             auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
-            uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48));
+            uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48), false);
             canvas->type = WidgetType::Canvas;
             canvas->entity = uiSingleton.cursorCanvasEntity;
 
@@ -467,13 +468,15 @@ namespace Scripting::UI
         i32 sizeX = ctx.Get(100, 4);
         i32 sizeY = ctx.Get(100, 5);
 
+        bool isRenderTexture = ctx.Get(false, 6);
+
         Widget* canvas = ctx.PushUserData<Widget>([](void* x)
         {
             // Very sad canvas is gone now :(
         });
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY));
+        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY), isRenderTexture);
 
         canvas->type = WidgetType::Canvas;
         canvas->entity = entity;
@@ -664,6 +667,8 @@ namespace Scripting::UI
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Util::UI::FocusWidgetEntity(registry, widget->entity);
 
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
         return 0;
     }
 
@@ -684,6 +689,8 @@ namespace Scripting::UI
         {
             ECS::Util::UI::FocusWidgetEntity(registry, entt::null);
         }
+
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
         return 0;
     }
@@ -765,6 +772,8 @@ namespace Scripting::UI
         {
             luaL_error(state, "Expected a Panel or Text for DestroyWidget");
         }
+
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
         if (!ECS::Util::UI::DestroyWidget(registry, widget->entity))
         {
