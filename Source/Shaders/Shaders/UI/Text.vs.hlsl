@@ -2,7 +2,7 @@
 #include "globalData.inc.hlsl"
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<float4> _vertices;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<float3> _widgetWorldPositions;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<float4> _widgetWorldPositions;
 
 struct CharDrawData
 {
@@ -43,7 +43,7 @@ VertexOutput main(VertexInput input)
 
     if (worldPositionIndex >= 0)
     {
-        float3 worldPos = _widgetWorldPositions[worldPositionIndex];
+        float3 worldPos = _widgetWorldPositions[worldPositionIndex].xyz;
 
         // Transform the world position to clip space.
         float4 clipPos = mul(float4(worldPos, 1.0), _cameras[0].worldToClip);

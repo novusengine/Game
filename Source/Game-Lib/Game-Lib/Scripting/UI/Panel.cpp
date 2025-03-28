@@ -30,9 +30,7 @@ namespace Scripting::UI
         { "SetTexCoords", PanelMethods::SetTexCoords },
 
         { "SetColor", PanelMethods::SetColor },
-        { "SetAlpha", PanelMethods::SetAlpha },
-
-        { "DebugSetWorldTransformIndex", PanelMethods::DebugSetWorldTransformIndex }
+        { "SetAlpha", PanelMethods::SetAlpha }
     };
 
     void Panel::Register(lua_State* state)
@@ -345,32 +343,6 @@ namespace Scripting::UI
             panelTemplate.setFlags.color = 1;
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
-
-            return 0;
-        }
-
-        i32 DebugSetWorldTransformIndex(lua_State* state)
-        {
-            LuaState ctx(state);
-
-            Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            i32 index = ctx.Get(-1, 2);
-
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
-            widgetComp.worldTransformIndex = index;
-
-            auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
-            transform.SetIgnoreParent(index != -1);
-
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
             return 0;
         }

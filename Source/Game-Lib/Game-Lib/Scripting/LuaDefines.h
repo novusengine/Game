@@ -17,6 +17,7 @@ namespace Scripting
         GameEvent,
         PlayerEvent,
         UI,
+        Unit,
         Database,
         Game,
         Count

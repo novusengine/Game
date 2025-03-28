@@ -24,7 +24,5 @@ namespace Scripting::UI
         i32 SetTexCoords(lua_State* state);
         i32 SetColor(lua_State* state);
         i32 SetAlpha(lua_State* state);
-
-        i32 DebugSetWorldTransformIndex(lua_State* state);
     };
 }

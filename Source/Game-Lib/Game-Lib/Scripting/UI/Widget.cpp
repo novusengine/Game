@@ -7,6 +7,8 @@
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
+#include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
@@ -540,6 +542,7 @@ i32 Scripting::UI::WidgetMethods::SetClipRect(lua_State* state)
     else
     {
         registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+        registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
     }
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
@@ -859,6 +862,53 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosY(lua_State* state)
     ts.SetWorldPosition(widget->entity, pos);
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetPos3D(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+
+    if (lua_isnil(state, 2))
+    {
+        transform.SetIgnoreParent(false);
+
+        if (widgetComp.worldTransformIndex != std::numeric_limits<u32>().max())
+        {
+            canvasRenderer->ReleaseWorldTransform(widgetComp.worldTransformIndex);
+        }
+
+        widgetComp.worldTransformIndex = std::numeric_limits<u32>().max();
+    }
+    else
+    {
+        transform.SetIgnoreParent(true);
+
+        if (widgetComp.worldTransformIndex == std::numeric_limits<u32>().max())
+        {
+            widgetComp.worldTransformIndex = canvasRenderer->ReserveWorldTransform();
+        }
+        
+        vec3 pos = ctx.Get(vec3(0, 0, 0), 2);
+        canvasRenderer->UpdateWorldTransform(widgetComp.worldTransformIndex, pos);
+    }
+
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
     return 0;
 }

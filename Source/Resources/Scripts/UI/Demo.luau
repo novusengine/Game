@@ -72,7 +72,7 @@ local function CreateMultiLineDemo(rtCanvas : Canvas)
 
     panel:SetAnchor(0.0, 0.0);
     panel:SetRelativePoint(1.0, 0.0);
-    panel:DebugSetWorldTransformIndex(0);
+    --panel:DebugSetWorldTransformIndex(0);
 
     local middlePanel = panel:NewPanel(0, 0, 50, 50, 0, "DialogBox");
     middlePanel:SetAnchor(0.0, 0.0);
