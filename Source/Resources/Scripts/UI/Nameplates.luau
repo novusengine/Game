@@ -1,4 +1,5 @@
 local UINameplate = require("@src/API/UI/Nameplate");
+local OptionsContext = require("@src/API/OptionsContext")
 
 local nameplates = {};
 
@@ -22,9 +23,18 @@ local function RegisterTemplates()
     });
 end
 
+-- Setup options
+local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
+local optionGroup = optionCategory:Get("Nameplates");
+local optionSection = optionGroup:Get("General");
+--local enabledOption = optionSection:GetOption("Enabled");
+local enabledOption = optionSection:RegisterOption("Enabled", true, OptionType.Checkbox);
+local isEnabled = enabledOption:Get();
+
 local function OnGameLoaded(eventID : number, motd : string)
     RegisterTemplates();
-    
+
+    -- Create debug nameplate
     local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 
     local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 300, 30, 0, {
@@ -38,6 +48,11 @@ end
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
 
 local function OnGameUpdated(eventID : number, deltaTime : number)
+    local enabled = enabledOption:Get();
+    if (not enabled) then
+        return;
+    end
+
     for i, nameplate in nameplates do
 
         local health = nameplate:GetHealth();
