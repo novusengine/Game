@@ -1,10 +1,164 @@
 local UIStack = require("@src/API/UI/UIStack")
 local UIButton = require("@src/API/UI/Button")
+local UIScrollBox = require("@src/API/UI/ScrollBox")
 local UISlider = require("@src/API/UI/Slider")
 local UICheckbox = require("@src/API/UI/Checkbox")
 local UIComboBox = require("@src/API/UI/ComboBox")
 local UIInputBox = require("@src/API/UI/InputBox")
 local OptionsContext = require("@src/API/OptionsContext")
+
+local function CreateOption(optionsMenu, currentY, option)
+    local optionType = option.type;
+    local optionName = option.name;
+    local optionValue = option.value;
+    local optionDefaultValue = option.defaultValue;
+
+    local currentX = 0;
+
+    local optionText = optionsMenu.mainPanelContent.content:NewText(optionName, currentX, currentY, 0, "DefaultButtonText");
+    optionText:SetRelativePoint(0.0, 1.0);
+    currentX += select(1, optionText:GetSize()) + 5;
+
+    if (optionType == OptionType.InputBox) then
+        local inputBox = UIInputBox.NewInputBox(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 40, 0, {
+            defaultText = optionValue,
+        });
+        inputBox.button:SetRelativePoint(0.0, 1.0);
+
+        inputBox:SetOnSubmit(function(inputBoxTable)
+            local previousValue = option.value;
+
+            option.value = inputBoxTable.text;
+
+            local result = option:InvokeOnValueChanged(inputBoxTable.text);
+            if (not result) then
+                option.value = previousValue; -- Revert to previous state
+                return false; -- Returning false will prevent the value from changing
+            end
+
+            return true; -- Returning false will prevent the value from changing
+        end)
+    elseif (optionType == OptionType.Checkbox) then
+        local checkbox = UICheckbox.NewCheckbox(optionsMenu.mainPanelContent.content, currentX, currentY, 24, 24, 0,
+        {
+            backgroundTemplate = "DefaultCheckboxBackground",
+            fillTemplate = "DefaultCheckboxFill",
+            isChecked = optionValue,
+        });
+        checkbox.background:SetRelativePoint(0.0, 1.0);
+
+        checkbox:SetOnValueChanged(function(checkboxTable, state)
+            local previousState = option.value;
+
+            option.value = state;
+
+            local result = option:InvokeOnValueChanged(state);
+            if (not result) then
+                option.value = previousState; -- Revert to previous state
+                return false; -- Returning false will prevent the value from changing
+            end
+
+            return true; -- Returning false will prevent the value from changing
+        end)
+    elseif (optionType == OptionType.Slider) then
+        local valueText = optionsMenu.mainPanelContent.content:NewText(optionValue, currentX, currentY, 0, "DefaultButtonText");
+        valueText:SetRelativePoint(0.0, 1.0);
+        currentX += select(1, valueText:GetSize()) + 20;
+
+        local minValueText = optionsMenu.mainPanelContent.content:NewText(option.settings.Min, currentX, currentY, 0, "DefaultButtonText");
+        minValueText:SetRelativePoint(0.0, 1.0);
+        currentX += select(1, minValueText:GetSize()) + 5;
+
+        local slider = UISlider.NewSlider(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 25, 0, {
+            backgroundTemplate = "DefaultSliderBackground",
+            fillTemplate = "DefaultSliderFill",
+            Min = option.settings.Min,
+            Max = option.settings.Max,
+            Step = option.settings.Step,
+        });
+        slider.background:SetRelativePoint(0.0, 1.0);
+        slider:SetValue(optionValue);
+
+        local maxValueText = optionsMenu.mainPanelContent.content:NewText(option.settings.Max, currentX + 200, currentY, 0, "DefaultButtonText");
+        maxValueText:SetRelativePoint(0.0, 1.0);
+        currentX += select(1, maxValueText:GetSize()) + 5;
+
+        --slider:SetProgress(optionValue);
+        --slider:SetMinMax(option.settings.Min, option.settings.Max, option.settings.Step);
+
+        slider:SetOnValueChanged(function(sliderTable, value)
+            local previousValue = option.value;
+
+            option.value = value;
+
+            local result = option:InvokeOnValueChanged(value);
+            if (not result) then
+                option.value = previousValue; -- Revert to previous state
+                return false; -- Returning false will prevent the value from changing
+            end
+
+            valueText:SetText(value); -- Update text with new value
+            return true; -- Returning false will prevent the value from changing
+        end)
+    elseif (optionType == OptionType.ComboBox) then
+        local comboBox = UIComboBox.NewComboBox(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 40, 0, {
+            options = option.settings.options,
+            disableButtons = true,
+        });
+        comboBox.button:SetRelativePoint(0.0, 1.0);
+        comboBox:SelectOption(optionValue);
+
+        comboBox:SetOnValueChanged(function(comboBoxTable, index)
+            local previousValue = option.value;
+
+            option.value = index;
+
+            local result = option:InvokeOnValueChanged(index);
+            if (not result) then
+                option.value = previousValue; -- Revert to previous state
+                return false; -- Returning false will prevent the value from changing
+            end
+
+            return true; -- Returning false will prevent the value from changing
+        end)
+    end
+
+    currentY -= select(2, optionText:GetSize()) + 5;
+    return currentY;
+end
+
+local function UpdateMainPanel(optionsMenu, category, group, section)
+    -- Set title
+    local title = category.name;
+    if (group) then
+        title = title .. "/" .. group.name;
+    end
+    if (section) then
+        title = title .. "/" .. section.name;
+    end
+    optionsMenu.mainPanelTitle:SetText(title);
+
+    -- Clear content
+    for i, child in optionsMenu.mainPanelContent.content:GetChildrenRecursive() do
+        UI.DestroyWidget(child);
+    end
+
+    -- Create new content
+    local currentY = 0;
+
+    for i, option in section.options.list do
+        currentY = CreateOption(optionsMenu, currentY, option);
+    end
+
+    -- Update scrollbox
+    local currentHeight = math.abs(currentY);
+    if (currentHeight > optionsMenu.mainPanelContent.content:GetHeight()) then
+        optionsMenu.mainPanelContent:SetVerticalScrollBarVisible(true);
+    else
+        optionsMenu.mainPanelContent:SetVerticalScrollBarVisible(false);
+    end
+    optionsMenu.mainPanelContent:SetContentHeight(currentHeight+5);
+end
 
 local function CreateGameMenu(stack)
     -- Create Canvas
@@ -78,49 +232,90 @@ local function CreateGameMenu(stack)
     end)
 
     stack:Register("GameMenu", panel, 0); -- Name, widget, slot, onPush, onPop
-    stack:Push("GameMenu")
+    --stack:Push("GameMenu")
 
     -- Stack should have max amount of open widgets
     -- If we push more than max, pop previous
 end
 
-local function CreateSidePanel(parent : Panel, width : number)
-    local height = parent:GetHeight();
+local function CreateMainPanel(parent : Panel, x : number, optionsMenu)
+    local padding = 5;
 
-    local sidePanel = parent:NewPanel(0, 0, width, height, 0, "DialogBox");
-    sidePanel:SetAnchor(0.0, 0.5);
-    sidePanel:SetRelativePoint(0.0, 0.5);
-    --sidePanel:SetAlpha(0.0);
+    local width, height = parent:GetSize();
+    width -= x + (padding * 2);
+    height -= padding;
+    x += padding;
+
+    optionsMenu.mainPanel = parent:NewPanel(x, 0, width, height, 0, "DialogBox");
+    optionsMenu.mainPanel:SetAnchor(0.0, 1.0);
+    optionsMenu.mainPanel:SetRelativePoint(0.0, 1.0);
+
+    optionsMenu.mainPanelTitle = optionsMenu.mainPanel:NewText("General", 0, -5, 0, "DefaultButtonText");
+    optionsMenu.mainPanelTitle:SetAnchor(0.5, 1.0);
+    optionsMenu.mainPanelTitle:SetRelativePoint(0.5, 1.0);
+    local titleWidth, titleHeight = optionsMenu.mainPanelTitle:GetSize();
+
+    optionsMenu.mainPanelContent = UIScrollBox.NewScrollBox(optionsMenu.mainPanel, 0, 0, width, height - titleHeight - 10, 0, {});
+    optionsMenu.mainPanelContent.content:SetRelativePoint(0.0, 0.0);
+end
+
+local function CreateSidePanel(parent : Panel, width : number, optionsMenu)
+    local padding = 5;
+    local height = parent:GetHeight();
+    width -= padding;
+    height -= padding;
+
+    optionsMenu.sidePanel = UIScrollBox.NewScrollBox(parent, padding, 0, width, height, 0, {});
+    optionsMenu.sidePanel:SetAnchor(0.0, 1.0);
+    optionsMenu.sidePanel:SetRelativePoint(0.0, 1.0);
+    optionsMenu.sidePanel.scrollBox:SetAlpha(1.0);
 
     -- Categories
     local categories = OptionsContext:GetCategories();
     local currentY = 0;
 
     for i, category in categories do
-        local categoryText = sidePanel:NewText(category.name, 0, currentY, 0, "DefaultButtonText");
+        local categoryText = optionsMenu.sidePanel.content:NewText(category.name, 0, currentY, 0, "DefaultButtonText");
         categoryText:SetAnchor(0.0, 1.0);
         categoryText:SetRelativePoint(0.0, 1.0);
+        --categoryText:SetOnMouseUp(function(eventID, widget, ...)
+        --    UpdateMainPanel(optionsMenu, category, nil, nil);
+        --end)
 
         currentY -= select(2, categoryText:GetSize()) + 5;
 
         for j, group in category.groups.list do
-            local groupText = sidePanel:NewText(group.name, 10, currentY, 0, "DefaultButtonText");
+            local groupText = optionsMenu.sidePanel.content:NewText(group.name, 15, currentY, 0, "DefaultButtonText");
             groupText:SetAnchor(0.0, 1.0);
             groupText:SetRelativePoint(0.0, 1.0);
+            --groupText:SetOnMouseUp(function(eventID, widget, ...)
+            --    UpdateMainPanel(optionsMenu, category, group, nil);
+            --end)
 
             currentY -= select(2, groupText:GetSize()) + 5;
 
             for k, section in group.sections.list do
-                local sectionText = sidePanel:NewText(section.name, 20, currentY, 0, "DefaultButtonText");
+                local sectionText = optionsMenu.sidePanel.content:NewText(section.name, 30, currentY, 0, "DefaultButtonText");
                 sectionText:SetAnchor(0.0, 1.0);
                 sectionText:SetRelativePoint(0.0, 1.0);
+                sectionText:SetOnMouseUp(function(eventID, widget, ...)
+                    UpdateMainPanel(optionsMenu, category, group, section);
+                end)
 
                 currentY -= select(2, sectionText:GetSize()) + 5;
             end
         end
     end
 
-    return sidePanel;
+    local currentHeight = math.abs(currentY);
+    if (currentHeight > height) then
+        optionsMenu.sidePanel:SetVerticalScrollBarVisible(true);
+    else
+        optionsMenu.sidePanel:SetVerticalScrollBarVisible(false);
+    end
+    optionsMenu.sidePanel:SetContentHeight(currentHeight+5);
+
+    return optionsMenu;
 end
 
 function CreateOptionsMenu(stack)
@@ -158,9 +353,14 @@ function CreateOptionsMenu(stack)
     contentPanel:SetRelativePoint(0.5, 0.0);
     contentPanel:SetAlpha(0.0);
 
+    local optionsMenu = {};
+
     -- Left Side panel
     local sidePanelWidth = 250;
-    CreateSidePanel(contentPanel, sidePanelWidth);
+    CreateSidePanel(contentPanel, sidePanelWidth, optionsMenu);
+
+    -- Main panel
+    CreateMainPanel(contentPanel, sidePanelWidth, optionsMenu);
 
     -- Options
     --local optionGroups = OptionsContext:GetGroups();
@@ -218,7 +418,7 @@ function CreateOptionsMenu(stack)
     end);]]
    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
-    stack:Push("OptionsMenu")
+    --stack:Push("OptionsMenu")
 end
 
 local function OnGameLoaded(eventID : number, motd : string)

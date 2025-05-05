@@ -1,8 +1,11 @@
+local OptionsContext = require("@src/API/OptionsContext")
+
 type NameplateAPI = 
 {
     NewNameplate : (parent : Panel, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, nameplateTemplateTable : NameplateTemplate) -> AtlasPanel,
 
     nameplates : { Nameplate },
+    nameplateTextDisplayMode : NameplateTextDisplayType,
 }
 
 type NameplateTemplate =
@@ -20,9 +23,56 @@ type Nameplate =
     foreground : Panel,
 }
 
-local nameplateAPI : NameplateAPI = {};
+local nameplateTextDisplayType : NameplateTextDisplayType = {
+    None = 1,
+    Value = 2,
+    ValuePercent = 3,
+}
+NameplateTextDisplayType = nameplateTextDisplayType;
+
+local nameplateAPI : NameplateAPI = 
+{
+    nameplates = {},
+    nameplateTextDisplayMode = NameplateTextDisplayType.ValuePercent,
+};
+
+local function FormatText(health : number, healthPercent : number)
+    -- Setup options
+    local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
+    local optionGroup = optionCategory:Get("Nameplates");
+    local optionSection = optionGroup:Get("General");
+
+    local mode = NameplateTextDisplayType.None;
+    if (optionSection.options:Has("Text Display Mode")) then
+        local textDisplayModeOption = optionSection:GetOption("Text Display Mode");
+        mode = textDisplayModeOption:Get();
+    end
+
+    if mode == NameplateTextDisplayType.Value then
+        return string.format("%d", health);
+    elseif mode == NameplateTextDisplayType.ValuePercent then
+        return string.format("%d (%.0f%%)", health, healthPercent * 100);
+    end
+    return "";
+end
 
 local function SetupNameplateMethods(nameplateTable : Nameplate)
+
+    nameplateTable.SetEnabled = function(self : Nameplate, enabled : boolean)
+        nameplateTable.border:SetEnabled(enabled);
+    end
+
+    nameplateTable.SetVisible = function(self : Nameplate, visible : boolean)
+        nameplateTable.border:SetVisible(visible);
+    end
+
+    nameplateTable.SetInteractable = function(self : Nameplate, interactable : boolean)
+        nameplateTable.border:SetInteractable(interactable);
+    end
+
+    nameplateTable.SetFocusable = function(self : Nameplate, focusable : boolean)
+        nameplateTable.border:SetFocusable(focusable);
+    end
 
     nameplateTable.SetAnchor = function(self : Nameplate, anchorX : number, anchorY : number)
         self.border:SetAnchor(anchorX, anchorY);
@@ -37,7 +87,7 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.GetHealth = function(self : Nameplate)
-        return self.health;
+        return self.health; 
     end
 
     nameplateTable.SetHealth = function(self : Nameplate, health : number)
@@ -60,7 +110,7 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         --nameplateTable.fill:SetClipRect(0, 0, 1, 1);
         self.fill:SetWidth(newWidth);
 
-        local text = string.format("%d (%.0f%%)", self.health, healthPercent * 100);
+        local text = FormatText(self.health, healthPercent);--string.format("%d (%.0f%%)", self.health, healthPercent * 100);
         nameplateTable.healthText:SetText(text);
     end
 

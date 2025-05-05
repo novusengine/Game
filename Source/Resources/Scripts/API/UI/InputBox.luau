@@ -23,6 +23,10 @@ end
 
 local function RefreshText(inputBoxTable)
     local text = inputBoxTable.text
+    if (type(text) ~= "string") then
+        text = tostring(text)
+    end
+
     local cursorPos = inputBoxTable.cursorPos
 
     local displayText = text
@@ -170,6 +174,9 @@ local function SetupInputBoxMethods(inputBoxTable)
         end
         local cursorPos = inputBoxTable.cursorPos
         local text = inputBoxTable.text
+        if (type(text) ~= "string") then
+            text = tostring(text)
+        end
 
         local cursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos)
         local textBeforeCursor = text:sub(1, cursorBytePos - 1)
@@ -185,6 +192,9 @@ local function SetupInputBoxMethods(inputBoxTable)
         local cursorPos = inputBoxTable.cursorPos
         if cursorPos > 0 then
             local text = inputBoxTable.text
+            if (type(text) ~= "string") then
+                text = tostring(text)
+            end
 
             -- Get byte index of character at cursorPos
             local cursorBytePos = GetBytePositionFromCharacterPosition(text, cursorPos)

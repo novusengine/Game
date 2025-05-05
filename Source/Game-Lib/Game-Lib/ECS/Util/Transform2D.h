@@ -18,7 +18,7 @@ namespace ECS
     public:
         static Transform2DSystem& Get(entt::registry& registry);
 
-        void Clear();
+        void ClearQueue();
 
         //api with entityID alone. Can do world transforms by accessing the scene component
         void SetLocalPosition(entt::entity entity, const vec2& newPosition);
@@ -52,6 +52,7 @@ namespace ECS
         //connects an entity ID into a parent. Will create the required scene-node components on demand if needed
         void ParentEntityTo(entt::entity parent, entt::entity child);        
         void ClearParent(entt::entity entity);
+        bool HasParent(entt::entity entity);
 
         //iterates the children of a given node. NOT recursive
         //callback is in the form SceneComponent* child
@@ -430,11 +431,11 @@ void ECS::Transform2DSystem::IterateChildren(entt::entity entity, F&& callback)
     ECS::Components::SceneNode2D* c = node->firstChild;
     if (c)
     {
-        callback(c);
+        callback(c->ownerEntity);
         c = c->nextSibling;
         while (c != node->firstChild)
         {
-            callback(c);
+            callback(c->ownerEntity);
             c = c->nextSibling;
         }
     }

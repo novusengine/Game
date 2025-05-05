@@ -16,10 +16,10 @@ type CursorInfoModule =
     ClearHand : (self : CursorInfoModule) -> ()
 }
 
---local uiParent = UI.GetCanvas("Cursor", 0, 0, 1920, 1080);
+local cursorCanvas = UI.GetCanvas("CursorCanvas", 0, 0, 1920, 1080);
 local cursorInfoAPI : CursorInfoModule =
 {
-    cursorPanel = Cursor:NewPanel(0, 0, 48, 48, 0, "DialogBox"),
+    cursorPanel = cursorCanvas:NewPanel(0, 0, 48, 48, 0, "DialogBox"),--Cursor:NewPanel(0, 0, 48, 48, 0, "DialogBox"),
     cursorInfo =
     {
         itemSlot = nil

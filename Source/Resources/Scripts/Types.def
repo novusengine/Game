@@ -396,3 +396,11 @@ type OptionCategoryType =
     System : string,
 }
 declare OptionCategoryType : OptionCategoryType;
+
+type NameplateTextDisplayType =
+{
+    None : number,
+    Value : number,
+    ValueAndPercent : number,
+}
+declare NameplateTextDisplayType : NameplateTextDisplayType;

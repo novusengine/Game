@@ -85,6 +85,11 @@ void CanvasRenderer::Update(f32 deltaTime)
             if (text.gpuVertexIndex != -1)
                 _vertices.Remove(text.gpuVertexIndex, text.numCharsNonWhitespace * 6); // * 6 because 6 vertices per char
         }
+        if (widget.scriptWidget != nullptr)
+        {
+            delete widget.scriptWidget;
+            widget.scriptWidget = nullptr;
+        }
 
         uiRegistry->destroy(entity);
     });

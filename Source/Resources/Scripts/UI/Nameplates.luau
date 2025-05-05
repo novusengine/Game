@@ -1,3 +1,4 @@
+
 local UINameplate = require("@src/API/UI/Nameplate");
 local OptionsContext = require("@src/API/OptionsContext")
 
@@ -23,13 +24,46 @@ local function RegisterTemplates()
     });
 end
 
+local function SetEnableNameplates(enabled : boolean)
+    for i, nameplate in nameplates do
+        nameplate:SetEnabled(enabled);
+    end
+end
+
 -- Setup options
 local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
 local optionGroup = optionCategory:Get("Nameplates");
 local optionSection = optionGroup:Get("General");
---local enabledOption = optionSection:GetOption("Enabled");
+
+-- Enabled option
 local enabledOption = optionSection:RegisterOption("Enabled", true, OptionType.Checkbox);
-local isEnabled = enabledOption:Get();
+local enabledCancelCallback = enabledOption:RegisterOnValueChanged(function(self, value)
+    SetEnableNameplates(value);
+    return true;
+end);
+--enabledCancelCallback(); -- Call this to cancel the callback
+
+-- Increase speed option SLIDER
+local increaseSpeedOption = optionSection:RegisterOption("Increase Speed", 10, OptionType.Slider, { Min = 3, Max = 30, Step = 1});
+local speedCancelCallback = increaseSpeedOption:RegisterOnValueChanged(function(self, value)
+    local number = tonumber(value);
+    if (number == nil) then
+        return false;
+    end
+
+    return true;
+end);
+
+-- Text display mode option
+local textDisplayModeOption = optionSection:RegisterOption("Text Display Mode", 3, OptionType.ComboBox, {options = { "None", "Val", "Val (%)" }});
+local textDisplayModeCancelCallback = textDisplayModeOption:RegisterOnValueChanged(function(self, value)
+    local number = tonumber(value);
+    if (number == nil) then
+        return false;
+    end
+
+    return true;
+end);
 
 local function OnGameLoaded(eventID : number, motd : string)
     RegisterTemplates();
@@ -45,7 +79,7 @@ local function OnGameLoaded(eventID : number, motd : string)
 
     table.insert(nameplates, nameplate);
 end
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+--RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
 
 local function OnGameUpdated(eventID : number, deltaTime : number)
     local enabled = enabledOption:Get();
@@ -58,7 +92,7 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
         local health = nameplate:GetHealth();
         local maxHealth = nameplate:GetMaxHealth();
 
-        health += deltaTime * 100;
+        health += deltaTime * increaseSpeedOption:Get();
         if (health > maxHealth) then
             health = 0;
         end
@@ -73,4 +107,4 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
         end
     end
 end
-RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
+--RegisterGameEvent(GameEvent.Updated, OnGameUpdated)

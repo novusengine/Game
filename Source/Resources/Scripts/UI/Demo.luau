@@ -139,7 +139,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     local stack = UIStack.Get("Menu")
 
     --CreateClippingDemo();
-    Demo();
+    --Demo();
     --CreateGameMenu(stack);
     --CreateOptionsMenu(stack);
 

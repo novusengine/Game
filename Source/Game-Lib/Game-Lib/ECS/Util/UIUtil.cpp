@@ -28,7 +28,7 @@ namespace ECS::Util
 {
     namespace UI
     {
-        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)
+        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget*& widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)
         {
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
@@ -37,10 +37,19 @@ namespace ECS::Util
             if (uiSingleton.nameHashToCanvasEntity.contains(nameHash))
             {
                 entt::entity entity = uiSingleton.nameHashToCanvasEntity[nameHash];
+                widget = registry->get<ECS::Components::UI::Widget>(entity).scriptWidget;
                 return entity;
             }
 
-            return CreateCanvas(widget, registry, name, pos, size, isRenderTexture);
+            widget = new Scripting::UI::Widget();
+            widget->type = Scripting::UI::WidgetType::Canvas;
+            widget->metaTableName = "CanvasMetaTable";
+
+            entt::entity entity = CreateCanvas(widget, registry, name, pos, size, isRenderTexture);
+            widget->entity = entity;
+
+            uiSingleton.nameHashToCanvasEntity[nameHash] = entity;
+            return entity;
         }
 
         entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)

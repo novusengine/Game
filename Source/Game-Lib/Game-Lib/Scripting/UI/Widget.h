@@ -55,6 +55,10 @@ namespace Scripting::UI
         i32 IsInteractable(lua_State* state);
         i32 IsFocusable(lua_State* state);
 
+        i32 GetParent(lua_State* state);
+        i32 GetChildren(lua_State* state);
+        i32 GetChildrenRecursive(lua_State* state);
+
         i32 GetAnchor(lua_State* state);
         i32 GetRelativePoint(lua_State* state);
 
@@ -99,6 +103,10 @@ namespace Scripting::UI
         { "IsVisible", WidgetMethods::IsVisible },
         { "IsInteractable", WidgetMethods::IsInteractable },
         { "IsFocusable", WidgetMethods::IsFocusable },
+
+        { "GetParent", WidgetMethods::GetParent },
+        { "GetChildren", WidgetMethods::GetChildren },
+        { "GetChildrenRecursive", WidgetMethods::GetChildrenRecursive },
 
         { "GetAnchor", WidgetMethods::GetAnchor },
         { "GetRelativePoint", WidgetMethods::GetRelativePoint },

@@ -32,5 +32,11 @@ namespace ECS::Singletons
         entt::entity hoveredEntity = entt::null;
         entt::entity focusedEntity = entt::null;
         entt::entity cursorCanvasEntity = entt::null;
+
+        // Cursor canvas
+        Scripting::UI::Widget* cursorCanvas = nullptr;
+
+        // Script widgets, these are actually owned and need to be deleted
+        std::vector<Scripting::UI::Widget*> scriptWidgets;
     };
 }
