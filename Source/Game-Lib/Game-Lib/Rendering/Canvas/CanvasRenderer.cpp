@@ -1,4 +1,5 @@
 #include "CanvasRenderer.h"
+#include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
@@ -7,6 +8,7 @@
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Text.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -32,6 +34,7 @@ void CanvasRenderer::Clear()
     _panelDrawDatas.Clear();
     _charDrawDatas.Clear();
     _textureNameHashToIndex.clear();
+    _textureIDToIndex.clear();
 
     _renderer->UnloadTexturesInArray(_textures, 2);
 }
@@ -46,18 +49,25 @@ CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, DebugRenderer* debu
 void CanvasRenderer::Update(f32 deltaTime)
 {
     ZoneScoped;
+    // Get active camera
+    //entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    //auto& activeCamera = gameRegistry->ctx().get<ECS::Singletons::ActiveCamera>();
 
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-    ECS::Transform2DSystem& transformSystem = ECS::Transform2DSystem::Get(*registry);
+    //auto& cameraComp = gameRegistry->get<ECS::Components::Camera>(activeCamera.entity);
+    //const mat4x4& worldToClip = cameraComp.worldToClip;
 
-    registry->view<Widget, DestroyWidget>().each([&](entt::entity entity, Widget& widget)
+    // UI stuff
+    entt::registry* uiRegistry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    ECS::Transform2DSystem& transformSystem2D = ECS::Transform2DSystem::Get(*uiRegistry);
+
+    uiRegistry->view<Widget, DestroyWidget>().each([&](entt::entity entity, Widget& widget)
     {
         if (widget.type == WidgetType::Canvas)
             return;
 
         if (widget.type == WidgetType::Panel)
         {
-            auto& panel = registry->get<Panel>(entity);
+            auto& panel = uiRegistry->get<Panel>(entity);
 
             if (panel.gpuDataIndex != -1)
                 _panelDrawDatas.Remove(panel.gpuDataIndex);
@@ -67,7 +77,7 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
         else if (widget.type == WidgetType::Text)
         {
-            auto& text = registry->get<Text>(entity);
+            auto& text = uiRegistry->get<Text>(entity);
 
             if (text.gpuDataIndex != -1)
                 _charDrawDatas.Remove(text.gpuDataIndex, text.numCharsNonWhitespace);
@@ -75,69 +85,112 @@ void CanvasRenderer::Update(f32 deltaTime)
             if (text.gpuVertexIndex != -1)
                 _vertices.Remove(text.gpuVertexIndex, text.numCharsNonWhitespace * 6); // * 6 because 6 vertices per char
         }
+        if (widget.scriptWidget != nullptr)
+        {
+            delete widget.scriptWidget;
+            widget.scriptWidget = nullptr;
+        }
 
-        registry->destroy(entity);
+        uiRegistry->destroy(entity);
     });
-    registry->clear<DestroyWidget>();
+    uiRegistry->clear<DestroyWidget>();
+
+    // Dirty Widget World Transform Index flag
+    uiRegistry->view<Widget, DirtyWidgetWorldTransformIndex>().each([&](entt::entity entity, Widget& widget)
+    {
+        transformSystem2D.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
+        {
+            auto& childWidget = uiRegistry->get<Widget>(childEntity);
+            childWidget.worldTransformIndex = widget.worldTransformIndex;
+        });
+    });
+    uiRegistry->clear<DirtyWidgetWorldTransformIndex>();
 
     // Dirty widget flags
-    registry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
+    uiRegistry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
     {
         bool wasInteractable = eventInputInfo.isInteractable;
         eventInputInfo.isInteractable = (widget.flags & WidgetFlags::Interactable) == WidgetFlags::Interactable;
 
         if (wasInteractable != eventInputInfo.isInteractable)
         {
-            ECS::Util::UI::RefreshTemplate(registry, entity, eventInputInfo);
+            ECS::Util::UI::RefreshTemplate(uiRegistry, entity, eventInputInfo);
         }
     });
 
     // Dirty transforms
-    registry->view<DirtyWidgetTransform>().each([&](entt::entity entity)
+    uiRegistry->view<DirtyWidgetTransform>().each([&](entt::entity entity)
     {
-        auto& widget = registry->get<Widget>(entity);
+        auto& widget = uiRegistry->get<Widget>(entity);
 
         if (widget.type == WidgetType::Canvas)
         {
             return; // Nothing to do for canvas
         }
 
-        auto& transform = registry->get<ECS::Components::Transform2D>(entity);
+        auto& canvasComponent = uiRegistry->get<Canvas>(widget.scriptWidget->canvasEntity);
+        vec2 refSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+        vec2 size = refSize;
+
+        if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
+        {
+            auto& canvasTransform = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity);
+            size = canvasTransform.GetSize();
+        }
+
+        auto& transform = uiRegistry->get<ECS::Components::Transform2D>(entity);
         if (widget.type == WidgetType::Panel)
         {
-            auto& panel = registry->get<Panel>(entity);
-            auto& panelTemplate = registry->get<PanelTemplate>(entity);
+            auto& panel = uiRegistry->get<Panel>(entity);
+            auto& panelTemplate = uiRegistry->get<PanelTemplate>(entity);
 
-            UpdatePanelVertices(transform, panel, panelTemplate);
+            // In pixel units
+            vec2 panelPos = transform.GetWorldPosition();
+            vec2 panelSize = transform.GetSize();
+
+            // Convert to clip space units
+            panelSize = PixelSizeToNDC(panelSize, size);
+
+            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            {
+                panelPos = (panelPos / refSize) * 2.0f;
+            }
+            else
+            {
+                // Convert to clip space units
+                panelPos = PixelPosToNDC(panelPos, size);
+            }
+
+            UpdatePanelVertices(panelPos, panelSize, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
-            auto& text = registry->get<Text>(entity);
-            auto& textTemplate = registry->get<TextTemplate>(entity);
+            auto& text = uiRegistry->get<Text>(entity);
+            auto& textTemplate = uiRegistry->get<TextTemplate>(entity);
 
-            UpdateTextVertices(transform, text, textTemplate);
+            UpdateTextVertices(widget, transform, text, textTemplate, size);
         }
     });
-    registry->clear<DirtyWidgetTransform>();
+    uiRegistry->clear<DirtyWidgetTransform>();
 
     // Update clipper data
-    registry->view<DirtyChildClipper>().each([&](entt::entity entity)
+    uiRegistry->view<DirtyChildClipper>().each([&](entt::entity entity)
     {
-        auto& clipper = registry->get<Clipper>(entity);
+        auto& clipper = uiRegistry->get<Clipper>(entity);
 
-        transformSystem.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
+        transformSystem2D.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
         {
-            auto& childClipper = registry->get<Clipper>(childEntity);
+            auto& childClipper = uiRegistry->get<Clipper>(childEntity);
             childClipper.clipRegionOverrideEntity = (clipper.clipChildren) ? entity : entt::null;
 
-            registry->emplace_or_replace<DirtyWidgetData>(childEntity);
+            uiRegistry->emplace_or_replace<DirtyWidgetData>(childEntity);
         });
     });
 
     // Dirty widget datas
-    registry->view<DirtyWidgetData>().each([&](entt::entity entity)
+    uiRegistry->view<DirtyWidgetData>().each([&](entt::entity entity)
     {
-        auto& widget = registry->get<Widget>(entity);
+        auto& widget = uiRegistry->get<Widget>(entity);
         if (widget.type == WidgetType::Canvas)
         {
             //auto& canvas = registry->get<Canvas>(entity);
@@ -145,16 +198,16 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
         else if (widget.type == WidgetType::Panel)
         {
-            ECS::Components::Transform2D& transform = registry->get<ECS::Components::Transform2D>(entity);
-            auto& panel = registry->get<Panel>(entity);
-            auto& panelTemplate = registry->get<PanelTemplate>(entity);
+            ECS::Components::Transform2D& transform = uiRegistry->get<ECS::Components::Transform2D>(entity);
+            auto& panel = uiRegistry->get<Panel>(entity);
+            auto& panelTemplate = uiRegistry->get<PanelTemplate>(entity);
 
             UpdatePanelData(entity, transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
-            auto& text = registry->get<Text>(entity);
-            auto& textTemplate = registry->get<TextTemplate>(entity);
+            auto& text = uiRegistry->get<Text>(entity);
+            auto& textTemplate = uiRegistry->get<TextTemplate>(entity);
 
             UpdateTextData(entity, text, textTemplate);
             text.hasGrown = false;
@@ -176,19 +229,38 @@ void CanvasRenderer::Update(f32 deltaTime)
         _descriptorSet.Bind("_charDrawDatas", _charDrawDatas.GetBuffer());
     }
 
-    registry->clear<DirtyWidgetData>();
-    registry->clear<DirtyWidgetFlags>();
-    registry->clear<DirtyChildClipper>();
-    registry->clear<DirtyClipper>();
+    if (_widgetWorldPositions.SyncToGPU(_renderer))
+    {
+        _descriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
+    }
+
+    uiRegistry->clear<DirtyWidgetData>();
+    uiRegistry->clear<DirtyWidgetFlags>();
+    uiRegistry->clear<DirtyChildClipper>();
+    uiRegistry->clear<DirtyClipper>();
+}
+
+u32 CanvasRenderer::ReserveWorldTransform()
+{
+    return _widgetWorldPositions.Add();
+}
+
+void CanvasRenderer::ReleaseWorldTransform(u32 index)
+{
+    _widgetWorldPositions.Remove(index);
+}
+
+void CanvasRenderer::UpdateWorldTransform(u32 index, const vec3& position)
+{
+    _widgetWorldPositions[index] = vec4(position, 1.0);
+    _widgetWorldPositions.SetDirtyElement(index);
 }
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    _lastRenderedWidgetType = WidgetType::None;
-
     struct Data
     {
-        Renderer::ImageMutableResource target; // TODO: Target should be grabbed from canvases
+        Renderer::ImageMutableResource target;
 
         Renderer::DescriptorSetResource globalDescriptorSet;
         Renderer::DescriptorSetResource descriptorSet;
@@ -200,10 +272,13 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             data.target = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
 
             builder.Read(_panelDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_charDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_widgetWorldPositions.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalDescriptorSet = builder.Use(resources.globalDescriptorSet);
             data.descriptorSet = builder.Use(_descriptorSet);
@@ -213,81 +288,24 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
         [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
-
-            // Set up pipelines
-            Renderer::GraphicsPipelineID panelPipeline;
-            {
-                Renderer::GraphicsPipelineDesc pipelineDesc;
-
-                // Rasterizer state
-                pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-
-                // Render targets.
-                const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.target);
-                pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-                // Shader
-                Renderer::VertexShaderDesc vertexShaderDesc;
-                vertexShaderDesc.path = "UI/Panel.vs.hlsl";
-
-                Renderer::PixelShaderDesc pixelShaderDesc;
-                pixelShaderDesc.path = "UI/Panel.ps.hlsl";
-
-                pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-                pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-                // Blending
-                pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-                pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-                pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-                pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
-                pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-
-                panelPipeline = _renderer->CreatePipeline(pipelineDesc);
-            }
-
-            Renderer::GraphicsPipelineID textPipeline;
-            {
-                Renderer::GraphicsPipelineDesc pipelineDesc;
-
-                // Rasterizer state
-                pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-
-                // Render targets.
-                const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.target);
-                pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-                // Shader
-                Renderer::VertexShaderDesc vertexShaderDesc;
-                vertexShaderDesc.path = "UI/Text.vs.hlsl";
-
-                Renderer::PixelShaderDesc pixelShaderDesc;
-                pixelShaderDesc.path = "UI/Text.ps.hlsl";
-
-                pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-                pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-                // Blending
-                pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-                pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-                pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-                pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-                pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
-
-                textPipeline = _renderer->CreatePipeline(pipelineDesc);
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
 
             Renderer::GraphicsPipelineID currentPipeline;
-            Renderer::RenderPassDesc currentRenderPassDesc;
-            graphResources.InitializeRenderPassDesc(currentRenderPassDesc);
-            currentRenderPassDesc.renderTargets[0] = data.target;
+            _lastRenderedWidgetType = WidgetType::None;
 
-            // Loop over widget roots
-            registry->view<Widget, WidgetRoot>().each([&](auto entity, auto& widget)
+            // Loop over dirty rendertarget canvases
+            registry->view<Canvas, CanvasRenderTargetTag, DirtyCanvasTag>().each([&](auto entity, auto& canvas)
             {
+                Renderer::TextureBaseDesc textureDesc = _renderer->GetTextureDesc(canvas.renderTexture);
+                commandList.SetViewport(0, 0, static_cast<f32>(textureDesc.width), static_cast<f32>(textureDesc.height), 0.0f, 1.0f);
+                commandList.SetScissorRect(0, static_cast<u32>(textureDesc.width), 0, static_cast<u32>(textureDesc.height));
+
+                Renderer::TextureRenderPassDesc renderPassDesc;
+                renderPassDesc.renderTargets[0] = canvas.renderTexture;
+                renderPassDesc.clearRenderTargets[0] = true;
+                bool hasDrawn = false;
+
                 // Loop over children recursively (depth first)
                 transform2DSystem.IterateChildrenRecursiveDepth(entity, [&, registry](auto childEntity)
                 {
@@ -300,27 +318,15 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                     if (childWidget.type == WidgetType::Canvas)
                         return true; // There is nothing to draw for a canvas
 
-                    if (_lastRenderedWidgetType != childWidget.type)
+                    if (!hasDrawn)
                     {
-                        if (_lastRenderedWidgetType != WidgetType::None)
-                        {
-                            commandList.EndPipeline(currentPipeline);
-                            commandList.EndRenderPass(currentRenderPassDesc);
-                        }
+                        commandList.PushMarker("RT Canvas: " + canvas.name, Color::PastelOrange);
+                        commandList.BeginRenderPass(renderPassDesc);
+                        hasDrawn = true;
+                    }
 
-                        _lastRenderedWidgetType = childWidget.type;
-                        
-                        if (childWidget.type == WidgetType::Panel)
-                        {
-                            currentPipeline = panelPipeline;
-                        }
-                        else
-                        {
-                            currentPipeline = textPipeline;
-                        }
-
-                        commandList.BeginRenderPass(currentRenderPassDesc);
-                        commandList.BeginPipeline(currentPipeline);
+                    if (ChangePipelineIfNecessary(commandList, currentPipeline, childWidget.type))
+                    {
                         commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
                     }
 
@@ -340,13 +346,85 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     return true;
                 });
+
+                if (hasDrawn)
+                {
+                    commandList.EndPipeline(currentPipeline);
+                    commandList.EndRenderPass(renderPassDesc);
+                    commandList.PopMarker();
+                }
+            });
+
+            _lastRenderedWidgetType = WidgetType::None;
+
+            vec2 renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+
+            // Loop over regular canvases
+            Renderer::RenderPassDesc mainRenderPassDesc;
+            graphResources.InitializeRenderPassDesc(mainRenderPassDesc);
+            mainRenderPassDesc.renderTargets[0] = data.target;
+            commandList.BeginRenderPass(mainRenderPassDesc);
+
+            registry->view<Canvas>(entt::exclude<CanvasRenderTargetTag>).each([&](auto entity, auto& canvas)
+            {
+                bool hasDrawn = false;
+
+                // Loop over children recursively (depth first)
+                transform2DSystem.IterateChildrenRecursiveDepth(entity, [&, registry](auto childEntity)
+                {
+                    auto& transform = registry->get<ECS::Components::Transform2D>(childEntity);
+                    auto& childWidget = registry->get<Widget>(childEntity);
+
+                    if (!childWidget.IsVisible())
+                        return false; // Skip invisible widgets
+
+                    if (childWidget.type == WidgetType::Canvas)
+                        return true; // There is nothing to draw for a canvas
+
+                    if (!hasDrawn)
+                    {
+                        commandList.PushMarker("Canvas: " + canvas.name, Color::PastelOrange);
+                        hasDrawn = true;
+                    }
+
+                    if (ChangePipelineIfNecessary(commandList, currentPipeline, childWidget.type))
+                    {
+                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalDescriptorSet, frameIndex);
+                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
+                    }
+
+                    if (childWidget.type == WidgetType::Panel)
+                    {
+                        auto& panel = registry->get<Panel>(childEntity);
+                        RenderPanel(commandList, transform, childWidget, panel);
+                    }
+                    else if (childWidget.type == WidgetType::Text)
+                    {
+                        auto& text = registry->get<Text>(childEntity);
+                        if (text.numCharsNonWhitespace > 0)
+                        {
+                            RenderText(commandList, transform, childWidget, text);
+                        }
+                    }
+
+                    return true;
+                });
+
+                if (hasDrawn)
+                {
+                    commandList.PopMarker();
+                }
             });
 
             if (_lastRenderedWidgetType != WidgetType::None)
             {
                 commandList.EndPipeline(currentPipeline);
-                commandList.EndRenderPass(currentRenderPassDesc);
             }
+            commandList.EndRenderPass(mainRenderPassDesc);
+
+            registry->clear<DirtyCanvasTag>();
         });
 }
 
@@ -405,9 +483,76 @@ void CanvasRenderer::CreatePermanentResources()
 
     _charDrawDatas.SetDebugName("CharDrawDatas");
     _charDrawDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    _widgetWorldPositions.SetDebugName("WidgetWorldPositions");
+    _widgetWorldPositions.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    // Push a debug position
+    _widgetWorldPositions.Add(vec4(0, 0, 0, 1));
+
+    // Create pipelines
+    Renderer::ImageFormat renderTargetFormat = _renderer->GetSwapChainImageFormat();
+
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+
+        // Render targets.
+        pipelineDesc.states.renderTargetFormats[0] = renderTargetFormat;
+
+        // Shader
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.path = "UI/Panel.vs.hlsl";
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.path = "UI/Panel.ps.hlsl";
+
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Blending
+        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+
+        _panelPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+
+        // Render targets.
+        pipelineDesc.states.renderTargetFormats[0] = renderTargetFormat;
+
+        // Shader
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.path = "UI/Text.vs.hlsl";
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.path = "UI/Text.ps.hlsl";
+
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Blending
+        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+
+        _textPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
 }
 
-void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
+void CanvasRenderer::UpdatePanelVertices(const vec2& clipPos, const vec2& clipSize, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
 {
     // Add vertices if necessary
     if (panel.gpuVertexIndex == -1)
@@ -428,18 +573,15 @@ void CanvasRenderer::UpdatePanelVertices(ECS::Components::Transform2D& transform
     panelUVs[5] = vec2(min.x, max.y); // Left Top
 
     // Update vertices
-    vec2 position = PixelPosToNDC(transform.GetWorldPosition());
-    vec2 size = PixelSizeToNDC(transform.GetSize());
-
     // Triangle 1
-    _vertices[panel.gpuVertexIndex + 0] = vec4(position, panelUVs[0]);
-    _vertices[panel.gpuVertexIndex + 1] = vec4(position + vec2(size.x, size.y), panelUVs[1]);
-    _vertices[panel.gpuVertexIndex + 2] = vec4(position + vec2(size.x, 0), panelUVs[2]);
+    _vertices[panel.gpuVertexIndex + 0] = vec4(clipPos, panelUVs[0]);
+    _vertices[panel.gpuVertexIndex + 1] = vec4(clipPos + vec2(clipSize.x, clipSize.y), panelUVs[1]);
+    _vertices[panel.gpuVertexIndex + 2] = vec4(clipPos + vec2(clipSize.x, 0), panelUVs[2]);
 
     // Triangle 2
-    _vertices[panel.gpuVertexIndex + 3] = vec4(position + vec2(0, size.y), panelUVs[3]);
-    _vertices[panel.gpuVertexIndex + 4] = vec4(position + vec2(size.x, size.y), panelUVs[4]);
-    _vertices[panel.gpuVertexIndex + 5] = vec4(position, panelUVs[5]);
+    _vertices[panel.gpuVertexIndex + 3] = vec4(clipPos + vec2(0, clipSize.y), panelUVs[3]);
+    _vertices[panel.gpuVertexIndex + 4] = vec4(clipPos + vec2(clipSize.x, clipSize.y), panelUVs[4]);
+    _vertices[panel.gpuVertexIndex + 5] = vec4(clipPos, panelUVs[5]);
 
     _vertices.SetDirtyElements(panel.gpuVertexIndex, 6);
 }
@@ -465,7 +607,7 @@ void CalculateVertices(const vec4& pos, const vec4& uv, Renderer::GPUVector<vec4
     vertices[vertexIndex + 5] = vec4(posLeft, posTop, uvLeft, uvTop);
 }
 
-void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate)
+void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, const vec2& canvasSize)
 {
     if (text.text.size() == 0)
     {
@@ -509,6 +651,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
     }
 
     vec2 worldPos = transform.GetWorldPosition();
+    vec2 refSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
     Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font);
     vec2 atlasSize = vec2(font->width, font->height);
@@ -570,9 +713,19 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::Transform2D& transform,
             planeRight += penPos.x + worldPos.x;
             planeTop += penPos.y + worldPos.y;
 
-            // Convert the plane coordinates to NDC space
-            vec2 planeMin = PixelPosToNDC(vec2(planeLeft, planeBottom));
-            vec2 planeMax = PixelPosToNDC(vec2(planeRight, planeTop));
+            vec2 planeMin;
+            vec2 planeMax;
+            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            {
+                planeMin = (vec2(planeLeft, planeBottom) / refSize) * 2.0f;
+                planeMax = (vec2(planeRight, planeTop) / refSize) * 2.0f;
+            }
+            else
+            {
+                // Convert the plane coordinates to NDC space
+                planeMin = PixelPosToNDC(vec2(planeLeft, planeBottom), canvasSize);
+                planeMax = PixelPosToNDC(vec2(planeRight, planeTop), canvasSize);
+            }
 
             // Scale the atlas coordinates by the texel dimensions
             atlasLeft *= texelSize.x;
@@ -613,9 +766,19 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     u16 textureIndex = 0;
     u16 additiveTextureIndex = 1;
 
-    if (!panelTemplate.background.empty())
+    if (panelTemplate.setFlags.backgroundRT)
     {
-        textureIndex = LoadTexture(panelTemplate.background);
+        if (panelTemplate.backgroundRT != Renderer::TextureID::Invalid())
+        {
+            textureIndex = AddTexture(panelTemplate.backgroundRT);
+        }
+    }
+    else
+    {
+        if (!panelTemplate.background.empty())
+        {
+            textureIndex = LoadTexture(panelTemplate.background);
+        }
     }
 
     if (!panelTemplate.foreground.empty())
@@ -645,8 +808,8 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     BoundingRect* boundingRect = &registry->get<BoundingRect>(entity);
     
     vec2 referenceSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-    vec2 clipRegionMin = vec2(0.0f, 0.0f);
-    vec2 clipRegionMax = vec2(1.0f, 1.0f);
+    vec2 clipRegionMin = clipper->clipRegionMin;
+    vec2 clipRegionMax = clipper->clipRegionMax;
 
     if (clipper->clipRegionOverrideEntity != entt::null)
     {
@@ -663,6 +826,10 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     drawData.packed0.y = (clipper->hasClipMaskTexture) ? LoadTexture(clipper->clipMaskTexture) : 0;
     drawData.clipRegionRect = vec4(clipRegionMin, clipRegionMax);
     drawData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
+
+    // World position UI
+    auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
+    drawData.worldPositionIndex = widget.worldTransformIndex;
 
     _panelDrawDatas.SetDirtyElement(panel.gpuDataIndex);
 }
@@ -777,9 +944,39 @@ void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Compon
         drawData.clipRegionRect = vec4(clipRegionMin, clipRegionMax);
         drawData.clipMaskRegionRect = vec4(scaledClipMaskRegionMin, scaledClipMaskRegionMax);
 
+        // World position UI
+        auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
+        drawData.worldPositionIndex = widget.worldTransformIndex;
+
         charIndex++;
     }
     _charDrawDatas.SetDirtyElements(text.gpuDataIndex, text.numCharsNonWhitespace);
+}
+
+bool CanvasRenderer::ChangePipelineIfNecessary(Renderer::CommandList& commandList, Renderer::GraphicsPipelineID& currentPipeline, ECS::Components::UI::WidgetType widgetType)
+{
+    if (_lastRenderedWidgetType != widgetType)
+    {
+        if (_lastRenderedWidgetType != WidgetType::None)
+        {
+            commandList.EndPipeline(currentPipeline);
+        }
+
+        _lastRenderedWidgetType = widgetType;
+
+        if (widgetType == WidgetType::Panel)
+        {
+            currentPipeline = _panelPipeline;
+        }
+        else
+        {
+            currentPipeline = _textPipeline;
+        }
+
+        commandList.BeginPipeline(currentPipeline);
+        return true;
+    }
+    return false;
 }
 
 void CanvasRenderer::RenderPanel(Renderer::CommandList& commandList, ECS::Components::Transform2D& transform, Widget& widget, Panel& panel)
@@ -796,18 +993,30 @@ void CanvasRenderer::RenderText(Renderer::CommandList& commandList, ECS::Compone
     commandList.PopMarker();
 }
 
-vec2 CanvasRenderer::PixelPosToNDC(const vec2& pixelPosition) const
+vec2 CanvasRenderer::PixelPosToNDC(const vec2& pixelPosition, const vec2& screenSize) const
 {
-    constexpr vec2 screenSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-
     return vec2(2.0 * pixelPosition.x / screenSize.x - 1.0, 2.0 * pixelPosition.y / screenSize.y - 1.0);
 }
 
-vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize) const
+vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize, const vec2& screenSize) const
 {
-    constexpr vec2 screenSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-
     return vec2(2.0 * pixelSize.x / screenSize.x, 2.0 * pixelSize.y / screenSize.y);
+}
+
+u32 CanvasRenderer::AddTexture(Renderer::TextureID textureID)
+{
+    Renderer::TextureID::type typedID = static_cast<Renderer::TextureID::type>(textureID);
+    if (_textureIDToIndex.contains(typedID))
+    {
+        // Use already added texture
+        return _textureIDToIndex[typedID];
+    }
+
+    // Add texture
+    u32 textureIndex = _renderer->AddTextureToArray(textureID, _textures);
+
+    _textureIDToIndex[typedID] = textureIndex;
+    return textureIndex;
 }
 
 u32 CanvasRenderer::LoadTexture(std::string_view path)

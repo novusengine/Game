@@ -24,8 +24,8 @@ namespace ECS::Util
 {
     namespace UI
     {
-        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size);
-        entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, entt::entity parent = entt::null);
+        entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget*& widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture);
+        entt::entity CreateCanvas(Scripting::UI::Widget* widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture);
 
         entt::entity CreatePanel(Scripting::UI::Widget* widget, entt::registry* registry, vec2 pos, ivec2 size, u32 layer, const char* templateName, entt::entity parent);
         entt::entity CreateText(Scripting::UI::Widget* widget, entt::registry* registry, const char* text, vec2 pos, u32 layer, const char* templateName, entt::entity parent);

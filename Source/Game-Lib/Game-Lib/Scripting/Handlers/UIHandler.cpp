@@ -1,5 +1,6 @@
 #include "UIHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -71,32 +72,33 @@ namespace Scripting::UI
 
         // Setup Cursor Canvas
         {
-            LuaState ctx(state);
-
-            Widget* canvas = ctx.PushUserData<Widget>([](void* x)
-            {
-                // Very sad canvas is gone now :(
-            });
-
             auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
-            uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48));
-            canvas->type = WidgetType::Canvas;
-            canvas->entity = uiSingleton.cursorCanvasEntity;
 
-            canvas->metaTableName = "CanvasMetaTable";
-            luaL_getmetatable(state, "CanvasMetaTable");
-            lua_setmetatable(state, -2);
-
-            ctx.SetGlobal("Cursor");
+            uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(uiSingleton.cursorCanvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48), false);
         }
     }
 
     void UIHandler::Clear()
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        auto& transformSystem = ECS::Transform2DSystem::Get(*registry);
+
+        registry->view<ECS::Components::UI::Widget>().each([&transformSystem](entt::entity entity, ECS::Components::UI::Widget& widget)
+        {
+            if (widget.scriptWidget != nullptr)
+            {
+                delete widget.scriptWidget;
+                widget.scriptWidget = nullptr;
+            }
+            if (transformSystem.HasParent(entity))
+            {
+                transformSystem.ClearParent(entity);
+            }
+        });
+
         registry->clear();
 
-        ECS::Transform2DSystem::Get(*registry).Clear();
+        transformSystem.ClearQueue();
         ServiceLocator::GetGameRenderer()->GetCanvasRenderer()->Clear();
 
         if (registry->ctx().contains<ECS::Singletons::UISingleton>())
@@ -104,7 +106,18 @@ namespace Scripting::UI
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
             uiSingleton.panelTemplates.clear();
             uiSingleton.textTemplates.clear();
-        }
+
+            uiSingleton.nameHashToCanvasEntity.clear();
+            uiSingleton.templateHashToTextTemplateIndex.clear();
+            uiSingleton.templateHashToPanelTemplateIndex.clear();
+            uiSingleton.lastClickPosition = vec2(0, 0);
+            uiSingleton.clickedEntity = entt::null;
+            uiSingleton.hoveredEntity = entt::null;
+            uiSingleton.focusedEntity = entt::null;
+            uiSingleton.cursorCanvasEntity = entt::null;
+            uiSingleton.allHoveredEntities.clear();
+            uiSingleton.scriptWidgets.clear();
+        } 
     }
 
     // UI
@@ -467,19 +480,19 @@ namespace Scripting::UI
         i32 sizeX = ctx.Get(100, 4);
         i32 sizeY = ctx.Get(100, 5);
 
-        Widget* canvas = ctx.PushUserData<Widget>([](void* x)
+        bool isRenderTexture = ctx.Get(false, 6);
+
+        Widget* widget = nullptr;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(widget, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY), isRenderTexture);
+
+        Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
         {
             // Very sad canvas is gone now :(
         });
-
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(canvas, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY));
-
-        canvas->type = WidgetType::Canvas;
-        canvas->entity = entity;
-
-        canvas->metaTableName = "CanvasMetaTable";
-        luaL_getmetatable(state, "CanvasMetaTable");
+        memcpy(pushWidget, widget, sizeof(Widget));
+        luaL_getmetatable(state, widget->metaTableName.c_str());
         lua_setmetatable(state, -2);
 
         return 1;
@@ -664,6 +677,8 @@ namespace Scripting::UI
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Util::UI::FocusWidgetEntity(registry, widget->entity);
 
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
         return 0;
     }
 
@@ -684,6 +699,8 @@ namespace Scripting::UI
         {
             ECS::Util::UI::FocusWidgetEntity(registry, entt::null);
         }
+
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
         return 0;
     }
@@ -761,10 +778,12 @@ namespace Scripting::UI
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
         auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
-        if (widgetComp.type != ECS::Components::UI::WidgetType::Panel && widgetComp.type != ECS::Components::UI::WidgetType::Text)
+        if (widgetComp.type != ECS::Components::UI::WidgetType::Panel && widgetComp.type != ECS::Components::UI::WidgetType::Text && widgetComp.type != ECS::Components::UI::WidgetType::Widget)
         {
-            luaL_error(state, "Expected a Panel or Text for DestroyWidget");
+            luaL_error(state, "Expected a Panel, Text or Widget for DestroyWidget");
         }
+
+        registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
         if (!ECS::Util::UI::DestroyWidget(registry, widget->entity))
         {

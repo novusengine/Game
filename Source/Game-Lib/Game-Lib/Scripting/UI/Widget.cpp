@@ -1,11 +1,14 @@
 #include "Widget.h"
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
+#include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
@@ -39,13 +42,11 @@ namespace Scripting::UI
 
             const char* templateName = ctx.Get(nullptr, 7);
 
-            Panel* panel = ctx.PushUserData<Panel>([](void* x)
-            {
-
-            });
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+            Panel* panel = new Panel();
+            uiSingleton.scriptWidgets.push_back(panel);
 
             if (templateName != nullptr)
             {
@@ -60,9 +61,17 @@ namespace Scripting::UI
 
             panel->type = WidgetType::Panel;
             panel->entity = entity;
-
+            panel->canvasEntity = (parent->type == WidgetType::Canvas) ? parent->entity : parent->canvasEntity;
             panel->metaTableName = "PanelMetaTable";
-            luaL_getmetatable(state, "PanelMetaTable");
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
+
+            Panel* pushPanel = ctx.PushUserData<Panel>([](void* x)
+            {
+
+            });
+            memcpy(pushPanel, panel, sizeof(Panel));
+            luaL_getmetatable(state, panel->metaTableName.c_str());
             lua_setmetatable(state, -2);
 
             return 1;
@@ -99,18 +108,24 @@ namespace Scripting::UI
                 luaL_error(state, "Tried to use template name '%s' but no text template with that name has been registered", templateName);
             }
 
-            Text* text = ctx.PushUserData<Text>([](void* x)
-            {
-
-            });
+            Text* text = new Text();
+            uiSingleton.scriptWidgets.push_back(text);
 
             entt::entity entity = ECS::Util::UI::CreateText(text, registry, str, vec2(posX, posY), layer, templateName, parent->entity);
 
             text->type = WidgetType::Text;
             text->entity = entity;
-
+            text->canvasEntity = (parent->type == WidgetType::Canvas) ? parent->entity : parent->canvasEntity;
             text->metaTableName = "TextMetaTable";
-            luaL_getmetatable(state, "TextMetaTable");
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
+
+            Text* pushText = ctx.PushUserData<Text>([](void* x)
+            {
+
+            });
+            memcpy(pushText, text, sizeof(Text));
+            luaL_getmetatable(state, text->metaTableName.c_str());
             lua_setmetatable(state, -2);
 
             return 1;
@@ -131,19 +146,27 @@ namespace Scripting::UI
 
             u32 layer = ctx.Get(0, 4);
 
-            Widget* widget = ctx.PushUserData<Widget>([](void* x)
-            {
-
-            });
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+            Widget* widget = new Widget();
+            uiSingleton.scriptWidgets.push_back(widget);
+
             entt::entity entity = ECS::Util::UI::CreateWidget(widget, registry, vec2(posX, posY), layer, parent->entity);
 
             widget->type = WidgetType::Widget;
             widget->entity = entity;
-
+            widget->canvasEntity = (parent->type == WidgetType::Canvas) ? parent->entity : parent->canvasEntity;
             widget->metaTableName = "WidgetMetaTable";
-            luaL_getmetatable(state, "WidgetMetaTable");
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
+            Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
+            {
+
+            });
+            memcpy(pushWidget, widget, sizeof(Widget));
+            luaL_getmetatable(state, widget->metaTableName.c_str());
             lua_setmetatable(state, -2);
 
             return 1;
@@ -182,6 +205,8 @@ i32 Scripting::UI::WidgetMethods::SetEnabled(lua_State* state)
     widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * enabled + toRemove * !enabled);
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -208,6 +233,8 @@ i32 Scripting::UI::WidgetMethods::SetVisible(lua_State* state)
 
     widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * visible + toRemove * !visible);
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -236,6 +263,8 @@ i32 Scripting::UI::WidgetMethods::SetInteractable(lua_State* state)
     widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * interactable + toRemove * !interactable);
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -262,6 +291,8 @@ i32 Scripting::UI::WidgetMethods::SetFocusable(lua_State* state)
 
     widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * focusable + toRemove * !focusable);
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -338,6 +369,137 @@ i32 Scripting::UI::WidgetMethods::IsFocusable(lua_State* state)
     return 1;
 }
 
+i32 Scripting::UI::WidgetMethods::GetParent(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    if (transform.ownerNode == nullptr)
+    {
+        ctx.Push();
+        return 1;
+    }
+
+    ECS::Components::SceneNode2D* parentNode = transform.ownerNode->GetParent();
+    if (parentNode == nullptr)
+    {
+        ctx.Push();
+        return 1;
+    }
+
+    entt::entity parentEntity = parentNode->GetOwner();
+    if (!registry->valid(parentEntity))
+    {
+        ctx.Push();
+        return 1;
+    }
+
+    auto* parentWidgetComp = registry->try_get<ECS::Components::UI::Widget>(parentEntity);
+    if (parentWidgetComp == nullptr)
+    {
+        ctx.Push();
+        return 1;
+    }
+
+    Widget* parentWidget = parentWidgetComp->scriptWidget;
+
+    Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
+    {
+
+    });
+    memcpy(pushWidget, parentWidget, sizeof(ECS::Components::UI::Widget));
+    luaL_getmetatable(state, parentWidget->metaTableName.c_str());
+    lua_setmetatable(state, -2);
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::GetChildren(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    ctx.CreateTableAndPopulate([&ctx, &state, &widget]()
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+        u32 numWidgetsPushed = 0;
+
+        ts.IterateChildren(widget->entity, [&](auto childEntity)
+        {
+            auto* widgetComp = registry->try_get<ECS::Components::UI::Widget>(childEntity);
+            if (widgetComp != nullptr)
+            {
+                Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
+                {
+
+                });
+
+                Widget* parentWidget = widgetComp->scriptWidget;
+                memcpy(pushWidget, parentWidget, sizeof(Widget));
+                luaL_getmetatable(state, parentWidget->metaTableName.c_str());
+                lua_setmetatable(state, -2);
+
+                ctx.SetTable(++numWidgetsPushed);
+            }
+        });
+    });
+
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::GetChildrenRecursive(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    ctx.CreateTableAndPopulate([&ctx, &state, &widget]()
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
+        u32 numWidgetsPushed = 0;
+
+        ts.IterateChildrenRecursiveBreadth(widget->entity, [&](auto childEntity)
+        {
+            auto* widgetComp = registry->try_get<ECS::Components::UI::Widget>(childEntity);
+            if (widgetComp != nullptr)
+            {
+                Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
+                {
+
+                });
+
+                Widget* parentWidget = widgetComp->scriptWidget;
+                memcpy(pushWidget, parentWidget, sizeof(Widget));
+                luaL_getmetatable(state, parentWidget->metaTableName.c_str());
+                lua_setmetatable(state, -2);
+
+                ctx.SetTable(++numWidgetsPushed);
+            }
+        });
+    });
+
+    return 1;
+}
+
 i32 Scripting::UI::WidgetMethods::GetAnchor(lua_State* state)
 {
     LuaState ctx(state);
@@ -398,6 +560,8 @@ i32 Scripting::UI::WidgetMethods::SetAnchor(lua_State* state)
 
     ts.SetAnchor(widget->entity, vec2(x, y));
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -418,6 +582,8 @@ i32 Scripting::UI::WidgetMethods::SetRelativePoint(lua_State* state)
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
     ts.SetRelativePoint(widget->entity, vec2(x, y));
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -463,6 +629,8 @@ i32 Scripting::UI::WidgetMethods::SetClipChildren(lua_State* state)
         // Also needs to reenable clipping on the widget itself after it disables on all children
         registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
     }
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -516,7 +684,10 @@ i32 Scripting::UI::WidgetMethods::SetClipRect(lua_State* state)
     else
     {
         registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+        registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
     }
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -579,6 +750,8 @@ i32 Scripting::UI::WidgetMethods::SetClipMaskTexture(lua_State* state)
     {
         registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
     }
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -656,6 +829,8 @@ i32 Scripting::UI::WidgetMethods::SetPos(lua_State* state)
 
     ts.SetLocalPosition(widget->entity, vec2(x, y));
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -678,6 +853,8 @@ i32 Scripting::UI::WidgetMethods::SetPosX(lua_State* state)
     pos.x = x;
     ts.SetLocalPosition(widget->entity, pos);
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -699,6 +876,8 @@ i32 Scripting::UI::WidgetMethods::SetPosY(lua_State* state)
     vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
     pos.y = y;
     ts.SetLocalPosition(widget->entity, pos);
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -776,6 +955,8 @@ i32 Scripting::UI::WidgetMethods::SetWorldPos(lua_State* state)
 
     ts.SetWorldPosition(widget->entity, vec2(x, y));
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -798,6 +979,8 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosX(lua_State* state)
     pos.x = x;
     ts.SetWorldPosition(widget->entity, pos);
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -819,6 +1002,55 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosY(lua_State* state)
     vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
     pos.y = y;
     ts.SetWorldPosition(widget->entity, pos);
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::SetPos3D(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+
+    if (lua_isnil(state, 2))
+    {
+        transform.SetIgnoreParent(false);
+
+        if (widgetComp.worldTransformIndex != std::numeric_limits<u32>().max())
+        {
+            canvasRenderer->ReleaseWorldTransform(widgetComp.worldTransformIndex);
+        }
+
+        widgetComp.worldTransformIndex = std::numeric_limits<u32>().max();
+    }
+    else
+    {
+        transform.SetIgnoreParent(true);
+
+        if (widgetComp.worldTransformIndex == std::numeric_limits<u32>().max())
+        {
+            widgetComp.worldTransformIndex = canvasRenderer->ReserveWorldTransform();
+        }
+        
+        vec3 pos = ctx.Get(vec3(0, 0, 0), 2);
+        canvasRenderer->UpdateWorldTransform(widgetComp.worldTransformIndex, pos);
+    }
+
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
     return 0;
 }
@@ -843,6 +1075,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseDown(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseDownEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -865,6 +1099,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseUp(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseUpEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -889,6 +1125,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseHeld(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseHeldEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -911,6 +1149,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnMouseScroll(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onMouseScrollEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -935,6 +1175,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverBegin(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onHoverBeginEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -957,6 +1199,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverEnd(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onHoverEndEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -981,6 +1225,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnHoverHeld(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onHoverHeldEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -1003,6 +1249,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnFocusBegin(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onFocusBeginEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }
@@ -1027,6 +1275,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnFocusEnd(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onFocusEndEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -1050,6 +1300,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnFocusHeld(lua_State* state)
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onFocusHeldEvent = callback;
 
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+
     return 0;
 }
 
@@ -1072,6 +1324,8 @@ i32 Scripting::UI::WidgetInputMethods::SetOnKeyboard(lua_State* state)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& eventInputInfo = registry->get<ECS::Components::UI::EventInputInfo>(widget->entity);
     eventInputInfo.onKeyboardEvent = callback;
+
+    registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
     return 0;
 }

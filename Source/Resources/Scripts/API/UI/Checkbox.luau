@@ -71,6 +71,8 @@ function checkboxAPI.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkb
     checkboxTable.fill:SetVisible(false)
     checkboxTable = SetupCheckboxMethods(checkboxTable);
 
+    checkboxTable:SetChecked(checkboxTemplateTable["isChecked"] or false);
+
     return checkboxTable;
 end
 

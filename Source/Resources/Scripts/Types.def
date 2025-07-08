@@ -378,3 +378,29 @@ declare Container :
     RequestSwapSlots : ((containerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
     GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
 }
+
+type OptionType =
+{
+    InputBox : number,
+    Checkbox : number,
+    Slider : number,
+    ComboBox : number,
+}
+declare OptionType : OptionType;
+
+type OptionCategoryType =
+{
+    Gameplay : string,
+    Keybindings : string,
+    Accessibility : string,
+    System : string,
+}
+declare OptionCategoryType : OptionCategoryType;
+
+type NameplateTextDisplayType =
+{
+    None : number,
+    Value : number,
+    ValueAndPercent : number,
+}
+declare NameplateTextDisplayType : NameplateTextDisplayType;

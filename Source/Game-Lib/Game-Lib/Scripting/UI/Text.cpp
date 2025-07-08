@@ -1,5 +1,6 @@
 #include "Text.h"
 
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/Text.h"
 #include "Game-Lib/ECS/Components/UI/TextTemplate.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
@@ -60,6 +61,8 @@ namespace Scripting::UI
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
             textComponent.rawText = text;
             ECS::Util::UI::RefreshText(registry, widget->entity, text);
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
             return 0;
         }
@@ -135,6 +138,7 @@ namespace Scripting::UI
             textTemplate.setFlags.color = true;
 
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
             return 0;
         }
 
@@ -176,6 +180,8 @@ namespace Scripting::UI
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
             ECS::Util::UI::RefreshText(registry, widget->entity, textComponent.rawText);
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
             return 0;
         }

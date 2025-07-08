@@ -4,6 +4,9 @@
 #include <Base/Math/Color.h>
 #include <Base/Types.h>
 
+#include <Renderer/Descriptors/TextureDesc.h>
+
+#include <entt/fwd.hpp>
 #include <optional>
 
 namespace ECS::Components::UI
@@ -14,6 +17,7 @@ namespace ECS::Components::UI
         struct SetFlags
         {
             u8 background : 1 = 0;
+            u8 backgroundRT : 1 = 0;
             u8 foreground : 1 = 0;
             u8 color : 1 = 0;
             u8 cornerRadius : 1 = 0;
@@ -23,6 +27,8 @@ namespace ECS::Components::UI
         SetFlags setFlags;
 
         std::string background;
+        Renderer::TextureID backgroundRT;
+        entt::entity backgroundRTEntity;
         std::string foreground;
         Color color = Color::White;
         f32 cornerRadius = 0.0f;

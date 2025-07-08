@@ -26,7 +26,7 @@ ECS::Transform2DSystem& ECS::Transform2DSystem::Get(entt::registry& registry)
     }
 }
 
-void ECS::Transform2DSystem::Clear()
+void ECS::Transform2DSystem::ClearQueue()
 {
     TransformQueueItem temp;
     while (elements.try_dequeue(temp))
@@ -298,6 +298,24 @@ void ECS::Transform2DSystem::ClearParent(entt::entity entity)
         sceneNode->DetachParent();
         RefreshTransform(entity, *transform);
     }
+}
+
+bool ECS::Transform2DSystem::HasParent(entt::entity entity)
+{
+    ECS::Components::Transform2D* transform = owner->try_get<ECS::Components::Transform2D>(entity);
+
+    if (!transform)
+    {
+        return false;
+    }
+
+    ECS::Components::SceneNode2D* sceneNode = owner->try_get<ECS::Components::SceneNode2D>(entity);
+    if (!sceneNode)
+    {
+        return false;
+    }
+
+    return sceneNode->HasParent();
 }
 
 ECS::Components::Transform2D* ECS::Components::Transform2D::GetParentTransform() const
