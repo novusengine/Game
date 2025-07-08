@@ -35,7 +35,6 @@ void PixelQuery::Update(f32 deltaTime)
 
 void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    return;
     u32 numResultsToProcess = _numRequestsLastFrame[_frameIndex];
     if (numResultsToProcess > 0)
     {
@@ -154,7 +153,6 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 u32 PixelQuery::PerformQuery(uvec2 pixelCoords)
 {
-    return 0;
     ZoneScoped;
 
     std::string frameIndexStr = "FrameIndex: " + std::to_string(_frameIndex);
@@ -203,7 +201,6 @@ u32 PixelQuery::PerformQuery(uvec2 pixelCoords)
 
 bool PixelQuery::GetQueryResult(u32 token, PixelQuery::PixelData& pixelData)
 {
-    return false;
     ZoneScoped;
 
     bool didFindResult = false;
@@ -223,7 +220,6 @@ bool PixelQuery::GetQueryResult(u32 token, PixelQuery::PixelData& pixelData)
 
 bool PixelQuery::FreeToken(u32 token)
 {
-    return false;
     ZoneScoped;
 
     std::string frameIndexStr = "FrameIndex: " + std::to_string(_frameIndex);
