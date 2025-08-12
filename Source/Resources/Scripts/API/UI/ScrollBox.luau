@@ -1,4 +1,3 @@
-
 type ScrollBoxAPI =
 {
     NewScrollBox : (parent : Panel, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, scrollBoxTemplateTable : ScrollBoxTemplate) -> ScrollBox,
@@ -14,7 +13,8 @@ type ScrollBoxTemplate =
     verticalScrollBar : boolean?,
     horizontalScrollBar : boolean?,
     scrollBarWidth : number?,
-    autoScrollToTopWhenChangeContentHeight : boolean?,
+    autoScrollToStart : boolean?, -- NEW: Auto-scroll to start when content height changes
+    fillFromBottom : boolean?, -- NEW: Option to fill from bottom instead of top
 
     sensitivity : number?,
 
@@ -30,7 +30,8 @@ type ScrollBoxTemplate =
 type ScrollBox =
 {
     Scroll : (self : ScrollBox, event : string, x : number, y : number) -> (),
-    ScrollToTop : (self : ScrollBox) -> (),
+    ScrollToStart : (self : ScrollBox) -> (), -- Scrolls to the "start" (top for top-fill, bottom for bottom-fill)
+    ScrollToEnd : (self : ScrollBox) -> (), -- Scrolls to the "end" (bottom for top-fill, top for bottom-fill)
     MoveContent : (self : ScrollBox, x : number, y : number) -> (),
     MoveScrollBar : (self : ScrollBox, y : number) -> (),
     SetAnchor : (self : ScrollBox, x : number, y : number) -> (),
@@ -57,28 +58,83 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
         -- For X, we still clamp between math.min(0, width - contentWidth) and 0.
         local lowerBoundX = math.min(0, width - contentWidth);
     
-        -- For Y, if you want to only move the content upward (making scrollPosY positive),
-        -- then the allowed range is from 0 (initial top alignment) to (contentHeight - height)
-        local upperBoundY = math.max(0, contentHeight - height);
+        -- Y bounds depend on fill direction
+        local upperBoundY, lowerBoundY;
+        if scrollBoxTable.fillFromBottom then
+            -- Bottom-fill: content grows upward, scroll range is negative
+            upperBoundY = 0; -- Start at bottom
+            lowerBoundY = math.min(0, height - contentHeight); -- Can scroll up if content is taller
+        else
+            -- Top-fill: content grows downward, scroll range is positive
+            upperBoundY = math.max(0, contentHeight - height);
+            lowerBoundY = 0;
+        end
 
         scrollBoxTable.scrollPosX = math.max(lowerBoundX, math.min(0, scrollBoxTable.scrollPosX));
-        scrollBoxTable.scrollPosY = math.min(upperBoundY, math.max(0, scrollBoxTable.scrollPosY));
+        scrollBoxTable.scrollPosY = math.min(upperBoundY, math.max(lowerBoundY, scrollBoxTable.scrollPosY));
     
         scrollBoxTable:MoveContent(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY);
 
-        -- Calculate the proper position of the scrollbar.
-        local scrollBarBackgroundHeight = scrollBoxTable.scrollBarBackground:GetHeight();
-        local scrollBarHeight = scrollBoxTable.scrollBar:GetHeight();
+        if (scrollBoxTable.canHaveVerticalScrollBar) then
+            -- Calculate the proper position of the scrollbar.
+            local scrollBarBackgroundHeight = scrollBoxTable.scrollBarBackground:GetHeight();
+            local scrollBarHeight = scrollBoxTable.scrollBar:GetHeight();
 
-        local scrollHeight = scrollBarBackgroundHeight - scrollBarHeight;
-        local scrollBarY = -(scrollBoxTable.scrollPosY / upperBoundY) * scrollHeight;
+            local scrollHeight = scrollBarBackgroundHeight - scrollBarHeight;
+            local scrollBarY;
+            
+            if scrollBoxTable.fillFromBottom then
+                -- For bottom-fill, scrollbar position calculation
+                local scrollRange = height - contentHeight;
+                if scrollRange < 0 then
+                    -- Handle is anchored to bottom, so we need to calculate position from bottom
+                    -- When scrollPosY = 0 (newest messages), we want scrollBarY = 0 (at bottom)
+                    -- When scrollPosY = scrollRange (oldest messages), we want scrollBarY = -scrollHeight (at top)
+                    scrollBarY = (scrollBoxTable.scrollPosY / scrollRange) * scrollHeight;
+                else
+                    scrollBarY = 0; -- At bottom when no scrolling needed
+                end
+            else
+                -- Original top-fill calculation
+                scrollBarY = -(scrollBoxTable.scrollPosY / upperBoundY) * scrollHeight;
+            end
 
-        scrollBoxTable:MoveScrollBar(scrollBarY);
+            scrollBoxTable:MoveScrollBar(scrollBarY);
+        end
     end
 
-    scrollBoxTable.ScrollToTop = function(self : ScrollBox)
+    scrollBoxTable.ScrollToStart = function(self : ScrollBox)
         scrollBoxTable.scrollPosX = 0;
-        scrollBoxTable.scrollPosY = 0;
+        
+        if scrollBoxTable.fillFromBottom then
+            -- For bottom-fill, "start" means the natural position (newest content visible)
+            scrollBoxTable.scrollPosY = 0;
+        else
+            -- For top-fill, "start" means the top
+            scrollBoxTable.scrollPosY = 0;
+        end
+        
+        scrollBoxTable:MoveContent(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY);
+        scrollBoxTable:MoveScrollBar(scrollBoxTable.scrollPosY);
+    end
+
+    scrollBoxTable.ScrollToEnd = function(self : ScrollBox)
+        if (scrollBoxTable.contentSizeY == nil) then
+            return;
+        end
+
+        scrollBoxTable.scrollPosX = 0;
+        
+        if scrollBoxTable.fillFromBottom then
+            -- For bottom-fill, "end" means scrolling up to see older content
+            local height = scrollBoxTable.scrollBox:GetHeight();
+            local contentHeight = scrollBoxTable.content:GetHeight();
+            scrollBoxTable.scrollPosY = math.min(0, height - contentHeight);
+        else
+            -- For top-fill, "end" means the bottom
+            scrollBoxTable.scrollPosY = scrollBoxTable.contentSizeY - scrollBoxTable.scrollBox:GetHeight();
+        end
+        
         scrollBoxTable:MoveContent(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY);
         scrollBoxTable:MoveScrollBar(scrollBoxTable.scrollPosY);
     end
@@ -88,7 +144,9 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
     end
 
     scrollBoxTable.MoveScrollBar = function(self : ScrollBox, y : number)
-        self.scrollBar:SetPos(0, y);
+        if (self.scrollBar ~= nil) then
+            self.scrollBar:SetPos(0, y);
+        end
     end
 
     scrollBoxTable.SetAnchor = function(self : ScrollBox, x : number, y : number)
@@ -99,10 +157,11 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
     end
 
     scrollBoxTable.SetContentHeight = function(self : ScrollBox, height : number)
+        self.contentSizeY = height;
         self.content:SetHeight(height);
 
-        if (self.autoScrollToTopWhenChangeContentHeight) then
-            self:ScrollToTop();
+        if (self.autoScrollToStart) then
+            self:ScrollToStart();
         end
 
         self:RefreshScrollbarHandleSize();
@@ -166,10 +225,11 @@ function scrollBoxAPI.NewScrollBox(parent : Widget, posX : number, posY : number
     local contentSizeX = scrollBoxTemplateTable["contentSizeX"] or sizeX;
     local contentSizeY = scrollBoxTemplateTable["contentSizeY"] or sizeY;
     local alpha = scrollBoxTemplateTable["alpha"] or 0.0;
-    scrollBoxTable.canHaveVerticalScrollBar = scrollBoxTemplateTable["verticalScrollBar"] or true;
-    scrollBoxTable.canHaveHorizontalScrollBar = scrollBoxTemplateTable["horizontalScrollBar"] or true;
+    scrollBoxTable.canHaveVerticalScrollBar = scrollBoxTemplateTable["verticalScrollBar"] or false;
+    scrollBoxTable.canHaveHorizontalScrollBar = scrollBoxTemplateTable["horizontalScrollBar"] or false;
     scrollBoxTable.scrollBarWidth = scrollBoxTemplateTable["scrollBarWidth"] or 20;
-    scrollBoxTable.autoScrollToTopWhenChangeContentHeight = scrollBoxTemplateTable["autoScrollToTopWhenChangeContentHeight"] or true;
+    scrollBoxTable.autoScrollToStart = scrollBoxTemplateTable["autoScrollToStart"] or true;
+    scrollBoxTable.fillFromBottom = scrollBoxTemplateTable["fillFromBottom"] or false; -- NEW: Default to false for backward compatibility
 
     scrollBoxTable.width = sizeX;
     scrollBoxTable.height = sizeY;
@@ -184,10 +244,19 @@ function scrollBoxAPI.NewScrollBox(parent : Widget, posX : number, posY : number
     scrollBoxTable.scrollBox:SetClipChildren(true);
     scrollBoxTable.scrollBox:SetAlpha(alpha);
 
-    -- Create the content panel
+    -- Create the content panel with appropriate anchoring
     scrollBoxTable.content = scrollBoxTable.scrollBox:NewPanel(0, 0, contentSizeX, contentSizeY, 0, "DialogBox");
-    scrollBoxTable.content:SetAnchor(0.0, 1.0);
-    scrollBoxTable.content:SetRelativePoint(0.0, 1.0);
+    
+    if scrollBoxTable.fillFromBottom then
+        -- Bottom-fill: anchor to bottom-left, content grows upward
+        scrollBoxTable.content:SetAnchor(0.0, 0.0);
+        scrollBoxTable.content:SetRelativePoint(0.0, 0.0);
+    else
+        -- Top-fill: anchor to top-left, content grows downward (original behavior)
+        scrollBoxTable.content:SetAnchor(0.0, 1.0);
+        scrollBoxTable.content:SetRelativePoint(0.0, 1.0);
+    end
+    
     scrollBoxTable.content:SetAlpha(0.0);
 
     -- Create the scrollbar
@@ -204,8 +273,17 @@ function scrollBoxAPI.NewScrollBox(parent : Widget, posX : number, posY : number
         local scrollBarColor = scrollBoxTemplateTable["scrollBarColor"] or vector.create(0.7, 0.7, 0.7);
         local scrollBarAlpha = scrollBoxTemplateTable["scrollBarAlpha"] or 1.0;
         scrollBoxTable.scrollBar = scrollBoxTable.scrollBarBackground:NewPanel(0, 0, scrollBoxTable.scrollBarWidth, 40, 0, scrollBarTemplate);
-        scrollBoxTable.scrollBar:SetAnchor(1.0, 1.0);
-        scrollBoxTable.scrollBar:SetRelativePoint(1.0, 1.0);
+        
+        if scrollBoxTable.fillFromBottom then
+            -- For bottom-fill, anchor to bottom so positive Y moves down from bottom
+            scrollBoxTable.scrollBar:SetAnchor(1.0, 0.0);
+            scrollBoxTable.scrollBar:SetRelativePoint(1.0, 0.0);
+        else
+            -- For top-fill, anchor to top so positive Y moves down from top
+            scrollBoxTable.scrollBar:SetAnchor(1.0, 1.0);
+            scrollBoxTable.scrollBar:SetRelativePoint(1.0, 1.0);
+        end
+        
         scrollBoxTable.scrollBar:SetColor(scrollBarColor, scrollBarAlpha);
     end
 

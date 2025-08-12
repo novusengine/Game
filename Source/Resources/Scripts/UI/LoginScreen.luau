@@ -188,8 +188,8 @@ local function CreateLoginScreen(stack)
         UI.FocusWidget(accountNameInputBox.button);
     end);
 
-    stack:Register("GameMenu", panel, 0); -- Name, widget, slot, onPush, onPop
-    --stack:Push("GameMenu");
+    stack:Register("LoginScreen", panel, 0); -- Name, widget, slot, onPush, onPop
+    --stack:Push("LoginScreen");
 end
 
 local function OnGameLoaded(eventID : number, motd : string)

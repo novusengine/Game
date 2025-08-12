@@ -245,7 +245,7 @@ namespace ECS::Util
 
             if (textTemplate.setFlags.wrapWidth)
             {
-                textComp.text = GenWrapText(textComp.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+                textComp.text = GenWrapText(textComp.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth, textTemplate.wrapIndent);
             }
 
             vec2 textSize = font->CalculateTextSize(textComp.text.c_str(), textTemplate.size, textTemplate.borderSize);
@@ -339,6 +339,8 @@ namespace ECS::Util
                 }
             }
 
+            uiSingleton.justFocusedEntity = uiSingleton.focusedEntity;
+
             entt::entity oldFocus = uiSingleton.focusedEntity;
             if (oldFocus != entt::null)
             {
@@ -395,7 +397,7 @@ namespace ECS::Util
 
             if (textTemplate.setFlags.wrapWidth)
             {
-                textComponent.text = GenWrapText(textComponent.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+                textComponent.text = GenWrapText(textComponent.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth, textTemplate.wrapIndent);
             }
 
             textComponent.sizeChanged |= oldLength != textComponent.text.size();
@@ -437,6 +439,25 @@ namespace ECS::Util
 
             auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget.scriptWidget->canvasEntity);
+        }
+
+        void RefreshClipper(entt::registry* registry, entt::entity entity)
+        {
+            auto* clipper = registry->try_get<ECS::Components::UI::Clipper>(entity);
+
+            if (clipper == nullptr)
+                return;
+
+            if (clipper->clipRegionOverrideEntity == entt::null)
+            {
+                registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetClipper>(entity);
+                registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(entity);
+            }
+            else
+            {
+                registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetClipper>(clipper->clipRegionOverrideEntity);
+                registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(clipper->clipRegionOverrideEntity);
+            }
         }
 
         void ResetTemplate(entt::registry* registry, entt::entity entity)
@@ -614,25 +635,34 @@ namespace ECS::Util
             uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
         }
 
-        void CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
+        bool CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
         {
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
             Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallKeyboardInputEvent(state, eventRef, widget, key, actionMask, modifierMask);
+            return uiHandler->CallKeyboardInputEvent(state, eventRef, widget, key, actionMask, modifierMask);
         }
 
-        void CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode)
+        bool CallKeyboardEvent(i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
         {
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
             Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
+            return uiHandler->CallKeyboardInputEvent(state, eventRef, key, actionMask, modifierMask);
+        }
+
+        bool CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode)
+        {
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            return uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
         }
         
-        std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth)
+        std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents)
         {
             // Early exit if entire text fits within maxWidth
             f32 totalWidth = 0;
@@ -658,6 +688,8 @@ namespace ECS::Util
             std::string buffer; // Batch write buffer
             buffer.reserve(text.size() + text.size() / 4); // Reserve for buffer to minimize reallocations
 
+            f32 indentWidth = font->CalculateCharWidth(' ', fontSize, borderSize);
+
             for (size_t i = 0; i < text.length(); ++i)
             {
                 char c = text[i];
@@ -669,10 +701,17 @@ namespace ECS::Util
                 {
                     size_t wordLength = i - wordStart;
 
+                    // Line is longer than maxWidth, wrap it
                     if (currentLineWidth + currentWordWidth > maxWidth)
                     {
                         buffer += '\n';
                         currentLineWidth = 0;
+
+                        for(u8 j = 0; j < indents; ++j)
+                        {
+                            buffer += ' '; // Add indentation
+                            currentLineWidth += indentWidth;
+                        }
                     }
 
                     buffer.append(text, wordStart, wordLength);
@@ -681,12 +720,18 @@ namespace ECS::Util
                     if (c == ' ')
                     {
                         buffer += ' ';
-                        currentLineWidth += font->CalculateCharWidth(c, fontSize, borderSize);
+                        currentLineWidth += indentWidth;
                     }
                     else // Newline
                     {
                         buffer += '\n';
                         currentLineWidth = 0;
+
+                        for (u8 j = 0; j < indents; ++j)
+                        {
+                            buffer += ' '; // Add indentation
+                            currentLineWidth += indentWidth;
+                        }
                     }
 
                     wordStart = i + 1;
@@ -697,23 +742,34 @@ namespace ECS::Util
                     currentWordWidth += font->CalculateCharWidth(c, fontSize, borderSize);
 
                     // Force break for long words
-                    if (currentWordWidth > maxWidth)
+                    if (currentLineWidth + currentWordWidth > maxWidth)
                     {
                         buffer.append(text, wordStart, i - wordStart);
                         buffer += '\n';
                         wordStart = i;
                         currentWordWidth = font->CalculateCharWidth(c, fontSize, borderSize);
                         currentLineWidth = currentWordWidth;
+
+                        for (u8 j = 0; j < indents; ++j)
+                        {
+                            buffer += ' '; // Add indentation
+                            currentLineWidth += indentWidth;
+                        }
                     }
                 }
             }
 
-            // Handle the last word
+            // Handle the last word if we are force breaking
             if (wordStart < text.length())
             {
                 if (currentLineWidth + currentWordWidth > maxWidth)
                 {
                     buffer += '\n';
+
+                    for (u8 j = 0; j < indents; ++j)
+                    {
+                        buffer += ' '; // Add indentation
+                    }
                 }
                 buffer.append(text, wordStart, text.length() - wordStart);
             }

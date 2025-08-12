@@ -136,6 +136,11 @@ local function SetupButtonMethods(buttonTable)
         table.panel:SetOnKeyboard(func);
     end
 
+    buttonTable.ForceRefresh = function(table)
+        table.panel:ForceRefresh();
+        table.text:ForceRefresh();
+    end
+
     return buttonTable
 end
 

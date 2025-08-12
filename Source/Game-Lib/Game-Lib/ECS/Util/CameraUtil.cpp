@@ -65,6 +65,27 @@ namespace ECS::Util
             }
         }
 
+        bool IsCapturingMouse()
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            entt::registry::context& ctx = registry->ctx();
+
+            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+            auto& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+            auto& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
+
+            if (activeCamera.entity == freeFlyingCameraSettings.entity)
+            {
+                return freeFlyingCameraSettings.captureMouse;
+            }
+            else if (activeCamera.entity == orbitalCameraSettings.entity)
+            {
+                return orbitalCameraSettings.captureMouse;
+            }
+
+            return false;
+        }
+
         void CenterOnObject(const vec3& position, f32 radius)
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;

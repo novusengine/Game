@@ -31,6 +31,7 @@ namespace ECS::Singletons
         entt::entity clickedEntity = entt::null;
         entt::entity hoveredEntity = entt::null;
         entt::entity focusedEntity = entt::null;
+        entt::entity justFocusedEntity = entt::null; // If it was just focused this frame
         entt::entity cursorCanvasEntity = entt::null;
 
         // Cursor canvas
