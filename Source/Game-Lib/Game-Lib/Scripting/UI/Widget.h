@@ -90,6 +90,8 @@ namespace Scripting::UI
         i32 SetWorldPosY(lua_State* state);
 
         i32 SetPos3D(lua_State* state);
+
+        i32 ForceRefresh(lua_State* state);
     }
 
     static LuaMethod widgetMethods[] =
@@ -137,7 +139,9 @@ namespace Scripting::UI
         { "SetWorldPosX", WidgetMethods::SetWorldPosX },
         { "SetWorldPosY", WidgetMethods::SetWorldPosY },
 
-        { "SetPos3D", WidgetMethods::SetPos3D }
+        { "SetPos3D", WidgetMethods::SetPos3D },
+
+        { "ForceRefresh", WidgetMethods::ForceRefresh }
     };
 
     namespace WidgetInputMethods

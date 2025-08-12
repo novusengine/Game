@@ -38,6 +38,7 @@ namespace ECS::Util
 
         void RefreshText(entt::registry* registry, entt::entity entity, std::string_view newText);
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
+        void RefreshClipper(entt::registry* registry, entt::entity entity);
 
         void ResetTemplate(entt::registry* registry, entt::entity entity); // Sets it back to base
         void ApplyTemplateAdditively(entt::registry* registry, entt::entity entity, u32 templateHash);
@@ -48,10 +49,11 @@ namespace ECS::Util
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, f32 value);
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, vec2 value);
 
-        void CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask);
-        void CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode);
+        bool CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask);
+        bool CallKeyboardEvent(i32 eventRef, i32 key, i32 actionMask, i32 modifierMask);
+        bool CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode);
 
-        std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth);
+        std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents);
         void ReplaceTextNewLines(std::string& input);
     }
 }

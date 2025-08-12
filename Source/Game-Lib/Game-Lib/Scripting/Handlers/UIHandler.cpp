@@ -1,6 +1,7 @@
 #include "UIHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -44,17 +45,22 @@ namespace Scripting::UI
         { "FocusWidget", UIHandler::FocusWidget },
         { "UnfocusWidget", UIHandler::UnfocusWidget },
         { "IsFocusedWidget", UIHandler::IsFocusedWidget },
+        { "WasJustFocusedWidget", UIHandler::WasJustFocusedWidget },
         { "GetFocusedWidget", UIHandler::GetFocusedWidget },
 
         { "IsHoveredWidget", UIHandler::IsHoveredWidget },
 
-        { "DestroyWidget", UIHandler::DestroyWidget }
+        { "DestroyWidget", UIHandler::DestroyWidget },
+
+        // Global input functions
+        { "AddOnKeyboard", UIHandler::AddOnKeyboard }
     };
 
     void UIHandler::Register(lua_State* state)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         registry->ctx().emplace<ECS::Singletons::UISingleton>();
+        registry->ctx().emplace<ECS::Singletons::InputSingleton>();
 
         // UI
         LuaMethodTable::Set(state, uiMethods, "UI");
@@ -368,6 +374,17 @@ namespace Scripting::UI
             ctx.Pop();
         }
 
+        textTemplate.wrapIndent = 0;
+        if (ctx.GetTableField("wrapIndent", 2))
+        {
+            i32 wrapIndent = ctx.Get(0, -1);
+            wrapIndent = glm::max(0, wrapIndent);
+
+            textTemplate.wrapIndent = static_cast<u8>(wrapIndent);
+            textTemplate.setFlags.wrapIndent = wrapIndent > 0;
+            ctx.Pop();
+        }
+
         // Event Templates
         if (ctx.GetTableField("onClickTemplate", 2))
         {
@@ -602,7 +619,7 @@ namespace Scripting::UI
 
         if (textTemplate.setFlags.wrapWidth)
         {
-            textStr = ECS::Util::UI::GenWrapText(textStr, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth);
+            textStr = ECS::Util::UI::GenWrapText(textStr, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth, textTemplate.wrapIndent);
         }
 
         vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
@@ -653,7 +670,7 @@ namespace Scripting::UI
         }
         else
         {
-            textStr = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, wrapWidth);
+            textStr = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, wrapWidth, textTemplate.wrapIndent);
             ctx.Push(textStr.c_str());
         }
 
@@ -720,6 +737,25 @@ namespace Scripting::UI
 
         bool isFocusedWidget = widget->entity == uiSingleton.focusedEntity;
         ctx.Push(isFocusedWidget);
+
+        return 1;
+    }
+
+    i32 UIHandler::WasJustFocusedWidget(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        if (widget == nullptr)
+        {
+            luaL_error(state, "Expected widget as parameter 1");
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        bool wasJustFocusedWidget = widget->entity == uiSingleton.justFocusedEntity;
+        ctx.Push(wasJustFocusedWidget);
 
         return 1;
     }
@@ -793,10 +829,33 @@ namespace Scripting::UI
         return 0;
     }
 
+    i32 UIHandler::AddOnKeyboard(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        i32 callback = -1;
+        if (lua_type(state, 1) == LUA_TFUNCTION)
+        {
+            callback = ctx.GetRef(1);
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        auto& regCtx = registry->ctx();
+        auto& inputSingleton = regCtx.get<ECS::Singletons::InputSingleton>();
+
+        u32 eventIndex = static_cast<u32>(inputSingleton.globalKeyboardEvents.size());
+        inputSingleton.globalKeyboardEvents.push_back(callback);
+
+        inputSingleton.eventIDToKeyboardEventIndex[callback] = eventIndex;
+
+        return callback;
+    }
+
     void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 3);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         ctx.Push(static_cast<u32>(inputEvent));
         lua_pushlightuserdata(state, widget);
@@ -811,6 +870,7 @@ namespace Scripting::UI
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 4);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         ctx.Push(static_cast<u32>(inputEvent));
         lua_pushlightuserdata(state, widget);
@@ -826,6 +886,7 @@ namespace Scripting::UI
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 6);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         ctx.Push(static_cast<u32>(inputEvent));
         lua_pushlightuserdata(state, widget);
@@ -843,6 +904,7 @@ namespace Scripting::UI
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 4);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         ctx.Push(static_cast<u32>(inputEvent));
         lua_pushlightuserdata(state, widget);
@@ -858,6 +920,7 @@ namespace Scripting::UI
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 5);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         ctx.Push(static_cast<u32>(inputEvent));
         lua_pushlightuserdata(state, widget);
@@ -870,10 +933,11 @@ namespace Scripting::UI
         ctx.PCall(4);
     }
 
-    void UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
+    bool UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 7);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         lua_pushlightuserdata(state, widget);
 
@@ -885,13 +949,33 @@ namespace Scripting::UI
         ctx.Push(actionMask);
         ctx.Push(modifierMask);
 
-        ctx.PCall(5);
+        ctx.PCall(5, 1);
+        bool result = ctx.Get(false);
+        return result; // Return if we should consume the event or not
     }
 
-    void UIHandler::CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode)
+    bool UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
+    {
+        LuaState ctx(state);
+        
+        lua_checkstack(state, 6);
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+
+        ctx.Push(static_cast<i32>(UIKeyboardEvent::Key));
+        ctx.Push(key);
+        ctx.Push(actionMask);
+        ctx.Push(modifierMask);
+
+        ctx.PCall(4 , 1);
+        bool result = ctx.Get(false);
+        return result; // Return if we should consume the event or not
+    }
+
+    bool UIHandler::CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode)
     {
         LuaState ctx(state);
 
+        lua_checkstack(state, 5);
         ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
         lua_pushlightuserdata(state, widget);
 
@@ -901,7 +985,9 @@ namespace Scripting::UI
         ctx.Push(static_cast<i32>(UIKeyboardEvent::Unicode));
         ctx.Push(unicode);
 
-        ctx.PCall(3);
+        ctx.PCall(3, 1);
+        bool result = ctx.Get(false);
+        return result; // Return if widget should consume the event or not
     }
 
     void UIHandler::CreateUIInputEventTable(lua_State* state)

@@ -235,7 +235,9 @@ local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     currentY -= 40;
 
     -- Character selection scrollbox
-    characterSelectScreen.characterListScrollBox = UIScrollBox.NewScrollBox(characterSelectPanel, 0, currentY, 390, 700, 0, {});
+    characterSelectScreen.characterListScrollBox = UIScrollBox.NewScrollBox(characterSelectPanel, 0, currentY, 390, 700, 0, {
+        verticalScrollBar = true,
+    });
     characterSelectScreen.characterListScrollBox:SetAnchor(0.0, 1.0);
     characterSelectScreen.characterListScrollBox:SetRelativePoint(0.0, 1.0);
 

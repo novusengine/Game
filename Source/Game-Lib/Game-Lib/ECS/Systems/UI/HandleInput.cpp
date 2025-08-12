@@ -6,7 +6,9 @@
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
@@ -348,9 +350,7 @@ namespace ECS::Systems::UI
                     return false;
                 }
 
-                ECS::Util::UI::CallUnicodeEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, unicode);
-                
-                return true;
+                return ECS::Util::UI::CallUnicodeEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, unicode);
             }
 
             return false;
@@ -360,7 +360,8 @@ namespace ECS::Systems::UI
         {
             auto& ctx = registry.ctx();
             auto* uiSingleton = ctx.find<Singletons::UISingleton>();
-            if (!uiSingleton)
+            auto* inputSingleton = ctx.find<Singletons::InputSingleton>();
+            if (!uiSingleton || !inputSingleton)
                 return false;
 
             if (uiSingleton->focusedEntity != entt::null)
@@ -372,9 +373,21 @@ namespace ECS::Systems::UI
                     return false;
                 }
 
-                ECS::Util::UI::CallKeyboardEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, key, static_cast<i32>(action), static_cast<i32>(modifier));
-                
-                return true;
+                if (ECS::Util::UI::CallKeyboardEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, key, static_cast<i32>(action), static_cast<i32>(modifier)))
+                {
+                    return true;
+                }
+            }
+
+            if (!ECS::Util::CameraUtil::IsCapturingMouse())
+            {
+                for (i32 keyboardEvent : inputSingleton->globalKeyboardEvents)
+                {
+                    if (ECS::Util::UI::CallKeyboardEvent(keyboardEvent, key, static_cast<i32>(action), static_cast<i32>(modifier)))
+                    {
+                        return true;
+                    }
+                }
             }
 
             return false;
@@ -654,5 +667,7 @@ namespace ECS::Systems::UI
                 ECS::Util::UI::CallLuaEvent(eventInputInfo->onFocusHeldEvent, Scripting::UI::UIInputEvent::FocusHeld, widget.scriptWidget, deltaTime);
             }
         }
+
+        uiSingleton.justFocusedEntity = entt::null;
     }
 }

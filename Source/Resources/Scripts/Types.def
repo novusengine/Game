@@ -146,6 +146,8 @@ declare class Widget extends WidgetInputEvents
     function SetWorldPos(self, pos : vec2) : ()
     function SetWorldPosX(self, x : number) : ()
     function SetWorldPosY(self, y : number) : ()
+
+    function SetPos3D(self, pos : vec3) : ()
 end
 
 declare class Canvas
@@ -175,9 +177,15 @@ declare class TextWidget extends Widget
     function SetText(self, text : string) : ()
     function GetRawText(self) : string
     function GetSize(self) : vec2
+    function GetFontSize(self) : number
+    function SetFontSize(self, number) : ()
+    function GetWidth(self) : number
+    function GetHeight(self) : number
     function GetColor(self) : vec3
     function SetColor(self, color : vec3) : ()
     function GetWrapWidth(self) : number
+    function GetWrapIndent(self) : number
+    function SetWrapIndent(self, number) : ()
 end
 
 declare class EventTemplate
@@ -234,11 +242,14 @@ declare UI :
     FocusWidget : ((widget : Widget) -> ()),
     UnfocusWidget : ((widget : Widget) -> ()),
     IsFocusedWidget : ((widget : Widget) -> boolean),
+    WasJustFocusedWidget : ((widget : Widget) -> boolean),
     GetFocusedWidget : (() -> Widget),
 
     IsHoveredWidget : ((widget : Widget) -> boolean),
 
-    DestroyWidget : ((widget : Widget) -> boolean)
+    DestroyWidget : ((widget : Widget) -> boolean),
+
+    AddOnKeyboard : ((event : UIKeyboardEvent, ...any) -> boolean),
 }
 
 declare Cursor : Canvas

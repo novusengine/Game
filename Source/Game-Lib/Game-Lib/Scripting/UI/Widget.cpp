@@ -1055,6 +1055,27 @@ i32 Scripting::UI::WidgetMethods::SetPos3D(lua_State* state)
     return 0;
 }
 
+i32 Scripting::UI::WidgetMethods::ForceRefresh(lua_State* state)
+{
+    LuaState ctx(state);
+
+    Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+    if (widget == nullptr)
+    {
+        luaL_error(state, "Widget is null");
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
+
+    ECS::Util::UI::RefreshClipper(registry, widget->entity);
+
+    return 0;
+}
+
 i32 Scripting::UI::WidgetInputMethods::SetOnMouseDown(lua_State* state)
 {
     LuaState ctx(state);

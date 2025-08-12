@@ -584,7 +584,9 @@ local function CreateFactionInfoPanel(characterCreationScreen : CharacterCreatio
     local factionDescriptionPaddingX = 10;
     local factionDescriptionAreaWidth = characterInfoWidth - (factionDescriptionPaddingX * 2);
     
-    characterCreationScreen.selectedFactionDescriptionScrollBox = UIScrollBox.NewScrollBox(factionInfoPanel, factionDescriptionPaddingX, -factionDescriptionAreaOffset, factionDescriptionAreaWidth, factionDescriptionAreaHeight, 0, {});
+    characterCreationScreen.selectedFactionDescriptionScrollBox = UIScrollBox.NewScrollBox(factionInfoPanel, factionDescriptionPaddingX, -factionDescriptionAreaOffset, factionDescriptionAreaWidth, factionDescriptionAreaHeight, 0, {
+        verticalScrollBar = true,
+    });
     characterCreationScreen.selectedFactionDescriptionScrollBox:SetAnchor(0.0, 1.0);
     characterCreationScreen.selectedFactionDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
 
@@ -625,7 +627,9 @@ local function CreateRaceInfoPanel(characterCreationScreen : CharacterCreationSc
     local raceDescriptionAreaOffset = raceIconSize * 0.8;
     local raceDescriptionAreaHeight = raceInfoHeight - raceDescriptionAreaOffset;
     local raceDescriptionAreaWidth = characterInfoWidth-20;
-    characterCreationScreen.selectedRaceDescriptionScrollBox = UIScrollBox.NewScrollBox(raceInfoPanel, 10, -raceDescriptionAreaOffset, raceDescriptionAreaWidth, raceDescriptionAreaHeight, 0, {});
+    characterCreationScreen.selectedRaceDescriptionScrollBox = UIScrollBox.NewScrollBox(raceInfoPanel, 10, -raceDescriptionAreaOffset, raceDescriptionAreaWidth, raceDescriptionAreaHeight, 0, {
+        verticalScrollBar = true,
+    });
     characterCreationScreen.selectedRaceDescriptionScrollBox:SetAnchor(0.0, 1.0);
     characterCreationScreen.selectedRaceDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
     
@@ -665,7 +669,9 @@ local function CreateClassInfoPanel(characterCreationScreen : CharacterCreationS
     local classDescriptionAreaOffset = classIconSize * 0.8;
     local classDescriptionAreaHeight = classInfoHeight - classDescriptionAreaOffset;
     local classDescriptionAreaWidth = characterInfoWidth-20;
-    characterCreationScreen.selectedClassDescriptionScrollBox = UIScrollBox.NewScrollBox(classInfoPanel, 10, -classDescriptionAreaOffset, classDescriptionAreaWidth, classDescriptionAreaHeight, 0, {});
+    characterCreationScreen.selectedClassDescriptionScrollBox = UIScrollBox.NewScrollBox(classInfoPanel, 10, -classDescriptionAreaOffset, classDescriptionAreaWidth, classDescriptionAreaHeight, 0, {
+        verticalScrollBar = true,
+    });
     characterCreationScreen.selectedClassDescriptionScrollBox:SetAnchor(0.0, 1.0);
     characterCreationScreen.selectedClassDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
 

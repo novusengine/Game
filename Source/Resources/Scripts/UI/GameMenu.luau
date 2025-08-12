@@ -160,6 +160,19 @@ local function UpdateMainPanel(optionsMenu, category, group, section)
     optionsMenu.mainPanelContent:SetContentHeight(currentHeight+5);
 end
 
+function ToggleEscapeMenu(panelWrapper)
+    panelWrapper.isOpen = not panelWrapper.isOpen;
+    local stack = UIStack.Get("Menu");
+    
+    if (panelWrapper.isOpen) then
+        stack:Push("GameMenu")
+    else
+        stack:Pop();
+    end
+
+    return true; -- Consume the event
+end
+
 local function CreateGameMenu(stack)
     -- Create Canvas
     local canvas = UI.GetCanvas("EscapeMenu", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
@@ -236,6 +249,29 @@ local function CreateGameMenu(stack)
 
     -- Stack should have max amount of open widgets
     -- If we push more than max, pop previous
+
+    local panelWrapper = {
+        panel = panel,
+        isOpen = false,
+    }
+
+    -- Set up global escape key handler
+    UI.AddOnKeyboard(function(eventID, ...)
+        if (eventID == UIKeyboardEvent.Key) then
+            local keyID, action, modifierMask = ...;
+
+            local keyIDEscape = 256;
+            -- actionMask is up, down etc
+            -- modifierMask is ctrl, shift etc
+
+            if (action ~= InputAction.Press or keyID ~= keyIDEscape) then
+                return false;
+            end
+
+            return ToggleEscapeMenu(panelWrapper);
+        end
+        return false;
+    end);
 end
 
 local function CreateMainPanel(parent : Panel, x : number, optionsMenu)
@@ -255,7 +291,9 @@ local function CreateMainPanel(parent : Panel, x : number, optionsMenu)
     optionsMenu.mainPanelTitle:SetRelativePoint(0.5, 1.0);
     local titleWidth, titleHeight = optionsMenu.mainPanelTitle:GetSize();
 
-    optionsMenu.mainPanelContent = UIScrollBox.NewScrollBox(optionsMenu.mainPanel, 0, 0, width, height - titleHeight - 10, 0, {});
+    optionsMenu.mainPanelContent = UIScrollBox.NewScrollBox(optionsMenu.mainPanel, 0, 0, width, height - titleHeight - 10, 0, {
+        verticalScrollBar = true,
+    });
     optionsMenu.mainPanelContent.content:SetRelativePoint(0.0, 0.0);
 end
 
@@ -265,7 +303,9 @@ local function CreateSidePanel(parent : Panel, width : number, optionsMenu)
     width -= padding;
     height -= padding;
 
-    optionsMenu.sidePanel = UIScrollBox.NewScrollBox(parent, padding, 0, width, height, 0, {});
+    optionsMenu.sidePanel = UIScrollBox.NewScrollBox(parent, padding, 0, width, height, 0, {
+        verticalScrollBar = true,
+    });
     optionsMenu.sidePanel:SetAnchor(0.0, 1.0);
     optionsMenu.sidePanel:SetRelativePoint(0.0, 1.0);
     optionsMenu.sidePanel.scrollBox:SetAlpha(1.0);
@@ -416,13 +456,13 @@ function CreateOptionsMenu(stack)
         print(table.text)
         return true; -- Returning true will unfocus the widget
     end);]]
-   
+    
     stack:Register("OptionsMenu", panel, 0); -- Name, widget, slot, onPush, onPop
     --stack:Push("OptionsMenu")
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    local stack = UIStack.Get("Menu")
+    local stack = UIStack.Get("Menu");
 
     CreateGameMenu(stack);
     CreateOptionsMenu(stack);

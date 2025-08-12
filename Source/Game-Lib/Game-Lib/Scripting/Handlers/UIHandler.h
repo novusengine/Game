@@ -59,11 +59,20 @@ namespace Scripting::UI
         static i32 FocusWidget(lua_State* state);
         static i32 UnfocusWidget(lua_State* state);
         static i32 IsFocusedWidget(lua_State* state);
+        static i32 WasJustFocusedWidget(lua_State* state);
         static i32 GetFocusedWidget(lua_State* state);
 
         static i32 IsHoveredWidget(lua_State* state);
 
         static i32 DestroyWidget(lua_State* state);
+
+        // Global input (probably split into InputHandler)
+        //i32 AddOnMouseDown(lua_State* state);
+        //i32 AddOnMouseUp(lua_State* state);
+        //i32 AddOnMouseHeld(lua_State* state);
+        //i32 AddOnMouseScroll(lua_State* state);
+
+        static i32 AddOnKeyboard(lua_State* state);
 
         // Event calls
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget);
@@ -72,8 +81,9 @@ namespace Scripting::UI
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value);
         void CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value);
 
-        void CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask);
-        void CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode);
+        bool CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask);
+        bool CallKeyboardInputEvent(lua_State* state, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask);
+        bool CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode);
 
     private:
         void CreateUIInputEventTable(lua_State* state);
