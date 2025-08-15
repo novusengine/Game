@@ -32,9 +32,10 @@ namespace Scripting::UI
         { "RegisterPanelTemplate", UIHandler::RegisterPanelTemplate },
         { "RegisterTextTemplate", UIHandler::RegisterTextTemplate },
 
+        { "RegisterSendMessageToChatCallback", UIHandler::RegisterSendMessageToChatCallback },
+
         { "GetCanvas", UIHandler::GetCanvas },
         { "GetMousePos", UIHandler::GetMousePos },
-        
 
         // Utils
         { "GetTextureSize", UIHandler::GetTextureSize },
@@ -476,6 +477,28 @@ namespace Scripting::UI
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
         uiSingleton.templateHashToTextTemplateIndex[templateNameHash] = textTemplateIndex;
+
+        return 0;
+    }
+
+    i32 UIHandler::RegisterSendMessageToChatCallback(lua_State* state)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+        LuaState ctx(state);
+
+        if (lua_isnil(state, 1))
+        {
+            // Unregister chat callback
+            uiSingleton.sendMessageToChatCallback = -1;
+        }
+
+        if (!lua_isfunction(state, 1))
+            return 0;
+
+        i32 eventID = ctx.GetRef(1);
+        uiSingleton.sendMessageToChatCallback = eventID;
 
         return 0;
     }
@@ -988,6 +1011,21 @@ namespace Scripting::UI
         ctx.PCall(3, 1);
         bool result = ctx.Get(false);
         return result; // Return if widget should consume the event or not
+    }
+
+    void UIHandler::CallSendMessageToChat(lua_State* state, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
+    {
+        LuaState ctx(state);
+
+        lua_checkstack(state, 5);
+        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+
+        ctx.Push(channel);
+        ctx.Push(playerName);
+        ctx.Push(text);
+        ctx.Push(isOutgoing);
+
+        ctx.PCall(4);
     }
 
     void UIHandler::CreateUIInputEventTable(lua_State* state)

@@ -592,6 +592,11 @@ namespace ECS::Util
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget)
         {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -601,6 +606,11 @@ namespace ECS::Util
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value)
         {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -610,6 +620,11 @@ namespace ECS::Util
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value1, vec2 value2)
         {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -619,6 +634,11 @@ namespace ECS::Util
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, f32 value)
         {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -628,6 +648,11 @@ namespace ECS::Util
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, vec2 value)
         {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -637,6 +662,11 @@ namespace ECS::Util
 
         bool CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
         {
+            if (eventRef == -1)
+            {
+                return false; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -646,6 +676,11 @@ namespace ECS::Util
 
         bool CallKeyboardEvent(i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
         {
+            if (eventRef == -1)
+            {
+                return false; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
@@ -655,11 +690,30 @@ namespace ECS::Util
 
         bool CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode)
         {
+            if (eventRef == -1)
+            {
+                return false; // No event to call
+            }
+
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             lua_State* state = luaManager->GetInternalState();
 
             Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
             return uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
+        }
+
+        void CallSendMessageToChat(i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
+        {
+            if (eventRef == -1)
+            {
+                return; // No event to call
+            }
+
+            Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            lua_State* state = luaManager->GetInternalState();
+
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
+            uiHandler->CallSendMessageToChat(state, eventRef, channel, playerName, text, isOutgoing);
         }
         
         std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents)

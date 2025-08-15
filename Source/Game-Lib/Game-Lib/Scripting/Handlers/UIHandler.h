@@ -45,6 +45,8 @@ namespace Scripting::UI
         // Register templates
         static i32 RegisterPanelTemplate(lua_State* state);
         static i32 RegisterTextTemplate(lua_State* state);
+
+        static i32 RegisterSendMessageToChatCallback(lua_State* state);
         
         // UI functions
         static i32 GetCanvas(lua_State* state);
@@ -84,6 +86,8 @@ namespace Scripting::UI
         bool CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask);
         bool CallKeyboardInputEvent(lua_State* state, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask);
         bool CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode);
+
+        void CallSendMessageToChat(lua_State* state, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing);
 
     private:
         void CreateUIInputEventTable(lua_State* state);

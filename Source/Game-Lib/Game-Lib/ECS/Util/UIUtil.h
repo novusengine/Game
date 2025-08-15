@@ -53,6 +53,8 @@ namespace ECS::Util
         bool CallKeyboardEvent(i32 eventRef, i32 key, i32 actionMask, i32 modifierMask);
         bool CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode);
 
+        void CallSendMessageToChat(i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing);
+
         std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents);
         void ReplaceTextNewLines(std::string& input);
     }

@@ -21,6 +21,7 @@ namespace Scripting
         static i32 EquipItem(lua_State* state);
         static i32 UnEquipItem(lua_State* state);
         static i32 GetEquippedItem(lua_State* state);
+        static i32 ExecCmd(lua_State* state);
     };
 
     static LuaMethod globalMethods[] =
@@ -32,5 +33,6 @@ namespace Scripting
         { "EquipItem",		    GlobalHandler::EquipItem },
         { "UnEquipItem",	    GlobalHandler::UnEquipItem },
         { "GetEquippedItem",    GlobalHandler::GetEquippedItem },
+        { "ExecCmd",            GlobalHandler::ExecCmd },
     };
 }
