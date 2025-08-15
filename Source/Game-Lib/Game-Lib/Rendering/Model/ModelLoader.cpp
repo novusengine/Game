@@ -352,9 +352,11 @@ void ModelLoader::Update(f32 deltaTime)
                 ZoneScopedN("Load Model Work");
 
                 const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
+                bool isStatic = loadRequest.type == LoadRequestType::Placement || loadRequest.type == LoadRequestType::Decoration;
+
                 if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
                 {
-                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false });
+                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false, .isStatic = isStatic });
                     continue;
                 }
 
@@ -374,7 +376,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                 if (loadState == LoadState::Failed)
                 {
-                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false });
+                    _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = false, .isStatic = isStatic });
                     continue;
                 }
 
@@ -457,7 +459,7 @@ void ModelLoader::Update(f32 deltaTime)
                 for (u32 i = 0; i < numDequeuedInternalRequests; i++)
                 {
                     ZoneScopedN("Load Instance Work");
-                    const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
+                    LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
 
                     const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
                     bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
@@ -480,13 +482,11 @@ void ModelLoader::Update(f32 deltaTime)
                             if (loadRequest.entity == entt::null)
                             {
                                 u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
-                                AddStaticInstance(_createdEntities[index], loadRequest);
-                            }
-                            else
-                            {
-                                AddStaticInstance(loadRequest.entity, loadRequest);
+                                loadRequest.entity = _createdEntities[index];
                             }
 
+                            AddStaticInstance(loadRequest.entity, loadRequest);
+                            _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = true, .isStatic = true });
                             break;
                         }
 
@@ -497,14 +497,11 @@ void ModelLoader::Update(f32 deltaTime)
                             if (loadRequest.entity == entt::null)
                             {
                                 u32 index = static_cast<u32>(createdEntitiesOffset) + numCreatedInstances.fetch_add(1);
-                                AddDynamicInstance(_createdEntities[index], loadRequest);
-                            }
-                            else
-                            {
-                                AddDynamicInstance(loadRequest.entity, loadRequest);
+                                loadRequest.entity = _createdEntities[index];
                             }
 
-                            _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = true });
+                            AddDynamicInstance(loadRequest.entity, loadRequest);
+                            _loadRequestResults.try_enqueue({ .loadRequestIndex = i, .success = true, .isStatic = false });
                             break;
                         }
 
@@ -565,9 +562,12 @@ void ModelLoader::Update(f32 deltaTime)
             model.modelHash = loadRequest.extraData2;
         }
 
+        bool hasModelLoadedEventsAlready = registry->all_of<ECS::Components::ModelLoadedEvent>(loadRequest.entity);
+
         ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
         modelLoadedEvent.flags.loaded = loadRequestResult.success;
         modelLoadedEvent.flags.rollback = rollback;
+        modelLoadedEvent.flags.staticModel = loadRequestResult.isStatic;
 
         ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
     }

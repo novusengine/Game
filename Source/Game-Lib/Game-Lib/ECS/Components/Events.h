@@ -17,6 +17,7 @@ namespace ECS::Components
     public:
         u8 loaded : 1 = 0;
         u8 rollback : 1 = 0;
+        u8 staticModel : 1 = 0;
     };
     struct ModelLoadedEvent
     {

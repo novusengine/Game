@@ -131,14 +131,14 @@ namespace ECS::Util::MessageBuilder
 
     namespace Container
     {
-        bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u8 srcContainerIndex, u8 destContainerIndex, u8 srcSlotIndex, u8 destSlotIndex)
+        bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u16 srcContainerIndex, u16 destContainerIndex, u16 srcSlotIndex, u16 destSlotIndex)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_ContainerSwapSlots, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
             {
-                buffer->PutU8(srcContainerIndex);
-                buffer->PutU8(destContainerIndex);
-                buffer->PutU8(srcSlotIndex);
-                buffer->PutU8(destSlotIndex);
+                buffer->PutU16(srcContainerIndex);
+                buffer->PutU16(destContainerIndex);
+                buffer->PutU16(srcSlotIndex);
+                buffer->PutU16(destSlotIndex);
             });
 
             return result;
@@ -262,7 +262,7 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender)
+        bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender)
         {
             bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
             {

@@ -72,6 +72,31 @@ namespace ECS
                 _dbHashToName.reserve(numDBs);
             }
 
+            // Preferred overload if T meets the requirements.
+            template <typename T> requires ClientDB::ValidClientDB<T>
+            bool Register()
+            {
+                ClientDBHash hash = static_cast<ClientDBHash>(T::NameHash);
+                if (!Register(hash, T::Name))
+                    return false;
+
+                auto* storage = Get(hash);
+                if (storage->IsInitialized())
+                    return true;
+
+                storage->Initialize<T>();
+                storage->MarkDirty();
+                return true;
+            }
+
+            // Fallback overload to produce a custom error message when T is invalid.
+            template <typename T, typename = std::enable_if_t<!ClientDB::ValidClientDB<T>>>
+            bool Register()
+            {
+                static_assert(ClientDB::ValidClientDB<T>, "T must be a struct or class with static members Name of type std::string, NameHash of type u32, FieldInfo of type std::vector<FieldInfo>");
+                return false;
+            }
+
             bool Register(ClientDBHash hash, const std::string& dbName)
             {
                 if (Has(hash))

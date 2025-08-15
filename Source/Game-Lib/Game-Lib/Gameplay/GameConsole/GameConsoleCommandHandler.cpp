@@ -29,6 +29,8 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleClearMap);
     RegisterCommand(GameConsoleCommands::HandleMorph);
     RegisterCommand(GameConsoleCommands::HandleDemorph);
+    RegisterCommand(GameConsoleCommands::HandleCharacterCreate);
+    RegisterCommand(GameConsoleCommands::HandleCharacterDelete);
     RegisterCommand(GameConsoleCommands::HandleFly);
     RegisterCommand(GameConsoleCommands::HandleSetRace);
     RegisterCommand(GameConsoleCommands::HandleSetGender);

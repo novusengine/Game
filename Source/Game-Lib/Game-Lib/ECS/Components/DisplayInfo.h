@@ -11,6 +11,6 @@ namespace ECS::Components
         u32 displayID;
 
         GameDefine::UnitRace race;
-        GameDefine::Gender gender;
+        GameDefine::UnitGender gender;
     };
 }

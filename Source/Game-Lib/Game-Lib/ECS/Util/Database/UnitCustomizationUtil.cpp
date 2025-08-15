@@ -158,7 +158,7 @@ namespace ECSUtil::UnitCustomization
                     Database::Unit::UnitModelInfo unitModelInfo =
                     {
                         .race = static_cast<GameDefine::UnitRace>(id),
-                        .gender = GameDefine::Gender::Other
+                        .gender = GameDefine::UnitGender::Other
                     };
 
                     unitCustomizationSingleton.modelIDToUnitModelInfo[maleModelID] = unitModelInfo;
@@ -170,7 +170,7 @@ namespace ECSUtil::UnitCustomization
                         Database::Unit::UnitModelInfo unitModelInfo =
                         {
                             .race = static_cast<GameDefine::UnitRace>(id),
-                            .gender = GameDefine::Gender::Male
+                            .gender = GameDefine::UnitGender::Male
                         };
 
                         unitCustomizationSingleton.modelIDToUnitModelInfo[maleModelID] = unitModelInfo;
@@ -181,7 +181,7 @@ namespace ECSUtil::UnitCustomization
                         Database::Unit::UnitModelInfo unitModelInfo =
                         {
                             .race = static_cast<GameDefine::UnitRace>(id),
-                            .gender = GameDefine::Gender::Female
+                            .gender = GameDefine::UnitGender::Female
                         };
 
                         unitCustomizationSingleton.modelIDToUnitModelInfo[femaleModelID] = unitModelInfo;
@@ -263,7 +263,7 @@ namespace ECSUtil::UnitCustomization
             if (id == 0) return true;
 
             auto unitRace = static_cast<GameDefine::UnitRace>(unitRaceCustomizationChoice.raceID);
-            auto gender = static_cast<GameDefine::Gender>(unitRaceCustomizationChoice.gender + 1);
+            auto gender = static_cast<GameDefine::UnitGender>(unitRaceCustomizationChoice.gender + 1);
             auto customizationOption = static_cast<Database::Unit::CustomizationOption>(unitRaceCustomizationChoice.customizationOptionID);
 
             u32 baseCustomizationOptionKey = CreateCustomizationKey(unitRace, gender, customizationOption);
@@ -347,9 +347,9 @@ namespace ECSUtil::UnitCustomization
             {
                 auto unitRace = static_cast<GameDefine::UnitRace>(raceIndex);
 
-                for (u32 genderIndex = (u32)GameDefine::Gender::Start; genderIndex <= (u32)GameDefine::Gender::Female; genderIndex++)
+                for (u32 genderIndex = (u32)GameDefine::UnitGender::Start; genderIndex <= (u32)GameDefine::UnitGender::Female; genderIndex++)
                 {
-                    auto gender = static_cast<GameDefine::Gender>(genderIndex);
+                    auto gender = static_cast<GameDefine::UnitGender>(genderIndex);
 
                     u32 baseCustomizationOptionKey = CreateCustomizationKey(unitRace, gender, customizationOption);
                     if (!unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList.contains(baseCustomizationOptionKey))
@@ -523,7 +523,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
+    bool GetBaseSkinTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID)
     {
         u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Skin, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
@@ -533,7 +533,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
     
-    bool GetBaseSkinBraTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
+    bool GetBaseSkinBraTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID)
     {
         u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::SkinBra, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
@@ -543,7 +543,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetBaseSkinUnderwearTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, Renderer::TextureID& textureID)
+    bool GetBaseSkinUnderwearTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, Renderer::TextureID& textureID)
     {
         u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::SkinUnderwear, 0, skinID, 0);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
@@ -553,7 +553,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetBaseSkinFaceTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 skinID, u8 faceID, u8 variant, Renderer::TextureID& textureID)
+    bool GetBaseSkinFaceTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 skinID, u8 faceID, u8 variant, Renderer::TextureID& textureID)
     {
         u32 customizationKey = CreateCustomizationKey(race, gender, Database::Unit::CustomizationOption::Face, faceID, skinID, variant);
         if (!unitCustomizationSingleton.unitCustomizationKeyToTextureID.contains(customizationKey))
@@ -563,7 +563,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetBaseSkinHairTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 hairStyle, u8 hairColor, u8 variant, Renderer::TextureID& textureID)
+    bool GetBaseSkinHairTextureID(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 hairStyle, u8 hairColor, u8 variant, Renderer::TextureID& textureID)
     {
         u32 choiceID;
         if (!ECSUtil::UnitCustomization::GetChoiceIDFromOptionValue(unitCustomizationSingleton, race, gender, Database::Unit::CustomizationOption::Hairstyle, hairStyle, choiceID))
@@ -643,7 +643,7 @@ namespace ECSUtil::UnitCustomization
         }
     }
 
-    bool GetChoiceIDFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u32& choiceID)
+    bool GetChoiceIDFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u32& choiceID)
     {
         u32 baseCustomizationKey = CreateCustomizationKey(race, gender, customizationOption);
         if (!unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList.contains(baseCustomizationKey))
@@ -656,7 +656,7 @@ namespace ECSUtil::UnitCustomization
         choiceID = choiceIDList[customizationOptionValue];
         return true;
     }
-    bool GetGeosetFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u16& geoset)
+    bool GetGeosetFromOptionValue(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, Database::Unit::CustomizationOption customizationOption, u8 customizationOptionValue, u16& geoset)
     {
         u32 baseCustomizationKey = CreateCustomizationKey(race, gender, customizationOption);
         if (!unitCustomizationSingleton.unitBaseCustomizationKeyToChoiceIDList.contains(baseCustomizationKey))
@@ -678,7 +678,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    bool GetHairTexture(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::Gender gender, u8 hairStyle, u8 hairColor, Renderer::TextureID& textureID)
+    bool GetHairTexture(ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8 hairStyle, u8 hairColor, Renderer::TextureID& textureID)
     {
         u32 choiceID;
         if (!ECSUtil::UnitCustomization::GetChoiceIDFromOptionValue(unitCustomizationSingleton, race, gender, Database::Unit::CustomizationOption::Hairstyle, hairStyle, choiceID))
@@ -698,7 +698,7 @@ namespace ECSUtil::UnitCustomization
         return true;
     }
 
-    u32 CreateCustomizationKey(GameDefine::UnitRace race, GameDefine::Gender gender, Database::Unit::CustomizationOption customizationOption, u8 choiceIndex, u8 variationIndex, u8 materialIndex)
+    u32 CreateCustomizationKey(GameDefine::UnitRace race, GameDefine::UnitGender gender, Database::Unit::CustomizationOption customizationOption, u8 choiceIndex, u8 variationIndex, u8 materialIndex)
     {
         // Key (Race, Gender, Customization Option, ChoiceIndex, VariantIndex, TextureIndex)
         // Race 6 Bits (64 Values)

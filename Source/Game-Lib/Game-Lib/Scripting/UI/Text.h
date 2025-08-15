@@ -23,6 +23,7 @@ namespace Scripting::UI
         i32 GetHeight(lua_State* state);
         i32 GetColor(lua_State* state);
         i32 SetColor(lua_State* state);
+        i32 SetAlpha(lua_State* state);
         i32 GetWrapWidth(lua_State* state);
         i32 SetWrapWidth(lua_State* state);
         i32 GetWrapIndent(lua_State* state);
@@ -41,6 +42,7 @@ namespace Scripting::UI
         { "GetHeight", TextMethods::GetHeight },
         { "GetColor", TextMethods::GetColor },
         { "SetColor", TextMethods::SetColor },
+        { "SetAlpha", TextMethods::SetAlpha },
         { "GetWrapWidth", TextMethods::GetWrapWidth },
         { "SetWrapWidth", TextMethods::SetWrapWidth },
         { "GetWrapIndent", TextMethods::GetWrapIndent },

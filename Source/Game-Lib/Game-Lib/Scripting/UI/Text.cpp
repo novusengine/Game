@@ -219,6 +219,27 @@ namespace Scripting::UI
             return 0;
         }
 
+        i32 SetAlpha(lua_State* state)
+        {
+            LuaState ctx(state);
+
+            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
+            if (widget == nullptr)
+            {
+                luaL_error(state, "Widget is null");
+            }
+
+            f32 alpha = ctx.Get(0.0f, -1);
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            textTemplate.color.a = alpha;
+            textTemplate.setFlags.color = true;
+
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            return 0;
+        }
+
         i32 GetWrapWidth(lua_State* state)
         {
             LuaState ctx(state);

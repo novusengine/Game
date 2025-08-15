@@ -89,6 +89,7 @@ local function RefreshText(chat : Chat)
     local optionSection = optionGroup:Get("General");
 
     local showTimestamp = (optionSection.options:Has("Show Timestamps") and optionSection:GetOption("Show Timestamps"):Get()) or false;
+    local textSize = (optionSection.options:Has("Text Size") and optionSection:GetOption("Text Size"):Get()) or 18.0;
 
     -- Loop through the chat history queue backwards beginning at the startIndex
     local widgetIndex = 1;
@@ -107,6 +108,7 @@ local function RefreshText(chat : Chat)
             chat.chatHistoryTexts[widgetIndex]:SetPosY(currentY); -- Set the Y position of the text widget
 
             -- Update the text widget with the message content
+            chat.chatHistoryTexts[widgetIndex]:SetFontSize(textSize); -- Set the font size from options
             chat.chatHistoryTexts[widgetIndex]:SetText(FormatMessage(message, showTimestamp));
 
             -- Update the text color based on the message

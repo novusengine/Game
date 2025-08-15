@@ -89,6 +89,7 @@ private:
     public:
         u32 loadRequestIndex = std::numeric_limits<u32>().max();
         bool success = false;
+        bool isStatic = false;
     };
 
     struct WorkRequest

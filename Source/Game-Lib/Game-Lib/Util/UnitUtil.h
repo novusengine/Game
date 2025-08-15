@@ -43,7 +43,7 @@ namespace Util::Unit
     bool CloseHand(entt::registry& registry, entt::entity entity, bool isOffHand);
     bool OpenHand(entt::registry& registry, entt::entity entity, bool isOffHand);
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity);
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity);
     bool AddShoulders(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
     bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
 

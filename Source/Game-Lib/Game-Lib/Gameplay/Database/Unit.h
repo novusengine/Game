@@ -16,7 +16,7 @@ namespace Database::Unit
     {
     public:
         GameDefine::UnitRace race;
-        GameDefine::Gender gender;
+        GameDefine::UnitGender gender;
     };
 
     enum class TextureSectionType : u8

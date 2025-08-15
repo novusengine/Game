@@ -118,6 +118,9 @@ namespace ECS::Systems
 
             modelLoadedEventView.each([&](entt::entity entity, Components::ModelLoadedEvent& modelLoadedEvent)
             {
+                if (modelLoadedEvent.flags.staticModel)
+                    return;
+
                 auto& model = registry.get<Components::Model>(entity);
                 auto* name = registry.try_get<Components::Name>(entity);
 
@@ -142,7 +145,7 @@ namespace ECS::Systems
                                 unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(bakedTextureHash);
 
                                 displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->raceID);
-                                displayInfo.gender = static_cast<GameDefine::Gender>(displayInfoExtraRow->gender);
+                                displayInfo.gender = static_cast<GameDefine::UnitGender>(displayInfoExtraRow->gender);
 
                                 unitCustomization->skinID = displayInfoExtraRow->skinID;
                                 unitCustomization->faceID = displayInfoExtraRow->faceID;

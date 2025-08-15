@@ -361,6 +361,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     local textTemplate = inputBoxTemplateTable["textTemplate"] or "DefaultButtonText";
     inputBoxTable.textTemplate = textTemplate; -- Store textTemplate for use in calculations
     local defaultText = inputBoxTemplateTable["defaultText"] or "";
+    local defaultTextFontSize = inputBoxTemplateTable["defaultTextFontSize"];
 
     inputBoxTable.text = defaultText;
 
@@ -378,9 +379,12 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     inputBoxTable.button = UIButton.NewButton(inputBoxTable.inputBox, 0, 0, sizeX, sizeY, 0, {
         panelTemplate = panelTemplate,
-        textTemplate = textTemplate,
+        textTemplate = textTemplate
     });
     inputBoxTable.button:SetText(defaultText);
+    if defaultTextFontSize then
+        inputBoxTable.button:SetFontSize(defaultTextFontSize);
+    end
     inputBoxTable.button:SetFocusable(true);
     
     local buttonText = inputBoxTable.button.text;

@@ -54,7 +54,7 @@ namespace ECS
 
         namespace Container
         {
-            bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u8 srcContainerIndex, u8 destContainerIndex, u8 srcSlotIndex, u8 destSlotIndex);
+            bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u16 srcContainerIndex, u16 destContainerIndex, u16 srcSlotIndex, u16 destSlotIndex);
         }
 
         namespace Spell
@@ -78,7 +78,7 @@ namespace ECS
             bool BuildCheatCreateChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
             bool BuildCheatDeleteChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name);
             bool BuildCheatSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race);
-            bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::Gender gender);
+            bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender);
             bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass);
             bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level);
             bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item);

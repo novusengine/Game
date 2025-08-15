@@ -335,7 +335,7 @@ namespace Util::Unit
         return didOpenFingers;
     }
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::Gender gender, entt::entity& itemEntity)
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity)
     {
         itemEntity = entt::null;
 
@@ -954,7 +954,7 @@ namespace Util::Unit
             modelLoader->SetSkinTextureForModel(model, unitCustomization.skinTextureID);
         }
 
-        if (displayInfo.displayID != 0 && displayInfo.race != GameDefine::UnitRace::None && displayInfo.gender != GameDefine::Gender::None)
+        if (displayInfo.displayID != 0 && displayInfo.race != GameDefine::UnitRace::None && displayInfo.gender != GameDefine::UnitGender::None)
         {
             if (!justCreatedSkinTexture)
                 ECSUtil::UnitCustomization::WriteBaseSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, baseSkinTextureID);

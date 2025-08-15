@@ -603,6 +603,7 @@ namespace ECS::Systems
             {
                 .mStickToFloorStepDown = vec3(0.0f, -0.2f, 0.0f),
                 .mWalkStairsStepUp = vec3(0.0f, 1.1918f, 0.0f),
+                .mWalkStairsCosAngleForwardContact = glm::cos(glm::radians(50.0f)),
                 .mWalkStairsStepDownExtra = vec3(0.0f, 0.0f, 0.0f)
             };
 
@@ -696,7 +697,7 @@ namespace ECS::Systems
             auto& unit = registry.get_or_emplace<Components::Unit>(characterSingleton.moverEntity);
             unit.unitClass = GameDefine::UnitClass::Warrior;
             unit.race = GameDefine::UnitRace::Human;
-            unit.gender = GameDefine::Gender::Female;
+            unit.gender = GameDefine::UnitGender::Female;
 
             auto& unitEquipment = registry.get_or_emplace<Components::UnitEquipment>(characterSingleton.moverEntity);
             for (u32 i = 0; i < (u32)Database::Item::ItemEquipSlot::Count; i++)

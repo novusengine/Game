@@ -13,7 +13,7 @@ namespace ECS::Util
         template <typename... Events>
         inline void PushEventTo(entt::registry& registry, entt::entity entity, Events&&... events)
         {
-            (registry.emplace<std::decay_t<Events>>(entity, std::forward<Events>(events)), ...);
+            (registry.emplace_or_replace<std::decay_t<Events>>(entity, std::forward<Events>(events)), ...);
         }
 
         template <typename... Events>

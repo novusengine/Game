@@ -461,6 +461,62 @@ bool GameConsoleCommands::HandleDemorph(GameConsole* gameConsole, Generated::Dem
     return true;
 }
 
+bool GameConsoleCommands::HandleCharacterCreate(GameConsole* gameConsole, Generated::CharacterCreateCommand& command)
+{
+    const std::string& characterName = command.name;
+    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
+    {
+        gameConsole->PrintError("Failed to send Create Character, name supplied is invalid : %s", characterName.c_str());
+        return true;
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreateChar(buffer, characterName))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        gameConsole->PrintWarning("Failed to send Create Character, not connected");
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCharacterDelete(GameConsole* gameConsole, Generated::CharacterDeleteCommand& command)
+{
+    const std::string& characterName = command.name;
+    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
+    {
+        gameConsole->PrintError("Failed to send Delete Character, name supplied is invalid : %s", characterName.c_str());
+        return true;
+    }
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDeleteChar(buffer, characterName))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        gameConsole->PrintWarning("Failed to send Delete Character, not connected");
+    }
+
+    return true;
+}
+
 bool GameConsoleCommands::HandleFly(GameConsole* gameConsole, Generated::FlyCommand& command)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -535,27 +591,27 @@ bool GameConsoleCommands::HandleSetGender(GameConsole* gameConsole, Generated::S
     if (!networkState.client || !networkState.client->IsConnected())
         return false;
 
-    GameDefine::Gender gender = GameDefine::Gender::None;
+    GameDefine::UnitGender gender = GameDefine::UnitGender::None;
     std::string& genderName = command.gender;
 
     bool isSpecifiedAsID = std::isdigit(genderName[0]);
     if (isSpecifiedAsID)
     {
-        gender = static_cast<GameDefine::Gender>(genderName[0] - '0');
+        gender = static_cast<GameDefine::UnitGender>(genderName[0] - '0');
     }
     else
     {
         std::transform(genderName.begin(), genderName.end(), genderName.begin(), [](unsigned char c) { return std::tolower(c); });
 
         if (genderName == "male")
-            gender = GameDefine::Gender::Male;
+            gender = GameDefine::UnitGender::Male;
         else if (genderName == "female")
-            gender = GameDefine::Gender::Female;
+            gender = GameDefine::UnitGender::Female;
         else if (genderName == "other")
-            gender = GameDefine::Gender::Other;
+            gender = GameDefine::UnitGender::Other;
     }
 
-    if (gender == GameDefine::Gender::None || gender > GameDefine::Gender::Other)
+    if (gender == GameDefine::UnitGender::None || gender > GameDefine::UnitGender::Other)
         return false;
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();

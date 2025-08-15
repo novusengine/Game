@@ -379,7 +379,6 @@ end
 RegisterPlayerEvent(PlayerEvent.ContainerAddToSlot, OnContainerAddToSlot)
 
 local function OnContainerRemoveFromSlot(eventID : number, index : number, slot : number)
-    print("OnContainerRemoveFromSlot", index, slot)
     if index < MIN_CONTAINER_INDEX or index > MAX_CONTAINER_INDEX then
         return
     end

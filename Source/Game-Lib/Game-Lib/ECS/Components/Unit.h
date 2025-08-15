@@ -16,7 +16,7 @@ namespace ECS::Components
         entt::entity targetEntity;
         GameDefine::UnitClass unitClass;
         GameDefine::UnitRace race;
-        GameDefine::Gender gender;
+        GameDefine::UnitGender gender;
 
         u32 bodyID = std::numeric_limits<u32>().max();
         ::Animation::Defines::Type overrideAnimation = ::Animation::Defines::Type::Invalid;

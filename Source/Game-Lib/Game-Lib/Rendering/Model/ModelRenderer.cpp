@@ -1794,7 +1794,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
         bool useCustomSkin = false;
 
         GameDefine::UnitRace unitRace = GameDefine::UnitRace::None;
-        GameDefine::Gender gender = GameDefine::Gender::None;
+        GameDefine::UnitGender gender = GameDefine::UnitGender::None;
 
         if (creatureDisplayInfoExtra)
         {
@@ -1803,7 +1803,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
             useCustomSkin = !isPrebaked;
 
             unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->raceID);
-            gender = static_cast<GameDefine::Gender>(creatureDisplayInfoExtra->gender);
+            gender = static_cast<GameDefine::UnitGender>(creatureDisplayInfoExtra->gender);
         }
         else if (creatureDisplayInfo)
         {
@@ -1955,7 +1955,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         }
                         else if (creatureDisplayInfoExtra)
                         {
-                            if (unitRace != GameDefine::UnitRace::None && gender != GameDefine::Gender::None)
+                            if (unitRace != GameDefine::UnitRace::None && gender != GameDefine::UnitGender::None)
                             {
                                 Renderer::TextureID hairTextureID;
                                 if (ECSUtil::UnitCustomization::GetHairTexture(unitCustomizationSingleton, unitRace, gender, creatureDisplayInfoExtra->hairStyleID, creatureDisplayInfoExtra->hairColorID, hairTextureID))

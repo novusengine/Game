@@ -9,9 +9,9 @@ namespace ECS::Components
     struct Container
     {
     public:
-        GameDefine::ObjectGuid GetItem(u8 slotIndex) const
+        GameDefine::ObjectGuid GetItem(u16 slotIndex) const
         {
-            u8 numSlots = this->numSlots;
+            u16 numSlots = this->numSlots;
 #if defined(NC_DEBUG)
             NC_ASSERT(slotIndex < numSlots, "Container::GetItem - Called with slotIndex ({0}) when the container can only hold {1} items", slotIndex, numSlots);
 #endif
@@ -22,9 +22,9 @@ namespace ECS::Components
             return items[slotIndex];
         }
 
-        bool AddToSlot(u8 slotIndex, GameDefine::ObjectGuid item)
+        bool AddToSlot(u16 slotIndex, GameDefine::ObjectGuid item)
         {
-            u8 numSlots = this->numSlots;
+            u16 numSlots = this->numSlots;
 #if defined(NC_DEBUG)
             NC_ASSERT(slotIndex < numSlots, "Container::AddToSlot - Called with slotIndex ({0}) when the container can only hold {1} items", slotIndex, numSlots);
 #endif
@@ -39,9 +39,9 @@ namespace ECS::Components
             return true;
         }
 
-        bool RemoveFromSlot(u8 slotIndex)
+        bool RemoveFromSlot(u16 slotIndex)
         {
-            u8 numSlots = this->numSlots;
+            u16 numSlots = this->numSlots;
 #if defined(NC_DEBUG)
             NC_ASSERT(slotIndex < numSlots, "Container::RemoveFromSlot - Called with slotIndex ({0}) when the container can only hold {1} items", slotIndex, numSlots);
 #endif
@@ -56,10 +56,10 @@ namespace ECS::Components
             return true;
         }
 
-        bool SwapSlots(Container& destContainer, u8 srcSlotIndex, u8 destSlotIndex)
+        bool SwapSlots(Container& destContainer, u16 srcSlotIndex, u16 destSlotIndex)
         {
-            u8 numSrcSlots = this->numSlots;
-            u8 numDestSlots = destContainer.numSlots;
+            u16 numSrcSlots = this->numSlots;
+            u16 numDestSlots = destContainer.numSlots;
 
 #if defined(NC_DEBUG)
             NC_ASSERT(srcSlotIndex < numSrcSlots, "Container::SwapItems - Called with srcSlotIndex ({0}) when the container can only hold {1} items", srcSlotIndex, numSrcSlots);
@@ -88,8 +88,8 @@ namespace ECS::Components
 
     public:
         u32 itemID = 0;
-        u8 numSlots = 0;
-        u8 numFreeSlots = 0;
+        u16 numSlots = 0;
+        u16 numFreeSlots = 0;
         std::vector<GameDefine::ObjectGuid> items;
     };
 }

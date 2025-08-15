@@ -29,6 +29,8 @@ public:
     static bool HandleClearMap(GameConsole* gameConsole, Generated::ClearMapCommand& command);
     static bool HandleMorph(GameConsole* gameConsole, Generated::MorphCommand& command);
     static bool HandleDemorph(GameConsole* gameConsole, Generated::DemorphCommand& command);
+    static bool HandleCharacterCreate(GameConsole* gameConsole, Generated::CharacterCreateCommand& command);
+    static bool HandleCharacterDelete(GameConsole* gameConsole, Generated::CharacterDeleteCommand& command);
     static bool HandleFly(GameConsole* gameConsole, Generated::FlyCommand& command);
     static bool HandleSetRace(GameConsole* gameConsole, Generated::SetRaceCommand& command);
     static bool HandleSetGender(GameConsole* gameConsole, Generated::SetGenderCommand& command);

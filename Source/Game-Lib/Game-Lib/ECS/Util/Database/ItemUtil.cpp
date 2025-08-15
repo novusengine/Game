@@ -462,17 +462,17 @@ namespace ECSUtil::Item
         return &itemSingleton.itemEffectIDs[itemEffectMapping.indexIntoMap];
     }
     
-    u32 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::Gender gender, u8& variant)
+    u32 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8& variant)
     {
         variant = 0;
 
-        if (race == GameDefine::UnitRace::None || gender == GameDefine::Gender::None || !itemSingleton.helmModelResourcesIDToModelMapping.contains(helmModelResourcesID))
+        if (race == GameDefine::UnitRace::None || gender == GameDefine::UnitGender::None || !itemSingleton.helmModelResourcesIDToModelMapping.contains(helmModelResourcesID))
             return std::numeric_limits<u32>().max();
 
         auto& helmMapping = itemSingleton.helmModelResourcesIDToModelMapping[helmModelResourcesID];
 
         u32 raceIndex = ((u32)race - 1) * 2;
-        bool isFemale = gender == GameDefine::Gender::Female;
+        bool isFemale = gender == GameDefine::UnitGender::Female;
 
         u32 identifier = raceIndex + isFemale;
         u32 modelHash = helmMapping.raceGenderToModelHash[identifier];

@@ -109,6 +109,14 @@ function templatesAPI.RegisterTemplates()
         background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
+    UI.RegisterTextTemplate("DefaultDebugText",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        size = 12.0,
+        borderSize = 1.0,
+        borderColor = vector.create(0.0, 0.0, 0.0),
+    });
+
     UI.RegisterTextTemplate("DefaultButtonText",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font

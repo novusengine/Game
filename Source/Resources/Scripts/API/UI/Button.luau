@@ -15,6 +15,10 @@ local function SetupButtonMethods(buttonTable)
         table.text:SetText(text);
     end
 
+    buttonTable.SetFontSize = function(table, size)
+        table.text:SetFontSize(size);
+    end
+
     -- Widget Methods
     buttonTable.SetEnabled = function(table, val)
         table.panel:SetEnabled(val);

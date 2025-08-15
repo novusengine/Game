@@ -97,7 +97,7 @@ namespace Editor
 
         static std::string currentFilter;
         static bool hasFilter = false;
-        ImGui::InputText("Filter", &currentFilter);
+        ImGui::InputText("##CDB Filter", &currentFilter);
 
         bool hadFilterLastFrame = hasFilter;
         hasFilter = currentFilter.length() > 0;

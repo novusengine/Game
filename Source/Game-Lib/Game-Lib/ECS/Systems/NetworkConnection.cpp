@@ -245,7 +245,7 @@ namespace ECS::Systems
         GameDefine::ObjectGuid networkID;
         u32 displayID = 0;
         GameDefine::UnitRace race;
-        GameDefine::Gender gender;
+        GameDefine::UnitGender gender;
 
         if (!message.buffer->Deserialize(networkID))
             return false;
@@ -557,19 +557,19 @@ namespace ECS::Systems
     }
     bool HandleOnContainerCreate(Network::SocketID socketID, Network::Message& message)
     {
-        u8 containerIndex = 0;
+        u16 containerIndex = 0;
         u32 itemID = 0;
         GameDefine::ObjectGuid networkID;
-        u8 numSlots = 0;
-        u8 numSlotsFree = 0;
+        u16 numSlots = 0;
+        u16 numSlotsFree = 0;
 
         bool didFail = false;
 
-        didFail |= !message.buffer->GetU8(containerIndex);
+        didFail |= !message.buffer->GetU16(containerIndex);
         didFail |= !message.buffer->GetU32(itemID);
         didFail |= !message.buffer->Deserialize(networkID);
-        didFail |= !message.buffer->GetU8(numSlots);
-        didFail |= !message.buffer->GetU8(numSlotsFree);
+        didFail |= !message.buffer->GetU16(numSlots);
+        didFail |= !message.buffer->GetU16(numSlotsFree);
 
         if (didFail)
             return false;
@@ -594,10 +594,10 @@ namespace ECS::Systems
         u8 numItemsInContainer = numSlots - numSlotsFree;
         for (u32 i = 0; i < numItemsInContainer; i++)
         {
-            u8 containerItemIndex = 0;
+            u16 containerItemIndex = 0;
             GameDefine::ObjectGuid containerItemNetworkID;
 
-            didFail |= !message.buffer->GetU8(containerItemIndex);
+            didFail |= !message.buffer->GetU16(containerItemIndex);
             didFail |= !message.buffer->Deserialize(containerItemNetworkID);
 
             container.items[containerItemIndex] = containerItemNetworkID;
@@ -686,14 +686,14 @@ namespace ECS::Systems
     }
     bool HandleOnContainerAddToSlot(Network::SocketID socketID, Network::Message& message)
     {
-        u8 containerIndex = 0;
-        u8 slotIndex = 0;
+        u16 containerIndex = 0;
+        u16 slotIndex = 0;
         GameDefine::ObjectGuid itemNetworkID;
 
         bool didFail = false;
 
-        didFail |= !message.buffer->GetU8(containerIndex);
-        didFail |= !message.buffer->GetU8(slotIndex);
+        didFail |= !message.buffer->GetU16(containerIndex);
+        didFail |= !message.buffer->GetU16(slotIndex);
         didFail |= !message.buffer->Deserialize(itemNetworkID);
 
         if (didFail)
@@ -773,12 +773,12 @@ namespace ECS::Systems
     }
     bool HandleOnContainerRemoveFromSlot(Network::SocketID socketID, Network::Message& message)
     {
-        u8 containerIndex = 0;
-        u8 slotIndex = 0;
+        u16 containerIndex = 0;
+        u16 slotIndex = 0;
 
         bool didFail = false;
-        didFail |= !message.buffer->GetU8(containerIndex);
-        didFail |= !message.buffer->GetU8(slotIndex);
+        didFail |= !message.buffer->GetU16(containerIndex);
+        didFail |= !message.buffer->GetU16(slotIndex);
 
         if (didFail)
             return false;
@@ -851,17 +851,17 @@ namespace ECS::Systems
     }
     bool HandleOnContainerSwapSlots(Network::SocketID socketID, Network::Message& message)
     {
-        u8 srcContainerIndex = 0;
-        u8 destContainerIndex = 0;
-        u8 srcSlotIndex = 0;
-        u8 dstSlotIndex = 0;
+        u16 srcContainerIndex = 0;
+        u16 destContainerIndex = 0;
+        u16 srcSlotIndex = 0;
+        u16 dstSlotIndex = 0;
 
         bool didFail = false;
 
-        didFail |= !message.buffer->GetU8(srcContainerIndex);
-        didFail |= !message.buffer->GetU8(destContainerIndex);
-        didFail |= !message.buffer->GetU8(srcSlotIndex);
-        didFail |= !message.buffer->GetU8(dstSlotIndex);
+        didFail |= !message.buffer->GetU16(srcContainerIndex);
+        didFail |= !message.buffer->GetU16(destContainerIndex);
+        didFail |= !message.buffer->GetU16(srcSlotIndex);
+        didFail |= !message.buffer->GetU16(dstSlotIndex);
 
         if (didFail)
             return false;
