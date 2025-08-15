@@ -1,7 +1,8 @@
-local UIButton = require("@src/API/UI/Button")
-local UIInputBox = require("@src/API/UI/InputBox")
---local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox")
-local OptionsContext = require("@src/API/OptionsContext")
+local UIButton = require("@src/API/UI/Button");
+local UIInputBox = require("@src/API/UI/InputBox");
+--local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox");
+local ChatListener = require("@src/API/Game/ChatListener");
+local OptionsContext = require("@src/API/OptionsContext");
 
 export type ChatMessage =
 {
@@ -161,7 +162,11 @@ local function OnSubmit(chat : Chat, inputBox : InputBox)
         return true; -- Do not submit empty messages
     end
 
-    AddMessageToChat(chat, text, "Say", "Pursche", true); -- Add the message to the chat history
+    local shouldBlockMessage = ChatListener:OnChat(text);
+
+    if (not shouldBlockMessage) then
+        AddMessageToChat(chat, text, "Say", "Pursche", true); -- Add the message to the chat history
+    end
     inputBox:SetText(""); -- Clear the input box after submitting
 
     chatToOpenOnEnter = chat; -- Set the chat to open on enter
@@ -304,20 +309,21 @@ local function OnGameLoaded(eventID : number, motd : string)
         return false;
     end);
 
+    -- Set up callback for pushing messages from C++
+    UI.RegisterSendMessageToChatCallback(function(channel : string, playerName : string, text : string, isOutgoing : boolean)
+        if (chatToOpenOnEnter == nil) then
+            return false; -- No chat to open
+        end
+
+        AddMessageToChat(mainChat, text, channel, playerName, isOutgoing);
+        return true;
+    end);
+
     -- Debug: Add some initial messages
-    AddMessageToChat(mainChat, "Hello Pursche",                 "Whisper", "Nix", false);
-    AddMessageToChat(mainChat, "Sup Nix",                       "Whisper", "Nix", true);
-    AddMessageToChat(mainChat, "WTS [Linen Cloth]",             "Trade", "Foe", true);
-    AddMessageToChat(mainChat, "Have you heard about Novus? It's pretty cool stuff",   "Whisper", "Nix", false);
-    AddMessageToChat(mainChat, "Yeah, handsome developers as well",        "Whisper", "Nix", true);
-    AddMessageToChat(mainChat, "Server restart in 30 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 15 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 10 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 5 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 4 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 3 seconds",  "System", "", true);
-    AddMessageToChat(mainChat, "Server restart in 2 seconds",  "System", "", true);
-    --AddMessageToChat(mainChat, "Server restart in 1 seconds asoingaoinisgoianoigsnaoisngoiansoginaoisngoiansoignaoisngoiansoignoainsgoinasoingoians c",  "System", "", true);
+    AddMessageToChat(mainChat, "Welcome to NovusEngine!", "System", "", true);
+    -- Examples of other channels
+    --AddMessageToChat(mainChat, "Hello Pursche",         "Whisper", "Nix", false);
+    --AddMessageToChat(mainChat, "WTS [Linen Cloth]",     "Trade", "Foe", true);
 end
 
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)

@@ -8,6 +8,8 @@
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Gameplay/Attachment/Defines.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
+#include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
+#include "Game-Lib/Gameplay/GameConsole/GameConsoleCommandHandler.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/LuaManager.h"
@@ -210,6 +212,19 @@ namespace Scripting
         }
 
         ctx.Push(itemID);
+        return 1;
+    }
+    i32 GlobalHandler::ExecCmd(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        std::string command = ctx.Get("", 1);
+
+        auto* gameConsole = ServiceLocator::GetGameConsole();
+        auto* commandHandler = gameConsole->GetCommandHandler();
+        bool wasProcessed = commandHandler->HandleCommand(gameConsole, command);
+
+        ctx.Push(wasProcessed);
         return 1;
     }
 }

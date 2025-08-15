@@ -9,6 +9,11 @@
 #include <entt/entt.hpp>
 #include <map>
 
+namespace Scripting::UI
+{
+    struct Widget;
+}
+
 namespace ECS::Singletons
 {
     struct UISingleton
@@ -36,6 +41,8 @@ namespace ECS::Singletons
 
         // Cursor canvas
         Scripting::UI::Widget* cursorCanvas = nullptr;
+
+        i32 sendMessageToChatCallback = -1; // Callback for pushing chat messages into Lua
 
         // Script widgets, these are actually owned and need to be deleted
         std::vector<Scripting::UI::Widget*> scriptWidgets;

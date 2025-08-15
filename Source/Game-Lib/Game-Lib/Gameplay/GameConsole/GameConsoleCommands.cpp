@@ -11,9 +11,11 @@
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Scripting/LuaManager.h"
@@ -338,6 +340,11 @@ bool GameConsoleCommands::HandleHelp(GameConsole* gameConsole, Generated::HelpCo
 bool GameConsoleCommands::HandlePing(GameConsole* gameConsole, Generated::PingCommand& command)
 {
     gameConsole->Print("pong");
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+
+    ECS::Util::UI::CallSendMessageToChat(uiSingleton.sendMessageToChatCallback, "System", "", "pong", false);
     return true;
 }
 

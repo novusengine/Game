@@ -55,6 +55,7 @@ declare function LoadMap(name : string) : ()
 declare function EquipItem(itemID : number, slotIndex : number) : boolean
 declare function UnequipItem(slotIndex : number) : boolean
 declare function GetEquippedItem(slotIndex : number) : number
+declare function ExecCmd(command : string) : boolean
 
 type UIInputEvent =
 {
@@ -178,14 +179,14 @@ declare class TextWidget extends Widget
     function GetRawText(self) : string
     function GetSize(self) : vec2
     function GetFontSize(self) : number
-    function SetFontSize(self, number) : ()
+    function SetFontSize(self, size : number) : ()
     function GetWidth(self) : number
     function GetHeight(self) : number
     function GetColor(self) : vec3
     function SetColor(self, color : vec3) : ()
     function GetWrapWidth(self) : number
     function GetWrapIndent(self) : number
-    function SetWrapIndent(self, number) : ()
+    function SetWrapIndent(self, size : number) : ()
 end
 
 declare class EventTemplate
@@ -226,10 +227,14 @@ declare class TextTemplate extends EventTemplate
     EventTemplate : EventTemplate?
 end
 
+type SendMessageToChatCallback = ((channel : string, playerName : string, text : string, isOutgoing : boolean) -> ())
+
 declare UI :
 {
     RegisterPanelTemplate : ((name : string, template : PanelTemplate) -> ()),
     RegisterTextTemplate : ((name : string, template : TextTemplate) -> ()),
+
+    RegisterSendMessageToChatCallback : ((callback : SendMessageToChatCallback) -> ()),
 
     GetCanvas : ((name : string, pos : vec2, size : vec2) -> Canvas),
     GetMousePos : (() -> vec2),
