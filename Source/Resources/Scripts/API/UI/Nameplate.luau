@@ -57,7 +57,6 @@ local function FormatText(health : number, healthPercent : number)
 end
 
 local function SetupNameplateMethods(nameplateTable : Nameplate)
-
     nameplateTable.SetEnabled = function(self : Nameplate, enabled : boolean)
         nameplateTable.border:SetEnabled(enabled);
     end

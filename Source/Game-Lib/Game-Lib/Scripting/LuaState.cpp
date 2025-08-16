@@ -216,8 +216,9 @@ namespace Scripting
         i32 result = lua_pcall(_state, numArgs, numResults, errorfunc);
         if (result != LUA_OK)
         {
+            const char* errorMsg = lua_tostring(_state, -1);
             NC_LOG_ERROR("[Scripting] Failed to run a script. Please check the errors below and correct them");
-            NC_LOG_ERROR("{0}", Get("Failed to read Luau Runtime Error"));
+            NC_LOG_ERROR("{0}", errorMsg);
             Pop();
         }
 

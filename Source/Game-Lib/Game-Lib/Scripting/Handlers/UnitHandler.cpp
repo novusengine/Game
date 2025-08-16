@@ -55,29 +55,22 @@ namespace Scripting
 
         u32 unitID = ctx.Get(std::numeric_limits<u32>().max(), 1);
         if (unitID == std::numeric_limits<u32>().max())
-        {
-            luaL_error(state, "Expected unitID as parameter 1");
-        }
+            return 0;
+
         entt::entity entityID = entt::entity(unitID);
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         if (!registry->valid(entityID))
-        {
-            luaL_error(state, "Invalid unitID");
-        }
+            return 0;
 
         if (!registry->all_of<ECS::Components::Model, ECS::Components::AttachmentData>(entityID))
-        {
-            luaL_error(state, "Unit does not have a model or attachment data");
-        }
+            return 0;
 
         ECS::Components::Model& model = registry->get<ECS::Components::Model>(entityID);
         ECS::Components::AttachmentData& attachmentData = registry->get<ECS::Components::AttachmentData>(entityID);
 
         if (!Util::Attachment::EnableAttachment(entityID, model, attachmentData, Attachment::Defines::Type::PlayerName))
-        {
-            luaL_error(state, "Failed to enable attachment");
-        }
+            return 0;
 
         const mat4x4* mat = Util::Attachment::GetAttachmentMatrix(attachmentData, Attachment::Defines::Type::PlayerName);
         vec3 position = (*mat)[3];

@@ -88,6 +88,7 @@ namespace Scripting::UI
     void UIHandler::Clear()
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+        auto& ctx = registry->ctx();
         auto& transformSystem = ECS::Transform2DSystem::Get(*registry);
 
         registry->view<ECS::Components::UI::Widget>().each([&transformSystem](entt::entity entity, ECS::Components::UI::Widget& widget)
@@ -108,9 +109,9 @@ namespace Scripting::UI
         transformSystem.ClearQueue();
         ServiceLocator::GetGameRenderer()->GetCanvasRenderer()->Clear();
 
-        if (registry->ctx().contains<ECS::Singletons::UISingleton>())
+        if (ctx.contains<ECS::Singletons::UISingleton>())
         {
-            ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
+            ECS::Singletons::UISingleton& uiSingleton = ctx.get<ECS::Singletons::UISingleton>();
             uiSingleton.panelTemplates.clear();
             uiSingleton.textTemplates.clear();
 
@@ -124,7 +125,14 @@ namespace Scripting::UI
             uiSingleton.cursorCanvasEntity = entt::null;
             uiSingleton.allHoveredEntities.clear();
             uiSingleton.scriptWidgets.clear();
-        } 
+        }
+
+        if (ctx.contains<ECS::Singletons::InputSingleton>())
+        {
+            auto& inputSingleton = ctx.get<ECS::Singletons::InputSingleton>();
+            inputSingleton.globalKeyboardEvents.clear();
+            inputSingleton.eventIDToKeyboardEventIndex.clear();
+        }
     }
 
     // UI
@@ -974,6 +982,8 @@ namespace Scripting::UI
 
         ctx.PCall(5, 1);
         bool result = ctx.Get(false);
+        ctx.Pop();
+
         return result; // Return if we should consume the event or not
     }
 
@@ -991,6 +1001,8 @@ namespace Scripting::UI
 
         ctx.PCall(4 , 1);
         bool result = ctx.Get(false);
+        ctx.Pop();
+
         return result; // Return if we should consume the event or not
     }
 
@@ -1010,6 +1022,8 @@ namespace Scripting::UI
 
         ctx.PCall(3, 1);
         bool result = ctx.Get(false);
+        ctx.Pop();
+
         return result; // Return if widget should consume the event or not
     }
 
