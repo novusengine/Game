@@ -413,5 +413,41 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
+        bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, mapID]()
+            {
+                buffer->Put(Network::CheatCommands::TriggerAdd);
+                buffer->PutString(name);
+                buffer->PutU16(flags);
+                buffer->PutU16(mapID);
+                buffer->Put(position);
+                buffer->Put(extents);
+            });
+
+            return result;
+        }
+        bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, triggerID]()
+            {
+                buffer->Put(Network::CheatCommands::TriggerRemove);
+                buffer->PutU32(triggerID);
+            });
+
+            return result;
+        }
+    }
+    namespace ProximityTrigger
+    {
+        bool BuildProximityTriggerEnter(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID)
+        {
+            bool result = CreatePacket(buffer, Network::GameOpcode::Client_TriggerEnter, [&, triggerID]()
+            {
+                buffer->PutU32(triggerID);
+            });
+
+            return result;
+        }
     }
 }

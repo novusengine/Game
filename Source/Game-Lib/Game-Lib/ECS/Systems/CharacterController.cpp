@@ -9,6 +9,7 @@
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
@@ -689,6 +690,7 @@ namespace ECS::Systems
 
             auto& name = registry.get_or_emplace<Components::Name>(characterSingleton.moverEntity);
             auto& aabb = registry.get_or_emplace<Components::AABB>(characterSingleton.moverEntity);
+            registry.emplace_or_replace<Components::WorldAABB>(characterSingleton.moverEntity);
             auto& transform = registry.get_or_emplace<Components::Transform>(characterSingleton.moverEntity);
             auto& moverModel = registry.get_or_emplace<Components::Model>(characterSingleton.moverEntity);
             auto& movementInfo = registry.get_or_emplace<Components::MovementInfo>(characterSingleton.moverEntity);
@@ -720,7 +722,10 @@ namespace ECS::Systems
 
             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
             modelLoader->LoadDisplayIDForEntity(characterSingleton.moverEntity, moverModel, Database::Unit::DisplayInfoType::Creature, 50);
+
+            registry.emplace_or_replace<Components::PlayerTag>(characterSingleton.moverEntity);
         }
+        registry.emplace_or_replace<Components::LocalPlayerTag>(characterSingleton.moverEntity);
 
         f32 width = 0.4166f;
         f32 height = 1.9134f;

@@ -11,6 +11,8 @@
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/Item.h"
+#include "Game-Lib/ECS/Components/ProximityTrigger.h"
+#include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
@@ -18,8 +20,10 @@
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
+#include "Game-Lib/ECS/Util/ProximityTriggerUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
@@ -32,6 +36,8 @@
 #include <Base/Util/DebugHandler.h>
 
 #include <Gameplay/Network/GameMessageRouter.h>
+
+#include <Meta/Generated/Game/ProximityTriggerEnum.h>
 
 #include <Network/Client.h>
 #include <Network/Define.h>
@@ -180,6 +186,7 @@ namespace ECS::Systems
 
         entt::entity newEntity = registry->create();
         registry->emplace<Components::AABB>(newEntity);
+        registry->emplace<Components::WorldAABB>(newEntity);
         registry->emplace<Components::Transform>(newEntity);
         registry->emplace<Components::Name>(newEntity);
         registry->emplace<Components::Model>(newEntity);
@@ -195,6 +202,11 @@ namespace ECS::Systems
         auto& unit = registry->emplace<Components::Unit>(newEntity);
         unit.networkID = networkID;
         unit.targetEntity = entt::null;
+
+        if (unit.networkID.GetType() == GameDefine::ObjectGuid::Type::Player)
+        {
+            registry->emplace_or_replace<Components::PlayerTag>(newEntity);
+        }
 
         TransformSystem& transformSystem = TransformSystem::Get(*registry);
         transformSystem.SetWorldPosition(newEntity, position);
@@ -1127,6 +1139,48 @@ namespace ECS::Systems
         }
         return true;
     }
+    bool HandleOnTriggerCreate(Network::SocketID socketID, Network::Message& message)
+    {
+        u32 triggerID;
+        std::string name;
+        Generated::ProximityTriggerFlagEnum flags;
+        u16 mapID;
+        vec3 position;
+        vec3 extents;
+
+        if (!message.buffer->GetU32(triggerID))
+            return false;
+
+        if (!message.buffer->GetString(name))
+            return false;
+
+        if (!message.buffer->Get(flags))
+            return false;
+
+        if (!message.buffer->GetU16(mapID))
+            return false;
+
+        if (!message.buffer->Get(position))
+            return false;
+
+        if (!message.buffer->Get(extents))
+            return false;
+
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        ECS::Util::ProximityTriggerUtil::CreateTrigger(registry, triggerID, name, flags, mapID, position, extents);
+        return true;
+    }
+    bool HandleOnTriggerDestroy(Network::SocketID socketID, Network::Message& message)
+    {
+        u32 triggerID;
+
+        if (!message.buffer->GetU32(triggerID))
+            return false;
+
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        ECS::Util::ProximityTriggerUtil::DestroyTrigger(registry, triggerID);
+        return true;
+    }
 
     void NetworkConnection::Init(entt::registry& registry)
     {
@@ -1166,6 +1220,9 @@ namespace ECS::Systems
 
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendSpellCastResult,      Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnSpellCastResult));
             networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_SendCombatEvent,          Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnCombatEvent));
+
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_TriggerCreate,            Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnTriggerCreate));
+            networkState.gameMessageRouter->SetMessageHandler(Network::GameOpcode::Server_TriggerDestroy,           Network::GameMessageHandler(Network::ConnectionStatus::Connected,   0u, -1, &HandleOnTriggerDestroy));
         }
     }
 
@@ -1264,6 +1321,17 @@ namespace ECS::Systems
 
                     registry.destroy(entity);
                 }
+
+                // Clean up any networked proximity triggers
+                auto& proximityTriggerSingleton = ctx.get<Singletons::ProximityTriggerSingleton>();
+                auto triggerView = registry.view<Components::ProximityTrigger>();
+                triggerView.each([&](entt::entity triggerEntity, Components::ProximityTrigger& proximityTrigger)
+                {
+                    if (proximityTrigger.networkID == Components::ProximityTrigger::INVALID_NETWORK_ID)
+                        return;
+                    
+                    proximityTriggerSingleton.proximityTriggers.Remove(triggerEntity);
+                });
 
                 networkState.lastPingTime = 0u;
                 networkState.lastPongTime = 0u;

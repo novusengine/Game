@@ -18,6 +18,7 @@ namespace Scripting
         Global,
         GameEvent,
         PlayerEvent,
+        TriggerEvent,
         UI,
         Unit,
         Database,
@@ -98,6 +99,27 @@ namespace Scripting
         u32 destContainerIndex;
         u32 srcSlotIndex;
         u32 destSlotIndex;
+    };
+
+    struct LuaTriggerEventOnTriggerEnterData : LuaEventData
+    {
+    public:
+        u32 triggerID;
+        u32 playerID;
+    };
+
+    struct LuaTriggerEventOnTriggerExitData : LuaEventData
+    {
+    public:
+        u32 triggerID;
+        u32 playerID;
+    };
+
+    struct LuaTriggerEventOnTriggerStayData : LuaEventData
+    {
+    public:
+        u32 triggerID;
+        u32 playerID;
     };
 
     using LuaGameEventHandlerFn = std::function<void(lua_State*, Generated::LuaGameEventEnum, LuaEventData*)>;

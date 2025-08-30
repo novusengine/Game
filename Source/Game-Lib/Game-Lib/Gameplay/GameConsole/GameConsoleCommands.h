@@ -38,4 +38,6 @@ public:
     static bool HandleForceSyncItems(GameConsole* gameConsole, Generated::ForceSyncItemsCommand& command);
     static bool HandleAddItem(GameConsole* gameConsole, Generated::AddItemCommand& command);
     static bool HandleRemoveItem(GameConsole* gameConsole, Generated::RemoveItemCommand& command);
+    static bool HandleTriggerAdd(GameConsole* gameConsole, Generated::TriggerAddCommand& command);
+    static bool HandleTriggerRemove(GameConsole* gameConsole, Generated::TriggerRemoveCommand& command);
 };

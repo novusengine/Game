@@ -46,8 +46,19 @@ type ContainerItemEventData =
 }
 declare PlayerEvent : PlayerEvent
 
+type TriggerEvent =
+{
+    Invalid : number,
+    OnEnter  : number,
+    OnExit : number,
+    OnStay : number,
+    Count   : number
+};
+declare TriggerEvent : TriggerEvent
+
 declare function RegisterGameEvent(event : GameEvent, callback : ((event : GameEvent, ...any) -> any)) : ()
 declare function RegisterPlayerEvent(event : PlayerEvent, callback : ((event : PlayerEvent, ...any) -> any)) : ()
+declare function RegisterTriggerEvent(event : TriggerEvent, callback : ((event : TriggerEvent, ...any) -> any)) : ()
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
 declare function GetCurrentMap() : string

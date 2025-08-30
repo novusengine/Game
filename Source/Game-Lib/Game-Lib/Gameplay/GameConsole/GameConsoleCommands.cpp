@@ -818,3 +818,40 @@ bool GameConsoleCommands::HandleRemoveItem(GameConsole* gameConsole, Generated::
     networkState.client->Send(buffer);
     return true;
 }
+
+bool GameConsoleCommands::HandleTriggerAdd(GameConsole* gameConsole, Generated::TriggerAddCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+
+    vec3 position = vec3(command.positionX, command.positionY, command.positionZ);
+    vec3 extents = vec3(command.extentsX, command.extentsY, command.extentsZ);
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatTriggerAdd(buffer, command.name, command.flags, command.mapID, position, extents))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleTriggerRemove(GameConsole* gameConsole, Generated::TriggerRemoveCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatTriggerRemove(buffer, command.triggerID))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
