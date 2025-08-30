@@ -6,6 +6,7 @@
 #include "Handlers/GameHandler.h"
 #include "Handlers/GlobalHandler.h"
 #include "Handlers/PlayerEventHandler.h"
+#include "Handlers/TriggerEventHandler.h"
 #include "Handlers/UIHandler.h"
 #include "Handlers/UnitHandler.h"
 #include "Systems/GenericSystem.h"
@@ -47,6 +48,7 @@ namespace Scripting
         SetLuaHandler(LuaHandlerType::Global, new GlobalHandler());
         SetLuaHandler(LuaHandlerType::GameEvent, new GameEventHandler());
         SetLuaHandler(LuaHandlerType::PlayerEvent, new PlayerEventHandler());
+        SetLuaHandler(LuaHandlerType::TriggerEvent, new TriggerEventHandler());
         SetLuaHandler(LuaHandlerType::UI, new UI::UIHandler());
         SetLuaHandler(LuaHandlerType::Unit, new UnitHandler());
         SetLuaHandler(LuaHandlerType::Database, new Database::DatabaseHandler());

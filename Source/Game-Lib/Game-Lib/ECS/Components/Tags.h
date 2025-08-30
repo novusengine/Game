@@ -7,4 +7,6 @@ namespace ECS::Components
     struct AnimatingTag {};
     struct UnitRebuildSkinTexture {};
     struct UnitRebuildGeosets {};
+    struct LocalPlayerTag {};
+    struct PlayerTag {};
 }

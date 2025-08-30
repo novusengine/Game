@@ -38,6 +38,8 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleForceSyncItems);
     RegisterCommand(GameConsoleCommands::HandleAddItem);
     RegisterCommand(GameConsoleCommands::HandleRemoveItem);
+    RegisterCommand(GameConsoleCommands::HandleTriggerAdd);
+    RegisterCommand(GameConsoleCommands::HandleTriggerRemove);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

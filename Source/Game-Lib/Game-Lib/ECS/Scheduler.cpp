@@ -7,21 +7,23 @@
 #include "Game-Lib/ECS/Singletons/DayNightCycle.h"
 #include "Game-Lib/ECS/Singletons/EngineStats.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
 #include "Game-Lib/ECS/Systems/Animation.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
 #include "Game-Lib/ECS/Systems/CalculateShadowCameraMatrices.h"
+#include "Game-Lib/ECS/Systems/CalculateTransformMatrices.h"
 #include "Game-Lib/ECS/Systems/UpdateDayNightCycle.h"
 #include "Game-Lib/ECS/Systems/DrawDebugMesh.h"
 #include "Game-Lib/ECS/Systems/FreeflyingCamera.h"
 #include "Game-Lib/ECS/Systems/OrbitalCamera.h"
 #include "Game-Lib/ECS/Systems/NetworkConnection.h"
+#include "Game-Lib/ECS/Systems/ProximityTriggers.h"
 #include "Game-Lib/ECS/Systems/UpdateUnitEntities.h"
 #include "Game-Lib/ECS/Systems/UpdatePhysics.h"
 #include "Game-Lib/ECS/Systems/UpdateScripts.h"
 #include "Game-Lib/ECS/Systems/UpdateSkyboxes.h"
-#include "Game-Lib/ECS/Systems/CalculateTransformMatrices.h"
 #include "Game-Lib/ECS/Systems/UpdateAABBs.h"
 #include "Game-Lib/ECS/Systems/CharacterController.h"
 #include "Game-Lib/ECS/Systems/UI/HandleInput.h"
@@ -63,6 +65,7 @@ namespace ECS
         entt::registry::context& ctx = gameRegistry.ctx();
         ctx.emplace<Singletons::EngineStats>();
         ctx.emplace<Singletons::RenderState>();
+        ctx.emplace<Singletons::ProximityTriggerSingleton>();
 
         // UI
         entt::registry& uiRegistry = *registries.uiRegistry;
@@ -99,6 +102,7 @@ namespace ECS
         Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);
+        Systems::ProximityTriggers::Update(gameRegistry, clampedDeltaTime);
 
         // Note: For now UpdateScripts should always be run last
         Systems::UpdateScripts::Update(gameRegistry, clampedDeltaTime);
