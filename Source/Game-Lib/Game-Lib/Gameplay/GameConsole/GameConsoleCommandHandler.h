@@ -4,7 +4,7 @@
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/StringUtils.h>
 
-#include <Meta/Generated/Commands.h>
+#include <Meta/Generated/Game/Commands.h>
 
 #include <robinhood/robinhood.h>
 
@@ -20,6 +20,7 @@ struct GameConsoleCommandEntry
     std::string nameWithAliases;
     std::vector<std::string_view> aliases;
     u32 nameHash;
+    bool hasParameters = false;
 
     GameConsoleDynamicCommandHandler callback;
 };
@@ -63,6 +64,7 @@ private:
         command.help = CommandStruct::CommandHelp;
         command.nameWithAliases = commandName;
         command.nameHash = commandNameHash;
+        command.hasParameters = CommandStruct::NumParameters > 0 && CommandStruct::NumParameters != CommandStruct::NumParametersOptional;
         command.callback = [commandName, callback](GameConsole* gameConsole, std::vector<std::string>& parameters) -> u32
         {
             // Returns 0 for Success, 1 for Execution Failed, 2 for Read Failed

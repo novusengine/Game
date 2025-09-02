@@ -209,43 +209,7 @@ namespace ECS::Systems
 
         // Step the world
         {
-            joltState.physicsSystem.Update(joltState.FixedDeltaTime, 1, &joltState.allocator, &joltState.scheduler);
-        }
-
-        // Update ECS with new Physics State
-        {
-            JPH::BodyIDVector activeBodyIDs;
-            joltState.physicsSystem.GetActiveBodies(JPH::EBodyType::RigidBody, activeBodyIDs);
-
-            if (!activeBodyIDs.empty())
-            {
-                JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-
-                for (auto bodyID : activeBodyIDs)
-                {
-                    JPH::Body* body = joltState.physicsSystem.GetBodyLockInterfaceNoLock().TryGetBody(bodyID);
-                    if (body->IsSensor())
-                        continue;
-
-                    u32 userData = static_cast<u32>(bodyInterface.GetUserData(bodyID));
-                    auto entityID = static_cast<entt::entity>(userData);
-
-                    bool needsPhysicsWriteToECS = registry.any_of<Components::Transform>(entityID);
-                    if (needsPhysicsWriteToECS)
-                    {
-                        auto& transform = registry.get<ECS::Components::Transform>(entityID);
-
-                        JPH::Vec3 bodyPos{};
-                        JPH::Quat bodyRot{};
-                        bodyInterface.GetPositionAndRotation(bodyID, bodyPos, bodyRot);
-
-                        vec3 newPosition = vec3(bodyPos.GetX(), bodyPos.GetY(), bodyPos.GetZ());
-                        quat newRotation = glm::quat(bodyRot.GetW(), bodyRot.GetX(), bodyRot.GetY(), bodyRot.GetZ());
-
-                        tSystem.SetLocalPositionAndRotation(entityID, newPosition, newRotation);
-                    }
-                }
-            }
+            joltState.physicsSystem.Update(joltState.FixedDeltaTime, 4, &joltState.allocator, &joltState.scheduler);
         }
     }
 }

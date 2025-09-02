@@ -12,7 +12,7 @@
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
-#include "Game-Lib/Util/CameraSaveUtil.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Util/CameraSaveUtil.h"
 #include "Game-Lib/Util/MapUtil.h"
 
@@ -21,7 +21,8 @@
 
 #include <FileFormat/Shared.h>
 
-#include <Gameplay/Network/Opcode.h>
+#include <Meta/Generated/Shared/Networkpacket.h>
+#include <Meta/Generated/Shared/UnitEnum.h>
 
 #include <Network/Client.h>
 
@@ -80,8 +81,8 @@ namespace Editor
                     const vec3 characterRight = characterTransform.GetLocalRight();
                     const vec3 characterUp = characterTransform.GetLocalUp();
 
-                    f32 yaw = glm::degrees(movementInfo.yaw - glm::pi<f32>());
-                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z, yaw);
+                    f32 yaw = glm::degrees(movementInfo.yaw);
+                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f (%.2f))", worldPos.x, worldPos.y, worldPos.z, movementInfo.yaw, yaw);
                     ImGui::Text("Speed: %.2f", movementInfo.speed);
 
                     ImGui::Separator();
@@ -94,38 +95,42 @@ namespace Editor
                     ImGui::NewLine();
                     ImGui::Separator();
 
+                    auto& moverUnit = registry.get<ECS::Components::Unit>(characterSingleton.moverEntity);
+
                     if (ImGui::CollapsingHeader("Basic Info"))
                     {
                         auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
+
+                        ImGui::Text("Name : %s", moverUnit.name.c_str());
                         ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
 
-                        for (u32 i = 0; i < (u32)ECS::Components::PowerType::Count; i++)
+                        for (u32 i = 0; i < (u32)Generated::PowerTypeEnum::Count; i++)
                         {
-                            ECS::Components::PowerType type = (ECS::Components::PowerType)i;
+                            auto type = (Generated::PowerTypeEnum)i;
 
                             switch (type)
                             {
-                                case ECS::Components::PowerType::Mana:
+                                case Generated::PowerTypeEnum::Mana:
                                 {
                                     ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                     break;
                                 }
-                                case ECS::Components::PowerType::Rage:
+                                case Generated::PowerTypeEnum::Rage:
                                 {
                                     ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                     break;
                                 }
-                                case ECS::Components::PowerType::Focus:
+                                case Generated::PowerTypeEnum::Focus:
                                 {
                                     ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                     break;
                                 }
-                                case ECS::Components::PowerType::Energy:
+                                case Generated::PowerTypeEnum::Energy:
                                 {
                                     ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                     break;
                                 }
-                                case ECS::Components::PowerType::Happiness:
+                                case Generated::PowerTypeEnum::Happiness:
                                 {
                                     ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                     break;
@@ -136,41 +141,43 @@ namespace Editor
                         ImGui::Separator();
                     }
 
-                    auto& unit = registry.get<ECS::Components::Unit>(characterSingleton.moverEntity);
-                    if (unit.targetEntity != entt::null && registry.valid(unit.targetEntity))
+                    if (moverUnit.targetEntity != entt::null && registry.valid(moverUnit.targetEntity))
                     {
                         if (ImGui::CollapsingHeader("Target Info"))
                         {
-                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(unit.targetEntity);
+                            auto& targetUnit = registry.get<ECS::Components::Unit>(moverUnit.targetEntity);
+                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(moverUnit.targetEntity);
+
+                            ImGui::Text("Name : %s", targetUnit.name.c_str());
                             ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
 
-                            for (u32 i = 0; i < (u32)ECS::Components::PowerType::Count; i++)
+                            for (u32 i = 0; i < (u32)Generated::PowerTypeEnum::Count; i++)
                             {
-                                ECS::Components::PowerType type = (ECS::Components::PowerType)i;
+                                Generated::PowerTypeEnum type = (Generated::PowerTypeEnum)i;
 
                                 switch (type)
                                 {
-                                    case ECS::Components::PowerType::Mana:
+                                    case Generated::PowerTypeEnum::Mana:
                                     {
                                         ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                         break;
                                     }
-                                    case ECS::Components::PowerType::Rage:
+                                    case Generated::PowerTypeEnum::Rage:
                                     {
                                         ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                         break;
                                     }
-                                    case ECS::Components::PowerType::Focus:
+                                    case Generated::PowerTypeEnum::Focus:
                                     {
                                         ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                         break;
                                     }
-                                    case ECS::Components::PowerType::Energy:
+                                    case Generated::PowerTypeEnum::Energy:
                                     {
                                         ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                         break;
                                     }
-                                    case ECS::Components::PowerType::Happiness:
+                                    case Generated::PowerTypeEnum::Happiness:
                                     {
                                         ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
                                         break;
@@ -207,8 +214,8 @@ namespace Editor
                     const vec3 characterRight = characterTransform.GetLocalRight();
                     const vec3 characterUp = characterTransform.GetLocalUp();
 
-                    f32 yaw = glm::degrees(movementInfo.yaw - glm::pi<f32>());
-                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f)", worldPos.x, worldPos.y, worldPos.z, yaw);
+                    f32 yaw = glm::degrees(movementInfo.yaw);
+                    ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f (%.2f))", worldPos.x, worldPos.y, worldPos.z, movementInfo.yaw, yaw);
                     ImGui::Text("Speed: %.2f", movementInfo.speed);
 
                     ImGui::Separator();
@@ -234,11 +241,9 @@ namespace Editor
                     {
                         if (networkState.client->Connect(CVAR_NetworkConnectIP.Get(), 4000))
                         {
-                            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                            if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
-                            {
-                                networkState.client->Send(buffer);
-                            }
+                            ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
+                                .characterName = characterName
+                            });
                         }
                     }
                 }

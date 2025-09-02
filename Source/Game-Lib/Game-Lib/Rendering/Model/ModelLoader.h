@@ -26,6 +26,7 @@ namespace ECS::Components
     struct Model;
 }
 
+class TerrainLoader;
 class ModelRenderer;
 class ModelLoader
 {
@@ -79,9 +80,9 @@ private:
         quat spawnRotation = quat(1.0f, 0.0f, 0.0f, 0.0f);
         f32 scale = 1.0f;
 
-        u32 extraData1 = std::numeric_limits<u32>().max();
-        u32 extraData2 = std::numeric_limits<u32>().max();
-        u32 extraData3 = std::numeric_limits<u32>().max();
+        u64 extraData1 = std::numeric_limits<u64>().max();
+        u64 extraData2 = std::numeric_limits<u64>().max();
+        u64 extraData3 = std::numeric_limits<u64>().max();
     };
 
     struct LoadRequestResultInternal
@@ -110,6 +111,11 @@ public:
     entt::entity CreateModelEntity(const std::string& name);
 
 public: // Load Request Helpers
+    void SetTerrainLoader(TerrainLoader* terrainLoader) { _terrainLoader = terrainLoader; }
+    void SetTerrainLoading(bool loading) { _terrainLoading = loading; }
+
+    f32 GetLoadingProgress() const;
+
     void LoadPlacement(const Terrain::Placement& placement);
     void LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration);
     bool LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash);
@@ -160,16 +166,22 @@ private:
     void HandleDiscoverModelCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata);
 
 private:
+    TerrainLoader* _terrainLoader = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
 
     std::atomic<u32> _numDiscoveredModelsToLoad = 0;
     u32 _numDiscoveredModelsLoaded = 0;
     bool _discoveredModelsComplete = false;
 
+    bool _terrainLoading = false;
+    std::atomic<u32> _numTerrainModelsToLoad = 0;
+    u32 _numTerrainModelsLoaded = 0;
+
     moodycamel::ConcurrentQueue<WorkRequest> _discoveredModelPendingWorkRequests;
 
     moodycamel::ConcurrentQueue<LoadRequestResultInternal> _loadRequestResults;
     std::vector<LoadRequestInternal> _pendingLoadRequestsVector;
+    moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingTerrainLoadRequests;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingLoadRequests;
 
     std::vector<LoadRequestInternal> _internalLoadRequestsVector;

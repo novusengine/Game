@@ -6,6 +6,7 @@ namespace ECS::Components
 {
     struct MovementFlags
     {
+    public:
         u32 forward : 1 = 0;
         u32 backward : 1 = 0;
         u32 left : 1 = 0;

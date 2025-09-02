@@ -169,6 +169,14 @@ local function SetupInputBoxMethods(inputBoxTable)
         UI.FocusWidget(table.button.panel);
     end
 
+    inputBoxTable.Unfocus = function(table)
+        if (not UI.IsFocusedWidget(table.button.panel)) then
+            return;
+        end
+
+        UI.UnfocusWidget(table.button.panel);
+    end
+
     inputBoxTable.AddUnicodeToInput = function(table, unicode)
         local char = utf8.char(unicode);
         if inputBoxTable.numericOnly then
@@ -432,6 +440,8 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     end)
 
     inputBoxTable.button:SetOnFocusBegin(function(eventID, widget)
+        inputBoxTable.timer = 1.0;
+        inputBoxTable.cursorBlinkState = false;
     end);
 
     inputBoxTable.button:SetOnFocusEnd(function(eventID, widget)
@@ -455,6 +465,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
         if (eventID == UIKeyboardEvent.Key) then
             local keyID, action, modifierMask = ...;
 
+            local keyIDEscape = 256;
             local keyIDBackspace = 259;
             local keyIDEnter = 257;
             local keyIDTab = 258;
@@ -467,7 +478,10 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
             -- modifierMask is ctrl, shift etc
 
             if (action == InputAction.Press) then
-                if (keyID == keyIDBackspace) then
+                if (keyID == keyIDEscape) then
+                    inputBoxTable:Unfocus();
+                    return true;
+                elseif (keyID == keyIDBackspace) then
                     inputBoxTable:Backspace();
                     return true;
                 elseif (keyID == keyIDDelete) then
@@ -498,8 +512,8 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
             inputBoxTable:AddUnicodeToInput(unicode);
             return true;
         end
-
-        return false;
+        
+        return true;
     end);
 
     inputBoxTable = SetupInputBoxMethods(inputBoxTable);

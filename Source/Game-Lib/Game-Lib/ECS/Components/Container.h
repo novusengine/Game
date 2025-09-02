@@ -9,7 +9,7 @@ namespace ECS::Components
     struct Container
     {
     public:
-        GameDefine::ObjectGuid GetItem(u16 slotIndex) const
+        ObjectGUID GetItem(u16 slotIndex) const
         {
             u16 numSlots = this->numSlots;
 #if defined(NC_DEBUG)
@@ -17,12 +17,12 @@ namespace ECS::Components
 #endif
 
             if (slotIndex >= numSlots)
-                return GameDefine::ObjectGuid::Empty;
+                return ObjectGUID::Empty;
 
             return items[slotIndex];
         }
 
-        bool AddToSlot(u16 slotIndex, GameDefine::ObjectGuid item)
+        bool AddToSlot(u16 slotIndex, ObjectGUID guid)
         {
             u16 numSlots = this->numSlots;
 #if defined(NC_DEBUG)
@@ -35,7 +35,7 @@ namespace ECS::Components
             if (!items[slotIndex].IsValid())
                 --numFreeSlots;
 
-            items[slotIndex] = item;
+            items[slotIndex] = guid;
             return true;
         }
 
@@ -52,7 +52,7 @@ namespace ECS::Components
             if (items[slotIndex].IsValid())
                 ++numFreeSlots;
 
-            items[slotIndex] = GameDefine::ObjectGuid::Empty;
+            items[slotIndex] = ObjectGUID::Empty;
             return true;
         }
 
@@ -90,6 +90,6 @@ namespace ECS::Components
         u32 itemID = 0;
         u16 numSlots = 0;
         u16 numFreeSlots = 0;
-        std::vector<GameDefine::ObjectGuid> items;
+        std::vector<ObjectGUID> items;
     };
 }

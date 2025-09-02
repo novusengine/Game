@@ -4,7 +4,7 @@
 namespace ECS::Components
 {
     struct DiscoveredModelsCompleteEvent {};
-    struct RefreshDatabaseEvent {};
+    struct DatabaseReloadEvent {};
 
     struct MapLoadedEvent
     {

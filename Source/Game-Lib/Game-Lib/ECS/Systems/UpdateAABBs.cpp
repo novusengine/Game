@@ -36,8 +36,8 @@ namespace ECS::Systems
                 corners[i] = transformMatrix * glm::vec4(corners[i], 1.0f);
             }
 
-            worldAABB.min = corners[0];
-            worldAABB.max = corners[0];
+            worldAABB.min = vec3(1000000000.0f);
+            worldAABB.max = vec3(-1000000000.0f);
 
             for (int i = 1; i < 8; ++i)
             {

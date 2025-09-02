@@ -1,6 +1,7 @@
 #include "UpdateUnitEntities.h"
 
 #include "Game-Lib/ECS/Components/AnimationData.h"
+#include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
@@ -14,6 +15,7 @@
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/UnitCustomizationSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
@@ -26,10 +28,11 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/AnimationUtil.h"
+#include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
@@ -61,17 +64,15 @@ namespace ECS::Systems
     {
     }
 
-    void SetOrientation(vec4& settings, f32 orientation)
+    void SetOrientation(vec4& settings, f32 orientation, f32 timeToChange = 0.15f)
     {
         f32 currentOrientation = settings.x;
         if (orientation == currentOrientation)
             return;
 
         settings.y = orientation;
-        settings.w = 0.0f;
-
-        f32 timeToChange = 0.15f;
         settings.z = timeToChange;
+        settings.w = 0.0f;
     };
 
     bool HandleUpdateOrientation(vec4& settings, f32 deltaTime)
@@ -92,9 +93,10 @@ namespace ECS::Systems
     {
         ZoneScopedN("ECS::UpdateUnitEntities");
 
-        Singletons::JoltState& joltState = registry.ctx().get<Singletons::JoltState>();
         TransformSystem& transformSystem = TransformSystem::Get(registry);
         auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
+        auto& joltState = registry.ctx().get<Singletons::JoltState>();
+        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
 
         entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
@@ -127,8 +129,9 @@ namespace ECS::Systems
                 if (modelLoadedEvent.flags.loaded)
                 {
                     auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
+#ifdef NC_DEBUG
                     NC_LOG_INFO("Entity \"{0}\" Loaded New Model \"{1}\"", name->name, discoveredModel.name);
-
+#endif
                     modelLoader->DisableAllGroupsForModel(model);
 
                     if (auto* unitCustomization = registry.try_get<Components::UnitCustomization>(entity))
@@ -189,23 +192,32 @@ namespace ECS::Systems
 
                     if (auto* unitEquipment = registry.try_get<Components::UnitEquipment>(entity))
                     {
-                        bool isDirty = false;
+                        bool isEquipmentDirty = false;
+                        bool isVisualEquipmentDirty = false;
                         for (u32 i = (u32)Database::Item::ItemEquipSlot::Helm; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
                         {
                             u32 equipSlotIndex = i;
 
-                            u32 itemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
-                            if (itemID == 0)
-                                continue;
+                            u32 equippedItemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
+                            if (equippedItemID != 0)
+                            {
+                                unitEquipment->dirtyItemIDSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
+                                isEquipmentDirty = true;
+                            }
 
-                            unitEquipment->dirtyEquipmentSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
-                            isDirty = true;
+                            u32 visualItemID = unitEquipment->equipmentSlotToVisualItemID[equipSlotIndex];
+                            if (visualItemID != 0)
+                            {
+                                unitEquipment->dirtyVisualItemIDSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
+                                isVisualEquipmentDirty = true;
+                            }
                         }
 
-                        if (isDirty)
-                        {
+                        if (isEquipmentDirty)
                             registry.get_or_emplace<Components::UnitEquipmentDirty>(entity);
-                        }
+
+                        if (isVisualEquipmentDirty)
+                            registry.get_or_emplace<Components::UnitVisualEquipmentDirty>(entity);
                     }
                 }
                 else
@@ -234,6 +246,12 @@ namespace ECS::Systems
 
             transformSystem.SetWorldPosition(entity, newPosition);
 
+            f32 scale = transform.GetLocalScale().x;
+            vec3 min = newPosition - (scale * 0.5f);
+            vec3 max = newPosition + (scale * 0.5f);
+            networkState.networkVisTree->Remove(unit.networkID);
+            networkState.networkVisTree->Insert(&min.x, &max.x, unit.networkID);
+
             if (unit.bodyID == std::numeric_limits<u32>().max())
                 return;
 
@@ -243,14 +261,27 @@ namespace ECS::Systems
             joltState.physicsSystem.GetBodyInterface().SetPositionAndRotation(bodyID, JPH::Vec3(newPosition.x, newPosition.y, newPosition.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EActivation::DontActivate);
         });
 
-        auto unitView = registry.view<Components::MovementInfo, Components::Unit, Components::Model>();
-        unitView.each([&](entt::entity entity, Components::MovementInfo& movementInfo, Components::Unit& unit, Components::Model& model)
+        auto unitView = registry.view<Components::Unit, Components::Model, Components::AnimationData, Components::MovementInfo>();
+        unitView.each([&](entt::entity entity, Components::Unit& unit, Components::Model& model, Components::AnimationData& animationData, Components::MovementInfo& movementInfo)
         {
-            if (!registry.all_of<Components::AnimationData>(entity))
+            if (!registry.all_of<>(entity))
                 return;
 
             if (unit.overrideAnimation == ::Animation::Defines::Type::Invalid)
                 ::Util::Unit::UpdateAnimationState(registry, entity, model, deltaTime);
+
+            const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
+
+            if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
+            {
+                if (modelInfo)
+                {
+                    for (auto& pair : attachmentData->attachmentToInstance)
+                    {
+                        Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second);
+                    }
+                }
+            }
 
             auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(entity);
             bool isAlive = unitStatsComponent.currentHealth > 0.0f;
@@ -264,7 +295,6 @@ namespace ECS::Systems
             bool isGrounded = movementInfo.movementFlags.grounded;
             bool isFlying = !isGrounded && movementInfo.movementFlags.flying;
 
-            const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
             if (isAlive && modelInfo && (isGrounded || isFlying /* || (canControlInAir && isMoving))*/))
             {
                 f32 spineOrientation = 0.0f;
@@ -274,72 +304,70 @@ namespace ECS::Systems
                 if (!isFlying)
                 {
                     if (isMovingForward)
+                    {
+                        if (isMovingRight)
                         {
-                            if (isMovingRight)
-                            {
-                                spineOrientation = -30.0f;
-                                headOrientation = -30.0f;
-                                waistOrientation = 45.0f;
-                            }
-                            else if (isMovingLeft)
-                            {
-                                spineOrientation = 30.0f;
-                                headOrientation = 30.0f;
-                                waistOrientation = -45.0f;
-                            }
-                        }
-                    else if (isMovingBackward)
-                        {
-                            if (isMovingRight)
-                            {
-                                spineOrientation = 30.0f;
-                                headOrientation = 15.0f;
-                                waistOrientation = -45.0f;
-                            }
-                            else if (isMovingLeft)
-                            {
-                                spineOrientation = -30.0f;
-                                headOrientation = -15.0f;
-                                waistOrientation = 45.0f;
-                            }
-                        }
-                    else if (isMovingRight)
-                        {
-                            spineOrientation = -45.0f;
+                            spineOrientation = -30.0f;
                             headOrientation = -30.0f;
-                            waistOrientation = 90.0f;
+                            waistOrientation = 45.0f;
                         }
-                    else if (isMovingLeft)
+                        else if (isMovingLeft)
                         {
-                            spineOrientation = 45.0f;
+                            spineOrientation = 30.0f;
                             headOrientation = 30.0f;
-                            waistOrientation = -90.0f;
+                            waistOrientation = -45.0f;
                         }
+                    }
+                    else if (isMovingBackward)
+                    {
+                        if (isMovingRight)
+                        {
+                            spineOrientation = 30.0f;
+                            headOrientation = 15.0f;
+                            waistOrientation = -45.0f;
+                        }
+                        else if (isMovingLeft)
+                        {
+                            spineOrientation = -30.0f;
+                            headOrientation = -15.0f;
+                            waistOrientation = 45.0f;
+                        }
+                    }
+                    else if (isMovingRight)
+                    {
+                        spineOrientation = -45.0f;
+                        headOrientation = -30.0f;
+                        waistOrientation = 90.0f;
+                    }
+                    else if (isMovingLeft)
+                    {
+                        spineOrientation = 45.0f;
+                        headOrientation = 30.0f;
+                        waistOrientation = -90.0f;
+                    }
                 }
 
-                SetOrientation(movementInfo.spineRotationSettings, spineOrientation);
-                SetOrientation(movementInfo.headRotationSettings, headOrientation);
-                SetOrientation(movementInfo.rootRotationSettings, waistOrientation);
+                f32 timeToChange = 0.1f;
+                if (!isMovingForward && !isMovingBackward && spineOrientation == 0.0f && headOrientation == 0.0f && waistOrientation == 0.0f)
+                    timeToChange = 0.35f;
+
+                SetOrientation(movementInfo.spineRotationSettings, spineOrientation, timeToChange);
+                SetOrientation(movementInfo.headRotationSettings, headOrientation, timeToChange);
+                SetOrientation(movementInfo.rootRotationSettings, waistOrientation, timeToChange);
             }
 
             if (HandleUpdateOrientation(movementInfo.spineRotationSettings, deltaTime))
             {
-                auto& animationData = registry.get<Components::AnimationData>(entity);
-
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.spineRotationSettings.x), 0.0f));
                 ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::SpineLow, rotation);
             }
             if (HandleUpdateOrientation(movementInfo.headRotationSettings, deltaTime))
             {
-                auto& animationData = registry.get<Components::AnimationData>(entity);
-
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.headRotationSettings.x), 0.0f));
                 ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Head, rotation);
             }
             if (HandleUpdateOrientation(movementInfo.rootRotationSettings, deltaTime))
             {
-                auto& animationData = registry.get<Components::AnimationData>(entity);
-
                 quat rotation = glm::quat(glm::vec3(0.0f, glm::radians(movementInfo.rootRotationSettings.x), 0.0f));
                 ::Util::Animation::SetBoneRotation(modelInfo, animationData, ::Animation::Defines::Bone::Default, rotation);
             }
@@ -347,8 +375,8 @@ namespace ECS::Systems
 
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
-        auto unitEquipmentView = registry.view<const Components::Unit, const Components::DisplayInfo, const Components::Model, const Components::UnitCustomization, Components::UnitEquipment, Components::UnitEquipmentDirty>();
-        unitEquipmentView.each([&](entt::entity entity, const Components::Unit& unit, const Components::DisplayInfo& displayInfo, const Components::Model& model, const Components::UnitCustomization& unitCustomization, Components::UnitEquipment& unitEquipment)
+        auto unitVisualEquipmentView = registry.view<const Components::Unit, const Components::DisplayInfo, const Components::Model, const Components::UnitCustomization, Components::UnitEquipment, Components::UnitVisualEquipmentDirty>();
+        unitVisualEquipmentView.each([&](entt::entity entity, const Components::Unit& unit, const Components::DisplayInfo& displayInfo, const Components::Model& model, const Components::UnitCustomization& unitCustomization, Components::UnitEquipment& unitEquipment)
         {
             if (!model.flags.loaded)
                 return;
@@ -356,9 +384,9 @@ namespace ECS::Systems
             bool needToRefreshGeometry = false;
             bool needToRefreshSkin = false;
 
-            for (const Database::Item::ItemEquipSlot equipSlot : unitEquipment.dirtyEquipmentSlots)
+            for (const Database::Item::ItemEquipSlot equipSlot : unitEquipment.dirtyVisualItemIDSlots)
             {
-                u32 itemID = unitEquipment.equipmentSlotToItemID[(u32)equipSlot];
+                u32 itemID = unitEquipment.equipmentSlotToVisualItemID[(u32)equipSlot];
 
                 needToRefreshGeometry |= equipSlot != ::Database::Item::ItemEquipSlot::MainHand && equipSlot != ::Database::Item::ItemEquipSlot::OffHand && equipSlot != ::Database::Item::ItemEquipSlot::Ranged;
                 needToRefreshSkin |= equipSlot == ::Database::Item::ItemEquipSlot::Chest || equipSlot == ::Database::Item::ItemEquipSlot::Shirt || equipSlot == ::Database::Item::ItemEquipSlot::Tabard || 
@@ -431,9 +459,12 @@ namespace ECS::Systems
                     registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
             }
 
-            unitEquipment.dirtyEquipmentSlots.clear();
+            unitEquipment.dirtyVisualItemIDSlots.clear();
         });
-        
+
+        registry.clear<Components::UnitVisualEquipmentDirty>();
+
+        // TODO : Handle Equipped Item Changes (Client Side Calculation of stats?)
         registry.clear<Components::UnitEquipmentDirty>();
 
         auto unitRebuildGeosetsView = registry.view<const Components::Unit, const Components::Model, ECS::Components::UnitRebuildGeosets>();
@@ -447,7 +478,6 @@ namespace ECS::Systems
         });
 
         registry.clear<Components::UnitRebuildGeosets>();
-
 
         TextureRenderer* textureRenderer = ServiceLocator::GetGameRenderer()->GetTextureRenderer();
         auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
@@ -464,7 +494,7 @@ namespace ECS::Systems
             {
                 if (!unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
@@ -478,7 +508,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 shirtID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Shirt];
+                u32 shirtID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Shirt];
                 if (shirtID > 0)
                 {
                     if (itemStorage->Has(shirtID))
@@ -491,7 +521,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bracersID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Bracers];
+                u32 bracersID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Bracers];
                 if (bracersID > 0)
                 {
                     if (itemStorage->Has(bracersID))
@@ -504,7 +534,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bootsID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Boots];
+                u32 bootsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Boots];
                 if (bootsID > 0)
                 {
                     if (itemStorage->Has(bootsID))
@@ -517,7 +547,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 pantsID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Pants];
+                u32 pantsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Pants];
                 if (pantsID > 0)
                 {
                     if (itemStorage->Has(pantsID))
@@ -530,7 +560,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 chestID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Chest];
+                u32 chestID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Chest];
                 if (chestID > 0)
                 {
                     if (itemStorage->Has(chestID))
@@ -545,7 +575,7 @@ namespace ECS::Systems
 
                 if (unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
@@ -559,7 +589,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 beltID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Belt];
+                u32 beltID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Belt];
                 if (beltID > 0)
                 {
                     if (itemStorage->Has(beltID))
@@ -572,7 +602,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 tabardID = unitEquipment->equipmentSlotToItemID[(u32)Database::Item::ItemEquipSlot::Tabard];
+                u32 tabardID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Tabard];
                 if (tabardID > 0)
                 {
                     if (itemStorage->Has(tabardID))

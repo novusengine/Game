@@ -40,12 +40,12 @@ __LoadingScreenData =
     {
         ["None"]                = "Data/Texture/interface/glues/loading.dds",
         ["Default"]             = "Data/Texture/interface/glues/loading.dds",
-        ["EasternKingdom"]      = "Data/Texture/interface/glues/loadingscreens/loadscreeneasternkingdom.dds",
+        ["Azeroth"]             = "Data/Texture/interface/glues/loadingscreens/loadscreeneasternkingdom.dds",
         ["Kalimdor"]            = "Data/Texture/interface/glues/loadingscreens/loadscreenkalimdor.dds",
         ["Outland"]             = "Data/Texture/interface/glues/loadingscreens/loadscreenoutland.dds",
         ["Northrend"]           = "Data/Texture/interface/glues/loadingscreens/loadscreennorthrend.dds",
-        ["ArathiBasin"]         = "Data/Texture/interface/glues/loadingscreens/loadscreenarathibasin.dds",
-        ["WarsongGulch"]        = "Data/Texture/interface/glues/loadingscreens/loadscreenwarsonggulch.dds",
+        ["PVPZone04"]           = "Data/Texture/interface/glues/loadingscreens/loadscreenarathibasin.dds",
+        ["PVPZone03"]           = "Data/Texture/interface/glues/loadingscreens/loadscreenwarsonggulch.dds",
         ["ScarletMonastery"]    = "Data/Texture/interface/glues/loadingscreens/loadscreenmonastery.dds"
     }
 }
@@ -68,13 +68,21 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
         return
     end
 
-    local rand = math.random(0, 1)
-    local numToAdd = rand * deltaTime
-    progress += numToAdd
-
+    local progress = GetMapLoadingProgress()
     __LoadingScreenData.loadingBarSlider:SetProgress(progress)
 end
 
+local function OnMapLoading(eventID : number, mapName : string)
+
+    local mapInternalName = __LoadingScreenData.nameToTextureMap[mapName]
+    if mapInternalName == nil then
+        mapInternalName = "Default"
+    end
+
+    loadingScreenAPI.SetLoadingScreen(mapInternalName)
+end
+
 RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
+RegisterGameEvent(GameEvent.MapLoading, OnMapLoading)
 
 return loadingScreenAPI

@@ -15,6 +15,7 @@ private:
     struct LoadDesc
     {
     public:
+        bool isRequest = false;
         u32 internalMapNameHash = std::numeric_limits<u32>().max();
     };
 
@@ -24,6 +25,7 @@ public:
     void Update(f32 deltaTime);
 
     void UnloadMap();
+    void UnloadMapImmediately();
     void LoadMap(u32 mapHash);
 
     const u32 GetCurrentMapID() { return _currentMapID; }
@@ -38,5 +40,5 @@ private:
 
     bool _discoveredModelsCompleteLastFrame = false;
     u32 _currentMapID = std::numeric_limits<u32>().max();
-    moodycamel::ConcurrentQueue<LoadDesc> _requests;
+    LoadDesc _loadRequest;
 };

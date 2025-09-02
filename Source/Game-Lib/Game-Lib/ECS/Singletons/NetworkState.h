@@ -4,6 +4,9 @@
 #include <robinhood/robinhood.h>
 
 #include <asio/asio.hpp>
+#include <RTree/RTree.h>
+
+#include <entt/entt.hpp>
 
 #include <memory>
 
@@ -34,8 +37,10 @@ namespace ECS::Singletons
         u8 serverUpdateDiff = 0;
         std::array<u16, 6> pingHistory = { 0, 0, 0, 0, 0, 0 };
         u8 pingHistorySize = 0;
+        bool isLoadingMap = false;
 
-        robin_hood::unordered_map<GameDefine::ObjectGuid, entt::entity> networkIDToEntity;
-        robin_hood::unordered_map<entt::entity, GameDefine::ObjectGuid> entityToNetworkID;
+        robin_hood::unordered_map<ObjectGUID, entt::entity> networkIDToEntity;
+        robin_hood::unordered_map<entt::entity, ObjectGUID> entityToNetworkID;
+        RTree<ObjectGUID, f32, 3>* networkVisTree;
     };
 }

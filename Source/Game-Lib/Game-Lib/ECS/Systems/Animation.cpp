@@ -323,20 +323,6 @@ namespace ECS::Systems
 
         return boneMatrix;
     }
-   
-    static mat4x4 GetAttachmentMatrix(const Model::ComplexModel::Attachment& attachment)
-    {
-        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position);
-        mat4x4 rotationMatrix = glm::toMat4(quat(1.0f, 0.0f, 0.0f, 0.0f));
-        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(1.0f));
-
-        mat4x4 attachmentMatrix = mat4x4(1.0f);
-        attachmentMatrix = mul(translationMatrix, attachmentMatrix);
-        attachmentMatrix = mul(rotationMatrix, attachmentMatrix);
-        attachmentMatrix = mul(scaleMatrix, attachmentMatrix);
-
-        return attachmentMatrix;
-    }
 
     static mat4x4 GetTextureTransformMatrix(const std::vector<::Animation::Defines::GlobalLoop>& globalLoops, const ::Animation::Defines::State& animationState, const Model::ComplexModel::TextureTransform& textureTransform)
     {
@@ -606,7 +592,7 @@ namespace ECS::Systems
         boneMatrix[3] = (currentBoneMatCopy * pivotVec4) - (boneMatrix * pivotVec3);
         boneMatrix[3].w = 1.0f;
     }
-
+    
     void SetupDynamicAnimationInstance(entt::registry& registry, entt::entity entity, const Components::Model& model, const Model::ComplexModel* modelInfo)
     {
         auto& animationData = registry.get_or_emplace<Components::AnimationData>(entity);
@@ -1158,44 +1144,6 @@ namespace ECS::Systems
                         if (modelRenderer)
                         {
                             dirtyEntities.enqueue(entity);
-                        }
-                    }
-
-                    if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
-                    {
-                        entt::registry::context& ctx = registry.ctx();
-                        auto& transformSystem = ctx.get<TransformSystem>();
-                        auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
-                        auto& camera = registry.get<Components::Camera>(activeCamera.entity);
-
-                        u32 numBones = static_cast<u32>(modelInfo->bones.size());
-                        for (auto& pair : attachmentData->attachmentToInstance)
-                        {
-                            u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
-                            if (!::Util::Attachment::CanUseAttachment(modelInfo, pair.first, attachmentIndex))
-                                continue;
-
-                            const Model::ComplexModel::Attachment& skeletonAttachment = modelInfo->attachments[attachmentIndex];
-
-                            u32 boneIndex = 0;
-                            if (skeletonAttachment.bone < numBones)
-                                boneIndex = skeletonAttachment.bone;
-
-                            const mat4x4& parentBoneMatrix = animationData.boneTransforms[boneIndex];
-                            mat4x4 attachmentMatrix = GetAttachmentMatrix(skeletonAttachment);
-                            attachmentMatrix = mul(attachmentMatrix, parentBoneMatrix);
-
-                            pair.second.matrix = attachmentMatrix;
-
-                            vec3 scale;
-                            quat rotation;
-                            vec3 translation;
-                            vec3 skew;
-                            vec4 perspective;
-                            if (!glm::decompose(attachmentMatrix, scale, rotation, translation, skew, perspective))
-                                continue;
-
-                            transformSystem.SetLocalTransform(pair.second.entity, translation, rotation, scale);
                         }
                     }
                 }

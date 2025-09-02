@@ -17,6 +17,7 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -26,199 +27,16 @@
 #include <Base/Memory/Bytebuffer.h>
 
 #include <Gameplay/GameDefine.h>
-#include <Gameplay/Network/Opcode.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Game/Commands.h>
+#include <Meta/Generated/Shared/ClientDB.h>
+#include <Meta/Generated/Shared/NetworkPacket.h>
 
 #include <Network/Client.h>
 #include <Network/Define.h>
 
 #include <base64/base64.h>
 #include <entt/entt.hpp>
-
-//bool GameConsoleCommands::HandleLogin(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    if (subCommands.size() == 0)
-//        return false;
-//
-//    std::string& characterName = subCommands[0];
-//    if (characterName.size() < 2)
-//        return false;
-//
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//    if (ECS::Util::MessageBuilder::Authentication::BuildConnectMessage(buffer, characterName))
-//    {
-//        networkState.client->Send(buffer);
-//    }
-//
-//    return true;
-//}
-
-//bool GameConsoleCommands::HandleCast(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-//    auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//    auto& unit = registry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Spell::BuildLocalRequestSpellCast(buffer))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
-//        castInfo.target = unit.targetEntity;
-//        castInfo.castTime = 1.0f;
-//        castInfo.duration = 0.0f;
-//    }
-//
-//    return true;
-//}
-
-//bool GameConsoleCommands::HandleDamage(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    if (subCommands.size() == 0)
-//        return false;
-//
-//    const std::string& damageAsString = subCommands[0];
-//    const u32 damage = std::stoi(damageAsString);
-//
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDamage(buffer, damage))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-//        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - static_cast<f32>(damage), 0.0f);
-//    }
-//
-//    return true;
-//}
-
-//bool GameConsoleCommands::HandleKill(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Cheat::BuildCheatKill(buffer))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-//        unitStatsComponent.currentHealth = 0.0f;
-//    }
-//
-//    return true;
-//}
-
-//bool GameConsoleCommands::HandleRevive(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Cheat::BuildCheatResurrect(buffer))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-//        unitStatsComponent.currentHealth = unitStatsComponent.maxHealth;
-//    }
-//
-//    return true;
-//}
-
-//bool GameConsoleCommands::HandleCreateChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    if (subCommands.size() == 0)
-//        return false;
-//
-//    const std::string& characterName = subCommands[0];
-//    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
-//    {
-//        gameConsole->PrintError("Failed to send Create Character, name supplied is invalid : %s", characterName.c_str());
-//        return true;
-//    }
-//
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreateChar(buffer, characterName))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        gameConsole->PrintWarning("Failed to send Create Character, not connected");
-//    }
-//
-//    return true;
-//}
-//
-//bool GameConsoleCommands::HandleDeleteChar(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
-//{
-//    if (subCommands.size() == 0)
-//        return false;
-//
-//    const std::string& characterName = subCommands[0];
-//    if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
-//    {
-//        gameConsole->PrintError("Failed to send Delete Character, name supplied is invalid : %s", characterName.c_str());
-//        return true;
-//    }
-//
-//    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-//    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-//
-//    if (networkState.client && networkState.client->IsConnected())
-//    {
-//        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-//        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDeleteChar(buffer, characterName))
-//        {
-//            networkState.client->Send(buffer);
-//        }
-//    }
-//    else
-//    {
-//        gameConsole->PrintWarning("Failed to send Delete Character, not connected");
-//    }
-//
-//    return true;
-//}
 
 //bool GameConsoleCommands::HandleSetClass(GameConsoleCommandHandler* commandHandler, GameConsole* gameConsole, std::vector<std::string>& subCommands)
 //{
@@ -354,7 +172,7 @@ bool GameConsoleCommands::HandleLua(GameConsole* gameConsole, Generated::LuaComm
     return true;
 }
 
-bool GameConsoleCommands::HandleReloadScripts(GameConsole* gameConsole, Generated::ReloadScriptsCommand& command)
+bool GameConsoleCommands::HandleScriptReload(GameConsole* gameConsole, Generated::ScriptReloadCommand& command)
 {
     Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
     luaManager->SetDirty();
@@ -362,13 +180,13 @@ bool GameConsoleCommands::HandleReloadScripts(GameConsole* gameConsole, Generate
     return true;
 }
 
-bool GameConsoleCommands::HandleRefreshDB(GameConsole* gameConsole, Generated::RefreshDBCommand& command)
+bool GameConsoleCommands::HandleDatabaseReload(GameConsole* gameConsole, Generated::DatabaseReloadCommand& command)
 {
-    ECS::Util::EventUtil::PushEvent(ECS::Components::RefreshDatabaseEvent{});
+    ECS::Util::EventUtil::PushEvent(ECS::Components::DatabaseReloadEvent{});
     return true;
 }
 
-bool GameConsoleCommands::HandleSaveCamera(GameConsole* gameConsole, Generated::SaveCameraCommand& command)
+bool GameConsoleCommands::HandleCameraSave(GameConsole* gameConsole, Generated::CameraSaveCommand& command)
 {
     std::string saveCode;
     if (ECSUtil::Camera::GenerateSaveLocation(command.name, saveCode))
@@ -383,7 +201,7 @@ bool GameConsoleCommands::HandleSaveCamera(GameConsole* gameConsole, Generated::
     return true;
 }
 
-bool GameConsoleCommands::HandleLoadCameraByCode(GameConsole* gameConsole, Generated::LoadCameraByCodeCommand& command)
+bool GameConsoleCommands::HandleCameraLoadByCode(GameConsole* gameConsole, Generated::CameraLoadByCodeCommand& command)
 {
     if (ECSUtil::Camera::LoadSaveLocationFromBase64(command.code))
     {
@@ -397,7 +215,7 @@ bool GameConsoleCommands::HandleLoadCameraByCode(GameConsole* gameConsole, Gener
     return true;
 }
 
-bool GameConsoleCommands::HandleClearMap(GameConsole* gameConsole, Generated::ClearMapCommand& command)
+bool GameConsoleCommands::HandleMapClear(GameConsole* gameConsole, Generated::MapClearCommand& command)
 {
     MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
     mapLoader->UnloadMap();
@@ -405,7 +223,7 @@ bool GameConsoleCommands::HandleClearMap(GameConsole* gameConsole, Generated::Cl
     return true;
 }
 
-bool GameConsoleCommands::HandleMorph(GameConsole* gameConsole, Generated::MorphCommand& command)
+bool GameConsoleCommands::HandleUnitMorph(GameConsole* gameConsole, Generated::UnitMorphCommand& command)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -420,7 +238,7 @@ bool GameConsoleCommands::HandleMorph(GameConsole* gameConsole, Generated::Morph
     if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (ECS::Util::MessageBuilder::Cheat::BuildCheatMorph(buffer, command.displayID))
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatUnitMorph(buffer, command.displayID))
         {
             networkState.client->Send(buffer);
         }
@@ -440,7 +258,7 @@ bool GameConsoleCommands::HandleMorph(GameConsole* gameConsole, Generated::Morph
     return true;
 }
 
-bool GameConsoleCommands::HandleDemorph(GameConsole* gameConsole, Generated::DemorphCommand& command)
+bool GameConsoleCommands::HandleUnitDemorph(GameConsole* gameConsole, Generated::UnitDemorphCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -448,7 +266,7 @@ bool GameConsoleCommands::HandleDemorph(GameConsole* gameConsole, Generated::Dem
     if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDemorph(buffer))
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatUnitDemorph(buffer))
         {
             networkState.client->Send(buffer);
         }
@@ -461,7 +279,7 @@ bool GameConsoleCommands::HandleDemorph(GameConsole* gameConsole, Generated::Dem
     return true;
 }
 
-bool GameConsoleCommands::HandleCharacterCreate(GameConsole* gameConsole, Generated::CharacterCreateCommand& command)
+bool GameConsoleCommands::HandleCharacterAdd(GameConsole* gameConsole, Generated::CharacterAddCommand& command)
 {
     const std::string& characterName = command.name;
     if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
@@ -476,7 +294,7 @@ bool GameConsoleCommands::HandleCharacterCreate(GameConsole* gameConsole, Genera
     if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreateChar(buffer, characterName))
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCharacterAdd(buffer, characterName))
         {
             networkState.client->Send(buffer);
         }
@@ -489,7 +307,7 @@ bool GameConsoleCommands::HandleCharacterCreate(GameConsole* gameConsole, Genera
     return true;
 }
 
-bool GameConsoleCommands::HandleCharacterDelete(GameConsole* gameConsole, Generated::CharacterDeleteCommand& command)
+bool GameConsoleCommands::HandleCharacterRemove(GameConsole* gameConsole, Generated::CharacterRemoveCommand& command)
 {
     const std::string& characterName = command.name;
     if (!StringUtils::StringIsAlphaAndAtLeastLength(characterName, 2))
@@ -504,7 +322,7 @@ bool GameConsoleCommands::HandleCharacterDelete(GameConsole* gameConsole, Genera
     if (networkState.client && networkState.client->IsConnected())
     {
         std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDeleteChar(buffer, characterName))
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatCharacterRemove(buffer, characterName))
         {
             networkState.client->Send(buffer);
         }
@@ -517,7 +335,7 @@ bool GameConsoleCommands::HandleCharacterDelete(GameConsole* gameConsole, Genera
     return true;
 }
 
-bool GameConsoleCommands::HandleFly(GameConsole* gameConsole, Generated::FlyCommand& command)
+bool GameConsoleCommands::HandleCheatFly(GameConsole* gameConsole, Generated::CheatFlyCommand& command)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
@@ -533,7 +351,7 @@ bool GameConsoleCommands::HandleFly(GameConsole* gameConsole, Generated::FlyComm
     return true;
 }
 
-bool GameConsoleCommands::HandleSetRace(GameConsole* gameConsole, Generated::SetRaceCommand& command)
+bool GameConsoleCommands::HandleUnitSetRace(GameConsole* gameConsole, Generated::UnitSetRaceCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -575,7 +393,7 @@ bool GameConsoleCommands::HandleSetRace(GameConsole* gameConsole, Generated::Set
         return false;
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetRace(buffer, race))
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatUnitSetRace(buffer, race))
     {
         networkState.client->Send(buffer);
     }
@@ -583,7 +401,7 @@ bool GameConsoleCommands::HandleSetRace(GameConsole* gameConsole, Generated::Set
     return true;
 }
 
-bool GameConsoleCommands::HandleSetGender(GameConsole* gameConsole, Generated::SetGenderCommand& command)
+bool GameConsoleCommands::HandleUnitSetGender(GameConsole* gameConsole, Generated::UnitSetGenderCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -615,7 +433,7 @@ bool GameConsoleCommands::HandleSetGender(GameConsole* gameConsole, Generated::S
         return false;
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-    if (ECS::Util::MessageBuilder::Cheat::BuildCheatSetGender(buffer, gender))
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatUnitSetGender(buffer, gender))
     {
         networkState.client->Send(buffer);
     }
@@ -623,7 +441,7 @@ bool GameConsoleCommands::HandleSetGender(GameConsole* gameConsole, Generated::S
     return true;
 }
 
-bool GameConsoleCommands::HandleSyncItem(GameConsole* gameConsole, Generated::SyncItemCommand& command)
+bool GameConsoleCommands::HandleItemSync(GameConsole* gameConsole, Generated::ItemSyncCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -648,7 +466,7 @@ bool GameConsoleCommands::HandleSyncItem(GameConsole* gameConsole, Generated::Sy
         if (statTemplateStorage->Has(item.statTemplateID))
         {
             auto& statTemplate = statTemplateStorage->Get<Generated::ItemStatTemplateRecord>(item.statTemplateID);
-            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
                 return false;
         }
     }
@@ -659,7 +477,7 @@ bool GameConsoleCommands::HandleSyncItem(GameConsole* gameConsole, Generated::Sy
         if (armorTemplateStorage->Has(item.armorTemplateID))
         {
             auto& armorTemplate = armorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
-            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
                 return false;
         }
     }
@@ -670,30 +488,30 @@ bool GameConsoleCommands::HandleSyncItem(GameConsole* gameConsole, Generated::Sy
         if (weaponTemplateStorage->Has(item.weaponTemplateID))
         {
             auto& weaponTemplate = weaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(item.weaponTemplateID);
-            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
                 return false;
         }
     }
-    
+
     if (item.shieldTemplateID > 0)
     {
         auto* shieldTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
         if (shieldTemplateStorage->Has(item.shieldTemplateID))
         {
             auto& shieldTemplate = shieldTemplateStorage->Get<Generated::ItemShieldTemplateRecord>(item.shieldTemplateID);
-            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
                 return false;
         }
     }
 
-    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemTemplate(buffer, itemStorage, command.itemID, item))
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetTemplate(buffer, itemStorage, command.itemID, item))
         return false;
 
     networkState.client->Send(buffer);
     return true;
 }
 
-bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generated::ForceSyncItemsCommand& command)
+bool GameConsoleCommands::HandleItemSyncAll(GameConsole* gameConsole, Generated::ItemSyncAllCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -723,7 +541,7 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generat
             if (statTemplateStorage->Has(item.statTemplateID))
             {
                 auto& statTemplate = statTemplateStorage->Get<Generated::ItemStatTemplateRecord>(item.statTemplateID);
-                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetStatTemplate(buffer, statTemplateStorage, item.statTemplateID, statTemplate))
                     return false;
             }
         }
@@ -733,7 +551,7 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generat
             if (armorTemplateStorage->Has(item.armorTemplateID))
             {
                 auto& armorTemplate = armorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
-                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetArmorTemplate(buffer, armorTemplateStorage, item.armorTemplateID, armorTemplate))
                     return false;
             }
         }
@@ -743,7 +561,7 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generat
             if (weaponTemplateStorage->Has(item.weaponTemplateID))
             {
                 auto& weaponTemplate = weaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(item.weaponTemplateID);
-                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetWeaponTemplate(buffer, weaponTemplateStorage, item.weaponTemplateID, weaponTemplate))
                     return false;
             }
         }
@@ -753,12 +571,12 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generat
             if (shieldTemplateStorage->Has(item.shieldTemplateID))
             {
                 auto& shieldTemplate = shieldTemplateStorage->Get<Generated::ItemShieldTemplateRecord>(item.shieldTemplateID);
-                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetShieldTemplate(buffer, shieldTemplateStorage, item.shieldTemplateID, shieldTemplate))
                     return false;
             }
         }
 
-        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSetItemTemplate(buffer, itemStorage, id, item))
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemSetTemplate(buffer, itemStorage, id, item))
             return false;
 
         return true;
@@ -771,7 +589,7 @@ bool GameConsoleCommands::HandleForceSyncItems(GameConsole* gameConsole, Generat
     return true;
 }
 
-bool GameConsoleCommands::HandleAddItem(GameConsole* gameConsole, Generated::AddItemCommand& command)
+bool GameConsoleCommands::HandleItemAdd(GameConsole* gameConsole, Generated::ItemAddCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -788,14 +606,14 @@ bool GameConsoleCommands::HandleAddItem(GameConsole* gameConsole, Generated::Add
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
 
-    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatAddItem(buffer, command.itemID, 1u))
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemAdd(buffer, command.itemID, 1u))
         return false;
 
     networkState.client->Send(buffer);
     return true;
 }
 
-bool GameConsoleCommands::HandleRemoveItem(GameConsole* gameConsole, Generated::RemoveItemCommand& command)
+bool GameConsoleCommands::HandleItemRemove(GameConsole* gameConsole, Generated::ItemRemoveCommand& command)
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
@@ -812,10 +630,334 @@ bool GameConsoleCommands::HandleRemoveItem(GameConsole* gameConsole, Generated::
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
 
-    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatRemoveItem(buffer, command.itemID, 1u))
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatItemRemove(buffer, command.itemID, 1u))
         return false;
 
     networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureAdd(GameConsole* gameConsole, Generated::CreatureAddCommand& command)
+{
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = gameRegistry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreatureAdd(buffer, command.creatureTemplateID))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureRemove(GameConsole* gameConsole, Generated::CreatureRemoveCommand& command)
+{
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = gameRegistry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    auto& unitInfo = gameRegistry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
+
+    if (unitInfo.targetEntity == entt::null)
+    {
+        gameConsole->PrintError("Failed to remove NPC, no target selected");
+        return true;
+    }
+
+    if (!networkState.entityToNetworkID.contains(unitInfo.targetEntity))
+    {
+        gameConsole->PrintError("Failed to remove NPC, target is not a networked entity");
+        return true;
+    }
+
+    ObjectGUID creatureNetworkID = networkState.entityToNetworkID[unitInfo.targetEntity];
+    if (creatureNetworkID.GetType() != ObjectGUID::Type::Creature)
+    {
+        gameConsole->PrintError("Failed to remove creature, target is not a creature");
+        return true;
+    }
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreatureRemove(buffer, creatureNetworkID))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCheatLogin(GameConsole* gameConsole, Generated::CheatLoginCommand& command)
+{
+    if (command.characterName.size() < 2)
+        return false;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || networkState.client->IsConnected())
+        return false;
+
+    const char* connectIP = CVarSystem::Get()->GetStringCVar(CVarCategory::Network, "connectIP");
+    if (networkState.client->Connect(connectIP, 4000))
+    {
+        ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
+            .characterName = command.characterName
+        });
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCheatDamage(GameConsole* gameConsole, Generated::CheatDamageCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatDamage(buffer, command.amount))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
+        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - static_cast<f32>(command.amount), 0.0f);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCheatKill(GameConsole* gameConsole, Generated::CheatKillCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatKill(buffer))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
+        unitStatsComponent.currentHealth = 0.0f;
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCheatResurrect(GameConsole* gameConsole, Generated::CheatResurrectCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::CharacterSingleton& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (networkState.client && networkState.client->IsConnected())
+    {
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+        if (ECS::Util::MessageBuilder::Cheat::BuildCheatResurrect(buffer))
+        {
+            networkState.client->Send(buffer);
+        }
+    }
+    else
+    {
+        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
+        unitStatsComponent.currentHealth = unitStatsComponent.maxHealth;
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCheatCast(GameConsole* gameConsole, Generated::CheatCastCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+    auto& unit = registry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
+
+    if (ECS::Util::Network::IsConnected(networkState))
+    {
+        ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+            .spellID = command.spellID
+        });
+    }
+    else
+    {
+        auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
+        castInfo.target = unit.targetEntity;
+        castInfo.castTime = 1.0f;
+        castInfo.duration = 0.0f;
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleMapSync(GameConsole* gameConsole, Generated::MapSyncCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+
+    if (!mapStorage->Has(command.mapID))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1024>();
+
+    auto& map = mapStorage->Get<Generated::MapRecord>(command.mapID);
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatMapAdd(buffer, mapStorage, command.mapID, map))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleMapSyncAll(GameConsole* gameConsole, Generated::MapSyncAllCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1048576>();
+
+    mapStorage->Each([&](u32 id, const Generated::MapRecord& map)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatMapAdd(buffer, mapStorage, id, map))
+            return false;
+
+        return true;
+    });
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoAdd(GameConsole* gameConsole, Generated::GotoAddCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoAdd(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoAddHere(GameConsole* gameConsole, Generated::GotoAddHereCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoAddHere(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoRemove(GameConsole* gameConsole, Generated::GotoRemoveCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoRemove(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoMap(GameConsole* gameConsole, Generated::GotoMapCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoMap(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoLocation(GameConsole* gameConsole, Generated::GotoLocationCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoLocation(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleGotoXYZ(GameConsole* gameConsole, Generated::GotoXYZCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!ECS::Util::Network::IsConnected(networkState))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatGotoXYZ(buffer, command))
+    {
+        networkState.client->Send(buffer);
+    }
+
     return true;
 }
 

@@ -57,5 +57,8 @@ namespace ECS::Util
 
         std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents);
         void ReplaceTextNewLines(std::string& input);
+
+        void SetPos3D(Scripting::UI::Widget* widget, vec3& pos);
+        void ClearPos3D(Scripting::UI::Widget* widget);
     }
 }

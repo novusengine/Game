@@ -1,7 +1,7 @@
 #pragma once
 #include <Gameplay/GameDefine.h>
 
-#include <entt/fwd.hpp>
+#include <entt/entt.hpp>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
@@ -19,8 +19,11 @@ namespace ECS::Singletons
     struct CharacterSingleton
     {
     public:
-        entt::entity controllerEntity;
-        entt::entity moverEntity;
+        entt::entity controllerEntity = entt::null;
+        entt::entity moverEntity = entt::null;
+
+        vec3 rayStart = vec3(0.0f);
+        vec3 rayEnd = vec3(0.0f, 0.0f, -1.0f);
 
         JPH::CharacterVirtual* character = nullptr;
         KeybindGroup* keybindGroup = nullptr;
@@ -28,7 +31,7 @@ namespace ECS::Singletons
 
         bool canControlInAir = true;
 
-        entt::entity baseContainerEntity;
-        std::array<GameDefine::ObjectGuid, 6> containers;
+        entt::entity baseContainerEntity = entt::null;
+        std::array<ObjectGUID, 6> containers;
     };
 }

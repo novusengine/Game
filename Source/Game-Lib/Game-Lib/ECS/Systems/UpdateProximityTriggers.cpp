@@ -1,4 +1,4 @@
-#include "ProximityTriggers.h"
+#include "UpdateProximityTriggers.h"
 
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/Events.h"
@@ -11,12 +11,16 @@
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Scripting/LuaDefines.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/Handlers/TriggerEventHandler.h"
 
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Util/DebugHandler.h>
+
+#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <Meta/Generated/Shared/ProximityTriggerEnum.h>
 
 #include <Network/Client.h>
 
@@ -44,12 +48,9 @@ namespace ECS::Systems
         if ((trigger.flags & Generated::ProximityTriggerFlagEnum::IsServerAuthorative) != Generated::ProximityTriggerFlagEnum::None)
         {
             // Serverside event for sure
-            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
-
-            if (!ECS::Util::MessageBuilder::ProximityTrigger::BuildProximityTriggerEnter(buffer, trigger.networkID))
-                return;
-
-            networkState.client->Send(buffer);
+            Util::Network::SendPacket(networkState, Generated::ClientTriggerEnterPacket{
+                .triggerID = trigger.networkID
+            });
         }
         
         // Clientside event
@@ -81,7 +82,7 @@ namespace ECS::Systems
         triggerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaTriggerEventEnum::OnStay), &eventData);
     }
 
-    void ProximityTriggers::Update(entt::registry& registry, f32 deltaTime)
+    void UpdateProximityTriggers::Update(entt::registry& registry, f32 deltaTime)
     {
         ZoneScopedN("ECS::ProximityTriggers");
 

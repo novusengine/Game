@@ -11,6 +11,8 @@ namespace ECS
     {
         struct AttachmentInstance
         {
+        public:
+            u64 lastUpdatedFrame;
             entt::entity entity;
             mat4x4 matrix;
         };

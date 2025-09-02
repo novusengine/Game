@@ -17,6 +17,8 @@
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
 
+#include <glm/gtx/euler_angles.hpp>
+
 namespace ECS::Util
 {
     namespace CameraUtil
@@ -46,22 +48,16 @@ namespace ECS::Util
 
             if (capture)
             {
-                i32 width, height;
-                glfwGetWindowSize(window->GetWindow(), &width, &height);
-
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-                auto* inputManager = ServiceLocator::GetInputManager();
-                inputManager->SetCursorVirtual(true);
+                ServiceLocator::GetInputManager()->SetCursorVirtual(true);
             }
             else
             {
                 ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-
-                auto* inputManager = ServiceLocator::GetInputManager();
-                inputManager->SetCursorVirtual(false);
+                ServiceLocator::GetInputManager()->SetCursorVirtual(false);
             }
         }
 
@@ -105,6 +101,25 @@ namespace ECS::Util
             f32 camDistance = (radius * 2.0f) / Math::Tan(fovInRadians / 2.0f);
 
             ECS::TransformSystem::Get(*registry).SetLocalPosition(activeCamera.entity, position - (transform.GetLocalForward() * camDistance));
+        }
+
+        void CalculatePosRotForMatrix(const mat4x4& targetMatrix, const vec3& cameraEulerAngles, f32 cameraHeightOffset, f32 cameraZoomDistance, vec3& resultPosition, quat& resultRotation)
+        {
+            // Height offset matrix to move the rotation point up by the specified height
+            mat4x4 heightOffsetMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, cameraHeightOffset, 0.0f));
+
+            // Create rotation matrix from Euler angles
+            mat4x4 rotationMatrix = glm::eulerAngleYXZ(cameraEulerAngles.y, cameraEulerAngles.x, cameraEulerAngles.z);
+
+            // Translation matrix to move the camera back to the correct offset
+            mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, 0.0f, cameraZoomDistance));
+
+            // Combine transformations: first rotate, then translate
+            mat4x4 cameraMatrix = targetMatrix * heightOffsetMatrix * rotationMatrix * translationMatrix;
+
+            // Extract position and rotation from the transformation matrix
+            resultPosition = vec3(cameraMatrix[3]);
+            resultRotation = normalize(quat_cast(cameraMatrix));
         }
     }
 }

@@ -13,6 +13,7 @@
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
 #include "Game-Lib/Scripting/Handlers/UIHandler.h"
 #include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/UI/Widget.h"
@@ -316,7 +317,20 @@ namespace ECS::Util
             auto& transform2DSystem = Transform2DSystem::Get(*registry);
             transform2DSystem.ClearParent(entity);
 
-            registry->get_or_emplace<ECS::Components::UI::DestroyWidget>(entity);
+            // Remove all children
+            transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](entt::entity childEntity)
+            {
+                if (!registry->all_of<ECS::Components::UI::Widget>(childEntity))
+                    return true;
+
+                auto& widget = registry->get<ECS::Components::UI::Widget>(childEntity);
+                if (widget.type != ECS::Components::UI::WidgetType::Panel && widget.type != ECS::Components::UI::WidgetType::Text && widget.type != ECS::Components::UI::WidgetType::Widget)
+                    return true;
+
+                registry->get_or_emplace<ECS::Components::UI::DestroyWidget>(childEntity);
+                return true;
+            });
+
             return true;
         }
 
@@ -848,6 +862,48 @@ namespace ECS::Util
                 }
             }
             input.resize(write_index);
+        }
+
+        void SetPos3D(Scripting::UI::Widget* widget, vec3& pos)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+            auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+
+            transform.SetIgnoreParent(true);
+
+            if (widgetComp.worldTransformIndex == std::numeric_limits<u32>().max())
+                widgetComp.worldTransformIndex = canvasRenderer->ReserveWorldTransform();
+
+            canvasRenderer->UpdateWorldTransform(widgetComp.worldTransformIndex, pos);
+
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
+        }
+
+        void ClearPos3D(Scripting::UI::Widget* widget)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
+            auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+
+            transform.SetIgnoreParent(false);
+
+            if (widgetComp.worldTransformIndex != std::numeric_limits<u32>().max())
+            {
+                canvasRenderer->ReleaseWorldTransform(widgetComp.worldTransformIndex);
+            }
+
+            widgetComp.worldTransformIndex = std::numeric_limits<u32>().max();
+
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
         }
     }
 }

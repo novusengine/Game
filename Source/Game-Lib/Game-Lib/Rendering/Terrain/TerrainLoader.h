@@ -69,6 +69,10 @@ public:
     void Update(f32 deltaTime);
 
     void AddInstance(const LoadDesc& loadDesc);
+
+    bool IsLoading() { return _numChunksToLoad != _numChunksLoaded; }
+    f32 GetLoadingProgress() const;
+
     const std::string& GetCurrentMapInternalName() { return _currentMapInternalName; }
 
 private:

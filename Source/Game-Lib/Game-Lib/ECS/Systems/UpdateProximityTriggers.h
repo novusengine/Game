@@ -4,7 +4,7 @@
 
 namespace ECS::Systems
 {
-    class ProximityTriggers
+    class UpdateProximityTriggers
     {
     public:
         static void Update(entt::registry& registry, f32 deltaTime);

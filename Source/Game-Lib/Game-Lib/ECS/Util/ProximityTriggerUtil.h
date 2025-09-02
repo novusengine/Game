@@ -1,7 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Game/ProximityTriggerEnum.h>
+#include <Meta/Generated/Shared/ProximityTriggerEnum.h>
 
 #include <entt/fwd.hpp>
 

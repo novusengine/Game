@@ -50,7 +50,7 @@ private:
     bool Init();
     bool Render(f32 deltaTime, f32& timeSpentWaiting);
 
-    void RefreshDatabases();
+    void DatabaseReload();
     void SaveCDB();
 
     void Cleanup();

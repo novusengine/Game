@@ -8,17 +8,19 @@
 #include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Define.h>
 
+#include <Meta/Generated/Shared/NetworkEnum.h>
+#include <Meta/Generated/Shared/NetworkPacket.h>
+
 #include <entt/entt.hpp>
 
 namespace ECS::Util::MessageBuilder
 {
-    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, Network::MessageHeader::Flags flags, u16 size)
+    u32 AddHeader(std::shared_ptr<Bytebuffer>& buffer, ::Network::OpcodeType opcode, u16 size)
     {
         Network::MessageHeader header =
         {
             .opcode = static_cast<Network::OpcodeType>(opcode),
-            .size = size,
-            .flags = flags
+            .size = size
         };
 
         if (buffer->GetSpace() < sizeof(Network::MessageHeader))
@@ -45,7 +47,7 @@ namespace ECS::Util::MessageBuilder
         return true;
     }
 
-    bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, Network::GameOpcode opcode, std::function<void()> func)
+    bool CreatePacket(std::shared_ptr<Bytebuffer>& buffer, ::Network::OpcodeType opcode, std::function<void()> func)
     {
         if (!buffer)
             return false;
@@ -61,27 +63,11 @@ namespace ECS::Util::MessageBuilder
         return true;
     }
 
-    bool CreatePing(std::shared_ptr<Bytebuffer>& buffer, std::function<void()> func)
-    {
-        if (!buffer)
-            return false;
-
-        u32 headerPos = AddHeader(buffer, Network::GameOpcode::Invalid, { .isPing = 1 });
-
-        if (func)
-            func();
-
-        if (!ValidatePacket(buffer, headerPos))
-            return false;
-
-        return true;
-    }
-
     namespace Authentication
     {
         bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName)
         {
-            bool createPacketResult = CreatePacket(buffer, Network::GameOpcode::Client_Connect, [&]()
+            bool createPacketResult = CreatePacket(buffer, Generated::ConnectPacket::PACKET_ID, [&]()
             {
                 buffer->PutString(charName);
             });
@@ -94,7 +80,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping)
         {
-            bool result = CreatePing(buffer, [&buffer, ping]()
+            bool result = CreatePacket(buffer, Generated::PingPacket::PACKET_ID, [&buffer, ping]()
             {
                 buffer->PutU16(ping);
             });
@@ -103,26 +89,26 @@ namespace ECS::Util::MessageBuilder
         }
     }
 
-    namespace Entity
+    namespace Unit
     {
-        bool BuildMoveMessage(std::shared_ptr<Bytebuffer>& buffer, const vec3& position, const quat& rotation, const Components::MovementFlags& movementFlags, f32 verticalVelocity)
+        bool BuildUnitMoveMessage(std::shared_ptr<Bytebuffer>& buffer, const vec3& position, const vec2& pitchYaw, const Components::MovementFlags& movementFlags, f32 verticalVelocity)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Shared_EntityMove, [&]()
+            bool result = CreatePacket(buffer, Generated::ClientUnitMovePacket::PACKET_ID, [&]()
             {
-                buffer->Put(position);
-                buffer->Put(rotation);
                 buffer->Put(movementFlags);
+                buffer->Put(position);
+                buffer->Put(pitchYaw);
                 buffer->Put(verticalVelocity);
             });
 
             return result;
         }
         
-        bool BuildTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, GameDefine::ObjectGuid targetGuid)
+        bool BuildUnitTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID targetGUID)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Shared_EntityTargetUpdate, [&]()
+            bool result = CreatePacket(buffer, Generated::ClientUnitTargetUpdatePacket::PACKET_ID, [&, targetGUID]()
             {
-                buffer->Serialize(targetGuid);
+                buffer->Serialize(targetGUID);
             });
 
             return result;
@@ -133,7 +119,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u16 srcContainerIndex, u16 destContainerIndex, u16 srcSlotIndex, u16 destSlotIndex)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_ContainerSwapSlots, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
+            bool result = CreatePacket(buffer, Generated::ClientContainerSwapSlotsPacket::PACKET_ID, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
             {
                 buffer->PutU16(srcContainerIndex);
                 buffer->PutU16(destContainerIndex);
@@ -147,11 +133,24 @@ namespace ECS::Util::MessageBuilder
 
     namespace Spell
     {
-        bool BuildLocalRequestSpellCast(std::shared_ptr<Bytebuffer>& buffer)
+        bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_LocalRequestSpellCast, [&]()
+            bool result = CreatePacket(buffer, Generated::ClientSpellCastPacket::PACKET_ID, [&, spellID]()
             {
-                buffer->PutU32(0);
+                buffer->PutU32(spellID);
+            });
+
+            return result;
+        }
+    }
+
+    namespace Chat
+    {
+        bool BuildChatMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& message)
+        {
+            bool result = CreatePacket(buffer, Generated::ClientSendChatMessagePacket::PACKET_ID, [&]()
+            {
+                buffer->PutString(message);
             });
 
             return result;
@@ -166,9 +165,9 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildCheatDamage(std::shared_ptr<Bytebuffer>& buffer, u32 damage)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Damage);
+                buffer->Put(Generated::CheatCommandEnum::Damage);
                 buffer->PutU32(damage);
             });
 
@@ -176,18 +175,18 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatKill(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Kill);
+                buffer->Put(Generated::CheatCommandEnum::Kill);
             });
 
             return result;
         }
         bool BuildCheatHeal(std::shared_ptr<Bytebuffer>& buffer, u32 heal)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Heal);
+                buffer->Put(Generated::CheatCommandEnum::Heal);
                 buffer->PutU32(heal);
             });
 
@@ -195,106 +194,106 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatResurrect(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Resurrect);
+                buffer->Put(Generated::CheatCommandEnum::Resurrect);
             });
 
             return result;
         }
-        bool BuildCheatMorph(std::shared_ptr<Bytebuffer>& buffer, u32 displayID)
+        bool BuildCheatUnitMorph(std::shared_ptr<Bytebuffer>& buffer, u32 displayID)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Morph);
+                buffer->Put(Generated::CheatCommandEnum::UnitMorph);
                 buffer->PutU32(displayID);
             });
 
             return result;
         }
-        bool BuildCheatDemorph(std::shared_ptr<Bytebuffer>& buffer)
+        bool BuildCheatUnitDemorph(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Demorph);
+                buffer->Put(Generated::CheatCommandEnum::UnitDemorph);
             });
 
             return result;
         }
         bool BuildCheatTeleport(std::shared_ptr<Bytebuffer>& buffer, u32 mapID, const vec3& position)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::Teleport);
+                buffer->Put(Generated::CheatCommandEnum::Teleport);
                 buffer->PutU32(mapID);
                 buffer->Put(position);
             });
 
             return result;
         }
-        bool BuildCheatCreateChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
+        bool BuildCheatCharacterAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::CreateCharacter);
+                buffer->Put(Generated::CheatCommandEnum::CharacterAdd);
                 buffer->PutString(name);
             });
 
             return result;
         }
-        bool BuildCheatDeleteChar(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
+        bool BuildCheatCharacterRemove(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::DeleteCharacter);
+                buffer->Put(Generated::CheatCommandEnum::CharacterRemove);
                 buffer->PutString(name);
             });
 
             return result;
         }
-        bool BuildCheatSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race)
+        bool BuildCheatUnitSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::SetRace);
+                buffer->Put(Generated::CheatCommandEnum::UnitSetRace);
                 buffer->Put(race);
             });
 
             return result;
         }
-        bool BuildCheatSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender)
+        bool BuildCheatUnitSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::SetGender);
+                buffer->Put(Generated::CheatCommandEnum::UnitSetGender);
                 buffer->Put(gender);
             });
 
             return result;
         }
-        bool BuildCheatSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass)
+        bool BuildCheatUnitSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::SetClass);
+                buffer->Put(Generated::CheatCommandEnum::UnitSetClass);
                 buffer->Put(unitClass);
             });
 
             return result;
         }
-        bool BuildCheatSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level)
+        bool BuildCheatUnitSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Network::CheatCommands::SetLevel);
+                buffer->Put(Generated::CheatCommandEnum::UnitSetLevel);
                 buffer->PutU16(level);
             });
 
             return result;
         }
-        bool BuildCheatSetItemTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item)
+        bool BuildCheatItemSetTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID]()
             {
                 GameDefine::Database::ItemTemplate itemTemplate =
                 {
@@ -319,17 +318,17 @@ namespace ECS::Util::MessageBuilder
                     .shieldTemplateID = item.shieldTemplateID
                 };
 
-                buffer->Put(Network::CheatCommands::SetItemTemplate);
+                buffer->Put(Generated::CheatCommandEnum::ItemSetTemplate);
                 GameDefine::Database::ItemTemplate::Write(buffer, itemTemplate);
             });
 
             return result;
         }
-        bool BuildCheatSetItemStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Generated::ItemStatTemplateRecord& statTemplate)
+        bool BuildCheatItemSetStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Generated::ItemStatTemplateRecord& statTemplate)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, statTemplateID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, statTemplateID]()
             {
-                buffer->Put(Network::CheatCommands::SetItemStatTemplate);
+                buffer->Put(Generated::CheatCommandEnum::ItemSetStatTemplate);
 
                 buffer->PutU32(statTemplateID);
                 buffer->Serialize(statTemplate);
@@ -337,9 +336,9 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatSetItemArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Generated::ItemArmorTemplateRecord& armorTemplate)
+        bool BuildCheatItemSetArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Generated::ItemArmorTemplateRecord& armorTemplate)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, armorTemplateID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, armorTemplateID]()
             {
                 GameDefine::Database::ItemArmorTemplate itemArmorTemplate =
                 {
@@ -348,15 +347,15 @@ namespace ECS::Util::MessageBuilder
                     .bonusArmor = armorTemplate.bonusArmor,
                 };
 
-                buffer->Put(Network::CheatCommands::SetItemArmorTemplate);
+                buffer->Put(Generated::CheatCommandEnum::ItemSetArmorTemplate);
                 GameDefine::Database::ItemArmorTemplate::Write(buffer, itemArmorTemplate);
             });
 
             return result;
         }
-        bool BuildCheatSetItemWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Generated::ItemWeaponTemplateRecord& weaponTemplate)
+        bool BuildCheatItemSetWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Generated::ItemWeaponTemplateRecord& weaponTemplate)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, weaponTemplateID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, weaponTemplateID]()
             {
                 GameDefine::Database::ItemWeaponTemplate itemWeaponTemplate =
                 {
@@ -367,16 +366,16 @@ namespace ECS::Util::MessageBuilder
                     .speed = weaponTemplate.speed,
                 };
 
-                buffer->Put(Network::CheatCommands::SetItemWeaponTemplate);
+                buffer->Put(Generated::CheatCommandEnum::ItemSetWeaponTemplate);
                 GameDefine::Database::ItemWeaponTemplate::Write(buffer, itemWeaponTemplate);
             });
 
             return result;
 
         }
-        bool BuildCheatSetItemShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Generated::ItemShieldTemplateRecord& shieldTemplate)
+        bool BuildCheatItemSetShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Generated::ItemShieldTemplateRecord& shieldTemplate)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, shieldTemplateID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, shieldTemplateID]()
             {
                 GameDefine::Database::ItemShieldTemplate itemShieldTemplate =
                 {
@@ -385,39 +384,148 @@ namespace ECS::Util::MessageBuilder
                     .block = shieldTemplate.block,
                 };
 
-                buffer->Put(Network::CheatCommands::SetItemShieldTemplate);
+                buffer->Put(Generated::CheatCommandEnum::ItemSetShieldTemplate);
                 GameDefine::Database::ItemShieldTemplate::Write(buffer, itemShieldTemplate);
             });
 
             return result;
         }
-        bool BuildCheatAddItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
+        bool BuildCheatItemAdd(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID, itemCount]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
             {
-                buffer->Put(Network::CheatCommands::AddItem);
+                buffer->Put(Generated::CheatCommandEnum::ItemAdd);
                 buffer->PutU32(itemID);
                 buffer->PutU32(itemCount);
             });
 
             return result;
         }
-        bool BuildCheatRemoveItem(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
+        bool BuildCheatItemRemove(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, itemID, itemCount]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
             {
-                buffer->Put(Network::CheatCommands::RemoveItem);
+                buffer->Put(Generated::CheatCommandEnum::ItemRemove);
                 buffer->PutU32(itemID);
                 buffer->PutU32(itemCount);
             });
 
             return result;
         }
+
+        bool BuildCheatCreatureAdd(std::shared_ptr<Bytebuffer>& buffer, u32 creatureTemplateID)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, creatureTemplateID]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::CreatureAdd);
+                buffer->PutU32(creatureTemplateID);
+            });
+
+            return result;
+        }
+        bool BuildCheatCreatureRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, guid]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::CreatureRemove);
+                buffer->Serialize(guid);
+            });
+
+            return result;
+        }
+
+        bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, mapID]()
+            {
+                GameDefine::Database::Map mapTemplate =
+                {
+                    .id = mapID,
+                    .flags = 0,
+                    .name = mapStorage->GetString(map.name),
+                    .type = map.instanceType,
+                    .maxPlayers = map.maxPlayers,
+                };
+
+                buffer->Put(Generated::CheatCommandEnum::MapAdd);
+                GameDefine::Database::Map::Write(buffer, mapTemplate);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoAdd);
+                buffer->PutString(command.location);
+                buffer->PutU32(command.mapID);
+                buffer->PutF32(command.x);
+                buffer->PutF32(command.y);
+                buffer->PutF32(command.z);
+                buffer->PutF32(command.orientation);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddHereCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoAddHere);
+                buffer->PutString(command.location);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoRemoveCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoRemove);
+                buffer->PutString(command.location);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoMap(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoMapCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoMap);
+                buffer->PutU32(command.mapID);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoLocation(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoLocationCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoLocation);
+                buffer->PutString(command.location);
+            });
+
+            return result;
+        }
+        bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoXYZCommand& command)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::GotoXYZ);
+                buffer->PutF32(command.x);
+                buffer->PutF32(command.y);
+                buffer->PutF32(command.z);
+            });
+
+            return result;
+        }
+
         bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, mapID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, mapID]()
             {
-                buffer->Put(Network::CheatCommands::TriggerAdd);
+                buffer->Put(Generated::CheatCommandEnum::TriggerAdd);
                 buffer->PutString(name);
                 buffer->PutU16(flags);
                 buffer->PutU16(mapID);
@@ -427,23 +535,12 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
+
         bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID)
         {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_SendCheatCommand, [&, triggerID]()
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, triggerID]()
             {
-                buffer->Put(Network::CheatCommands::TriggerRemove);
-                buffer->PutU32(triggerID);
-            });
-
-            return result;
-        }
-    }
-    namespace ProximityTrigger
-    {
-        bool BuildProximityTriggerEnter(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID)
-        {
-            bool result = CreatePacket(buffer, Network::GameOpcode::Client_TriggerEnter, [&, triggerID]()
-            {
+                buffer->Put(Generated::CheatCommandEnum::TriggerRemove);
                 buffer->PutU32(triggerID);
             });
 

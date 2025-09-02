@@ -19,7 +19,7 @@
 #include "Game-Lib/ECS/Systems/FreeflyingCamera.h"
 #include "Game-Lib/ECS/Systems/OrbitalCamera.h"
 #include "Game-Lib/ECS/Systems/NetworkConnection.h"
-#include "Game-Lib/ECS/Systems/ProximityTriggers.h"
+#include "Game-Lib/ECS/Systems/UpdateProximityTriggers.h"
 #include "Game-Lib/ECS/Systems/UpdateUnitEntities.h"
 #include "Game-Lib/ECS/Systems/UpdatePhysics.h"
 #include "Game-Lib/ECS/Systems/UpdateScripts.h"
@@ -102,7 +102,7 @@ namespace ECS
         Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);
-        Systems::ProximityTriggers::Update(gameRegistry, clampedDeltaTime);
+        Systems::UpdateProximityTriggers::Update(gameRegistry, clampedDeltaTime);
 
         // Note: For now UpdateScripts should always be run last
         Systems::UpdateScripts::Update(gameRegistry, clampedDeltaTime);

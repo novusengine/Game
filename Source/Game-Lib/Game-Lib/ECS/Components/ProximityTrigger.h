@@ -1,8 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Game/ProximityTriggerEnum.h>
-DECLARE_GENERIC_BITWISE_OPERATORS(Generated::ProximityTriggerFlagEnum);
+#include <Meta/Generated/Shared/ProximityTriggerEnum.h>
 
 #include <entt/entt.hpp>
 #include <set>

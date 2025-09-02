@@ -7,7 +7,7 @@
 
 #include <Gameplay/GameDefine.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/fwd.hpp>
 

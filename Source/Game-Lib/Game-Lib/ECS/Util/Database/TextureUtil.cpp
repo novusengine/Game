@@ -4,7 +4,7 @@
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 

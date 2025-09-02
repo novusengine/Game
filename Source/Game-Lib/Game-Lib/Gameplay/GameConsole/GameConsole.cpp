@@ -273,6 +273,8 @@ void GameConsole::Render(f32 deltaTime)
                         if (ImGui::Selectable(command.nameWithAliases.data()) || (isSelected && tabReleased))
                         {
                             _searchText = command.name;
+                            if (command.hasParameters)
+                                _searchText += " ";
 
                             ImGuiID inputFieldID = gameConsoleWindow->GetID("##ConsoleInputField");
                             ImGui::GetInputTextState(inputFieldID)->ReloadUserBufAndMoveToEnd();

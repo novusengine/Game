@@ -10,7 +10,7 @@
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>

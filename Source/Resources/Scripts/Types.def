@@ -25,6 +25,8 @@ type GameEvent =
     Invalid : number,
     Loaded  : number,
     Updated : number,
+    MapLoading : number,
+    ChatMessageReceived : number,
     Count   : number
 };
 declare GameEvent : GameEvent
@@ -32,19 +34,14 @@ declare GameEvent : GameEvent
 type PlayerEvent =
 {
     Invalid : number,
+    Created : number,
+    Destroyed : number,
     ContainerCreate  : number,
     ContainerAddToSlot : number,
     ContainerRemoveFromSlot : number,
     ContainerSwapSlots : number,
     Count   : number
 };
-type ContainerItemEventData =
-{
-    slotIndex : number,
-    itemID : number,
-    itemCount : number
-}
-declare PlayerEvent : PlayerEvent
 
 type TriggerEvent =
 {
@@ -56,6 +53,14 @@ type TriggerEvent =
 };
 declare TriggerEvent : TriggerEvent
 
+type ContainerItemEventData =
+{
+    slotIndex : number,
+    itemID : number,
+    itemCount : number
+}
+declare PlayerEvent : PlayerEvent
+
 declare function RegisterGameEvent(event : GameEvent, callback : ((event : GameEvent, ...any) -> any)) : ()
 declare function RegisterPlayerEvent(event : PlayerEvent, callback : ((event : PlayerEvent, ...any) -> any)) : ()
 declare function RegisterTriggerEvent(event : TriggerEvent, callback : ((event : TriggerEvent, ...any) -> any)) : ()
@@ -63,10 +68,12 @@ declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
 declare function GetCurrentMap() : string
 declare function LoadMap(name : string) : ()
+declare function GetMapLoadingProgress() : number
 declare function EquipItem(itemID : number, slotIndex : number) : boolean
 declare function UnequipItem(slotIndex : number) : boolean
 declare function GetEquippedItem(slotIndex : number) : number
 declare function ExecCmd(command : string) : boolean
+declare function SendChatMessage(message : string) : ()
 
 type UIInputEvent =
 {
@@ -280,6 +287,13 @@ declare Box :
     new : ((min : vec2, max : vec2) -> Box)
 }
 
+declare Unit :
+{
+    GetLocal            : (() -> number),
+    GetName             : ((unitID : number) -> string),
+    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> ()),
+}
+
 declare class ItemInfo
     DisplayID : number
     Bind : number
@@ -382,7 +396,6 @@ end
 declare class Icon
     Texture : number
 end
-
 declare Item :
 {
     GetItemInfo         : ((itemID : number) -> ItemInfo),

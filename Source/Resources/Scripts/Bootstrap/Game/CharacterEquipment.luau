@@ -291,10 +291,10 @@ local function CreateBagSlots(mainPanel: Panel, container: Bag)
     end
 end
 
-local function CreateEquipmentBag(containerItems : ContainerItemEventData)
+local function CreateEquipmentBag(numSlots : number, containerItems : ContainerItemEventData)
     local canvas = UI.GetCanvas("CharacterEquipment", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
 
-    local equipmentBag = Bag.new(nil, 24, nil, function(container : Bag)
+    local equipmentBag = Bag.new(nil, numSlots, nil, function(container : Bag)
         local mainPanel = canvas:NewPanel(300, UI_CONSTANTS.PANEL_POS_X, UI_CONSTANTS.PANEL_POS_Y, UI_CONSTANTS.PANEL_HEIGHT, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.PANEL_TEMPLATE)
         container.panel = mainPanel
 
@@ -309,8 +309,10 @@ local function CreateEquipmentBag(containerItems : ContainerItemEventData)
         CreateBagSlots(mainPanel, container)
     end, OnBagEvent)
 
-    for k, item in containerItems do
-        equipmentBag:AddToSlot(item.itemID, item.count, item.slot, true)
+    if containerItems ~= nil then
+        for k, item in containerItems do
+            equipmentBag:AddToSlot(item.itemID, item.count, item.slot, true)
+        end
     end
 
     equipmentBag:LockItem(MAIN_BAG_SLOT_INDEX, true)
@@ -318,12 +320,12 @@ local function CreateEquipmentBag(containerItems : ContainerItemEventData)
 end
 
 local function OnGameLoaded(eventID : number, motd : string)
-    local baseContainerItems = Container.GetContainerItems(MIN_CONTAINER_INDEX)
-    if (baseContainerItems == nil) then
+    local numSlots, baseContainerItems = Container.GetContainerItems(MIN_CONTAINER_INDEX)
+    if (numSlots == nil or baseContainerItems == nil) then
         return
     end
 
-    CreateEquipmentBag(baseContainerItems)
+    CreateEquipmentBag(numSlots, baseContainerItems)
 
     for i = MAIN_BAG_SLOT_INDEX, LAST_BAG_SLOT_INDEX do
         local containerItem = baseContainerItems[i]
@@ -336,7 +338,7 @@ local function OnGameLoaded(eventID : number, motd : string)
         bag.containerIndex = containerIndex
         bag.panel:SetVisible(false)
 
-        local containerItems = Container.GetContainerItems(bag.containerIndex)
+        local _, containerItems = Container.GetContainerItems(bag.containerIndex)
         for k, item in containerItems do
             bag:AddToSlot(item.itemID, item.count, item.slot, true)
         end
@@ -346,24 +348,34 @@ local function OnGameLoaded(eventID : number, motd : string)
 end
 RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
 
-local function OnContainerCreate(eventID : number, index : number, numSlots : number, itemID : number, containerItems : ContainerItemEventData)
+local function OnContainerCreate(eventID : number, index : number, numSlots : number, itemID : number)
     if index < MIN_CONTAINER_INDEX or index > MAX_CONTAINER_INDEX then
         return
     end
     -- TODO : Check if we are overriding an existing container, in which case we need to clean it up
 
     if index == MIN_CONTAINER_INDEX then
-        CreateEquipmentBag(containerItems)
-    else
-        local bag = Bag.new(nil, numSlots)
-        bag.containerIndex = index
-        bag.panel:SetVisible(false)
-    
-        for k, item in containerItems do
-            bag:AddToSlot(item.itemID, item.count, item.slot, true)
+        local equipmentBag = PlayerContainers.GetEquipmentBag()
+        if (equipmentBag == nil) then
+            CreateEquipmentBag(numSlots)
+        else
+            for i = 1, equipmentBag.totalSlots do
+                equipmentBag:ClearSlot(i)
+            end
         end
-    
-        PlayerContainers.SetBag(bag.containerIndex - 1, bag)
+    else
+        local bag = PlayerContainers.GetBag(index - 1)
+        if (bag == nil) then
+            bag = Bag.new(nil, numSlots)
+            bag.containerIndex = index
+            bag.panel:SetVisible(false)
+
+            PlayerContainers.SetBag(bag.containerIndex - 1, bag)
+        else
+            for i = 1, bag.totalSlots do
+                bag:ClearSlot(i)
+            end
+        end
     end
 end
 RegisterPlayerEvent(PlayerEvent.ContainerCreate, OnContainerCreate)

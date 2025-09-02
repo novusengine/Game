@@ -20,7 +20,7 @@
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 #include <FileFormat/Novus/Map/Map.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -43,21 +43,19 @@ void MapLoader::Update(f32 deltaTime)
     
     ZoneScoped;
 
-    size_t numRequests = _requests.size_approx();
-    if (numRequests == 0)
+    if (!_loadRequest.isRequest)
         return;
 
-    LoadDesc request;
-    while (_requests.try_dequeue(request)) { } // Empty the queue and only listen to the last request
-
     // Clear Map
-    if (request.internalMapNameHash == std::numeric_limits<u32>().max())
+    if (_loadRequest.internalMapNameHash == std::numeric_limits<u32>().max())
     {
         if (_currentMapID == std::numeric_limits<u32>().max())
             return;
 
         _currentMapID = std::numeric_limits<u32>().max();
         ClearRenderersForMap();
+
+        ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
     }
     else
     {
@@ -68,10 +66,10 @@ void MapLoader::Update(f32 deltaTime)
 
         const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapSingleton.mapInternalNameHashToID;
 
-        if (!internalNameHashToID.contains(request.internalMapNameHash))
+        if (!internalNameHashToID.contains(_loadRequest.internalMapNameHash))
             return;
 
-        u32 mapID = internalNameHashToID.at(request.internalMapNameHash);
+        u32 mapID = internalNameHashToID.at(_loadRequest.internalMapNameHash);
         if (!mapStorage->Has(mapID))
             return;
 
@@ -126,18 +124,26 @@ void MapLoader::Update(f32 deltaTime)
 
 void MapLoader::UnloadMap()
 {
-    LoadDesc loadDesc;
-    loadDesc.internalMapNameHash = std::numeric_limits<u32>().max();
+    _loadRequest.isRequest = true;
+    _loadRequest.internalMapNameHash = std::numeric_limits<u32>().max();
+}
 
-    _requests.enqueue(loadDesc);
+void MapLoader::UnloadMapImmediately()
+{
+    if (_currentMapID == std::numeric_limits<u32>().max())
+        return;
+
+    _currentMapID = std::numeric_limits<u32>().max();
+    ClearRenderersForMap();
+
+    _loadRequest.isRequest = false;
+    _loadRequest.internalMapNameHash = std::numeric_limits<u32>().max();
 }
 
 void MapLoader::LoadMap(u32 mapHash)
 {
-    LoadDesc loadDesc;
-    loadDesc.internalMapNameHash = mapHash;
-
-    _requests.enqueue(loadDesc);
+    _loadRequest.isRequest = true;
+    _loadRequest.internalMapNameHash = mapHash;
 }
 
 void MapLoader::ClearRenderersForMap()
@@ -151,6 +157,4 @@ void MapLoader::ClearRenderersForMap()
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->GetInspector()->ClearSelection();
-
-    ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
 }

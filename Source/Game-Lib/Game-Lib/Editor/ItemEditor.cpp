@@ -9,7 +9,7 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>

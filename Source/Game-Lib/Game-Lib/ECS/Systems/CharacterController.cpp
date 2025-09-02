@@ -20,10 +20,13 @@
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
@@ -36,10 +39,12 @@
 #include "Game-Lib/Util/UnitUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Gameplay/Network/Opcode.h>
+#include <Base/CVarSystem/CVarSystem.h>
 
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
+
+#include <Meta/Generated/Shared/NetworkPacket.h>
 
 #include <Network/Client.h>
 
@@ -52,12 +57,89 @@
 
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
-#include <Game-Lib/ECS/Util/CameraUtil.h>
-#include <Base/CVarSystem/CVarSystem.h>
 
 #include <tracy/Tracy.hpp>
 
 #define USE_CHARACTER_CONTROLLER_V2 0
+
+
+struct Ray
+{
+public:
+    vec3 origin;
+    vec3 dir; // normalized
+};
+
+struct Hit
+{
+public:
+    f32 tNear;
+    f32 tFar;
+    ObjectGUID objectGUID;
+};
+
+inline vec3 UnprojectNDC(const vec3& ndc, const mat4x4& invViewProj)
+{
+    vec4 w = invViewProj * vec4(ndc, 1.0f);
+    return vec3(w) / w.w;
+}
+
+inline vec2 ScreenToNDC(const vec2& screenXY, const vec2& viewportSize)
+{
+    // screen origin: top-left
+    f32 x = (2.0f * screenXY.x) / viewportSize.x - 1.0f;
+    f32 y = 1.0f - (2.0f * screenXY.y) / viewportSize.y; // flip Y up
+    return { x, y };
+}
+
+// If using reversed-Z (near=1, far=0), set reversedZ=true.
+inline Ray ScreenToWorldRay(const vec2& screenXY, const vec2& viewportSize, const mat4x4& invViewProj, bool reversedZ = false)
+{
+    vec2 ndcXY = ScreenToNDC(screenXY, viewportSize);
+
+    f32 zNear = reversedZ ? 1.0f : 0.0f;
+    f32 zFar = reversedZ ? 0.0f : 1.0f;
+
+    vec3 pNearNDC(ndcXY, zNear);
+    vec3 pFarNDC(ndcXY, zFar);
+
+    vec3 pNear = UnprojectNDC(pNearNDC, invViewProj);
+    vec3 pFar = UnprojectNDC(pFarNDC, invViewProj);
+
+    vec3 dir = glm::normalize(pFar - pNear);
+    return { pNear, dir };
+}
+
+inline bool RayIntersectsAABB(const Ray& ray, const glm::vec3& min, const glm::vec3& max, f32& tNear, f32& tFar)
+{
+    tNear = -std::numeric_limits<f32>::infinity();
+    tFar = std::numeric_limits<f32>::infinity();
+
+    for (i32 i = 0; i < 3; ++i)
+    {
+        if (glm::abs(ray.dir[i]) < 1e-8f)
+        {
+            if (ray.origin[i] < min[i] || ray.origin[i] > max[i])
+                return false; // parallel and outside slab
+
+            continue;
+        }
+
+        f32 t1 = (min[i] - ray.origin[i]) / ray.dir[i];
+        f32 t2 = (max[i] - ray.origin[i]) / ray.dir[i];
+
+        if (t1 > t2)
+            std::swap(t1, t2);
+
+        tNear = glm::max(tNear, t1);
+        tFar = glm::min(tFar, t2);
+
+        if (tNear > tFar)
+            return false;
+    }
+
+    return tFar >= 0.0f;
+}
 
 namespace ECS::Systems
 {
@@ -83,7 +165,7 @@ namespace ECS::Systems
 
         InputManager* inputManager = ServiceLocator::GetInputManager();
         characterSingleton.keybindGroup = inputManager->CreateKeybindGroup("CharacterController", 100);
-        characterSingleton.cameraToggleKeybindGroup = inputManager->CreateKeybindGroup("CharacterController - Camera Toggle", 1000);
+        characterSingleton.cameraToggleKeybindGroup = inputManager->CreateKeybindGroup("CharacterController - Camera Toggle", 101);
         characterSingleton.keybindGroup->SetActive(false);
 
         characterSingleton.keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, nullptr);
@@ -96,42 +178,83 @@ namespace ECS::Systems
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
             auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
 
-            if (characterSingleton.moverEntity == entt::null)
+            if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
                 return false;
 
-            entt::entity targetEntity = entt::null;
-            if (::Util::Physics::GetEntityAtMousePosition(ServiceLocator::GetEditorHandler()->GetViewport(), targetEntity))
+            auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
+
+            if ((modifier & KeybindModifier::Shift) != KeybindModifier::Invalid)
             {
-                if (targetEntity != characterSingleton.moverEntity)
-                {
-                    if (registry->valid(targetEntity) && !registry->all_of<Components::Unit>(targetEntity))
-                    {
-                        targetEntity = entt::null;
-                    }
-                }
+                unit.targetEntity = entt::null;
+                return true;
             }
 
-            auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
+            static constexpr f32 MAX_TARGET_SELECT_DISTANCE = 100.0f;
+
+            vec2 mousePos;
+            if (!ServiceLocator::GetEditorHandler()->GetViewport()->GetMousePosition(mousePos))
+                return false;
+
+            vec2 renderSize = ServiceLocator::GetGameRenderer()->GetRenderer()->GetRenderSize();
+            auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
+
+            auto screenToWorldRay = ScreenToWorldRay(mousePos, renderSize, camera.clipToWorld, true);
+            vec3 rayEnd = screenToWorldRay.origin + (screenToWorldRay.dir * MAX_TARGET_SELECT_DISTANCE);
+            vec3 rayMin = glm::min(screenToWorldRay.origin, rayEnd);
+            vec3 rayMax = glm::max(screenToWorldRay.origin, rayEnd);
+
+            std::vector<Hit> hits;
+
+            auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
+            networkState.networkVisTree->Search(&rayMin.x, &rayMax.x, [&registry, &networkState, &unit, &screenToWorldRay, &hits](const ObjectGUID& guid)
+            {
+                if (!networkState.networkIDToEntity.contains(guid))
+                    return true;
+
+                if (unit.networkID == guid)
+                    return true;
+
+                entt::entity entity = networkState.networkIDToEntity[guid];
+                if (!registry->valid(entity) || !registry->all_of<Components::WorldAABB>(entity))
+                    return true;
+
+                auto& aabb = registry->get<Components::WorldAABB>(entity);
+
+                f32 tNear, tFar;
+                if (RayIntersectsAABB(screenToWorldRay, aabb.min, aabb.max, tNear, tFar))
+                    hits.push_back({ tNear, tFar, guid });
+
+                return true;
+            });
+
+            std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b)
+            {
+                return a.tNear < b.tNear;
+            });
+
+            if (hits.size() == 0)
+                return false;
+
+            ObjectGUID targetNetworkID = hits[0].objectGUID;
+            if (!networkState.networkIDToEntity.contains(targetNetworkID))
+                return false;
+
+            entt::entity targetEntity = networkState.networkIDToEntity[targetNetworkID];
+            if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
+                return false;
+
             if (unit.targetEntity == targetEntity)
                 return false;
 
-            Singletons::NetworkState& networkState = ctx.get<Singletons::NetworkState>();
-            if (!networkState.entityToNetworkID.contains(targetEntity))
-                return false;
-
-            if (networkState.client && networkState.client->IsConnected())
+            if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+                .targetGUID = targetNetworkID
+                }))
             {
-                std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                GameDefine::ObjectGuid targetNetworkID = networkState.entityToNetworkID[targetEntity];
-
-                if (Util::MessageBuilder::Entity::BuildTargetUpdateMessage(buffer, targetNetworkID))
-                {
-                    networkState.client->Send(buffer);
-                }
+                unit.targetEntity = targetEntity;
             }
 
-            unit.targetEntity = targetEntity;
             return true;
         });
 
@@ -223,7 +346,7 @@ namespace ECS::Systems
             transformSystem.SetWorldPosition(characterSingleton.controllerEntity, newPosition);
 
             characterMovementInfo.pitch = 0.0f;
-            characterMovementInfo.yaw = glm::pi<f32>() + glm::radians(camera.yaw);
+            characterMovementInfo.yaw = glm::radians(camera.yaw);
             unit.positionOrRotationIsDirty = true;
 
             return true;
@@ -439,7 +562,7 @@ namespace ECS::Systems
             bool isLocal = !networkState.client || (networkState.client && !networkState.client->IsConnected());
             InitCharacterController(registry, isLocal);
         });
-
+        
 //#ifdef JPH_DEBUG_RENDERER
 //        // TODO: Fix Jolt Primitives being erased in JoltDebugRenderer causing crash when changing map
 //        auto& transform = registry.get<Components::Transform>(characterSingleton.modelEntity);
@@ -658,12 +781,13 @@ namespace ECS::Systems
                 if (networkState.client && networkState.client->IsConnected())
                 {
                     ZoneScopedN("CharacterController::Update - Network Update - Building Message");
-                    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<128>();
-                    if (Util::MessageBuilder::Entity::BuildMoveMessage(buffer, transform.GetWorldPosition(), transform.GetWorldRotation(), movementInfo.movementFlags, movementInfo.verticalVelocity))
-                    {
-                        ZoneScopedN("CharacterController::Update - Network Update - Sending Message");
-                        networkState.client->Send(buffer);
-                    }
+
+                    Util::Network::SendPacket(networkState, Generated::ClientUnitMovePacket{
+                        .movementFlags = *reinterpret_cast<u32*>(&movementInfo.movementFlags),
+                        .position = transform.GetWorldPosition(),
+                        .pitchYaw = vec2(movementInfo.pitch, movementInfo.yaw),
+                        .verticalVelocity = movementInfo.verticalVelocity
+                    });
                 }
 
                 unit.positionOrRotationIsDirty = false;
@@ -705,7 +829,7 @@ namespace ECS::Systems
             for (u32 i = 0; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
             {
                 Database::Item::ItemEquipSlot equipSlot = static_cast<Database::Item::ItemEquipSlot>(i);
-                unitEquipment.dirtyEquipmentSlots.insert(equipSlot);
+                unitEquipment.dirtyItemIDSlots.insert(equipSlot);
             }
             registry.get_or_emplace<Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
@@ -725,6 +849,7 @@ namespace ECS::Systems
 
             registry.emplace_or_replace<Components::PlayerTag>(characterSingleton.moverEntity);
         }
+
         registry.emplace_or_replace<Components::LocalPlayerTag>(characterSingleton.moverEntity);
 
         f32 width = 0.4166f;
@@ -765,28 +890,25 @@ namespace ECS::Systems
         if (characterSingleton.character)
             delete characterSingleton.character;
 
-        characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(0.0f, 0.0f, 0.0f), JPH::Quat::sIdentity(), &joltState.physicsSystem);
+        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
+        auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
+        vec3 newPosition = transform.GetWorldPosition();
+        quat newRotation = transform.GetWorldRotation();
+
+        characterSingleton.character = new JPH::CharacterVirtual(&characterSettings, JPH::RVec3(newPosition.x, newPosition.y, newPosition.z), JPH::Quat(newRotation.x, newRotation.y, newRotation.z, newRotation.w), &joltState.physicsSystem);
         characterSingleton.character->SetShapeOffset(JPH::Vec3(0.0f, 0.0f, 0.0f));
-
-        JPH::Vec3 newPosition = JPH::Vec3(-1500.0f, 310.0f, 1250.0f);
-
-        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-        if (mapLoader->GetCurrentMapID() == std::numeric_limits<u32>().max())
-        {
-            newPosition = JPH::Vec3(0.0f, 0.0f, 0.0f);
-        }
 
         characterSingleton.character->SetMass(1000000.0f);
         characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
-        characterSingleton.character->SetPosition(newPosition);
 
         auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
         unit.positionOrRotationIsDirty = true;
         characterSingleton.canControlInAir = true;
 
-        auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
-        movementInfo.pitch = 0.0f;
-        movementInfo.yaw = 0.0f;
+        auto& cameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+        auto& camera = registry.get<Components::Camera>(cameraSettings.entity);
+        camera.yaw = glm::degrees(movementInfo.yaw);
+
         movementInfo.speed = 7.1111f;
         movementInfo.jumpSpeed = 7.9555f;
         movementInfo.gravityModifier = 1.0f;
@@ -798,7 +920,7 @@ namespace ECS::Systems
         transformSystem.ParentEntityTo(characterSingleton.controllerEntity, orbitalCameraSettings.entity);
         transformSystem.SetLocalPosition(orbitalCameraSettings.entity, orbitalCameraSettings.cameraCurrentZoomOffset);
 
-        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(newPosition.GetX(), newPosition.GetY(), newPosition.GetZ()));
+        transformSystem.SetWorldPosition(characterSingleton.controllerEntity, vec3(newPosition.x, newPosition.y, newPosition.z));
     }
     void CharacterController::DeleteCharacterController(entt::registry& registry, bool isLocal)
     {

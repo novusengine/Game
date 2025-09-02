@@ -13,8 +13,10 @@
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
+#include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Util/JoltStream.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -25,7 +27,7 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -44,7 +46,8 @@ static const fs::path dataPath = fs::path("Data/");
 static const fs::path complexModelPath = dataPath / "ComplexModel";
 
 ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
-    : _modelRenderer(modelRenderer)
+    : _terrainLoader(nullptr)
+    , _modelRenderer(modelRenderer)
     , _pendingLoadRequests(MAX_PENDING_LOADS_PER_FRAME)
     , _internalLoadRequests(MAX_INTERNAL_LOADS_PER_FRAME)
     , _discoveredModels()
@@ -118,6 +121,10 @@ void ModelLoader::Init()
 void ModelLoader::Clear()
 {
     LoadRequestInternal dummyRequest;
+    while (_pendingTerrainLoadRequests.try_dequeue(dummyRequest))
+    {
+        // Just empty the queue
+    }
     while (_pendingLoadRequests.try_dequeue(dummyRequest))
     {
         // Just empty the queue
@@ -174,6 +181,9 @@ void ModelLoader::Clear()
     _uniqueIDToinstanceID.clear();
     _instanceIDToModelID.clear();
     _modelIDToModelHash.clear();
+
+    _numTerrainModelsToLoad = 0;
+    _numTerrainModelsLoaded = 0;
     _modelRenderer->Clear();
 
     auto& tSystem = ECS::TransformSystem::Get(*registry);
@@ -300,8 +310,17 @@ void ModelLoader::Update(f32 deltaTime)
         ECS::Util::EventUtil::PushEvent(ECS::Components::DiscoveredModelsCompleteEvent{});
         _discoveredModelsComplete = true;
     }
+    
+    if (_terrainLoader->IsLoading())
+        return;
 
-    u32 numDequeuedLoadRequests = static_cast<u32>(_pendingLoadRequests.try_dequeue_bulk(_pendingLoadRequestsVector.data(), MAX_PENDING_LOADS_PER_FRAME));
+    u32 numTerrainLoadRequests = static_cast<u32>(_pendingTerrainLoadRequests.size_approx());
+    if (numTerrainLoadRequests > 0)
+        _numTerrainModelsLoaded += glm::min(numTerrainLoadRequests, MAX_PENDING_LOADS_PER_FRAME);
+
+    moodycamel::ConcurrentQueue<LoadRequestInternal>* workQueue = numTerrainLoadRequests > 0 ? &_pendingTerrainLoadRequests : &_pendingLoadRequests;
+
+    u32 numDequeuedLoadRequests = static_cast<u32>(workQueue->try_dequeue_bulk(_pendingLoadRequestsVector.data(), MAX_PENDING_LOADS_PER_FRAME));
     if (numDequeuedLoadRequests > 0)
     {
         ZoneScopedN("Pending Load Model Requests");
@@ -473,8 +492,8 @@ void ModelLoader::Update(f32 deltaTime)
                         {
                             ZoneScopedN("Load Placement / Decoration");
 
-                            bool hasUniqueID = loadRequest.extraData3 != std::numeric_limits<u32>().max();
-                            bool uniqueIDExists = _uniqueIDToinstanceID.contains(loadRequest.extraData3);
+                            bool hasUniqueID = loadRequest.extraData3 != std::numeric_limits<u64>().max();
+                            bool uniqueIDExists = _uniqueIDToinstanceID.contains(static_cast<u32>(loadRequest.extraData3));
 
                             if (hasUniqueID && uniqueIDExists)
                                 break;
@@ -528,13 +547,37 @@ void ModelLoader::Update(f32 deltaTime)
         ZoneScopedN("Unload Requests Task");
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        mat4x4 identity = mat4x4(1.0f);
+        auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+        JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
         UnloadRequest unloadRequest;
         while (_unloadRequests.try_dequeue(unloadRequest))
         {
+            if (_instanceIDToModelID.contains(unloadRequest.instanceID))
+                _instanceIDToModelID.erase(unloadRequest.instanceID);
+
+            if (_instanceIDToBodyID.contains(unloadRequest.instanceID))
+            {
+                if (registry->valid(unloadRequest.entity))
+                {
+                    if (auto* unit = registry->try_get<ECS::Components::Unit>(unloadRequest.entity))
+                    {
+                        unit->bodyID = std::numeric_limits<u32>().max();
+                    }
+                }
+
+                JPH::BodyID bodyID = static_cast<JPH::BodyID>(_instanceIDToBodyID[unloadRequest.instanceID]);
+                
+                bodyInterface.RemoveBody(bodyID);
+                bodyInterface.DestroyBody(bodyID);
+
+                _instanceIDToBodyID.erase(unloadRequest.instanceID);
+            }
+
+            if (_instanceIDToEntityID.contains(unloadRequest.instanceID))
+                _instanceIDToEntityID.erase(unloadRequest.instanceID);
+
             _modelRenderer->RemoveInstance(unloadRequest.instanceID);
-            //_modelRenderer->ModifyInstance(unloadRequest.entity, unloadRequest.instanceID, std::numeric_limits<u32>().max(), nullptr, identity);
         }
     }
 
@@ -558,8 +601,8 @@ void ModelLoader::Update(f32 deltaTime)
         {
             model.flags.loaded = false;
 
-            rollback = loadRequest.extraData2 != std::numeric_limits<u32>().max();
-            model.modelHash = loadRequest.extraData2;
+            rollback = loadRequest.extraData2 != std::numeric_limits<u64>().max();
+            model.modelHash = static_cast<u32>(loadRequest.extraData2);
         }
 
         bool hasModelLoadedEventsAlready = registry->all_of<ECS::Components::ModelLoadedEvent>(loadRequest.entity);
@@ -570,6 +613,14 @@ void ModelLoader::Update(f32 deltaTime)
         modelLoadedEvent.flags.staticModel = loadRequestResult.isStatic;
 
         ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
+    }
+
+    if (_terrainLoading && _numTerrainModelsLoaded == _numTerrainModelsToLoad)
+    {
+        SetTerrainLoading(false);
+
+        u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+        ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
     }
 }
 
@@ -590,6 +641,16 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
     return entity;
 }
 
+f32 ModelLoader::GetLoadingProgress() const
+{
+    u32 numModelsToLoad = _numTerrainModelsToLoad;
+    if (numModelsToLoad == 0)
+        return 1.0f;
+
+    f32 terrainModelProgress = _terrainLoading ? static_cast<f32>(_numTerrainModelsLoaded) / static_cast<f32>(numModelsToLoad) : 1.0f;
+    return terrainModelProgress;
+}
+
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 {
     LoadRequestInternal loadRequest;
@@ -603,11 +664,12 @@ void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
     loadRequest.scale = static_cast<f32>(placement.scale) / 1024.0f;
 
     bool isDoodadSetPresent = placement.doodadSet != std::numeric_limits<u16>().max();
-    u32 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (std::numeric_limits<u32>().max() * !isDoodadSetPresent);
+    u64 doodadSet = (placement.doodadSet * isDoodadSetPresent) + (std::numeric_limits<u64>().max() * !isDoodadSetPresent);
     loadRequest.extraData2 = doodadSet;
     loadRequest.extraData3 = placement.uniqueID;
 
-    _pendingLoadRequests.enqueue(loadRequest);
+    _numTerrainModelsToLoad++;
+    _pendingTerrainLoadRequests.enqueue(loadRequest);
 }
 
 void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
@@ -624,7 +686,8 @@ void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Deco
         .extraData2 = decoration.color,
     };
 
-    _pendingLoadRequests.enqueue(loadRequest);
+    _numTerrainModelsToLoad++;
+    _pendingTerrainLoadRequests.enqueue(loadRequest);
 }
 
 bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash)
@@ -652,8 +715,10 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
 
-    u32 modelHashToUse = modelHash;
-    if (modelHashToUse == std::numeric_limits<u32>().max())
+    u32 extendedDisplayInfoID = 0;
+    bool isDynamicModel = false;
+
+    if (modelHash == std::numeric_limits<u32>().max())
     {
         switch (displayInfoType)
         {
@@ -669,6 +734,8 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 const auto& creatureModelData = creatureModelDataStorage->Get<Generated::CreatureModelDataRecord>(creatureDisplayInfo.modelID);
 
                 modelHash = creatureModelDataStorage->GetStringHash(creatureModelData.model);
+                extendedDisplayInfoID = creatureDisplayInfo.extendedDisplayInfoID;
+                isDynamicModel = (creatureModelData.flags & 0x4) != 0x0; // Model is flagged as Dynamic
                 break;
             }
 
@@ -716,7 +783,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     loadRequest.entity = entity;
     loadRequest.modelHash = modelHash;
 
-    u32 displayInfoPacked = displayID | (static_cast<u32>(displayInfoType) & 0x7) << 23 | (static_cast<u32>(modelVariant) & 0x3F) << 26;
+    u64 displayInfoPacked = displayID | (static_cast<u64>(displayInfoType) & 0x7) << 32 | (static_cast<u64>(modelVariant) & 0x3F) << 35 | (static_cast<u64>(extendedDisplayInfoID) << 41) | (static_cast<u64>(isDynamicModel) << 63);
     loadRequest.extraData1 = displayInfoPacked;
     loadRequest.extraData2 = model.modelHash;
     model.flags.loaded = false;
@@ -961,8 +1028,10 @@ bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
 
         if (physicsEnabled && numPhysicsBytes > 0)
         {
-            std::shared_ptr<Bytebuffer> physicsBuffer = std::make_shared<Bytebuffer>(discoveredModel.model->physicsData.data(), numPhysicsBytes);
-            JoltStreamIn streamIn(physicsBuffer.get());
+            Bytebuffer physicsBuffer = Bytebuffer(discoveredModel.model->physicsData.data(), numPhysicsBytes);
+            physicsBuffer.SkipWrite(numPhysicsBytes);
+
+            JoltStreamIn streamIn(&physicsBuffer);
 
             JPH::Shape::IDToShapeMap shapeMap;
             JPH::Shape::IDToMaterialMap materialMap;
@@ -992,7 +1061,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     name.nameHash = discoveredModel.modelHash;
 
     u32 modelID = _modelHashToModelID[request.modelHash];
-    u32 doodadSet = request.type == LoadRequestType::Placement ? request.extraData2 : std::numeric_limits<u32>().max();
+    u32 doodadSet = request.type == LoadRequestType::Placement ? static_cast<u32>(request.extraData2) : std::numeric_limits<u32>().max();
     u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.spawnPosition, request.spawnRotation, request.scale, doodadSet);
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
@@ -1008,10 +1077,10 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     aabb.extents = modelAABB.extents;
 
     bool hasParent = false;
-    u32 parentInstanceID = request.extraData1;
+    u32 parentInstanceID = static_cast<u32>(request.extraData1);
     {
         std::scoped_lock lock(_instanceIDToModelIDMutex);
-        _uniqueIDToinstanceID[request.extraData3] = instanceID;
+        _uniqueIDToinstanceID[static_cast<u32>(request.extraData3)] = instanceID;
         _instanceIDToModelID[instanceID] = modelID;
         _instanceIDToEntityID[instanceID] = entityID;
 
@@ -1106,6 +1175,9 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
+    ECS::TransformSystem& transformSystem = ECS::TransformSystem::Get(*registry);
+    transform.SetDirty(transformSystem, entityID);
+
     {
         std::scoped_lock lock(_instanceIDToModelIDMutex);
         _instanceIDToModelID[instanceID] = modelID;
@@ -1121,6 +1193,25 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
+            const JPH::BodyLockInterfaceNoLock& bodyLockInterface = joltState.physicsSystem.GetBodyLockInterfaceNoLock();
+
+            auto& unit = registry->get<ECS::Components::Unit>(entityID);
+            if (unit.bodyID != std::numeric_limits<u32>().max())
+            {
+                JPH::BodyID oldBodyID = static_cast<JPH::BodyID>(unit.bodyID);
+                if (JPH::Body* oldBody = bodyLockInterface.TryGetBody(oldBodyID))
+                {
+                    bodyInterface.RemoveBody(oldBodyID);
+                    bodyInterface.DestroyBody(oldBodyID);
+                }
+
+                unit.bodyID = std::numeric_limits<u32>().max();
+                {
+                    std::scoped_lock lock(_physicsSystemMutex);
+                    if (_instanceIDToBodyID.contains(instanceID))
+                        _instanceIDToBodyID.erase(instanceID);
+                }
+            }
 
             const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
 
@@ -1140,13 +1231,10 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-
-                auto & unit = registry->get<ECS::Components::Unit>(entityID);
                 unit.bodyID = bodyID.GetIndexAndSequenceNumber();
 
                 // Store the entity ID in the body so we can look it up later
                 body->SetUserData(static_cast<JPH::uint64>(entityID));
-
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
 
                 {

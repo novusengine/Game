@@ -17,6 +17,7 @@
 #include <Game-Lib/ECS/Components/Camera.h>
 #include <Game-Lib/ECS/Components/Model.h>
 #include <Game-Lib/ECS/Components/Name.h>
+#include <Game-Lib/ECS/Components/Unit.h>
 #include <Game-Lib/ECS/Util/Transforms.h>
 #include <Game-Lib/Editor/EditorHandler.h>
 #include <Game-Lib/Editor/ActionStack.h>
@@ -310,17 +311,23 @@ namespace Editor
 
         ImGui::Text("Entity: %d", entt::to_integral(entity));
 
-        ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity);
-        if (!name)
+        if (ECS::Components::Name* name = registry->try_get<ECS::Components::Name>(entity))
+        {
+            Util::Imgui::Inspect(*name);
+        }
+        else
         {
             ImGui::Text("Selected entity (%d) has no name component", static_cast<i32>(entity));
         }
 
-        Util::Imgui::Inspect(*name);
-
         InspectEntityTransform(entity);
 
         InspectEntityModel(entity);
+
+        if (ECS::Components::Unit* unit = registry->try_get<ECS::Components::Unit>(entity))
+        {
+            ImGui::Text("Body ID: %d", unit->bodyID);
+        }
 
         // Debug drawing
         DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();

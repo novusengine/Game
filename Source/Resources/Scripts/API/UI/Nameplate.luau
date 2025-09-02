@@ -13,14 +13,39 @@ type NameplateTemplate =
     unitID : number,
 }
 
-type Nameplate =
-{
-    SetAnchor : (self : Nameplate, anchorX : number, anchorY : number) -> (),
-    SetRelativePoint : (self : Nameplate, relativeX : number, relativeY : number) -> (),
+type Nameplate = {
+    -- Fields
+    unitID: number,
+    unitName: string,
+    isStandalone: boolean,
+    health: number,
+    maxHealth: number,
+    border: Panel,
+    background: Panel,
+    fill: Panel,
+    nameText: TextWidget,
+    healthText: TextWidget,
+    standaloneNameText: TextWidget,
 
-    unitID : number,
-    background : Panel,
-    foreground : Panel,
+    -- Methods
+    Destroy: (self: Nameplate) -> (),
+    SetEnabled: (self: Nameplate, enabled: boolean) -> (),
+    SetVisible: (self: Nameplate, visible: boolean) -> (),
+    SetInteractable: (self: Nameplate, interactable: boolean) -> (),
+    SetFocusable: (self: Nameplate, focusable: boolean) -> (),
+    SetAnchor: (self: Nameplate, anchorX: number, anchorY: number) -> (),
+    SetRelativePoint: (self: Nameplate, relativeX: number, relativeY: number) -> (),
+    SetPosToUnit: (self: Nameplate, unitID: number) -> (),
+    GetUnitID: (self: Nameplate) -> number,
+    GetUnitName: (self: Nameplate) -> string,
+    SetUnitName: (self: Nameplate, unitName: string) -> (),
+    IsStandalone: (self: Nameplate) -> boolean,
+    SetStandalone: (self: Nameplate, standalone: boolean) -> (),
+    GetHealth: (self: Nameplate) -> number,
+    SetHealth: (self: Nameplate, health: number) -> (),
+    GetMaxHealth: (self: Nameplate) -> number,
+    SetMaxHealth: (self: Nameplate, maxHealth: number) -> (),
+    UpdateHealth: (self: Nameplate) -> (),
 }
 
 local nameplateTextDisplayType : NameplateTextDisplayType = {
@@ -53,10 +78,16 @@ local function FormatText(health : number, healthPercent : number)
     elseif mode == NameplateTextDisplayType.ValuePercent then
         return string.format("%d (%.0f%%)", health, healthPercent * 100);
     end
+
     return "";
 end
 
 local function SetupNameplateMethods(nameplateTable : Nameplate)
+    nameplateTable.Destroy = function(self : Nameplate)
+        UI.DestroyWidget(self.border);
+        UI.DestroyWidget(self.standaloneNameText);
+    end
+
     nameplateTable.SetEnabled = function(self : Nameplate, enabled : boolean)
         nameplateTable.border:SetEnabled(enabled);
     end
@@ -81,8 +112,43 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         self.border:SetRelativePoint(relativeX, relativeY);
     end
 
-    nameplateTable.SetPos3D = function(self : Nameplate, pos : Vector3)
-        self.border:SetPos3D(pos);
+    nameplateTable.SetPosToUnit = function(self : Nameplate, unitID : number)
+        local widget = if self.isStandalone then self.standaloneNameText else self.border;
+        local resultCode = Unit.SetWidgetToNamePos(widget, unitID);
+
+        if resultCode ~= 2 then
+            widget:SetVisible(resultCode or false);
+        end
+    end
+
+    nameplateTable.GetUnitID = function(self : Nameplate)
+        return self.unitID;
+    end
+
+    nameplateTable.GetUnitName = function(self : Nameplate)
+        return self.unitName;
+    end
+
+    nameplateTable.SetUnitName = function(self : Nameplate, unitName : string)
+        self.unitName = unitName;
+        self.nameText:SetText(unitName);
+        self.standaloneNameText:SetText(unitName);
+    end
+
+    nameplateTable.IsStandalone = function(self : Nameplate)
+        return self.isStandalone;
+    end
+
+    nameplateTable.SetStandalone = function(self : Nameplate, standalone : boolean)
+        self.isStandalone = standalone;
+
+        if standalone then
+            self.standaloneNameText:SetVisible(true);
+            self.border:SetVisible(false);
+        else
+            self.standaloneNameText:SetVisible(false);
+            self.border:SetVisible(true);
+        end
     end
 
     nameplateTable.GetHealth = function(self : Nameplate)
@@ -104,12 +170,16 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.UpdateHealth = function(self : Nameplate)
-        local healthPercent = self.health / self.maxHealth;
+        if self:IsStandalone() then
+            return;
+        end
+
+        local healthPercent = (self.health / self.maxHealth);
         local newWidth = self.background:GetWidth() * healthPercent;
         --nameplateTable.fill:SetClipRect(0, 0, 1, 1);
         self.fill:SetWidth(newWidth);
 
-        local text = FormatText(self.health, healthPercent);--string.format("%d (%.0f%%)", self.health, healthPercent * 100);
+        local text = FormatText(self.health, healthPercent * 100.0);--string.format("%d (%.0f%%)", self.health, healthPercent * 100);
         nameplateTable.healthText:SetText(text);
     end
 
@@ -120,10 +190,12 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     local nameplateTable : Nameplate = {};
 
     nameplateTable.unitID = nameplateTemplateTable.unitID or -1;
+    nameplateTable.unitName = nameplateTemplateTable.unitName or "Unknown";
+    nameplateTable.isStandalone = nameplateTemplateTable.isStandalone or true;
     nameplateTable.health = 0;
     nameplateTable.maxHealth = 100;
 
-    local borderWidth = 2.0;
+    local borderWidth = 2;
 
     -- Create the border panel
     nameplateTable.border = parent:NewPanel(posX, posY, sizeX, sizeY, layer);
@@ -145,16 +217,22 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     nameplateTable.fill:SetClipRect(0, 0, 1, 1);
 
     -- Create name text
-    nameplateTable.nameText = nameplateTable.border:NewText("Pursche", 5, 2, 0, "NameplateName");
+    nameplateTable.nameText = nameplateTable.border:NewText(nameplateTable.unitName, 5, 2, 0, "NameplateName");
     nameplateTable.nameText:SetAnchor(0.0, 1.0);
     nameplateTable.nameText:SetRelativePoint(0.0, 0.0);
 
     -- Create health text
-    nameplateTable.healthText = nameplateTable.border:NewText("1000 (100%)", 0, 5, 0, "NameplateHealth");
+    nameplateTable.healthText = nameplateTable.background:NewText("1000 (100%)", 0, 3, 0, "NameplateHealth");
     nameplateTable.healthText:SetAnchor(1.0, 0.5);
     nameplateTable.healthText:SetRelativePoint(1.0, 0.5);
 
+    -- Create standalone name text
+    nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 5, 2, 0, "PlayerName");
+    nameplateTable.standaloneNameText:SetRelativePoint(0.5, 0.0);
+
     nameplateTable = SetupNameplateMethods(nameplateTable);
+
+    nameplateTable:SetStandalone(nameplateTable.isStandalone);
 
     return nameplateTable;
 end

@@ -11,5 +11,11 @@ local function CommandHandler(message)
     return true, true; -- Consume the message and block it from being displayed
 end
 
+local function NetworkHandler(message)
+    SendChatMessage(message)
+    return true, true; -- Consume the message and block it from being displayed
+end
+
 --ChatListener:SetDebug(true); -- Enable debug mode for chat listener
 ChatListener:RegisterListener(CommandHandler);
+ChatListener:RegisterListener(NetworkHandler);

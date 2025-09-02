@@ -1,14 +1,23 @@
-
+--!native
 local UINameplate = require("@src/API/UI/Nameplate");
 local OptionsContext = require("@src/API/OptionsContext")
 
 local nameplates = {};
 
 local function RegisterTemplates()
+    UI.RegisterTextTemplate("PlayerName",
+    {
+        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        size = 14.0,
+        color = vector.create(0.0/255.0, 112.0/255.0, 221.0/255.0),
+        borderSize = 0.5,
+        borderColor = vector.create(0.0, 0.0, 0.0),
+    });
+
     UI.RegisterTextTemplate("NameplateName",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 30.0,
+        size = 12.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
@@ -17,7 +26,7 @@ local function RegisterTemplates()
     UI.RegisterTextTemplate("NameplateHealth",
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
-        size = 22.0,
+        size = 10.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
@@ -65,46 +74,64 @@ local textDisplayModeCancelCallback = textDisplayModeOption:RegisterOnValueChang
     return true;
 end);
 
+local playerNameTextWidget = nil
+
 local function OnGameLoaded(eventID : number, motd : string)
     RegisterTemplates();
 
-    -- Create debug nameplate
+    -- Ensure Nameplates Canvas is created
     local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 
-    local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 300, 30, 0, {
-        panelTemplate = "DialogBox",
-        textTemplate = "DefaultButtonText",
-    });
-    nameplate:SetMaxHealth(1337);
-
-    table.insert(nameplates, nameplate);
+    -- TODO : Iterate Existing UnitIDs and create nameplates
 end
---RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
 
 local function OnGameUpdated(eventID : number, deltaTime : number)
     local enabled = enabledOption:Get();
     if (not enabled) then
         return;
     end
-
+    
     for i, nameplate in nameplates do
-
         local health = nameplate:GetHealth();
         local maxHealth = nameplate:GetMaxHealth();
 
-        health += deltaTime * increaseSpeedOption:Get();
-        if (health > maxHealth) then
-            health = 0;
+        if health < maxHealth then
+            health += deltaTime * increaseSpeedOption:Get();
+            health = math.min(health, maxHealth);
+
+            nameplate:SetHealth(health);
         end
 
-        nameplate:SetHealth(health);
-
-        -- Local unit nameplates (change this when we have a better way of getting unitIDs)
-        if nameplate.unitID == -1 then
-            local unitID = Unit.GetLocal();
-            local pos = Unit.GetNamePosition(unitID);
-            nameplate:SetPos3D(pos);
-        end
+        local unitID = nameplate:GetUnitID();
+        nameplate:SetPosToUnit(unitID);
     end
 end
---RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
+
+local function OnUnitCreated(eventID : number, unitID : number)
+    local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
+
+    local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 125, 20, 0, {
+        panelTemplate = "DialogBox",
+        textTemplate = "DefaultButtonText",
+
+        unitID = unitID,
+        unitName = Unit.GetName(unitID)
+    });
+    nameplate:SetMaxHealth(50);
+    nameplates[unitID] = nameplate;
+end
+
+local function OnUnitDestroyed(eventID : number, unitID : number)
+    local nameplate = nameplates[unitID];
+    if (nameplate == nil) then
+        return
+    end
+
+    nameplate:Destroy();
+    nameplates[unitID] = nil;
+end
+
+RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
+RegisterPlayerEvent(PlayerEvent.Created, OnUnitCreated)
+RegisterPlayerEvent(PlayerEvent.Destroyed, OnUnitDestroyed)

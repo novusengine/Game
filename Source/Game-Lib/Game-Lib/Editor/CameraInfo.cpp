@@ -16,7 +16,7 @@
 
 #include <FileFormat/Shared.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>

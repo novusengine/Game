@@ -25,7 +25,7 @@
 
 #include <Base/Util/StringUtils.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -45,6 +45,20 @@ namespace Util::Unit
         if (animationID != ::Animation::Defines::Type::Invalid && (animationState.currentAnimation == animationID || animationState.nextAnimation == animationID))
         {
             Animation::SetBoneSequenceSpeedModRaw(modelInfo, animationData, boneIndex, speedModifier);
+
+            if (animationState.currentAnimation == animationID && (animationState.nextAnimation != animationID && animationState.nextAnimation != ::Animation::Defines::Type::Invalid))
+            {
+                animationState.nextAnimation = ::Animation::Defines::Type::Invalid;
+                animationState.nextSequenceIndex = ::Animation::Defines::InvalidSequenceID;
+                animationState.currentFlags = animationState.currentFlags & ~::Animation::Defines::Flags::Transitioning;
+                animationState.nextFlags = ::Animation::Defines::Flags::None;
+                animationState.timeToTransitionMS = 0;
+
+                animationState.progress = 0.0f;
+                animationState.transitionTime = 0.0f;
+                animationState.finishedCallback = callback;
+            }
+
             return false;
         }
 
@@ -224,7 +238,15 @@ namespace Util::Unit
                 animation = GetMoveForwardAnimation(speed, isFlying, isStealthed);
             }
 
-            auto blendOverride = isFlying ? ::Animation::Defines::BlendOverride::Auto : ::Animation::Defines::BlendOverride::None;
+            auto blendOverride = ::Animation::Defines::BlendOverride::None;
+            if (isFlying)
+                blendOverride = ::Animation::Defines::BlendOverride::Auto;
+
+            if (animationState.currentAnimation != ::Animation::Defines::Type::Stand && animationState.nextAnimation == ::Animation::Defines::Type::Stand)
+            {
+                volatile i32 test = 0;
+            }
+
             return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, animation, false, ::Animation::Defines::Flags::None, blendOverride, speedModifier);
         }
         else
@@ -480,14 +502,19 @@ namespace Util::Unit
         if (!registry.all_of<Components::AttachmentData, Components::Model>(entity))
             return false;
 
-        auto& attachmentData = registry.get<Components::AttachmentData>(entity);
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         auto& model = registry.get<Components::Model>(entity);
 
+        const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
+        if (!modelInfo)
+            return false;
+
+        auto& attachmentData = registry.get<Components::AttachmentData>(entity);
         if (!Attachment::EnableAttachment(entity, model, attachmentData, attachment))
             return false;
 
         entt::entity attachmentEntity = entt::null;
-        if (!Attachment::GetAttachmentEntity(attachmentData, attachment, attachmentEntity))
+        if (!Attachment::GetAttachmentEntity(modelInfo, attachmentData, attachment, attachmentEntity))
             return false;
 
         entt::registry::context& ctx = registry.ctx();
@@ -502,7 +529,6 @@ namespace Util::Unit
             attachedEntities.push_back(childEntity);
         });
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         for (entt::entity attachedEntity : attachedEntities)
         {
             auto& attachedModel = registry.get<Components::Model>(attachedEntity);
@@ -521,6 +547,11 @@ namespace Util::Unit
         registry.emplace<Components::AABB>(attachedEntity);
         registry.emplace<Components::Transform>(attachedEntity);
         auto& attachedModel = registry.emplace<Components::Model>(attachedEntity);
+
+        auto& animationData = registry.get<Components::AnimationData>(entity);
+        auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
+
+        Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance);
         transformSystem.ParentEntityTo(attachmentEntity, attachedEntity);
         
         if (!modelLoader->LoadDisplayIDForEntity(attachedEntity, attachedModel, Database::Unit::DisplayInfoType::Item, displayID, modelHash, modelVariant))
@@ -541,11 +572,17 @@ namespace Util::Unit
         if (!registry.all_of<Components::AttachmentData, Components::Model>(entity))
             return false;
 
-        auto& attachmentData = registry.get<Components::AttachmentData>(entity);
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         auto& model = registry.get<Components::Model>(entity);
 
+        const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
+        if (!modelInfo)
+            return false;
+
+        auto& attachmentData = registry.get<Components::AttachmentData>(entity);
+
         entt::entity attachmentEntity = entt::null;
-        if (!Attachment::GetAttachmentEntity(attachmentData, attachment, attachmentEntity))
+        if (!Attachment::GetAttachmentEntity(modelInfo, attachmentData, attachment, attachmentEntity))
             return false;
 
         entt::registry::context& ctx = registry.ctx();
@@ -560,7 +597,6 @@ namespace Util::Unit
             attachedEntities.push_back(childEntity);
         });
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         for (entt::entity attachedEntity : attachedEntities)
         {
             auto& attachedModel = registry.get<Components::Model>(attachedEntity);
@@ -671,7 +707,7 @@ namespace Util::Unit
 
         auto GetItemDisplayID = [&itemStorage, &itemDisplayInfoStorage, &unitEquipment](Database::Item::ItemEquipSlot equipSlot) -> u32
         {
-            u32 itemID = unitEquipment.equipmentSlotToItemID[(u32)equipSlot];
+            u32 itemID = unitEquipment.equipmentSlotToVisualItemID[(u32)equipSlot];
             if (itemID == 0)
                 return 0;
 

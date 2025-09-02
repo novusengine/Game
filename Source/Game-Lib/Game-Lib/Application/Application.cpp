@@ -326,7 +326,7 @@ bool Application::Init()
     ServiceLocator::SetGameConsole(new GameConsole());
 
     // Initialize Databases
-    RefreshDatabases();
+    DatabaseReload();
 
     _luaManager = new Scripting::LuaManager();
     ServiceLocator::SetLuaManager(_luaManager);
@@ -389,7 +389,7 @@ bool Application::Tick(f32 deltaTime)
 
             case MessageInbound::Type::RefreshDB:
             {
-                ECS::Util::EventUtil::PushEvent(ECS::Components::RefreshDatabaseEvent {});
+                ECS::Util::EventUtil::PushEvent(ECS::Components::DatabaseReloadEvent{});
                 break;
             }
 
@@ -400,9 +400,9 @@ bool Application::Tick(f32 deltaTime)
         }
     }
 
-    ECS::Util::EventUtil::OnEvent<ECS::Components::RefreshDatabaseEvent>([&]()
+    ECS::Util::EventUtil::OnEvent<ECS::Components::DatabaseReloadEvent>([&]()
     {
-        RefreshDatabases();
+        DatabaseReload();
     });
 
     _ecsScheduler->Update(_registries, deltaTime);
@@ -461,7 +461,7 @@ bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
     return true;
 }
 
-void Application::RefreshDatabases()
+void Application::DatabaseReload()
 {
     ECSUtil::Icon::Refresh();
     ECSUtil::Camera::Refresh();

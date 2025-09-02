@@ -12,7 +12,9 @@ namespace ECS::Components
     struct Unit
     {
     public:
-        GameDefine::ObjectGuid networkID;
+        ObjectGUID networkID;
+        std::string name;
+
         entt::entity targetEntity;
         GameDefine::UnitClass unitClass;
         GameDefine::UnitRace race;

@@ -27,7 +27,7 @@
 
 #include <Input/InputManager.h>
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -216,10 +216,12 @@ void ModelRenderer::Update(f32 deltaTime)
             ChangeSkinTextureRequest& changeSkinTextureRequest = _changeSkinTextureWork[i];
 
             InstanceManifest& instanceManifest = _instanceManifests[changeSkinTextureRequest.instanceID];
-            if (!_displayInfoManifests.contains(instanceManifest.displayInfoPacked))
+
+            robin_hood::unordered_map<u64, DisplayInfoManifest>* displayInfoManifests = instanceManifest.isDynamic ? &_uniqueDisplayInfoManifests : &_displayInfoManifests;
+            if (!displayInfoManifests->contains(instanceManifest.displayInfoPacked))
                 continue;
 
-            const auto& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+            DisplayInfoManifest& displayInfoManifest = displayInfoManifests->at(instanceManifest.displayInfoPacked);
             u32 textureArrayIndex = changeSkinTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeSkinTextureRequest.textureID, _textures);
 
             for (u64 textureUnitAddress : displayInfoManifest.skinTextureUnits)
@@ -245,10 +247,12 @@ void ModelRenderer::Update(f32 deltaTime)
             ChangeHairTextureRequest& changeHairTextureRequest = _changeHairTextureWork[i];
 
             InstanceManifest& instanceManifest = _instanceManifests[changeHairTextureRequest.instanceID];
-            if (!_displayInfoManifests.contains(instanceManifest.displayInfoPacked))
+
+            robin_hood::unordered_map<u64, DisplayInfoManifest>* displayInfoManifests = instanceManifest.isDynamic ? &_uniqueDisplayInfoManifests : &_displayInfoManifests;
+            if (!displayInfoManifests->contains(instanceManifest.displayInfoPacked))
                 continue;
 
-            const auto& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+            DisplayInfoManifest& displayInfoManifest = displayInfoManifests->at(instanceManifest.displayInfoPacked);
             u32 textureArrayIndex = changeHairTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeHairTextureRequest.textureID, _textures);
 
             for (u64 textureUnitAddress : displayInfoManifest.hairTextureUnits)
@@ -340,6 +344,7 @@ void ModelRenderer::Clear()
     _textureUnits.Clear();
 
     _displayInfoManifests.clear();
+    _uniqueDisplayInfoManifests.clear();
 
     _boneMatrices.Clear();
     _textureTransformMatrices.Clear();
@@ -1496,7 +1501,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
     return instanceIndex;
 }
 
-u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
+u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
     InstanceOffsets instanceOffsets;
     AllocateInstance(modelID, instanceOffsets);
@@ -1534,7 +1539,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         instanceManifest.modelID = modelID;
     }
 
-    if (model && displayInfoPacked != std::numeric_limits<u32>().max())
+    if (model && displayInfoPacked != std::numeric_limits<u64>().max())
     {
         ReplaceTextureUnits(entityID, modelID, model, instanceOffsets.instanceIndex, displayInfoPacked);
     }
@@ -1584,7 +1589,8 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
     // Reset InstanceManifest
     InstanceManifest& instanceManifest = _instanceManifests[instanceID];
     instanceManifest.modelID = 0;
-    instanceManifest.displayInfoPacked = 0;
+    instanceManifest.displayInfoPacked = std::numeric_limits<u64>().max();
+    instanceManifest.isDynamic = false;
     instanceManifest.visible = true;
     instanceManifest.transparent = false;
     instanceManifest.skybox = false;
@@ -1592,7 +1598,7 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
     _instancesDirty = true;
 }
 
-void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked)
+void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
     InstanceData& instanceData = _instanceDatas[instanceID];
 
@@ -1648,7 +1654,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     instanceManifest.modelID = modelID;
 
     // Replace texture units
-    if (model && displayInfoPacked != std::numeric_limits<u32>().max())
+    if (model && displayInfoPacked != std::numeric_limits<u64>().max())
     {
         ReplaceTextureUnits(entityID, modelID, model, instanceID, displayInfoPacked);
     }
@@ -1674,7 +1680,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     _instancesDirty = true;
 }
 
-void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked)
+void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u64 displayInfoPacked)
 {
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -1696,11 +1702,16 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
     ModelManifest& manifest = _modelManifests[modelID];
 
-    if (!_displayInfoManifests.contains(displayInfoPacked))
-    {
-        auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((displayInfoPacked >> 23) & 0x7);
-        u32 displayID = displayInfoPacked & 0xFFFFFF;
+    auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((displayInfoPacked >> 32) & 0x7);
+    u32 displayID = displayInfoPacked & 0xFFFFFFFF;
+    u32 extendedDisplayInfoID = (displayInfoPacked >> 35) & 0x1FFFFFF;
+    bool isDynamicModel = displayInfoType == Database::Unit::DisplayInfoType::Creature && (displayInfoPacked >> 63) & 0x1;
+    u64 displayInfoKey = isDynamicModel ? static_cast<u64>(entityID) : displayInfoPacked;
 
+    robin_hood::unordered_map<u64, DisplayInfoManifest>* displayInfoManifests = isDynamicModel ? &_uniqueDisplayInfoManifests : &_displayInfoManifests;
+
+    if (!displayInfoManifests->contains(displayInfoKey))
+    {
         switch (displayInfoType)
         {
             case Database::Unit::DisplayInfoType::Creature:
@@ -1969,21 +1980,27 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (creatureDisplayInfo)
                         {
-                            textureHash = creatureDisplayInfo->textureVariations[0];
+                            u32 textureStringIndex = creatureDisplayInfo->textureVariations[0];
+                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
+                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin2)
                     {
                         if (creatureDisplayInfo)
                         {
-                            textureHash = creatureDisplayInfo->textureVariations[1];
+                            u32 textureStringIndex = creatureDisplayInfo->textureVariations[1];
+                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
+                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin3)
                     {
                         if (creatureDisplayInfo)
                         {
-                            textureHash = creatureDisplayInfo->textureVariations[2];
+                            u32 textureStringIndex = creatureDisplayInfo->textureVariations[2];
+                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
+                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
                         }
                     }
 
@@ -2030,11 +2047,24 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
         }
 
         std::scoped_lock lock(_displayInfoManifestsMutex);
-        _displayInfoManifests[displayInfoPacked] = std::move(displayInfoManifest);
+        displayInfoManifests->insert({ displayInfoKey, std::move(displayInfoManifest) });
     }
 
     InstanceManifest& instanceManifest = _instanceManifests[instanceID];
-    instanceManifest.displayInfoPacked = displayInfoPacked;
+    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
+    {
+        bool wasDynamicModel = (instanceManifest.displayInfoPacked >> 63) & 0x1;
+
+        // Remove old dynamic displayInfoManifest if it exists
+        if (wasDynamicModel)
+        {
+            std::scoped_lock lock(_displayInfoManifestsMutex);
+            if (_uniqueDisplayInfoManifests.contains(instanceManifest.displayInfoPacked))
+                _uniqueDisplayInfoManifests.erase(instanceManifest.displayInfoPacked);
+        }
+    }
+    instanceManifest.displayInfoPacked = displayInfoKey;
+    instanceManifest.isDynamic = isDynamicModel;
 }
 
 void ModelRenderer::RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable)
@@ -2638,8 +2668,9 @@ void ModelRenderer::MakeInstanceTransparent(u32 instanceID, InstanceManifest& in
         modelManifest.hasTemporarilyTransparentDrawCalls = true;
     }
 
-    DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
-    if (!displayInfoManifest.hasTemporarilyTransparentDrawCalls)
+    DisplayInfoManifest* displayInfoManifest = instanceManifest.isDynamic ? &_uniqueDisplayInfoManifests[instanceManifest.displayInfoPacked] : &_displayInfoManifests[instanceManifest.displayInfoPacked];
+
+    if (!displayInfoManifest->hasTemporarilyTransparentDrawCalls)
     {
         // Set up transparentDrawIDToTextureDataID
         for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
@@ -2647,12 +2678,12 @@ void ModelRenderer::MakeInstanceTransparent(u32 instanceID, InstanceManifest& in
             u32 transparentDrawID = modelManifest.temporarilyTransparentDrawCallOffset + drawID;
             u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
 
-            if (displayInfoManifest.overrideTextureDatas)
+            if (displayInfoManifest->overrideTextureDatas)
             {
-                displayInfoManifest.transparentDrawIDToTextureDataID[transparentDrawID] = displayInfoManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+                displayInfoManifest->transparentDrawIDToTextureDataID[transparentDrawID] = displayInfoManifest->opaqueDrawIDToTextureDataID[opaqueDrawID];
             }
         }
-        displayInfoManifest.hasTemporarilyTransparentDrawCalls = true;
+        displayInfoManifest->hasTemporarilyTransparentDrawCalls = true;
     }
 }
 
@@ -2726,8 +2757,9 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
             modelManifest.hasSkyboxDrawCalls = true;
         }
 
-        DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
-        if (!displayInfoManifest.hasSkyboxDrawCalls && displayInfoManifest.overrideTextureDatas)
+        DisplayInfoManifest* displayInfoManifest = instanceManifest.isDynamic ? &_uniqueDisplayInfoManifests[instanceManifest.displayInfoPacked] : &_displayInfoManifests[instanceManifest.displayInfoPacked];
+
+        if (!displayInfoManifest->hasSkyboxDrawCalls && displayInfoManifest->overrideTextureDatas)
         {
             // Set up opaqueSkyboxDrawIDToTextureDataID
             for (u32 drawID = 0; drawID < modelManifest.numOpaqueDrawCalls; drawID++)
@@ -2735,7 +2767,7 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
                 u32 opaqueSkyboxDrawID = modelManifest.opaqueSkyboxDrawCallOffset + drawID;
                 u32 opaqueDrawID = modelManifest.opaqueDrawCallOffset + drawID;
 
-                displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID[opaqueSkyboxDrawID] = displayInfoManifest.opaqueDrawIDToTextureDataID[opaqueDrawID];
+                displayInfoManifest->opaqueSkyboxDrawIDToTextureDataID[opaqueSkyboxDrawID] = displayInfoManifest->opaqueDrawIDToTextureDataID[opaqueDrawID];
             }
 
             // Set up transparentSkyboxDrawIDToTextureDataID
@@ -2744,10 +2776,10 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
                 u32 transparentSkyboxDrawID = modelManifest.transparentSkyboxDrawCallOffset + drawID;
                 u32 transparentDrawID = modelManifest.transparentDrawCallOffset + drawID;
 
-                displayInfoManifest.transparentSkyboxDrawIDToTextureDataID[transparentSkyboxDrawID] = displayInfoManifest.transparentDrawIDToTextureDataID[transparentDrawID];
+                displayInfoManifest->transparentSkyboxDrawIDToTextureDataID[transparentSkyboxDrawID] = displayInfoManifest->transparentDrawIDToTextureDataID[transparentDrawID];
             }
 
-            displayInfoManifest.hasSkyboxDrawCalls = true;
+            displayInfoManifest->hasSkyboxDrawCalls = true;
         }
 
         // Add the skybox instance
@@ -2893,13 +2925,13 @@ void ModelRenderer::CompactInstanceRefs()
                 {
                     ZoneScopedN("Setup InstanceRef");
 
-                    if (instanceManifest.displayInfoPacked != 0)
+                    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
                     {
-                        const DisplayInfoManifest& displayInfoManifest = _displayInfoManifests[instanceManifest.displayInfoPacked];
+                        DisplayInfoManifest* displayInfoManifest = instanceManifest.isDynamic ? &_uniqueDisplayInfoManifests[instanceManifest.displayInfoPacked] : &_displayInfoManifests[instanceManifest.displayInfoPacked];
 
                         // Select the correct instanceDrawIDToTextureDataID based on isSkybox and isTransparent
-                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestOpaqueDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.opaqueSkyboxDrawIDToTextureDataID : displayInfoManifest.opaqueDrawIDToTextureDataID;
-                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestTransparentDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest.transparentSkyboxDrawIDToTextureDataID : displayInfoManifest.transparentDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestOpaqueDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest->opaqueSkyboxDrawIDToTextureDataID : displayInfoManifest->opaqueDrawIDToTextureDataID;
+                        const robin_hood::unordered_map<u32, u32>& displayInfoManifestTransparentDrawIDToTextureDataID = (isSkybox) ? displayInfoManifest->transparentSkyboxDrawIDToTextureDataID : displayInfoManifest->transparentDrawIDToTextureDataID;
 
                         const robin_hood::unordered_map<u32, u32>& instanceDrawIDToTextureDataID = (isTransparent || instanceManifest.transparent) ? displayInfoManifestTransparentDrawIDToTextureDataID : displayInfoManifestOpaqueDrawIDToTextureDataID;
                         textureDataID = instanceDrawIDToTextureDataID.at(drawID);

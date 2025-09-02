@@ -70,7 +70,7 @@ local function FormatMessage(message : ChatMessage, showTimestamp : boolean) : s
             formattedText = string.format("%s%s whispers: %s", timestampText, message.playerName, message.text);
         end
     elseif (message.channel == "Say") then
-        formattedText = string.format("%s%s: %s", timestampText, message.playerName, message.text);
+        formattedText = string.format("%s[%s] says: %s", timestampText, message.playerName, message.text);
     else
         formattedText = string.format("%s[%s] %s: %s", timestampText, message.channel, message.playerName, message.text);
     end
@@ -233,6 +233,9 @@ local function CreateChat(chatCanvas : Canvas)
         chatToOpenOnEnter = chat;
     end
 
+    RegisterGameEvent(GameEvent.ChatMessageReceived, function(eventID, sender, channel, message)
+        AddMessageToChat(chat, message, channel, sender, false);
+    end);
     return chat;
 end
 
@@ -241,7 +244,7 @@ local function RegisterOptions(chat : Chat)
     local optionGroup = optionCategory:Get("Chat");
     local optionSection = optionGroup:Get("General");
 
-    local sizeOption = optionSection:RegisterOption("Text Size", 18.0, OptionType.Slider, { Min = 8, Max = 30, Step = 1});
+    local sizeOption = optionSection:RegisterOption("Text Size", 14.0, OptionType.Slider, { Min = 8, Max = 30, Step = 1});
     local sizeCancelCallback = sizeOption:RegisterOnValueChanged(function(self, value)
         for _, textWidget in chat.chatHistoryTexts do
             textWidget:SetFontSize(value);

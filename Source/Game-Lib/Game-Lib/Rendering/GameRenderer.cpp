@@ -154,8 +154,9 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
     _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
-
     _textureRenderer = new TextureRenderer(_renderer, _debugRenderer);
+
+    _modelLoader->SetTerrainLoader(_terrainLoader);
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
 

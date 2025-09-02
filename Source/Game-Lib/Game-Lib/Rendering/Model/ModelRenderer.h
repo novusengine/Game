@@ -113,7 +113,8 @@ public:
     {
     public:
         u32 modelID = 0;
-        u32 displayInfoPacked = 0;
+        u64 displayInfoPacked = std::numeric_limits<u64>().max();
+        bool isDynamic = false;
         bool visible = true;
         bool transparent = false;
         bool skybox = false;
@@ -309,10 +310,10 @@ public:
 
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
     u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet);
-    u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
+    u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
     void RemoveInstance(u32 instanceID);
-    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u32 displayInfoPacked = std::numeric_limits<u32>().max());
-    void ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u32 displayInfoPacked);
+    void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
+    void ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u64 displayInfoPacked);
 
     void RequestChangeGroup(u32 instanceID, u32 groupIDStart, u32 groupIDEnd, bool enable);
     void RequestChangeSkinTexture(u32 instanceID, Renderer::TextureID textureID);
@@ -392,7 +393,12 @@ private:
     std::vector<InstanceManifest> _instanceManifests;
 
     std::mutex _displayInfoManifestsMutex;
-    robin_hood::unordered_map<u32, DisplayInfoManifest> _displayInfoManifests; // The u32 is a PackedDisplayInfo
+    robin_hood::unordered_map<u64, DisplayInfoManifest> _displayInfoManifests; // The u64 is a PackedDisplayInfo
+    robin_hood::unordered_map<u64, DisplayInfoManifest> _uniqueDisplayInfoManifests;
+
+    // If ModelData Flag == 0x4 and no CreatureExtraModelData always use unique DisplayInfoManifest
+    // If CreatureExtraModelData share between all instances with the same PackedDisplayInfo and CreatureExtraModelData
+    // If neither of above share between all instances with the same PackedDisplayInfo
 
     std::vector<Model::ComplexModel::DecorationSet> _modelDecorationSets;
     std::vector<Model::ComplexModel::Decoration> _modelDecorations;

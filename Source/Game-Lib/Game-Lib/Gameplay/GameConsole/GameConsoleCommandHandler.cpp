@@ -11,33 +11,43 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
 
     //RegisterCommand({ "login" }, "(accountName : string)", GameConsoleCommands::HandleLogin);
     //RegisterCommand({ "cast" }, "(spellID : u32)", GameConsoleCommands::HandleCast);
-    //RegisterCommand({ "damage" }, "(damage : u32)", GameConsoleCommands::HandleDamage);
-    //RegisterCommand({ "kill" }, "()", GameConsoleCommands::HandleKill);
-    //RegisterCommand({ "revive" }, "()", GameConsoleCommands::HandleRevive);
-    //RegisterCommand({ "createchar" }, "(name : string)", GameConsoleCommands::HandleCreateChar);
-    //RegisterCommand({ "deletechar" }, "(name : string)", GameConsoleCommands::HandleDeleteChar);
     //RegisterCommand({ "setclass" }, "(class : u8)", GameConsoleCommands::HandleSetClass);
     //RegisterCommand({ "setlevel" }, "(level : u16)", GameConsoleCommands::HandleSetLevel);
 
     RegisterCommand(GameConsoleCommands::HandleHelp);
     RegisterCommand(GameConsoleCommands::HandlePing);
     RegisterCommand(GameConsoleCommands::HandleLua);
-    RegisterCommand(GameConsoleCommands::HandleReloadScripts);
-    RegisterCommand(GameConsoleCommands::HandleRefreshDB);
-    RegisterCommand(GameConsoleCommands::HandleSaveCamera);
-    RegisterCommand(GameConsoleCommands::HandleLoadCameraByCode);
-    RegisterCommand(GameConsoleCommands::HandleClearMap);
-    RegisterCommand(GameConsoleCommands::HandleMorph);
-    RegisterCommand(GameConsoleCommands::HandleDemorph);
-    RegisterCommand(GameConsoleCommands::HandleCharacterCreate);
-    RegisterCommand(GameConsoleCommands::HandleCharacterDelete);
-    RegisterCommand(GameConsoleCommands::HandleFly);
-    RegisterCommand(GameConsoleCommands::HandleSetRace);
-    RegisterCommand(GameConsoleCommands::HandleSetGender);
-    RegisterCommand(GameConsoleCommands::HandleSyncItem);
-    RegisterCommand(GameConsoleCommands::HandleForceSyncItems);
-    RegisterCommand(GameConsoleCommands::HandleAddItem);
-    RegisterCommand(GameConsoleCommands::HandleRemoveItem);
+    RegisterCommand(GameConsoleCommands::HandleScriptReload);
+    RegisterCommand(GameConsoleCommands::HandleDatabaseReload);
+    RegisterCommand(GameConsoleCommands::HandleCameraSave);
+    RegisterCommand(GameConsoleCommands::HandleCameraLoadByCode);
+    RegisterCommand(GameConsoleCommands::HandleMapClear);
+    RegisterCommand(GameConsoleCommands::HandleUnitMorph);
+    RegisterCommand(GameConsoleCommands::HandleUnitDemorph);
+    RegisterCommand(GameConsoleCommands::HandleCharacterAdd);
+    RegisterCommand(GameConsoleCommands::HandleCharacterRemove);
+    RegisterCommand(GameConsoleCommands::HandleCheatFly);
+    RegisterCommand(GameConsoleCommands::HandleUnitSetRace);
+    RegisterCommand(GameConsoleCommands::HandleUnitSetGender);
+    RegisterCommand(GameConsoleCommands::HandleItemSync);
+    RegisterCommand(GameConsoleCommands::HandleItemSyncAll);
+    RegisterCommand(GameConsoleCommands::HandleItemAdd);
+    RegisterCommand(GameConsoleCommands::HandleItemRemove);
+    RegisterCommand(GameConsoleCommands::HandleCreatureAdd);
+    RegisterCommand(GameConsoleCommands::HandleCreatureRemove);
+    RegisterCommand(GameConsoleCommands::HandleCheatLogin);
+    RegisterCommand(GameConsoleCommands::HandleCheatDamage);
+    RegisterCommand(GameConsoleCommands::HandleCheatKill);
+    RegisterCommand(GameConsoleCommands::HandleCheatResurrect);
+    RegisterCommand(GameConsoleCommands::HandleCheatCast);
+    RegisterCommand(GameConsoleCommands::HandleMapSync);
+    RegisterCommand(GameConsoleCommands::HandleMapSyncAll);
+    RegisterCommand(GameConsoleCommands::HandleGotoAdd);
+    RegisterCommand(GameConsoleCommands::HandleGotoAddHere);
+    RegisterCommand(GameConsoleCommands::HandleGotoRemove);
+    RegisterCommand(GameConsoleCommands::HandleGotoMap);
+    RegisterCommand(GameConsoleCommands::HandleGotoLocation);
+    RegisterCommand(GameConsoleCommands::HandleGotoXYZ);
     RegisterCommand(GameConsoleCommands::HandleTriggerAdd);
     RegisterCommand(GameConsoleCommands::HandleTriggerRemove);
 }
@@ -54,12 +64,36 @@ bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::str
     bool insideQuotes = false;
     std::string quotedString;
 
-    for (std::string& part : splitCommand)
+    u32 numSplitCommands = static_cast<u32>(splitCommand.size());
+    for (u32 i = 0; i < numSplitCommands; i++)
     {
+        std::string& part = splitCommand[i];
+
         if (!insideQuotes && part.front() == '"')
         {
             insideQuotes = true;
             quotedString = part.substr(1); // Remove leading quote
+
+            if (i == numSplitCommands - 1)
+            {
+                if (part.back() == '"' && (part.size() < 2 || part[part.size() - 2] != '\\'))
+                {
+                    insideQuotes = false;
+
+                    quotedString = quotedString.substr(0, quotedString.size() - 1); // Remove trailing quote
+
+                    // Replace escaped quotes
+                    std::string unescapedString;
+                    for (size_t j = 0; j < quotedString.size(); ++j)
+                    {
+                        if (quotedString[j] == '\\' && j + 1 < quotedString.size() && quotedString[j + 1] == '"')
+                            continue; // Skip the backslash, only keep the quote
+
+                        unescapedString += quotedString[j];
+                    }
+                    processedCommand.push_back(unescapedString);
+                }
+            }
         }
         else if (insideQuotes)
         {
@@ -97,33 +131,48 @@ bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::str
         return false;
     }
 
-    if (processedCommand.empty())
+    u32 processedCommandSize = static_cast<u32>(processedCommand.size());
+    if (processedCommandSize == 0)
         return true;
 
-    u32 hashedCommand = StringUtils::fnv1a_32(processedCommand[0].c_str(), processedCommand[0].size());
-    if (_commandAliasNameHashToCommandNameHash.contains(hashedCommand))
-        hashedCommand = _commandAliasNameHashToCommandNameHash[hashedCommand];
-
-    if (_commandRegistry.contains(hashedCommand))
+    std::string candidate;
+    for (u32 i = processedCommandSize; i > 0; --i)
     {
-        GameConsoleCommandEntry& commandEntry = _commandRegistry[hashedCommand];
-        processedCommand.erase(processedCommand.begin());
+        candidate.clear();
 
-        // Returns 0 for Success, 1 for Execution Failed, 2 for Read Failed
-        u32 result = commandEntry.callback(gameConsole, processedCommand);
-        if (result != 0)
+        for (u32 j = 0; j < i; j++)
         {
-            if (commandEntry.help.length() > 0)
-                gameConsole->PrintWarning("Command Help: %s - %s", commandEntry.name.data(), commandEntry.help.data());
-        
-            return false;
+            if (j > 0)
+                candidate += ' ';
+
+            candidate += processedCommand[j];
         }
 
-        return true;
+        u32 hashedCommand = StringUtils::fnv1a_32(candidate.c_str(), candidate.size());
+
+        if (_commandAliasNameHashToCommandNameHash.contains(hashedCommand))
+            hashedCommand = _commandAliasNameHashToCommandNameHash[hashedCommand];
+
+        if (_commandRegistry.contains(hashedCommand))
+        {
+            GameConsoleCommandEntry& commandEntry = _commandRegistry[hashedCommand];
+
+            processedCommand.erase(processedCommand.begin(), processedCommand.begin() + i);
+
+            // Returns 0 for Success, 1 for Execution Failed, 2 for Read Failed
+            u32 result = commandEntry.callback(gameConsole, processedCommand);
+            if (result != 0)
+            {
+                if (commandEntry.help.length() > 0)
+                    gameConsole->PrintWarning("Command Help: %s - %s", commandEntry.name.data(), commandEntry.help.data());
+
+                return false;
+            }
+
+            return true;
+        }
     }
-    else
-    {
-        gameConsole->PrintWarning("Unhandled command: %s", command.c_str());
-        return false;
-    }
+
+    gameConsole->PrintWarning("Unhandled command: %s", command.c_str());
+    return false;
 }

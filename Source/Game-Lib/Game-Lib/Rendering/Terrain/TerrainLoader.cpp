@@ -13,15 +13,18 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Inspector.h"
+#include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
-#include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Util/JoltStream.h"
 #include "Game-Lib/Util/MapUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Scripting/LuaDefines.h"
+#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Handlers/GameEventHandler.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
@@ -163,7 +166,10 @@ void TerrainLoader::Update(f32 deltaTime)
         }
         else if (loadRequest.loadType == LoadType::Full)
         {
-            LoadFullMapRequest(loadRequest);
+            if (LoadFullMapRequest(loadRequest))
+            {
+                _modelLoader->SetTerrainLoading(true);
+            }
         }
         else
         {
@@ -236,6 +242,8 @@ void TerrainLoader::Update(f32 deltaTime)
                     {
                         ZoneScopedN("Read Shape");
                         Bytebuffer physicsBuffer = Bytebuffer(chunk->physicsHeader.GetPhysicsData(workRequest.data), numPhysicsBytes);
+                        physicsBuffer.SkipWrite(numPhysicsBytes);
+
                         JoltStreamIn streamIn(&physicsBuffer);
 
                         {
@@ -336,9 +344,6 @@ void TerrainLoader::Update(f32 deltaTime)
                 joltState.physicsSystem.OptimizeBroadPhase();
             }
 
-            u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
-            ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
-
             NC_LOG_INFO("TerrainLoader : Loaded {0}/{1} chunks", numChunksLoadedAfter, numChunksLoadedAfter);
         }
     }
@@ -353,6 +358,15 @@ void TerrainLoader::AddInstance(const LoadDesc& loadDesc)
     loadRequest.chunkGridEndPos = loadDesc.chunkGridEndPos;
 
     _requests.enqueue(loadRequest);
+}
+
+f32 TerrainLoader::GetLoadingProgress() const
+{
+    if (_numChunksToLoad == 0)
+        return 1.0f;
+
+    f32 progress = static_cast<f32>(_numChunksLoaded) / static_cast<f32>(_numChunksToLoad);
+    return progress;
 }
 
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
@@ -560,11 +574,17 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     Clear();
 
-    const auto& storage = registry->storage<entt::entity>(); // Access internal entity storage
-    NC_LOG_INFO("Allocated Entities {0}", storage.free_list());
-
     _currentMapInternalName = mapName;
     _numChunksToLoad = numChunksToLoad;
+
+    Scripting::LuaGameEventMapLoadingData eventData =
+    {
+        .mapInternalName = mapName
+    };
+
+    auto* luaManager = ServiceLocator::GetLuaManager();
+    auto gameEventHandler = luaManager->GetLuaHandler<Scripting::GameEventHandler*>(Scripting::LuaHandlerType::GameEvent);
+    gameEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaGameEventEnum::MapLoading), &eventData);
 
     NC_LOG_INFO("TerrainLoader : Started Chunk Queueing");
 

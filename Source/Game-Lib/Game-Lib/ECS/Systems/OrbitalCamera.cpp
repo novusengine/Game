@@ -141,25 +141,6 @@ namespace ECS::Systems
         });
     }
 
-    void UpdateCamera(const mat4x4& characterControllerMatrix, vec3 eulerAngles, f32 heightOffset, f32 zoomDistance, vec3& resultPosition, quat& resultRotation)
-    {
-        // Height offset matrix to move the rotation point up by the specified height
-        mat4x4 heightOffsetMatrix = translate(mat4x4(1.0f), vec3(0.0f, heightOffset, 0.0f));
-
-        // Create rotation matrix from Euler angles
-        mat4x4 rotationMatrix = glm::eulerAngleYXZ(eulerAngles.y, eulerAngles.x, eulerAngles.z);
-
-        // Translation matrix to move the camera back to the correct offset
-        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, 0.0f, zoomDistance));
-
-        // Combine transformations: first rotate, then translate
-        mat4x4 cameraMatrix = characterControllerMatrix * heightOffsetMatrix * rotationMatrix * translationMatrix;
-
-        // Extract position and rotation from the transformation matrix
-        resultPosition = vec3(cameraMatrix[3]);
-        resultRotation = normalize(quat_cast(cameraMatrix));
-    }
-
     void OrbitalCamera::Update(entt::registry& registry, f32 deltaTime)
     {
         ZoneScopedN("ECS::OrbitalCamera");
@@ -185,7 +166,7 @@ namespace ECS::Systems
         auto& characterControllerTransform = registry.get<Components::Transform>(characterSingleton.controllerEntity);
         const mat4x4& characterControllerMatrix = characterControllerTransform.GetMatrix(); // This is the point we want to rotate around
 
-        vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll));
+        vec3 eulerAngles = vec3(glm::radians(camera.pitch), glm::radians(camera.yaw) + glm::pi<f32>(), glm::radians(camera.roll));
 
         f32 cameraHeightOffset = settings.cameraCurrentZoomOffset.y;
         f32 cameraZoomDistance = settings.cameraCurrentZoomOffset.z;
@@ -193,19 +174,15 @@ namespace ECS::Systems
         // Update the camera
         vec3 resultPosition;
         quat resultRotation;
-        UpdateCamera(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
+        Util::CameraUtil::CalculatePosRotForMatrix(characterControllerMatrix, eulerAngles, cameraHeightOffset, cameraZoomDistance, resultPosition, resultRotation);
 
         vec3 resultRotationEuler = glm::eulerAngles(resultRotation);
 
         if (settings.mouseRightDown && characterSingleton.moverEntity != entt::null)
         {
             auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
-            auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
+            movementInfo.yaw = glm::radians(camera.yaw);
 
-            glm::mat3 rotationMatrix = glm::mat3_cast(resultRotation);
-            f32 yaw = glm::pi<f32>() + glm::radians(camera.yaw);
-
-            movementInfo.yaw = yaw;
             if (!movementInfo.movementFlags.grounded && movementInfo.movementFlags.flying)
             {
                 f32 pitch = glm::radians(-glm::clamp(camera.pitch, -45.0f, 89.0f));
@@ -215,7 +192,8 @@ namespace ECS::Systems
             {
                 movementInfo.pitch = 0.0f;
             }
-            
+
+            auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
             unit.positionOrRotationIsDirty = true;
         }
 

@@ -269,6 +269,21 @@ function bagAPI:CanFitInSlot(itemID : number, count : number, slotIndex : number
     return true
 end
 
+function bagAPI:ClearSlot(slotIndex : number) : boolean
+    if not self:IsValidSlot(slotIndex) then
+        return false
+    end
+
+    local itemSlot = self.uiSlots[slotIndex]
+    if (itemSlot.itemID == 0 or itemSlot.count == 0) then
+        return false
+    end
+
+    local count = itemSlot.count
+    RemoveItemFromSlot(self, count, slotIndex)
+    return true
+end
+
 function bagAPI:AddToSlot(itemID : number, count : number, slotIndex : number) : boolean
     local slot = if slotIndex > 0 then slotIndex else 1
     local countToAdd = if count ~= 0 then count else 1

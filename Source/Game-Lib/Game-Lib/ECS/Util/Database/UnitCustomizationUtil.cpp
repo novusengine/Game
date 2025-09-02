@@ -11,7 +11,7 @@
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
 
 #include <entt/entt.hpp>
 
