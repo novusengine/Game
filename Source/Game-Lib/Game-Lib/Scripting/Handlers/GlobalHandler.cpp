@@ -2,8 +2,10 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
+#include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Gameplay/Attachment/Defines.h"
@@ -18,10 +20,14 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
-#include <Meta/Generated/ClientDB.h>
+#include <Meta/Generated/Shared/ClientDB.h>
+
+#include <Network/Client.h>
 
 #include <entt/entt.hpp>
 #include <lualib.h>
+#include <Game-Lib/ECS/Util/Network/NetworkUtil.h>
+#include <Meta/Generated/Shared/NetworkPacket.h>
 
 namespace Scripting
 {
@@ -121,6 +127,19 @@ namespace Scripting
         return 1;
     }
 
+    i32 GlobalHandler::GetMapLoadingProgress(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        f32 terrainProgress = gameRenderer->GetTerrainLoader()->GetLoadingProgress();
+        f32 modelProgress = gameRenderer->GetModelLoader()->GetLoadingProgress();
+
+        f32 totalProgress = (terrainProgress + modelProgress) / 2.0f;
+        ctx.Push(totalProgress);
+        return 1;
+    }
+
     i32 GlobalHandler::EquipItem(lua_State* state)
     {
         LuaState ctx(state);
@@ -157,7 +176,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = itemID;
-        unitEquipment.dirtyEquipmentSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
         gameRegistry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         ctx.Push(true);
@@ -189,7 +208,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = 0;
-        unitEquipment.dirtyEquipmentSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
         registry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         ctx.Push(true);
@@ -226,5 +245,23 @@ namespace Scripting
 
         ctx.Push(wasProcessed);
         return 1;
+    }
+
+    i32 GlobalHandler::SendChatMessage(lua_State* state)
+    {
+        LuaState ctx(state);
+
+        std::string message = ctx.Get("", 1);
+        if (message.length() == 0 || message.length() >= 256)
+            return 0;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+        
+        ECS::Util::Network::SendPacket(networkState, Generated::ClientSendChatMessagePacket{
+            .message = message
+        });
+
+        return 0;
     }
 }

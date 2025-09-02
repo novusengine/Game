@@ -3,8 +3,10 @@
 
 #include <Meta/Generated/Game/LuaEnum.h>
 
+#include <entt/fwd.hpp>
+
 struct lua_State;
-typedef i32 (*lua_CFunction)(lua_State* L);
+typedef i32(*lua_CFunction)(lua_State* L);
 
 namespace Scripting
 {
@@ -32,16 +34,6 @@ namespace Scripting
         Reload
     };
 
-    enum class LuaPlayerEvent
-    {
-        Invalid,
-        ContainerCreate,
-        ContainerAddToSlot,
-        ContainerRemoveFromSlot,
-        ContainerSwapSlots,
-        Count
-    };
-
     struct LuaEventData
     {
     public:
@@ -59,6 +51,32 @@ namespace Scripting
         f32 deltaTime;
     };
 
+    struct LuaGameEventMapLoadingData : LuaEventData
+    {
+    public:
+        std::string mapInternalName;
+    };
+
+    struct LuaGameEventChatMessageReceivedData : LuaEventData
+    {
+    public:
+        std::string sender;
+        std::string channel;
+        std::string message;
+    };
+
+    struct LuaUnitEventCreatedData : LuaEventData
+    {
+    public:
+        entt::entity unitID;
+    };
+
+    struct LuaUnitEventDestroyedData : LuaEventData
+    {
+    public:
+        entt::entity unitID;
+    };
+
     struct LuaPlayerEventContainerItemInfo
     {
     public:
@@ -73,7 +91,6 @@ namespace Scripting
         u32 index;
         u32 numSlots;
         u32 itemID;
-        std::vector<LuaPlayerEventContainerItemInfo> items;
     };
 
     struct LuaPlayerEventContainerAddToSlotData : LuaEventData

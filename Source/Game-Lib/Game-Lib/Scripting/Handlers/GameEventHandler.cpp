@@ -4,6 +4,8 @@
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
+
 #include <lualib.h>
 
 namespace Scripting
@@ -19,9 +21,25 @@ namespace Scripting
         {
             SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::Loaded), std::bind(&GameEventHandler::OnGameLoaded, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
             SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::Updated), std::bind(&GameEventHandler::OnGameUpdated, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::MapLoading), std::bind(&GameEventHandler::OnMapLoading, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaGameEventEnum::ChatMessageReceived), std::bind(&GameEventHandler::OnChatMessageReceived, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         }
 
         CreateGameEventTable(state);
+    }
+
+    void GameEventHandler::PostLoad(lua_State* state)
+    {
+        const char* motd = CVarSystem::Get()->GetStringCVar(CVarCategory::Client, "scriptingMotd");
+
+        LuaGameEventLoadedData eventData =
+        {
+            .motd = motd
+        };
+
+        auto* luaManager = ServiceLocator::GetLuaManager();
+        auto gameEventHandler = luaManager->GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
+        gameEventHandler->CallEvent(state, static_cast<u32>(Generated::LuaGameEventEnum::Loaded), &eventData);
     }
 
     void GameEventHandler::SetEventHandler(u32 eventID, EventHandlerFn fn)
@@ -128,6 +146,52 @@ namespace Scripting
             ctx.Push(id);
             ctx.Push(eventData->deltaTime);
             ctx.PCall(2);
+        }
+
+        return 0;
+    }
+
+    i32 GameEventHandler::OnMapLoading(lua_State* state, u32 eventID, LuaEventData* data)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        auto eventData = reinterpret_cast<LuaGameEventMapLoadingData*>(data);
+
+        u32 id = eventID;
+        u64 key = reinterpret_cast<u64>(state);
+
+        LuaState ctx(state);
+
+        std::vector<i32>& funcRefList = _eventToLuaStateFuncRefList[id][key];
+        for (i32 funcHandle : funcRefList)
+        {
+            ctx.GetRawI(LUA_REGISTRYINDEX, funcHandle);
+            ctx.Push(id);
+            ctx.Push(eventData->mapInternalName);
+            ctx.PCall(2);
+        }
+
+        return 0;
+    }
+
+    i32 GameEventHandler::OnChatMessageReceived(lua_State* state, u32 eventID, LuaEventData* data)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        auto eventData = reinterpret_cast<LuaGameEventChatMessageReceivedData*>(data);
+
+        u32 id = eventID;
+        u64 key = reinterpret_cast<u64>(state);
+
+        LuaState ctx(state);
+
+        std::vector<i32>& funcRefList = _eventToLuaStateFuncRefList[id][key];
+        for (i32 funcHandle : funcRefList)
+        {
+            ctx.GetRawI(LUA_REGISTRYINDEX, funcHandle);
+            ctx.Push(id);
+            ctx.Push(eventData->sender);
+            ctx.Push(eventData->channel);
+            ctx.Push(eventData->message);
+            ctx.PCall(4);
         }
 
         return 0;

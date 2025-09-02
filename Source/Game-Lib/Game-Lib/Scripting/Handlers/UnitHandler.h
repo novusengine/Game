@@ -11,6 +11,7 @@ namespace Scripting
     {
     public:
         void Register(lua_State* state) override;
+        void PostLoad(lua_State* state) override;
         void Clear() override;
 
     public:
@@ -18,6 +19,7 @@ namespace Scripting
 
     public: // Registered Functions
         static i32 GetLocal(lua_State* state);
-        static i32 GetNamePosition(lua_State* state);
+        static i32 GetName(lua_State* state);
+        static i32 SetWidgetToNamePos(lua_State* state);
     };
 }

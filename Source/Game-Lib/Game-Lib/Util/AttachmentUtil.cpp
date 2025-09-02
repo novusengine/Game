@@ -1,5 +1,6 @@
 #include "AnimationUtil.h"
 #include "Game-Lib/ECS/Components/AABB.h"
+#include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
@@ -12,6 +13,8 @@
 
 #include <entt/entt.hpp>
 #include "AttachmentUtil.h"
+#include <Game-Lib/ECS/Singletons/RenderState.h>
+#include <glm/gtx/matrix_decompose.hpp>
 
 namespace Util::Attachment
 {
@@ -39,14 +42,15 @@ namespace Util::Attachment
         return canUseAttachment;
     }
 
-    bool HasActiveAttachment(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
+    bool HasActiveAttachment(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
     {
-        return attachmentData.attachmentToInstance.contains(attachment);
+        u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
+        return CanUseAttachment(modelInfo, attachment, attachmentIndex) && attachmentData.attachmentToInstance.contains(attachment);
     }
 
-    bool GetAttachmentEntity(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, entt::entity& entity)
+    bool GetAttachmentEntity(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, entt::entity& entity)
     {
-        if (!HasActiveAttachment(attachmentData, attachment))
+        if (!HasActiveAttachment(modelInfo, attachmentData, attachment))
             return false;
 
         ECS::Components::AttachmentInstance& attachmentInstance = attachmentData.attachmentToInstance[attachment];
@@ -63,11 +67,7 @@ namespace Util::Attachment
         if (!modelInfo)
             return false;
 
-        u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
-        if (!CanUseAttachment(modelInfo, attachment, attachmentIndex))
-            return false;
-
-        if (HasActiveAttachment(attachmentData, attachment))
+        if (HasActiveAttachment(modelInfo, attachmentData, attachment))
             return true;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -86,16 +86,83 @@ namespace Util::Attachment
         registry->emplace<ECS::Components::Model>(entity);
 
         transformSystem.ParentEntityTo(parent, entity);
-        attachmentData.attachmentToInstance[attachment] = { entity, mat4x4(1.0f) };
+        attachmentData.attachmentToInstance[attachment] = { 0, entity, mat4x4(1.0f) };
         return true;
     }
 
-    const mat4x4* GetAttachmentMatrix(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
+    static glm::mat4 mul(const glm::mat4& matrix1, const glm::mat4& matrix2)
     {
-        if (!HasActiveAttachment(attachmentData, attachment))
+        return matrix2 * matrix1;
+    }
+
+    static mat4x4 CalculateBaseAttachmentMatrix(const Model::ComplexModel::Attachment& attachment)
+    {
+        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position);
+        mat4x4 rotationMatrix = glm::toMat4(quat(1.0f, 0.0f, 0.0f, 0.0f));
+        mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(1.0f));
+
+        mat4x4 attachmentMatrix = mat4x4(1.0f);
+        attachmentMatrix = mul(translationMatrix, attachmentMatrix);
+        attachmentMatrix = mul(rotationMatrix, attachmentMatrix);
+        attachmentMatrix = mul(scaleMatrix, attachmentMatrix);
+
+        return attachmentMatrix;
+    }
+
+    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
+
+        if (attachmentInstance.lastUpdatedFrame == renderState.frameNumber)
+            return;
+
+        attachmentInstance.lastUpdatedFrame = renderState.frameNumber;
+
+        u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
+        if (!::Util::Attachment::CanUseAttachment(modelInfo, attachment, attachmentIndex))
+            return;
+
+        const Model::ComplexModel::Attachment& skeletonAttachment = modelInfo->attachments[attachmentIndex];
+        u32 numBones = static_cast<u32>(modelInfo->bones.size());
+
+        u32 boneIndex = 0;
+        if (skeletonAttachment.bone < numBones)
+            boneIndex = skeletonAttachment.bone;
+
+        const mat4x4& parentBoneMatrix = animationData.boneTransforms[boneIndex];
+        mat4x4 attachmentMatrix = CalculateBaseAttachmentMatrix(skeletonAttachment);
+        attachmentInstance.matrix = mul(attachmentMatrix, parentBoneMatrix);
+
+        vec3 scale;
+        quat rotation;
+        vec3 translation;
+        vec3 skew;
+        vec4 perspective;
+        if (!glm::decompose(attachmentInstance.matrix, scale, rotation, translation, skew, perspective))
+            return;
+
+        auto& transformSystem = registry->ctx().get<ECS::TransformSystem>();
+        transformSystem.SetLocalTransform(attachmentInstance.entity, translation, rotation, scale);
+    }
+
+    const mat4x4* GetAttachmentMatrix(const ECS::Components::Model& model, const ECS::Components::AnimationData& animationData, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
+    {
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+        const auto* modelInfo = modelLoader->GetModelInfo(model.modelHash);
+        if (!modelInfo)
             return nullptr;
 
-        const auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
+        if (!HasActiveAttachment(modelInfo, attachmentData, attachment))
+            return nullptr;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
+
+        auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
+        CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance);
+
         return &attachmentInstance.matrix;
     }
 }

@@ -19,6 +19,7 @@
 #include <Base/Util/DebugHandler.h>
 
 #include <Luau/Compiler.h>
+#include <Luau/CodeGen.h>
 #include <lualib.h>
 #include <enkiTS/TaskScheduler.h>
 
@@ -30,8 +31,6 @@ AutoCVar_String CVAR_ScriptDir(CVarCategory::Client, "scriptingDirectory", "defi
 AutoCVar_String CVAR_ScriptExtension(CVarCategory::Client, "scriptingExtension", "defines the file extension to recognized as a script file", ".luau");
 AutoCVar_String CVAR_ScriptMotd(CVarCategory::Client, "scriptingMotd", "defines the message of the day passed in the GameLoaded Event", "Welcome to Novuscore");
 
-LUAU_FASTFLAG(LuauVector2Constructor)
-
 namespace Scripting
 {
     LuaManager::LuaManager() : _internalState(nullptr), _publicState(nullptr)
@@ -42,8 +41,6 @@ namespace Scripting
 
     void LuaManager::Init()
     {
-        FFlag::LuauVector2Constructor.value = true;
-
         _luaHandlers.resize(static_cast<u32>(LuaHandlerType::Count));
         SetLuaHandler(LuaHandlerType::Global, new GlobalHandler());
         SetLuaHandler(LuaHandlerType::GameEvent, new GameEventHandler());
@@ -60,11 +57,11 @@ namespace Scripting
         {
             RegisterLuaSystem(new GenericSystem());
 
-            LuaGameEventLoadedData eventData;
-            eventData.motd = CVAR_ScriptMotd.Get();
-
-            auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-            gameEventHandler->CallEvent(_internalState, static_cast<u32>(Generated::LuaGameEventEnum::Loaded), &eventData);
+            for (u32 i = 0; i < _luaHandlers.size(); i++)
+            {
+                LuaHandlerBase* luaHandler = _luaHandlers[i];
+                luaHandler->PostLoad(_internalState);
+            }
         }
     }
 
@@ -79,11 +76,11 @@ namespace Scripting
 
             if (result)
             {
-                LuaGameEventLoadedData eventData;
-                eventData.motd = CVAR_ScriptMotd.Get();
-
-                auto gameEventHandler = GetLuaHandler<GameEventHandler*>(LuaHandlerType::GameEvent);
-                gameEventHandler->CallEvent(_internalState, static_cast<u32>(Generated::LuaGameEventEnum::Loaded), &eventData);
+                for (u32 i = 0; i < _luaHandlers.size(); i++)
+                {
+                    LuaHandlerBase* luaHandler = _luaHandlers[i];
+                    luaHandler->PostLoad(_internalState);
+                }
             }
             else
             {
@@ -131,7 +128,7 @@ namespace Scripting
         }
 
         Luau::ParseOptions parseOptions;
-        
+
         std::string bytecode = Luau::compile(code, compileOptions, parseOptions);
         i32 result = ctx.LoadBytecode("", bytecode, 0);
         if (result != LUA_OK)
@@ -139,7 +136,7 @@ namespace Scripting
             ctx.ReportError();
             return false;
         }
-        
+
         result = ctx.PCall(0, 0);
         return result == LUA_OK;
     }
@@ -236,6 +233,10 @@ namespace Scripting
                 return false;
             }
 
+            Luau::CodeGen::CompilationResult codeGenResult = Luau::CodeGen::compile(state, -1, 0);
+            if (codeGenResult.hasErrors() && codeGenResult.result != Luau::CodeGen::CodeGenCompilationResult::NothingToCompile)
+                return false;
+
             if (!ctx.PCall(0, 1))
             {
                 return false;
@@ -328,6 +329,8 @@ namespace Scripting
         lua_State* state = luaL_newstate();
         u64 key = reinterpret_cast<u64>(state);
 
+        Luau::CodeGen::create(state);
+
         _luaStateToInfo.erase(key);
         LuaStateInfo& stateInfo = _luaStateToInfo[key];
 
@@ -342,7 +345,7 @@ namespace Scripting
             LuaHandlerBase* base = _luaHandlers[i];
             base->Register(state);
         }
-        
+
         luaL_sandbox(state);
         luaL_sandboxthread(state);
 
@@ -358,7 +361,7 @@ namespace Scripting
         apiPaths.reserve(1024);
         boostrapPaths.reserve(1024);
 
-        fs::recursive_directory_iterator fsScriptAPIDir { scriptAPIDirectory };
+        fs::recursive_directory_iterator fsScriptAPIDir{ scriptAPIDirectory };
         for (const auto& dirEntry : fsScriptAPIDir)
         {
             if (!dirEntry.is_regular_file())
@@ -374,7 +377,7 @@ namespace Scripting
         }
         std::sort(apiPaths.begin(), apiPaths.end());
 
-        fs::recursive_directory_iterator fsScriptBootstrapDir { scriptBootstrapDirectory };
+        fs::recursive_directory_iterator fsScriptBootstrapDir{ scriptBootstrapDirectory };
         for (const auto& dirEntry : fsScriptBootstrapDir)
         {
             if (!dirEntry.is_regular_file())
@@ -390,7 +393,7 @@ namespace Scripting
         }
         std::sort(boostrapPaths.begin(), boostrapPaths.end());
 
-        fs::recursive_directory_iterator fsScriptDir { scriptDirectory };
+        fs::recursive_directory_iterator fsScriptDir{ scriptDirectory };
         for (const auto& dirEntry : fsScriptDir)
         {
             if (!dirEntry.is_regular_file())
@@ -416,7 +419,7 @@ namespace Scripting
         Luau::CompileOptions compileOptions;
         {
             compileOptions.optimizationLevel = 1;
-            compileOptions.debugLevel = 2;
+            compileOptions.debugLevel = 1;
             compileOptions.typeInfoLevel = 1;
             compileOptions.coverageLevel = 2;
         }
@@ -560,6 +563,10 @@ namespace Scripting
                     return false;
                 }
 
+                Luau::CodeGen::CompilationResult codeGenResult = Luau::CodeGen::compile(state, -1, 0);
+                if (codeGenResult.hasErrors() && codeGenResult.result != Luau::CodeGen::CodeGenCompilationResult::NothingToCompile)
+                    return false;
+
                 i32 status = ctx.Resume();
                 if (status != LUA_OK)
                 {
@@ -583,14 +590,14 @@ namespace Scripting
             if (_internalState != nullptr)
             {
                 gameEventHandler->ClearEvents(_internalState);
-            
+
                 u64 key = reinterpret_cast<u64>(_internalState);
                 _luaStateToInfo.erase(key);
-                
+
                 LuaState oldCtx(_internalState);
                 oldCtx.Close();
             }
-            
+
             _internalState = state;
         }
         else

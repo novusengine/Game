@@ -21,7 +21,6 @@ namespace Util
     namespace Physics
     {
         bool GetMouseWorldPosition(Editor::Viewport* viewport, vec3& mouseWorldPosition);
-        bool GetEntityAtMousePosition(Editor::Viewport* viewport, entt::entity& entity);
         bool CastRay(JPH::PhysicsSystem& physicsSystem, vec3& start, vec3& direction, JPH::RayCastResult& result);
     }
 }

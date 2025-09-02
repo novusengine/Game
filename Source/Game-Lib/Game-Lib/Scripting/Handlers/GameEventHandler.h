@@ -22,10 +22,13 @@ namespace Scripting
 
     private:
         void Register(lua_State* state);
+        void PostLoad(lua_State* state);
 
     private: // Event Handlers (Called by CallEvent)
         i32 OnGameLoaded(lua_State* state, u32 eventID, LuaEventData* data);
         i32 OnGameUpdated(lua_State* state, u32 eventID, LuaEventData* data);
+        i32 OnMapLoading(lua_State* state, u32 eventID, LuaEventData* data);
+        i32 OnChatMessageReceived(lua_State* state, u32 eventID, LuaEventData* data);
 
     private: // Utility Functions
         void CreateGameEventTable(lua_State* state);

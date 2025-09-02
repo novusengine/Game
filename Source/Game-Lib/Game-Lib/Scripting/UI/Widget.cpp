@@ -1018,39 +1018,15 @@ i32 Scripting::UI::WidgetMethods::SetPos3D(lua_State* state)
         luaL_error(state, "Widget is null");
     }
 
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-    auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
-    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
-
-    auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
-
     if (lua_isnil(state, 2))
     {
-        transform.SetIgnoreParent(false);
-
-        if (widgetComp.worldTransformIndex != std::numeric_limits<u32>().max())
-        {
-            canvasRenderer->ReleaseWorldTransform(widgetComp.worldTransformIndex);
-        }
-
-        widgetComp.worldTransformIndex = std::numeric_limits<u32>().max();
+        ECS::Util::UI::ClearPos3D(widget);
     }
     else
     {
-        transform.SetIgnoreParent(true);
-
-        if (widgetComp.worldTransformIndex == std::numeric_limits<u32>().max())
-        {
-            widgetComp.worldTransformIndex = canvasRenderer->ReserveWorldTransform();
-        }
-        
         vec3 pos = ctx.Get(vec3(0, 0, 0), 2);
-        canvasRenderer->UpdateWorldTransform(widgetComp.worldTransformIndex, pos);
+        ECS::Util::UI::SetPos3D(widget, pos);
     }
-
-    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
-    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-    registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
     return 0;
 }

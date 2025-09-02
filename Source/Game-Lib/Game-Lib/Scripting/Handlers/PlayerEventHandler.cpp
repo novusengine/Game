@@ -4,6 +4,7 @@
 #include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <entt/entt.hpp>
 #include <lualib.h>
 
 namespace Scripting
@@ -17,10 +18,12 @@ namespace Scripting
 
         // Set Event Handlers
         {
-            SetEventHandler(static_cast<u32>(LuaPlayerEvent::ContainerCreate), std::bind(&PlayerEventHandler::OnContainerCreate, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-            SetEventHandler(static_cast<u32>(LuaPlayerEvent::ContainerAddToSlot), std::bind(&PlayerEventHandler::OnContainerAddToSlot, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-            SetEventHandler(static_cast<u32>(LuaPlayerEvent::ContainerRemoveFromSlot), std::bind(&PlayerEventHandler::OnContainerRemoveFromSlot, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-            SetEventHandler(static_cast<u32>(LuaPlayerEvent::ContainerSwapSlots), std::bind(&PlayerEventHandler::OnContainerSwapSlots, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::Created), std::bind(&PlayerEventHandler::OnUnitCreated, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::Destroyed), std::bind(&PlayerEventHandler::OnUnitDestroyed, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerCreate), std::bind(&PlayerEventHandler::OnContainerCreate, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerAddToSlot), std::bind(&PlayerEventHandler::OnContainerAddToSlot, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerRemoveFromSlot), std::bind(&PlayerEventHandler::OnContainerRemoveFromSlot, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+            SetEventHandler(static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerSwapSlots), std::bind(&PlayerEventHandler::OnContainerSwapSlots, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         }
 
         CreatePlayerEventTable(state);
@@ -28,9 +31,9 @@ namespace Scripting
 
     void PlayerEventHandler::SetEventHandler(u32 eventID, EventHandlerFn fn)
     {
-        LuaPlayerEvent playerEventID = static_cast<LuaPlayerEvent>(eventID);
+        Generated::LuaPlayerEventEnum playerEventID = static_cast<Generated::LuaPlayerEventEnum>(eventID);
 
-        if (playerEventID == LuaPlayerEvent::Invalid || playerEventID >= LuaPlayerEvent::Count)
+        if (playerEventID == Generated::LuaPlayerEventEnum::Invalid || playerEventID >= Generated::LuaPlayerEventEnum::Count)
         {
             return;
         }
@@ -42,9 +45,9 @@ namespace Scripting
         if (eventID >= _eventToFuncHandlerList.size())
             return;
 
-        LuaPlayerEvent playerEventID = static_cast<LuaPlayerEvent>(eventID);
+        Generated::LuaPlayerEventEnum playerEventID = static_cast<Generated::LuaPlayerEventEnum>(eventID);
 
-        if (playerEventID == LuaPlayerEvent::Invalid || playerEventID >= LuaPlayerEvent::Count)
+        if (playerEventID == Generated::LuaPlayerEventEnum::Invalid || playerEventID >= Generated::LuaPlayerEventEnum::Count)
         {
             return;
         }
@@ -70,8 +73,8 @@ namespace Scripting
 
         u32 eventIDFromLua = ctx.Get(0u, 1);
 
-        LuaPlayerEvent eventID = static_cast<LuaPlayerEvent>(eventIDFromLua);
-        if (eventID == LuaPlayerEvent::Invalid || eventID >= LuaPlayerEvent::Count)
+        Generated::LuaPlayerEventEnum eventID = static_cast<Generated::LuaPlayerEventEnum>(eventIDFromLua);
+        if (eventID == Generated::LuaPlayerEventEnum::Invalid || eventID >= Generated::LuaPlayerEventEnum::Count)
         {
             return 0;
         }
@@ -86,6 +89,52 @@ namespace Scripting
         LuaManager* luaManager = ServiceLocator::GetLuaManager();
         auto eventHandler = luaManager->GetLuaHandler<PlayerEventHandler*>(LuaHandlerType::PlayerEvent);
         eventHandler->RegisterEventCallback(state, eventIDFromLua, funcHandle);
+
+        return 0;
+    }
+
+    i32 PlayerEventHandler::OnUnitCreated(lua_State* state, u32 eventID, LuaEventData* data)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        auto eventData = reinterpret_cast<LuaUnitEventCreatedData*>(data);
+
+        u32 id = eventID;
+        u64 key = reinterpret_cast<u64>(state);
+
+        LuaState ctx(state);
+
+        std::vector<i32>& funcRefList = _eventToLuaStateFuncRefList[id][key];
+        for (i32 funcHandle : funcRefList)
+        {
+            ctx.GetRawI(LUA_REGISTRYINDEX, funcHandle);
+            ctx.Push(id);
+            ctx.Push(entt::to_integral(eventData->unitID));
+
+            ctx.PCall(2);
+        }
+
+        return 0;
+    }
+
+    i32 PlayerEventHandler::OnUnitDestroyed(lua_State* state, u32 eventID, LuaEventData* data)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        auto eventData = reinterpret_cast<LuaUnitEventCreatedData*>(data);
+
+        u32 id = eventID;
+        u64 key = reinterpret_cast<u64>(state);
+
+        LuaState ctx(state);
+
+        std::vector<i32>& funcRefList = _eventToLuaStateFuncRefList[id][key];
+        for (i32 funcHandle : funcRefList)
+        {
+            ctx.GetRawI(LUA_REGISTRYINDEX, funcHandle);
+            ctx.Push(id);
+            ctx.Push(entt::to_integral(eventData->unitID));
+
+            ctx.PCall(2);
+        }
 
         return 0;
     }
@@ -109,25 +158,7 @@ namespace Scripting
             ctx.Push(eventData->numSlots);
             ctx.Push(eventData->itemID);
 
-            ctx.CreateTableAndPopulate([&]()
-            {
-                u32 numItems = static_cast<u32>(eventData->items.size());
-
-                for (u32 i = 0; i < numItems; i++)
-                {
-                    const auto& eventItemData = eventData->items[i];
-                    ctx.CreateTableAndPopulate([&ctx, &eventItemData]()
-                    {
-                        ctx.SetTable("slot", eventItemData.slot);
-                        ctx.SetTable("itemID", eventItemData.itemID);
-                        ctx.SetTable("count", eventItemData.count);
-                    });
-
-                    ctx.SetTable(i + 1);
-                }
-            });
-
-            ctx.PCall(5);
+            ctx.PCall(4);
         }
     
         return 0;
@@ -213,14 +244,12 @@ namespace Scripting
     {
         LuaState ctx(state);
 
-        ctx.CreateTableAndPopulate("PlayerEvent", [&]()
+        ctx.CreateTableAndPopulate(Generated::LuaPlayerEventEnumMeta::EnumName.data(), [&]()
         {
-            ctx.SetTable("Invalid", 0u);
-            ctx.SetTable("ContainerCreate", 1u);
-            ctx.SetTable("ContainerAddToSlot", 2u);
-            ctx.SetTable("ContainerRemoveFromSlot", 3u);
-            ctx.SetTable("ContainerSwapSlots", 4u);
-            ctx.SetTable("Count", 5u);
+            for (const auto& pair : Generated::LuaPlayerEventEnumMeta::EnumList)
+            {
+                ctx.SetTable(pair.first.data(), pair.second);
+            }
         });
     }
 }

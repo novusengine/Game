@@ -1,19 +1,22 @@
 #include "Container.h"
 
 #include "Game-Lib/ECS/Components/Container.h"
+#include "Game-Lib/ECS/Components/Item.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Scripting/LuaMethodTable.h"
 #include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Meta/Generated/Shared/NetworkPacket.h>
+
 #include <Network/Client.h>
 
 #include <entt/entt.hpp>
-#include <Game-Lib/ECS/Components/Item.h>
 
 namespace Scripting::Game
 {
@@ -74,20 +77,20 @@ namespace Scripting::Game
                 }
                 else
                 {
-                    GameDefine::ObjectGuid containerGuid = characterSingleton.containers[srcContainerIndex];
-                    if (!containerGuid.IsValid())
+                    ObjectGUID containerGUID = characterSingleton.containers[srcContainerIndex];
+                    if (!containerGUID.IsValid())
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    if (!networkState.networkIDToEntity.contains(containerGuid))
+                    if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    containerEntity = networkState.networkIDToEntity[containerGuid];
+                    containerEntity = networkState.networkIDToEntity[containerGUID];
                 }
 
                 if (!registry->valid(containerEntity))
@@ -103,9 +106,9 @@ namespace Scripting::Game
                     return 1;
                 }
 
-                GameDefine::ObjectGuid srcObjectGuid = container.items[srcSlotIndex];
+                ObjectGUID srcObjectGUID = container.items[srcSlotIndex];
 
-                if (!srcObjectGuid.IsValid())
+                if (!srcObjectGUID.IsValid())
                 {
                     ctx.Push(false);
                     return 1;
@@ -122,20 +125,20 @@ namespace Scripting::Game
                 }
                 else
                 {
-                    GameDefine::ObjectGuid containerGuid = characterSingleton.containers[srcContainerIndex];
-                    if (!containerGuid.IsValid())
+                    ObjectGUID containerGUID = characterSingleton.containers[srcContainerIndex];
+                    if (!containerGUID.IsValid())
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    if (!networkState.networkIDToEntity.contains(containerGuid))
+                    if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    srcContainerEntity = networkState.networkIDToEntity[containerGuid];
+                    srcContainerEntity = networkState.networkIDToEntity[containerGUID];
                 }
 
                 if (destContainerIndex == 0)
@@ -144,20 +147,20 @@ namespace Scripting::Game
                 }
                 else
                 {
-                    GameDefine::ObjectGuid containerGuid = characterSingleton.containers[destContainerIndex];
-                    if (!containerGuid.IsValid())
+                    ObjectGUID containerGUID = characterSingleton.containers[destContainerIndex];
+                    if (!containerGUID.IsValid())
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    if (!networkState.networkIDToEntity.contains(containerGuid))
+                    if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
                         ctx.Push(false);
                         return 1;
                     }
 
-                    destContainerEntity = networkState.networkIDToEntity[containerGuid];
+                    destContainerEntity = networkState.networkIDToEntity[containerGUID];
                 }
 
                 if (!registry->valid(srcContainerEntity) || !registry->valid(destContainerEntity))
@@ -174,23 +177,22 @@ namespace Scripting::Game
                     return 1;
                 }
 
-                GameDefine::ObjectGuid srcObjectGuid = srcContainer.items[srcSlotIndex];
-                if (!srcObjectGuid.IsValid())
+                ObjectGUID srcObjectGUID = srcContainer.items[srcSlotIndex];
+                if (!srcObjectGUID.IsValid())
                 {
                     ctx.Push(false);
                     return 1;
                 }
             }
 
-            std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
-            if (!ECS::Util::MessageBuilder::Container::BuildRequestSwapSlots(buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex))
-            {
-                ctx.Push(false);
-                return 1;
-            }
+            bool result = ECS::Util::Network::SendPacket(networkState, Generated::ClientContainerSwapSlotsPacket{
+                .srcContainer = static_cast<u16>(srcContainerIndex),
+                .dstContainer = static_cast<u8>(destContainerIndex),
+                .srcSlot = static_cast<u8>(srcSlotIndex),
+                .dstSlot = static_cast<u8>(destSlotIndex)
+            });
 
-            networkState.client->Send(buffer);
-            ctx.Push(true);
+            ctx.Push(result);
             return 1;
         }
 
@@ -209,6 +211,9 @@ namespace Scripting::Game
                 return 0;
 
             auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+            if (characterSingleton.baseContainerEntity == entt::null)
+                return 0;
+
             entt::entity containerEntity = entt::null;
             if (containerIndex == 0)
             {
@@ -216,14 +221,14 @@ namespace Scripting::Game
             }
             else
             {
-                GameDefine::ObjectGuid containerGuid = characterSingleton.containers[containerIndex];
-                if (!containerGuid.IsValid())
+                ObjectGUID containerGUID = characterSingleton.containers[containerIndex];
+                if (!containerGUID.IsValid())
                     return 0;
 
-                if (!networkState.networkIDToEntity.contains(containerGuid))
+                if (!networkState.networkIDToEntity.contains(containerGUID))
                     return 0;
 
-                containerEntity = networkState.networkIDToEntity[containerGuid];
+                containerEntity = networkState.networkIDToEntity[containerGUID];
             }
 
             if (!registry->valid(containerEntity))
@@ -231,20 +236,21 @@ namespace Scripting::Game
 
             auto& container = registry->get<ECS::Components::Container>(containerEntity);
 
+            ctx.Push((u32)container.numSlots);
             ctx.CreateTableAndPopulate([&]()
             {
                 u32 numItems = static_cast<u32>(container.items.size());
 
                 for (u32 i = 0; i < numItems; i++)
                 {
-                    const auto& containerItemGuid = container.items[i];
-                    if (!containerItemGuid.IsValid())
+                    const auto& containerItemGUID = container.items[i];
+                    if (!containerItemGUID.IsValid())
                         continue;
 
-                    if (!networkState.networkIDToEntity.contains(containerItemGuid))
+                    if (!networkState.networkIDToEntity.contains(containerItemGUID))
                         continue;
 
-                    entt::entity itemEntity = networkState.networkIDToEntity[containerItemGuid];
+                    entt::entity itemEntity = networkState.networkIDToEntity[containerItemGUID];
                     const auto& item = registry->get<ECS::Components::Item>(itemEntity);
 
                     ctx.CreateTableAndPopulate([&ctx, &item, i]()
@@ -259,7 +265,7 @@ namespace Scripting::Game
                 }
             });
 
-            return 1;
+            return 2;
         }
     }
 }
