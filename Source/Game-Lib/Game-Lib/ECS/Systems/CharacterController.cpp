@@ -183,10 +183,18 @@ namespace ECS::Systems
             if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
                 return false;
 
+            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
             auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
 
             if ((modifier & KeybindModifier::Shift) != KeybindModifier::Invalid)
             {
+                // Unhighlight previous target
+                if (unit.targetEntity != entt::null && registry->all_of<Components::Model>(unit.targetEntity))
+                {
+                    auto& model = registry->get<Components::Model>(unit.targetEntity);
+                    modelLoader->SetModelHighlight(model, 1.0f);
+                }
+
                 unit.targetEntity = entt::null;
                 return true;
             }
@@ -252,7 +260,21 @@ namespace ECS::Systems
                 .targetGUID = targetNetworkID
                 }))
             {
+                // Unhighlight previous target
+                if (registry->all_of<Components::Model>(unit.targetEntity))
+                {
+                    auto& model = registry->get<Components::Model>(unit.targetEntity);
+                    modelLoader->SetModelHighlight(model, 1.0f);
+                }
+
                 unit.targetEntity = targetEntity;
+
+                // Visually highlight the selected target for feedback
+                if (registry->all_of<Components::Model>(targetEntity))
+                {
+                    auto& model = registry->get<Components::Model>(targetEntity);
+                    modelLoader->SetModelHighlight(model, 1.5f);
+                }
             }
 
             return true;

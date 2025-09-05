@@ -304,6 +304,21 @@ void ModelRenderer::Update(f32 deltaTime)
         _instancesDirty = true;
     }
 
+    u32 numChangeHighlightRequests = static_cast<u32>(_changeHighlightRequests.try_dequeue_bulk(_changeHighlightWork.begin(), 256));
+    if (numChangeHighlightRequests > 0)
+    {
+        ZoneScopedN("Change Highlight Requests");
+        for (u32 i = 0; i < numChangeHighlightRequests; i++)
+        {
+            ChangeHighlightRequest& changeHighlightRequest = _changeHighlightWork[i];
+
+            InstanceData& instanceData = _instanceDatas[changeHighlightRequest.instanceID];
+            instanceData.highlightIntensity = changeHighlightRequest.highlightIntensity;
+            _instanceDatas.SetDirtyElement(changeHighlightRequest.instanceID);
+        }
+        _instancesDirty = true;
+    }
+
     u32 numChangeSkyboxRequests = static_cast<u32>(_changeSkyboxRequests.try_dequeue_bulk(_changeSkyboxWork.begin(), 256));
     if (numChangeSkyboxRequests > 0)
     {
@@ -2125,6 +2140,17 @@ void ModelRenderer::RequestChangeTransparency(u32 instanceID, bool transparent, 
     _changeTransparencyRequests.enqueue(changeTransparencyRequest);
 }
 
+void ModelRenderer::RequestChangeHighlight(u32 instanceID, f32 highlightIntensity)
+{
+    ChangeHighlightRequest changeHighlightRequest =
+    {
+        .instanceID = instanceID,
+        .highlightIntensity = highlightIntensity
+    };
+
+    _changeHighlightRequests.enqueue(changeHighlightRequest);
+}
+
 void ModelRenderer::RequestChangeSkybox(u32 instanceID, bool skybox)
 {
     ChangeSkyboxRequest changeSkyboxRequest =
@@ -2427,6 +2453,7 @@ void ModelRenderer::CreatePermanentResources()
     _changeHairTextureWork.resize(256);
     _changeVisibilityWork.resize(256);
     _changeTransparencyWork.resize(256);
+    _changeHighlightWork.resize(256);
     _changeSkyboxWork.resize(256);
 
     static constexpr u32 NumSamplers = 4;

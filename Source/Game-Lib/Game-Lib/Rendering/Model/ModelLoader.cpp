@@ -481,7 +481,7 @@ void ModelLoader::Update(f32 deltaTime)
                     LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
 
                     const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
-                    bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
+                    bool isSupported = (loadRequest.entity == entt::null || registry->valid(loadRequest.entity)) && discoveredModel.model->modelHeader.numVertices > 0;
                     if (!isSupported)
                         continue;
 
@@ -840,6 +840,22 @@ void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool 
         return;
 
     _modelRenderer->RequestChangeTransparency(model.instanceID, transparent, opacity);
+}
+
+void ModelLoader::SetEntityHighlight(entt::entity entity, f32 highlightIntensity)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& modelComponent = registry->get<ECS::Components::Model>(entity);
+
+    SetModelHighlight(modelComponent, highlightIntensity);
+}
+
+void ModelLoader::SetModelHighlight(const ECS::Components::Model& model, f32 highlightIntensity)
+{
+    if (model.instanceID == std::numeric_limits<u32>().max())
+        return;
+
+    _modelRenderer->RequestChangeHighlight(model.instanceID, highlightIntensity);
 }
 
 void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)

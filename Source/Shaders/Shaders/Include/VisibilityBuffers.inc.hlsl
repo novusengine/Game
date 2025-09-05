@@ -374,6 +374,7 @@ struct PixelVertexData
     float3 worldPos;
     float4 viewPos;
     float2 pixelPos;
+    float highlightIntensity;
 };
 
 PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex, float2 renderSize)
@@ -413,6 +414,9 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     result.worldPos = InterpolateVertexAttribute(bary, vertices[0].position, vertices[1].position, vertices[2].position);
     result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
     result.pixelPos = pixelPos;
+
+    result.highlightIntensity = 1.0f; // No highlight for terrain... yet?
+
     return result;
 }
 
@@ -462,6 +466,9 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     result.worldPos = mul(float4(pixelVertexPos, 1.0f), instanceMatrix).xyz;
     result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
     result.pixelPos = pixelPos;
+
+    result.highlightIntensity = instanceData.highlightIntensity;
+
     return result;
 }
 

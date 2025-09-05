@@ -244,6 +244,9 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
 
+    // Apply highlight
+    color.rgb *= pixelVertexData.highlightIntensity;
+
     outPixelWorldPos = pixelVertexData.worldPos;
     return saturate(color);
 }
