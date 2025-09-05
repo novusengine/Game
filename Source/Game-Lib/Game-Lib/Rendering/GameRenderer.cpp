@@ -498,7 +498,7 @@ void GameRenderer::CreatePermanentResources()
     visibilityBufferDesc.debugName = "VisibilityBuffer";
     visibilityBufferDesc.dimensions = vec2(1.0f, 1.0f);
     visibilityBufferDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
-    visibilityBufferDesc.format = Renderer::ImageFormat::R32G32B32A32_UINT;
+    visibilityBufferDesc.format = Renderer::ImageFormat::R32G32_UINT;
     visibilityBufferDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
     visibilityBufferDesc.clearUInts = uvec4(0, 0, 0, 0);
 

@@ -27,9 +27,6 @@ struct VSOutput
     nointerpolation uint4 drawIDInstanceIDTextureDataIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 #endif
-#if (!EDITOR_PASS) && (!SHADOW_PASS)
-    float3 modelPosition : TEXCOORD2;
-#endif
 };
 
 VSOutput main(VSInput input)
@@ -54,7 +51,6 @@ VSOutput main(VSInput input)
 
         StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
     }
-    float3 modelPosition = position.xyz;
 
     float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
     position = mul(position, instanceMatrix);
@@ -95,9 +91,6 @@ VSOutput main(VSInput input)
     }
 
     output.uv01 = UVs;
-#endif
-#if (!EDITOR_PASS) && (!SHADOW_PASS)
-    output.modelPosition = modelPosition.xyz;
 #endif
 
     return output;

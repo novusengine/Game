@@ -11,9 +11,9 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Terrain/TerrainShared.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
 
-// Reenable this in C++ as well
 struct Constants
 {
+    float4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height
     uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights, z = Num Cascades, w = Shadows Enabled
     float4 fogColor;
     float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
@@ -37,7 +37,7 @@ struct Constants
 float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
     // Get the interpolated vertex data from the visibility buffer
-    PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0);
+    PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
 
     InstanceData cellInstance = _instanceDatas[vBuffer.instanceID];
     uint globalCellID = cellInstance.globalCellID;
@@ -188,7 +188,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
 {
     // Get the interpolated vertex data from the visibility buffer
-    PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0);
+    PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
 
     TextureData textureData = LoadModelTextureData(pixelVertexData.extraID);
 
@@ -253,15 +253,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint2 pixelPos = dispatchThreadId.xy;
 
-    float2 dimensions;
-    _resolvedColor.GetDimensions(dimensions.x, dimensions.y);
-
-    if (any(pixelPos > dimensions))
+    if (any(pixelPos > _constants.renderInfo.xy))
     {
         return;
     }
 
-    uint4 vBufferData = LoadVisibilityBuffer(pixelPos);
+    uint2 vBufferData = LoadVisibilityBuffer(pixelPos);
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
 #if DEBUG_ID != 0
@@ -286,13 +283,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     return;
 #elif DEBUG_ID == 4 // CascadeID
     uint numCascades = _constants.lightInfo.z;
-    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0);
+    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
     uint cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
     _resolvedColor[pixelPos] = float4(CascadeIDToColor(cascadeIndex), 1);
     return;
 #endif
 
-    float2 pixelUV = pixelPos / dimensions;
+    float2 pixelUV = pixelPos / _constants.renderInfo.xy;
 
     float4 color = float4(0, 0, 0, 1);
     
@@ -316,7 +313,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
     else
     {
-        color.rg = vBuffer.barycentrics.bary;
+        color.rg = float2(1, 1);
     }
 
     // Composite Transparency

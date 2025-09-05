@@ -3,6 +3,13 @@
 #include "globalData.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
 
+struct Constants
+{
+    float4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height
+};
+
+[[vk::push_constant]] Constants _constants;
+
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] RWTexture2D<float4> _packedNormals;
 
@@ -11,18 +18,15 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint2 pixelPos = dispatchThreadId.xy;
 
-    float2 dimensions;
-    _packedNormals.GetDimensions(dimensions.x, dimensions.y);
-
-    if (any(pixelPos > dimensions))
+    if (any(pixelPos > _constants.renderInfo.xy))
     {
         return;
     }
 
-    uint4 vBufferData = LoadVisibilityBuffer(pixelPos);
+    uint2 vBufferData = LoadVisibilityBuffer(pixelPos);
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
-    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0);
+    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
 
     float3 normal = pixelVertexData.worldNormal;
 

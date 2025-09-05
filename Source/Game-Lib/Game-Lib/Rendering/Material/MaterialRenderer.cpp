@@ -101,7 +101,15 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.preEffectsSet, frameIndex);
 
-            uvec2 outputSize = _renderer->GetImageDimensions(resources.packedNormals, 0);
+            vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(resources.packedNormals, 0));
+
+            struct Constants
+            {
+                vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height 
+            };
+
+            Constants* constants = graphResources.FrameNew<Constants>();
+            constants->renderInfo = vec4(outputSize, 1.0f / outputSize);
 
             uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
@@ -207,6 +215,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 struct Constants
                 {
+                    vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height 
                     uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count, Z = Cascade Count, W = Shadows Enabled
                     vec4 fogColor;
                     vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
@@ -220,6 +229,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
+
+                vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(resources.sceneColor, 0));
+                constants->renderInfo = vec4(outputSize, 1.0f / outputSize);
 
                 CVarSystem* cvarSystem = CVarSystem::Get();
                 const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
