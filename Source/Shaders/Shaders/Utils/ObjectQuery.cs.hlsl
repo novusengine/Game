@@ -27,7 +27,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         uint2 pixelPos = _constants.requests[i];
 
-        uint4 vBufferData = LoadVisibilityBuffer(pixelPos);
+        uint2 vBufferData = LoadVisibilityBuffer(pixelPos);
         VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
         _result[i].type = vBuffer.typeID;

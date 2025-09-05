@@ -13,7 +13,6 @@ struct PSInput
     float4 uv01 : TEXCOORD1;
 
 #if !SHADOW_PASS
-    float3 modelPosition : TEXCOORD2;
     uint triangleID : SV_PrimitiveID;
 #endif
 };
@@ -21,7 +20,7 @@ struct PSInput
 #if !SHADOW_PASS
 struct PSOutput
 {
-    uint4 visibilityBuffer : SV_Target0;
+    uint2 visibilityBuffer : SV_Target0;
 };
 #else
 #define PSOutput void
@@ -75,39 +74,8 @@ PSOutput main(PSInput input)
     }
 
 #if !SHADOW_PASS
-    ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
-    float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
-
-    // Get the VertexIDs of the triangle we're in
-    IndexedDraw draw = _modelDraws[drawCallID];
-    uint3 vertexIDs = GetVertexIDs(input.triangleID, draw, _modelIndices);
-
-    // Load the vertices
-    ModelVertex vertices[3];
-
-    [unroll]
-    for (uint i = 0; i < 3; i++)
-    {
-        vertices[i] = LoadModelVertex(vertexIDs[i]);
-
-        // Load the skinned vertex position (in model-space) if this vertex was animated
-        if (instanceData.boneMatrixOffset != 4294967295)
-        {
-            uint localVertexID = vertexIDs[i] - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
-            uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
-
-            vertices[i].position = LoadAnimatedVertexPosition(animatedVertexID);
-        }
-    }
-
-    // Calculate Barycentrics
-    float2 barycentrics = NBLCalculateBarycentrics(input.modelPosition, float3x3(vertices[0].position.xyz, vertices[1].position.xyz, vertices[2].position.xyz));
-
-    float2 ddxBarycentrics = ddx(barycentrics);
-    float2 ddyBarycentrics = ddy(barycentrics);
-
     PSOutput output;
-    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, instanceRefID, input.triangleID, barycentrics, ddxBarycentrics, ddyBarycentrics);
+    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, instanceRefID, input.triangleID);
 
     return output;
 #endif

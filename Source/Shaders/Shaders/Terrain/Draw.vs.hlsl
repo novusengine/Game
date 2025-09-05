@@ -24,8 +24,6 @@ struct VSOutput
     float4 position : SV_Position;
 #if !EDITOR_PASS && !SHADOW_PASS
     uint instanceID : TEXCOORD0;
-    uint culledInstanceID : TEXCOORD1;
-    float3 worldPosition : TEXCOORD2;
 #endif
 };
 
@@ -53,8 +51,6 @@ VSOutput main(VSInput input)
 
 #if !EDITOR_PASS && !SHADOW_PASS
     output.instanceID = instanceData.globalCellID;
-    output.culledInstanceID = input.culledInstanceID;
-    output.worldPosition = vertex.position;
 #endif
 
     return output;
