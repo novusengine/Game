@@ -164,8 +164,8 @@ public:
         u32 modelVertexOffset = InvalidID;
         u32 animatedVertexOffset = InvalidID;
         f32 opacity = 1.0f;
+        f32 highlightIntensity = 1.0f;
         u32 padding0;
-        u32 padding1;
     };
 
     struct InstanceDataCPU
@@ -239,6 +239,13 @@ public:
         u32 instanceID = 0;
         bool transparent = false;
         f32 opacity = 1.0f;
+    };
+
+    struct ChangeHighlightRequest
+    {
+    public:
+        u32 instanceID = 0;
+        f32 highlightIntensity = 1.0f;
     };
 
     struct ChangeTextureUnitColorRequest
@@ -320,6 +327,7 @@ public:
     void RequestChangeHairTexture(u32 instanceID, Renderer::TextureID textureID);
     void RequestChangeVisibility(u32 instanceID, bool visible);
     void RequestChangeTransparency(u32 instanceID, bool transparent, f32 opacity);
+    void RequestChangeHighlight(u32 instanceID, f32 highlightIntensity);
     void RequestChangeSkybox(u32 instanceID, bool skybox);
 
     bool AddUninstancedAnimationData(u32 modelID, u32& boneMatrixOffset, u32& textureTransformMatrixOffset);
@@ -459,6 +467,9 @@ private:
 
     moodycamel::ConcurrentQueue<ChangeTransparencyRequest> _changeTransparencyRequests;
     std::vector<ChangeTransparencyRequest> _changeTransparencyWork;
+
+    moodycamel::ConcurrentQueue<ChangeHighlightRequest> _changeHighlightRequests;
+    std::vector<ChangeHighlightRequest> _changeHighlightWork;
 
     moodycamel::ConcurrentQueue<ChangeSkyboxRequest> _changeSkyboxRequests;
     std::vector<ChangeSkyboxRequest> _changeSkyboxWork;

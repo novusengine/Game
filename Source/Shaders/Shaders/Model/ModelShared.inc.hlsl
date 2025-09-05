@@ -12,8 +12,8 @@ struct ModelInstanceData
     uint modelVertexOffset;
     uint animatedVertexOffset;
     float opacity;
+    float highlightIntensity;
     uint padding0;
-    uint padding1;
 };
 
 struct ModelDrawCallData
