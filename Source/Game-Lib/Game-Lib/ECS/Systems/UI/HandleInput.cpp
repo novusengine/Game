@@ -13,7 +13,6 @@
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
-#include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/Handlers/UIHandler.h"
 #include "Game-Lib/Scripting/UI/Widget.h"
 #include "Game-Lib/Util/ServiceLocator.h"

@@ -128,6 +128,12 @@ namespace ECS::Systems
 
                 if (modelLoadedEvent.flags.loaded)
                 {
+                    if (model.modelHash == std::numeric_limits<u32>().max())
+                    {
+                        NC_LOG_INFO("Entity \"{0}\" Loaded Model with Invalid ModelHash", name ? name->name : "Unknown");
+                        return;
+                    }
+
                     auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
 #ifdef NC_DEBUG
                     NC_LOG_INFO("Entity \"{0}\" Loaded New Model \"{1}\"", name->name, discoveredModel.name);

@@ -12,21 +12,21 @@
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
-#include "Game-Lib/Scripting/LuaDefines.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Handlers/TriggerEventHandler.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Util/DebugHandler.h>
 
+#include <Meta/Generated/Game/LuaEvent.h>
 #include <Meta/Generated/Shared/NetworkPacket.h>
 #include <Meta/Generated/Shared/ProximityTriggerEnum.h>
 
 #include <Network/Client.h>
 
+#include <Scripting/Zenith.h>
+
 #include <entt/entt.hpp>
 #include <tracy/Tracy.hpp>
-
 
 namespace ECS::Systems
 {
@@ -42,7 +42,7 @@ namespace ECS::Systems
         return (d.x <= half.x) && (d.y <= half.y) && (d.z <= half.z);
     }
 
-    void OnEnter(Scripting::TriggerEventHandler* triggerEventHandler, Scripting::LuaManager* luaManager, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
+    void OnEnter(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
         // This is an optimization so the server doesn't need to repeatedly test all triggers for all players
         if ((trigger.flags & Generated::ProximityTriggerFlagEnum::IsServerAuthorative) != Generated::ProximityTriggerFlagEnum::None)
@@ -52,34 +52,28 @@ namespace ECS::Systems
                 .triggerID = trigger.networkID
             });
         }
-        
+
         // Clientside event
-        Scripting::LuaTriggerEventOnTriggerEnterData eventData =
-        {
+        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnEnter, Generated::LuaTriggerEventDataOnEnter{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
-        };
-        triggerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaTriggerEventEnum::OnEnter), &eventData);
+        });
     }
 
-    void OnExit(Scripting::TriggerEventHandler* triggerEventHandler, Scripting::LuaManager* luaManager, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
+    void OnExit(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
-        Scripting::LuaTriggerEventOnTriggerExitData eventData =
-        {
+        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnExit, Generated::LuaTriggerEventDataOnExit{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
-        };
-        triggerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaTriggerEventEnum::OnExit), &eventData);
+        });
     }
 
-    void OnStay(Scripting::TriggerEventHandler* triggerEventHandler, Scripting::LuaManager* luaManager, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
+    void OnStay(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
-        Scripting::LuaTriggerEventOnTriggerStayData eventData =
-        {
+        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnStay, Generated::LuaTriggerEventDataOnStay{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
-        };
-        triggerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaTriggerEventEnum::OnStay), &eventData);
+        });
     }
 
     void UpdateProximityTriggers::Update(entt::registry& registry, f32 deltaTime)
@@ -108,8 +102,7 @@ namespace ECS::Systems
             return;
         }
 
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto* triggerEventHandler = luaManager->GetLuaHandler<Scripting::TriggerEventHandler*>(Scripting::LuaHandlerType::TriggerEvent);
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         auto& playerAABB = registry.get<Components::WorldAABB>(playerEntity);
         auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
 
@@ -125,11 +118,11 @@ namespace ECS::Systems
             bool wasInside = proximityTrigger.playersInside.contains(playerEntity);
             if (wasInside)
             {
-                OnStay(triggerEventHandler, luaManager, networkState, triggerEntity, proximityTrigger, playerEntity);
+                OnStay(zenith, networkState, triggerEntity, proximityTrigger, playerEntity);
             }
             else
             {
-                OnEnter(triggerEventHandler, luaManager, networkState, triggerEntity, proximityTrigger, playerEntity);
+                OnEnter(zenith, networkState, triggerEntity, proximityTrigger, playerEntity);
 
                 proximityTrigger.playersInside.insert(playerEntity);
                 triggerList.insert(triggerEntity);
@@ -145,7 +138,7 @@ namespace ECS::Systems
         {
             auto& proximityTrigger = registry.get<Components::ProximityTrigger>(triggerEntity);
 
-            OnExit(triggerEventHandler, luaManager, networkState, triggerEntity, proximityTrigger, playerEntity);
+            OnExit(zenith, networkState, triggerEntity, proximityTrigger, playerEntity);
 
             proximityTrigger.playersInside.erase(playerEntity);
             triggerList.erase(triggerEntity);

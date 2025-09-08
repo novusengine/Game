@@ -27,31 +27,41 @@ type GameEvent =
     Updated : number,
     MapLoading : number,
     ChatMessageReceived : number,
-    Count   : number
+    Count : number
 };
 declare GameEvent : GameEvent
 
-type PlayerEvent =
+type UnitEvent =
 {
     Invalid : number,
-    Created : number,
-    Destroyed : number,
-    ContainerCreate  : number,
-    ContainerAddToSlot : number,
-    ContainerRemoveFromSlot : number,
-    ContainerSwapSlots : number,
-    Count   : number
+    Add : number,
+    Remove : number,
+    Count : number
 };
+declare UnitEvent : UnitEvent
+
+type ContainerEvent =
+{
+    Invalid : number,
+    Add  : number,
+    AddToSlot : number,
+    RemoveFromSlot : number,
+    SwapSlots : number,
+    Count : number
+};
+declare ContainerEvent : ContainerEvent
 
 type TriggerEvent =
 {
     Invalid : number,
-    OnEnter  : number,
+    OnEnter : number,
     OnExit : number,
     OnStay : number,
-    Count   : number
+    Count : number
 };
 declare TriggerEvent : TriggerEvent
+
+type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
 
 type ContainerItemEventData =
 {
@@ -59,11 +69,8 @@ type ContainerItemEventData =
     itemID : number,
     itemCount : number
 }
-declare PlayerEvent : PlayerEvent
 
-declare function RegisterGameEvent(event : GameEvent, callback : ((event : GameEvent, ...any) -> any)) : ()
-declare function RegisterPlayerEvent(event : PlayerEvent, callback : ((event : PlayerEvent, ...any) -> any)) : ()
-declare function RegisterTriggerEvent(event : TriggerEvent, callback : ((event : TriggerEvent, ...any) -> any)) : ()
+declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, data : any) -> any)) : ()
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
 declare function GetCurrentMap() : string

@@ -6,13 +6,9 @@
 
 namespace Scripting::Database
 {
-    void DatabaseHandler::Register(lua_State* state)
+    void DatabaseHandler::Register(Zenith* zenith)
     {
-        Item::Register(state);
-        Spell::Register(state);
-    }
-
-    void DatabaseHandler::Clear()
-    {
+        Item::Register(zenith);
+        Spell::Register(zenith);
     }
 }

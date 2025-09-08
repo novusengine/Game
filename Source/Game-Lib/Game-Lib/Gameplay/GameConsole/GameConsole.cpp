@@ -46,10 +46,10 @@ bool MatchesCommand(const std::string& command, const std::string& _searchText)
 
     // Case-insensitive comparison
     auto caseInsensitiveFind = [](const std::string& str, const std::string& sub) -> bool
-        {
-            return std::search(str.begin(), str.end(), sub.begin(), sub.end(),
-                [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }) != str.end();
-        };
+    {
+        return std::search(str.begin(), str.end(), sub.begin(), sub.end(),
+            [](char ch1, char ch2) { return std::tolower(ch1) == std::tolower(ch2); }) != str.end();
+    };
 
     // Prioritize prefix match
     if (command.size() >= _searchText.size() &&
@@ -228,6 +228,85 @@ void GameConsole::Render(f32 deltaTime)
                             _commandHashSuggestions.push_back(command.first);
                         }
                     }
+
+                    auto EditDistance = [&](const std::string_view a, const std::string_view b) -> i32
+                    {
+                        size_t n = a.size(), m = b.size();
+                        std::vector<i32> dp(m + 1);
+                        std::iota(dp.begin(), dp.end(), 0);
+
+                        for (size_t i = 1; i <= n; ++i)
+                        {
+                            i32 prev = dp[0];
+                            dp[0] = static_cast<i32>(i);
+
+                            for (size_t j = 1; j <= m; ++j)
+                            {
+                                i32 temp = dp[j];
+                                if (std::tolower(a[i - 1]) == std::tolower(b[j - 1]))
+                                    dp[j] = prev;
+                                else
+                                    dp[j] = std::min({ dp[j - 1], dp[j], prev }) + 1;
+
+                                prev = temp;
+                            }
+                        }
+
+                        return dp[m];
+                    };
+
+                    auto scoreOne = [&](std::string_view text)
+                    {
+                        // exact match
+                        if (text == _searchText)
+                            return std::tuple{ 0, 0, static_cast<i32>(text.size()) };
+
+                        // prefix match
+                        if (text.size() >= _searchText.size() &&
+                            std::equal(_searchText.begin(), _searchText.end(), text.begin(),
+                                [](char a, char b) { return a == b; }))
+                        {
+                            return std::tuple{ 1, 0, static_cast<int>(text.size()) };
+                        }
+
+                        // substring match
+                        auto pos = text.find(_searchText);
+                        if (pos != std::string::npos)
+                        {
+                            bool leftBoundary = (pos == 0) || (text[pos - 1] == ' ');
+                            bool rightBoundary = (pos + _searchText.size() == text.size()) ||
+                                (text[pos + _searchText.size()] == ' ');
+
+                            i32 boundaryScore = (leftBoundary && rightBoundary) ? 0 : 1;
+
+                            return std::tuple{ 2, boundaryScore * 1000 + static_cast<i32>(pos), static_cast<i32>(text.size()) };
+                        }
+
+                        // fuzzy fallback
+                        i32 dist = EditDistance(text, _searchText);
+                        return std::tuple{ 3, dist, static_cast<i32>(text.size()) };
+                    };
+
+                    auto score = [&](const GameConsoleCommandEntry& cmd)
+                    {
+                        auto best = scoreOne(cmd.name);
+                        for (auto alias : cmd.aliases)
+                        {
+                            auto s = scoreOne(alias);
+                            if (s < best)
+                                best = s;
+                        }
+
+                        return best;
+                    };
+
+                    std::sort(_commandHashSuggestions.begin(), _commandHashSuggestions.end(), [&](u32 a, u32 b)
+                    {
+                        const auto& commandA = commands.at(a);
+                        const auto& commandB = commands.at(b);
+
+                        return score(commandA) < score(commandB);
+                    });
                 }
 
                 _lastSearchTextHash = searchHash;

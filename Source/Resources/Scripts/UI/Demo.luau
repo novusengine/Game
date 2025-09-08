@@ -135,7 +135,7 @@ local function CreateClippingDemo()
     --clippingText:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local stack = UIStack.Get("Menu")
 
     --CreateClippingDemo();
@@ -146,4 +146,4 @@ local function OnGameLoaded(eventID : number, motd : string)
     --UILoadingScreen.SetLoadingScreen(nil)
     --print('Hello from Demo.luau');
 end
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)

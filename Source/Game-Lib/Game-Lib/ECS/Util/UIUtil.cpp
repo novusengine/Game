@@ -15,9 +15,14 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
 #include "Game-Lib/Scripting/Handlers/UIHandler.h"
-#include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/UI/Widget.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Meta/Generated/Game/LuaEnum.h>
+
+#include <Scripting/LuaManager.h>
+#include <Scripting/Zenith.h>
 
 #include <Renderer/Font.h>
 
@@ -612,10 +617,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget);
         }
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value)
@@ -626,10 +631,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, i32 value1, vec2 value2)
@@ -640,10 +645,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value1, value2);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value1, value2);
         }
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, f32 value)
@@ -654,10 +659,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
         void CallLuaEvent(i32 eventRef, Scripting::UI::UIInputEvent inputEvent, Scripting::UI::Widget* widget, vec2 value)
@@ -668,10 +673,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallUIInputEvent(state, eventRef, inputEvent, widget, value);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
         bool CallKeyboardEvent(i32 eventRef, Scripting::UI::Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
@@ -682,10 +687,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            return uiHandler->CallKeyboardInputEvent(state, eventRef, widget, key, actionMask, modifierMask);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            return uiHandler->CallKeyboardInputEvent(zenith, eventRef, widget, key, actionMask, modifierMask);
         }
 
         bool CallKeyboardEvent(i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
@@ -696,10 +701,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            return uiHandler->CallKeyboardInputEvent(state, eventRef, key, actionMask, modifierMask);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            return uiHandler->CallKeyboardInputEvent(zenith, eventRef, key, actionMask, modifierMask);
         }
 
         bool CallUnicodeEvent(i32 eventRef, Scripting::UI::Widget* widget, u32 unicode)
@@ -710,10 +715,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            return uiHandler->CallKeyboardUnicodeEvent(state, eventRef, widget, unicode);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            return uiHandler->CallKeyboardUnicodeEvent(zenith, eventRef, widget, unicode);
         }
 
         void CallSendMessageToChat(i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
@@ -724,10 +729,10 @@ namespace ECS::Util
             }
 
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
-            lua_State* state = luaManager->GetInternalState();
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler*>(Scripting::LuaHandlerType::UI);
-            uiHandler->CallSendMessageToChat(state, eventRef, channel, playerName, text, isOutgoing);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            uiHandler->CallSendMessageToChat(zenith, eventRef, channel, playerName, text, isOutgoing);
         }
         
         std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents)
@@ -736,6 +741,12 @@ namespace ECS::Util
             f32 totalWidth = 0;
             for (char c : text)
             {
+                if (c == '\n')
+                {
+                    totalWidth = 0;
+                    continue;
+                }
+
                 totalWidth += font->CalculateCharWidth(c, fontSize, borderSize);
                 if (totalWidth > maxWidth) // Early break for large text
                 {

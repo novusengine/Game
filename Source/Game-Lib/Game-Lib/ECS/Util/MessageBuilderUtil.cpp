@@ -434,6 +434,17 @@ namespace ECS::Util::MessageBuilder
             return result;
         }
 
+        bool BuildCheatCreatureInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, guid]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::CreatureInfo);
+                buffer->Serialize(guid);
+            });
+
+            return result;
+        }
+
         bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map)
         {
             bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, mapID]()

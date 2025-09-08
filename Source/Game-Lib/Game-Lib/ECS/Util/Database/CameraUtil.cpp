@@ -188,6 +188,7 @@ namespace ECSUtil::Camera
     {
         std::string result = base64::from_base64(base64);
         Bytebuffer buffer = Bytebuffer(result.data(), result.size());
+        buffer.SkipWrite(buffer.size);
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::entity activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>().entity;

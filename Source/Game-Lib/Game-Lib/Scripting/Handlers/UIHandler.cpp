@@ -7,9 +7,6 @@
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
-#include "Game-Lib/Scripting/LuaState.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Scripting/UI/Box.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
@@ -22,60 +19,34 @@
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
 
+#include <Meta/Generated/Game/LuaEvent.h>
+
+#include <Scripting/Zenith.h>
+
 #include <entt/entt.hpp>
 #include <lualib.h>
 
 namespace Scripting::UI
 {
-    static LuaMethod uiMethods[] =
-    {
-        { "RegisterPanelTemplate", UIHandler::RegisterPanelTemplate },
-        { "RegisterTextTemplate", UIHandler::RegisterTextTemplate },
-
-        { "RegisterSendMessageToChatCallback", UIHandler::RegisterSendMessageToChatCallback },
-
-        { "GetCanvas", UIHandler::GetCanvas },
-        { "GetMousePos", UIHandler::GetMousePos },
-
-        // Utils
-        { "GetTextureSize", UIHandler::GetTextureSize },
-        { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
-        { "CalculateTextSize", UIHandler::CalculateTextSize },
-        { "WrapText", UIHandler::WrapText },
-
-        { "FocusWidget", UIHandler::FocusWidget },
-        { "UnfocusWidget", UIHandler::UnfocusWidget },
-        { "IsFocusedWidget", UIHandler::IsFocusedWidget },
-        { "WasJustFocusedWidget", UIHandler::WasJustFocusedWidget },
-        { "GetFocusedWidget", UIHandler::GetFocusedWidget },
-
-        { "IsHoveredWidget", UIHandler::IsHoveredWidget },
-
-        { "DestroyWidget", UIHandler::DestroyWidget },
-
-        // Global input functions
-        { "AddOnKeyboard", UIHandler::AddOnKeyboard }
-    };
-
-    void UIHandler::Register(lua_State* state)
+    void UIHandler::Register(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         registry->ctx().emplace<ECS::Singletons::UISingleton>();
         registry->ctx().emplace<ECS::Singletons::InputSingleton>();
 
         // UI
-        LuaMethodTable::Set(state, uiMethods, "UI");
+        LuaMethodTable::Set(zenith, uiGlobalMethods, "UI");
 
         // Widgets
-        Widget::Register(state);
-        Canvas::Register(state);
-        Panel::Register(state);
-        Text::Register(state);
+        Widget::Register(zenith);
+        Canvas::Register(zenith);
+        Panel::Register(zenith);
+        Text::Register(zenith);
 
         // Utils
-        Box::Register(state);
+        Box::Register(zenith);
 
-        CreateUIInputEventTable(state);
+        CreateUIInputEventTable(zenith);
 
         // Setup Cursor Canvas
         {
@@ -85,7 +56,7 @@ namespace Scripting::UI
         }
     }
 
-    void UIHandler::Clear()
+    void UIHandler::Clear(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         auto& ctx = registry->ctx();
@@ -136,7 +107,7 @@ namespace Scripting::UI
     }
 
     // UI
-    i32 UIHandler::RegisterPanelTemplate(lua_State* state)
+    i32 UIHandler::RegisterPanelTemplate(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -144,51 +115,50 @@ namespace Scripting::UI
         u32 panelTemplateIndex = static_cast<u32>(uiSingleton.panelTemplates.size());
         auto& panelTemplate = uiSingleton.panelTemplates.emplace_back();
 
-        LuaState ctx(state);
-        const char* templateName = ctx.Get(nullptr, 1);
+        const char* templateName = zenith->CheckVal<const char*>(1);
 
-        if (ctx.GetTableField("background", 2))
+        if (zenith->GetTableField("background", 2))
         {
-            panelTemplate.background = ctx.Get("", -1);
+            panelTemplate.background = zenith->CheckVal<const char*>(-1);
             panelTemplate.setFlags.background = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("foreground", 2))
+        if (zenith->GetTableField("foreground", 2))
         {
-            panelTemplate.foreground = ctx.Get("", -1);
+            panelTemplate.foreground = zenith->CheckVal<const char*>(-1);
             panelTemplate.setFlags.foreground = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         panelTemplate.color = Color::White;
-        if (ctx.GetTableField("color", 2))
+        if (zenith->GetTableField("color", 2))
         {
-            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            vec3 color = zenith->CheckVal<vec3>(-1);
             panelTemplate.color = Color(color.x, color.y, color.z);
             panelTemplate.setFlags.color = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("alpha", 2))
+        if (zenith->GetTableField("alpha", 2))
         {
-            f32 alpha = ctx.Get(1.0f, -1);
+            f32 alpha = zenith->CheckVal<f32>(-1);
             panelTemplate.color.a = alpha;
             panelTemplate.setFlags.color = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("cornerRadius", 2))
+        if (zenith->GetTableField("cornerRadius", 2))
         {
-            panelTemplate.cornerRadius = ctx.Get(0.0f, -1);
+            panelTemplate.cornerRadius = zenith->CheckVal<f32>(-1);
             panelTemplate.setFlags.cornerRadius = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("texCoords", 2))
+        if (zenith->GetTableField("texCoords", 2))
         {
-            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, -1);
-            ctx.Pop();
+            ::UI::Box* box = zenith->GetUserData<::UI::Box>(nullptr, -1);
+            zenith->Pop();
 
             if (box)
             {
@@ -202,10 +172,10 @@ namespace Scripting::UI
             panelTemplate.setFlags.texCoords = 1;
         }
 
-        if (ctx.GetTableField("nineSliceCoords", 2))
+        if (zenith->GetTableField("nineSliceCoords", 2))
         {
-            ::UI::Box* box = ctx.GetUserData<::UI::Box>(nullptr, -1);
-            ctx.Pop();
+            ::UI::Box* box = zenith->GetUserData<::UI::Box>(nullptr, -1);
+            zenith->Pop();
 
             if (box)
             {
@@ -220,98 +190,98 @@ namespace Scripting::UI
         }
 
         // Event Templates
-        if (ctx.GetTableField("onClickTemplate", 2))
+        if (zenith->GetTableField("onClickTemplate", 2))
         {
-            panelTemplate.onClickTemplate = ctx.Get("", -1);
-            ctx.Pop();
+            panelTemplate.onClickTemplate = zenith->CheckVal<const char*>(-1);
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("onHoverTemplate", 2))
+        if (zenith->GetTableField("onHoverTemplate", 2))
         {
-            panelTemplate.onHoverTemplate = ctx.Get("", -1);
-            ctx.Pop();
+            panelTemplate.onHoverTemplate = zenith->CheckVal<const char*>(-1);
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("onUninteractableTemplate", 2))
+        if (zenith->GetTableField("onUninteractableTemplate", 2))
         {
-            panelTemplate.onUninteractableTemplate = ctx.Get("", -1);
-            ctx.Pop();
+            panelTemplate.onUninteractableTemplate = zenith->CheckVal<const char*>(-1);
+            zenith->Pop();
         }
 
         // Event Callbacks
-        if (ctx.GetTableField("onMouseDown", 2))
+        if (zenith->GetTableField("onMouseDown", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onMouseDownEvent = ctx.GetRef(-1);
+                panelTemplate.onMouseDownEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onMouseUp", 2))
+        if (zenith->GetTableField("onMouseUp", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onMouseUpEvent = ctx.GetRef(-1);
+                panelTemplate.onMouseUpEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onMouseHeld", 2))
+        if (zenith->GetTableField("onMouseHeld", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onMouseHeldEvent = ctx.GetRef(-1);
+                panelTemplate.onMouseHeldEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
-        }
-
-        if (ctx.GetTableField("onHoverBegin", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                panelTemplate.onHoverBeginEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
-        }
-        if (ctx.GetTableField("onHoverEnd", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                panelTemplate.onHoverEndEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
-        }
-        if (ctx.GetTableField("onHoverHeld", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                panelTemplate.onHoverHeldEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("onFocusBegin", 2))
+        if (zenith->GetTableField("onHoverBegin", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onFocusBeginEvent = ctx.GetRef(-1);
+                panelTemplate.onHoverBeginEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onFocusEnd", 2))
+        if (zenith->GetTableField("onHoverEnd", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onFocusEndEvent = ctx.GetRef(-1);
+                panelTemplate.onHoverEndEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onFocusHeld", 2))
+        if (zenith->GetTableField("onHoverHeld", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                panelTemplate.onFocusHeldEvent = ctx.GetRef(-1);
+                panelTemplate.onHoverHeldEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
+        }
+
+        if (zenith->GetTableField("onFocusBegin", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                panelTemplate.onFocusBeginEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
+        }
+        if (zenith->GetTableField("onFocusEnd", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                panelTemplate.onFocusEndEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
+        }
+        if (zenith->GetTableField("onFocusHeld", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                panelTemplate.onFocusHeldEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
         }
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
@@ -320,7 +290,7 @@ namespace Scripting::UI
         return 0;
     }
 
-    i32 UIHandler::RegisterTextTemplate(lua_State* state)
+    i32 UIHandler::RegisterTextTemplate(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -328,159 +298,158 @@ namespace Scripting::UI
         u32 textTemplateIndex = static_cast<u32>(uiSingleton.textTemplates.size());
         auto& textTemplate = uiSingleton.textTemplates.emplace_back();
 
-        LuaState ctx(state);
-        const char* templateName = ctx.Get(nullptr, 1);
+        const char* templateName = zenith->CheckVal<const char*>(1);
 
         const char* font = nullptr;
-        if (ctx.GetTableField("font", 2))
+        if (zenith->GetTableField("font", 2))
         {
-            textTemplate.font = ctx.Get(nullptr, -1);
+            textTemplate.font = zenith->CheckVal<const char*>(-1);
             textTemplate.setFlags.font = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         f32 size = 0.0f;
-        if (ctx.GetTableField("size", 2))
+        if (zenith->GetTableField("size", 2))
         {
-            textTemplate.size = ctx.Get(0.0f, -1);
+            textTemplate.size = zenith->CheckVal<f32>(-1);
             textTemplate.setFlags.size = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         textTemplate.color = Color::White;
-        if (ctx.GetTableField("color", 2))
+        if (zenith->GetTableField("color", 2))
         {
-            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            vec3 color = zenith->CheckVal<vec3>(-1);
             textTemplate.color = Color(color.x, color.y, color.z);
             textTemplate.setFlags.color = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("borderSize", 2))
+        if (zenith->GetTableField("borderSize", 2))
         {
-            textTemplate.borderSize = ctx.Get(0.0f, -1);
+            textTemplate.borderSize = zenith->CheckVal<f32>(-1);
             textTemplate.setFlags.borderSize = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         textTemplate.borderColor = Color::White;
-        if (ctx.GetTableField("borderColor", 2))
+        if (zenith->GetTableField("borderColor", 2))
         {
-            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            vec3 color = zenith->CheckVal<vec3>(-1);
             textTemplate.borderColor = Color(color.x, color.y, color.z);
             textTemplate.setFlags.borderColor = 1;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         textTemplate.wrapWidth = 0.0f;
-        if (ctx.GetTableField("wrapWidth", 2))
+        if (zenith->GetTableField("wrapWidth", 2))
         {
-            f32 wrapWidth = ctx.Get(0.0f, -1);
+            f32 wrapWidth = zenith->CheckVal<f32>(-1);
             wrapWidth = glm::max(0.0f, wrapWidth);
 
             textTemplate.wrapWidth = wrapWidth;
             textTemplate.setFlags.wrapWidth = wrapWidth > 0.0f;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         textTemplate.wrapIndent = 0;
-        if (ctx.GetTableField("wrapIndent", 2))
+        if (zenith->GetTableField("wrapIndent", 2))
         {
-            i32 wrapIndent = ctx.Get(0, -1);
+            i32 wrapIndent = zenith->CheckVal<i32>(-1);
             wrapIndent = glm::max(0, wrapIndent);
 
             textTemplate.wrapIndent = static_cast<u8>(wrapIndent);
             textTemplate.setFlags.wrapIndent = wrapIndent > 0;
-            ctx.Pop();
+            zenith->Pop();
         }
 
         // Event Templates
-        if (ctx.GetTableField("onClickTemplate", 2))
+        if (zenith->GetTableField("onClickTemplate", 2))
         {
-            textTemplate.onClickTemplate = ctx.Get("", -1);
-            ctx.Pop();
+            textTemplate.onClickTemplate = zenith->CheckVal<const char*>(-1);
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("onHoverTemplate", 2))
+        if (zenith->GetTableField("onHoverTemplate", 2))
         {
-            textTemplate.onHoverTemplate = ctx.Get("", -1);
-            ctx.Pop();
+            textTemplate.onHoverTemplate = zenith->CheckVal<const char*>(-1);
+            zenith->Pop();
         }
 
         // Event Callbacks
-        if (ctx.GetTableField("onMouseDown", 2))
+        if (zenith->GetTableField("onMouseDown", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onMouseDownEvent = ctx.GetRef(-1);
+                textTemplate.onMouseDownEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onMouseUp", 2))
+        if (zenith->GetTableField("onMouseUp", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onMouseUpEvent = ctx.GetRef(-1);
+                textTemplate.onMouseUpEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onMouseHeld", 2))
+        if (zenith->GetTableField("onMouseHeld", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onMouseHeldEvent = ctx.GetRef(-1);
+                textTemplate.onMouseHeldEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
-        }
-
-        if (ctx.GetTableField("onHoverBegin", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                textTemplate.onHoverBeginEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
-        }
-        if (ctx.GetTableField("onHoverEnd", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                textTemplate.onHoverEndEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
-        }
-        if (ctx.GetTableField("onHoverHeld", 2))
-        {
-            if (lua_isfunction(ctx.RawState(), -1))
-            {
-                textTemplate.onHoverHeldEvent = ctx.GetRef(-1);
-            }
-            ctx.Pop();
+            zenith->Pop();
         }
 
-        if (ctx.GetTableField("onFocusBegin", 2))
+        if (zenith->GetTableField("onHoverBegin", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onFocusBeginEvent = ctx.GetRef(-1);
+                textTemplate.onHoverBeginEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onFocusEnd", 2))
+        if (zenith->GetTableField("onHoverEnd", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onFocusEndEvent = ctx.GetRef(-1);
+                textTemplate.onHoverEndEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
         }
-        if (ctx.GetTableField("onFocusHeld", 2))
+        if (zenith->GetTableField("onHoverHeld", 2))
         {
-            if (lua_isfunction(ctx.RawState(), -1))
+            if (zenith->IsFunction(-1))
             {
-                textTemplate.onFocusHeldEvent = ctx.GetRef(-1);
+                textTemplate.onHoverHeldEvent = zenith->GetRef(-1);
             }
-            ctx.Pop();
+            zenith->Pop();
+        }
+
+        if (zenith->GetTableField("onFocusBegin", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                textTemplate.onFocusBeginEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
+        }
+        if (zenith->GetTableField("onFocusEnd", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                textTemplate.onFocusEndEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
+        }
+        if (zenith->GetTableField("onFocusHeld", 2))
+        {
+            if (zenith->IsFunction(-1))
+            {
+                textTemplate.onFocusHeldEvent = zenith->GetRef(-1);
+            }
+            zenith->Pop();
         }
 
         u32 templateNameHash = StringUtils::fnv1a_32(templateName, strlen(templateName));
@@ -489,67 +458,61 @@ namespace Scripting::UI
         return 0;
     }
 
-    i32 UIHandler::RegisterSendMessageToChatCallback(lua_State* state)
+    i32 UIHandler::RegisterSendMessageToChatCallback(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
-        LuaState ctx(state);
-
-        if (lua_isnil(state, 1))
+        if (zenith->IsNil(1))
         {
             // Unregister chat callback
             uiSingleton.sendMessageToChatCallback = -1;
         }
 
-        if (!lua_isfunction(state, 1))
+        if (!zenith->IsFunction(1))
             return 0;
 
-        i32 eventID = ctx.GetRef(1);
+        i32 eventID = zenith->GetRef(1);
         uiSingleton.sendMessageToChatCallback = eventID;
 
         return 0;
     }
 
-    i32 UIHandler::GetCanvas(lua_State* state)
+    i32 UIHandler::GetCanvas(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        const char* canvasIdentifier = ctx.Get(nullptr, 1);
+        const char* canvasIdentifier = zenith->CheckVal<const char*>(1);
         if (canvasIdentifier == nullptr)
         {
-            ctx.Push();
+            zenith->Push();
             return 1;
         }
 
-        i32 posX = ctx.Get(0, 2);
-        i32 posY = ctx.Get(0, 3);
+        i32 posX = zenith->CheckVal<i32>(2);
+        i32 posY = zenith->CheckVal<i32>(3);
 
-        i32 sizeX = ctx.Get(100, 4);
-        i32 sizeY = ctx.Get(100, 5);
+        i32 sizeX = zenith->CheckVal<i32>(4);
+        i32 sizeY = zenith->CheckVal<i32>(5);
 
-        bool isRenderTexture = ctx.Get(false, 6);
+        bool isRenderTexture = zenith->CheckVal<bool>(6);
 
         Widget* widget = nullptr;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(widget, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY), isRenderTexture);
 
-        Widget* pushWidget = ctx.PushUserData<Widget>([](void* x)
+        Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
         {
             // Very sad canvas is gone now :(
         });
         memcpy(pushWidget, widget, sizeof(Widget));
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
         return 1;
     }
 
-    i32 UIHandler::GetMousePos(lua_State* state)
+    i32 UIHandler::GetMousePos(Zenith* zenith)
     {
-        LuaState ctx(state);
-
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
         InputManager* inputManager = ServiceLocator::GetInputManager();
 
@@ -560,23 +523,21 @@ namespace Scripting::UI
         mousePos = mousePos / renderSize;
         mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
-        ctx.Push(mousePos.x);
-        ctx.Push(mousePos.y);
+        zenith->Push(mousePos.x);
+        zenith->Push(mousePos.y);
 
         return 2;
     }
 
-    i32 UIHandler::GetTextureSize(lua_State* state)
+    i32 UIHandler::GetTextureSize(Zenith* zenith)
     {
-        LuaState ctx(state);
-
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
 
-        const char* texturePath = ctx.Get(nullptr, 1);
+        const char* texturePath = zenith->CheckVal<const char*>(1);
         if (texturePath == nullptr)
         {
-            ctx.Push();
-            ctx.Push();
+            zenith->Push();
+            zenith->Push();
         }
         else
         {
@@ -585,53 +546,47 @@ namespace Scripting::UI
             Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
 
             Renderer::TextureBaseDesc baseDesc = renderer->GetTextureDesc(textureID);
-            ctx.Push(baseDesc.width);
-            ctx.Push(baseDesc.height);
+            zenith->Push(baseDesc.width);
+            zenith->Push(baseDesc.height);
         }
 
         return 2;
     }
 
-    i32 UIHandler::PixelsToTexCoord(lua_State* state)
+    i32 UIHandler::PixelsToTexCoord(Zenith* zenith)
     {
-        LuaState ctx(state);
-        
-        i32 posX = ctx.Get(0, 1);
-        i32 posY = ctx.Get(0, 2);
+        i32 posX = zenith->CheckVal<i32>(1);
+        i32 posY = zenith->CheckVal<i32>(2);
 
-        i32 sizeX = ctx.Get(1, 3);
-        i32 sizeY = ctx.Get(1, 4);
+        i32 sizeX = zenith->CheckVal<i32>(3);
+        i32 sizeY = zenith->CheckVal<i32>(4);
 
         sizeX = Math::Max(sizeX - 1, 1);
         sizeY = Math::Max(sizeY - 1, 1);
 
-        ctx.Pop(4);
-
         vec2 texCoord = vec2(static_cast<f32>(posX) / static_cast<f32>(sizeX), static_cast<f32>(posY) / static_cast<f32>(sizeY));
 
-        u32 top = ctx.GetTop();
+        u32 top = zenith->GetTop();
 
-        ctx.Push(texCoord.x);
-        ctx.Push(texCoord.y);
+        zenith->Push(texCoord.x);
+        zenith->Push(texCoord.y);
 
-        top = ctx.GetTop();
+        top = zenith->GetTop();
 
         return 2;
     }
-    i32 UIHandler::CalculateTextSize(lua_State* state)
+    i32 UIHandler::CalculateTextSize(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        const char* text = ctx.Get(nullptr, 1);
+        const char* text = zenith->CheckVal<const char*>(1);
         if (text == nullptr)
         {
-            luaL_error(state, "Expected text as parameter 1");
+            luaL_error(zenith->state, "Expected text as parameter 1");
         }
 
-        const char* templateName = ctx.Get(nullptr, 2);
+        const char* templateName = zenith->CheckVal<const char*>(2);
         if (templateName == nullptr)
         {
-            luaL_error(state, "Expected text template name as parameter 2");
+            luaL_error(zenith->state, "Expected text template name as parameter 2");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
@@ -655,29 +610,27 @@ namespace Scripting::UI
 
         vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
 
-        ctx.Push(textSize.x);
-        ctx.Push(textSize.y);
+        zenith->Push(textSize.x);
+        zenith->Push(textSize.y);
         
         return 2;
     }
 
-    i32 UIHandler::WrapText(lua_State* state)
+    i32 UIHandler::WrapText(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        const char* text = ctx.Get(nullptr, 1);
+        const char* text = zenith->CheckVal<const char*>(1);
         if (text == nullptr)
         {
-            luaL_error(state, "Expected text as parameter 1");
+            luaL_error(zenith->state, "Expected text as parameter 1");
         }
 
-        const char* templateName = ctx.Get(nullptr, 2);
+        const char* templateName = zenith->CheckVal<const char*>(2);
         if (templateName == nullptr)
         {
-            luaL_error(state, "Expected text template name as parameter 2");
+            luaL_error(zenith->state, "Expected text template name as parameter 2");
         }
 
-        f32 wrapWidth = ctx.Get(-1.0f, 3);
+        f32 wrapWidth = zenith->CheckVal<f32>(3);
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -697,29 +650,27 @@ namespace Scripting::UI
         std::string textStr = text;
         if (wrapWidth == 0)
         {
-            ctx.Push(text);
+            zenith->Push(text);
         }
         else
         {
             textStr = ECS::Util::UI::GenWrapText(text, font, textTemplate.size, textTemplate.borderSize, wrapWidth, textTemplate.wrapIndent);
-            ctx.Push(textStr.c_str());
+            zenith->Push(textStr.c_str());
         }
 
         vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
-        ctx.Push(textSize.x);
-        ctx.Push(textSize.y);
+        zenith->Push(textSize.x);
+        zenith->Push(textSize.y);
 
         return 3;
     }
 
-    i32 UIHandler::FocusWidget(lua_State* state)
+    i32 UIHandler::FocusWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
@@ -730,14 +681,12 @@ namespace Scripting::UI
         return 0;
     }
 
-    i32 UIHandler::UnfocusWidget(lua_State* state)
+    i32 UIHandler::UnfocusWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
@@ -753,48 +702,42 @@ namespace Scripting::UI
         return 0;
     }
 
-    i32 UIHandler::IsFocusedWidget(lua_State* state)
+    i32 UIHandler::IsFocusedWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
         bool isFocusedWidget = widget->entity == uiSingleton.focusedEntity;
-        ctx.Push(isFocusedWidget);
+        zenith->Push(isFocusedWidget);
 
         return 1;
     }
 
-    i32 UIHandler::WasJustFocusedWidget(lua_State* state)
+    i32 UIHandler::WasJustFocusedWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
         bool wasJustFocusedWidget = widget->entity == uiSingleton.justFocusedEntity;
-        ctx.Push(wasJustFocusedWidget);
+        zenith->Push(wasJustFocusedWidget);
 
         return 1;
     }
 
-    i32 UIHandler::GetFocusedWidget(lua_State* state)
+    i32 UIHandler::GetFocusedWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
@@ -804,42 +747,37 @@ namespace Scripting::UI
         }
 
         auto& widgetComp = registry->get<ECS::Components::UI::Widget>(uiSingleton.focusedEntity);
+        zenith->PushLightUserData(widgetComp.scriptWidget);
 
-        lua_pushlightuserdata(state, widgetComp.scriptWidget);
-
-        luaL_getmetatable(state, widgetComp.scriptWidget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
+        luaL_getmetatable(zenith->state, widgetComp.scriptWidget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
         return 1;
     }
 
-    i32 UIHandler::IsHoveredWidget(lua_State* state)
+    i32 UIHandler::IsHoveredWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
 
         bool isHoveredWidget = widget->entity == uiSingleton.hoveredEntity;
-        ctx.Push(isHoveredWidget);
+        zenith->Push(isHoveredWidget);
 
         return 1;
     }
 
-    i32 UIHandler::DestroyWidget(lua_State* state)
+    i32 UIHandler::DestroyWidget(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        Widget* widget = ctx.GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Expected widget as parameter 1");
+            luaL_error(zenith->state, "Expected widget as parameter 1");
         }
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
@@ -847,242 +785,227 @@ namespace Scripting::UI
         auto& widgetComp = registry->get<ECS::Components::UI::Widget>(widget->entity);
         if (widgetComp.type != ECS::Components::UI::WidgetType::Panel && widgetComp.type != ECS::Components::UI::WidgetType::Text && widgetComp.type != ECS::Components::UI::WidgetType::Widget)
         {
-            luaL_error(state, "Expected a Panel, Text or Widget for DestroyWidget");
+            luaL_error(zenith->state, "Expected a Panel, Text or Widget for DestroyWidget");
         }
 
         registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
         if (!ECS::Util::UI::DestroyWidget(registry, widget->entity))
         {
-            luaL_error(state, "Failed to destroy widget");
+            luaL_error(zenith->state, "Failed to destroy widget");
         }
 
         return 0;
     }
 
-    i32 UIHandler::AddOnKeyboard(lua_State* state)
+    i32 UIHandler::AddOnKeyboard(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        i32 callback = -1;
-        if (lua_type(state, 1) == LUA_TFUNCTION)
-        {
-            callback = ctx.GetRef(1);
-        }
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         auto& regCtx = registry->ctx();
         auto& inputSingleton = regCtx.get<ECS::Singletons::InputSingleton>();
 
         u32 eventIndex = static_cast<u32>(inputSingleton.globalKeyboardEvents.size());
-        inputSingleton.globalKeyboardEvents.push_back(callback);
+        i32 callback = zenith->IsFunction(1) ? zenith->GetRef(1) : -1;
 
+        inputSingleton.globalKeyboardEvents.push_back(callback);
         inputSingleton.eventIDToKeyboardEventIndex[callback] = eventIndex;
 
         return callback;
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
+    void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 3);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(static_cast<u32>(inputEvent));
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 3);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        ctx.Push(static_cast<u32>(inputEvent));
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
-
-        ctx.PCall(2);
+        zenith->PCall(2);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value)
+    void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 4);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(static_cast<u32>(inputEvent));
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 4);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        ctx.Push(static_cast<u32>(inputEvent));
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
-
-        ctx.Push(value);
-        ctx.PCall(3);
+        zenith->Push(value);
+        zenith->PCall(3);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value1, const vec2& value2)
+    void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value1, const vec2& value2)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 6);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(static_cast<u32>(inputEvent));
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 6);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        ctx.Push(static_cast<u32>(inputEvent));
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
-
-        ctx.Push(value1);
-        ctx.Push(value2.x);
-        ctx.Push(value2.y);
-        ctx.PCall(5);
+        zenith->Push(value1);
+        zenith->Push(value2.x);
+        zenith->Push(value2.y);
+        zenith->PCall(5);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value)
+    void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 4);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(static_cast<u32>(inputEvent));
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 4);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        ctx.Push(static_cast<u32>(inputEvent));
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
-
-        ctx.Push(value);
-        ctx.PCall(3);
+        zenith->Push(value);
+        zenith->PCall(3);
     }
 
-    void UIHandler::CallUIInputEvent(lua_State* state, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value)
+    void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 5);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(static_cast<u32>(inputEvent));
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 5);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        ctx.Push(static_cast<u32>(inputEvent));
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
-
-        ctx.Push(value.x);
-        ctx.Push(value.y);
-        ctx.PCall(4);
+        zenith->Push(value.x);
+        zenith->Push(value.y);
+        zenith->PCall(4);
     }
 
-    bool UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
+    bool UIHandler::CallKeyboardInputEvent(Zenith* zenith, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 7);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 7);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
+        zenith->Push(static_cast<i32>(UIKeyboardEvent::Key));
+        zenith->Push(key);
+        zenith->Push(actionMask);
+        zenith->Push(modifierMask);
 
-        ctx.Push(static_cast<i32>(UIKeyboardEvent::Key));
-        ctx.Push(key);
-        ctx.Push(actionMask);
-        ctx.Push(modifierMask);
-
-        ctx.PCall(5, 1);
-        bool result = ctx.Get(false);
-        ctx.Pop();
+        zenith->PCall(5, 1);
+        bool result = zenith->CheckVal<bool>(1);
+        zenith->Pop();
 
         return result; // Return if we should consume the event or not
     }
 
-    bool UIHandler::CallKeyboardInputEvent(lua_State* state, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
+    bool UIHandler::CallKeyboardInputEvent(Zenith* zenith, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
     {
-        LuaState ctx(state);
-        
-        lua_checkstack(state, 6);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        lua_checkstack(zenith->state, 6);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
-        ctx.Push(static_cast<i32>(UIKeyboardEvent::Key));
-        ctx.Push(key);
-        ctx.Push(actionMask);
-        ctx.Push(modifierMask);
+        zenith->Push(static_cast<i32>(UIKeyboardEvent::Key));
+        zenith->Push(key);
+        zenith->Push(actionMask);
+        zenith->Push(modifierMask);
 
-        ctx.PCall(4 , 1);
-        bool result = ctx.Get(false);
-        ctx.Pop();
+        zenith->PCall(4 , 1);
+        bool result = zenith->CheckVal<bool>(1);
+        zenith->Pop();
 
         return result; // Return if we should consume the event or not
     }
 
-    bool UIHandler::CallKeyboardUnicodeEvent(lua_State* state, i32 eventRef, Widget* widget, u32 unicode)
+    bool UIHandler::CallKeyboardUnicodeEvent(Zenith* zenith, i32 eventRef, Widget* widget, u32 unicode)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 5);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->PushLightUserData(widget);
 
-        lua_checkstack(state, 5);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
-        lua_pushlightuserdata(state, widget);
+        luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
+        lua_setmetatable(zenith->state, -2);
 
-        luaL_getmetatable(state, widget->metaTableName.c_str());
-        lua_setmetatable(state, -2);
+        zenith->Push(static_cast<i32>(UIKeyboardEvent::Unicode));
+        zenith->Push(unicode);
 
-        ctx.Push(static_cast<i32>(UIKeyboardEvent::Unicode));
-        ctx.Push(unicode);
-
-        ctx.PCall(3, 1);
-        bool result = ctx.Get(false);
-        ctx.Pop();
+        zenith->PCall(3, 1);
+        bool result = zenith->CheckVal<bool>(1);
+        zenith->Pop();
 
         return result; // Return if widget should consume the event or not
     }
 
-    void UIHandler::CallSendMessageToChat(lua_State* state, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
+    void UIHandler::CallSendMessageToChat(Zenith* zenith, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
     {
-        LuaState ctx(state);
+        lua_checkstack(zenith->state, 5);
+        zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
-        lua_checkstack(state, 5);
-        ctx.GetRawI(LUA_REGISTRYINDEX, eventRef);
+        zenith->Push(channel);
+        zenith->Push(playerName);
+        zenith->Push(text);
+        zenith->Push(isOutgoing);
 
-        ctx.Push(channel);
-        ctx.Push(playerName);
-        ctx.Push(text);
-        ctx.Push(isOutgoing);
-
-        ctx.PCall(4);
+        zenith->PCall(4);
     }
 
-    void UIHandler::CreateUIInputEventTable(lua_State* state)
+    void UIHandler::CreateUIInputEventTable(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        ctx.CreateTableAndPopulate("UIInputEvent", [&]()
         {
-            ctx.SetTable("MouseDown", static_cast<u32>(UIInputEvent::MouseDown));
-            ctx.SetTable("MouseUp", static_cast<u32>(UIInputEvent::MouseUp));
-            ctx.SetTable("MouseHeld", static_cast<u32>(UIInputEvent::MouseHeld));
+            zenith->CreateTable("UIInputEvent");
 
-            ctx.SetTable("HoverBegin", static_cast<u32>(UIInputEvent::HoverBegin));
-            ctx.SetTable("HoverEnd", static_cast<u32>(UIInputEvent::HoverEnd));
-            ctx.SetTable("HoverHeld", static_cast<u32>(UIInputEvent::HoverHeld));
+            zenith->AddTableField("MouseDown", static_cast<u32>(UIInputEvent::MouseDown));
+            zenith->AddTableField("MouseUp", static_cast<u32>(UIInputEvent::MouseUp));
+            zenith->AddTableField("MouseHeld", static_cast<u32>(UIInputEvent::MouseHeld));
 
-            ctx.SetTable("FocusBegin", static_cast<u32>(UIInputEvent::FocusBegin));
-            ctx.SetTable("FocusEnd", static_cast<u32>(UIInputEvent::FocusEnd));
-            ctx.SetTable("FocusHeld", static_cast<u32>(UIInputEvent::FocusHeld));
-        });
+            zenith->AddTableField("HoverBegin", static_cast<u32>(UIInputEvent::HoverBegin));
+            zenith->AddTableField("HoverEnd", static_cast<u32>(UIInputEvent::HoverEnd));
+            zenith->AddTableField("HoverHeld", static_cast<u32>(UIInputEvent::HoverHeld));
 
-        ctx.CreateTableAndPopulate("UIKeyboardEvent", [&]()
+            zenith->AddTableField("FocusBegin", static_cast<u32>(UIInputEvent::FocusBegin));
+            zenith->AddTableField("FocusEnd", static_cast<u32>(UIInputEvent::FocusEnd));
+            zenith->AddTableField("FocusHeld", static_cast<u32>(UIInputEvent::FocusHeld));
+
+            zenith->Pop();
+        }
+
         {
-            ctx.SetTable("Key", static_cast<u32>(UIKeyboardEvent::Key));
-            ctx.SetTable("Unicode", static_cast<u32>(UIKeyboardEvent::Unicode));
-        });
+            zenith->CreateTable("UIKeyboardEvent");
 
-        // TODO: Move these to something related to input in the future
-        ctx.CreateTableAndPopulate("InputAction", [&]()
-        {
-            ctx.SetTable("Press", static_cast<u32>(KeybindAction::Press));
-            ctx.SetTable("Release", static_cast<u32>(KeybindAction::Release));
-            ctx.SetTable("Click", static_cast<u32>(KeybindAction::Click));
-        });
+            zenith->AddTableField("Key", static_cast<u32>(UIKeyboardEvent::Key));
+            zenith->AddTableField("Unicode", static_cast<u32>(UIKeyboardEvent::Unicode));
 
-        ctx.CreateTableAndPopulate("InputModifier", [&]()
+            zenith->Pop();
+        }
+
         {
-            ctx.SetTable("Invalid", static_cast<u32>(KeybindModifier::Invalid));
-            ctx.SetTable("None", static_cast<u32>(KeybindModifier::ModNone));
-            ctx.SetTable("Shift", static_cast<u32>(KeybindModifier::Shift));
-            ctx.SetTable("Ctrl", static_cast<u32>(KeybindModifier::Ctrl));
-            ctx.SetTable("Alt", static_cast<u32>(KeybindModifier::Alt));
-            ctx.SetTable("Any", static_cast<u32>(KeybindModifier::Any));
-        });
+            // TODO: Move these to something related to input in the future
+            zenith->CreateTable("InputAction");
+
+            zenith->AddTableField("Press", static_cast<u32>(KeybindAction::Press));
+            zenith->AddTableField("Release", static_cast<u32>(KeybindAction::Release));
+            zenith->AddTableField("Click", static_cast<u32>(KeybindAction::Click));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputModifier");
+
+            zenith->AddTableField("Invalid", static_cast<u32>(KeybindModifier::Invalid));
+            zenith->AddTableField("None", static_cast<u32>(KeybindModifier::ModNone));
+            zenith->AddTableField("Shift", static_cast<u32>(KeybindModifier::Shift));
+            zenith->AddTableField("Ctrl", static_cast<u32>(KeybindModifier::Ctrl));
+            zenith->AddTableField("Alt", static_cast<u32>(KeybindModifier::Alt));
+            zenith->AddTableField("Any", static_cast<u32>(KeybindModifier::Any));
+
+            zenith->Pop();
+        }
     }
 }

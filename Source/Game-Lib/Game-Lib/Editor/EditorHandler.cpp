@@ -17,11 +17,12 @@
 #include "Viewport.h"
 #include "ItemEditor.h"
 
-#include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
+
+#include <Scripting/LuaManager.h>
 
 #include <GLFW/glfw3.h>
 

@@ -1,19 +1,24 @@
 #pragma once
-#include "Game-Lib/Scripting/LuaDefines.h"
-
 #include <Base/Types.h>
+
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
 
 namespace Scripting::Database
 {
     struct Spell
     {
     public:
-        static void Register(lua_State* state);
-
+        static void Register(Zenith* zenith);
     };
 
     namespace SpellMethods
     {
-        i32 GetSpellInfo(lua_State* state);
+        i32 GetSpellInfo(Zenith* zenith);
+    };
+
+    static LuaRegister<> spellGlobalFunctions[] =
+    {
+        { "GetSpellInfo", SpellMethods::GetSpellInfo }
     };
 }

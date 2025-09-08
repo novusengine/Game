@@ -192,11 +192,11 @@ local function CreateLoginScreen(stack)
     --stack:Push("LoginScreen");
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local stack = UIStack.Get("Menu");
     RegisterTemplates();
 
     CreateLoginScreen(stack);
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)

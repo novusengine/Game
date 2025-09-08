@@ -8,54 +8,45 @@
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
-#include "Game-Lib/Scripting/LuaMethodTable.h"
-#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Meta/Generated/Shared/NetworkPacket.h>
 
 #include <Network/Client.h>
 
+#include <Scripting/Zenith.h>
+
 #include <entt/entt.hpp>
 
 namespace Scripting::Game
 {
-    static LuaMethod containerStaticFunctions[] =
-    {
-        { "RequestSwapSlots", ContainerMethods::RequestSwapSlots },
-        { "GetContainerItems", ContainerMethods::GetContainerItems }
-    };
 
-    void Container::Register(lua_State* state)
+    void Container::Register(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        LuaMethodTable::Set(state, containerStaticFunctions, "Container");
+        LuaMethodTable::Set(zenith, containerGlobalFunctions, "Container");
     }
 
     namespace ContainerMethods
     {
-        i32 RequestSwapSlots(lua_State* state)
+        i32 RequestSwapSlots(Zenith* zenith)
         {
-            LuaState ctx(state);
-
-            u32 srcContainerIndex = ctx.Get(0, 1) - 1;
-            u32 destContainerIndex = ctx.Get(0, 2) - 1;
-            u32 srcSlotIndex = ctx.Get(0, 3) - 1;
-            u32 destSlotIndex = ctx.Get(0, 4) - 1;
+            u32 srcContainerIndex = zenith->CheckVal<u32>(1) - 1;
+            u32 destContainerIndex = zenith->CheckVal<u32>(2) - 1;
+            u32 srcSlotIndex = zenith->CheckVal<u32>(3) - 1;
+            u32 destSlotIndex = zenith->CheckVal<u32>(4) - 1;
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
             auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
             if (!networkState.client->IsConnected())
             {
-                ctx.Push(false);
+                zenith->Push(false);
                 return 1;
             }
 
             if (srcContainerIndex > 5 || destContainerIndex > 5)
             {
-                ctx.Push(false);
+                zenith->Push(false);
                 return 1;
             }
 
@@ -66,7 +57,7 @@ namespace Scripting::Game
             {
                 if (srcSlotIndex == destSlotIndex)
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
 
@@ -80,13 +71,13 @@ namespace Scripting::Game
                     ObjectGUID containerGUID = characterSingleton.containers[srcContainerIndex];
                     if (!containerGUID.IsValid())
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
                     if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
@@ -95,14 +86,14 @@ namespace Scripting::Game
 
                 if (!registry->valid(containerEntity))
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
 
                 auto& container = registry->get<ECS::Components::Container>(containerEntity);
                 if (srcSlotIndex >= container.numSlots || destSlotIndex >= container.numSlots)
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
 
@@ -110,7 +101,7 @@ namespace Scripting::Game
 
                 if (!srcObjectGUID.IsValid())
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
             }
@@ -128,13 +119,13 @@ namespace Scripting::Game
                     ObjectGUID containerGUID = characterSingleton.containers[srcContainerIndex];
                     if (!containerGUID.IsValid())
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
                     if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
@@ -150,13 +141,13 @@ namespace Scripting::Game
                     ObjectGUID containerGUID = characterSingleton.containers[destContainerIndex];
                     if (!containerGUID.IsValid())
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
                     if (!networkState.networkIDToEntity.contains(containerGUID))
                     {
-                        ctx.Push(false);
+                        zenith->Push(false);
                         return 1;
                     }
 
@@ -165,7 +156,7 @@ namespace Scripting::Game
 
                 if (!registry->valid(srcContainerEntity) || !registry->valid(destContainerEntity))
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
 
@@ -173,14 +164,14 @@ namespace Scripting::Game
                 auto& destContainer = registry->get<ECS::Components::Container>(destContainerEntity);
                 if (srcSlotIndex >= srcContainer.numSlots || destSlotIndex >= destContainer.numSlots)
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
 
                 ObjectGUID srcObjectGUID = srcContainer.items[srcSlotIndex];
                 if (!srcObjectGUID.IsValid())
                 {
-                    ctx.Push(false);
+                    zenith->Push(false);
                     return 1;
                 }
             }
@@ -192,15 +183,13 @@ namespace Scripting::Game
                 .dstSlot = static_cast<u8>(destSlotIndex)
             });
 
-            ctx.Push(result);
+            zenith->Push(result);
             return 1;
         }
 
-        i32 GetContainerItems(lua_State* state)
+        i32 GetContainerItems(Zenith* zenith)
         {
-            LuaState ctx(state);
-
-            u32 containerIndex = ctx.Get(0, 1) - 1;
+            u32 containerIndex = zenith->CheckVal<u32>(1) - 1;
             if (containerIndex >= 6)
                 return 0;
 
@@ -236,34 +225,32 @@ namespace Scripting::Game
 
             auto& container = registry->get<ECS::Components::Container>(containerEntity);
 
-            ctx.Push((u32)container.numSlots);
-            ctx.CreateTableAndPopulate([&]()
+            zenith->Push((u32)container.numSlots);
+
+            zenith->CreateTable();
+
+            u32 numItems = static_cast<u32>(container.items.size());
+
+            for (u32 i = 0; i < numItems; i++)
             {
-                u32 numItems = static_cast<u32>(container.items.size());
+                const auto& containerItemGUID = container.items[i];
+                if (!containerItemGUID.IsValid())
+                    continue;
 
-                for (u32 i = 0; i < numItems; i++)
-                {
-                    const auto& containerItemGUID = container.items[i];
-                    if (!containerItemGUID.IsValid())
-                        continue;
+                if (!networkState.networkIDToEntity.contains(containerItemGUID))
+                    continue;
 
-                    if (!networkState.networkIDToEntity.contains(containerItemGUID))
-                        continue;
+                entt::entity itemEntity = networkState.networkIDToEntity[containerItemGUID];
+                const auto& item = registry->get<ECS::Components::Item>(itemEntity);
 
-                    entt::entity itemEntity = networkState.networkIDToEntity[containerItemGUID];
-                    const auto& item = registry->get<ECS::Components::Item>(itemEntity);
+                zenith->CreateTable();
+                zenith->AddTableField("slot", i + 1);
+                zenith->AddTableField("itemID", item.itemID);
+                zenith->AddTableField("count", item.count);
+                zenith->AddTableField("durability", item.durability);
 
-                    ctx.CreateTableAndPopulate([&ctx, &item, i]()
-                    {
-                        ctx.SetTable("slot", i + 1);
-                        ctx.SetTable("itemID", item.itemID);
-                        ctx.SetTable("count", item.count);
-                        ctx.SetTable("durability", item.durability);
-                    });
-
-                    ctx.SetTable(i + 1);
-                }
-            });
+                zenith->SetTableKey(i + 1);
+            }
 
             return 2;
         }

@@ -57,8 +57,8 @@ local GetItemInfo = Item.GetItemInfo
 -- Constants for UI layout
 local UI_CONSTANTS =
 {
-    PANEL_POS_X = 300,
-    PANEL_POS_Y = 300,
+    PANEL_POS_X = 20,
+    PANEL_POS_Y = 350,
     PANEL_WIDTH = 300,
     PANEL_HEIGHT = 450,
     PANEL_LAYER = 0,
@@ -295,7 +295,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
     local canvas = UI.GetCanvas("CharacterEquipment", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
 
     local equipmentBag = Bag.new(nil, numSlots, nil, function(container : Bag)
-        local mainPanel = canvas:NewPanel(300, UI_CONSTANTS.PANEL_POS_X, UI_CONSTANTS.PANEL_POS_Y, UI_CONSTANTS.PANEL_HEIGHT, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.PANEL_TEMPLATE)
+        local mainPanel = canvas:NewPanel(UI_CONSTANTS.PANEL_POS_X, UI_CONSTANTS.PANEL_POS_Y, UI_CONSTANTS.PANEL_WIDTH, UI_CONSTANTS.PANEL_HEIGHT, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.PANEL_TEMPLATE)
         container.panel = mainPanel
 
         container.panel:SetAnchor(0.0, 0.0);
@@ -319,7 +319,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
     PlayerContainers.SetEquipmentBag(equipmentBag)
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local numSlots, baseContainerItems = Container.GetContainerItems(MIN_CONTAINER_INDEX)
     if (numSlots == nil or baseContainerItems == nil) then
         return
@@ -346,28 +346,28 @@ local function OnGameLoaded(eventID : number, motd : string)
         PlayerContainers.SetBag(bag.containerIndex - 1, bag)
     end
 end
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)
 
-local function OnContainerCreate(eventID : number, index : number, numSlots : number, itemID : number)
-    if index < MIN_CONTAINER_INDEX or index > MAX_CONTAINER_INDEX then
+local function OnContainerCreate(eventID : number, data : any)
+    if data.index < MIN_CONTAINER_INDEX or data.index > MAX_CONTAINER_INDEX then
         return
     end
     -- TODO : Check if we are overriding an existing container, in which case we need to clean it up
 
-    if index == MIN_CONTAINER_INDEX then
+    if data.index == MIN_CONTAINER_INDEX then
         local equipmentBag = PlayerContainers.GetEquipmentBag()
         if (equipmentBag == nil) then
-            CreateEquipmentBag(numSlots)
+            CreateEquipmentBag(data.numSlots)
         else
             for i = 1, equipmentBag.totalSlots do
                 equipmentBag:ClearSlot(i)
             end
         end
     else
-        local bag = PlayerContainers.GetBag(index - 1)
+        local bag = PlayerContainers.GetBag(data.index - 1)
         if (bag == nil) then
-            bag = Bag.new(nil, numSlots)
-            bag.containerIndex = index
+            bag = Bag.new(nil, data.numSlots)
+            bag.containerIndex = data.index
             bag.panel:SetVisible(false)
 
             PlayerContainers.SetBag(bag.containerIndex - 1, bag)
@@ -378,42 +378,42 @@ local function OnContainerCreate(eventID : number, index : number, numSlots : nu
         end
     end
 end
-RegisterPlayerEvent(PlayerEvent.ContainerCreate, OnContainerCreate)
+RegisterEvent(ContainerEvent.Add, OnContainerCreate)
 
-local function OnContainerAddToSlot(eventID : number, index : number, slot : number, itemID : number, count : number)
-    if index < MIN_CONTAINER_INDEX or index > MAX_CONTAINER_INDEX then
+local function OnContainerAddToSlot(eventID : number, data : any)
+    if data.containerIndex < MIN_CONTAINER_INDEX or data.containerIndex > MAX_CONTAINER_INDEX then
         return
     end
 
-    local container = if index == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(index - 1)
-    container:AddToSlot(itemID, count, slot)
+    local container = if data.containerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(data.containerIndex - 1)
+    container:AddToSlot(data.itemID, data.count, data.slotIndex)
 end
-RegisterPlayerEvent(PlayerEvent.ContainerAddToSlot, OnContainerAddToSlot)
+RegisterEvent(ContainerEvent.AddToSlot, OnContainerAddToSlot)
 
-local function OnContainerRemoveFromSlot(eventID : number, index : number, slot : number)
-    if index < MIN_CONTAINER_INDEX or index > MAX_CONTAINER_INDEX then
+local function OnContainerRemoveFromSlot(eventID : number, data : any)
+    if data.containerIndex < MIN_CONTAINER_INDEX or data.containerIndex > MAX_CONTAINER_INDEX then
         return
     end
 
-    local container = if index == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(index - 1)
-    container:AddToSlot(0, -1, slot)
+    local container = if data.containerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(data.containerIndex - 1)
+    container:AddToSlot(0, -1, data.slotIndex)
 end
-RegisterPlayerEvent(PlayerEvent.ContainerRemoveFromSlot, OnContainerRemoveFromSlot)
+RegisterEvent(ContainerEvent.RemoveFromSlot, OnContainerRemoveFromSlot)
 
-local function OnContainerSwapSlots(eventID : number, srcContainerIndex : number, destContainerIndex : number, srcSlotIndex : number, destSlotIndex : number)
-    if srcContainerIndex < MIN_CONTAINER_INDEX or srcContainerIndex > MAX_CONTAINER_INDEX then
-        return
-    end
-    
-    if destContainerIndex < MIN_CONTAINER_INDEX or destContainerIndex > MAX_CONTAINER_INDEX then
+local function OnContainerSwapSlots(eventID : number, data : any)
+    if data.srcContainerIndex < MIN_CONTAINER_INDEX or data.srcContainerIndex > MAX_CONTAINER_INDEX then
         return
     end
 
-    local srcContainer = if srcContainerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(srcContainerIndex - 1)
-    local destContainer = if destContainerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(destContainerIndex - 1)
+    if data.destContainerIndex < MIN_CONTAINER_INDEX or data.destContainerIndex > MAX_CONTAINER_INDEX then
+        return
+    end
 
-    srcContainer:UnlockItem(srcSlotIndex)
-    destContainer:UnlockItem(destSlotIndex)
-    srcContainer:SwapSlots(destContainer, srcSlotIndex, destSlotIndex)
+    local srcContainer = if data.srcContainerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(data.srcContainerIndex - 1)
+    local destContainer = if data.destContainerIndex == MIN_CONTAINER_INDEX then PlayerContainers.GetEquipmentBag() else PlayerContainers.GetBag(data.destContainerIndex - 1)
+
+    srcContainer:UnlockItem(data.srcSlotIndex)
+    destContainer:UnlockItem(data.destSlotIndex)
+    srcContainer:SwapSlots(destContainer, data.srcSlotIndex, data.destSlotIndex)
 end
-RegisterPlayerEvent(PlayerEvent.ContainerSwapSlots, OnContainerSwapSlots)
+RegisterEvent(ContainerEvent.SwapSlots, OnContainerSwapSlots)

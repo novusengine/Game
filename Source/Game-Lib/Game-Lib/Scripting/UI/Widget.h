@@ -1,8 +1,8 @@
 #pragma once
-#include "Game-Lib/Scripting/LuaDefines.h"
-#include "Game-Lib/Scripting/LuaMethodTable.h"
-
 #include <Base/Types.h>
+
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
 
 #include <entt/fwd.hpp>
 
@@ -19,7 +19,7 @@ namespace Scripting::UI
     struct Widget
     {
     public:
-        static void Register(lua_State* state);
+        static void Register(Zenith* zenith);
 
     public:
         WidgetType type;
@@ -31,12 +31,12 @@ namespace Scripting::UI
 
     namespace WidgetCreationMethods
     {
-        i32 CreatePanel(lua_State* state);
-        i32 CreateText(lua_State* state);
-        i32 CreateWidget(lua_State* state);
+        i32 CreatePanel(Zenith* zenith, Widget* parent);
+        i32 CreateText(Zenith* zenith, Widget* parent);
+        i32 CreateWidget(Zenith* zenith, Widget* parent);
     };
 
-    static LuaMethod widgetCreationMethods[] =
+    static LuaRegister<Widget> widgetCreationMethods[] =
     {
         { "NewPanel", WidgetCreationMethods::CreatePanel },
         { "NewText", WidgetCreationMethods::CreateText },
@@ -45,56 +45,56 @@ namespace Scripting::UI
 
     namespace WidgetMethods
     {
-        i32 SetEnabled(lua_State* state);
-        i32 SetVisible(lua_State* state);
-        i32 SetInteractable(lua_State* state);
-        i32 SetFocusable(lua_State* state);
+        i32 SetEnabled(Zenith* zenith, Widget* widget);
+        i32 SetVisible(Zenith* zenith, Widget* widget);
+        i32 SetInteractable(Zenith* zenith, Widget* widget);
+        i32 SetFocusable(Zenith* zenith, Widget* widget);
 
-        i32 IsEnabled(lua_State* state);
-        i32 IsVisible(lua_State* state);
-        i32 IsInteractable(lua_State* state);
-        i32 IsFocusable(lua_State* state);
+        i32 IsEnabled(Zenith* zenith, Widget* widget);
+        i32 IsVisible(Zenith* zenith, Widget* widget);
+        i32 IsInteractable(Zenith* zenith, Widget* widget);
+        i32 IsFocusable(Zenith* zenith, Widget* widget);
 
-        i32 GetParent(lua_State* state);
-        i32 GetChildren(lua_State* state);
-        i32 GetChildrenRecursive(lua_State* state);
+        i32 GetParent(Zenith* zenith, Widget* widget);
+        i32 GetChildren(Zenith* zenith, Widget* widget);
+        i32 GetChildrenRecursive(Zenith* zenith, Widget* widget);
 
-        i32 GetAnchor(lua_State* state);
-        i32 GetRelativePoint(lua_State* state);
+        i32 GetAnchor(Zenith* zenith, Widget* widget);
+        i32 GetRelativePoint(Zenith* zenith, Widget* widget);
 
-        i32 SetAnchor(lua_State* state);
-        i32 SetRelativePoint(lua_State* state);
+        i32 SetAnchor(Zenith* zenith, Widget* widget);
+        i32 SetRelativePoint(Zenith* zenith, Widget* widget);
 
-        i32 IsClipChildren(lua_State* state);
-        i32 SetClipChildren(lua_State* state);
-        i32 GetClipRect(lua_State* state);
-        i32 SetClipRect(lua_State* state);
-        i32 GetClipMaskTexture(lua_State* state);
-        i32 SetClipMaskTexture(lua_State* state);
+        i32 IsClipChildren(Zenith* zenith, Widget* widget);
+        i32 SetClipChildren(Zenith* zenith, Widget* widget);
+        i32 GetClipRect(Zenith* zenith, Widget* widget);
+        i32 SetClipRect(Zenith* zenith, Widget* widget);
+        i32 GetClipMaskTexture(Zenith* zenith, Widget* widget);
+        i32 SetClipMaskTexture(Zenith* zenith, Widget* widget);
 
-        i32 GetPos(lua_State* state);
-        i32 GetPosX(lua_State* state);
-        i32 GetPosY(lua_State* state);
+        i32 GetPos(Zenith* zenith, Widget* widget);
+        i32 GetPosX(Zenith* zenith, Widget* widget);
+        i32 GetPosY(Zenith* zenith, Widget* widget);
 
-        i32 SetPos(lua_State* state);
-        i32 SetPosX(lua_State* state);
-        i32 SetPosY(lua_State* state);
+        i32 SetPos(Zenith* zenith, Widget* widget);
+        i32 SetPosX(Zenith* zenith, Widget* widget);
+        i32 SetPosY(Zenith* zenith, Widget* widget);
 
         // TODO: Rename these to GetPos/SetPos, and the previous ones to GetLocalPos/SetLocalPos
-        i32 GetWorldPos(lua_State* state);
-        i32 GetWorldPosX(lua_State* state);
-        i32 GetWorldPosY(lua_State* state);
+        i32 GetWorldPos(Zenith* zenith, Widget* widget);
+        i32 GetWorldPosX(Zenith* zenith, Widget* widget);
+        i32 GetWorldPosY(Zenith* zenith, Widget* widget);
 
-        i32 SetWorldPos(lua_State* state);
-        i32 SetWorldPosX(lua_State* state);
-        i32 SetWorldPosY(lua_State* state);
+        i32 SetWorldPos(Zenith* zenith, Widget* widget);
+        i32 SetWorldPosX(Zenith* zenith, Widget* widget);
+        i32 SetWorldPosY(Zenith* zenith, Widget* widget);
 
-        i32 SetPos3D(lua_State* state);
+        i32 SetPos3D(Zenith* zenith, Widget* widget);
 
-        i32 ForceRefresh(lua_State* state);
+        i32 ForceRefresh(Zenith* zenith, Widget* widget);
     }
 
-    static LuaMethod widgetMethods[] =
+    static LuaRegister<Widget> widgetMethods[] =
     {
         { "SetEnabled", WidgetMethods::SetEnabled },
         { "SetVisible", WidgetMethods::SetVisible },
@@ -146,23 +146,23 @@ namespace Scripting::UI
 
     namespace WidgetInputMethods
     {
-        i32 SetOnMouseDown(lua_State* state);
-        i32 SetOnMouseUp(lua_State* state);
-        i32 SetOnMouseHeld(lua_State* state);
-        i32 SetOnMouseScroll(lua_State* state);
+        i32 SetOnMouseDown(Zenith* zenith, Widget* widget);
+        i32 SetOnMouseUp(Zenith* zenith, Widget* widget);
+        i32 SetOnMouseHeld(Zenith* zenith, Widget* widget);
+        i32 SetOnMouseScroll(Zenith* zenith, Widget* widget);
 
-        i32 SetOnHoverBegin(lua_State* state);
-        i32 SetOnHoverEnd(lua_State* state);
-        i32 SetOnHoverHeld(lua_State* state);
+        i32 SetOnHoverBegin(Zenith* zenith, Widget* widget);
+        i32 SetOnHoverEnd(Zenith* zenith, Widget* widget);
+        i32 SetOnHoverHeld(Zenith* zenith, Widget* widget);
 
-        i32 SetOnFocusBegin(lua_State* state);
-        i32 SetOnFocusEnd(lua_State* state);
-        i32 SetOnFocusHeld(lua_State* state);
+        i32 SetOnFocusBegin(Zenith* zenith, Widget* widget);
+        i32 SetOnFocusEnd(Zenith* zenith, Widget* widget);
+        i32 SetOnFocusHeld(Zenith* zenith, Widget* widget);
 
-        i32 SetOnKeyboard(lua_State* state);
+        i32 SetOnKeyboard(Zenith* zenith, Widget* widget);
     }
 
-    static LuaMethod widgetInputMethods[] =
+    static LuaRegister<Widget> widgetInputMethods[] =
     {
         { "SetOnMouseDown", WidgetInputMethods::SetOnMouseDown },
         { "SetOnMouseUp", WidgetInputMethods::SetOnMouseUp },

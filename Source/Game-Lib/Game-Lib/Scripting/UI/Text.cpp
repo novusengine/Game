@@ -7,51 +7,36 @@
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
-#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 
 namespace Scripting::UI
 {
-    void Text::Register(lua_State* state)
+    void Text::Register(Zenith* zenith)
     {
-        LuaMetaTable<Text>::Register(state, "TextMetaTable");
-        LuaMetaTable<Text>::Set(state, widgetMethods);
-        LuaMetaTable<Text>::Set(state, widgetInputMethods);
-        LuaMetaTable<Text>::Set(state, textMethods);
+        LuaMetaTable<Text>::Register(zenith, "TextMetaTable");
+        LuaMetaTable<Text>::Set(zenith, widgetMethods);
+        LuaMetaTable<Text>::Set(zenith, widgetInputMethods);
+        LuaMetaTable<Text>::Set(zenith, textMethods);
     }
 
     namespace TextMethods
     {
-        i32 GetText(lua_State* state)
+        i32 GetText(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            ctx.Push(textComponent.text);
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            zenith->Push(textComponent.text);
 
             return 1;
         }
-        i32 SetText(lua_State* state)
+        i32 SetText(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            const char* text = ctx.Get(nullptr, 2);
+            const char* rawText = zenith->CheckVal<const char*>(2);
             if (text == nullptr)
             {
                 return 0;
@@ -59,269 +44,167 @@ namespace Scripting::UI
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            textComponent.rawText = text;
-            ECS::Util::UI::RefreshText(registry, widget->entity, text);
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            textComponent.rawText = rawText;
+            ECS::Util::UI::RefreshText(registry, text->entity, rawText);
 
-            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
-            ECS::Util::UI::RefreshClipper(registry, widget->entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
+            ECS::Util::UI::RefreshClipper(registry, text->entity);
 
             return 0;
         }
 
-        i32 GetRawText(lua_State* state)
+        i32 GetRawText(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            ctx.Push(textComponent.rawText);
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            zenith->Push(textComponent.rawText);
 
             return 1;
         }
 
-        i32 GetSize(lua_State* state)
+        i32 GetSize(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
+            const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
-            ctx.Push(size.x);
-            ctx.Push(size.y);
+            zenith->Push(size.x);
+            zenith->Push(size.y);
             return 2;
         }
 
-        i32 GetFontSize(lua_State* state)
+        i32 GetFontSize(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            ECS::Components::UI::TextTemplate& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            ctx.Push(textTemplate.size);
+            ECS::Components::UI::TextTemplate& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
+            zenith->Push(textTemplate.size);
 
             return 1;
         }
 
-        i32 SetFontSize(lua_State* state)
+        i32 SetFontSize(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            f32 size = ctx.Get(0.0f, 2);
+            f32 size = zenith->CheckVal<f32>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.size = size;
 
-            registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-            ECS::Util::UI::RefreshClipper(registry, widget->entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(text->entity);
+            ECS::Util::UI::RefreshClipper(registry, text->entity);
 
             return 0;
         }
 
-        i32 GetWidth(lua_State* state)
+        i32 GetWidth(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
+            const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
-            ctx.Push(size.x);
+            zenith->Push(size.x);
             return 1;
         }
 
-        i32 GetHeight(lua_State* state)
+        i32 GetHeight(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            const vec2& size = registry->get<ECS::Components::Transform2D>(widget->entity).GetSize();
+            const vec2& size = registry->get<ECS::Components::Transform2D>(text->entity).GetSize();
 
-            ctx.Push(size.y);
+            zenith->Push(size.y);
             return 1;
         }
 
-        i32 GetColor(lua_State* state)
+        i32 GetColor(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            ctx.Push(vec3(textTemplate.color.r, textTemplate.color.g, textTemplate.color.b));
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
+            zenith->Push(vec3(textTemplate.color.r, textTemplate.color.g, textTemplate.color.b));
 
             return 1;
         }
 
-        i32 SetColor(lua_State* state)
+        i32 SetColor(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            vec3 color = ctx.Get(vec3(1, 1, 1), -1);
+            vec3 color = zenith->CheckVal<vec3>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.color = Color(color.r, color.g, color.b, 1.0f);
             textTemplate.setFlags.color = true;
 
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
-            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(text->entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
             return 0;
         }
 
-        i32 SetAlpha(lua_State* state)
+        i32 SetAlpha(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            f32 alpha = ctx.Get(0.0f, -1);
+            f32 alpha = zenith->CheckVal<f32>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.color.a = alpha;
             textTemplate.setFlags.color = true;
 
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(text->entity);
             return 0;
         }
 
-        i32 GetWrapWidth(lua_State* state)
+        i32 GetWrapWidth(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            ctx.Push(textTemplate.wrapWidth);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
+            zenith->Push(textTemplate.wrapWidth);
 
             return 1;
         }
 
-        i32 SetWrapWidth(lua_State* state)
+        i32 SetWrapWidth(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            f32 wrapWidth = ctx.Get(0.0f, 2);
+            f32 wrapWidth = zenith->CheckVal<f32>(2);
             wrapWidth = glm::max(0.0f, wrapWidth);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.wrapWidth = wrapWidth;
             textTemplate.setFlags.wrapWidth = wrapWidth >= 0;
 
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            ECS::Util::UI::RefreshText(registry, widget->entity, textComponent.rawText);
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            ECS::Util::UI::RefreshText(registry, text->entity, textComponent.rawText);
 
-            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
 
             return 0;
         }
 
-        i32 GetWrapIndent(lua_State* state)
+        i32 GetWrapIndent(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            ctx.Push(static_cast<u32>(textTemplate.wrapIndent));
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
+            zenith->Push(static_cast<u32>(textTemplate.wrapIndent));
             return 1;
         }
 
-        i32 SetWrapIndent(lua_State* state)
+        i32 SetWrapIndent(Zenith* zenith, Text* text)
         {
-            LuaState ctx(state);
-            Text* widget = ctx.GetUserData<Text>(nullptr, 1);
-            if (widget == nullptr)
-            {
-                luaL_error(state, "Widget is null");
-            }
-
-            u32 wrapIndent = ctx.Get(0u, 2);
+            u32 wrapIndent = zenith->CheckVal<u32>(2);
             wrapIndent = glm::max(0u, wrapIndent);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
-            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
             textTemplate.wrapIndent = wrapIndent;
             textTemplate.setFlags.wrapIndent = wrapIndent >= 0;
-            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(widget->entity);
-            ECS::Util::UI::RefreshText(registry, widget->entity, textComponent.rawText);
+            ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            ECS::Util::UI::RefreshText(registry, text->entity, textComponent.rawText);
 
-            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
-            ECS::Util::UI::RefreshClipper(registry, widget->entity);
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
+            ECS::Util::UI::RefreshClipper(registry, text->entity);
 
             return 0;
         }

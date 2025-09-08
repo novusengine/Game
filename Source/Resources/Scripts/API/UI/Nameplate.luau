@@ -200,7 +200,7 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     -- Create the border panel
     nameplateTable.border = parent:NewPanel(posX, posY, sizeX, sizeY, layer);
     nameplateTable.border:SetRelativePoint(0.5, 0.5);
-    nameplateTable.border:SetColor(1.0, 1.0, 1.0);
+    nameplateTable.border:SetColor(vector.create(1.0, 1.0, 1.0));
 
     -- Create the background panel
     local sizeX = sizeX - borderWidth * 2;

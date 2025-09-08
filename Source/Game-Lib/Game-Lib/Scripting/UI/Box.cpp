@@ -1,48 +1,32 @@
 #include "Box.h"
-
-#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/UI/Box.h"
+
+#include <Scripting/Zenith.h>
 
 namespace Scripting::UI
 {
-    static LuaMethod boxStaticFunctions[] =
+    void Box::Register(Zenith* zenith)
     {
-        { "new", BoxMethods::CreateBox }
-    };
+        LuaMethodTable::Set(zenith, boxGlobalMethods, "Box");
 
-    //static LuaMethod boxMethods[] =
-    //{
-    //    { nullptr, nullptr }
-    //};
-
-    void Box::Register(lua_State* state)
-    {
-        LuaMethodTable::Set(state, boxStaticFunctions, "Box");
-
-        LuaMetaTable<Box>::Register(state, "BoxMetaTable");
-        //LuaMetaTable<Box>::Set(state, boxMethods);
+        LuaMetaTable<Box>::Register(zenith, "BoxMetaTable");
     }
 
     namespace BoxMethods
     {
-        i32 CreateBox(lua_State* state)
+        i32 CreateBox(Zenith* zenith)
         {
-            LuaState ctx(state);
+            f32 minX = zenith->CheckVal<f32>(1);
+            f32 minY = zenith->CheckVal<f32>(2);
+            f32 maxX = zenith->CheckVal<f32>(3);
+            f32 maxY = zenith->CheckVal<f32>(4);
 
-            f32 minX = ctx.Get(0.0f, 1);
-            f32 minY = ctx.Get(0.0f, 2);
-            f32 maxX = ctx.Get(1.0f, 3);
-            f32 maxY = ctx.Get(1.0f, 4);
-
-            ::UI::Box* box = ctx.PushUserData<::UI::Box>([](void* x)
-            {
-
-            });
+            ::UI::Box* box = zenith->PushUserData<::UI::Box>([](void* x) {});
             box->min = vec2(minX, minY);
             box->max = vec2(maxX, maxY);
 
-            luaL_getmetatable(state, "BoxMetaTable");
-            lua_setmetatable(state, -2);
+            luaL_getmetatable(zenith->state, "BoxMetaTable");
+            lua_setmetatable(zenith->state, -2);
 
             return 1;
         }

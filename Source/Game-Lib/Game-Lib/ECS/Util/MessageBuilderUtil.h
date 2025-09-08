@@ -7,7 +7,7 @@
 
 #include <Gameplay/GameDefine.h>
 
-#include <Meta/Generated/Game/Commands.h>
+#include <Meta/Generated/Game/Command.h>
 #include <Meta/Generated/Shared/ClientDB.h>
 #include <Meta/Generated/Shared/NetworkEnum.h>
 
@@ -97,6 +97,7 @@ namespace ECS
             bool BuildCheatItemRemove(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount);
             bool BuildCheatCreatureAdd(std::shared_ptr<Bytebuffer>& buffer, u32 creatureTemplateID);
             bool BuildCheatCreatureRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
+            bool BuildCheatCreatureInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
             bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map);
             bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddCommand& command);
             bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddHereCommand& command);

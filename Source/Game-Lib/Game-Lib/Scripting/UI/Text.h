@@ -3,34 +3,37 @@
 
 #include <Base/Types.h>
 
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
+
 namespace Scripting::UI
 {
     struct Text : public Widget
     {
     public:
-        static void Register(lua_State* state);
+        static void Register(Zenith* zenith);
     };
 
     namespace TextMethods
     {
-        i32 GetText(lua_State* state);
-        i32 SetText(lua_State* state);
-        i32 GetRawText(lua_State* state);
-        i32 GetSize(lua_State* state);
-        i32 GetFontSize(lua_State* state);
-        i32 SetFontSize(lua_State* state);
-        i32 GetWidth(lua_State* state);
-        i32 GetHeight(lua_State* state);
-        i32 GetColor(lua_State* state);
-        i32 SetColor(lua_State* state);
-        i32 SetAlpha(lua_State* state);
-        i32 GetWrapWidth(lua_State* state);
-        i32 SetWrapWidth(lua_State* state);
-        i32 GetWrapIndent(lua_State* state);
-        i32 SetWrapIndent(lua_State* state);
+        i32 GetText(Zenith* zenith, Text* text);
+        i32 SetText(Zenith* zenith, Text* text);
+        i32 GetRawText(Zenith* zenith, Text* text);
+        i32 GetSize(Zenith* zenith, Text* text);
+        i32 GetFontSize(Zenith* zenith, Text* text);
+        i32 SetFontSize(Zenith* zenith, Text* text);
+        i32 GetWidth(Zenith* zenith, Text* text);
+        i32 GetHeight(Zenith* zenith, Text* text);
+        i32 GetColor(Zenith* zenith, Text* text);
+        i32 SetColor(Zenith* zenith, Text* text);
+        i32 SetAlpha(Zenith* zenith, Text* text);
+        i32 GetWrapWidth(Zenith* zenith, Text* text);
+        i32 SetWrapWidth(Zenith* zenith, Text* text);
+        i32 GetWrapIndent(Zenith* zenith, Text* text);
+        i32 SetWrapIndent(Zenith* zenith, Text* text);
     };
 
-    static LuaMethod textMethods[] =
+    static LuaRegister<Text> textMethods[] =
     {
         { "GetText", TextMethods::GetText },
         { "SetText", TextMethods::SetText },

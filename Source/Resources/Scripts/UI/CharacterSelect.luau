@@ -400,11 +400,11 @@ local function CreateCharacterSelectScreen(stack : Stack)
     return characterSelectScreen;
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local stack = UIStack.Get("Menu");
     RegisterTemplates();
 
     local characterSelectScreen : CharacterSelectScreen = CreateCharacterSelectScreen(stack);
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded);
+RegisterEvent(GameEvent.Loaded, OnGameLoaded);

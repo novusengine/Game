@@ -60,8 +60,7 @@ function loadingScreenAPI.SetLoadingScreen(texturePath)
     __LoadingScreenData.loadingScreenPanel:SetEnabled(true)
 end
 
-local function OnGameUpdated(eventID : number, deltaTime : number)
-
+local function OnGameUpdated(eventID : number, data : any)
     local progress = __LoadingScreenData.loadingBarSlider:GetProgress()
     if (progress >= 1.0) then
         __LoadingScreenData.loadingScreenPanel:SetEnabled(false)
@@ -72,9 +71,9 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
     __LoadingScreenData.loadingBarSlider:SetProgress(progress)
 end
 
-local function OnMapLoading(eventID : number, mapName : string)
+local function OnMapLoading(eventID : number, data : any)
 
-    local mapInternalName = __LoadingScreenData.nameToTextureMap[mapName]
+    local mapInternalName = __LoadingScreenData.nameToTextureMap[data.mapName]
     if mapInternalName == nil then
         mapInternalName = "Default"
     end
@@ -82,7 +81,7 @@ local function OnMapLoading(eventID : number, mapName : string)
     loadingScreenAPI.SetLoadingScreen(mapInternalName)
 end
 
-RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
-RegisterGameEvent(GameEvent.MapLoading, OnMapLoading)
+RegisterEvent(GameEvent.Updated, OnGameUpdated)
+RegisterEvent(GameEvent.MapLoading, OnMapLoading)
 
 return loadingScreenAPI

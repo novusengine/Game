@@ -1,16 +1,18 @@
 #pragma once
-#include "LuaEventHandlerBase.h"
-#include "Game-Lib/Scripting/LuaDefines.h"
-#include "Game-Lib/Scripting/LuaMethodTable.h"
-
 #include <Base/Types.h>
+
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
 
 namespace Scripting::Database
 {
     class DatabaseHandler : public LuaHandlerBase
     {
     public:
-        void Register(lua_State* state) override;
-        void Clear() override;
+        void Register(Zenith* zenith);
+        void Clear(Zenith* zenith) {}
+
+        void PostLoad(Zenith* zenith) {}
+        void Update(Zenith* zenith, f32 deltaTime) {}
     };
 }

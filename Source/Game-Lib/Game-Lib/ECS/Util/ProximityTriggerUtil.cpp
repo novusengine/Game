@@ -5,10 +5,12 @@
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
-#include "Game-Lib/Scripting/LuaDefines.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Handlers/TriggerEventHandler.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Meta/Generated/Game/LuaEvent.h>
+
+#include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 
@@ -69,14 +71,11 @@ void ECS::Util::ProximityTriggerUtil::DestroyTrigger(entt::registry& registry, u
     auto& proximityTrigger = registry.get<Components::ProximityTrigger>(triggerEntity);
     if (proximityTrigger.playersInside.contains(playerEntity) )
     {
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto triggerEventHandler = luaManager->GetLuaHandler<Scripting::TriggerEventHandler*>(Scripting::LuaHandlerType::TriggerEvent);
-        Scripting::LuaTriggerEventOnTriggerExitData eventData =
-        {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnExit, Generated::LuaTriggerEventDataOnExit{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
-        };
-        triggerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaTriggerEventEnum::OnExit), &eventData);
+        });
     }
     
     registry.destroy(triggerEntity);

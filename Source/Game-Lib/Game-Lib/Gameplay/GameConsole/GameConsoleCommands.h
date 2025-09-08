@@ -1,7 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Game/Commands.h>
+#include <Meta/Generated/Game/Command.h>
 
 class GameConsoleCommandHandler;
 class GameConsole;
@@ -35,6 +35,7 @@ public:
     static bool HandleItemRemove(GameConsole* gameConsole, Generated::ItemRemoveCommand& command);
     static bool HandleCreatureAdd(GameConsole* gameConsole, Generated::CreatureAddCommand& command);
     static bool HandleCreatureRemove(GameConsole* gameConsole, Generated::CreatureRemoveCommand& command);
+    static bool HandleCreatureInfo(GameConsole* gameConsole, Generated::CreatureInfoCommand& command);
     static bool HandleCheatLogin(GameConsole* gameConsole, Generated::CheatLoginCommand& command);
     static bool HandleCheatDamage(GameConsole* gameConsole, Generated::CheatDamageCommand& command);
     static bool HandleCheatKill(GameConsole* gameConsole, Generated::CheatKillCommand& command);

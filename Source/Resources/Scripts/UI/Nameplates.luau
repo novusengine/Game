@@ -76,7 +76,7 @@ end);
 
 local playerNameTextWidget = nil
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     RegisterTemplates();
 
     -- Ensure Nameplates Canvas is created
@@ -85,7 +85,7 @@ local function OnGameLoaded(eventID : number, motd : string)
     -- TODO : Iterate Existing UnitIDs and create nameplates
 end
 
-local function OnGameUpdated(eventID : number, deltaTime : number)
+local function OnGameUpdated(eventID : number, data : any)
     local enabled = enabledOption:Get();
     if (not enabled) then
         return;
@@ -96,7 +96,7 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
         local maxHealth = nameplate:GetMaxHealth();
 
         if health < maxHealth then
-            health += deltaTime * increaseSpeedOption:Get();
+            health += data.deltaTime * increaseSpeedOption:Get();
             health = math.min(health, maxHealth);
 
             nameplate:SetHealth(health);
@@ -107,31 +107,31 @@ local function OnGameUpdated(eventID : number, deltaTime : number)
     end
 end
 
-local function OnUnitCreated(eventID : number, unitID : number)
+local function OnUnitAdd(eventID : number, data : any)
     local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 
     local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 125, 20, 0, {
         panelTemplate = "DialogBox",
         textTemplate = "DefaultButtonText",
 
-        unitID = unitID,
-        unitName = Unit.GetName(unitID)
+        unitID = data.unitID,
+        unitName = Unit.GetName(data.unitID)
     });
     nameplate:SetMaxHealth(50);
-    nameplates[unitID] = nameplate;
+    nameplates[data.unitID] = nameplate;
 end
 
-local function OnUnitDestroyed(eventID : number, unitID : number)
-    local nameplate = nameplates[unitID];
+local function OnUnitRemove(eventID : number, data : any)
+    local nameplate = nameplates[data.unitID];
     if (nameplate == nil) then
         return
     end
 
     nameplate:Destroy();
-    nameplates[unitID] = nil;
+    nameplates[data.unitID] = nil;
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
-RegisterGameEvent(GameEvent.Updated, OnGameUpdated)
-RegisterPlayerEvent(PlayerEvent.Created, OnUnitCreated)
-RegisterPlayerEvent(PlayerEvent.Destroyed, OnUnitDestroyed)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Updated, OnGameUpdated)
+RegisterEvent(UnitEvent.Add, OnUnitAdd)
+RegisterEvent(UnitEvent.Remove, OnUnitRemove)

@@ -19,7 +19,7 @@
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
-#include "Game-Lib/Scripting/LuaManager.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
@@ -28,12 +28,15 @@
 
 #include <Gameplay/GameDefine.h>
 
-#include <Meta/Generated/Game/Commands.h>
+#include <Meta/Generated/Game/Command.h>
 #include <Meta/Generated/Shared/ClientDB.h>
 #include <Meta/Generated/Shared/NetworkPacket.h>
 
 #include <Network/Client.h>
 #include <Network/Define.h>
+
+#include <Scripting/LuaManager.h>
+#include <Scripting/Zenith.h>
 
 #include <base64/base64.h>
 #include <entt/entt.hpp>
@@ -168,7 +171,8 @@ bool GameConsoleCommands::HandlePing(GameConsole* gameConsole, Generated::PingCo
 
 bool GameConsoleCommands::HandleLua(GameConsole* gameConsole, Generated::LuaCommand& command)
 {
-    ServiceLocator::GetLuaManager()->DoString(command.code);
+    Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+    ServiceLocator::GetLuaManager()->DoString(zenith, command.code);
     return true;
 }
 
@@ -667,13 +671,13 @@ bool GameConsoleCommands::HandleCreatureRemove(GameConsole* gameConsole, Generat
 
     if (unitInfo.targetEntity == entt::null)
     {
-        gameConsole->PrintError("Failed to remove NPC, no target selected");
+        gameConsole->PrintError("Failed to remove creature, no target selected");
         return true;
     }
 
     if (!networkState.entityToNetworkID.contains(unitInfo.targetEntity))
     {
-        gameConsole->PrintError("Failed to remove NPC, target is not a networked entity");
+        gameConsole->PrintError("Failed to remove creature, target is not a networked entity");
         return true;
     }
 
@@ -686,6 +690,45 @@ bool GameConsoleCommands::HandleCreatureRemove(GameConsole* gameConsole, Generat
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
     if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreatureRemove(buffer, creatureNetworkID))
+    {
+        networkState.client->Send(buffer);
+    }
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureInfo(GameConsole* gameConsole, Generated::CreatureInfoCommand& command)
+{
+    entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = gameRegistry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    auto& characterSingleton = gameRegistry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    auto& unitInfo = gameRegistry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
+
+    if (unitInfo.targetEntity == entt::null)
+    {
+        gameConsole->PrintError("Failed to get creature info, no target selected");
+        return true;
+    }
+
+    if (!networkState.entityToNetworkID.contains(unitInfo.targetEntity))
+    {
+        gameConsole->PrintError("Failed to get creature info, target is not a networked entity");
+        return true;
+    }
+
+    ObjectGUID creatureNetworkID = networkState.entityToNetworkID[unitInfo.targetEntity];
+    if (creatureNetworkID.GetType() != ObjectGUID::Type::Creature)
+    {
+        gameConsole->PrintError("Failed to get creature info, target is not a creature");
+        return true;
+    }
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatCreatureInfo(buffer, creatureNetworkID))
     {
         networkState.client->Send(buffer);
     }

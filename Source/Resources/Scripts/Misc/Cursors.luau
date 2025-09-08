@@ -84,9 +84,9 @@ local function RegisterCursors()
     end
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     RegisterCursors()
     SetCursor("point")
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)

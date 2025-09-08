@@ -21,8 +21,12 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
+#include "Game-Lib/Scripting/Handlers/GlobalHandler.h"
+#include "Game-Lib/Scripting/Handlers/EventHandler.h"
+#include "Game-Lib/Scripting/Handlers/DatabaseHandler.h"
+#include "Game-Lib/Scripting/Handlers/UIHandler.h"
+#include "Game-Lib/Scripting/Handlers/GameHandler.h"
+#include "Game-Lib/Scripting/Handlers/UnitHandler.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/TextureUtil.h"
@@ -34,7 +38,12 @@
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/CPUInfo.h>
 
+#include <Meta/Generated/Game/LuaEnum.h>
+
 #include <Network/Client.h>
+
+#include <Scripting/LuaManager.h>
+#include <Scripting/Zenith.h>
 
 #include <enkiTS/TaskScheduler.h>
 #include <entt/entt.hpp>
@@ -328,8 +337,22 @@ bool Application::Init()
     // Initialize Databases
     DatabaseReload();
 
-    _luaManager = new Scripting::LuaManager();
-    ServiceLocator::SetLuaManager(_luaManager);
+    // Init Lua Manager
+    {
+        _luaManager = new Scripting::LuaManager();
+        ServiceLocator::SetLuaManager(_luaManager);
+
+        _luaManager->PrepareToAddLuaHandlers((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Count);
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Global, new Scripting::GlobalHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Event, new Scripting::EventHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Database, new Scripting::Database::DatabaseHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::UI, new Scripting::UI::UIHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
+
+        auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
+        _luaManager->GetZenithStateManager().Add(globalKey);
+    }
     _luaManager->Init();
 
     return true;
@@ -373,7 +396,10 @@ bool Application::Tick(f32 deltaTime)
 
             case MessageInbound::Type::DoString:
             {
-                if (!ServiceLocator::GetLuaManager()->DoString(message.data))
+                auto key = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
+                Scripting::Zenith* zenith = _luaManager->GetZenithStateManager().Get(key);
+
+                if (!zenith || !_luaManager->DoString(zenith, message.data))
                 {
                     NC_LOG_ERROR("Failed to run Lua DoString");
                 }

@@ -3,17 +3,25 @@
 
 #include <Base/Types.h>
 
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
+
 namespace Scripting::UI
 {
     struct Box
     {
     public:
-        static void Register(lua_State* state);
+        static void Register(Zenith* zenith);
 
     };
 
     namespace BoxMethods
     {
-        i32 CreateBox(lua_State* state);
+        i32 CreateBox(Zenith* zenith);
+    };
+
+    static LuaRegister<> boxGlobalMethods[] =
+    {
+        { "new", BoxMethods::CreateBox }
     };
 }

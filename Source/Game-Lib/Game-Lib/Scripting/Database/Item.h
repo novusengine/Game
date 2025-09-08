@@ -1,27 +1,40 @@
 #pragma once
-#include "Game-Lib/Scripting/LuaDefines.h"
-
 #include <Base/Types.h>
+
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
 
 namespace Scripting::Database
 {
     struct Item
     {
     public:
-        static void Register(lua_State* state);
-
+        static void Register(Zenith* zenith);
     };
 
     namespace ItemMethods
     {
-        i32 GetItemInfo(lua_State* state);
-        i32 GetItemStatInfo(lua_State* state);
-        i32 GetItemArmorInfo(lua_State* state);
-        i32 GetItemWeaponInfo(lua_State* state);
-        i32 GetItemShieldInfo(lua_State* state);
-        i32 GetItemDisplayInfo(lua_State* state);
-        i32 GetItemEffects(lua_State* state);
+        i32 GetItemInfo(Zenith* zenith);
+        i32 GetItemStatInfo(Zenith* zenith);
+        i32 GetItemArmorInfo(Zenith* zenith);
+        i32 GetItemWeaponInfo(Zenith* zenith);
+        i32 GetItemShieldInfo(Zenith* zenith);
+        i32 GetItemDisplayInfo(Zenith* zenith);
+        i32 GetItemEffects(Zenith* zenith);
 
-        i32 GetIconInfo(lua_State* state);
+        i32 GetIconInfo(Zenith* zenith);
+    };
+
+
+    static LuaRegister<> itemGlobalFunctions[] =
+    {
+        { "GetItemInfo", ItemMethods::GetItemInfo },
+        { "GetItemStatInfo", ItemMethods::GetItemStatInfo },
+        { "GetItemArmorInfo", ItemMethods::GetItemArmorInfo },
+        { "GetItemWeaponInfo", ItemMethods::GetItemWeaponInfo },
+        { "GetItemShieldInfo", ItemMethods::GetItemShieldInfo },
+        { "GetItemDisplayInfo", ItemMethods::GetItemDisplayInfo },
+        { "GetItemEffects", ItemMethods::GetItemEffects },
+        { "GetIconInfo", ItemMethods::GetIconInfo }
     };
 }

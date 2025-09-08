@@ -315,14 +315,14 @@ void ModelLoader::Update(f32 deltaTime)
         return;
 
     u32 numTerrainLoadRequests = static_cast<u32>(_pendingTerrainLoadRequests.size_approx());
-    if (numTerrainLoadRequests > 0)
-        _numTerrainModelsLoaded += glm::min(numTerrainLoadRequests, MAX_PENDING_LOADS_PER_FRAME);
-
     moodycamel::ConcurrentQueue<LoadRequestInternal>* workQueue = numTerrainLoadRequests > 0 ? &_pendingTerrainLoadRequests : &_pendingLoadRequests;
 
     u32 numDequeuedLoadRequests = static_cast<u32>(workQueue->try_dequeue_bulk(_pendingLoadRequestsVector.data(), MAX_PENDING_LOADS_PER_FRAME));
     if (numDequeuedLoadRequests > 0)
     {
+        if (numTerrainLoadRequests > 0)
+            _numTerrainModelsLoaded += numDequeuedLoadRequests;
+
         ZoneScopedN("Pending Load Model Requests");
         ModelRenderer::ReserveInfo reserveInfo;
 
@@ -605,8 +605,6 @@ void ModelLoader::Update(f32 deltaTime)
             model.modelHash = static_cast<u32>(loadRequest.extraData2);
         }
 
-        bool hasModelLoadedEventsAlready = registry->all_of<ECS::Components::ModelLoadedEvent>(loadRequest.entity);
-
         ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
         modelLoadedEvent.flags.loaded = loadRequestResult.success;
         modelLoadedEvent.flags.rollback = rollback;
@@ -644,10 +642,10 @@ entt::entity ModelLoader::CreateModelEntity(const std::string& name)
 f32 ModelLoader::GetLoadingProgress() const
 {
     u32 numModelsToLoad = _numTerrainModelsToLoad;
-    if (numModelsToLoad == 0)
-        return 1.0f;
+    u32 min = _numTerrainModelsLoaded;
+    u32 max = glm::max(1u, numModelsToLoad);
 
-    f32 terrainModelProgress = _terrainLoading ? static_cast<f32>(_numTerrainModelsLoaded) / static_cast<f32>(numModelsToLoad) : 1.0f;
+    f32 terrainModelProgress = static_cast<f32>(min) / static_cast<f32>(max);
     return terrainModelProgress;
 }
 

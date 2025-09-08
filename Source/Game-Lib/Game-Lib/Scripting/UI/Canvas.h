@@ -3,14 +3,15 @@
 
 #include <Base/Types.h>
 
-#include <entt/fwd.hpp>
+#include <Scripting/Defines.h>
+#include <Scripting/LuaMethodTable.h>
 
 namespace Scripting::UI
 {
     struct Canvas : public Widget
     {
     public:
-        static void Register(lua_State* state);
+        static void Register(Zenith* zenith);
 
     };
 

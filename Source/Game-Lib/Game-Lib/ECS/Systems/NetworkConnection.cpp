@@ -4,8 +4,9 @@
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
-#include "Game-Lib/ECS/Components/CastInfo.h"
+#include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Container.h"
+#include "Game-Lib/ECS/Components/CastInfo.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
@@ -22,6 +23,7 @@
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
@@ -32,9 +34,7 @@
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Handlers/GameEventHandler.h"
-#include "Game-Lib/Scripting/Handlers/PlayerEventHandler.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
@@ -49,9 +49,13 @@
 #include <Network/Define.h>
 
 #include <Meta/Generated/Game/LuaEnum.h>
+#include <Meta/Generated/Game/LuaEvent.h>
 #include <Meta/Generated/Shared/CombatLogEnum.h>
 #include <Meta/Generated/Shared/NetworkPacket.h>
 #include <Meta/Generated/Shared/UnitEnum.h>
+
+#include <Scripting/LuaManager.h>
+#include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
@@ -363,14 +367,10 @@ namespace ECS::Systems
         vec3 max = packet.position + (packet.scale * 0.5f);
         networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
 
-        Scripting::LuaUnitEventCreatedData eventData =
-        {
-            .unitID = newEntity
-        };
-
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::Created), &eventData);
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::Add, Generated::LuaUnitEventDataAdd{
+            .unitID = entt::to_integral(newEntity)
+        });
 
         return true;
     }
@@ -408,14 +408,10 @@ namespace ECS::Systems
 
         registry->destroy(entity);
 
-        Scripting::LuaUnitEventCreatedData eventData =
-        {
-            .unitID = entity
-        };
-
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::Destroyed), &eventData);
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::Remove, Generated::LuaUnitEventDataRemove{
+            .unitID = entt::to_integral(entity)
+        });
 
         return true;
     }
@@ -442,7 +438,9 @@ namespace ECS::Systems
 
         if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
         {
-            NC_LOG_WARNING("Network : Failed to load DisplayID for entity ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
+
+            modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
             return true;
         }
 
@@ -718,6 +716,13 @@ namespace ECS::Systems
             characterSingleton.character->SetPosition(JPH::Vec3(packet.position.x, packet.position.y, packet.position.z));
             characterSingleton.character->SetRotation(joltRotation);
             characterSingleton.character->SetLinearVelocity(JPH::Vec3::sZero());
+
+            auto& orbitalCameraSettings = registry->ctx().get<Singletons::OrbitalCameraSettings>();
+            if (orbitalCameraSettings.entity != entt::null)
+            {
+                auto& camera = registry->get<Components::Camera>(orbitalCameraSettings.entity);
+                camera.yaw = glm::degrees(movementInfo.yaw);
+            }
         }
         else
         {
@@ -842,15 +847,12 @@ namespace ECS::Systems
         registry->emplace<Components::Container>(newContainerEntity, container);
         characterSingleton.containers[packet.index] = packet.guid;
 
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-
-        Scripting::LuaPlayerEventContainerCreateData eventData;
-        eventData.index = packet.index + 1;
-        eventData.numSlots = container.numSlots;
-        eventData.itemID = container.itemID;
-
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerCreate), &eventData);
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaContainerEventEnum::Add, Generated::LuaContainerEventDataAdd{
+            .index = packet.index + 1u,
+            .numSlots = container.numSlots,
+            .itemID = container.itemID
+        });
         return true;
     }
     bool HandleOnContainerAddToSlot(Network::SocketID socketID, Generated::ContainerAddToSlotPacket& packet)
@@ -915,17 +917,14 @@ namespace ECS::Systems
 
         auto& item = registry->get<Components::Item>(itemEntity);
 
-        Scripting::LuaPlayerEventContainerAddToSlotData eventData =
-        {
-            .containerIndex = (u32)packet.index + 1,
-            .slotIndex = (u32)packet.slot + 1u,
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaContainerEventEnum::AddToSlot, Generated::LuaContainerEventDataAddToSlot{
+            .containerIndex = packet.index + 1u,
+            .slotIndex = packet.slot + 1u,
             .itemID = item.itemID,
             .count = item.count
-        };
+        });
 
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerAddToSlot), &eventData);
         return true;
     }
     bool HandleOnContainerRemoveFromSlot(Network::SocketID socketID, Generated::ContainerRemoveFromSlotPacket& packet)
@@ -990,15 +989,12 @@ namespace ECS::Systems
             networkState.networkIDToEntity.erase(itemNetworkID);
         };
 
-        Scripting::LuaPlayerEventContainerRemoveFromSlotData eventData =
-        {
-            .containerIndex = (u32)packet.index + 1,
-            .slotIndex = (u32)packet.slot + 1u
-        };
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaContainerEventEnum::RemoveFromSlot, Generated::LuaContainerEventDataRemoveFromSlot{
+            .containerIndex = packet.index + 1u,
+            .slotIndex = packet.slot + 1u
+        });
 
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerRemoveFromSlot), &eventData);
         return true;
     }
     bool HandleOnContainerSwapSlots(Network::SocketID socketID, Generated::ServerContainerSwapSlotsPacket& packet)
@@ -1095,17 +1091,14 @@ namespace ECS::Systems
 
         std::swap(srcContainer->items[packet.srcSlot], destContainer->items[packet.dstSlot]);
 
-        Scripting::LuaPlayerEventContainerSwapSlotsData eventData =
-        {
-            .srcContainerIndex = (u32)packet.srcContainer + 1,
-            .destContainerIndex = (u32)packet.dstContainer + 1,
-            .srcSlotIndex = (u32)packet.srcSlot + 1u,
-            .destSlotIndex = (u32)packet.dstSlot + 1u,
-        };
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaContainerEventEnum::SwapSlots, Generated::LuaContainerEventDataSwapSlots{
+            .srcContainerIndex = packet.srcContainer + 1u,
+            .destContainerIndex = packet.dstContainer + 1u,
+            .srcSlotIndex = packet.srcSlot + 1u,
+            .destSlotIndex = packet.dstSlot + 1u
+        });
 
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-        playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::ContainerSwapSlots), &eventData);
         return true;
     }
 
@@ -1160,16 +1153,12 @@ namespace ECS::Systems
             channel = "Say";
         }
 
-        Scripting::LuaGameEventChatMessageReceivedData eventData =
-        {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaGameEventEnum::ChatMessageReceived, Generated::LuaGameEventDataChatMessageReceived{
             .sender = senderName,
             .channel = channel,
             .message = packet.message
-        };
-
-        auto* luaManager = ServiceLocator::GetLuaManager();
-        auto gameEventHandler = luaManager->GetLuaHandler<Scripting::GameEventHandler*>(Scripting::LuaHandlerType::GameEvent);
-        gameEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaGameEventEnum::ChatMessageReceived), &eventData);
+        });
 
         return true;
     }

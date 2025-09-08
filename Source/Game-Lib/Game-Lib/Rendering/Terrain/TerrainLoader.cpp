@@ -19,12 +19,10 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/JoltStream.h"
 #include "Game-Lib/Util/MapUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
-#include "Game-Lib/Scripting/LuaDefines.h"
-#include "Game-Lib/Scripting/LuaManager.h"
-#include "Game-Lib/Scripting/Handlers/GameEventHandler.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/FileReader.h>
@@ -32,6 +30,11 @@
 
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
+
+#include <Meta/Generated/Game/LuaEvent.h>
+
+#include <Scripting/LuaManager.h>
+#include <Scripting/Zenith.h>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Geometry/Triangle.h>
@@ -577,14 +580,10 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     _currentMapInternalName = mapName;
     _numChunksToLoad = numChunksToLoad;
 
-    Scripting::LuaGameEventMapLoadingData eventData =
-    {
+    Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+    zenith->CallEvent(Generated::LuaGameEventEnum::MapLoading, Generated::LuaGameEventDataMapLoading{
         .mapInternalName = mapName
-    };
-
-    auto* luaManager = ServiceLocator::GetLuaManager();
-    auto gameEventHandler = luaManager->GetLuaHandler<Scripting::GameEventHandler*>(Scripting::LuaHandlerType::GameEvent);
-    gameEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaGameEventEnum::MapLoading), &eventData);
+    });
 
     NC_LOG_INFO("TerrainLoader : Started Chunk Queueing");
 

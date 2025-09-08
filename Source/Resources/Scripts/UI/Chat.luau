@@ -233,8 +233,8 @@ local function CreateChat(chatCanvas : Canvas)
         chatToOpenOnEnter = chat;
     end
 
-    RegisterGameEvent(GameEvent.ChatMessageReceived, function(eventID, sender, channel, message)
-        AddMessageToChat(chat, message, channel, sender, false);
+    RegisterEvent(GameEvent.ChatMessageReceived, function(eventID : Event, data : any)
+        AddMessageToChat(chat, data.message, data.channel, data.sender, false);
     end);
     return chat;
 end
@@ -279,7 +279,7 @@ local function RegisterOptions(chat : Chat)
     end);
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local chatCanvas : Canvas = UI.GetCanvas("Chat", 0, 0, 1920, 1080); -- Add layers here, for ordering input munching
 
     RegisterTemplates();
@@ -331,4 +331,4 @@ local function OnGameLoaded(eventID : number, motd : string)
     --AddMessageToChat(mainChat, "WTS [Linen Cloth]",     "Trade", "Foe", true);
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)

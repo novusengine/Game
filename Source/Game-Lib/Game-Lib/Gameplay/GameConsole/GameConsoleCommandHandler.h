@@ -4,7 +4,7 @@
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/StringUtils.h>
 
-#include <Meta/Generated/Game/Commands.h>
+#include <Meta/Generated/Game/Command.h>
 
 #include <robinhood/robinhood.h>
 

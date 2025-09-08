@@ -1,23 +1,17 @@
 #include "Canvas.h"
 
-#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
 
+#include <Scripting/Zenith.h>
+
 namespace Scripting::UI
 {
-    //static LuaMethod canvasMethods[] =
-    //{
-    //    //{ "NewPanel", PanelMethods::CreatePanel },
-    //    //{ "NewText", TextMethods::CreateText },
-    //};
-
-    void Canvas::Register(lua_State* state)
+    void Canvas::Register(Zenith* zenith)
     {
-        LuaMetaTable<Canvas>::Register(state, "CanvasMetaTable");
+        LuaMetaTable<Canvas>::Register(zenith, "CanvasMetaTable");
 
-        LuaMetaTable<Canvas>::Set(state, widgetCreationMethods);
-        //LuaMetaTable<Canvas>::Set(state, canvasMethods);
+        LuaMetaTable<Canvas>::Set(zenith, widgetCreationMethods);
     }
 
     namespace CanvasMethods

@@ -35,6 +35,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleItemRemove);
     RegisterCommand(GameConsoleCommands::HandleCreatureAdd);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemove);
+    RegisterCommand(GameConsoleCommands::HandleCreatureInfo);
     RegisterCommand(GameConsoleCommands::HandleCheatLogin);
     RegisterCommand(GameConsoleCommands::HandleCheatDamage);
     RegisterCommand(GameConsoleCommands::HandleCheatKill);

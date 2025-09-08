@@ -461,10 +461,10 @@ function CreateOptionsMenu(stack)
     --stack:Push("OptionsMenu")
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local stack = UIStack.Get("Menu");
 
     CreateGameMenu(stack);
     CreateOptionsMenu(stack);
 end
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)

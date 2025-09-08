@@ -1,45 +1,39 @@
 #include "UnitHandler.h"
-#include "PlayerEventHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UI/TextTemplate.h"
+#include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
-#include "Game-Lib/Scripting/LuaState.h"
-#include "Game-Lib/Scripting/LuaManager.h"
 #include "Game-Lib/Scripting/UI/Widget.h"
-#include "Game-Lib/Scripting/Systems/LuaSystemBase.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Meta/Generated/Game/LuaEvent.h>
+
+#include <Scripting/Zenith.h>
+
 #include <lualib.h>
 #include <entt/entt.hpp>
-#include <Game-Lib/ECS/Components/UI/Widget.h>
-#include <Game-Lib/ECS/Components/UI/TextTemplate.h>
 
 #include <format>
 
-namespace Scripting
+namespace Scripting::Unit
 {
-    static LuaMethod unitMethods[] =
+    void UnitHandler::Register(Zenith* zenith)
     {
-        { "GetLocal", UnitHandler::GetLocal },
-        { "GetName", UnitHandler::GetName },
-        { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }
-    };
-
-    void UnitHandler::Register(lua_State* state)
-    {
-        LuaMethodTable::Set(state, unitMethods, "Unit");
+        LuaMethodTable::Set(zenith, unitGlobalMethods, "Unit");
     }
 
-    void UnitHandler::PostLoad(lua_State* state)
+    void UnitHandler::PostLoad(Zenith* zenith)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<ECS::Singletons::NetworkState>();
@@ -52,49 +46,34 @@ namespace Scripting
 
             networkState.networkVisTree->Search(&minBounds.x, &maxBounds.x, [&](const ObjectGUID objectGUID)
             {
-                if (!networkState.networkIDToEntity.contains(objectGUID))
+                entt::entity entity = entt::null;
+                if (!::ECS::Util::Network::GetEntityIDFromObjectGUID(networkState, objectGUID, entity))
                     return true;
 
-                entt::entity newEntity = networkState.networkIDToEntity[objectGUID];
-
-                Scripting::LuaUnitEventCreatedData eventData =
-                {
-                    .unitID = newEntity
-                };
-
-                auto* luaManager = ServiceLocator::GetLuaManager();
-                auto playerEventHandler = luaManager->GetLuaHandler<Scripting::PlayerEventHandler*>(Scripting::LuaHandlerType::PlayerEvent);
-                playerEventHandler->CallEvent(luaManager->GetInternalState(), static_cast<u32>(Generated::LuaPlayerEventEnum::Created), &eventData);
+                zenith->CallEvent(Generated::LuaUnitEventEnum::Add, Generated::LuaUnitEventDataAdd{
+                    .unitID = entt::to_integral(entity)
+                });
 
                 return true;
             });
         }
     }
 
-    void UnitHandler::Clear()
+    i32 UnitHandler::GetLocal(Zenith* zenith)
     {
-
-    }
-
-    i32 UnitHandler::GetLocal(lua_State* state)
-    {
-        LuaState ctx(state);
-
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
 
         if (!registry->valid(characterSingleton.moverEntity))
             return 0;
 
-        ctx.Push(entt::to_integral(characterSingleton.moverEntity));
+        zenith->Push(entt::to_integral(characterSingleton.moverEntity));
         return 1;
     }
 
-    i32 UnitHandler::GetName(lua_State* state)
+    i32 UnitHandler::GetName(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        u32 unitID = ctx.Get(std::numeric_limits<u32>().max(), 1);
+        u32 unitID = zenith->CheckVal<u32>(1);
         if (unitID == std::numeric_limits<u32>().max())
             return 0;
 
@@ -111,7 +90,7 @@ namespace Scripting
         if (unit.name.empty())
             return 0;
 
-        ctx.Push(unit.name.c_str());
+        zenith->Push(unit.name.c_str());
         return 1;
     }
 
@@ -129,19 +108,17 @@ namespace Scripting
         return size;
     }
 
-    i32 UnitHandler::SetWidgetToNamePos(lua_State* state)
+    i32 UnitHandler::SetWidgetToNamePos(Zenith* zenith)
     {
-        LuaState ctx(state);
-
-        auto* widget = ctx.GetUserData<UI::Widget>(nullptr, 1);
+        auto* widget = zenith->GetUserData<UI::Widget>(nullptr, 1);
         if (widget == nullptr)
         {
-            luaL_error(state, "Widget is null");
+            luaL_error(zenith->state, "Widget is null");
         }
 
         bool isTextWidget = widget->type == Scripting::UI::WidgetType::Text;
 
-        u32 unitID = ctx.Get(std::numeric_limits<u32>().max(), 2);
+        u32 unitID = zenith->CheckVal<u32>(2);
         if (unitID == std::numeric_limits<u32>().max())
             return 0;
 
@@ -171,7 +148,7 @@ namespace Scripting
         auto& widgetComp = uiRegistry->get<ECS::Components::UI::Widget>(widget->entity);
         if (widgetComp.worldTransformIndex != -1 && !registry->all_of<ECS::Components::DirtyTransform>(activeCameraSingleton.entity) && !registry->all_of<ECS::Components::DirtyTransform>(entityID))
         {
-            ctx.Push(2);
+            zenith->Push(2);
             return 1;
         }
 
@@ -183,6 +160,20 @@ namespace Scripting
         vec3 unitPosition = transform.GetWorldPosition();
         vec3 cameraToUnitDir = glm::normalize(unitPosition - cameraPosition);
 
+        // Update Font Size based on distance to camera
+        if (isTextWidget)
+        {
+            f32 distanceToCamera = glm::distance(cameraPosition, unitPosition);
+            if (distanceToCamera > 100.0f)
+                return 0;
+
+            auto& textTemplate = uiRegistry->get<ECS::Components::UI::TextTemplate>(widget->entity);
+            textTemplate.size = GetNameFontSize(distanceToCamera);
+
+            uiRegistry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+            ECS::Util::UI::RefreshClipper(uiRegistry, widget->entity);
+        }
+
         // If the unit is behind the camera, we don't want to set the widget position
         if (glm::dot(forwardDir, cameraToUnitDir) < 0.0f)
             return 0;
@@ -192,18 +183,7 @@ namespace Scripting
         vec3 position = unitPosition + vec3((*mat)[3]);
         ECS::Util::UI::SetPos3D(widget, position);
 
-        // Update Font Size based on distance to camera
-        if (isTextWidget)
-        {
-            f32 distanceToCamera = glm::distance(cameraPosition, position);
-            auto& textTemplate = uiRegistry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            textTemplate.size = GetNameFontSize(distanceToCamera);
-
-            uiRegistry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-            ECS::Util::UI::RefreshClipper(uiRegistry, widget->entity);
-        }
-
-        ctx.Push(1);
+        zenith->Push(1);
         return 1;
     }
 }

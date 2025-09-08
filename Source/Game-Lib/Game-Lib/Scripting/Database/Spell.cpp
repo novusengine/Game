@@ -1,33 +1,27 @@
 #include "Spell.h"
 
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/Scripting/LuaMethodTable.h"
-#include "Game-Lib/Scripting/LuaState.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Meta/Generated/Shared/ClientDB.h>
+
+#include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 
 namespace Scripting::Database
 {
-    static LuaMethod spellStaticFunctions[] =
-    {
-        { "GetSpellInfo", SpellMethods::GetSpellInfo }
-    };
 
-    void Spell::Register(lua_State* state)
+    void Spell::Register(Zenith* zenith)
     {
-        LuaMethodTable::Set(state, spellStaticFunctions, "Spell");
+        LuaMethodTable::Set(zenith, spellGlobalFunctions, "Spell");
     }
 
     namespace SpellMethods
     {
-        i32 GetSpellInfo(lua_State* state)
+        i32 GetSpellInfo(Zenith* zenith)
         {
-            LuaState ctx(state);
-
-            i32 spellID = ctx.Get(0);
+            u32 spellID = zenith->CheckVal<u32>(1);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
             auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
@@ -45,12 +39,10 @@ namespace Scripting::Database
             const std::string& description = db->GetString(spellInfo.description);
             const std::string& auraDescription = db->GetString(spellInfo.auraDescription);
 
-            ctx.CreateTableAndPopulate(nullptr, [&ctx, &name, &description, &auraDescription]()
-            {
-                ctx.SetTable("Name", name.c_str());
-                ctx.SetTable("Description", description.c_str());
-                ctx.SetTable("AuraDescription", auraDescription.c_str());
-            });
+            zenith->CreateTable();
+            zenith->AddTableField("Name", name.c_str());
+            zenith->AddTableField("Description", description.c_str());
+            zenith->AddTableField("AuraDescription", auraDescription.c_str());
 
             return 1;
         }

@@ -889,10 +889,10 @@ local function CreateCharacterCreationScreen(stack : Stack)
     return characterCreationScreen;
 end
 
-local function OnGameLoaded(eventID : number, motd : string)
+local function OnGameLoaded(eventID : number, data : any)
     local stack = UIStack.Get("Menu")
 
     characterCreationScreen = CreateCharacterCreationScreen(stack);
 end
 
-RegisterGameEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)
