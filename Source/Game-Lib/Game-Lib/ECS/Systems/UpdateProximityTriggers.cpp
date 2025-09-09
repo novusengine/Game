@@ -12,8 +12,11 @@
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Util/DebugHandler.h>
 
@@ -27,6 +30,8 @@
 
 #include <entt/entt.hpp>
 #include <tracy/Tracy.hpp>
+
+AutoCVar_ShowFlag CVAR_DebugDrawTriggers(CVarCategory::Client | CVarCategory::Rendering, "debugDrawTriggers", "debug draw triggers", ShowFlag::DISABLED);
 
 namespace ECS::Systems
 {
@@ -142,6 +147,30 @@ namespace ECS::Systems
 
             proximityTrigger.playersInside.erase(playerEntity);
             triggerList.erase(triggerEntity);
+        }
+
+        // Debug draw triggers
+        if (CVAR_DebugDrawTriggers.Get() == ShowFlag::ENABLED)
+        {
+            DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
+
+            auto triggersView = registry.view<Components::Transform, Components::AABB, Components::ProximityTrigger>();
+            triggersView.each([&](entt::entity triggerEntity, Components::Transform triggerTransform, Components::AABB& triggerAABB, Components::ProximityTrigger& proximityTrigger)
+            {
+                vec3 position = triggerTransform.GetWorldPosition();
+                Color color = proximityTrigger.playersInside.contains(playerEntity) ? Color::Green : Color::Red;
+
+                bool isAABBTrigger = false; // For when we support spherical AABBs
+                if (isAABBTrigger)
+                {
+                    debugRenderer->DrawAABB3D(position, triggerAABB.extents, color);
+                }
+                else
+                {
+                    f32 radius = glm::max(glm::max(triggerAABB.extents.x, triggerAABB.extents.y), triggerAABB.extents.z); // Probably get the radius in a better way if we have proper spherical triggers
+                    debugRenderer->DrawSphere3D(position, radius, 8, color);
+                }
+            });
         }
     }
 }
