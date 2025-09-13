@@ -9,6 +9,8 @@ jobs:
 
     strategy:
       fail-fast: false
+      matrix:
+        build_type: [Debug]
 
     steps:
     - uses: actions/checkout@v4
@@ -42,6 +44,24 @@ jobs:
 #        sudo cp /home/runner/work/Game/Game/Submodules/Engine/Dependencies/dxcompiler/lib/linux/libdxcompiler.so /usr/local/lib
 
     - name: Run Premake
+      run: |
+        export VULKAN_SDK=/usr/include/vulkan
+        premake5 gmake2
+
+    - name: Build Meta Generator files
+      run: |
+        cd Build
+        make -j$(nproc) -k Gen-Meta
+
+    - name: Run Meta Generator
+      run: |
+        META_DIR=Submodules/Engine/Source/Meta/Meta
+        rm -rf $META_DIR/Generated
+        Build/Bin/Game/Engine/${{ matrix.build_type }}/TypeGenerator \
+          $META_DIR/Source \
+          $META_DIR/Generated
+
+    - name: Re-run Premake
       run: |
         export VULKAN_SDK=/usr/include/vulkan
         premake5 gmake2
