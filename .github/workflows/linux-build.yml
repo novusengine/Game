@@ -57,7 +57,7 @@ jobs:
       run: |
         META_DIR=Submodules/Engine/Source/Meta/Meta
         rm -rf $META_DIR/Generated
-        Build/Bin/AssetConverter/Engine/${{ matrix.build_type }}/TypeGenerator \
+        Build/Bin/Game/Engine/${{ matrix.build_type }}/TypeGenerator \
           $META_DIR/Source \
           $META_DIR/Generated
 
