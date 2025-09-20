@@ -234,7 +234,7 @@ gameTooltipAPI.SetItem = function(itemID)
 
             for i = 1, numStats do
                 local stat : ItemStat = itemStats[i]
-                
+                                
                 local prefix = if stat.Value > 0 then "+" else ""
                 local itemStatText = prefix .. tostring(stat.Value) .. " " .. ItemUtil.GetStatText(stat.ID)
                 gameTooltipAPI.AddLine(itemStatText, "GameTooltipMediumText")

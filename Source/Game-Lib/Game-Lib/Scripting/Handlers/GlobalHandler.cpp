@@ -177,7 +177,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = itemID;
-        unitEquipment.dirtyItemIDSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)slotIndex);
         gameRegistry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         zenith->Push(true);
@@ -207,7 +207,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = 0;
-        unitEquipment.dirtyItemIDSlots.insert((::Database::Item::ItemEquipSlot)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)slotIndex);
         registry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         zenith->Push(true);

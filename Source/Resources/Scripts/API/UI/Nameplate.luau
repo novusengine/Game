@@ -2,7 +2,7 @@ local OptionsContext = require("@src/API/OptionsContext")
 
 type NameplateAPI = 
 {
-    NewNameplate : (parent : Panel, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, nameplateTemplateTable : NameplateTemplate) -> AtlasPanel,
+    NewNameplate : (parent : Panel, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, nameplateTemplateTable : NameplateTemplate) -> Nameplate,
 
     nameplates : { Nameplate },
     nameplateTextDisplayMode : NameplateTextDisplayType,
@@ -24,8 +24,11 @@ type Nameplate = {
     background: Panel,
     fill: Panel,
     nameText: TextWidget,
+    nameTextColor: vector,
     healthText: TextWidget,
+    healthTextColor: vector,
     standaloneNameText: TextWidget,
+    standaloneNameTextColor: vector,
 
     -- Methods
     Destroy: (self: Nameplate) -> (),
@@ -113,6 +116,35 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.SetPosToUnit = function(self : Nameplate, unitID : number)
+        if self.isStandalone then
+            local resultCode = Unit.SetWidgetToNamePos(self.standaloneNameText, unitID);
+
+            if resultCode ~= 2 then
+                self.standaloneNameText:SetVisible(resultCode or false);
+            end
+        else
+            local borderResultCode = Unit.SetWidgetToNamePos(self.border, unitID);
+            local backgroundResultCode = Unit.SetWidgetToNamePos(self.background, unitID);
+            local fillResultCode = Unit.SetWidgetToNamePos(self.fill, unitID);
+            local nameResultCode = Unit.SetWidgetToNamePos(self.nameText, unitID);
+
+            if borderResultCode ~= 2 then
+                self.border:SetVisible(borderResultCode or false);
+            end
+
+            if backgroundResultCode ~= 2 then
+                self.background:SetVisible(backgroundResultCode or false);
+            end
+
+            if fillResultCode ~= 2 then
+                self.fill:SetVisible(fillResultCode or false);
+            end
+
+            if nameResultCode ~= 2 then
+                self.nameText:SetVisible(nameResultCode or false);
+            end
+        end
+
         local widget = if self.isStandalone then self.standaloneNameText else self.border;
         local resultCode = Unit.SetWidgetToNamePos(widget, unitID);
 
@@ -179,8 +211,24 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         --nameplateTable.fill:SetClipRect(0, 0, 1, 1);
         self.fill:SetWidth(newWidth);
 
-        local text = FormatText(self.health, healthPercent * 100.0);--string.format("%d (%.0f%%)", self.health, healthPercent * 100);
+        local text = FormatText(self.health, healthPercent);--string.format("%d (%.0f%%)", self.health, healthPercent * 100);
         nameplateTable.healthText:SetText(text);
+    end
+
+    nameplateTable.SetHighlighted = function(self : Nameplate, highlighted : boolean)
+
+        local baseStandaloneColor = if highlighted then self.standaloneNameTextColor * vector.create(1.25, 1.25, 1.25) else self.standaloneNameTextColor;
+        baseStandaloneColor = vector.min(baseStandaloneColor, vector.create(1.0, 1.0, 1.0));
+
+        local baseNameColor = if highlighted then self.nameTextColor * vector.create(1.25, 1.25, 1.25) else self.nameTextColor;
+        baseNameColor = vector.min(baseNameColor, vector.create(1.0, 1.0, 1.0));
+
+        local baseHealthColor = if highlighted then self.healthTextColor * vector.create(1.25, 1.25, 1.25) else self.healthTextColor;
+        baseHealthColor = vector.min(baseHealthColor, vector.create(1.0, 1.0, 1.0));
+
+        self.standaloneNameText:SetColor(baseStandaloneColor);
+        self.nameText:SetColor(baseNameColor);
+        self.healthText:SetColor(baseHealthColor);
     end
 
     return nameplateTable;
@@ -200,35 +248,41 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     -- Create the border panel
     nameplateTable.border = parent:NewPanel(posX, posY, sizeX, sizeY, layer);
     nameplateTable.border:SetRelativePoint(0.5, 0.5);
-    nameplateTable.border:SetColor(vector.create(1.0, 1.0, 1.0));
+    nameplateTable.border:SetColor(vector.create(0.0, 0.0, 0.0));
 
     -- Create the background panel
-    local sizeX = sizeX - borderWidth * 2;
-    local sizeY = sizeY - borderWidth * 2;
+    local sizeXWithoutBorder = sizeX - borderWidth;
+    local sizeYWithoutBorder = sizeY - borderWidth;
 
-    nameplateTable.background = nameplateTable.border:NewPanel(0, 0, sizeX, sizeY, layer, "DebugRed");
+    nameplateTable.background = nameplateTable.border:NewPanel(0, 0, sizeXWithoutBorder, sizeYWithoutBorder, layer, "DebugRed");
     nameplateTable.background:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
     nameplateTable.background:SetAnchor(0.5, 0.5);
     nameplateTable.background:SetRelativePoint(0.5, 0.5);
 
     -- Create the fill panel which gets resized based on HP
-    nameplateTable.fill = nameplateTable.background:NewPanel(0, 0, sizeX, sizeY, layer, "DebugGreen");
+    local fillPosX = (-sizeXWithoutBorder * 0.5) - 0.5;
+    
+    nameplateTable.fill = nameplateTable.background:NewPanel(fillPosX, 0, sizeXWithoutBorder, sizeYWithoutBorder, layer, "DebugGreen");
     nameplateTable.fill:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
+    nameplateTable.fill:SetRelativePoint(0.0, 0.5);
     nameplateTable.fill:SetClipRect(0, 0, 1, 1);
 
     -- Create name text
     nameplateTable.nameText = nameplateTable.border:NewText(nameplateTable.unitName, 5, 2, 0, "NameplateName");
     nameplateTable.nameText:SetAnchor(0.0, 1.0);
     nameplateTable.nameText:SetRelativePoint(0.0, 0.0);
+    nameplateTable.nameTextColor = nameplateTable.nameText:GetColor();
 
     -- Create health text
     nameplateTable.healthText = nameplateTable.background:NewText("1000 (100%)", 0, 3, 0, "NameplateHealth");
     nameplateTable.healthText:SetAnchor(1.0, 0.5);
     nameplateTable.healthText:SetRelativePoint(1.0, 0.5);
+    nameplateTable.healthTextColor = nameplateTable.healthText:GetColor();
 
     -- Create standalone name text
     nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 5, 2, 0, "PlayerName");
     nameplateTable.standaloneNameText:SetRelativePoint(0.5, 0.0);
+    nameplateTable.standaloneNameTextColor = nameplateTable.standaloneNameText:GetColor();
 
     nameplateTable = SetupNameplateMethods(nameplateTable);
 

@@ -48,6 +48,7 @@ enum class ClientDBHash : u32
     UnitCustomizationMaterial           = GetHash("UnitCustomizationMaterial"_h),
     UnitRaceCustomizationChoice         = GetHash("UnitRaceCustomizationChoice"_h),
     Spell                               = GetHash("Spell"_h),
+    SpellEffects                        = GetHash("SpellEffects"_h),
     Light                               = GetHash("Light"_h),
     LightData                           = GetHash("LightData"_h),
     LightParams                         = GetHash("LightParams"_h),

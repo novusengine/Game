@@ -18,6 +18,9 @@ namespace Scripting::Unit
     public: // Registered Functions
         static i32 GetLocal(Zenith* zenith);
         static i32 GetName(Zenith* zenith);
+        static i32 GetHealth(Zenith* zenith);
+        static i32 GetResource(Zenith* zenith);
+
         static i32 SetWidgetToNamePos(Zenith* zenith);
     };
 
@@ -25,6 +28,9 @@ namespace Scripting::Unit
     {
         { "GetLocal", UnitHandler::GetLocal },
         { "GetName", UnitHandler::GetName },
+        { "GetHealth", UnitHandler::GetHealth },
+        { "GetResource", UnitHandler::GetResource },
+
         { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }
     };
 }

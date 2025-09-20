@@ -7,20 +7,21 @@
 
 namespace ECS
 {
-    struct UnitStat
+    struct UnitPower
     {
     public:
         f64 base = 0.0;
         f64 current = 0.0;
+        f64 max = 0.0;
     };
 
     namespace Components
     {
-        struct UnitStatsComponent
+        struct UnitPowersComponent
         {
         public:
-            robin_hood::unordered_map<Generated::StatTypeEnum, UnitStat> statTypeToValue;
-            robin_hood::unordered_set<Generated::StatTypeEnum> dirtyStatTypes;
+            robin_hood::unordered_map<Generated::PowerTypeEnum, UnitPower> powerTypeToValue;
+            robin_hood::unordered_set<Generated::PowerTypeEnum> dirtyPowerTypes;
         };
     }
 }

@@ -13,6 +13,8 @@
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
+#include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
@@ -20,11 +22,14 @@
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
-#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
+#include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
@@ -32,6 +37,7 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/CharacterControllerUtil.h"
@@ -44,9 +50,12 @@
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
 
+#include <Meta/Generated/Game/LuaEvent.h>
 #include <Meta/Generated/Shared/NetworkPacket.h>
 
 #include <Network/Client.h>
+
+#include <Scripting/Zenith.h>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
@@ -69,7 +78,6 @@ public:
     vec3 origin;
     vec3 dir; // normalized
 };
-
 struct Hit
 {
 public:
@@ -83,7 +91,6 @@ inline vec3 UnprojectNDC(const vec3& ndc, const mat4x4& invViewProj)
     vec4 w = invViewProj * vec4(ndc, 1.0f);
     return vec3(w) / w.w;
 }
-
 inline vec2 ScreenToNDC(const vec2& screenXY, const vec2& viewportSize)
 {
     // screen origin: top-left
@@ -109,7 +116,6 @@ inline Ray ScreenToWorldRay(const vec2& screenXY, const vec2& viewportSize, cons
     vec3 dir = glm::normalize(pFar - pNear);
     return { pNear, dir };
 }
-
 inline bool RayIntersectsAABB(const Ray& ray, const glm::vec3& min, const glm::vec3& max, f32& tNear, f32& tFar)
 {
     tNear = -std::numeric_limits<f32>::infinity();
@@ -143,6 +149,146 @@ inline bool RayIntersectsAABB(const Ray& ray, const glm::vec3& min, const glm::v
 
 namespace ECS::Systems
 {
+    static bool OnMouseLeftRightRelease(i32 key, KeybindAction action, KeybindModifier modifier)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        entt::registry::context& ctx = registry->ctx();
+        auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
+        auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+        auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
+
+        if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
+            return false;
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
+
+        if (key == GLFW_MOUSE_BUTTON_LEFT && (modifier & KeybindModifier::Shift) != KeybindModifier::Invalid)
+        {
+            if (unit.targetEntity != entt::null)
+            {
+                if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+                    .targetGUID = ObjectGUID::Empty
+                    }))
+                {
+                    // Unhighlight previous target
+                    if (auto* model = registry->try_get<Components::Model>(unit.targetEntity))
+                        modelLoader->SetModelHighlight(*model, 1.0f);
+
+                    unit.targetEntity = entt::null;
+                    unit.isAutoAttacking = false;
+                    unit.attackReadyAnimation = Animation::Defines::Type::Invalid;
+                    characterSingleton.primaryAttackTimer = 0.0f;
+                    characterSingleton.secondaryAttackTimer = 0.0f;
+
+                    zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                        .unitID = entt::to_integral(characterSingleton.moverEntity),
+                        .targetID = entt::to_integral(unit.targetEntity)
+                    });
+                }
+            }
+
+            return true;
+        }
+
+        static constexpr f32 MAX_TARGET_SELECT_DISTANCE = 100.0f;
+
+        vec2 mousePos;
+        if (!ServiceLocator::GetEditorHandler()->GetViewport()->GetMousePosition(mousePos))
+            return false;
+
+        vec2 renderSize = ServiceLocator::GetGameRenderer()->GetRenderer()->GetRenderSize();
+        auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
+
+        auto screenToWorldRay = ScreenToWorldRay(mousePos, renderSize, camera.clipToWorld, true);
+        vec3 rayEnd = screenToWorldRay.origin + (screenToWorldRay.dir * MAX_TARGET_SELECT_DISTANCE);
+        vec3 rayMin = glm::min(screenToWorldRay.origin, rayEnd);
+        vec3 rayMax = glm::max(screenToWorldRay.origin, rayEnd);
+
+        std::vector<Hit> hits;
+
+        networkState.networkVisTree->Search(&rayMin.x, &rayMax.x, [&registry, &networkState, &unit, &screenToWorldRay, &hits](const ObjectGUID& guid)
+        {
+            if (!networkState.networkIDToEntity.contains(guid))
+                return true;
+
+            if (unit.networkID == guid)
+                return true;
+
+            entt::entity entity = networkState.networkIDToEntity[guid];
+            if (!registry->valid(entity) || !registry->all_of<Components::WorldAABB>(entity))
+                return true;
+
+            auto& aabb = registry->get<Components::WorldAABB>(entity);
+
+            f32 tNear, tFar;
+            if (RayIntersectsAABB(screenToWorldRay, aabb.min, aabb.max, tNear, tFar))
+                hits.push_back({ tNear, tFar, guid });
+
+            return true;
+        });
+
+        std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b)
+        {
+            return a.tNear < b.tNear;
+        });
+
+        if (hits.size() == 0)
+            return false;
+
+        ObjectGUID targetNetworkID = hits[0].objectGUID;
+        if (!networkState.networkIDToEntity.contains(targetNetworkID))
+            return false;
+
+        entt::entity targetEntity = networkState.networkIDToEntity[targetNetworkID];
+        if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
+            return false;
+
+        if (unit.targetEntity == targetEntity)
+        {
+            if (key == GLFW_MOUSE_BUTTON_RIGHT)
+            {
+                unit.isAutoAttacking = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+            .targetGUID = targetNetworkID
+            }))
+        {
+            // Unhighlight previous target
+            if (registry->all_of<Components::Model>(unit.targetEntity))
+            {
+                auto& model = registry->get<Components::Model>(unit.targetEntity);
+                modelLoader->SetModelHighlight(model, 1.0f);
+            }
+
+            unit.targetEntity = targetEntity;
+
+            // Visually highlight the selected target for feedback
+            if (registry->all_of<Components::Model>(targetEntity))
+            {
+                auto& model = registry->get<Components::Model>(targetEntity);
+                modelLoader->SetModelHighlight(model, 1.25f);
+            }
+
+            if (key == GLFW_MOUSE_BUTTON_RIGHT)
+                unit.isAutoAttacking = true;
+
+            zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                .unitID = entt::to_integral(characterSingleton.moverEntity),
+                .targetID = entt::to_integral(targetEntity)
+            });
+        }
+
+        return true;
+    }
+
     void CharacterController::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
@@ -173,112 +319,8 @@ namespace ECS::Systems
         characterSingleton.keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
         characterSingleton.keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        characterSingleton.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
-        {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            entt::registry::context& ctx = registry->ctx();
-            auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
-            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
-
-            if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
-                return false;
-
-            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
-
-            if ((modifier & KeybindModifier::Shift) != KeybindModifier::Invalid)
-            {
-                // Unhighlight previous target
-                if (unit.targetEntity != entt::null && registry->all_of<Components::Model>(unit.targetEntity))
-                {
-                    auto& model = registry->get<Components::Model>(unit.targetEntity);
-                    modelLoader->SetModelHighlight(model, 1.0f);
-                }
-
-                unit.targetEntity = entt::null;
-                return true;
-            }
-
-            static constexpr f32 MAX_TARGET_SELECT_DISTANCE = 100.0f;
-
-            vec2 mousePos;
-            if (!ServiceLocator::GetEditorHandler()->GetViewport()->GetMousePosition(mousePos))
-                return false;
-
-            vec2 renderSize = ServiceLocator::GetGameRenderer()->GetRenderer()->GetRenderSize();
-            auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
-
-            auto screenToWorldRay = ScreenToWorldRay(mousePos, renderSize, camera.clipToWorld, true);
-            vec3 rayEnd = screenToWorldRay.origin + (screenToWorldRay.dir * MAX_TARGET_SELECT_DISTANCE);
-            vec3 rayMin = glm::min(screenToWorldRay.origin, rayEnd);
-            vec3 rayMax = glm::max(screenToWorldRay.origin, rayEnd);
-
-            std::vector<Hit> hits;
-
-            auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
-            networkState.networkVisTree->Search(&rayMin.x, &rayMax.x, [&registry, &networkState, &unit, &screenToWorldRay, &hits](const ObjectGUID& guid)
-            {
-                if (!networkState.networkIDToEntity.contains(guid))
-                    return true;
-
-                if (unit.networkID == guid)
-                    return true;
-
-                entt::entity entity = networkState.networkIDToEntity[guid];
-                if (!registry->valid(entity) || !registry->all_of<Components::WorldAABB>(entity))
-                    return true;
-
-                auto& aabb = registry->get<Components::WorldAABB>(entity);
-
-                f32 tNear, tFar;
-                if (RayIntersectsAABB(screenToWorldRay, aabb.min, aabb.max, tNear, tFar))
-                    hits.push_back({ tNear, tFar, guid });
-
-                return true;
-            });
-
-            std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b)
-            {
-                return a.tNear < b.tNear;
-            });
-
-            if (hits.size() == 0)
-                return false;
-
-            ObjectGUID targetNetworkID = hits[0].objectGUID;
-            if (!networkState.networkIDToEntity.contains(targetNetworkID))
-                return false;
-
-            entt::entity targetEntity = networkState.networkIDToEntity[targetNetworkID];
-            if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
-                return false;
-
-            if (unit.targetEntity == targetEntity)
-                return false;
-
-            if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
-                .targetGUID = targetNetworkID
-                }))
-            {
-                // Unhighlight previous target
-                if (registry->all_of<Components::Model>(unit.targetEntity))
-                {
-                    auto& model = registry->get<Components::Model>(unit.targetEntity);
-                    modelLoader->SetModelHighlight(model, 1.0f);
-                }
-
-                unit.targetEntity = targetEntity;
-
-                // Visually highlight the selected target for feedback
-                if (registry->all_of<Components::Model>(targetEntity))
-                {
-                    auto& model = registry->get<Components::Model>(targetEntity);
-                    modelLoader->SetModelHighlight(model, 1.25f);
-                }
-            }
-
-            return true;
-        });
+        characterSingleton.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, OnMouseLeftRightRelease);
+        characterSingleton.keybindGroup->AddKeyboardCallback("Interact Target", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Release, KeybindModifier::Any, OnMouseLeftRightRelease);
 
         characterSingleton.cameraToggleKeybindGroup->SetActive(true);
         characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Toggle Camera Mode", GLFW_KEY_C, KeybindAction::Press, KeybindModifier::Any, [](i32 key, KeybindAction action, KeybindModifier modifier)
@@ -411,14 +453,114 @@ namespace ECS::Systems
 //        characterSingleton.character->GetShape()->Draw(joltDebugRenderer, characterSingleton.character->GetWorldTransform(), JPH::Vec3(modelScale.x, modelScale.y, modelScale.z), JPH::Color::sCyan, true, true);
 //#endif
 
-        if (characterSingleton.moverEntity == entt::null)
+        if (characterSingleton.moverEntity == entt::null || !registry.all_of<Components::Model>(characterSingleton.moverEntity))
             return;
+
+        auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
+        auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
+        auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
+        auto& equippedItem = registry.get<Components::UnitEquipment>(characterSingleton.moverEntity);
+
+        if (Util::Network::IsConnected(networkState))
+        {
+            bool isTargetNull = unit.targetEntity == entt::null;
+            bool isTargetInvalid = !isTargetNull && !registry.valid(unit.targetEntity);
+            if (isTargetNull || isTargetInvalid)
+            {
+                if (unit.isAutoAttacking)
+                {
+                    unit.isAutoAttacking = false;
+                    unit.attackReadyAnimation = Animation::Defines::Type::Invalid;
+                    characterSingleton.primaryAttackTimer = 0.0f;
+                    characterSingleton.secondaryAttackTimer = 0.0f;
+                }
+
+                if (isTargetInvalid)
+                {
+                    unit.targetEntity = entt::null;
+
+                    Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+                        .targetGUID = ObjectGUID::Empty
+                    });
+
+                    Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+                    zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                        .unitID = entt::to_integral(characterSingleton.moverEntity),
+                        .targetID = entt::to_integral(unit.targetEntity)
+                    });
+                }
+            }
+
+            characterSingleton.primaryAttackTimer = glm::clamp(characterSingleton.primaryAttackTimer - deltaTime, 0.0f, std::numeric_limits<f32>().max());
+            characterSingleton.secondaryAttackTimer = glm::clamp(characterSingleton.secondaryAttackTimer - deltaTime, 0.0f, std::numeric_limits<f32>().max());
+            if (unit.isAutoAttacking)
+            {
+                auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(unit.targetEntity);
+                auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+
+                if (healthPower.current <= 0.0f)
+                {
+                    unit.isAutoAttacking = false;
+                    unit.attackReadyAnimation = Animation::Defines::Type::Invalid;
+                }
+                else
+                {
+                    if (unit.attackReadyAnimation == ::Animation::Defines::Type::Invalid)
+                    {
+                        u32 mainHandItemID = equippedItem.equipmentSlotToItemID[static_cast<u32>(Database::Item::ItemEquipSlot::MainHand)];
+
+                        auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+                        auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+                        auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(mainHandItemID);
+
+                        unit.attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
+                    }
+
+                    if (characterSingleton.primaryAttackTimer <= 0.0f)
+                    {
+                        auto& targetTransform = registry.get<Components::Transform>(unit.targetEntity);
+
+                        // TODO : Character Model is rotated 180 degrees due to Complex Model Importer issues, fix this (Hence the - on the GetLocalForward)
+                        f32 distanceToTarget = glm::distance(transform.GetWorldPosition(), targetTransform.GetWorldPosition());
+                        bool targetIsWithin45DegreeAngle = glm::dot(glm::normalize(targetTransform.GetWorldPosition() - transform.GetWorldPosition()), glm::normalize(-transform.GetLocalForward())) > glm::cos(glm::radians(45.0f));
+
+                        if (distanceToTarget <= 5.0f && targetIsWithin45DegreeAngle) // TODO: Replace with real melee range
+                        {
+                            // Send Cast Auto Attack Spell Packet
+                            ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+                                .spellID = 1
+                            });
+
+                            characterSingleton.primaryAttackTimer = std::numeric_limits<f32>().max(); // Set to a high value to prevent continuous attacks until server message is received
+                        }
+                    }
+
+                    if (characterSingleton.secondaryAttackTimer <= 0.0f)
+                    {
+                        auto& targetTransform = registry.get<Components::Transform>(unit.targetEntity);
+
+                        // TODO : Character Model is rotated 180 degrees due to Complex Model Importer issues, fix this (Hence the - on the GetLocalForward)
+                        f32 distanceToTarget = glm::distance(transform.GetWorldPosition(), targetTransform.GetWorldPosition());
+                        bool targetIsWithin45DegreeAngle = glm::dot(glm::normalize(targetTransform.GetWorldPosition() - transform.GetWorldPosition()), glm::normalize(-transform.GetLocalForward())) > glm::cos(glm::radians(45.0f));
+
+                        if (distanceToTarget <= 5.0f && targetIsWithin45DegreeAngle) // TODO: Replace with real melee range
+                        {
+                            // Send Cast Auto Attack Spell Packet
+                            ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+                                .spellID = 2
+                            });
+
+                            characterSingleton.secondaryAttackTimer = std::numeric_limits<f32>().max(); // Set to a high value to prevent continuous attacks until server message is received
+                        }
+                    }
+                }
+            }
+        }
 
         if (!keybindGroup->IsActive())
             return;
 
         auto& transformSystem = ctx.get<TransformSystem>();
-
         auto& joltState = ctx.get<Singletons::JoltState>();
         static constexpr f32 fixedDeltaTime = Singletons::JoltState::FixedDeltaTime;
         if (joltState.updateTimer < fixedDeltaTime)
@@ -428,11 +570,9 @@ namespace ECS::Systems
             ZoneScopedN("ECS::CharacterController::Update - Active");
 
             auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
-            auto& model = registry.get<Components::Model>(characterSingleton.moverEntity);
-            auto& transform = registry.get<Components::Transform>(characterSingleton.moverEntity);
             auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
-            auto& unit = registry.get<Components::Unit>(characterSingleton.moverEntity);
-            auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(characterSingleton.moverEntity);
+            auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(characterSingleton.moverEntity);
+            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
 
             static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
             static JPH::Vec3 flyingGravity = JPH::Vec3(0.0f, 0.0f, 0.0f);
@@ -445,7 +585,7 @@ namespace ECS::Systems
             bool isInputRightDown = keybindGroup->IsKeybindPressed("Right"_h);
             bool isInputUpwardsDown = keybindGroup->IsKeybindPressed("Upwards"_h);
 
-            bool isAlive = unitStatsComponent.currentHealth > 0.0f;
+            bool isAlive = healthPower.current > 0.0f;
             bool isMovingForward = (isInputForwardDown && !isInputBackwardDown) * isAlive;
             bool isMovingBackward = (isInputBackwardDown && !isInputForwardDown) * isAlive;
             bool isMovingLeft = (isInputLeftDown && !isInputRightDown) * isAlive;
@@ -659,14 +799,16 @@ namespace ECS::Systems
             auto& attachmentData = registry.get_or_emplace<Components::AttachmentData>(characterSingleton.moverEntity);
 
             auto& unit = registry.get_or_emplace<Components::Unit>(characterSingleton.moverEntity);
+            unit.name = "Localplayer";
+            unit.targetEntity = entt::null;
             unit.unitClass = GameDefine::UnitClass::Warrior;
             unit.race = GameDefine::UnitRace::Human;
             unit.gender = GameDefine::UnitGender::Female;
 
             auto& unitEquipment = registry.get_or_emplace<Components::UnitEquipment>(characterSingleton.moverEntity);
-            for (u32 i = 0; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
+            for (u32 i = 0; i <= (u32)Generated::ItemEquipSlotEnum::EquipmentEnd; i++)
             {
-                Database::Item::ItemEquipSlot equipSlot = static_cast<Database::Item::ItemEquipSlot>(i);
+                auto equipSlot = static_cast<Generated::ItemEquipSlotEnum>(i);
                 unitEquipment.dirtyItemIDSlots.insert(equipSlot);
             }
             registry.get_or_emplace<Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
@@ -676,9 +818,8 @@ namespace ECS::Systems
 
             auto& unitCustomization = registry.get_or_emplace<Components::UnitCustomization>(characterSingleton.moverEntity);
 
-            auto& unitStatsComponent = registry.get_or_emplace<Components::UnitStatsComponent>(characterSingleton.moverEntity);
-            unitStatsComponent.currentHealth = 50.0f;
-            unitStatsComponent.maxHealth = 100.0f;
+            auto& unitPowersComponent = registry.get_or_emplace<Components::UnitPowersComponent>(characterSingleton.moverEntity);
+            ::Util::Unit::AddPower(unitPowersComponent, Generated::PowerTypeEnum::Health, 100.0, 50.0, 100.0);
 
             transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
 
@@ -687,6 +828,9 @@ namespace ECS::Systems
 
             registry.emplace_or_replace<Components::PlayerTag>(characterSingleton.moverEntity);
         }
+
+        if (!isLocal && !registry.valid(characterSingleton.moverEntity))
+            return;
 
         registry.emplace_or_replace<Components::LocalPlayerTag>(characterSingleton.moverEntity);
 
@@ -724,6 +868,9 @@ namespace ECS::Systems
         characterSettings.mPenetrationRecoverySpeed = 1.0f;
         characterSettings.mMaxSlopeAngle = MaxWallClimbAngle;
         characterSettings.mEnhancedInternalEdgeRemoval = false;
+
+        characterSingleton.primaryAttackTimer = 0.0f;
+        characterSingleton.secondaryAttackTimer = 0.0f;
 
         if (characterSingleton.character)
             delete characterSingleton.character;

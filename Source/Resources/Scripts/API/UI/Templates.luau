@@ -40,6 +40,12 @@ function templatesAPI.RegisterTemplates()
         color = vector.create(0.0, 0.0, 1.0),
     });
 
+    UI.RegisterPanelTemplate("DebugDarkGrey",
+    {
+        cornerRadius = 0.0,
+        color = vector.create(0.15, 0.15, 0.15),
+    });
+
     -- Dialog Box
     UI.RegisterPanelTemplate("DialogBox",
     {

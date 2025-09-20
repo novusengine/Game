@@ -10,6 +10,6 @@ namespace ECS::Components
         entt::entity target;
 
         f32 castTime = 0.0f;
-        f32 duration = 0.0f;
+        f32 timeToCast = 0.0f;
     };
 }

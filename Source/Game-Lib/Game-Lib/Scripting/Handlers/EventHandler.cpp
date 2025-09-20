@@ -30,14 +30,30 @@ namespace Scripting
         if (packedEventID == std::numeric_limits<u16>().max())
             return 0;
 
-        i32 funcRef = zenith->GetRef(2);
+        u32 variant = 0;
+        i32 funcRef = 0;
+
+        if (numArgs == 2)
+        {
+            if (zenith->IsFunction(2))
+                funcRef = zenith->GetRef(2);
+        }
+        else
+        {
+            variant = zenith->CheckVal<u32>(2);
+
+            if (zenith->IsFunction(3))
+                funcRef = zenith->GetRef(3);
+        }
+
         if (funcRef == 0)
             return 0;
 
         u16 eventTypeID = static_cast<u16>(packedEventID >> 16);
         u16 eventID = static_cast<u16>(packedEventID & 0xFFFF);
+        u16 variantID = static_cast<u16>(variant);
 
-        zenith->RegisterEventCallbackRaw(eventTypeID, eventID, funcRef);
+        zenith->RegisterEventCallbackRaw(eventTypeID, eventID, variantID, funcRef);
 
         return 0;
     }
@@ -49,10 +65,12 @@ namespace Scripting
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataUpdated>(Generated::LuaGameEventEnum::Updated);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataMapLoading>(Generated::LuaGameEventEnum::MapLoading);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataChatMessageReceived>(Generated::LuaGameEventEnum::ChatMessageReceived);
+        zenith->RegisterEventTypeID<Generated::LuaGameEventDataLocalMoverChanged>(Generated::LuaGameEventEnum::LocalMoverChanged);
 
         zenith->RegisterEventType<Generated::LuaUnitEventEnum>();
         zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAdd>(Generated::LuaUnitEventEnum::Add);
         zenith->RegisterEventTypeID<Generated::LuaUnitEventDataRemove>(Generated::LuaUnitEventEnum::Remove);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataTargetChanged>(Generated::LuaUnitEventEnum::TargetChanged);
 
         zenith->RegisterEventType<Generated::LuaContainerEventEnum>();
         zenith->RegisterEventTypeID<Generated::LuaContainerEventDataAdd>(Generated::LuaContainerEventEnum::Add);

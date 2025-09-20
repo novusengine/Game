@@ -2,7 +2,11 @@
 local UINameplate = require("@src/API/UI/Nameplate");
 local OptionsContext = require("@src/API/OptionsContext")
 
-local nameplates = {};
+local nameplates = 
+{
+    entries = {},
+    localTargetUnitID = nil,
+};
 
 local function RegisterTemplates()
     UI.RegisterTextTemplate("PlayerName",
@@ -18,7 +22,7 @@ local function RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 12.0,
-        color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
+        color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
@@ -27,14 +31,14 @@ local function RegisterTemplates()
     {
         font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
         size = 10.0,
-        color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
+        color = vector.create(240.0/240.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 end
 
 local function SetEnableNameplates(enabled : boolean)
-    for i, nameplate in nameplates do
+    for i, nameplate in nameplates.entries do
         nameplate:SetEnabled(enabled);
     end
 end
@@ -81,8 +85,7 @@ local function OnGameLoaded(eventID : number, data : any)
 
     -- Ensure Nameplates Canvas is created
     local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
-
-    -- TODO : Iterate Existing UnitIDs and create nameplates
+    nameplates.localTargetUnitID = nil;
 end
 
 local function OnGameUpdated(eventID : number, data : any)
@@ -90,8 +93,8 @@ local function OnGameUpdated(eventID : number, data : any)
     if (not enabled) then
         return;
     end
-    
-    for i, nameplate in nameplates do
+
+    for i, nameplate in nameplates.entries do
         local health = nameplate:GetHealth();
         local maxHealth = nameplate:GetMaxHealth();
 
@@ -117,21 +120,45 @@ local function OnUnitAdd(eventID : number, data : any)
         unitID = data.unitID,
         unitName = Unit.GetName(data.unitID)
     });
+
     nameplate:SetMaxHealth(50);
-    nameplates[data.unitID] = nameplate;
+    nameplates.entries[data.unitID] = nameplate;
 end
 
 local function OnUnitRemove(eventID : number, data : any)
-    local nameplate = nameplates[data.unitID];
+    local nameplate = nameplates.entries[data.unitID];
     if (nameplate == nil) then
         return
     end
 
     nameplate:Destroy();
-    nameplates[data.unitID] = nil;
+    nameplates.entries[data.unitID] = nil;
+end
+
+local function OnUnitTargetChanged(eventID : number, data : any)
+    if Unit.GetLocal() == data.unitID then
+        -- Remove highlight from previous target
+        if nameplates.localTargetUnitID ~= nil then
+            local previousNameplate = nameplates.entries[nameplates.localTargetUnitID];
+            if previousNameplate ~= nil then
+                previousNameplate:SetHighlighted(false);
+            end
+        end
+
+        -- Highlight new target
+        if data.targetID ~= nil then
+            local newNameplate = nameplates.entries[data.targetID];
+            if newNameplate ~= nil then
+                newNameplate:SetHighlighted(true);
+            end
+        end
+
+        nameplates.localTargetUnitID = data.targetID;
+    end
 end
 
 RegisterEvent(GameEvent.Loaded, OnGameLoaded)
 RegisterEvent(GameEvent.Updated, OnGameUpdated)
 RegisterEvent(UnitEvent.Add, OnUnitAdd)
 RegisterEvent(UnitEvent.Remove, OnUnitRemove)
+RegisterEvent(UnitEvent.TargetChanged, OnUnitTargetChanged)

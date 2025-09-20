@@ -1,9 +1,12 @@
 #include "NetworkedInfo.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
+#include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
@@ -13,8 +16,11 @@
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Util/CameraSaveUtil.h"
 #include "Game-Lib/Util/MapUtil.h"
+#include "Game-Lib/Util/UnitUtil.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 #include <Base/Math/Math.h>
@@ -35,6 +41,7 @@
 
 AutoCVar_String CVAR_NetworkConnectIP(CVarCategory::Network, "connectIP", "Sets the connection IP", "127.0.0.1");
 AutoCVar_String CVAR_NetworkCharacterName(CVarCategory::Network, "characterName", "Sets the character name", "dev");
+AutoCVar_Int CVAR_NetworkDrawTargetABB(CVarCategory::Network, "drawTargetAABB", "Debug Draws the target's AABB", 0, CVarFlags::EditCheckbox);
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
@@ -99,44 +106,11 @@ namespace Editor
 
                     if (ImGui::CollapsingHeader("Basic Info"))
                     {
-                        auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
+                        auto& unitPowersComponent = registry.get<ECS::Components::UnitPowersComponent>(characterSingleton.moverEntity);
+                        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
 
                         ImGui::Text("Name : %s", moverUnit.name.c_str());
-                        ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
-
-                        for (u32 i = 0; i < (u32)Generated::PowerTypeEnum::Count; i++)
-                        {
-                            auto type = (Generated::PowerTypeEnum)i;
-
-                            switch (type)
-                            {
-                                case Generated::PowerTypeEnum::Mana:
-                                {
-                                    ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                    break;
-                                }
-                                case Generated::PowerTypeEnum::Rage:
-                                {
-                                    ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                    break;
-                                }
-                                case Generated::PowerTypeEnum::Focus:
-                                {
-                                    ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                    break;
-                                }
-                                case Generated::PowerTypeEnum::Energy:
-                                {
-                                    ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                    break;
-                                }
-                                case Generated::PowerTypeEnum::Happiness:
-                                {
-                                    ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                    break;
-                                }
-                            }
-                        }
+                        ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", healthPower.base, healthPower.current, healthPower.max);
 
                         ImGui::Separator();
                     }
@@ -146,46 +120,29 @@ namespace Editor
                         if (ImGui::CollapsingHeader("Target Info"))
                         {
                             auto& targetUnit = registry.get<ECS::Components::Unit>(moverUnit.targetEntity);
-                            auto& unitStatsComponent = registry.get<ECS::Components::UnitStatsComponent>(moverUnit.targetEntity);
+                            auto& unitPowersComponent = registry.get<ECS::Components::UnitPowersComponent>(moverUnit.targetEntity);
+                            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
 
                             ImGui::Text("Name : %s", targetUnit.name.c_str());
-                            ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.baseHealth, unitStatsComponent.currentHealth, unitStatsComponent.maxHealth);
-
-                            for (u32 i = 0; i < (u32)Generated::PowerTypeEnum::Count; i++)
-                            {
-                                Generated::PowerTypeEnum type = (Generated::PowerTypeEnum)i;
-
-                                switch (type)
-                                {
-                                    case Generated::PowerTypeEnum::Mana:
-                                    {
-                                        ImGui::Text("Mana (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                        break;
-                                    }
-                                    case Generated::PowerTypeEnum::Rage:
-                                    {
-                                        ImGui::Text("Rage (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                        break;
-                                    }
-                                    case Generated::PowerTypeEnum::Focus:
-                                    {
-                                        ImGui::Text("Focus (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                        break;
-                                    }
-                                    case Generated::PowerTypeEnum::Energy:
-                                    {
-                                        ImGui::Text("Energy (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                        break;
-                                    }
-                                    case Generated::PowerTypeEnum::Happiness:
-                                    {
-                                        ImGui::Text("Happiness (Base, Current, Max) : (%.2f, %.2f, %.2f)", unitStatsComponent.basePower[i], unitStatsComponent.currentPower[i], unitStatsComponent.maxPower[i]);
-                                        break;
-                                    }
-                                }
-                            }
+                            ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", healthPower.base, healthPower.current, healthPower.max);
 
                             ImGui::Separator();
+                        }
+
+                        if (CVAR_NetworkDrawTargetABB.Get())
+                        {
+                            auto* aabb = registry.try_get<ECS::Components::AABB>(moverUnit.targetEntity);
+                            if (aabb)
+                            {
+                                auto& transform = registry.get<ECS::Components::Transform>(moverUnit.targetEntity);
+
+                                DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
+                                vec3 worldCenter = transform.GetWorldPosition() + transform.GetWorldRotation() * (transform.GetLocalScale() * aabb->centerPos);
+                                vec3 worldExtents = transform.GetLocalScale() * aabb->extents;
+                                quat worldRotation = transform.GetWorldRotation();
+
+                                debugRenderer->DrawOBB3D(worldCenter, worldExtents, worldRotation, Color::Cyan);
+                            }
                         }
                     }
                 }

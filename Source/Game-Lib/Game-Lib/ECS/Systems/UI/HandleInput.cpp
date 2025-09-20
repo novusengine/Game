@@ -40,6 +40,8 @@ namespace ECS::Systems::UI
 
     void HandleInput::Init(entt::registry& registry)
     {
+        auto& uiSingleton = registry.ctx().emplace<Singletons::UISingleton>();
+
         InputManager* inputManager = ServiceLocator::GetInputManager();
         KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("UI", 200);
         keybindGroup->SetActive(true);

@@ -42,10 +42,16 @@ namespace Util::Attachment
         return canUseAttachment;
     }
 
+    bool IsAttachmentActive(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
+    {
+        bool isActive = attachmentData.attachmentToInstance.contains(attachment);
+        return isActive;
+    }
+
     bool HasActiveAttachment(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
     {
         u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
-        return CanUseAttachment(modelInfo, attachment, attachmentIndex) && attachmentData.attachmentToInstance.contains(attachment);
+        return CanUseAttachment(modelInfo, attachment, attachmentIndex) && IsAttachmentActive(attachmentData, attachment);
     }
 
     bool GetAttachmentEntity(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, entt::entity& entity)
@@ -59,7 +65,7 @@ namespace Util::Attachment
         return true;
     }
 
-    bool EnableAttachment(entt::entity parent, const ECS::Components::Model& model, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment)
+    bool EnableAttachment(entt::entity parent, const ECS::Components::Model& model, ::ECS::Components::AttachmentData& attachmentData, ::ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment)
     {
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
@@ -67,7 +73,11 @@ namespace Util::Attachment
         if (!modelInfo)
             return false;
 
-        if (HasActiveAttachment(modelInfo, attachmentData, attachment))
+        u16 attachmentIndex = ::Attachment::Defines::InvalidAttachmentIndex;
+        if (!CanUseAttachment(modelInfo, attachment, attachmentIndex))
+            return false;
+
+        if (IsAttachmentActive(attachmentData, attachment))
             return true;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -86,6 +96,11 @@ namespace Util::Attachment
         registry->emplace<ECS::Components::Model>(entity);
 
         transformSystem.ParentEntityTo(parent, entity);
+
+        auto& attachmentInfo = modelInfo->attachments[attachmentIndex];
+        auto& attachmentBone = animationData.boneInstances[attachmentInfo.bone];
+        attachmentBone.flags.Transformed = true;
+
         attachmentData.attachmentToInstance[attachment] = { 0, entity, mat4x4(1.0f) };
         return true;
     }
@@ -95,9 +110,9 @@ namespace Util::Attachment
         return matrix2 * matrix1;
     }
 
-    static mat4x4 CalculateBaseAttachmentMatrix(const Model::ComplexModel::Attachment& attachment)
+    static mat4x4 CalculateBaseAttachmentMatrix(const Model::ComplexModel::Attachment& attachment, f32 scale = 1.0f)
     {
-        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position);
+        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position * scale);
         mat4x4 rotationMatrix = glm::toMat4(quat(1.0f, 0.0f, 0.0f, 0.0f));
         mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(1.0f));
 
@@ -109,7 +124,7 @@ namespace Util::Attachment
         return attachmentMatrix;
     }
 
-    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance)
+    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance, f32 scaleMod)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
@@ -131,7 +146,7 @@ namespace Util::Attachment
             boneIndex = skeletonAttachment.bone;
 
         const mat4x4& parentBoneMatrix = animationData.boneTransforms[boneIndex];
-        mat4x4 attachmentMatrix = CalculateBaseAttachmentMatrix(skeletonAttachment);
+        mat4x4 attachmentMatrix = CalculateBaseAttachmentMatrix(skeletonAttachment, scaleMod);
         attachmentInstance.matrix = mul(attachmentMatrix, parentBoneMatrix);
 
         vec3 scale;
@@ -161,7 +176,7 @@ namespace Util::Attachment
         ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
 
         auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
-        CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance);
+        CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance, model.scale);
 
         return &attachmentInstance.matrix;
     }

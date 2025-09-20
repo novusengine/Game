@@ -72,8 +72,7 @@ local function OnGameUpdated(eventID : number, data : any)
 end
 
 local function OnMapLoading(eventID : number, data : any)
-
-    local mapInternalName = __LoadingScreenData.nameToTextureMap[data.mapName]
+    local mapInternalName = __LoadingScreenData.nameToTextureMap[data.mapInternalName]
     if mapInternalName == nil then
         mapInternalName = "Default"
     end

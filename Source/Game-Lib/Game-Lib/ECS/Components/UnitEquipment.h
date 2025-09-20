@@ -3,6 +3,8 @@
 
 #include <Base/Types.h>
 
+#include <Meta/Generated/Shared/UnitEnum.h>
+
 #include <entt/fwd.hpp>
 
 #include <robinhood/robinhood.h>
@@ -14,11 +16,11 @@ namespace ECS
         struct UnitEquipment
         {
         public:
-            std::array<u32, (u32)Database::Item::ItemEquipSlot::Count> equipmentSlotToItemID;
-            robin_hood::unordered_set<Database::Item::ItemEquipSlot> dirtyItemIDSlots;
+            std::array<u32, (u32)Generated::ItemEquipSlotEnum::EquipmentEnd + 1u> equipmentSlotToItemID;
+            robin_hood::unordered_set<Generated::ItemEquipSlotEnum> dirtyItemIDSlots;
 
-            std::array<u32, (u32)Database::Item::ItemEquipSlot::Count> equipmentSlotToVisualItemID;
-            robin_hood::unordered_set<Database::Item::ItemEquipSlot> dirtyVisualItemIDSlots;
+            std::array<u32, (u32)Generated::ItemEquipSlotEnum::EquipmentEnd + 1u> equipmentSlotToVisualItemID;
+            robin_hood::unordered_set<Generated::ItemEquipSlotEnum> dirtyVisualItemIDSlots;
         };
 
         struct UnitEquipmentDirty { };

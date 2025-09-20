@@ -49,7 +49,10 @@ public:
     static bool HandleGotoMap(GameConsole* gameConsole, Generated::GotoMapCommand& command);
     static bool HandleGotoLocation(GameConsole* gameConsole, Generated::GotoLocationCommand& command);
     static bool HandleGotoXYZ(GameConsole* gameConsole, Generated::GotoXYZCommand& command);
-
     static bool HandleTriggerAdd(GameConsole* gameConsole, Generated::TriggerAddCommand& command);
     static bool HandleTriggerRemove(GameConsole* gameConsole, Generated::TriggerRemoveCommand& command);
+    static bool HandleSpellSync(GameConsole* gameConsole, Generated::SpellSyncCommand& command);
+    static bool HandleSpellSyncAll(GameConsole* gameConsole, Generated::SpellSyncAllCommand& command);
+    static bool HandleCreatureAddScript(GameConsole* gameConsole, Generated::CreatureAddScriptCommand& command);
+    static bool HandleCreatureRemoveScript(GameConsole* gameConsole, Generated::CreatureRemoveScriptCommand& command);
 };

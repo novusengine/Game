@@ -34,6 +34,7 @@ namespace Editor
 
     struct Option
     {
+    public:
         u32 id;
         std::string label;
     };
@@ -41,8 +42,8 @@ namespace Editor
     static robin_hood::unordered_map<u32, u64> images;
     static bool iconPickerEnabled = false;
 
-    static i32 currentItemIndex = 0;
-    static std::string itemFilter = "";
+    static i32 currentIndex = 0;
+    static std::string filter = "";
     static std::string iconFilter = "";
     static std::string lastFilterValue = "";
 
@@ -57,7 +58,7 @@ namespace Editor
     static bool shieldTemplateEditorEnabled = false;
 
     // Dummy icon functions
-    u64 GetIconTexture(u32 iconID)
+    u64 GetItemIconTexture(u32 iconID)
     {
         if (!images[iconID])
         {
@@ -81,7 +82,7 @@ namespace Editor
         return images[iconID];
     }
 
-    void OpenIconPicker()
+    void OpenItemIconPicker()
     {
         iconPickerEnabled = true;
         ImGui::OpenPopup("Icon Picker##ItemEditor");
@@ -226,9 +227,9 @@ namespace Editor
                         {
                             ImGui::PushID(id);
 
-                            if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
+                            if (ImGui::ImageButton("Icon", GetItemIconTexture(id), ImVec2(iconSize, iconSize)))
                             {
-                                itemStorage->Get<Generated::ItemRecord>(currentItemIndex).iconID = id;
+                                itemStorage->Get<Generated::ItemRecord>(currentIndex).iconID = id;
                                 isItemDirty = true;
                             }
 
@@ -277,9 +278,9 @@ namespace Editor
 
                                 ImGui::PushID(id);
 
-                                if (ImGui::ImageButton("Icon", GetIconTexture(id), ImVec2(iconSize, iconSize)))
+                                if (ImGui::ImageButton("Icon", GetItemIconTexture(id), ImVec2(iconSize, iconSize)))
                                 {
-                                    itemStorage->Get<Generated::ItemRecord>(currentItemIndex).iconID = id;
+                                    itemStorage->Get<Generated::ItemRecord>(currentIndex).iconID = id;
                                     isItemDirty = true;
                                 }
 
@@ -320,7 +321,7 @@ namespace Editor
                 {.id = 7, .label = "Spirit" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
             auto& currentStatTemplate = itemStatTemplateStorage->Get<Generated::ItemStatTemplateRecord>(currentItem.statTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.statTemplateID);
@@ -387,7 +388,7 @@ namespace Editor
                 {.id = 18, .label = "Ammo" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
             auto& currentArmorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(currentItem.armorTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.armorTemplateID);
@@ -439,7 +440,7 @@ namespace Editor
                 {.id = 8, .label = "Tool" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
             auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(currentItem.weaponTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.weaponTemplateID);
@@ -507,7 +508,7 @@ namespace Editor
 
         if (ImGui::BeginPopupModal("Shield Template Editor##ItemEditor", &shieldTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
             auto& currentShieldTemplate = itemShieldTemplateStorage->Get<Generated::ItemShieldTemplateRecord>(currentItem.shieldTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.shieldTemplateID);
@@ -550,24 +551,24 @@ namespace Editor
             ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
 
             ImGui::Text("Filter (ID or Name)");
-            ImGui::InputText("##Item Filter (ID or Name)", &itemFilter);
+            ImGui::InputText("##Item Filter (ID or Name)", &filter);
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
-            std::string currentItemlabel = std::to_string(currentItemIndex) + " - " + itemStorage->GetString(currentItem.name);
+            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
+            std::string currentItemlabel = std::to_string(currentIndex) + " - " + itemStorage->GetString(currentItem.name);
 
             ImGui::Text("Select Item");
-            if (ImGui::BeginCombo("##Select Item", currentItemIndex >= 0 ? currentItemlabel.c_str() : "None"))
+            if (ImGui::BeginCombo("##Select Item", currentIndex >= 0 ? currentItemlabel.c_str() : "None"))
             {
                 char comboLabel[128];
                 itemStorage->Each([&](u32 id, Generated::ItemRecord& item) -> bool
                 {
                     std::snprintf(comboLabel, sizeof(comboLabel), "%u - %s", id, itemStorage->GetString(item.name).c_str());
-                    if (std::strstr(comboLabel, itemFilter.c_str()) != nullptr)
+                    if (std::strstr(comboLabel, filter.c_str()) != nullptr)
                     {
-                        bool isSelected = (currentItemIndex == id);
+                        bool isSelected = (currentIndex == id);
                         if (ImGui::Selectable(comboLabel, isSelected))
                         {
-                            currentItemIndex = id;
+                            currentIndex = id;
                         }
                         if (isSelected)
                         {
@@ -588,9 +589,9 @@ namespace Editor
         ImGui::Separator();
 
         // If an item is selected, show the editing UI.
-        if (currentItemIndex >= 0)
+        if (currentIndex >= 0)
         {
-            auto& item = itemStorage->Get<Generated::ItemRecord>(currentItemIndex);
+            auto& item = itemStorage->Get<Generated::ItemRecord>(currentIndex);
 
             // Group: General Information
             {
@@ -613,7 +614,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 {
-                    ImTextureID iconTexture = GetIconTexture(item.iconID);
+                    ImTextureID iconTexture = GetItemIconTexture(item.iconID);
                     ImGui::Image(iconTexture, ImVec2(64.0f, 64.0f));
 
                     if (ImGui::IsItemHovered())
@@ -628,7 +629,7 @@ namespace Editor
 
                     if (ImGui::Button("Pick Icon", ImVec2(64.0f, 20.0f)))
                     {
-                        OpenIconPicker();
+                        OpenItemIconPicker();
                     }
                 }
 
@@ -872,7 +873,7 @@ namespace Editor
                 }
 
                 ImGui::Dummy(ImVec2(0.0f, 5.0f));
-                ImGui::BeginColumns("Template Field Columsn", 2, ImGuiOldColumnFlags_NoBorder);
+                ImGui::BeginColumns("Template Field Columns", 2, ImGuiOldColumnFlags_NoBorder);
 
                 {
                     if (item.statTemplateID > 0)

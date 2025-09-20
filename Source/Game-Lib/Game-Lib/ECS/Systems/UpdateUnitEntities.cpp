@@ -12,6 +12,8 @@
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
+#include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
@@ -200,21 +202,21 @@ namespace ECS::Systems
                     {
                         bool isEquipmentDirty = false;
                         bool isVisualEquipmentDirty = false;
-                        for (u32 i = (u32)Database::Item::ItemEquipSlot::Helm; i < (u32)Database::Item::ItemEquipSlot::Count; i++)
+                        for (u32 i = (u32)Generated::ItemEquipSlotEnum::EquipmentStart; i <= (u32)Generated::ItemEquipSlotEnum::EquipmentEnd; i++)
                         {
                             u32 equipSlotIndex = i;
 
                             u32 equippedItemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
                             if (equippedItemID != 0)
                             {
-                                unitEquipment->dirtyItemIDSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
+                                unitEquipment->dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)equipSlotIndex);
                                 isEquipmentDirty = true;
                             }
 
                             u32 visualItemID = unitEquipment->equipmentSlotToVisualItemID[equipSlotIndex];
                             if (visualItemID != 0)
                             {
-                                unitEquipment->dirtyVisualItemIDSlots.insert((Database::Item::ItemEquipSlot)equipSlotIndex);
+                                unitEquipment->dirtyVisualItemIDSlots.insert((Generated::ItemEquipSlotEnum)equipSlotIndex);
                                 isVisualEquipmentDirty = true;
                             }
                         }
@@ -224,6 +226,24 @@ namespace ECS::Systems
 
                         if (isVisualEquipmentDirty)
                             registry.get_or_emplace<Components::UnitVisualEquipmentDirty>(entity);
+                    }
+
+                    if (auto* unit = registry.try_get<Components::Unit>(entity))
+                    {
+                        auto& transform = registry.get<Components::Transform>(entity);
+
+                        vec3 position = transform.GetWorldPosition();
+                        vec3 scale = transform.GetLocalScale();
+
+                        vec3 min = position - (scale * 0.5f);
+                        vec3 max = position + (scale * 0.5f);
+                        if (auto* aabb = registry.try_get<Components::AABB>(entity))
+                        {
+                            min = position + (aabb->centerPos - aabb->extents);
+                            max = position + (aabb->centerPos + aabb->extents);
+                        }
+
+                        networkState.networkVisTree->Insert(&min.x, &max.x, unit->networkID);
                     }
                 }
                 else
@@ -255,6 +275,11 @@ namespace ECS::Systems
             f32 scale = transform.GetLocalScale().x;
             vec3 min = newPosition - (scale * 0.5f);
             vec3 max = newPosition + (scale * 0.5f);
+            if (auto* aabb = registry.try_get<Components::AABB>(entity))
+            {
+                min = newPosition + (aabb->centerPos - aabb->extents);
+                max = newPosition + (aabb->centerPos + aabb->extents);
+            }
             networkState.networkVisTree->Remove(unit.networkID);
             networkState.networkVisTree->Insert(&min.x, &max.x, unit.networkID);
 
@@ -284,13 +309,15 @@ namespace ECS::Systems
                 {
                     for (auto& pair : attachmentData->attachmentToInstance)
                     {
-                        Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second);
+                        Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second, model.scale);
                     }
                 }
             }
 
-            auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(entity);
-            bool isAlive = unitStatsComponent.currentHealth > 0.0f;
+            auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(entity);
+            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+
+            bool isAlive = healthPower.current > 0.0f;
             if (!isAlive)
                 return;
 
@@ -390,33 +417,33 @@ namespace ECS::Systems
             bool needToRefreshGeometry = false;
             bool needToRefreshSkin = false;
 
-            for (const Database::Item::ItemEquipSlot equipSlot : unitEquipment.dirtyVisualItemIDSlots)
+            for (const Generated::ItemEquipSlotEnum equipSlot : unitEquipment.dirtyVisualItemIDSlots)
             {
                 u32 itemID = unitEquipment.equipmentSlotToVisualItemID[(u32)equipSlot];
 
-                needToRefreshGeometry |= equipSlot != ::Database::Item::ItemEquipSlot::MainHand && equipSlot != ::Database::Item::ItemEquipSlot::OffHand && equipSlot != ::Database::Item::ItemEquipSlot::Ranged;
-                needToRefreshSkin |= equipSlot == ::Database::Item::ItemEquipSlot::Chest || equipSlot == ::Database::Item::ItemEquipSlot::Shirt || equipSlot == ::Database::Item::ItemEquipSlot::Tabard || 
-                    equipSlot == ::Database::Item::ItemEquipSlot::Bracers || equipSlot == ::Database::Item::ItemEquipSlot::Gloves || equipSlot == ::Database::Item::ItemEquipSlot::Belt || 
-                    equipSlot == ::Database::Item::ItemEquipSlot::Pants || equipSlot == ::Database::Item::ItemEquipSlot::Boots;
+                needToRefreshGeometry |= equipSlot != ::Generated::ItemEquipSlotEnum::MainHand && equipSlot != ::Generated::ItemEquipSlotEnum::OffHand && equipSlot != ::Generated::ItemEquipSlotEnum::Ranged;
+                needToRefreshSkin |= equipSlot == ::Generated::ItemEquipSlotEnum::Chest || equipSlot == ::Generated::ItemEquipSlotEnum::Shirt || equipSlot == ::Generated::ItemEquipSlotEnum::Tabard || 
+                    equipSlot == ::Generated::ItemEquipSlotEnum::Bracers || equipSlot == ::Generated::ItemEquipSlotEnum::Gloves || equipSlot == ::Generated::ItemEquipSlotEnum::Belt || 
+                    equipSlot == ::Generated::ItemEquipSlotEnum::Pants || equipSlot == ::Generated::ItemEquipSlotEnum::Boots;
 
                 if (itemID == 0)
                 {
-                    if (equipSlot == ::Database::Item::ItemEquipSlot::MainHand)
+                    if (equipSlot == ::Generated::ItemEquipSlotEnum::MainHand)
                     {
                         ::Util::Unit::OpenHand(registry, entity, false);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandRight);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::OffHand)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::OffHand)
                     {
                         ::Util::Unit::OpenHand(registry, entity, true);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandLeft);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Shield);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::Helm)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Helm)
                     {
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Helm);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::Shoulders)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Shoulders)
                     {
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderLeft);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderRight);
@@ -426,27 +453,27 @@ namespace ECS::Systems
                 {
                     auto& item = itemStorage->Get<Generated::ItemRecord>(itemID);
 
-                    if (equipSlot == ::Database::Item::ItemEquipSlot::MainHand)
+                    if (equipSlot == ::Generated::ItemEquipSlotEnum::MainHand)
                     {
                         entt::entity itemEntity = entt::null;
 
                         if (::Util::Unit::AddWeaponToHand(registry, entity, item, false, itemEntity))
                             ::Util::Unit::CloseHand(registry, entity, false);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::OffHand)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::OffHand)
                     {
                         entt::entity itemEntity = entt::null;
 
                         if (::Util::Unit::AddWeaponToHand(registry, entity, item, true, itemEntity))
                             ::Util::Unit::CloseHand(registry, entity, true);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::Helm)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Helm)
                     {
                         entt::entity itemEntity = entt::null;
 
                         ::Util::Unit::AddHelm(registry, entity, item, displayInfo.race, displayInfo.gender, itemEntity);
                     }
-                    else if (equipSlot == ::Database::Item::ItemEquipSlot::Shoulders)
+                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Shoulders)
                     {
                         entt::entity shoulderLeftEntity = entt::null;
                         entt::entity shoulderRightEntity = entt::null;
@@ -500,7 +527,7 @@ namespace ECS::Systems
             {
                 if (!unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
@@ -514,7 +541,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 shirtID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Shirt];
+                u32 shirtID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Shirt];
                 if (shirtID > 0)
                 {
                     if (itemStorage->Has(shirtID))
@@ -527,7 +554,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bracersID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Bracers];
+                u32 bracersID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Bracers];
                 if (bracersID > 0)
                 {
                     if (itemStorage->Has(bracersID))
@@ -540,7 +567,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bootsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Boots];
+                u32 bootsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Boots];
                 if (bootsID > 0)
                 {
                     if (itemStorage->Has(bootsID))
@@ -553,7 +580,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 pantsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Pants];
+                u32 pantsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Pants];
                 if (pantsID > 0)
                 {
                     if (itemStorage->Has(pantsID))
@@ -566,7 +593,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 chestID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Chest];
+                u32 chestID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Chest];
                 if (chestID > 0)
                 {
                     if (itemStorage->Has(chestID))
@@ -581,7 +608,7 @@ namespace ECS::Systems
 
                 if (unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
@@ -595,7 +622,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 beltID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Belt];
+                u32 beltID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Belt];
                 if (beltID > 0)
                 {
                     if (itemStorage->Has(beltID))
@@ -608,7 +635,7 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 tabardID = unitEquipment->equipmentSlotToVisualItemID[(u32)Database::Item::ItemEquipSlot::Tabard];
+                u32 tabardID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Tabard];
                 if (tabardID > 0)
                 {
                     if (itemStorage->Has(tabardID))

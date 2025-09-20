@@ -31,7 +31,7 @@ namespace ECS::Systems
             };
 
             const mat4x4 transformMatrix = transform.GetMatrix();
-            for (int i = 0; i < 8; ++i)
+            for (i32 i = 0; i < 8; ++i)
             {
                 corners[i] = transformMatrix * glm::vec4(corners[i], 1.0f);
             }
@@ -39,7 +39,7 @@ namespace ECS::Systems
             worldAABB.min = vec3(1000000000.0f);
             worldAABB.max = vec3(-1000000000.0f);
 
-            for (int i = 1; i < 8; ++i)
+            for (i32 i = 1; i < 8; ++i)
             {
                 worldAABB.min = glm::min(worldAABB.min, corners[i]);
                 worldAABB.max = glm::max(worldAABB.max, corners[i]);

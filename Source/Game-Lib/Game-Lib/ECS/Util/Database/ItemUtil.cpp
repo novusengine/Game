@@ -135,23 +135,6 @@ namespace ECSUtil::Item
             storage->MarkDirty();
         }
 
-        // TODO : Move this to SpellUtil (When we make it)
-        if (!clientDBSingleton.Has(ClientDBHash::Spell))
-        {
-            clientDBSingleton.Register(ClientDBHash::Spell, "Spell");
-
-            auto* storage = clientDBSingleton.Get(ClientDBHash::Spell);
-            storage->Initialize<Generated::SpellRecord>();
-
-            Generated::SpellRecord defaultSpell;
-            defaultSpell.name = storage->AddString("Unused");
-            defaultSpell.description = storage->AddString("Unused");
-            defaultSpell.auraDescription = storage->AddString("Unused");
-
-            storage->Replace(0, defaultSpell);
-            storage->MarkDirty();
-        }
-
         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
         auto* itemStatTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
         auto* itemArmorTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);

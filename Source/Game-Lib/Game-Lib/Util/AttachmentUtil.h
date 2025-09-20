@@ -22,9 +22,10 @@ namespace Util::Attachment
     i16 GetAttachmentIndexFromAttachmentID(const Model::ComplexModel* modelInfo, ::Attachment::Defines::Type attachment);
 
     bool CanUseAttachment(const Model::ComplexModel* modelInfo, ::Attachment::Defines::Type attachment, u16& attachmentIndex);
+    bool IsAttachmentActive(::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);
     bool HasActiveAttachment(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);
     bool GetAttachmentEntity(const Model::ComplexModel* modelInfo, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment, entt::entity& entity);
-    bool EnableAttachment(entt::entity parent, const ECS::Components::Model& model, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);
-    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance);
+    bool EnableAttachment(entt::entity parent, const ECS::Components::Model& model, ::ECS::Components::AttachmentData& attachmentData, ::ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment);
+    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance, f32 scaleMod = 1.0f);
     const mat4x4* GetAttachmentMatrix(const ECS::Components::Model& model, const ECS::Components::AnimationData& animationData, ::ECS::Components::AttachmentData& attachmentData, ::Attachment::Defines::Type attachment);
 }

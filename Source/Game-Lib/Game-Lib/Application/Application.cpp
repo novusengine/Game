@@ -3,12 +3,12 @@
 
 #include "Game-Lib/ECS/Scheduler.h"
 #include "Game-Lib/ECS/Components/Events.h"
-#include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
-#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/EngineStats.h"
-#include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/RenderState.h"
+#include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
@@ -16,6 +16,7 @@
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Database/LightUtil.h"
 #include "Game-Lib/ECS/Util/Database/MapUtil.h"
+#include "Game-Lib/ECS/Util/Database/SpellUtil.h"
 #include "Game-Lib/ECS/Util/Database/TextureUtil.h"
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
@@ -352,8 +353,9 @@ bool Application::Init()
 
         auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
         _luaManager->GetZenithStateManager().Add(globalKey);
+
+        _luaManager->Init();
     }
-    _luaManager->Init();
 
     return true;
 }
@@ -495,6 +497,7 @@ void Application::DatabaseReload()
     ECSUtil::Map::Refresh();
     ECSUtil::Light::Refresh();
     ECSUtil::Texture::Refresh();
+    ECSUtil::Spell::Refresh();
     ECSUtil::Item::Refresh();
     ECSUtil::UnitCustomization::Refresh();
 }

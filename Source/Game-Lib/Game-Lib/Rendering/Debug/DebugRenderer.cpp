@@ -512,18 +512,18 @@ void DebugRenderer::DrawOBB3D(const vec3& center, const vec3& extents, const qua
     u32 index = _debugVertices3D.AddCount(24);
 
     // Bottom
-    _debugVertices3D[index +  0] = { corners[0], colorInt };
-    _debugVertices3D[index +  1] = { corners[1], colorInt };
-    _debugVertices3D[index +  2] = { corners[1], colorInt };
-    _debugVertices3D[index +  3] = { corners[2], colorInt };
-    _debugVertices3D[index +  4] = { corners[2], colorInt };
-    _debugVertices3D[index +  5] = { corners[3], colorInt };
-    _debugVertices3D[index +  6] = { corners[3], colorInt };
-    _debugVertices3D[index +  7] = { corners[0], colorInt };
+    _debugVertices3D[index + 0] = { corners[0], colorInt };
+    _debugVertices3D[index + 1] = { corners[1], colorInt };
+    _debugVertices3D[index + 2] = { corners[1], colorInt };
+    _debugVertices3D[index + 3] = { corners[2], colorInt };
+    _debugVertices3D[index + 4] = { corners[2], colorInt };
+    _debugVertices3D[index + 5] = { corners[3], colorInt };
+    _debugVertices3D[index + 6] = { corners[3], colorInt };
+    _debugVertices3D[index + 7] = { corners[0], colorInt };
 
     // Top
-    _debugVertices3D[index +  8] = { corners[4], colorInt };
-    _debugVertices3D[index +  9] = { corners[5], colorInt };
+    _debugVertices3D[index + 8] = { corners[4], colorInt };
+    _debugVertices3D[index + 9] = { corners[5], colorInt };
     _debugVertices3D[index + 10] = { corners[5], colorInt };
     _debugVertices3D[index + 11] = { corners[6], colorInt };
     _debugVertices3D[index + 12] = { corners[6], colorInt };

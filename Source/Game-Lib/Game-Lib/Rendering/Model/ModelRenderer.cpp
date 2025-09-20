@@ -1470,7 +1470,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelOffsets.modelIndex;
 }
 
-u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet)
 {
     // Add Instance matrix
     mat4x4 rotationMatrix = glm::toMat4(rotation);
@@ -1481,7 +1481,7 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
     ModelManifest& manifest = _modelManifests[modelID];
 
     // Add Decorations
-    if (manifest.numDecorationSets && manifest.numDecorations)
+    if (canUseDoodadSet && manifest.numDecorationSets && manifest.numDecorations)
     {
         if (doodadSet == std::numeric_limits<u32>().max())
         {
@@ -1493,6 +1493,9 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
             for (u32 i = 0; i < manifestDecorationSet.count; i++)
             {
                 const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                if (manifestDecoration.nameID == modelHash)
+                    continue;
+
                 modelLoader->LoadDecoration(instanceIndex, manifestDecoration);
             }
         }
@@ -1507,6 +1510,9 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, Mode
                 for (u32 i = 0; i < manifestDecorationSet.count; i++)
                 {
                     const Model::ComplexModel::Decoration& manifestDecoration = _modelDecorations[manifest.decorationOffset + (manifestDecorationSet.index + i)];
+                    if (manifestDecoration.nameID == modelHash)
+                        continue;
+
                     modelLoader->LoadDecoration(instanceIndex, manifestDecoration);
                 }
             }

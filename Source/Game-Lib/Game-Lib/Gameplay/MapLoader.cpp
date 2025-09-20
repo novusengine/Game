@@ -56,6 +56,8 @@ void MapLoader::Update(f32 deltaTime)
         ClearRenderersForMap();
 
         ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
+
+        _loadRequest.isRequest = false;
     }
     else
     {
@@ -107,6 +109,7 @@ void MapLoader::Update(f32 deltaTime)
             _currentMapID = mapID;
         
             ClearRenderersForMap();
+            _modelLoader->SetTerrainLoading(true);
             _modelLoader->LoadPlacement(mapHeader.placement);
         }
         else
@@ -119,6 +122,8 @@ void MapLoader::Update(f32 deltaTime)
         
             _terrainLoader->AddInstance(loadDesc);
         }
+
+        _loadRequest.isRequest = false;
     }
 }
 

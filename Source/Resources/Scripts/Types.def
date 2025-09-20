@@ -14,61 +14,60 @@ declare class vec4 extends vec3
     w : number
 end
 
-declare Engine :
-{
-    Name : string,
+declare class Engine
+    Name : string
     Version : vector
-}
+end
+declare Engine : Engine
 
-type GameEvent =
-{
-    Invalid : number,
-    Loaded  : number,
-    Updated : number,
-    MapLoading : number,
-    ChatMessageReceived : number,
-    Count : number
-};
+declare INVALID_UNIT_ID : number
+
+declare class GameEvent
+    Invalid             : number
+    Loaded              : number
+    Updated             : number
+    MapLoading          : number
+    ChatMessageReceived : number
+    LocalMoverChanged   : number
+    Count               : number
+end
 declare GameEvent : GameEvent
 
-type UnitEvent =
-{
-    Invalid : number,
-    Add : number,
-    Remove : number,
-    Count : number
-};
+declare class UnitEvent
+    Invalid         : number
+    Add             : number
+    Remove          : number
+    TargetChanged   : number
+    Count           : number
+end
 declare UnitEvent : UnitEvent
 
-type ContainerEvent =
-{
-    Invalid : number,
-    Add  : number,
-    AddToSlot : number,
-    RemoveFromSlot : number,
-    SwapSlots : number,
-    Count : number
-};
+declare class ContainerEvent
+    Invalid         : number
+    Add             : number
+    AddToSlot       : number
+    RemoveFromSlot  : number
+    SwapSlots       : number
+    Count           : number
+end
 declare ContainerEvent : ContainerEvent
 
-type TriggerEvent =
-{
-    Invalid : number,
-    OnEnter : number,
-    OnExit : number,
-    OnStay : number,
-    Count : number
-};
+declare class TriggerEvent
+    Invalid         : number
+    OnEnter         : number
+    OnExit          : number
+    OnStay          : number
+    Count           : number
+end
 declare TriggerEvent : TriggerEvent
 
 type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
 
-type ContainerItemEventData =
-{
-    slotIndex : number,
-    itemID : number,
-    itemCount : number
-}
+declare class ContainerItemEventData
+    slotIndex   : number
+    itemID      : number
+    itemCount   : number
+end
 
 declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, data : any) -> any)) : ()
 declare function AddCursor(name : string, texture : string) : ()
@@ -82,39 +81,36 @@ declare function GetEquippedItem(slotIndex : number) : number
 declare function ExecCmd(command : string) : boolean
 declare function SendChatMessage(message : string) : ()
 
-type UIInputEvent =
-{
-    Invalid : number,
-    MouseDown : number,
-    MouseUp : number,
-    MouseHeld : number,
-    MouseScroll : number,
+declare class UIInputEvent
+    Invalid        : number
+    MouseDown      : number
+    MouseUp        : number
+    MouseHeld      : number
+    MouseScroll    : number
 
-    HoverBegin : number,
-    HoverEnd : number,
-    HoverHeld : number,
+    HoverBegin     : number
+    HoverEnd       : number
+    HoverHeld      : number
 
-    FocusBegin : number,
-    FocusEnd : number,
-    FocusHeld : number
-};
+    FocusBegin     : number
+    FocusEnd       : number
+    FocusHeld      : number
+end
 declare UIInputEvent : UIInputEvent;
 
-type UIKeyboardEvent =
-{
-    Invalid : number,
-    Key : number,
+declare class UIKeyboardEvent
+    Invalid : number
+    Key     : number
     Unicode : number
-};
+end
 declare UIKeyboardEvent : UIKeyboardEvent;
 
-type InputAction =
-{
-    Invalid : number,
-    Press : number,
-    Release : number,
-    Click : number
-};
+declare class InputAction
+    Invalid : number
+    Press   : number
+    Release : number
+    Click   : number
+end
 declare InputAction : InputAction;
 
 type MouseEventCallback = ((event : UIInputEvent, widget : Widget, x : number, y : number) -> ())
@@ -298,6 +294,9 @@ declare Unit :
 {
     GetLocal            : (() -> number),
     GetName             : ((unitID : number) -> string),
+    GetHealth           : ((unitID : number) -> (number, number)),
+    GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
+
     SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> ()),
 }
 
@@ -322,7 +321,9 @@ declare class ItemInfo
     ShieldTemplateID : number
 end
 
-type ItemStatInfo = { ItemStat }
+declare class ItemStatInfo
+    [number] : ItemStat
+end
 declare class ItemStat
     ID : number
     Value : number
@@ -377,14 +378,13 @@ declare class ItemDisplayInfo
     GeosetHelmetVis2 : number
 end
 
-type ItemEffectType =
-{
-    OnEquip : number,
-    OnUse : number,
-    OnProc : number,
-    OnLooted : number,
-    OnBound : number
-}
+declare class ItemEffectType
+    OnEquip     : number
+    OnUse       : number
+    OnProc      : number
+    OnLooted    : number
+    OnBound     : number
+end
 declare ItemEffectType : ItemEffectType;
 
 declare class ItemEffectInfo
@@ -426,28 +426,25 @@ declare Container :
     GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
 }
 
-type OptionType =
-{
-    InputBox : number,
-    Checkbox : number,
-    Slider : number,
-    ComboBox : number,
-}
+declare class OptionType
+    InputBox    : number
+    Checkbox    : number
+    Slider      : number
+    ComboBox    : number
+end
 declare OptionType : OptionType;
 
-type OptionCategoryType =
-{
-    Gameplay : string,
-    Keybindings : string,
-    Accessibility : string,
-    System : string,
-}
+declare class OptionCategoryType
+    Gameplay        : string
+    Keybindings     : string
+    Accessibility   : string
+    System          : string
+end
 declare OptionCategoryType : OptionCategoryType;
 
-type NameplateTextDisplayType =
-{
-    None : number,
-    Value : number,
-    ValueAndPercent : number,
-}
+declare class NameplateTextDisplayType
+    None            : number
+    Value           : number
+    ValueAndPercent : number
+end
 declare NameplateTextDisplayType : NameplateTextDisplayType;

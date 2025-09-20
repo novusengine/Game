@@ -21,9 +21,8 @@ namespace ECS::Singletons
     public:
         entt::entity controllerEntity = entt::null;
         entt::entity moverEntity = entt::null;
-
-        vec3 rayStart = vec3(0.0f);
-        vec3 rayEnd = vec3(0.0f, 0.0f, -1.0f);
+        f32 primaryAttackTimer = 0.0f;
+        f32 secondaryAttackTimer = 0.0f;
 
         JPH::CharacterVirtual* character = nullptr;
         KeybindGroup* keybindGroup = nullptr;

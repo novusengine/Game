@@ -316,7 +316,7 @@ public:
     void Reserve(const ReserveInfo& reserveInfo);
 
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet);
+    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
     void RemoveInstance(u32 instanceID);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());

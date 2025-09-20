@@ -22,6 +22,7 @@ namespace ECS::Components
         u32 instanceID = std::numeric_limits<u32>().max();
         u32 modelHash = std::numeric_limits<u32>().max();
         f32 opacity = 1.0f;
+        f32 scale = 1.0f;
     };
 
     struct ModelQueuedGeometryGroups

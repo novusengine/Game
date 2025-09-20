@@ -8,8 +8,11 @@
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
+#include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
@@ -33,6 +36,116 @@ using namespace ECS;
 
 namespace Util::Unit
 {
+    bool HasPower(const Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType)
+    {
+        bool hasPowerType = unitPowersComponent.powerTypeToValue.contains(powerType);
+        return hasPowerType;
+    }
+    UnitPower& GetPower(Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType)
+    {
+        return unitPowersComponent.powerTypeToValue.at(powerType);
+    }
+    bool AddPower(Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
+    {
+        if (HasPower(unitPowersComponent, powerType))
+            return false;
+
+        unitPowersComponent.dirtyPowerTypes.insert(powerType);
+        unitPowersComponent.powerTypeToValue[powerType] = UnitPower{
+            .base = base,
+            .current = current,
+            .max = max
+        };
+
+        return true;
+    }
+    bool SetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
+    {
+        if (!HasPower(unitPowersComponent, powerType))
+            return false;
+
+        UnitPower& power = GetPower(unitPowersComponent, powerType);
+        power.base = base;
+        power.current = current;
+        power.max = max;
+
+        unitPowersComponent.dirtyPowerTypes.insert(powerType);
+        return true;
+    }
+
+    bool HasResistance(const Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType)
+    {
+        bool hasResistanceType = unitResistancesComponent.resistanceTypeToValue.contains(resistanceType);
+        return hasResistanceType;
+    }
+    UnitResistance& GetResistance(Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType)
+    {
+        return unitResistancesComponent.resistanceTypeToValue.at(resistanceType);
+    }
+    bool AddResistance(Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
+    {
+        if (HasResistance(unitResistancesComponent, resistanceType))
+            return false;
+
+        unitResistancesComponent.dirtyResistanceTypes.insert(resistanceType);
+        unitResistancesComponent.resistanceTypeToValue[resistanceType] = UnitResistance{
+            .base = base,
+            .current = current,
+            .max = max
+        };
+
+        return true;
+    }
+    bool SetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
+    {
+        if (!HasResistance(unitResistancesComponent, resistanceType))
+            return false;
+
+        UnitResistance& resistance = GetResistance(unitResistancesComponent, resistanceType);
+        resistance.base = base;
+        resistance.current = current;
+        resistance.max = max;
+
+        unitResistancesComponent.dirtyResistanceTypes.insert(resistanceType);
+        return true;
+    }
+
+    bool HasStat(const Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType)
+    {
+        bool hasStatType = unitStatsComponent.statTypeToValue.contains(statType);
+        return hasStatType;
+    }
+    UnitStat& GetStat(Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType)
+    {
+        return unitStatsComponent.statTypeToValue.at(statType);
+    }
+    bool AddStat(Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current)
+    {
+        if (HasStat(unitStatsComponent, statType))
+            return false;
+
+        unitStatsComponent.dirtyStatTypes.insert(statType);
+        unitStatsComponent.statTypeToValue[statType] = UnitStat{
+            .base = base,
+            .current = current
+        };
+
+        return true;
+    }
+    bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current)
+    {
+        if (!HasStat(unitStatsComponent, statType))
+            return false;
+
+        UnitStat& stat = GetStat(unitStatsComponent, statType);
+        stat.base = base;
+        stat.current = current;
+        stat.current = current;
+
+        unitStatsComponent.dirtyStatTypes.insert(statType);
+        return true;
+    }
+
     bool PlayAnimationRaw(const Model::ComplexModel* modelInfo, Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationID, bool propagateToChildren, ::Animation::Defines::Flags flags, ::Animation::Defines::BlendOverride blendOverride, f32 speedModifier, ::Animation::Defines::SequenceInterruptCallback callback)
     {
         u32 numBoneInstances = static_cast<u32>(animationData.boneInstances.size());
@@ -93,19 +206,56 @@ namespace Util::Unit
         ::Animation::Defines::BoneInstance& animationBoneInstance = animationData.boneInstances[boneIndex];
         ::Animation::Defines::State& animationState = animationData.animationStates[animationBoneInstance.stateIndex];
 
-        auto& unitStatsComponent = registry.get<Components::UnitStatsComponent>(entity);
+        auto& unit = registry.get<Components::Unit>(entity);
+        auto& unitPowerStats = registry.get<Components::UnitPowersComponent>(entity);
+        auto& healthPower = GetPower(unitPowerStats, Generated::PowerTypeEnum::Health);
 
-        bool isAlive = unitStatsComponent.currentHealth > 0.0f;
+        bool isAlive = healthPower.current > 0.0f;
         if (!isAlive)
         {
             return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, ::Animation::Defines::Type::Death, false, ::Animation::Defines::Flags::HoldAtEnd, ::Animation::Defines::BlendOverride::Start);
         }
+        
+        if (IsMainHandAttackAnimation(animationState.currentAnimation) && !::Animation::Defines::HasFlag(animationState.currentFlags, ::Animation::Defines::Flags::Finished))
+        {
+            if (unit.attackOffHandAnimation != ::Animation::Defines::Type::Invalid)
+                Animation::SetBoneSequenceSpeedMod(modelInfo, animationData, ::Animation::Defines::Bone::Default, 2.0f);
+
+            return true;
+        }
+        else if (IsOffHandAttackAnimation(animationState.currentAnimation) && !::Animation::Defines::HasFlag(animationState.currentFlags, ::Animation::Defines::Flags::Finished))
+        {
+            if (unit.attackMainHandAnimation != ::Animation::Defines::Type::Invalid)
+                Animation::SetBoneSequenceSpeedMod(modelInfo, animationData, ::Animation::Defines::Bone::Default, 2.0f);
+
+            return true;
+        }
+        
+        if (IsMainHandAttackAnimation(animationState.nextAnimation) || IsOffHandAttackAnimation(animationState.nextAnimation))
+        {
+            return true;
+        }
+
+        if (unit.attackMainHandAnimation != ::Animation::Defines::Type::Invalid)
+        {
+            bool result = ::Util::Unit::PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackMainHandAnimation, false, ::Animation::Defines::Flags::HoldAtEnd);
+
+            unit.attackMainHandAnimation = ::Animation::Defines::Type::Invalid;
+            return result;
+        }
+        else if (unit.attackOffHandAnimation != ::Animation::Defines::Type::Invalid)
+        {
+            bool result = ::Util::Unit::PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackOffHandAnimation, false, ::Animation::Defines::Flags::HoldAtEnd);
+            unit.attackOffHandAnimation = ::Animation::Defines::Type::Invalid;
+
+            return result;
+        }
 
         if (auto* castInfo = registry.try_get<Components::CastInfo>(entity))
         {
-            castInfo->duration = glm::min(castInfo->duration + 1.0f * deltaTime, castInfo->castTime);
+            castInfo->timeToCast -= 1.0f * deltaTime;
 
-            if (castInfo->castTime == castInfo->duration)
+            if (castInfo->timeToCast <= 0.0f)
             {
                 bool canPlaySpellCastDirected = Animation::HasAnimationSequence(modelInfo, ::Animation::Defines::Type::SpellCastDirected);
                 bool isPlayingSpellCastDirected = animationState.currentAnimation == ::Animation::Defines::Type::SpellCastDirected;
@@ -242,11 +392,6 @@ namespace Util::Unit
             if (isFlying)
                 blendOverride = ::Animation::Defines::BlendOverride::Auto;
 
-            if (animationState.currentAnimation != ::Animation::Defines::Type::Stand && animationState.nextAnimation == ::Animation::Defines::Type::Stand)
-            {
-                volatile i32 test = 0;
-            }
-
             return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, animation, false, ::Animation::Defines::Flags::None, blendOverride, speedModifier);
         }
         else
@@ -259,6 +404,12 @@ namespace Util::Unit
             if (movementInfo.movementFlags.justEndedJump)
             {
                 return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, ::Animation::Defines::Type::JumpEnd, false, ::Animation::Defines::Flags::HoldAtEnd, ::Animation::Defines::BlendOverride::Start);
+            }
+
+            // If Auto Attack, play Ready1H
+            if (unit.isAutoAttacking)
+            {
+                return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackReadyAnimation, false, ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride::Auto);
             }
 
             bool isStealthed = false;
@@ -509,8 +660,9 @@ namespace Util::Unit
         if (!modelInfo)
             return false;
 
+        auto& animationData = registry.get<Components::AnimationData>(entity);
         auto& attachmentData = registry.get<Components::AttachmentData>(entity);
-        if (!Attachment::EnableAttachment(entity, model, attachmentData, attachment))
+        if (!Attachment::EnableAttachment(entity, model, attachmentData, animationData, attachment))
             return false;
 
         entt::entity attachmentEntity = entt::null;
@@ -548,7 +700,6 @@ namespace Util::Unit
         registry.emplace<Components::Transform>(attachedEntity);
         auto& attachedModel = registry.emplace<Components::Model>(attachedEntity);
 
-        auto& animationData = registry.get<Components::AnimationData>(entity);
         auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
 
         Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance);
@@ -1114,5 +1265,118 @@ namespace Util::Unit
             animation = GetMoveForwardAnimation(speed, isSwimming, stealthed);
 
         return animation;
+    }
+
+    bool IsMainHandAttackAnimation(::Animation::Defines::Type animationType)
+    {
+        switch (animationType)
+        {
+            case ::Animation::Defines::Type::AttackUnarmed:
+            case ::Animation::Defines::Type::Attack1H:
+            case ::Animation::Defines::Type::Attack1HPierce:
+            case ::Animation::Defines::Type::AttackFist1H:
+            case ::Animation::Defines::Type::Attack2H:
+            case ::Animation::Defines::Type::Attack2HLoosePierce:
+            case ::Animation::Defines::Type::AttackBow:
+            case ::Animation::Defines::Type::AttackRifle:
+            case ::Animation::Defines::Type::AttackThrown:
+                return true;
+        }
+
+        return false;
+    }
+
+    bool IsOffHandAttackAnimation(::Animation::Defines::Type animationType)
+    {
+        switch (animationType)
+        {
+            case ::Animation::Defines::Type::AttackUnarmedOff:
+            case ::Animation::Defines::Type::AttackOff:
+            case ::Animation::Defines::Type::AttackOffPierce:
+            case ::Animation::Defines::Type::AttackFist1HOff:
+            case ::Animation::Defines::Type::Attack2HL:
+                return true;
+        }
+
+        return false;
+    }
+
+    ::Animation::Defines::Type GetMainHandAttackAnimation(u8 weaponStyle)
+    {
+        switch (weaponStyle)
+        {
+            case 2:
+            case 4:
+            case 6:
+            case 16: return ::Animation::Defines::Type::Attack1H;
+
+            case 8: return ::Animation::Defines::Type::Attack1HPierce;
+            case 9: return ::Animation::Defines::Type::AttackFist1H;
+
+            case 3:
+            case 5:
+            case 7:
+            case 11:
+            case 17: return ::Animation::Defines::Type::Attack2H;
+
+            case 10: return ::Animation::Defines::Type::Attack2HLoosePierce;
+
+            case 12:
+            case 13: return ::Animation::Defines::Type::AttackBow;
+
+            case 14: return ::Animation::Defines::Type::AttackRifle;
+            case 15: return ::Animation::Defines::Type::AttackThrown;
+        }
+
+        return ::Animation::Defines::Type::AttackUnarmed;
+    }
+    ::Animation::Defines::Type GetOffHandAttackAnimation(u8 weaponStyle)
+    {
+        switch (weaponStyle)
+        {
+            case 2:
+            case 4:
+            case 6:
+            case 16: return ::Animation::Defines::Type::AttackOff;
+
+            case 8: return ::Animation::Defines::Type::AttackOffPierce;
+            case 9: return ::Animation::Defines::Type::AttackFist1HOff;
+
+            case 3:
+            case 5:
+            case 7:
+            case 10:
+            case 11:
+            case 17: return ::Animation::Defines::Type::Attack2HL;
+        }
+
+        return ::Animation::Defines::Type::AttackUnarmedOff;
+    }
+    ::Animation::Defines::Type GetAttackReadyAnimation(u8 weaponType)
+    {
+        switch (weaponType)
+        {
+            case 2:
+            case 4:
+            case 6:
+            case 8:
+            case 16: return ::Animation::Defines::Type::Ready1H;
+            case 9: return ::Animation::Defines::Type::ReadyFist1H;
+            
+            case 3:
+            case 5:
+            case 7:
+            case 10:
+            case 11:
+            case 17: return ::Animation::Defines::Type::Ready2H;
+
+            case 12:
+            case 14: return ::Animation::Defines::Type::ReadyRifle;
+
+            case 13: return ::Animation::Defines::Type::ReadyBow;
+            case 15: return ::Animation::Defines::Type::ReadyThrown;
+        }
+
+        return ::Animation::Defines::Type::ReadyUnarmed;
     }
 }

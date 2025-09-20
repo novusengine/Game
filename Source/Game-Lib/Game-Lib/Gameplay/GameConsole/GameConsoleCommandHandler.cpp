@@ -51,6 +51,10 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleGotoXYZ);
     RegisterCommand(GameConsoleCommands::HandleTriggerAdd);
     RegisterCommand(GameConsoleCommands::HandleTriggerRemove);
+    RegisterCommand(GameConsoleCommands::HandleSpellSync);
+    RegisterCommand(GameConsoleCommands::HandleSpellSyncAll);
+    RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
+    RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

@@ -9,13 +9,14 @@
 #include "EaseCurveTool.h"
 #include "Hierarchy.h"
 #include "Inspector.h"
+#include "ItemEditor.h"
 #include "MapSelector.h"
 #include "NetworkedInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "SkyboxSelector.h"
+#include "SpellEditor.h"
 #include "TerrainTools.h"
 #include "Viewport.h"
-#include "ItemEditor.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -56,6 +57,7 @@ namespace Editor
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
         _editors.push_back(new ItemEditor());
+        _editors.push_back(new SpellEditor());
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);

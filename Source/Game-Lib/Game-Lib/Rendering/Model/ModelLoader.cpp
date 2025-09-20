@@ -713,6 +713,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
 
+    f32 scale = 1.0f;
     u32 extendedDisplayInfoID = 0;
     bool isDynamicModel = false;
 
@@ -732,6 +733,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 const auto& creatureModelData = creatureModelDataStorage->Get<Generated::CreatureModelDataRecord>(creatureDisplayInfo.modelID);
 
                 modelHash = creatureModelDataStorage->GetStringHash(creatureModelData.model);
+                scale = creatureDisplayInfo.creatureModelScale;
                 extendedDisplayInfoID = creatureDisplayInfo.extendedDisplayInfoID;
                 isDynamicModel = (creatureModelData.flags & 0x4) != 0x0; // Model is flagged as Dynamic
                 break;
@@ -780,6 +782,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     loadRequest.type = LoadRequestType::DisplayID;
     loadRequest.entity = entity;
     loadRequest.modelHash = modelHash;
+    loadRequest.scale = scale;
 
     u64 displayInfoPacked = displayID | (static_cast<u64>(displayInfoType) & 0x7) << 32 | (static_cast<u64>(modelVariant) & 0x3F) << 35 | (static_cast<u64>(extendedDisplayInfoID) << 41) | (static_cast<u64>(isDynamicModel) << 63);
     loadRequest.extraData1 = displayInfoPacked;
@@ -1076,7 +1079,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
     u32 modelID = _modelHashToModelID[request.modelHash];
     u32 doodadSet = request.type == LoadRequestType::Placement ? static_cast<u32>(request.extraData2) : std::numeric_limits<u32>().max();
-    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, nullptr, request.spawnPosition, request.spawnRotation, request.scale, doodadSet);
+    u32 instanceID = _modelRenderer->AddPlacementInstance(entityID, modelID, request.modelHash, nullptr, request.spawnPosition, request.spawnRotation, request.scale, doodadSet, request.type == LoadRequestType::Placement);
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
     model.flags.loaded = true;
@@ -1167,11 +1170,15 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     name.nameHash = discoveredModel.modelHash;
 
     auto& model = registry->get<ECS::Components::Model>(entityID);
+    model.scale = request.scale;
 
     u32 modelID = _modelHashToModelID[request.modelHash];
     u32 instanceID = model.instanceID;
 
+    ECS::TransformSystem& transformSystem = ECS::TransformSystem::Get(*registry);
     auto& transform = registry->get<ECS::Components::Transform>(entityID);
+    transformSystem.SetLocalScale(entityID, vec3(model.scale));
+
     if (instanceID == std::numeric_limits<u32>().max())
     {
         instanceID = _modelRenderer->AddInstance(entityID, modelID, discoveredModel.model, transform.GetMatrix(), request.extraData1);
@@ -1189,7 +1196,6 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     aabb.centerPos = modelAABB.centerPos;
     aabb.extents = modelAABB.extents;
 
-    ECS::TransformSystem& transformSystem = ECS::TransformSystem::Get(*registry);
     transform.SetDirty(transformSystem, entityID);
 
     {

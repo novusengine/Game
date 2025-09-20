@@ -7,9 +7,10 @@
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
-#include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/SpellSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
@@ -17,10 +18,12 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
+#include "Game-Lib/ECS/Util/Database/SpellUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/UnitUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 
@@ -774,8 +777,11 @@ bool GameConsoleCommands::HandleCheatDamage(GameConsole* gameConsole, Generated:
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-        unitStatsComponent.currentHealth = glm::max(unitStatsComponent.currentHealth - static_cast<f32>(command.amount), 0.0f);
+        auto& unitPowersComponent = registry->get<ECS::Components::UnitPowersComponent>(characterSingleton.moverEntity);
+        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+
+        healthPower.current = glm::max(healthPower.current - static_cast<f64>(command.amount), 0.0);
+        unitPowersComponent.dirtyPowerTypes.insert(Generated::PowerTypeEnum::Health);
     }
 
     return true;
@@ -797,8 +803,11 @@ bool GameConsoleCommands::HandleCheatKill(GameConsole* gameConsole, Generated::C
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-        unitStatsComponent.currentHealth = 0.0f;
+        auto& unitPowersComponent = registry->get<ECS::Components::UnitPowersComponent>(characterSingleton.moverEntity);
+        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+
+        healthPower.current = 0.0;
+        unitPowersComponent.dirtyPowerTypes.insert(Generated::PowerTypeEnum::Health);
     }
 
     return true;
@@ -820,8 +829,11 @@ bool GameConsoleCommands::HandleCheatResurrect(GameConsole* gameConsole, Generat
     }
     else
     {
-        auto& unitStatsComponent = registry->get<ECS::Components::UnitStatsComponent>(characterSingleton.moverEntity);
-        unitStatsComponent.currentHealth = unitStatsComponent.maxHealth;
+        auto& unitPowersComponent = registry->get<ECS::Components::UnitPowersComponent>(characterSingleton.moverEntity);
+        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+
+        healthPower.current =   healthPower.max;
+        unitPowersComponent.dirtyPowerTypes.insert(Generated::PowerTypeEnum::Health);
     }
 
     return true;
@@ -845,7 +857,7 @@ bool GameConsoleCommands::HandleCheatCast(GameConsole* gameConsole, Generated::C
         auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
         castInfo.target = unit.targetEntity;
         castInfo.castTime = 1.0f;
-        castInfo.duration = 0.0f;
+        castInfo.timeToCast = 1.0f;
     }
 
     return true;
@@ -1035,6 +1047,134 @@ bool GameConsoleCommands::HandleTriggerRemove(GameConsole* gameConsole, Generate
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
 
     if (!ECS::Util::MessageBuilder::Cheat::BuildCheatTriggerRemove(buffer, command.triggerID))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleSpellSync(GameConsole* gameConsole, Generated::SpellSyncCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    auto& spellSingleton = dbRegistry->ctx().get<ECS::Singletons::SpellSingleton>();
+    auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);
+    auto* spellEffectsStorage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
+
+    if (!spellStorage->Has(command.spellID))
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<1024>();
+
+    auto& spell = spellStorage->Get<Generated::SpellRecord>(command.spellID);
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellSet(buffer, spellStorage, command.spellID, spell))
+        return false;
+
+    const std::vector<u32>* spellEffectList = ECSUtil::Spell::GetSpellEffectList(spellSingleton, command.spellID);
+    if (spellEffectList)
+    {
+        for (u32 spellEffectID : *spellEffectList)
+        {
+            if (!spellEffectsStorage->Has(spellEffectID))
+                continue;
+
+            auto& spellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectID);
+            if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellEffectSet(buffer, spellEffectsStorage, spellEffectID, spellEffect))
+                return false;
+        }
+    }
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleSpellSyncAll(GameConsole* gameConsole, Generated::SpellSyncAllCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+    auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    auto& spellSingleton = dbRegistry->ctx().get<ECS::Singletons::SpellSingleton>();
+    auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);
+    auto* spellEffectsStorage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<65536>();
+
+    bool failed = false;
+    spellStorage->Each([&](u32 id, const Generated::SpellRecord& spell)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellSet(buffer, spellStorage, id, spell))
+        {
+            failed = true;
+            return false;
+        }
+
+        const std::vector<u32>* spellEffectList = ECSUtil::Spell::GetSpellEffectList(spellSingleton, id);
+        if (spellEffectList)
+        {
+            for (u32 spellEffectID : *spellEffectList)
+            {
+                if (!spellEffectsStorage->Has(spellEffectID))
+                    continue;
+
+                auto& spellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectID);
+                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellEffectSet(buffer, spellEffectsStorage, spellEffectID, spellEffect))
+                {
+                    failed = true;
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    });
+
+    if (failed)
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureAddScript(GameConsole* gameConsole, Generated::CreatureAddScriptCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureAddScript(buffer, command.scriptName))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureRemoveScript(GameConsole* gameConsole, Generated::CreatureRemoveScriptCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureRemoveScript(buffer))
         return false;
 
     networkState.client->Send(buffer);

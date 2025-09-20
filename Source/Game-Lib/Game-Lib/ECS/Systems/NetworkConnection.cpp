@@ -19,6 +19,8 @@
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
+#include "Game-Lib/ECS/Components/UnitPowersComponent.h"
+#include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
@@ -26,10 +28,12 @@
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/ProximityTriggerUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
@@ -99,12 +103,16 @@ namespace ECS::Systems
             case Generated::CombatLogEventsEnum::HealingDone:
             {
                 ObjectGUID targetNetworkID;
-                f32 value = 0.0f;
+                f64 value = 0.0f;
+                f64 overValue = 0.0f;
 
                 if (!message.buffer->Deserialize(targetNetworkID))
                     return false;
 
-                if (!message.buffer->GetF32(value))
+                if (!message.buffer->GetF64(value))
+                    return false;
+
+                if (!message.buffer->GetF64(overValue))
                     return false;
 
                 entt::entity targetEntity;
@@ -129,24 +137,47 @@ namespace ECS::Systems
                     return true;
                 }
 
+                std::string result = "";
+
                 if (eventID == Generated::CombatLogEventsEnum::DamageDealt)
                 {
                     // Damage Dealt
-                    ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s dealt %.2f damage to %s", sourceUnit->name.c_str(), value, targetUnit->name.c_str() });
+                    if (overValue)
+                    {
+                        result = std::format("{} dealt {:.2f} damage to {} (Overkill: {:.2f})", sourceUnit->name, value, targetUnit->name, overValue);
+                    }
+                    else
+                    {
+                        result = std::format("{} dealt {:.2f} damage to {}", sourceUnit->name, value, targetUnit->name);
+                    }
                 }
                 else
                 {
                     // Healing Taken
-                    ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s healed %s for %.2f", sourceUnit->name.c_str(), value, targetUnit->name.c_str() });
+
+                    if (overValue)
+                    {
+                        result = std::format("{} healed {} for {:.2f} (Overheal: {:.2f})", sourceUnit->name, targetUnit->name, value, overValue);
+                    }
+                    else
+                    {
+                        result = std::format("{} healed {} for {:.2f}", sourceUnit->name, targetUnit->name, value);
+                    }
                 }
 
+                ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s", result.c_str() });
                 break;
             }
 
             case Generated::CombatLogEventsEnum::Resurrected:
             {
                 ObjectGUID targetNetworkID;
+                f64 restoredHealth = 0.0f;
+
                 if (!message.buffer->Deserialize(targetNetworkID))
+                    return false;
+
+                if (!message.buffer->GetF64(restoredHealth))
                     return false;
 
                 entt::entity targetEntity;
@@ -171,7 +202,8 @@ namespace ECS::Systems
                     return true;
                 }
 
-                ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s resurrected %s", sourceUnit->name.c_str(), targetUnit->name.c_str() });
+                std::string result = std::format("{} resurrected {} (Restored Health: {:.2f})", sourceUnit->name, targetUnit->name, restoredHealth);
+                ImGui::InsertNotification({ ImGuiToastType::Success, 3000, "%s", result.c_str() });
                 break;
             }
 
@@ -335,6 +367,8 @@ namespace ECS::Systems
         registry->emplace<Components::UnitCustomization>(newEntity);
         registry->emplace<Components::UnitEquipment>(newEntity);
         registry->emplace<Components::UnitMovementOverTime>(newEntity);
+        registry->emplace<Components::UnitPowersComponent>(newEntity);
+        registry->emplace<Components::UnitResistancesComponent>(newEntity);
         registry->emplace<Components::UnitStatsComponent>(newEntity);
         registry->emplace<Components::AttachmentData>(newEntity);
         auto& displayInfo = registry->emplace<Components::DisplayInfo>(newEntity);
@@ -344,6 +378,7 @@ namespace ECS::Systems
         unit.networkID = packet.guid;
         unit.name = packet.name;
         unit.targetEntity = entt::null;
+        unit.scale = packet.scale.x;
 
         if (unit.networkID.GetType() == ObjectGUID::Type::Player)
             registry->emplace_or_replace<Components::PlayerTag>(newEntity);
@@ -365,6 +400,11 @@ namespace ECS::Systems
 
         vec3 min = packet.position - (packet.scale * 0.5f);
         vec3 max = packet.position + (packet.scale * 0.5f);
+        if (auto* aabb = registry->try_get<Components::AABB>(newEntity))
+        {
+            min = packet.position + (aabb->centerPos - aabb->extents);
+            max = packet.position + (aabb->centerPos + aabb->extents);
+        }
         networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
@@ -435,17 +475,21 @@ namespace ECS::Systems
 
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         auto& model = registry->get<ECS::Components::Model>(entity);
+        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
 
-        if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
+        if (displayInfo.displayID != packet.displayID)
         {
-            NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
+            displayInfo.displayID = packet.displayID;
 
-            modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
-            return true;
+            if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
+            {
+                NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
+
+                modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
+                return true;
+            }
         }
 
-        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
-        displayInfo.displayID = packet.displayID;
         displayInfo.race = static_cast<GameDefine::UnitRace>(packet.race);
         displayInfo.gender = static_cast<GameDefine::UnitGender>(packet.gender);
 
@@ -477,7 +521,7 @@ namespace ECS::Systems
         }
 
         unitEquipment.equipmentSlotToItemID[packet.slot] = packet.itemID;
-        unitEquipment.dirtyItemIDSlots.insert(static_cast<Database::Item::ItemEquipSlot>(packet.slot));
+        unitEquipment.dirtyItemIDSlots.insert(static_cast<Generated::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitEquipmentDirty>(entity);
         return true;
     }
@@ -507,17 +551,17 @@ namespace ECS::Systems
         }
 
         unitEquipment.equipmentSlotToVisualItemID[packet.slot] = packet.itemID;
-        unitEquipment.dirtyVisualItemIDSlots.insert(static_cast<Database::Item::ItemEquipSlot>(packet.slot));
+        unitEquipment.dirtyVisualItemIDSlots.insert(static_cast<Generated::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitVisualEquipmentDirty>(entity);
         return true;
     }
 
-    bool HandleOnUnitResourcesUpdate(Network::SocketID socketID, Generated::UnitResourcesUpdatePacket& packet)
+    bool HandleOnUnitPowerUpdate(Network::SocketID socketID, Generated::UnitPowerUpdatePacket& packet)
     {
-        auto powerType = static_cast<Generated::PowerTypeEnum>(packet.powerType);
-        if (powerType >= Generated::PowerTypeEnum::Count)
+        auto powerType = static_cast<Generated::PowerTypeEnum>(packet.kind);
+        if (powerType <= Generated::PowerTypeEnum::Invalid || powerType >= Generated::PowerTypeEnum::Count)
         {
-            NC_LOG_WARNING("Network : Received Power Update for unknown PowerType ({0})", static_cast<u32>(powerType));
+            NC_LOG_WARNING("Network : Received Power Update for unknown PowerType ({0})", packet.kind);
             return true;
         }
 
@@ -537,23 +581,69 @@ namespace ECS::Systems
             return true;
         }
 
-        auto& unitStatsComponent = registry->get<Components::UnitStatsComponent>(entity);
-
-        if (powerType == Generated::PowerTypeEnum::Health)
+        auto& unitPowersComponent = registry->get<Components::UnitPowersComponent>(entity);
+        if (!::Util::Unit::SetPower(unitPowersComponent, powerType, packet.base, packet.current, packet.max))
         {
-            unitStatsComponent.baseHealth = packet.base;
-            unitStatsComponent.currentHealth = packet.current;
-            unitStatsComponent.maxHealth = packet.max;
-        }
-        else if (powerType < Generated::PowerTypeEnum::Count)
-        {
-            unitStatsComponent.basePower[(u32)powerType] = packet.base;
-            unitStatsComponent.currentPower[(u32)powerType] = packet.current;
-            unitStatsComponent.maxPower[(u32)powerType] = packet.max;
+            ::Util::Unit::AddPower(unitPowersComponent, powerType, packet.base, packet.current, packet.max);
         }
 
         return true;
     }
+    bool HandleOnUnitResistanceUpdate(Network::SocketID socketID, Generated::UnitResistanceUpdatePacket& packet)
+    {
+        auto resistanceType = static_cast<Generated::ResistanceTypeEnum>(packet.kind);
+        if (resistanceType <= Generated::ResistanceTypeEnum::Invalid || resistanceType >= Generated::ResistanceTypeEnum::Count)
+        {
+            NC_LOG_WARNING("Network : Received Resistance Update for unknown ResistanceType ({0})", packet.kind);
+            return true;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+        entt::entity entity = characterSingleton.moverEntity;
+        if (!registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Resistance Update while no mover entity is active");
+            return true;
+        }
+
+        auto& unitResistancesComponent = registry->get<Components::UnitResistancesComponent>(entity);
+        if (!::Util::Unit::SetResistance(unitResistancesComponent, resistanceType, packet.base, packet.current, packet.max))
+        {
+            ::Util::Unit::AddResistance(unitResistancesComponent, resistanceType, packet.base, packet.current, packet.max);
+        }
+
+        return true;
+    }
+    bool HandleOnUnitStatUpdate(Network::SocketID socketID, Generated::UnitStatUpdatePacket& packet)
+    {
+        auto statType = static_cast<Generated::StatTypeEnum>(packet.kind);
+        if (statType <= Generated::StatTypeEnum::Invalid || statType >= Generated::StatTypeEnum::Count)
+        {
+            NC_LOG_WARNING("Network : Received Stat Update for unknown StatType ({0})", packet.kind);
+            return true;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+        entt::entity entity = characterSingleton.moverEntity;
+        if (!registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Stat Update while no mover entity is active");
+            return true;
+        }
+
+        auto& unitStatsComponent = registry->get<Components::UnitStatsComponent>(entity);
+        if (!::Util::Unit::SetStat(unitStatsComponent, statType, packet.base, packet.current))
+        {
+            ::Util::Unit::AddStat(unitStatsComponent, statType, packet.base, packet.current);
+        }
+
+        return true;
+    }
+
     bool HandleOnUnitTargetUpdate(Network::SocketID socketID, Generated::ServerUnitTargetUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -573,8 +663,15 @@ namespace ECS::Systems
             return true;
         }
 
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+
         auto& unit = registry->get<Components::Unit>(entity);
         unit.targetEntity = targetEntity;
+
+        zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+            .unitID = entt::to_integral(entity),
+            .targetID = entt::to_integral(targetEntity)
+        });
 
         return true;
     }
@@ -602,11 +699,84 @@ namespace ECS::Systems
             NC_LOG_WARNING("Network : Received Cast Spell for non existing entity ({0})", packet.guid.ToString());
             return true;
         }
-        auto& castInfo = registry->emplace_or_replace<Components::CastInfo>(entity);
 
-        castInfo.target = unit->targetEntity;
-        castInfo.castTime = packet.castTime;
-        castInfo.duration = packet.castDuration;
+        if (packet.spellID == 1)
+        {
+            auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+            entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+            auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+            auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
+
+            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+            auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
+            u32 mainHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(Generated::ItemEquipSlotEnum::MainHand)];
+            auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(mainHandItemID);
+
+            if (characterSingleton.moverEntity == entity)
+            {
+                u32 itemWeaponTemplateID = ::ECSUtil::Item::GetItemWeaponTemplateID(itemSingleton, mainHandItemID);
+                auto* itemWeaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
+                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
+                
+                characterSingleton.primaryAttackTimer = itemWeaponTemplate.speed;
+            }
+
+            if (auto* model = registry->try_get<Components::Model>(entity))
+            {
+                if (auto* modelInfo = ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelInfo(model->modelHash))
+                {
+                    auto& animationData = registry->get<Components::AnimationData>(entity);
+
+                    unit->attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
+                    unit->attackMainHandAnimation = ::Util::Unit::GetMainHandAttackAnimation(itemTemplate.categoryType);
+                }
+            }
+        }
+        else if (packet.spellID == 2)
+        {
+            auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+            entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+            auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+            auto& itemSingleton = dbRegistry->ctx().get<Singletons::ItemSingleton>();
+
+            auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+
+            auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
+            u32 offHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(Generated::ItemEquipSlotEnum::OffHand)];
+            auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(offHandItemID);
+
+            if (characterSingleton.moverEntity == entity)
+            {
+                u32 itemWeaponTemplateID = ::ECSUtil::Item::GetItemWeaponTemplateID(itemSingleton, offHandItemID);
+                auto* itemWeaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
+                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
+                
+                characterSingleton.secondaryAttackTimer = itemWeaponTemplate.speed;
+            }
+
+
+            if (auto* model = registry->try_get<Components::Model>(entity))
+            {
+                if (auto* modelInfo = ServiceLocator::GetGameRenderer()->GetModelLoader()->GetModelInfo(model->modelHash))
+                {
+                    auto& animationData = registry->get<Components::AnimationData>(entity);
+
+                    unit->attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
+                    unit->attackMainHandAnimation = ::Util::Unit::GetOffHandAttackAnimation(itemTemplate.categoryType);
+                }
+            }
+        }
+        else
+        {
+            auto& castInfo = registry->emplace_or_replace<Components::CastInfo>(entity);
+
+            castInfo.target = unit->targetEntity;
+            castInfo.castTime = packet.castTime;
+            castInfo.timeToCast = packet.timeToCast;
+        }
 
         return true;
     }
@@ -626,6 +796,11 @@ namespace ECS::Systems
         characterSingleton.moverEntity = entity;
 
         CharacterController::InitCharacterController(*registry, false);
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaGameEventEnum::LocalMoverChanged, Generated::LuaGameEventDataLocalMoverChanged{
+            .moverID = entt::to_integral(entity)
+        });
 
         return true;
     }
@@ -748,6 +923,11 @@ namespace ECS::Systems
         f32 scale = transform.GetLocalScale().x;
         vec3 min = packet.position - (scale * 0.5f);
         vec3 max = packet.position + (scale * 0.5f);
+        if (auto* aabb = registry->try_get<Components::AABB>(entity))
+        {
+            min = packet.position + (aabb->centerPos - aabb->extents);
+            max = packet.position + (aabb->centerPos + aabb->extents);
+        }
         networkState.networkVisTree->Remove(packet.guid);
         networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
 
@@ -1004,7 +1184,7 @@ namespace ECS::Systems
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         Components::Container* srcContainer = nullptr;
-        Components::Container* destContainer = nullptr;
+        Components::Container* dstContainer = nullptr;
 
         if (packet.srcContainer == 0)
         {
@@ -1046,7 +1226,7 @@ namespace ECS::Systems
 
         if (packet.srcContainer == packet.dstContainer)
         {
-            destContainer = srcContainer;
+            dstContainer = srcContainer;
         }
         else
         {
@@ -1059,7 +1239,7 @@ namespace ECS::Systems
                 }
 
                 auto& baseContainer = registry->get<Components::Container>(characterSingleton.baseContainerEntity);
-                destContainer = &baseContainer;
+                dstContainer = &baseContainer;
             }
             else
             {
@@ -1085,11 +1265,70 @@ namespace ECS::Systems
                 }
 
                 auto& container = registry->get<Components::Container>(containerEntity);
-                destContainer = &container;
+                dstContainer = &container;
             }
         }
 
-        std::swap(srcContainer->items[packet.srcSlot], destContainer->items[packet.dstSlot]);
+        std::swap(srcContainer->items[packet.srcSlot], dstContainer->items[packet.dstSlot]);
+
+        if (auto* unitEquipment = registry->try_get<Components::UnitEquipment>(characterSingleton.moverEntity))
+        {
+            if (packet.srcContainer == 0)
+            {
+                auto equippedSlot = static_cast<Generated::ItemEquipSlotEnum>(packet.srcSlot);
+                if (equippedSlot >= Generated::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= Generated::ItemEquipSlotEnum::EquipmentEnd)
+                {
+                    const ObjectGUID itemGUID = srcContainer->GetItem(packet.srcSlot);
+                    bool hasItemInSlot = itemGUID.IsValid();
+                    u32 itemID = 0;
+
+                    if (hasItemInSlot)
+                    {
+                        entt::entity itemEntity;
+                        if (Util::Network::GetEntityIDFromObjectGUID(networkState, itemGUID, itemEntity))
+                        {
+                            auto& item = registry->get<Components::Item>(itemEntity);
+                            itemID = item.itemID;
+                        }
+                    }
+
+                    unitEquipment->equipmentSlotToItemID[packet.srcSlot] = itemID;
+                    unitEquipment->equipmentSlotToVisualItemID[packet.srcSlot] = itemID;
+                    unitEquipment->dirtyItemIDSlots.insert(equippedSlot);
+                    unitEquipment->dirtyVisualItemIDSlots.insert(equippedSlot);
+                    registry->emplace_or_replace<Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
+                    registry->emplace_or_replace<Components::UnitVisualEquipmentDirty>(characterSingleton.moverEntity);
+                }
+            }
+
+            if (packet.dstContainer == 0)
+            {
+                auto equippedSlot = static_cast<Generated::ItemEquipSlotEnum>(packet.dstSlot);
+                if (equippedSlot >= Generated::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= Generated::ItemEquipSlotEnum::EquipmentEnd)
+                {
+                    const ObjectGUID itemGUID = dstContainer->GetItem(packet.dstSlot);
+                    bool hasItemInSlot = itemGUID.IsValid();
+                    u32 itemID = 0;
+
+                    if (hasItemInSlot)
+                    {
+                        entt::entity itemEntity;
+                        if (Util::Network::GetEntityIDFromObjectGUID(networkState, itemGUID, itemEntity))
+                        {
+                            auto& item = registry->get<Components::Item>(itemEntity);
+                            itemID = item.itemID;
+                        }
+                    }
+
+                    unitEquipment->equipmentSlotToItemID[packet.dstSlot] = itemID;
+                    unitEquipment->equipmentSlotToVisualItemID[packet.dstSlot] = itemID;
+                    unitEquipment->dirtyItemIDSlots.insert(equippedSlot);
+                    unitEquipment->dirtyVisualItemIDSlots.insert(equippedSlot);
+                    registry->emplace_or_replace<Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
+                    registry->emplace_or_replace<Components::UnitVisualEquipmentDirty>(characterSingleton.moverEntity);
+                }
+            }
+        }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         zenith->CallEvent(Generated::LuaContainerEventEnum::SwapSlots, Generated::LuaContainerEventDataSwapSlots{
@@ -1104,18 +1343,11 @@ namespace ECS::Systems
 
     bool HandleOnServerSpellCastResult(Network::SocketID socketID, Generated::ServerSpellCastResultPacket& packet)
     {
-        if (packet.result > 0)
+        if (packet.result == 0)
             return true;
 
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
 
-        auto& unit = registry->get<Components::Unit>(characterSingleton.moverEntity);
-        auto& castInfo = registry->emplace_or_replace<Components::CastInfo>(characterSingleton.moverEntity);
-        castInfo.target = unit.targetEntity;
-        castInfo.castTime = 1.5f;
-        castInfo.duration = 0.0f;
-
+        // TODO : Report spell cast failure to player
         return true;
     }
 
@@ -1207,7 +1439,9 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitDisplayInfoUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitEquippedItemUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitVisualItemUpdate);
-            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitResourcesUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitPowerUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitResistanceUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitStatUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitTargetUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitCastSpell);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitSetMover);

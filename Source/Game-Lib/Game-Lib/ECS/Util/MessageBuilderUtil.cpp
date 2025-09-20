@@ -557,5 +557,73 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
+        bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const Generated::SpellRecord& spell)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellID]()
+            {
+                GameDefine::Database::Spell spellDefinition =
+                {
+                    .id = spellID,
+
+                    .name = spellStorage->GetString(spell.name),
+                    .description = spellStorage->GetString(spell.description),
+                    .auraDescription = spellStorage->GetString(spell.auraDescription),
+                    .iconID = spell.iconID,
+
+                    .castTime = spell.castTime,
+                    .cooldown = spell.cooldown,
+                };
+
+                buffer->Put(Generated::CheatCommandEnum::SpellSet);
+                GameDefine::Database::Spell::Write(buffer, spellDefinition);
+            });
+
+            return result;
+        }
+        bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const Generated::SpellEffectsRecord& spellEffect)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellEffectsID]()
+            {
+                GameDefine::Database::SpellEffect spellEffectsDefinition =
+                {
+                    .id = spellEffectsID,
+                    .spellID = spellEffect.spellID,
+                    .effectPriority = spellEffect.effectPriority,
+                    .effectType = spellEffect.effectType,
+
+                    .effectValue1 = spellEffect.effectValue1,
+                    .effectValue2 = spellEffect.effectValue2,
+                    .effectValue3 = spellEffect.effectValue3,
+
+                    .effectMiscValue1 = spellEffect.effectMiscValue1,
+                    .effectMiscValue2 = spellEffect.effectMiscValue2,
+                    .effectMiscValue3 = spellEffect.effectMiscValue3
+                };
+
+                buffer->Put(Generated::CheatCommandEnum::SpellEffectSet);
+                GameDefine::Database::SpellEffect::Write(buffer, spellEffectsDefinition);
+            });
+
+            return result;
+        }
+        bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::CreatureAddScript);
+                buffer->PutString(scriptName);
+            });
+
+            return result;
+        }
+        bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::CreatureRemoveScript);
+            });
+
+            return result;
+        }
     }
 }
