@@ -34,6 +34,8 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 
+#include <tracy/Tracy.hpp>
+
 #include <atomic>
 #include <execution>
 #include <filesystem>
@@ -54,10 +56,19 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
 {
     _pendingLoadRequestsVector.resize(MAX_PENDING_LOADS_PER_FRAME);
     _internalLoadRequestsVector.resize(MAX_INTERNAL_LOADS_PER_FRAME);
+
+    _createdEntities.reserve(16384);
+    _modelHashToJoltShape.reserve(16384);
+    _uniqueIDToinstanceID.reserve(524288);
+    _instanceIDToModelID.reserve(524288);
+    _instanceIDToBodyID.reserve(524288);
+    _instanceIDToEntityID.reserve(524288);
 }
 
 void ModelLoader::Init()
 {
+    ZoneScopedN("ModelLoader::Init");
+
     NC_LOG_INFO("ModelLoader : Scanning for models");
 
     static const fs::path fileExtension = ".complexmodel";
@@ -85,41 +96,47 @@ void ModelLoader::Init()
     u32 numPaths = static_cast<u32>(paths.size());
     NC_LOG_INFO("ModelLoader : Processing {0} scanned model paths", numPaths);
 
-    enki::TaskSet discoverModelsTask(numPaths, [&, this, paths, subStrIndex](enki::TaskSetPartition range, u32 threadNum)
     {
-        u32 numDiscoveredModelsToLoad = 0;
+        ZoneScopedN("ModelLoader::DiscoverModels");
 
-        IOLoadRequest loadRequest;
-        loadRequest.callback = std::bind(&ModelLoader::HandleDiscoverModelCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-
-        for (u32 i = range.start; i < range.end; i++)
+        enki::TaskSet discoverModelsTask(numPaths, [&, this, paths, subStrIndex](enki::TaskSetPartition range, u32 threadNum)
         {
-            const fs::path& path = paths[i];
-            
-            if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
-                continue;
+            u32 numDiscoveredModelsToLoad = 0;
 
-            std::string pathStr = path.string();
-            std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
-            loadRequest.path = std::move(pathStr);
+            IOLoadRequest loadRequest;
+            loadRequest.callback = std::bind(&ModelLoader::HandleDiscoverModelCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
-            std::string modelPath = loadRequest.path.substr(subStrIndex);
-            loadRequest.userdata = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+            for (u32 i = range.start; i < range.end; i++)
+            {
+                const fs::path& path = paths[i];
+                
+                if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
+                    continue;
 
-            ioLoader->RequestLoad(loadRequest);
-            numDiscoveredModelsToLoad++;
-        }
+                std::string pathStr = path.string();
+                std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
+                loadRequest.path = std::move(pathStr);
 
-        _numDiscoveredModelsToLoad += numDiscoveredModelsToLoad;
-    });
+                std::string modelPath = loadRequest.path.substr(subStrIndex);
+                loadRequest.userdata = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
 
-    // Execute the multithreaded job
-    taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
-    taskScheduler->WaitforTask(&discoverModelsTask);
+                ioLoader->RequestLoad(loadRequest);
+                numDiscoveredModelsToLoad++;
+            }
+
+            _numDiscoveredModelsToLoad += numDiscoveredModelsToLoad;
+        });
+
+        // Execute the multithreaded job
+        taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
+        taskScheduler->WaitforTask(&discoverModelsTask);
+    }
 }
 
 void ModelLoader::Clear()
 {
+    ZoneScopedN("ModelLoader::Clear");
+
     LoadRequestInternal dummyRequest;
     while (_pendingTerrainLoadRequests.try_dequeue(dummyRequest))
     {
@@ -366,9 +383,12 @@ void ModelLoader::Update(f32 deltaTime)
         //{
             //ZoneScopedN("Load Model Task");
             //for (u32 i = range.start; i < range.end; i++)
+        {
+            ZoneScopedN("Load Models");
+
             for (u32 i = 0; i < numDequeuedLoadRequests; i++)
             {
-                ZoneScopedN("Load Model Work");
+                ZoneScopedN("Load Model Request");
 
                 const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
                 bool isStatic = loadRequest.type == LoadRequestType::Placement || loadRequest.type == LoadRequestType::Decoration;
@@ -385,7 +405,7 @@ void ModelLoader::Update(f32 deltaTime)
                 LoadState loadState = _modelHashToLoadState[loadRequest.modelHash];
                 if (loadState == LoadState::NotLoaded)
                 {
-                    ZoneScopedN("Load Model Request");
+                    ZoneScopedN("Load Model Into Renderer");
                     DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
 
                     bool didLoad = LoadRequest(discoveredModel);
@@ -401,6 +421,7 @@ void ModelLoader::Update(f32 deltaTime)
 
                 _internalLoadRequests.enqueue(loadRequest);
             }
+        }
         //});
 
         //taskScheduler->AddTaskSetToPipe(&loadModelsTask);
@@ -419,6 +440,7 @@ void ModelLoader::Update(f32 deltaTime)
 
             for (u32 i = 0; i < numDequeuedInternalRequests; i++)
             {
+                ZoneScopedN("Reserve Info Work");
                 const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
 
                 u32 modelHash = loadRequest.modelHash;
@@ -429,8 +451,8 @@ void ModelLoader::Update(f32 deltaTime)
                 // Only increment Instance Count & Drawcall Count if the model have vertices
                 {
                     reserveInfo.numInstances += 1 * isSupported;
-                    //reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                    //reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
                     reserveInfo.numBones += discoveredModel.model->modelHeader.numBones * isSupported;
                     reserveInfo.numTextureTransforms += discoveredModel.model->modelHeader.numTextureTransforms * isSupported;
                     reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * hasDisplayID * isSupported;
@@ -445,12 +467,6 @@ void ModelLoader::Update(f32 deltaTime)
 
             {
                 ZoneScopedN("Instance Reserve");
-
-                _modelHashToJoltShape.reserve(_modelHashToJoltShape.size() + reserveInfo.numInstances);
-                _uniqueIDToinstanceID.reserve(_uniqueIDToinstanceID.size() + reserveInfo.numInstances);
-                _instanceIDToModelID.reserve(_instanceIDToModelID.size() + reserveInfo.numInstances);
-                _instanceIDToBodyID.reserve(_instanceIDToBodyID.size() + reserveInfo.numInstances);
-                _instanceIDToEntityID.reserve(_instanceIDToEntityID.size() + reserveInfo.numInstances);
 
                 // Create entt entities
                 _createdEntities.resize(createdEntitiesOffset + reserveInfo.numInstances);
@@ -475,6 +491,9 @@ void ModelLoader::Update(f32 deltaTime)
                 //ZoneScopedN("Load Instance Task");
 
                 //for (u32 i = range.start; i < range.end; i++)
+            {
+                ZoneScopedN("Load Instances");
+
                 for (u32 i = 0; i < numDequeuedInternalRequests; i++)
                 {
                     ZoneScopedN("Load Instance Work");
@@ -527,6 +546,8 @@ void ModelLoader::Update(f32 deltaTime)
                         default: break;
                     }
                 }
+            }
+                
             //});
 
             //taskScheduler->AddTaskSetToPipe(&loadModelInstancesTask);
@@ -581,37 +602,43 @@ void ModelLoader::Update(f32 deltaTime)
         }
     }
 
-    LoadRequestResultInternal loadRequestResult;
-    while (_loadRequestResults.try_dequeue(loadRequestResult))
     {
-        const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[loadRequestResult.loadRequestIndex];
-        if (loadRequest.entity == entt::null)
-            continue;
+        ZoneScopedN("Load Results");
 
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        if (!registry->valid(loadRequest.entity) || !registry->all_of<ECS::Components::Model>(loadRequest.entity))
-            continue;
-
-        auto& model = registry->get<ECS::Components::Model>(loadRequest.entity);
-        model.flags.loaded = loadRequestResult.success;
-
-        // Rollback to previous ModelHash if load failed (Defaults to Invalid if no prior model hash was present)
-        bool rollback = false;
-        if (!loadRequestResult.success)
+        LoadRequestResultInternal loadRequestResult;
+        while (_loadRequestResults.try_dequeue(loadRequestResult))
         {
-            model.flags.loaded = false;
+            ZoneScopedN("Load Result Work");
+            const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[loadRequestResult.loadRequestIndex];
+            if (loadRequest.entity == entt::null)
+                continue;
 
-            rollback = loadRequest.extraData2 != std::numeric_limits<u64>().max();
-            model.modelHash = static_cast<u32>(loadRequest.extraData2);
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            if (!registry->valid(loadRequest.entity) || !registry->all_of<ECS::Components::Model>(loadRequest.entity))
+                continue;
+
+            auto& model = registry->get<ECS::Components::Model>(loadRequest.entity);
+            model.flags.loaded = loadRequestResult.success;
+
+            // Rollback to previous ModelHash if load failed (Defaults to Invalid if no prior model hash was present)
+            bool rollback = false;
+            if (!loadRequestResult.success)
+            {
+                model.flags.loaded = false;
+
+                rollback = loadRequest.extraData2 != std::numeric_limits<u64>().max();
+                model.modelHash = static_cast<u32>(loadRequest.extraData2);
+            }
+
+            ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
+            modelLoadedEvent.flags.loaded = loadRequestResult.success;
+            modelLoadedEvent.flags.rollback = rollback;
+            modelLoadedEvent.flags.staticModel = loadRequestResult.isStatic;
+
+            ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
         }
-
-        ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
-        modelLoadedEvent.flags.loaded = loadRequestResult.success;
-        modelLoadedEvent.flags.rollback = rollback;
-        modelLoadedEvent.flags.staticModel = loadRequestResult.isStatic;
-
-        ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
     }
+    
 
     if (_terrainLoading && _numTerrainModelsLoaded == _numTerrainModelsToLoad)
     {
@@ -624,6 +651,8 @@ void ModelLoader::Update(f32 deltaTime)
 
 entt::entity ModelLoader::CreateModelEntity(const std::string& name)
 {
+    ZoneScopedN("ModelLoader::CreateModelEntity");
+
     entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     entt::entity entity = registry.create();
@@ -651,6 +680,8 @@ f32 ModelLoader::GetLoadingProgress() const
 
 void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 {
+    ZoneScopedN("ModelLoader::LoadPlacement");
+
     LoadRequestInternal loadRequest;
 
     loadRequest.type = LoadRequestType::Placement;
@@ -672,6 +703,8 @@ void ModelLoader::LoadPlacement(const Terrain::Placement& placement)
 
 void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Decoration& decoration)
 {
+    ZoneScopedN("ModelLoader::LoadDecoration");
+
     LoadRequestInternal loadRequest =
     {
         .type = LoadRequestType::Decoration,
@@ -690,6 +723,8 @@ void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Deco
 
 bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash)
 {
+    ZoneScopedN("ModelLoader::LoadModelForEntity");
+
     if (!_modelHashToDiscoveredModel.contains(modelNameHash))
         return false;
 
@@ -709,6 +744,8 @@ bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model
 
 bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash, u8 modelVariant)
 {
+    ZoneScopedN("ModelLoader::LoadDisplayIDForEntity");
+
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
@@ -796,6 +833,8 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
 
 void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Model& model)
 {
+    ZoneScopedN("ModelLoader::UnloadModelForEntity");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -813,6 +852,8 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
 
 void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
 {
+    ZoneScopedN("ModelLoader::SetEntityVisible");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -821,6 +862,8 @@ void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
 
 void ModelLoader::SetModelVisible(const ECS::Components::Model& model, bool visible)
 {
+    ZoneScopedN("ModelLoader::SetModelVisible");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -829,6 +872,8 @@ void ModelLoader::SetModelVisible(const ECS::Components::Model& model, bool visi
 
 void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity)
 {
+    ZoneScopedN("ModelLoader::SetEntityTransparent");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -837,6 +882,8 @@ void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f3
 
 void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool transparent, f32 opacity)
 {
+    ZoneScopedN("ModelLoader::SetModelTransparent");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -845,6 +892,8 @@ void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool 
 
 void ModelLoader::SetEntityHighlight(entt::entity entity, f32 highlightIntensity)
 {
+    ZoneScopedN("ModelLoader::SetEntityHighlight");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -853,6 +902,8 @@ void ModelLoader::SetEntityHighlight(entt::entity entity, f32 highlightIntensity
 
 void ModelLoader::SetModelHighlight(const ECS::Components::Model& model, f32 highlightIntensity)
 {
+    ZoneScopedN("ModelLoader::SetModelHighlight");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -861,6 +912,8 @@ void ModelLoader::SetModelHighlight(const ECS::Components::Model& model, f32 hig
 
 void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
 {
+    ZoneScopedN("ModelLoader::EnableGroupForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -869,6 +922,8 @@ void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
 
 void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 groupID)
 {
+    ZoneScopedN("ModelLoader::EnableGroupForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -877,6 +932,8 @@ void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 g
 
 void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
 {
+    ZoneScopedN("ModelLoader::DisableGroupForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -885,6 +942,8 @@ void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
 
 void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 groupID)
 {
+    ZoneScopedN("ModelLoader::DisableGroupForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -893,6 +952,8 @@ void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 
 
 void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, u32 groupIDEnd)
 {
+    ZoneScopedN("ModelLoader::DisableGroupsForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -901,6 +962,8 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
 
 void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
 {
+    ZoneScopedN("ModelLoader::DisableGroupsForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -909,6 +972,8 @@ void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32
 
 void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
 {
+    ZoneScopedN("ModelLoader::DisableAllGroupsForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
@@ -917,6 +982,8 @@ void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
 
 void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
 {
+    ZoneScopedN("ModelLoader::DisableAllGroupsForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -925,6 +992,8 @@ void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
 
 void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
 {
+    ZoneScopedN("ModelLoader::SetSkinTextureForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetSkinTextureForModel(modelComponent, textureID);
@@ -932,6 +1001,8 @@ void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::Texture
 
 void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
 {
+    ZoneScopedN("ModelLoader::SetSkinTextureForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -940,6 +1011,8 @@ void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Re
 
 void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::TextureID textureID)
 {
+    ZoneScopedN("ModelLoader::SetHairTextureForEntity");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetHairTextureForModel(modelComponent, textureID);
@@ -947,6 +1020,8 @@ void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::Texture
 
 void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
 {
+    ZoneScopedN("ModelLoader::SetHairTextureForModel");
+
     if (model.instanceID == std::numeric_limits<u32>().max())
         return;
 
@@ -955,6 +1030,8 @@ void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Re
 
 const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
 {
+    ZoneScopedN("ModelLoader::GetModelInfo");
+
     if (!_modelHashToDiscoveredModel.contains(modelHash))
         return nullptr;
 
@@ -964,12 +1041,16 @@ const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
 
 u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
 {
+    ZoneScopedN("ModelLoader::GetModelHashFromModelPath");
+
     u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
     return modelHash;
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
 {
+    ZoneScopedN("ModelLoader::GetModelIDFromInstanceID");
+
     if (!_instanceIDToModelID.contains(instanceID))
         return false;
 
@@ -979,6 +1060,8 @@ bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
 
 bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID)
 {
+    ZoneScopedN("ModelLoader::GetEntityIDFromInstanceID");
+
     if (!_instanceIDToEntityID.contains(instanceID))
         return false;
 
@@ -988,11 +1071,14 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
 
 bool ModelLoader::ContainsDiscoveredModel(u32 modelHash)
 {
+    ZoneScopedN("ModelLoader::ContainsDiscoveredModel");
     return _modelHashToDiscoveredModel.contains(modelHash);
 }
 
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u32 modelHash)
 {
+    ZoneScopedN("ModelLoader::GetDiscoveredModel");
+
     if (!_modelHashToDiscoveredModel.contains(modelHash))
     {
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelHash {0}", modelHash);
@@ -1003,6 +1089,8 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u32 modelHash)
 
 ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 modelID)
 {
+    ZoneScopedN("ModelLoader::GetDiscoveredModelFromModelID");
+
     if (!_modelIDToModelHash.contains(modelID))
     {
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelID {0}", modelID);
@@ -1019,6 +1107,8 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 mod
 
 bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
 {
+    ZoneScopedN("ModelLoader::LoadRequest");
+
     if (!discoveredModel.model)
     {
         return false;
@@ -1045,6 +1135,8 @@ bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
 
         if (physicsEnabled && numPhysicsBytes > 0)
         {
+            ZoneScopedN("Load Physics Shape");
+
             Bytebuffer physicsBuffer = Bytebuffer(discoveredModel.model->physicsData.data(), numPhysicsBytes);
             physicsBuffer.SkipWrite(numPhysicsBytes);
 
@@ -1068,6 +1160,8 @@ bool ModelLoader::LoadRequest(DiscoveredModel& discoveredModel)
 
 void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
+    ZoneScopedN("ModelLoader::AddStaticInstance");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& tSystem = ECS::TransformSystem::Get(*registry);
 
@@ -1122,6 +1216,8 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     
         if (physicsEnabled)
         {
+            ZoneScopedN("Add Physics Shape");
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
@@ -1161,6 +1257,8 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
 
 void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request)
 {
+    ZoneScopedN("ModelLoader::AddDynamicInstance");
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[request.modelHash];
@@ -1210,6 +1308,8 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 
         if (physicsEnabled && registry->all_of<ECS::Components::Unit>(entityID))
         {
+            ZoneScopedN("Add Physics Shape");
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
@@ -1280,6 +1380,8 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 
 void ModelLoader::HandleDiscoverModelCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata)
 {
+    ZoneScopedN("ModelLoader::HandleDiscoverModelCallback");
+
     if (!result)
     {
         NC_LOG_WARNING("ModelLoader : Failed to Load ({0})", path);

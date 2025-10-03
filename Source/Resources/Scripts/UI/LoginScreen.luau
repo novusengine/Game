@@ -11,7 +11,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("LoginText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 24.0,
         color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.5,
@@ -20,7 +20,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("LoginButtonText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 24.0,
         color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.0,
@@ -29,7 +29,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("VersionText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 18.0,
         color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.5,

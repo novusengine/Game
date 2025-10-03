@@ -8,7 +8,7 @@ type Bag = Bag.Bag
 
 type UISlot =
 {
-    itemSlot : ItemSlot,
+    itemSlot : ItemSlot.UIItemSlot,
     panel : Panel
 }
 
@@ -28,9 +28,9 @@ type SlotConfigParent =
 {
     slot : number,
     type : number,
-    position : Vector2,
-    anchorPoint : Vector2,
-    relativePoint : Vector2,
+    position : vector,
+    anchorPoint : vector,
+    relativePoint : vector,
     children : { [number]: SlotConfigChild }
 }
 
@@ -63,10 +63,50 @@ local UI_CONSTANTS =
     PANEL_HEIGHT = 450,
     PANEL_LAYER = 0,
     PANEL_TEMPLATE = "DialogBoxRound",
+    MAIN_PANEL_TEMPLATE = "CharacterEquipmentMainPanel",
+    UNIT_INFO_PANEL_TEMPLATE = "CharacterEquipmentUnitInfoPanel",
+    STAT_INFO_PANEL_TEMPLATE = "CharacterEquipmentStatInfoPanel",
 
     SLOT_SPACING = 5,
     SIDE_MARGIN = 5,
     WEAPON_SLOT_OFFSET = 20
+}
+
+type CharacterSortedStat = { kind : number, name : string }
+
+type CharacterInfo = 
+{
+    infoPanel : Panel,
+    nameWidget : TextWidget,
+
+    statsPanel : Panel,
+    sortedStatTypes : { [number]: CharacterSortedStat },
+    stats : { [number]: CharacterStat },
+}
+type CharacterStat =
+{
+    kind : number,
+    base : number,
+    current : number,
+
+    nameWidget : TextWidget,
+    valueWidget : TextWidget
+}
+local characterInfo : CharacterInfo = 
+{
+    nameWidget = nil,
+    statsPanel = nil,
+    sortedStatTypes = {
+        { kind = StatType.Armor, name = "Armor" },
+        { kind = StatType.Stamina, name = "Stamina" },
+        { kind = StatType.Strength, name = "Strength" },
+        { kind = StatType.Agility, name = "Agility" },
+        { kind = StatType.Intellect, name = "Intellect" },
+        { kind = StatType.Spirit, name = "Spirit" },
+        { kind = StatType.AttackPower, name = "Attack Power" },
+        { kind = StatType.SpellPower, name = "Spell Power" },
+    },
+    stats = {}
 }
 
 -- Add slot configuration table for easier maintenance
@@ -125,7 +165,37 @@ local SLOT_CONFIG : SlotConfig =
     }
 }
 
-local function CreateSlot(parent : Panel, container : Bag, config : SlotConfigChild, position: Vector2)
+local function RegisterTemplates()
+    UI.RegisterPanelTemplate(UI_CONSTANTS.MAIN_PANEL_TEMPLATE,
+    {
+        background = "Data/Texture/interface/framegeneral/ui-background-marble.dds",
+        --color = vector.create(100.0/255.0, 100.0/255.0, 100.0/255.0),
+        cornerRadius = 5.0
+    });
+
+    UI.RegisterPanelTemplate(UI_CONSTANTS.UNIT_INFO_PANEL_TEMPLATE,
+    {
+        color = vector.create(5.0/255.0, 5.0/255.0, 5.0/255.0),
+        cornerRadius = 3.0
+    });
+
+    UI.RegisterPanelTemplate(UI_CONSTANTS.STAT_INFO_PANEL_TEMPLATE,
+    {
+        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        cornerRadius = 3.0
+    });
+
+    UI.RegisterTextTemplate("CharacterEquipmentStatsText",
+    {
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        size = 10.0,
+        color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
+        borderSize = 1.0,
+        borderColor = vector.create(0.0, 0.0, 0.0)
+    });
+end
+
+local function CreateSlot(parent : Panel, container : Bag, config : SlotConfigChild, position: vector)
     local slot = container.uiSlots[config.slot]
     slot.itemSlot = ItemSlot.Create(parent, container, config.slot, config.type)
     slot.itemSlot:SetPos(position.x, position.y)
@@ -291,11 +361,110 @@ local function CreateBagSlots(mainPanel: Panel, container: Bag)
     end
 end
 
-local function CreateEquipmentBag(numSlots : number, containerItems : ContainerItemEventData)
+local function CreateUnitInfoPanel(mainPanel : Panel, unitID : number)
+    characterInfo.infoPanel = mainPanel:NewPanel(74.0, -14.0, 152.0, 25.0, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.UNIT_INFO_PANEL_TEMPLATE)
+    characterInfo.infoPanel:SetEnabled(true)
+    characterInfo.infoPanel:SetAlpha(0.75)
+    characterInfo.infoPanel:SetAnchor(0.0, 1.0);
+    characterInfo.infoPanel:SetRelativePoint(0.0, 1.0);
+
+    local name = `{Unit.GetName(unitID)} {60} Warrior` -- TODO: Replace with actual name when available
+    characterInfo.nameWidget = characterInfo.infoPanel:NewText(name, 0, 2, 1, "CharacterEquipmentStatsText")
+    characterInfo.nameWidget:SetAnchor(0.5, 0.5)
+    characterInfo.nameWidget:SetRelativePoint(0.5, 0.5)
+end
+
+local function RefreshStatsPanel()
+    local posY = -1;
+
+    for i, stat in characterInfo.sortedStatTypes do
+        local statData = characterInfo.stats[stat.kind]
+        if statData == nil then
+            continue
+        end
+
+        if statData.base == 0 and statData.current == 0 then
+            if statData.nameWidget ~= nil then
+                statData.nameWidget:SetEnabled(false)
+            end
+
+            if statData.valueWidget ~= nil then
+                statData.valueWidget:SetEnabled(false)
+            end
+
+            continue
+        end
+
+        if statData.nameWidget == nil then
+            statData.nameWidget = characterInfo.statsPanel:NewText(stat.name, 4, posY, 1, "CharacterEquipmentStatsText")
+            statData.nameWidget:SetAnchor(0.0, 1.0)
+            statData.nameWidget:SetRelativePoint(0.0, 1.0)
+        else
+            statData.nameWidget:SetPos(4, posY)
+            statData.nameWidget:SetText(stat.name)
+            statData.nameWidget:SetEnabled(true)
+        end
+
+        local statValueText = if statData.current > 0 then "+" else "";
+        statValueText ..= tostring(statData.current)
+
+        if statData.valueWidget == nil then
+            statData.valueWidget = characterInfo.statsPanel:NewText(statValueText, -2, posY, 1, "CharacterEquipmentStatsText")
+            statData.valueWidget:SetAnchor(1.0, 1.0)
+            statData.valueWidget:SetRelativePoint(1.0, 1.0)
+        else
+            statData.valueWidget:SetPos(-2, posY)
+            statData.valueWidget:SetText(statValueText)
+            statData.valueWidget:SetEnabled(true)
+        end
+
+        if (statData.current > statData.base) then
+            statData.valueWidget:SetColor(vector.create(0.0, 1.0, 0.0))
+        elseif (statData.current < statData.base) then
+            statData.valueWidget:SetColor(vector.create(1.0, 0.0, 0.0))
+        else
+            statData.valueWidget:SetColor(vector.create(1.0, 1.0, 1.0))
+        end
+        
+        posY = posY - 12
+    end
+end
+
+local function AddOrUpdateStat(statType : number, baseValue : number, currentValue : number)
+    local stat = characterInfo.stats[statType]
+    if stat == nil then
+        stat = {
+            kind = statType,
+            base = baseValue,
+            current = currentValue,
+            nameWidget = nil,
+            valueWidget = nil
+        }
+        characterInfo.stats[statType] = stat
+    else
+        stat.base = baseValue
+        stat.current = currentValue
+    end
+end
+
+local function CreateStatsPanel(mainPanel : Panel, unitID : number)
+    characterInfo.statsPanel = mainPanel:NewPanel(74.0, 72.0, 152.0, 100.0, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.STAT_INFO_PANEL_TEMPLATE)
+    characterInfo.statsPanel:SetEnabled(true)
+
+    -- Get Stats from Unit
+    for i, stat in characterInfo.sortedStatTypes do
+        local current, base = Unit.GetStat(unitID, stat.kind)
+        AddOrUpdateStat(stat.kind, base, current)
+    end
+
+    RefreshStatsPanel()
+end
+
+local function CreateEquipmentBag(numSlots : number, containerItems : ContainerItemEventData, isBaseContainer : boolean)
     local canvas = UI.GetCanvas("CharacterEquipment", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
 
     local equipmentBag = Bag.new(nil, numSlots, nil, function(container : Bag)
-        local mainPanel = canvas:NewPanel(UI_CONSTANTS.PANEL_POS_X, UI_CONSTANTS.PANEL_POS_Y, UI_CONSTANTS.PANEL_WIDTH, UI_CONSTANTS.PANEL_HEIGHT, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.PANEL_TEMPLATE)
+        local mainPanel = canvas:NewPanel(UI_CONSTANTS.PANEL_POS_X, UI_CONSTANTS.PANEL_POS_Y, UI_CONSTANTS.PANEL_WIDTH, UI_CONSTANTS.PANEL_HEIGHT, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.MAIN_PANEL_TEMPLATE)
         container.panel = mainPanel
 
         container.panel:SetAnchor(0.0, 0.0);
@@ -303,10 +472,16 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
         container.containerIndex = MIN_CONTAINER_INDEX
 
+        local unitID = Unit.GetLocal()
         CreateLeftSideSlots(mainPanel, container)
         CreateRightSideSlots(mainPanel, container)
         CreateBottomSlots(mainPanel, container)
         CreateBagSlots(mainPanel, container)
+
+        if (isBaseContainer) then
+            CreateUnitInfoPanel(mainPanel, unitID)
+            CreateStatsPanel(mainPanel, unitID)
+        end
     end, OnBagEvent)
 
     if containerItems ~= nil then
@@ -319,13 +494,15 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
     PlayerContainers.SetEquipmentBag(equipmentBag)
 end
 
-local function OnGameLoaded(eventID : number, data : any)
+local function OnLocalMoverChanged(eventID : number, data : any)
+    RegisterTemplates()
+
     local numSlots, baseContainerItems = Container.GetContainerItems(MIN_CONTAINER_INDEX)
     if (numSlots == nil or baseContainerItems == nil) then
         return
     end
 
-    CreateEquipmentBag(numSlots, baseContainerItems)
+    CreateEquipmentBag(numSlots, baseContainerItems, true)
 
     for i = MAIN_BAG_SLOT_INDEX, LAST_BAG_SLOT_INDEX do
         local containerItem = baseContainerItems[i]
@@ -346,7 +523,21 @@ local function OnGameLoaded(eventID : number, data : any)
         PlayerContainers.SetBag(bag.containerIndex - 1, bag)
     end
 end
-RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged)
+
+local function OnStatUpdate(eventID : number, data : any)
+    local unitID = data.unitID
+    if unitID ~= Unit.GetLocal() then
+        return
+    end
+
+    AddOrUpdateStat(data.statType, data.base, data.current)
+    
+    if characterInfo.statsPanel ~= nil then
+    RefreshStatsPanel()
+    end
+end
+RegisterEvent(UnitEvent.StatUpdate, OnStatUpdate)
 
 local function OnContainerCreate(eventID : number, data : any)
     if data.index < MIN_CONTAINER_INDEX or data.index > MAX_CONTAINER_INDEX then
@@ -357,7 +548,7 @@ local function OnContainerCreate(eventID : number, data : any)
     if data.index == MIN_CONTAINER_INDEX then
         local equipmentBag = PlayerContainers.GetEquipmentBag()
         if (equipmentBag == nil) then
-            CreateEquipmentBag(data.numSlots)
+            CreateEquipmentBag(data.numSlots, nil, false)
         else
             for i = 1, equipmentBag.totalSlots do
                 equipmentBag:ClearSlot(i)

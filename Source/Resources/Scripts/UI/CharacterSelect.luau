@@ -65,7 +65,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("GreyText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 24.0,
         color = vector.create(110.0/255.0, 110.0/255.0, 110.0/255.0),
         borderSize = 2.5,
@@ -75,7 +75,7 @@ local function RegisterTemplates()
     -- Dialog Box Header Text
     UI.RegisterTextTemplate("NameText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 22.0,
         color = vector.create(255.0/255.0, 210.0/255.0, 0.0/255.0),
         borderSize = 2.0,
@@ -84,7 +84,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("LevelText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 20.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 2.0,
@@ -93,7 +93,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("LocationText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 19.0,
         color = vector.create(110.0/255.0, 110.0/255.0, 110.0/255.0),
         borderSize = 2.0,

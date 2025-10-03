@@ -16,6 +16,7 @@
 #include "Game-Lib/ECS/Components/ProximityTrigger.h"
 #include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
+#include "Game-Lib/ECS/Components/UnitAuraInfo.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
@@ -364,6 +365,7 @@ namespace ECS::Systems
         registry->emplace<Components::Transform>(newEntity);
         registry->emplace<Components::Name>(newEntity);
         registry->emplace<Components::Model>(newEntity);
+        registry->emplace<Components::UnitAuraInfo>(newEntity);
         registry->emplace<Components::UnitCustomization>(newEntity);
         registry->emplace<Components::UnitEquipment>(newEntity);
         registry->emplace<Components::UnitMovementOverTime>(newEntity);
@@ -378,6 +380,7 @@ namespace ECS::Systems
         unit.networkID = packet.guid;
         unit.name = packet.name;
         unit.targetEntity = entt::null;
+        unit.unitClass = static_cast<GameDefine::UnitClass>(packet.unitClass);
         unit.scale = packet.scale.x;
 
         if (unit.networkID.GetType() == ObjectGUID::Type::Player)
@@ -587,6 +590,15 @@ namespace ECS::Systems
             ::Util::Unit::AddPower(unitPowersComponent, powerType, packet.base, packet.current, packet.max);
         }
 
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::PowerUpdate, Generated::LuaUnitEventDataPowerUpdate{
+            .unitID = entt::to_integral(entity),
+            .powerType = packet.kind,
+            .base = packet.base,
+            .current = packet.current,
+            .max = packet.max
+        });
+
         return true;
     }
     bool HandleOnUnitResistanceUpdate(Network::SocketID socketID, Generated::UnitResistanceUpdatePacket& packet)
@@ -613,6 +625,15 @@ namespace ECS::Systems
         {
             ::Util::Unit::AddResistance(unitResistancesComponent, resistanceType, packet.base, packet.current, packet.max);
         }
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::ResistanceUpdate, Generated::LuaUnitEventDataResistanceUpdate{
+            .unitID = entt::to_integral(entity),
+            .resistanceType = packet.kind,
+            .base = packet.base,
+            .current = packet.current,
+            .max = packet.max
+        });
 
         return true;
     }
@@ -641,6 +662,13 @@ namespace ECS::Systems
             ::Util::Unit::AddStat(unitStatsComponent, statType, packet.base, packet.current);
         }
 
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::StatUpdate, Generated::LuaUnitEventDataStatUpdate{
+            .unitID = entt::to_integral(entity),
+            .statType = packet.kind,
+            .base = packet.base,
+            .current = packet.current
+        });
         return true;
     }
 
@@ -663,11 +691,10 @@ namespace ECS::Systems
             return true;
         }
 
-        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-
         auto& unit = registry->get<Components::Unit>(entity);
         unit.targetEntity = targetEntity;
 
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
             .unitID = entt::to_integral(entity),
             .targetID = entt::to_integral(targetEntity)
@@ -1411,6 +1438,127 @@ namespace ECS::Systems
         return true;
     }
 
+    bool HandleOnServerUnitAddAura(Network::SocketID socketID, Generated::ServerUnitAddAuraPacket& packet)
+    {
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
+
+        entt::entity unitID;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, unitID))
+        {
+            NC_LOG_WARNING("Network : Received UnitAddAura for non-existent entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        auto& unitAuraInfo = registry.get<Components::UnitAuraInfo>(unitID);
+
+        // Calculate aura expiration timestamp
+        u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        u64 expirationTime = currentTime + static_cast<u64>(packet.duration * 1000.0f);
+
+        u32 auraIndex = static_cast<u32>(unitAuraInfo.auras.size());
+        auto& auraInfo = unitAuraInfo.auras.emplace_back();
+        auraInfo.unitID = entt::to_integral(unitID);
+        auraInfo.auraID = packet.auraInstanceID;
+        auraInfo.spellID = packet.spellID;
+        auraInfo.expireTimestamp = expirationTime;
+        auraInfo.stacks = packet.stacks;
+
+        unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID] = auraIndex;
+        unitAuraInfo.spellIDToAuraIndex[packet.spellID] = auraIndex;
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraAdd, Generated::LuaUnitEventDataAuraAdd{
+            .unitID = entt::to_integral(unitID),
+            .auraID = packet.auraInstanceID,
+            .spellID = packet.spellID,
+            .duration = packet.duration,
+            .stacks = packet.stacks
+        });
+
+        return true;
+    }
+
+    bool HandleOnServerUnitUpdateAura(Network::SocketID socketID, Generated::ServerUnitUpdateAuraPacket& packet)
+    {
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
+
+        entt::entity unitID;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, unitID))
+        {
+            NC_LOG_WARNING("Network : Received UnitUpdateAura for non-existent entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        auto& unitAuraInfo = registry.get<Components::UnitAuraInfo>(unitID);
+        if (!unitAuraInfo.auraIDToAuraIndex.contains(packet.auraInstanceID))
+        {
+            NC_LOG_WARNING("Network : Received UnitUpdateAura for non-existent aura ({0}) on entity ({1})", packet.auraInstanceID, packet.guid.ToString());
+            return true;
+        }
+
+        u32 auraIndex = unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID];
+        auto& auraInfo = unitAuraInfo.auras[auraIndex];
+        u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        u64 expirationTime = currentTime + static_cast<u64>(packet.duration * 1000.0f);
+
+        auraInfo.expireTimestamp = expirationTime;
+        auraInfo.stacks = packet.stacks;
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraUpdate, Generated::LuaUnitEventDataAuraUpdate{
+            .unitID = entt::to_integral(unitID),
+            .auraID = packet.auraInstanceID,
+            .duration = packet.duration,
+            .stacks = packet.stacks
+        });
+
+        return true;
+    }
+
+    bool HandleOnServerUnitRemoveAura(Network::SocketID socketID, Generated::ServerUnitRemoveAuraPacket& packet)
+    {
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
+
+        entt::entity unitID;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, unitID))
+        {
+            NC_LOG_WARNING("Network : Received UnitRemoveAura for non-existent entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        auto& unitAuraInfo = registry.get<Components::UnitAuraInfo>(unitID);
+        if (!unitAuraInfo.auraIDToAuraIndex.contains(packet.auraInstanceID))
+        {
+            NC_LOG_WARNING("Network : Received UnitRemoveAura for non-existent aura ({0}) on entity ({1})", packet.auraInstanceID, packet.guid.ToString());
+            return true;
+        }
+
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraRemove, Generated::LuaUnitEventDataAuraRemove{
+            .unitID = entt::to_integral(unitID),
+            .auraID = packet.auraInstanceID
+        });
+
+        u32 auraIndex = unitAuraInfo.auraIDToAuraIndex[packet.auraInstanceID];
+        u32 auraSpellID = unitAuraInfo.auras[auraIndex].spellID;
+        unitAuraInfo.auras.erase(unitAuraInfo.auras.begin() + auraIndex);
+
+        // Rebuild the auraIDToAuraIndex and spellIDToAuraIndex maps
+        unitAuraInfo.auraIDToAuraIndex.clear();
+        unitAuraInfo.spellIDToAuraIndex.clear();
+
+        for (u32 i = 0; i < unitAuraInfo.auras.size(); ++i)
+        {
+            unitAuraInfo.auraIDToAuraIndex[unitAuraInfo.auras[i].auraID] = i;
+            unitAuraInfo.spellIDToAuraIndex[unitAuraInfo.auras[i].spellID] = i;
+        }
+
+        return true;
+    }
+
     void NetworkConnection::Init(entt::registry& registry)
     {
         entt::registry::context& ctx = registry.ctx();
@@ -1461,6 +1609,10 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnSendChatMessage);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerTriggerAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerTriggerRemove);
+
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitAddAura);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitUpdateAura);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitRemoveAura);
             
             networkState.gameMessageRouter->SetMessageHandler(Generated::SendCombatEventPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCombatEvent));
         }

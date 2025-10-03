@@ -114,12 +114,11 @@ cursorInfoAPI.cursorPanel:SetEnabled(false)
 cursorInfoAPI.cursorPanel:SetAnchor(0.0, 0.0)
 cursorInfoAPI.cursorPanel:SetRelativePoint(0.05, 0.95)
 cursorInfoAPI.cursorPanel:SetOnMouseUp(function(event, widget)
-    if not cursorInfoAPI:HasItemInHand() then
-        return
+    if cursorInfoAPI:HasItemInHand() then
+        local itemID = cursorInfoAPI.cursorInfo.itemSlot.itemID
+        cursorInfoAPI.cursorInfo.itemSlot:SetItem(itemID) -- Used to clear the foreground
     end
 
-    local itemID = cursorInfoAPI.cursorInfo.itemSlot.itemID
-    cursorInfoAPI.cursorInfo.itemSlot:SetItem(itemID) -- Used to clear the foreground
     cursorInfoAPI:ClearHand()
     SetCursor("point")
 end)

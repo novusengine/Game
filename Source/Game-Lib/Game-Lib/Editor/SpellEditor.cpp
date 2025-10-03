@@ -173,6 +173,47 @@ namespace Editor
         return result;
     }
 
+    bool RenderEffectEnumDropDown(const std::string& label, Generated::SpellEffectTypeEnumMeta::Type& currentID)
+    {
+        bool result = false;
+        Generated::SpellEffectTypeEnumMeta::Type prevVal = currentID;
+
+        ImGui::Text("%s", label.c_str());
+
+        Generated::SpellEffectTypeEnumMeta::Type enumlistIndex = currentID;
+        if (enumlistIndex >= static_cast<Generated::SpellEffectTypeEnumMeta::Type>(Generated::SpellEffectTypeEnum::AuraApply))
+            enumlistIndex -= 125;
+
+        std::string_view previewLabel = Generated::SpellEffectTypeEnumMeta::EnumList[enumlistIndex].first;
+
+        if (ImGui::BeginCombo(("##" + label).c_str(), previewLabel.data()))
+        {
+            u32 numEnumValues = static_cast<u32>(Generated::SpellEffectTypeEnumMeta::EnumList.size());
+            u32 lastEntry = static_cast<u32>(glm::max(0, static_cast<i32>(numEnumValues - 1)));
+
+            for (u32 i = 1; i < lastEntry; i++)
+            {
+                const auto& option = Generated::SpellEffectTypeEnumMeta::EnumList[i];
+
+                bool isSelected = (currentID == option.second);
+                if (ImGui::Selectable(option.first.data(), isSelected))
+                {
+                    currentID = option.second;
+                    result = currentID != prevVal;
+                }
+
+                if (isSelected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            ImGui::EndCombo();
+        }
+
+        return result;
+    }
+
     // Main rendering function for the Spell Editor UI.
     void RenderSpellEditor()
     {
@@ -338,7 +379,12 @@ namespace Editor
         {
             static robin_hood::unordered_map<Generated::SpellEffectTypeEnum, std::vector<std::string>> effectTypeToFieldNames =
             {
-                { Generated::SpellEffectTypeEnum::WeaponDamage, { "Calculation Type", "Weapon Slot", "Unused", "Unused", "Unused", "Unused" }}
+                { Generated::SpellEffectTypeEnum::Dummy, { "Unused", "Unused", "Unused", "Unused", "Unused", "Unused" }},
+                { Generated::SpellEffectTypeEnum::WeaponDamage, { "Calculation Type", "Weapon Slot", "Unused", "Unused", "Unused", "Unused" }},
+                { Generated::SpellEffectTypeEnum::AuraApply, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
+                { Generated::SpellEffectTypeEnum::AuraRemove, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
+                { Generated::SpellEffectTypeEnum::AuraPeriodicDamage, { "Interval (MS)", "Min Damage", "Max Damage", "Damage School", "Unused", "Unused" }},
+                { Generated::SpellEffectTypeEnum::AuraPeriodicHeal, { "Interval (MS)", "Min Heal", "Max Heal", "Heal School", "Unused", "Unused" }}
             };
             
             auto& currentSpell = spellStorage->Get<Generated::SpellRecord>(currentIndex);
@@ -361,7 +407,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                if (RenderEnumDropdown<Generated::SpellEffectTypeEnumMeta>("Effect Type", currentSpellEffect.effectType))
+                if (RenderEffectEnumDropDown("Effect Type", currentSpellEffect.effectType))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -533,68 +579,35 @@ namespace Editor
                 ImGui::NextColumn();
                 ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-                //{
-                //    static std::vector<Option> BindOptions =
-                //    {
-                //        {.id = 0, .label = "None" },
-                //        {.id = 1, .label = "Binds when pickup up" },
-                //        {.id = 2, .label = "Binds when equipped" },
-                //        {.id = 3, .label = "Binds when used" }
-                //    };
-                //
-                //    const std::string& currentLabel = BindOptions[item.bind].label;
-                //    if (RenderOptionDropdown<u8>("Bind", currentLabel.c_str(), item.bind, BindOptions))
-                //    {
-                //        isSpellDirty = true;
-                //    }
-                //}
+                {
+                    ImGui::Text("CastTime");
+                    if (ImGui::InputScalar("##CastTime", ImGuiDataType_Float, &spell.castTime))
+                    {
+                        isSpellDirty = true;
+                    }
+                }
 
                 ImGui::NextColumn();
                 ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-                //{
-                //    static std::vector<Option> RarityOptions =
-                //    {
-                //        {.id = 1, .label = "Poor" },
-                //        {.id = 2, .label = "Common" },
-                //        {.id = 3, .label = "Uncommon" },
-                //        {.id = 4, .label = "Rare" },
-                //        {.id = 5, .label = "Epic" },
-                //        {.id = 6, .label = "Legendary" },
-                //        {.id = 7, .label = "Artifact" },
-                //        {.id = 8, .label = "Unique" },
-                //    };
-                //
-                //    const std::string& currentLabel = RarityOptions[item.rarity - 1].label;
-                //    if (RenderOptionDropdown<u8>("Rarity", currentLabel.c_str(), item.rarity, RarityOptions))
-                //    {
-                //        isSpellDirty = true;
-                //    }
-                //}
+                {
+                    ImGui::Text("Cooldown");
+                    if (ImGui::InputScalar("##Cooldown", ImGuiDataType_Float, &spell.cooldown))
+                    {
+                        isSpellDirty = true;
+                    }
+                }
 
                 ImGui::NextColumn();
                 ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
-                //{
-                //    static std::vector<Option> CategoryOptions =
-                //    {
-                //        {.id = 1, .label = "Miscellaneous" },
-                //        {.id = 2, .label = "Trade Goods" },
-                //        {.id = 3, .label = "Consumable" },
-                //        {.id = 4, .label = "Reagent" },
-                //        {.id = 5, .label = "Container" },
-                //        {.id = 6, .label = "Quest" },
-                //        {.id = 7, .label = "Armor" },
-                //        {.id = 8, .label = "Weapon" }
-                //    };
-                //
-                //    const std::string& currentLabel = CategoryOptions[item.category - 1].label;
-                //    if (RenderOptionDropdown<u8>("Category", currentLabel.c_str(), item.category, CategoryOptions))
-                //    {
-                //        item.categoryType = 1;
-                //        isSpellDirty = true;
-                //    }
-                //}
+                {
+                    ImGui::Text("Duration");
+                    if (ImGui::InputScalar("##Duration", ImGuiDataType_Float, &spell.duration))
+                    {
+                        isSpellDirty = true;
+                    }
+                }
 
                 ImGui::NextColumn();
                 ImGui::Dummy(ImVec2(0.0f, 10.0f));
@@ -777,6 +790,7 @@ namespace Editor
 
                     const auto& spellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectID);
 
+                    ImGui::PushID(spellEffectID);
                     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                     ImGui::Text("Effect ID: %u", spellEffectID);
 
@@ -797,20 +811,27 @@ namespace Editor
 
                     if (ImGui::Button("Edit##Effect"))
                     {
+                        ImGui::PopID();
                         currentEffectID = spellEffectID;
                         OpenSpellEffectsEditor();
+                        ImGui::PushID(spellEffectID);
                     }
 
                     ImGui::SameLine();
 
                     if (ImGui::Button("Remove##Effect"))
                     {
+                        ImGui::PopID();
+
                         ECSUtil::Spell::RemoveSpellEffect(spellSingleton, currentIndex, i);
                         spellEffectsStorage->Remove(spellEffectID);
                         isSpellEffectsDirty = true;
+
+                        ImGui::PushID(spellEffectID);
                     }
 
                     ImGui::PopItemWidth();
+                    ImGui::PopID();
                     ImGui::NextColumn();
                 }
                 ImGui::EndColumns();

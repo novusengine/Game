@@ -73,7 +73,7 @@ function templatesAPI.RegisterTemplates()
     -- Dialog Box Header Text
     UI.RegisterTextTemplate("YellowText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
         color = vector.create(255.0/255.0, 239.0/255.0, 0.0/255.0),
         borderSize = 0.3,
@@ -117,7 +117,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterTextTemplate("DefaultDebugText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 12.0,
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
@@ -125,7 +125,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterTextTemplate("DefaultButtonText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 22.0,
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
@@ -133,7 +133,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterTextTemplate("SmallYellowButtonText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 18.0,
         color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
         borderSize = 1.0,

@@ -706,7 +706,6 @@ end
 itemUtilAPI.StatNames =
 {
     "Health",
-    "Mana",
     "Stamina",
     "Strength",
     "Agility",

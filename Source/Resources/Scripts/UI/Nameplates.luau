@@ -11,7 +11,7 @@ local nameplates =
 local function RegisterTemplates()
     UI.RegisterTextTemplate("PlayerName",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 14.0,
         color = vector.create(0.0/255.0, 112.0/255.0, 221.0/255.0),
         borderSize = 0.5,
@@ -20,7 +20,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("NameplateName",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 12.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,
@@ -29,7 +29,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("NameplateHealth",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(240.0/240.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,

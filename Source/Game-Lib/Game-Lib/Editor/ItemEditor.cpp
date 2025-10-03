@@ -313,12 +313,11 @@ namespace Editor
             {
                 {.id = 0, .label = "None" },
                 {.id = 1, .label = "Health" },
-                {.id = 2, .label = "Mana" },
-                {.id = 3, .label = "Stamina" },
-                {.id = 4, .label = "Strength" },
-                {.id = 5, .label = "Agility" },
-                {.id = 6, .label = "Intellect" },
-                {.id = 7, .label = "Spirit" }
+                {.id = 2, .label = "Stamina" },
+                {.id = 3, .label = "Strength" },
+                {.id = 4, .label = "Agility" },
+                {.id = 5, .label = "Intellect" },
+                {.id = 6, .label = "Spirit" }
             };
 
             auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);

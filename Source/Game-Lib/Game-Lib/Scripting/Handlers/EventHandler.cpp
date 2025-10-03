@@ -71,6 +71,12 @@ namespace Scripting
         zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAdd>(Generated::LuaUnitEventEnum::Add);
         zenith->RegisterEventTypeID<Generated::LuaUnitEventDataRemove>(Generated::LuaUnitEventEnum::Remove);
         zenith->RegisterEventTypeID<Generated::LuaUnitEventDataTargetChanged>(Generated::LuaUnitEventEnum::TargetChanged);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataPowerUpdate>(Generated::LuaUnitEventEnum::PowerUpdate);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataResistanceUpdate>(Generated::LuaUnitEventEnum::ResistanceUpdate);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataStatUpdate>(Generated::LuaUnitEventEnum::StatUpdate);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraAdd>(Generated::LuaUnitEventEnum::AuraAdd);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraUpdate>(Generated::LuaUnitEventEnum::AuraUpdate);
+        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraRemove>(Generated::LuaUnitEventEnum::AuraRemove);
 
         zenith->RegisterEventType<Generated::LuaContainerEventEnum>();
         zenith->RegisterEventTypeID<Generated::LuaContainerEventDataAdd>(Generated::LuaContainerEventEnum::Add);

@@ -34,11 +34,17 @@ end
 declare GameEvent : GameEvent
 
 declare class UnitEvent
-    Invalid         : number
-    Add             : number
-    Remove          : number
-    TargetChanged   : number
-    Count           : number
+    Invalid             : number
+    Add                 : number
+    Remove              : number
+    TargetChanged       : number
+    PowerUpdate         : number
+    ResistanceUpdate    : number
+    StatUpdate          : number
+    AuraAdd             : number
+    AuraUpdate          : number
+    AuraRemove          : number
+    Count               : number
 end
 declare UnitEvent : UnitEvent
 
@@ -60,6 +66,33 @@ declare class TriggerEvent
     Count           : number
 end
 declare TriggerEvent : TriggerEvent
+
+declare class PowerType
+    Invalid         : number
+    Health          : number
+    Mana            : number
+    Rage            : number
+    Focus           : number
+    Energy          : number
+    Happiness       : number
+    Count           : number
+end
+declare PowerType : PowerType
+
+declare class StatType
+    Invalid         : number
+    Health          : number
+    Stamina         : number
+    Strength        : number
+    Agility         : number
+    Intellect       : number
+    Spirit          : number
+    Armor           : number
+    AttackPower     : number
+    SpellPower      : number
+    Count           : number
+end
+declare StatType : StatType
 
 type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
 
@@ -134,9 +167,9 @@ declare class WidgetInputEvents
 end
 
 declare class Widget extends WidgetInputEvents
-    function NewWidget(self, pos : vec2, layer : number) : Panel
+    function NewWidget(self, pos : vec2, layer : number) : Widget
     function NewPanel(self, pos : vec2, size : vec2, layer : number, template : string) : Panel
-    function NewText(self, text : string, pos : vec2, layer : number, template : string) : Panel
+    function NewText(self, text : string, pos : vec2, layer : number, template : string) : TextWidget
 
     function SetEnabled(self, enabled : boolean) : ()
     function SetVisible(self, visible : boolean) : ()
@@ -173,9 +206,9 @@ declare class Widget extends WidgetInputEvents
 end
 
 declare class Canvas
-    function NewWidget(self, name : string, pos : vec2, layer : number) : Panel
-    function NewPanel(self, name : string, pos : vec2, size : vec2, layer : number, template : string) : Panel
-    function NewText(self, name : string, text : string, pos : vec2, layer : number, template : string) : Panel
+    function NewWidget(self, pos : vec2, layer : number) : Widget
+    function NewPanel(self, pos : vec2, size : vec2, layer : number, template : string) : Panel
+    function NewText(self, text : string, pos : vec2, layer : number, template : string) : TextWidget
 end
 
 declare class Panel extends Widget
@@ -295,10 +328,20 @@ declare Unit :
     GetLocal            : (() -> number),
     GetName             : ((unitID : number) -> string),
     GetHealth           : ((unitID : number) -> (number, number)),
+    GetResourceType     : ((unitID : number) -> PowerType),
     GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
+    GetStat             : ((unitID : number, statType : number) -> (number, number)),
+    GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),
 
     SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> ()),
 }
+
+declare class AuraInfo
+    auraID : number
+    spellID : number
+    duration : number
+    stacks : number
+end
 
 declare class ItemInfo
     DisplayID : number
@@ -398,6 +441,7 @@ declare class SpellInfo
     Name : string
     Description : string
     AuraDescription : string
+    IconID : number
 end
 
 declare class Icon
@@ -417,7 +461,8 @@ declare Item :
 
 declare Spell :
 {
-    GetSpellInfo    : ((spellID : number) -> SpellInfo)
+    GetSpellInfo    : ((spellID : number) -> SpellInfo),
+    GetIconInfo     : ((spellIconID : number) -> Icon)
 }
 
 declare Container :

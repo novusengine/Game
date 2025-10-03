@@ -157,7 +157,7 @@ namespace Scripting::UI
 
         if (zenith->GetTableField("texCoords", 2))
         {
-            ::UI::Box* box = zenith->GetUserData<::UI::Box>(nullptr, -1);
+            ::UI::Box* box = zenith->GetUserData<::UI::Box>(-1);
             zenith->Pop();
 
             if (box)
@@ -174,7 +174,7 @@ namespace Scripting::UI
 
         if (zenith->GetTableField("nineSliceCoords", 2))
         {
-            ::UI::Box* box = zenith->GetUserData<::UI::Box>(nullptr, -1);
+            ::UI::Box* box = zenith->GetUserData<::UI::Box>(-1);
             zenith->Pop();
 
             if (box)
@@ -667,7 +667,7 @@ namespace Scripting::UI
 
     i32 UIHandler::FocusWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");
@@ -683,7 +683,7 @@ namespace Scripting::UI
 
     i32 UIHandler::UnfocusWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");
@@ -704,7 +704,7 @@ namespace Scripting::UI
 
     i32 UIHandler::IsFocusedWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");
@@ -721,7 +721,7 @@ namespace Scripting::UI
 
     i32 UIHandler::WasJustFocusedWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");
@@ -757,7 +757,7 @@ namespace Scripting::UI
 
     i32 UIHandler::IsHoveredWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");
@@ -774,7 +774,7 @@ namespace Scripting::UI
 
     i32 UIHandler::DestroyWidget(Zenith* zenith)
     {
-        Widget* widget = zenith->GetUserData<Widget>(nullptr, 1);
+        Widget* widget = zenith->GetUserData<Widget>(1);
         if (widget == nullptr)
         {
             luaL_error(zenith->state, "Expected widget as parameter 1");

@@ -109,6 +109,8 @@ namespace ECS
             bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID);
             bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const Generated::SpellRecord& spell);
             bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const Generated::SpellEffectsRecord& spellEffect);
+            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const Generated::SpellProcDataRecord& spellProcData);
+            bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const Generated::SpellProcLinkRecord& spellProcLink);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
         }

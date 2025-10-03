@@ -844,7 +844,6 @@ bool GameConsoleCommands::HandleCheatCast(GameConsole* gameConsole, Generated::C
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
     auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
-    auto& unit = registry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
 
     if (ECS::Util::Network::IsConnected(networkState))
     {
@@ -854,6 +853,7 @@ bool GameConsoleCommands::HandleCheatCast(GameConsole* gameConsole, Generated::C
     }
     else
     {
+        auto& unit = registry->get<ECS::Components::Unit>(characterSingleton.moverEntity);
         auto& castInfo = registry->emplace_or_replace<ECS::Components::CastInfo>(characterSingleton.moverEntity);
         castInfo.target = unit.targetEntity;
         castInfo.castTime = 1.0f;
@@ -1108,6 +1108,8 @@ bool GameConsoleCommands::HandleSpellSyncAll(GameConsole* gameConsole, Generated
     auto& spellSingleton = dbRegistry->ctx().get<ECS::Singletons::SpellSingleton>();
     auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);
     auto* spellEffectsStorage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
+    auto* spellProcDataStorage = clientDBSingleton.Get(ClientDBHash::SpellProcData);
+    auto* spellProcLinkStorage = clientDBSingleton.Get(ClientDBHash::SpellProcLink);
 
     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<65536>();
 
@@ -1120,21 +1122,37 @@ bool GameConsoleCommands::HandleSpellSyncAll(GameConsole* gameConsole, Generated
             return false;
         }
 
-        const std::vector<u32>* spellEffectList = ECSUtil::Spell::GetSpellEffectList(spellSingleton, id);
-        if (spellEffectList)
-        {
-            for (u32 spellEffectID : *spellEffectList)
-            {
-                if (!spellEffectsStorage->Has(spellEffectID))
-                    continue;
+        return true;
+    });
 
-                auto& spellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectID);
-                if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellEffectSet(buffer, spellEffectsStorage, spellEffectID, spellEffect))
-                {
-                    failed = true;
-                    return false;
-                }
-            }
+    spellEffectsStorage->Each([&](u32 id, const Generated::SpellEffectsRecord& spellEffect)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellEffectSet(buffer, spellEffectsStorage, id, spellEffect))
+        {
+            failed = true;
+            return false;
+        }
+
+        return true;
+    });
+
+    spellProcDataStorage->Each([&](u32 id, const Generated::SpellProcDataRecord& spellProcData)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellProcDataSet(buffer, spellProcDataStorage, id, spellProcData))
+        {
+            failed = true;
+            return false;
+        }
+
+        return true;
+    });
+
+    spellProcLinkStorage->Each([&](u32 id, const Generated::SpellProcLinkRecord& spellLinkProc)
+    {
+        if (!ECS::Util::MessageBuilder::Cheat::BuildCheatSpellProcLinkSet(buffer, spellProcLinkStorage, id, spellLinkProc))
+        {
+            failed = true;
+            return false;
         }
 
         return true;

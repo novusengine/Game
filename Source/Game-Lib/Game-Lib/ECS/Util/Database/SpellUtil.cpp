@@ -39,9 +39,8 @@ namespace ECSUtil::Spell
             storage->MarkDirty();
         }
 
-        if (!clientDBSingleton.Has(ClientDBHash::SpellEffects))
+        if (clientDBSingleton.Register<Generated::SpellEffectsRecord>())
         {
-            clientDBSingleton.Register<Generated::SpellEffectsRecord>();
             auto* storage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
 
             Generated::SpellEffectsRecord defaultSpellEffect;
@@ -56,6 +55,35 @@ namespace ECSUtil::Spell
             defaultSpellEffect.effectMiscValue3 = 0;
 
             storage->Replace(0, defaultSpellEffect);
+        }
+
+        if (clientDBSingleton.Register<Generated::SpellProcDataRecord>())
+        {
+            auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcData);
+
+            Generated::SpellProcDataRecord defaultSpellProcData;
+            defaultSpellProcData.phaseMask = 0;
+            defaultSpellProcData.typeMask = 0;
+            defaultSpellProcData.hitMask = 0;
+            defaultSpellProcData.flags = std::numeric_limits<u64>().max();
+            defaultSpellProcData.procsPerMinute = 0.0f;
+            defaultSpellProcData.chanceToProc = 0.0f;
+            defaultSpellProcData.internalCooldownMS = std::numeric_limits<u32>().max();
+            defaultSpellProcData.charges = 0;
+
+            storage->Replace(0, defaultSpellProcData);
+        }
+
+        if (clientDBSingleton.Register<Generated::SpellProcLinkRecord>())
+        {
+            auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcLink);
+
+            Generated::SpellProcLinkRecord defaultSpellProcLink;
+            defaultSpellProcLink.spellID = 0;
+            defaultSpellProcLink.effectMask = 0;
+            defaultSpellProcLink.procDataID = 0;
+
+            storage->Replace(0, defaultSpellProcLink);
         }
 
         auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);

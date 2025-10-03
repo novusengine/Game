@@ -41,6 +41,8 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 
+#include <tracy/tracy.hpp>
+
 namespace ECS::Systems
 {
     class NetworkedEntityFilter : public JPH::BodyFilter
@@ -137,9 +139,6 @@ namespace ECS::Systems
                     }
 
                     auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
-#ifdef NC_DEBUG
-                    NC_LOG_INFO("Entity \"{0}\" Loaded New Model \"{1}\"", name->name, discoveredModel.name);
-#endif
                     modelLoader->DisableAllGroupsForModel(model);
 
                     if (auto* unitCustomization = registry.try_get<Components::UnitCustomization>(entity))

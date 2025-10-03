@@ -60,12 +60,14 @@ export type UnitFrame = {
     GetMaxHealth: (self: UnitFrame) -> number,
     SetMaxHealth: (self: UnitFrame, maxHealth: number) -> (),
     UpdateHealth: (self: UnitFrame) -> (),
+    UpdateHealthFillColor: (self: UnitFrame, unitClass: number) -> (),
     
     GetResource: (self: UnitFrame) -> number,
     SetResource: (self: UnitFrame, resource: number) -> (),
     GetMaxResource: (self: UnitFrame) -> number,
     SetMaxResource: (self: UnitFrame, maxResource: number) -> (),
     UpdateResource: (self: UnitFrame) -> (),
+    UpdateResourceFillColor: (self: UnitFrame, resourceType: number) -> (),
 }
 
 local unitFrameAPI : UnitFrameAPI = 
@@ -154,6 +156,22 @@ local function SetupUnitFrameMethods(unitFrameTable : UnitFrame)
         local text = string.format("%d/%d", self.health, self.maxHealth);
         unitFrameTable.healthText:SetText(text);
     end
+    unitFrameTable.UpdateHealthFillColor = function(self : UnitFrame, unitClass : number)
+        local color = nil;
+
+        if unitClass == 1 then color = vector.create(0.78, 0.61, 0.43); end -- Warrior
+        if unitClass == 2 then color = vector.create(0.96, 0.55, 0.73); end -- Paladin
+        if unitClass == 3 then color = vector.create(0.67, 0.83, 0.45); end -- Hunter
+        if unitClass == 4 then color = vector.create(1.00, 0.96, 0.41); end -- Rogue
+        if unitClass == 5 then color = vector.create(1.00, 1.00, 1.00); end -- Priest
+        if unitClass == 7 then color = vector.create(0.00, 0.44, 0.87); end -- Shaman
+        if unitClass == 8 then color = vector.create(0.25, 0.78, 0.92); end -- Mage
+        if unitClass == 9 then color = vector.create(0.53, 0.53, 0.93); end -- Warlock
+        if unitClass == 11 then color = vector.create(1.00, 0.49, 0.04); end -- Druid
+        if not color then color = vector.create(0.2, 0.2, 0.2); end -- Default
+
+        self.healthFill:SetColor(color, 1.0);
+    end
 
     unitFrameTable.GetResource = function(self : UnitFrame)
         return self.resource;
@@ -177,6 +195,18 @@ local function SetupUnitFrameMethods(unitFrameTable : UnitFrame)
 
         local text = string.format("%d/%d", self.resource, self.maxResource);
         unitFrameTable.resourceText:SetText(text);
+    end
+
+    unitFrameTable.UpdateResourceFillColor = function(self : UnitFrame, resourceType : number)
+        local color = nil;
+
+        if resourceType == 2 then color = vector.create(0.0, 0.4, 1.0); end -- Mana
+        if resourceType == 3 then color = vector.create(1.0, 0.0, 0.0); end -- Rage
+        if resourceType == 4 then color = vector.create(1.0, 0.5, 0.25); end -- Focus
+        if resourceType == 5 then color = vector.create(1.0, 1.0, 0.0); end -- Energy
+        if not color then color = vector.create(0.2, 0.2, 0.2); end -- Default
+
+        self.resourceFill:SetColor(color, 1.0);
     end
 
     return unitFrameTable;
@@ -204,30 +234,35 @@ function unitFrameAPI.NewUnitFrame(parent : Widget, posX : number, posY : number
     local sizeYWithoutBorder = sizeY - borderWidth;
 
     unitFrameTable.background = unitFrameTable.border:NewPanel(0, 0, sizeXWithoutBorder, sizeYWithoutBorder, layer, "DebugDarkGrey");
-    unitFrameTable.background:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
+    --unitFrameTable.background:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
     unitFrameTable.background:SetAnchor(0.5, 0.5);
     unitFrameTable.background:SetRelativePoint(0.5, 0.5);
 
     -- Create name text
-    unitFrameTable.nameText = unitFrameTable.border:NewText(unitFrameTable.unitName, 3, 0, layer + 1, "UnitFrameName");
+    unitFrameTable.nameText = unitFrameTable.border:NewText(unitFrameTable.unitName, 3, -1, layer + 1, "UnitFrameName");
     unitFrameTable.nameText:SetAnchor(0.0, 1.0);
     unitFrameTable.nameText:SetRelativePoint(0.0, 1.0);
 
     local totalAvailableHeight = sizeYWithoutBorder;
     local healthBarHeight = math.floor(totalAvailableHeight * 0.65);
-    local resourceBarHeight = math.floor(totalAvailableHeight * 0.35);
+    local resourceBarHeight = math.floor(totalAvailableHeight * 0.35) + 1;
 
     -- Create Health Fill
+    local fillTextureMinX, fillTextureMinY = UI.PixelsToTexCoord(35, 20, 256, 64);
+    local fillTextureMaxX, fillTextureMaxY = UI.PixelsToTexCoord(219, 42, 256, 64);
+
     unitFrameTable.healthFill = unitFrameTable.background:NewPanel(0, resourceBarHeight, sizeXWithoutBorder, healthBarHeight, 0, "UnitFrameHealthFill");
-    unitFrameTable.healthFill:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
+    unitFrameTable.healthFill:SetBackground("Data/Texture/interface/unitpowerbaralt/generic1_horizontal_fill.dds");
+    unitFrameTable.healthFill:SetTexCoords(fillTextureMinX, fillTextureMinY, fillTextureMaxX, fillTextureMaxY);
     unitFrameTable.healthFill:SetRelativePoint(0.0, 0.0);
-    unitFrameTable.healthFill:SetClipRect(0, 0, 1, 1);
+    --unitFrameTable.healthFill:SetClipRect(0, 0, 1, 1);
 
     -- Create Resource Fill
-    unitFrameTable.resourceFill = unitFrameTable.background:NewPanel(0, -2, sizeXWithoutBorder, resourceBarHeight + 1, 0, "UnitFrameResourceFill");
-    unitFrameTable.resourceFill:SetBackground("Data/Texture/interface/raidframe/raid-bar-resource-fill.dds");
+    unitFrameTable.resourceFill = unitFrameTable.background:NewPanel(0, 0, sizeXWithoutBorder, resourceBarHeight, 0, "UnitFrameResourceFill");
+    unitFrameTable.resourceFill:SetBackground("Data/Texture/interface/unitpowerbaralt/generic1_horizontal_fill.dds");
+    unitFrameTable.resourceFill:SetTexCoords(fillTextureMinX, fillTextureMinY, fillTextureMaxX, fillTextureMaxY);
     unitFrameTable.resourceFill:SetRelativePoint(0.0, 0.0);
-    unitFrameTable.resourceFill:SetClipRect(0, 0, 1, 1);
+    --unitFrameTable.resourceFill:SetClipRect(0, 0, 1, 1);
 
     -- Create Health Text
     local healthTextYOffset = math.floor(resourceBarHeight / 2.0);

@@ -1,4 +1,58 @@
-local buttonAPI = { }
+
+
+export type ButtonAPI =
+{
+    NewButton : (parent : Widget, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, buttonTemplateTable : { [string] : any }) -> Button
+}
+
+export type Button =
+{
+    panel : Panel,
+    text : TextWidget,
+
+    SetText : (self : Button, text : string) -> (),
+    SetFontSize : (self : Button, size : number) -> (),
+    SetEnabled : (self : Button, val : boolean) -> (),
+    SetVisible : (self : Button, val : boolean) -> (),
+    SetInteractable : (self : Button, val : boolean) -> (),
+    SetFocusable : (self : Button, val : boolean) -> (),
+
+    NewWidget : (self : Button, x : number, y : number, layer : number) -> Widget,
+    NewPanel : (self : Button, x : number, y : number, w : number, h : number, layer : number, template : string) -> Panel,
+    NewText : (self : Button, text : string, x : number, y : number, layer : number, template : string) -> TextWidget,
+
+    GetAnchor : (self : Button) -> (number, number),
+    GetRelativePoint : (self : Button) -> (number, number),
+    SetAnchor : (self : Button, x : number, y : number) -> (),
+    SetRelativePoint : (self : Button, x : number, y : number) -> (),
+
+    GetPos : (self : Button) -> (number, number),
+    GetPosX : (self : Button) -> number,
+    GetPosY : (self : Button) -> number,
+    SetPos : (self : Button, x : number, y : number) -> (),
+    SetPosX : (self : Button, x : number) -> (),
+    SetPosY : (self : Button, y : number) -> (),
+    GetWorldPos : (self : Button) -> (number, number),
+    GetWorldPosX : (self : Button) -> number,
+    GetWorldPosY : (self : Button) -> number,
+    SetWorldPos : (self : Button, x : number, y : number) -> (),
+    SetWorldPosX : (self : Button, x : number) -> (),
+    SetWorldPosY : (self : Button, y : number) -> (),
+
+    SetOnMouseDown : (self : Button, func : () -> ()) -> (),
+    SetOnMouseUp : (self : Button, func : () -> ()) -> (),
+    SetOnMouseHeld : (self : Button, func : () -> ()) -> (),
+    SetOnHoverBegin : (self : Button, func : () -> ()) -> (),
+    SetOnHoverEnd : (self : Button, func : () -> ()) -> (),
+    SetOnHoverHeld : (self : Button, func : () -> ()) -> (),
+    SetOnFocusBegin : (self : Button, func : () -> ()) -> (),
+    SetOnFocusEnd : (self : Button, func : () -> ()) -> (),
+    SetOnFocusHeld : (self : Button, func : () -> ()) -> (),
+    SetOnKeyboard : (self : Button, func : (key : string) -> ()) -> (),
+    ForceRefresh : (self : Button) -> ()
+}
+
+local buttonAPI : ButtonAPI = { }
 
 --[[
 usage:

@@ -32,7 +32,7 @@ local MAX_MESSAGE_HISTORY_SIZE : number = 50; -- Maximum number of messages to k
 local function RegisterTemplates()
     UI.RegisterTextTemplate("ChatText",
     {
-        font = "Data/Fonts/Ubuntu-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 18.0,
         borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),

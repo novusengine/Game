@@ -572,6 +572,7 @@ namespace ECS::Util::MessageBuilder
 
                     .castTime = spell.castTime,
                     .cooldown = spell.cooldown,
+                    .duration = spell.duration
                 };
 
                 buffer->Put(Generated::CheatCommandEnum::SpellSet);
@@ -602,6 +603,28 @@ namespace ECS::Util::MessageBuilder
 
                 buffer->Put(Generated::CheatCommandEnum::SpellEffectSet);
                 GameDefine::Database::SpellEffect::Write(buffer, spellEffectsDefinition);
+            });
+
+            return result;
+        }
+        bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const Generated::SpellProcDataRecord& spellProcData)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellProcDataID]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::SpellProcDataSet);
+                buffer->PutU32(spellProcDataID);
+                buffer->Serialize(spellProcData);
+            });
+
+            return result;
+        }
+        bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const Generated::SpellProcLinkRecord& spellProcLink)
+        {
+            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellProcLinkID]()
+            {
+                buffer->Put(Generated::CheatCommandEnum::SpellProcLinkSet);
+                buffer->PutU32(spellProcLinkID);
+                buffer->Serialize(spellProcLink);
             });
 
             return result;
