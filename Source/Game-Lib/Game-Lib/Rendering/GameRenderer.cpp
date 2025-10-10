@@ -3,6 +3,7 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Debug/JoltDebugRenderer.h"
+#include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
 #include "Terrain/TerrainManipulator.h"
@@ -145,7 +146,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
 
     _modelRenderer = new ModelRenderer(_renderer, _debugRenderer);
-    _modelLoader = new ModelLoader(_modelRenderer);
+    _lightRenderer = new LightRenderer(_renderer, _debugRenderer, _modelRenderer);
+    _modelLoader = new ModelLoader(_modelRenderer, _lightRenderer);
     _modelLoader->Init();
 
     _liquidRenderer = new LiquidRenderer(_renderer, _debugRenderer);
@@ -159,8 +161,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _modelLoader->SetTerrainLoader(_terrainLoader);
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
-
-    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer);
+    
+    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer, _lightRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
     _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
     _canvasRenderer = new CanvasRenderer(_renderer, _debugRenderer);
@@ -206,6 +208,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _materialRenderer->Update(deltaTime);
     _joltDebugRenderer->Update(deltaTime);
     _debugRenderer->Update(deltaTime);
+    _lightRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
     _canvasRenderer->Update(deltaTime);
@@ -383,6 +386,8 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
+    _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
+
     _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
     _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
@@ -395,6 +400,8 @@ f32 GameRenderer::Render()
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
+
+    _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);
@@ -531,6 +538,17 @@ void GameRenderer::CreatePermanentResources()
     sceneColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_WINDOW;
     sceneColorDesc.clearColor = Color(0.43f, 0.50f, 0.56f, 1.0f); // Slate gray
     _resources.finalColor = _renderer->CreateImage(sceneColorDesc);
+
+    // Debug rendertarget
+    Renderer::ImageDesc debugColorDesc;
+    debugColorDesc.debugName = "DebugColor";
+    debugColorDesc.dimensions = vec2(1.0f, 1.0f);
+    debugColorDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+    debugColorDesc.format = _renderer->GetSwapChainImageFormat();
+    debugColorDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+    debugColorDesc.clearColor = Color::Clear;
+
+    _resources.debugColor = _renderer->CreateImage(debugColorDesc);
 
     // SSAO
     Renderer::ImageDesc ssaoTargetDesc;

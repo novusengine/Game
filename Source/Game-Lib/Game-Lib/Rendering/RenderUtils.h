@@ -22,9 +22,9 @@ public:
     public:
         Renderer::ImageResource input;
         u32 inputMipLevel = 0;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1, 1, 1, 1);
+        vec4 additiveColor = vec4(0, 0, 0, 0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
 
         Renderer::ImageMutableResource output;
 
@@ -36,9 +36,9 @@ public:
     {
     public:
         Renderer::DepthImageResource input;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1, 1, 1, 1);
+        vec4 additiveColor = vec4(0, 0, 0, 0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
 
         Renderer::ImageMutableResource output;
         
@@ -51,9 +51,9 @@ public:
     public:
         Renderer::ImageResource overlayImage;
         u32 mipLevel = 0;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1,1,1,1);
+        vec4 additiveColor = vec4(0,0,0,0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
 
         Renderer::ImageMutableResource baseImage;
 
@@ -65,9 +65,9 @@ public:
     {
     public:
         Renderer::DepthImageResource overlayImage;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1, 1, 1, 1);
+        vec4 additiveColor = vec4(0, 0, 0, 0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
 
         Renderer::ImageMutableResource baseImage;
 
@@ -80,9 +80,9 @@ public:
     public:
         Renderer::ImageResource pipImage;
         u32 mipLevel = 0;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1, 1, 1, 1);
+        vec4 additiveColor = vec4(0, 0, 0, 0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
         Geometry::Box targetRegion;
 
         Renderer::ImageMutableResource baseImage;
@@ -95,9 +95,9 @@ public:
     {
     public:
         Renderer::DepthImageResource pipImage;
-        vec4 colorMultiplier;
-        vec4 additiveColor;
-        ivec4 channelRedirectors;
+        vec4 colorMultiplier = vec4(1, 1, 1, 1);
+        vec4 additiveColor = vec4(0, 0, 0, 0);
+        ivec4 channelRedirectors = ivec4(0, 1, 2, 3);
         Geometry::Box targetRegion;
 
         Renderer::ImageMutableResource baseImage;

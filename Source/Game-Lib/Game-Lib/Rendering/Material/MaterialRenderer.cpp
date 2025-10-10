@@ -4,6 +4,7 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/TerrainTools.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
@@ -24,10 +25,11 @@ AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, 
 AutoCVar_Float CVAR_FogBeginDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_FogEndDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
 
-MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer)
+MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
     : _renderer(renderer)
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
+    , _lightRenderer(lightRenderer)
 {
     CreatePermanentResources();
 }
@@ -132,7 +134,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::ImageResource ambientOcclusion;
 
         Renderer::DescriptorSetResource globalSet;
-        Renderer::DescriptorSetResource shadowSet;
+        Renderer::DescriptorSetResource tilesSet;
+        Renderer::DescriptorSetResource lightSet;
         Renderer::DescriptorSetResource materialSet;
         Renderer::DescriptorSetResource terrainSet;
         Renderer::DescriptorSetResource modelSet;
@@ -155,17 +158,20 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
             builder.Read(_directionalLights.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
+            Renderer::DescriptorSet& tileDescriptorSet = _lightRenderer->GetTileDescriptorSet();
             Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
             Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
-            data.shadowSet = builder.Use(resources.shadowDescriptorSet);
+            data.tilesSet = builder.Use(tileDescriptorSet);
+            data.lightSet = builder.Use(resources.lightDescriptorSet);
             data.materialSet = builder.Use(_materialPassDescriptorSet);
             data.terrainSet = builder.Use(terrainDescriptorSet);
             data.modelSet = builder.Use(modelDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
             _modelRenderer->RegisterMaterialPassBufferUsage(builder);
+            _lightRenderer->RegisterMaterialPassBufferUsage(builder);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -201,7 +207,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             // Bind descriptorset
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, data.shadowSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TILES, data.tilesSet, frameIndex);
+            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::LIGHT, data.lightSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
@@ -217,6 +224,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 {
                     vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height 
                     uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count, Z = Cascade Count, W = Shadows Enabled
+                    uvec4 tileInfo; // xy = Num Tiles, zw = UNUSED
                     vec4 fogColor;
                     vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
                     vec4 mouseWorldPos;
@@ -237,6 +245,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
                 const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"));
                 constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), 0, numCascades, shadowEnabled);
+
+                constants->tileInfo = uvec4(_lightRenderer->CalculateNumTiles2D(outputSize), 0, 0);
 
                 constants->fogColor = CVAR_FogColor.Get();
                 constants->fogSettings.x = CVAR_EnableFog.Get() == ShowFlag::ENABLED;

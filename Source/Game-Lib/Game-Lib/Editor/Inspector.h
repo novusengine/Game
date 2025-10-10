@@ -51,6 +51,8 @@ namespace Editor
         void InspectEntity(entt::entity entity);
         void InspectEntityTransform(entt::entity entity);
         void InspectEntityModel(entt::entity entity);
+        void InspectEntityAABB(entt::entity entity);
+        void InspectEntityDecal(entt::entity entity);
         bool DrawGizmo(entt::registry* registry, entt::entity entity, ECS::Components::Transform& transform);
         void DrawGizmoControls();
 

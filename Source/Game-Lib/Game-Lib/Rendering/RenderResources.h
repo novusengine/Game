@@ -22,6 +22,8 @@ public:
     Renderer::ImageID sceneColor;
     Renderer::ImageID finalColor;
 
+    Renderer::ImageID debugColor;
+
     Renderer::ImageID ssaoTarget;
 
     Renderer::ImageID transparency;
@@ -37,7 +39,7 @@ public:
     Renderer::DepthImageID debugRendererDepth;
 
     Renderer::DescriptorSet globalDescriptorSet;
-    Renderer::DescriptorSet shadowDescriptorSet;
+    Renderer::DescriptorSet lightDescriptorSet;
 
     Renderer::SemaphoreID sceneRenderedSemaphore; // This semaphore tells the present function when the scene is ready to be blitted and presented
     FrameResource<Renderer::SemaphoreID, 2> frameSyncSemaphores; // This semaphore makes sure the GPU handles frames in order

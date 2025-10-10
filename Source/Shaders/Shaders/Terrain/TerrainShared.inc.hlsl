@@ -107,15 +107,15 @@ float2 GetGlobalVertexPosition(uint chunkID, uint cellID, uint vertexID)
     return float2(finalPos.x, -finalPos.y);
 }
 
-AABB GetCellAABB(uint chunkID, uint cellID, float2 heightRange)
+AABBMinMax GetCellAABB(uint chunkID, uint cellID, float2 heightRange)
 {
     float2 pos = GetCellPosition(chunkID, cellID);
-    float3 aabb_min = float3(pos.x, heightRange.x, pos.y);
-    float3 aabb_max = float3(pos.x - CELL_SIDE_SIZE, heightRange.y, pos.y - CELL_SIDE_SIZE);
+    float3 aabbMin = float3(pos.x, heightRange.x, pos.y);
+    float3 aabbMax = float3(pos.x - CELL_SIDE_SIZE, heightRange.y, pos.y - CELL_SIDE_SIZE);
 
-    AABB boundingBox;
-    boundingBox.min = max(aabb_min, aabb_max);
-    boundingBox.max = min(aabb_min, aabb_max);
+    AABBMinMax boundingBox;
+    boundingBox.min = max(aabbMin, aabbMax);
+    boundingBox.max = min(aabbMin, aabbMax);
 
     return boundingBox;
 }

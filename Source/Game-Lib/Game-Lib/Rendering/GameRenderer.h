@@ -32,6 +32,7 @@ class MaterialRenderer;
 class SkyboxRenderer;
 class EditorRenderer;
 class DebugRenderer;
+class LightRenderer;
 class JoltDebugRenderer;
 class CanvasRenderer;
 class LiquidLoader;
@@ -134,6 +135,7 @@ private:
     MaterialRenderer* _materialRenderer = nullptr;
     SkyboxRenderer* _skyboxRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
+    LightRenderer* _lightRenderer = nullptr;
     JoltDebugRenderer* _joltDebugRenderer = nullptr;
     EditorRenderer* _editorRenderer = nullptr;
     CanvasRenderer* _canvasRenderer = nullptr;

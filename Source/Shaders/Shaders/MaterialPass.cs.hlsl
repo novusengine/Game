@@ -10,11 +10,13 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Include/Lighting.inc.hlsl"
 #include "Terrain/TerrainShared.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
+#include "Light/LightShared.inc.hlsl"
 
 struct Constants
 {
     float4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height
     uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights, z = Num Cascades, w = Shadows Enabled
+    uint4 tileInfo; // xy = Num Tiles
     float4 fogColor;
     float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
     float4 mouseWorldPos;
@@ -28,13 +30,65 @@ struct Constants
 
 [[vk::push_constant]] Constants _constants;
 
+// Tiled culling
+[[vk::binding(0, TILES)]] StructuredBuffer<uint> _entityTiles;
+
+// Lighting
+[[vk::binding(0, LIGHT)]] StructuredBuffer<PackedDecal> _packedDecals; // All decals in the world
+
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float4> _skyboxColor;
 [[vk::binding(4, PER_PASS)]] Texture2D<float4> _transparency;
 [[vk::binding(5, PER_PASS)]] Texture2D<float> _transparencyWeights;
 [[vk::binding(6, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
-float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
+float3 ProcessDecalBucket(uint buckedIndex, uint mask, float3 pixelWorldPos, float3 pixelWorldNormal)
+{
+    // Walk set bits in mask
+    float3 color = float3(0, 0, 0);
+
+    while (mask)
+    {
+        uint bit = firstbitlow(mask);
+        uint decalIndex = buckedIndex * 32u + bit; // Global index into _decals
+
+        PackedDecal packedDecal = _packedDecals[decalIndex];
+        Decal decal = UnpackDecal(packedDecal);
+
+        Texture2D decalTexture = _modelTextures[NonUniformResourceIndex(decal.textureID)]; // Decals share the same texture array as models
+
+        color += ApplyDecal(pixelWorldPos, pixelWorldNormal, decal, decalTexture, _sampler);
+
+        mask &= (mask - 1); // Clear the least significant bit set
+    }
+
+    return color;
+}
+
+float3 ApplyDecals(uint tileIndex, float3 pixelWorldPos, float3 pixelWorldNormal)
+{
+    // Layout reminder:
+    // [0 .. Tiles*Buckets-1]          : Opaque bitmasks per tile, use these when applied to opaque objects
+    // [Tiles*Buckets .. 2*Tiles*Buckets-1] : Transparent bitmasks per tile, use these whne applied to transparent objects such as fog between camera and opaque (not actually used yet)
+
+    uint numTiles = _constants.tileInfo.x * _constants.tileInfo.y;
+    uint bucketsPerLayer = SHADER_ENTITY_TILE_BUCKET_COUNT;
+
+    uint opaqueBase = tileIndex * bucketsPerLayer;
+    uint transparentBase = numTiles * bucketsPerLayer + opaqueBase; // I don't think I need this but lets keep it so we know what to do in the future
+
+    float3 color = float3(0, 0, 0);
+    for (uint bucketIndex = 0; bucketIndex < bucketsPerLayer; bucketIndex++)
+    {
+        uint mask = _entityTiles[opaqueBase + bucketIndex];
+        if (mask != 0)
+            color += ProcessDecalBucket(bucketIndex, mask, pixelWorldPos, pixelWorldNormal);
+    }
+
+    return saturate(color);
+}
+
+float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, uint tileIndex, out float3 outPixelWorldPos)
 {
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataTerrain(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
@@ -86,12 +140,6 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     // Apply vertex color
     color.rgb *= pixelVertexData.color;
 
-    //if (_constants.numTextureDecals + _constants.numProceduralDecals > 0)
-    //{
-    //    // Apply decals
-    //    ApplyDecals(pixelWorldPosition, color, pixelNormal, _constants.numTextureDecals, _constants.numProceduralDecals, _constants.mouseWorldPos.xyz);
-    //}
-
     // TODO: Don't hardcode this
     ShadowSettings shadowSettings;
     shadowSettings.enableShadows = _constants.lightInfo.w == 1;
@@ -101,6 +149,9 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
 
+    // Apply decals
+    color.rgb += ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal);
+    
 /*#if EDITOR_MODE == 1
     // Get settings from push constants
     const float brushHardness = _constants.brushSettings.x;
@@ -185,7 +236,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     return saturate(color);
 }
 
-float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, out float3 outPixelWorldPos)
+float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, uint tileIndex, out float3 outPixelWorldPos)
 {
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
@@ -247,6 +298,9 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Apply highlight
     color.rgb *= pixelVertexData.highlightIntensity;
 
+    // Apply decals
+    color.rgb += ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal);
+
     outPixelWorldPos = pixelVertexData.worldPos;
     return saturate(color);
 }
@@ -293,6 +347,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 #endif
 
     float2 pixelUV = pixelPos / _constants.renderInfo.xy;
+    uint2 tileCoord = PixelToTile(pixelPos, TILED_CULLING_BLOCKSIZE);
+    uint tileIndex = Flatten2D(tileCoord, _constants.tileInfo.xy);
 
     float4 color = float4(0, 0, 0, 1);
     
@@ -308,11 +364,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
     else if (vBuffer.typeID == ObjectType::Terrain)
     {
-        color = ShadeTerrain(pixelPos, pixelUV, vBuffer, pixelWorldPos);
+        color = ShadeTerrain(pixelPos, pixelUV, vBuffer, tileIndex, pixelWorldPos);
     }
     else if (vBuffer.typeID == ObjectType::ModelOpaque) // Transparent models are not rendered using visibility buffers
     {
-        color = ShadeModel(pixelPos, pixelUV, vBuffer, pixelWorldPos);
+        color = ShadeModel(pixelPos, pixelUV, vBuffer, tileIndex, pixelWorldPos);
     }
     else
     {

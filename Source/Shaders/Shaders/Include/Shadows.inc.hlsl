@@ -5,9 +5,9 @@
 
 #define MAX_SHADOW_CASCADES 8 // Has to be kept in sync with the one in RenderSettings.h
 
-[[vk::binding(0, SHADOWS)]] SamplerComparisonState _shadowCmpSampler;
-[[vk::binding(1, SHADOWS)]] SamplerState _shadowPointClampSampler;
-[[vk::binding(2, SHADOWS)]] Texture2D<float> _shadowCascadeRTs[MAX_SHADOW_CASCADES];
+[[vk::binding(0, LIGHT)]] SamplerComparisonState _shadowCmpSampler;
+[[vk::binding(1, LIGHT)]] SamplerState _shadowPointClampSampler;
+[[vk::binding(2, LIGHT)]] Texture2D<float> _shadowCascadeRTs[MAX_SHADOW_CASCADES];
 
 struct ShadowSettings
 {

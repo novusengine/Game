@@ -162,7 +162,7 @@ void DrawPlane3D(float3 v0, float3 v1, float3 v2, float3 v3, uint color)
 	DrawLine3D(context, v3, v0, color);
 }
 
-void DrawAABB3D(inout DebugDrawContext3D context, AABB aabb, uint color)
+void DrawAABB3D(inout DebugDrawContext3D context, AABBMinMax aabb, uint color)
 {
 	// Bottom vertices
 	float3 v0 = float3(aabb.min.x, aabb.min.y, aabb.min.z);
@@ -195,10 +195,80 @@ void DrawAABB3D(inout DebugDrawContext3D context, AABB aabb, uint color)
 	DrawLine3D(context, v3, v7, color);
 }
 
-void DrawAABB3D(AABB aabb, uint color)
+void DrawAABB3D(AABBMinMax aabb, uint color)
 {
 	DebugDrawContext3D context = StartDraw3D(24);
 	DrawAABB3D(context, aabb, color);
+}
+
+void DrawOBB3D(inout DebugDrawContext3D context, float3 center, float3 extents, float4 quatXYZW, uint color)
+{
+	// Ensure unit quaternion
+	float4 q = normalize(quatXYZW);
+
+	// Quaternion -> 3x3 rotation matrix (xyzw; w = scalar)
+	float xx = q.x * q.x, yy = q.y * q.y, zz = q.z * q.z;
+	float xy = q.x * q.y, xz = q.x * q.z, yz = q.y * q.z;
+	float wx = q.w * q.x, wy = q.w * q.y, wz = q.w * q.z;
+
+	float3x3 R;
+	R[0][0] = 1.0f - 2.0f * (yy + zz);
+	R[0][1] = 2.0f * (xy + wz);
+	R[0][2] = 2.0f * (xz - wy);
+
+	R[1][0] = 2.0f * (xy - wz);
+	R[1][1] = 1.0f - 2.0f * (xx + zz);
+	R[1][2] = 2.0f * (yz + wx);
+
+	R[2][0] = 2.0f * (xz + wy);
+	R[2][1] = 2.0f * (yz - wx);
+	R[2][2] = 1.0f - 2.0f * (xx + yy);
+
+	// Local corners in OBB space (using half-extents)
+	const float3 e = extents;
+	float3 c[8];
+	c[0] = float3(-e.x, -e.y, -e.z);
+	c[1] = float3(-e.x, -e.y, +e.z);
+	c[2] = float3(+e.x, -e.y, +e.z);
+	c[3] = float3(+e.x, -e.y, -e.z);
+	c[4] = float3(-e.x, +e.y, -e.z);
+	c[5] = float3(-e.x, +e.y, +e.z);
+	c[6] = float3(+e.x, +e.y, +e.z);
+	c[7] = float3(+e.x, +e.y, -e.z);
+
+	// Rotate + translate to world
+	float3 v[8];
+	[unroll] for (uint i = 0; i < 8; ++i)
+	{
+		// Using row-vector convention: v_world = v_local * R + center
+		v[i] = mul(c[i], R) + center;
+	}
+
+	// Edges (12 lines)
+	// Bottom face
+	DrawLine3D(context, v[0], v[1], color);
+	DrawLine3D(context, v[1], v[2], color);
+	DrawLine3D(context, v[2], v[3], color);
+	DrawLine3D(context, v[3], v[0], color);
+
+	// Top face
+	DrawLine3D(context, v[4], v[5], color);
+	DrawLine3D(context, v[5], v[6], color);
+	DrawLine3D(context, v[6], v[7], color);
+	DrawLine3D(context, v[7], v[4], color);
+
+	// Vertical edges
+	DrawLine3D(context, v[0], v[4], color);
+	DrawLine3D(context, v[1], v[5], color);
+	DrawLine3D(context, v[2], v[6], color);
+	DrawLine3D(context, v[3], v[7], color);
+}
+
+// Convenience wrapper that allocates the vertex space (12 lines * 2 verts)
+void DrawOBB3D(float3 center, float3 extents, float4 quatXYZW, uint color)
+{
+	DebugDrawContext3D ctx = StartDraw3D(24);
+	DrawOBB3D(ctx, center, extents, quatXYZW, color);
 }
 
 float3 Unproject(float3 p, float4x4 m)
