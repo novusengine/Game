@@ -72,7 +72,7 @@ struct DrawInput
     CSInput csInput;
     InstanceData instance;
     float4 sphere;
-    AABB aabb;
+    AABBMinMax aabb;
     bool shouldOcclusionCull;
     bool isShadowPass;
 };
@@ -143,7 +143,7 @@ void main(CSInput input)
     const uint chunkID = instance.packedChunkCellID >> 16;
 
     const float2 heightRange = ReadHeightRange(instanceIndex);
-    AABB aabb = GetCellAABB(chunkID, cellID, heightRange);
+    AABBMinMax aabb = GetCellAABB(chunkID, cellID, heightRange);
 
     float4 sphere;
     sphere.xyz = (aabb.min + aabb.max) / 2.0f;

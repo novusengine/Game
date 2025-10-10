@@ -181,6 +181,63 @@ float4 PackedUnormsToFloat4(uint packed)
     return f;
 }
 
+// Use quad ops (SM 6+), best match to pixel-shader ddx/ddy:
+inline void ComputeGradients_Quad(float2 uv, out float2 ddx, out float2 ddy)
+{
+    // Across X
+    float2 uv_x = QuadReadAcrossX(uv);
+    ddx = ((WaveGetLaneIndex() & 1) == 0) ? (uv_x - uv) : (uv - uv_x);
+
+    // Across Y
+    float2 uv_y = QuadReadAcrossY(uv);
+    ddy = ((WaveGetLaneIndex() & 2) == 0) ? (uv_y - uv) : (uv - uv_y);
+}
+
+// Build orthonormal basis from quaternion (row-major)
+inline void BasisFromQuat(float4 q, out float3 r, out float3 u, out float3 f)
+{
+    // q = (x,y,z,w), unit length
+    q = normalize(q);
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    float xx = x * x, yy = y * y, zz = z * z;
+    float xy = x * y, xz = x * z, yz = y * z;
+    float wx = w * x, wy = w * y, wz = w * z;
+
+    r = float3(1 - 2 * (yy + zz), 2 * (xy + wz), 2 * (xz - wy));
+    u = float3(2 * (xy - wz), 1 - 2 * (xx + zz), 2 * (yz + wx));
+    f = float3(2 * (xz + wy), 2 * (yz - wx), 1 - 2 * (xx + yy));
+}
+
+inline uint2 PixelToTile(uint2 pixel, uint2 tileSize)
+{
+    // Integer division floors automatically: (0..15)->0, (16..31)->1, etc.
+    return pixel / tileSize;
+}
+
+// 2D array index to flattened 1D array index
+inline uint Flatten2D(uint2 coord, uint2 dim)
+{
+    return coord.x + coord.y * dim.x;
+}
+
+// flattened array index to 2D array index
+inline uint2 Unflatten2D(uint idx, uint2 dim)
+{
+    return uint2(idx % dim.x, idx / dim.x);
+}
+
+inline float3x3 QuatToMat(float4 q)
+{
+    q = normalize(q);
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+    float xx = x * x, yy = y * y, zz = z * z, xy = x * y, xz = x * z, yz = y * z, wx = w * x, wy = w * y, wz = w * z;
+    return float3x3(
+        1 - 2 * (yy + zz), 2 * (xy + wz), 2 * (xz - wy),
+        2 * (xy - wz), 1 - 2 * (xx + zz), 2 * (yz + wx),
+        2 * (xz + wy), 2 * (yz - wx), 1 - 2 * (xx + yy)
+    );
+}
+
 enum ObjectType : uint
 {
     Skybox = 0, // We clear to this color so we won't be writing it

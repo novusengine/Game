@@ -32,7 +32,7 @@ struct PackedCullingData
 
 struct CullingData
 {
-    AABB boundingBox;
+    AABBMinMax boundingBox;
     float sphereRadius;
 };
 
@@ -121,7 +121,7 @@ struct DrawInput
     CSInput csInput;
     IndexedDraw drawCall;
     float4 sphere;
-    AABB aabb;
+    AABBMinMax aabb;
     float4x4 instanceMatrix;
     bool shouldOcclusionCull;
 };
@@ -244,7 +244,7 @@ void main(CSInput input)
 
     const CullingData cullingData = LoadCullingData(modelID);
 
-    AABB aabb;
+    AABBMinMax aabb;
     float4x4 instanceMatrix;
     if (_constants.cullingDataIsWorldspace)
     {

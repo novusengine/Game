@@ -1186,6 +1186,18 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     _transparentSkyboxCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
 }
 
+Renderer::TextureID ModelRenderer::LoadTexture(const std::string& path, u32& arrayIndex)
+{
+    ZoneScopedN("ModelRenderer::LoadTexture");
+    
+    Renderer::TextureDesc textureDesc = 
+    {
+        .path = path,
+    };
+
+    return _renderer->LoadTextureIntoArray(textureDesc, _textures, arrayIndex);
+}
+
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
 {
     ZoneScopedN("ModelRenderer::LoadModel");

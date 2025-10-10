@@ -1,20 +1,12 @@
 #include "Inspector.h"
 
-#include <Game-Lib/Util/ServiceLocator.h>
-#include <Game-Lib/Util/ImguiUtil.h>
 #include <Game-Lib/Application/EnttRegistries.h>
-#include <Game-Lib/Rendering/GameRenderer.h>
-#include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
-#include <Game-Lib/Rendering/Model/ModelLoader.h>
-#include <Game-Lib/Rendering/Model/ModelRenderer.h>
-#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
-#include <Game-Lib/Rendering/PixelQuery.h>
-#include <Game-Lib/Rendering/Camera.h>
 #include <Game-Lib/ECS/Singletons/ActiveCamera.h>
 #include <Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h>
 #include <Game-Lib/ECS/Singletons/RenderState.h>
 #include <Game-Lib/ECS/Singletons/Database/TextureSingleton.h>
 #include <Game-Lib/ECS/Components/Camera.h>
+#include <Game-Lib/ECS/Components/Decal.h>
 #include <Game-Lib/ECS/Components/Model.h>
 #include <Game-Lib/ECS/Components/Name.h>
 #include <Game-Lib/ECS/Components/Unit.h>
@@ -23,6 +15,15 @@
 #include <Game-Lib/Editor/ActionStack.h>
 #include <Game-Lib/Editor/Hierarchy.h>
 #include <Game-Lib/Editor/Viewport.h>
+#include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
+#include <Game-Lib/Rendering/Model/ModelLoader.h>
+#include <Game-Lib/Rendering/Model/ModelRenderer.h>
+#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
+#include <Game-Lib/Rendering/PixelQuery.h>
+#include <Game-Lib/Rendering/Camera.h>
+#include <Game-Lib/Util/ServiceLocator.h>
+#include <Game-Lib/Util/ImguiUtil.h>
 
 #include <Renderer/RenderSettings.h>
 
@@ -322,7 +323,11 @@ namespace Editor
 
         InspectEntityTransform(entity);
 
+        InspectEntityAABB(entity);
+
         InspectEntityModel(entity);
+
+        InspectEntityDecal(entity);
 
         if (ECS::Components::Unit* unit = registry->try_get<ECS::Components::Unit>(entity))
         {
@@ -514,6 +519,119 @@ namespace Editor
                 if (ImGui::SliderFloat("Opacity", &model->opacity, 0.0f, 1.0f))
                 {
                     modelLoader->SetModelTransparent(*model, model->flags.forcedTransparency, model->opacity);
+                }
+            }
+            Util::Imgui::EndGroupPanel();
+        }
+        ImGui::PopStyleColor();
+    }
+
+    void Inspector::InspectEntityAABB(entt::entity entity)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        ECS::Components::AABB* aabb = registry->try_get<ECS::Components::AABB>(entity);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+
+        if (aabb)
+        {
+            if (Util::Imgui::BeginGroupPanel("AABB"))
+            {
+                bool isDirty = false;
+
+                // Center Pos
+                vec3 centerPos = aabb->centerPos;
+                if (ImGui::DragFloat3("center pos", &centerPos.x))
+                {
+                    aabb->centerPos = centerPos;
+                    isDirty = true;
+                }
+
+                // Extents
+                vec3 extents = aabb->extents;
+                if (ImGui::DragFloat3("extents", &extents.x))
+                {
+                    aabb->extents = extents;
+                    isDirty = true;
+                }
+
+                if (isDirty)
+                {
+                    registry->emplace_or_replace<ECS::Components::DirtyAABB>(entity);
+                }
+            }
+            Util::Imgui::EndGroupPanel();
+        }
+        ImGui::PopStyleColor();
+    }
+
+    void Inspector::InspectEntityDecal(entt::entity entity)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        ECS::Components::Decal* decal = registry->try_get<ECS::Components::Decal>(entity);
+
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.4f, 0.4f, 0.4f, 1.0f));
+
+        if (decal)
+        {
+            if (Util::Imgui::BeginGroupPanel("Decal"))
+            {
+                bool isDirty = false;
+
+                std::string texturePath = decal->texturePath;
+                if (ImGui::InputText("Texture Path", &texturePath))
+                {
+                    decal->texturePath = texturePath;
+                    isDirty = true;
+                }
+
+                Color color = decal->colorMultiplier;
+                if (ImGui::ColorEdit3("Color Multiplier", &color.r))
+                {
+                    decal->colorMultiplier = color;
+                    isDirty = true;
+                }
+
+                f32 thresholdMin = f32(decal->thresholdMinMax.x);
+                if (ImGui::SliderFloat("Threshold Min", &thresholdMin, -1.0f, 1.0f))
+                {
+                    decal->thresholdMinMax.x = f16(thresholdMin);
+                    isDirty = true;
+                }
+
+                f32 thresholdMax = f32(decal->thresholdMinMax.y);
+                if (ImGui::SliderFloat("Threshold Max", &thresholdMax, -1.0f, 1.0f))
+                {
+                    decal->thresholdMinMax.y = f16(thresholdMax);
+                    isDirty = true;
+                }
+
+                vec2 minUV = vec2(decal->minUV);
+                if (ImGui::DragFloat2("Min UV", &minUV.x, 0.01f, 0.0f, 1.0f))
+                {
+                    decal->minUV = hvec2(minUV);
+                    isDirty = true;
+                }
+
+                vec2 maxUV = vec2(decal->maxUV);
+                if (ImGui::DragFloat2("Max UV", &maxUV.x, 0.01f, 0.0f, 1.0f))
+                {
+                    decal->maxUV = hvec2(maxUV);
+                    isDirty = true;
+                }
+
+                u32 flags = decal->flags;
+                if (ImGui::InputScalar("Flags", ImGuiDataType_U32, &flags, nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsHexadecimal))
+                {
+                    decal->flags = flags;
+                    isDirty = true;
+                }
+
+                if (isDirty)
+                {
+                    registry->emplace_or_replace<ECS::Components::DirtyDecal>(entity);
                 }
             }
             Util::Imgui::EndGroupPanel();

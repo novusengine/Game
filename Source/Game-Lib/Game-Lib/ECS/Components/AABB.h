@@ -16,4 +16,6 @@ namespace ECS::Components
         vec3 min;
         vec3 max;
     };
+
+    struct DirtyAABB {};
 }

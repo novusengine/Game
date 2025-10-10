@@ -112,7 +112,7 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
                 data.shadowDepthCascades[i] = builder.Write(resources.shadowDepthCascades[i], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
             }
 
-            data.shadowDescriptorSet = builder.Use(resources.shadowDescriptorSet);
+            data.shadowDescriptorSet = builder.Use(resources.lightDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -144,7 +144,7 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
     samplerDesc.comparisonFunc = Renderer::ComparisonFunc::GREATER;
 
     _shadowCmpSampler = _renderer->CreateSampler(samplerDesc);
-    resources.shadowDescriptorSet.Bind("_shadowCmpSampler"_h, _shadowCmpSampler);
+    resources.lightDescriptorSet.Bind("_shadowCmpSampler"_h, _shadowCmpSampler);
 
     samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_POINT;
     samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
@@ -152,5 +152,5 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
     samplerDesc.comparisonEnabled = false;
 
     _shadowPointClampSampler = _renderer->CreateSampler(samplerDesc);
-    resources.shadowDescriptorSet.Bind("_shadowPointClampSampler"_h, _shadowPointClampSampler);
+    resources.lightDescriptorSet.Bind("_shadowPointClampSampler"_h, _shadowPointClampSampler);
 }

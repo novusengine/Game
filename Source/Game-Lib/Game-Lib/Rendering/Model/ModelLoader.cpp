@@ -16,6 +16,7 @@
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Util/JoltStream.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -47,9 +48,10 @@ namespace fs = std::filesystem;
 static const fs::path dataPath = fs::path("Data/");
 static const fs::path complexModelPath = dataPath / "ComplexModel";
 
-ModelLoader::ModelLoader(ModelRenderer* modelRenderer)
+ModelLoader::ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
     : _terrainLoader(nullptr)
     , _modelRenderer(modelRenderer)
+    , _lightRenderer(lightRenderer)
     , _pendingLoadRequests(MAX_PENDING_LOADS_PER_FRAME)
     , _internalLoadRequests(MAX_INTERNAL_LOADS_PER_FRAME)
     , _discoveredModels()
@@ -202,6 +204,7 @@ void ModelLoader::Clear()
     _numTerrainModelsToLoad = 0;
     _numTerrainModelsLoaded = 0;
     _modelRenderer->Clear();
+    _lightRenderer->Clear();
 
     auto& tSystem = ECS::TransformSystem::Get(*registry);
     tSystem.ProcessMovedEntities([](entt::entity entity) { });

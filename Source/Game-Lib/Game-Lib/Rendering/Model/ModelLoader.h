@@ -27,6 +27,7 @@ namespace ECS::Components
 }
 
 class TerrainLoader;
+class LightRenderer;
 class ModelRenderer;
 class ModelLoader
 {
@@ -102,7 +103,7 @@ private:
     };
 
 public:
-    ModelLoader(ModelRenderer* modelRenderer);
+    ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRenderer);
 
     void Init();
     void Clear();
@@ -171,6 +172,7 @@ private:
 private:
     TerrainLoader* _terrainLoader = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
+    LightRenderer* _lightRenderer = nullptr;
 
     std::atomic<u32> _numDiscoveredModelsToLoad = 0;
     u32 _numDiscoveredModelsLoaded = 0;
