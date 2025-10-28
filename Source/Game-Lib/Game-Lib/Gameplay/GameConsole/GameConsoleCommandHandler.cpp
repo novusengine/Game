@@ -9,8 +9,6 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     _commandRegistry.reserve(256);
     _commandAliasNameHashToCommandNameHash.reserve(1024);
 
-    //RegisterCommand({ "login" }, "(accountName : string)", GameConsoleCommands::HandleLogin);
-    //RegisterCommand({ "cast" }, "(spellID : u32)", GameConsoleCommands::HandleCast);
     //RegisterCommand({ "setclass" }, "(class : u8)", GameConsoleCommands::HandleSetClass);
     //RegisterCommand({ "setlevel" }, "(level : u16)", GameConsoleCommands::HandleSetLevel);
 

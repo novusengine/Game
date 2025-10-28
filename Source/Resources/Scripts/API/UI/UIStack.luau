@@ -1,4 +1,4 @@
-type StackAPI =
+export type StackAPI =
 {
     Get : (name : string) -> Stack,
 
@@ -6,7 +6,7 @@ type StackAPI =
     stacks : { Stack },
 }
 
-type Stack =
+export type Stack =
 {
     Register : (self : Stack, name : string, inWidget : Widget, slot : number, push : () -> (), pop : () -> ()) -> (),
     Get : (self : Stack, name : string) -> WidgetInfo | nil,
@@ -23,7 +23,7 @@ type Stack =
     slots : { number },
 }
 
-type WidgetInfo =
+export type WidgetInfo =
 {
     widget : Widget,
     slot : number,
@@ -31,7 +31,7 @@ type WidgetInfo =
     onPop : () -> (),
 }
 
-type UiStacks = {
+export type UIStacks = {
     Register : (self : StackAPI, stackName : string) -> Stack,
     Get : (self : StackAPI, name : string) -> Stack,
 
@@ -140,7 +140,7 @@ local StackMeta =
     end
 }
 
-local uiStacks : UiStacks = {
+local uiStacks : UIStacks = {
     nameToIndex = { },
     stacks = { },
 

@@ -361,6 +361,16 @@ local function CreateBagSlots(mainPanel: Panel, container: Bag)
     end
 end
 
+local function SetUnitInfo(unitID : number)
+    if characterInfo.nameWidget == nil then
+        return
+    end
+
+    local unitName = Unit.GetName(unitID) or "Unknown"
+    local unitInfoText = `{unitName} {60} Warrior`
+    characterInfo.nameWidget:SetText(unitInfoText)
+end
+
 local function CreateUnitInfoPanel(mainPanel : Panel, unitID : number)
     characterInfo.infoPanel = mainPanel:NewPanel(74.0, -14.0, 152.0, 25.0, UI_CONSTANTS.PANEL_LAYER, UI_CONSTANTS.UNIT_INFO_PANEL_TEMPLATE)
     characterInfo.infoPanel:SetEnabled(true)
@@ -368,10 +378,11 @@ local function CreateUnitInfoPanel(mainPanel : Panel, unitID : number)
     characterInfo.infoPanel:SetAnchor(0.0, 1.0);
     characterInfo.infoPanel:SetRelativePoint(0.0, 1.0);
 
-    local name = `{Unit.GetName(unitID)} {60} Warrior` -- TODO: Replace with actual name when available
-    characterInfo.nameWidget = characterInfo.infoPanel:NewText(name, 0, 2, 1, "CharacterEquipmentStatsText")
+    characterInfo.nameWidget = characterInfo.infoPanel:NewText("", 0, 2, 1, "CharacterEquipmentStatsText")
     characterInfo.nameWidget:SetAnchor(0.5, 0.5)
     characterInfo.nameWidget:SetRelativePoint(0.5, 0.5)
+
+    SetUnitInfo(unitID)
 end
 
 local function RefreshStatsPanel()
@@ -494,9 +505,13 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
     PlayerContainers.SetEquipmentBag(equipmentBag)
 end
 
-local function OnLocalMoverChanged(eventID : number, data : any)
+local function OnGameLoaded(eventID : number, data : any)
     RegisterTemplates()
 
+    if (not IsInWorld()) then
+        return
+    end
+    
     local numSlots, baseContainerItems = Container.GetContainerItems(MIN_CONTAINER_INDEX)
     if (numSlots == nil or baseContainerItems == nil) then
         return
@@ -523,6 +538,16 @@ local function OnLocalMoverChanged(eventID : number, data : any)
         PlayerContainers.SetBag(bag.containerIndex - 1, bag)
     end
 end
+RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+
+local function OnLocalMoverChanged(eventID : number, data : any)
+    local unitID = Unit.GetLocal()
+    if unitID == INVALID_UNIT_ID then
+        return
+    end
+
+    SetUnitInfo(unitID)
+end
 RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged)
 
 local function OnStatUpdate(eventID : number, data : any)
@@ -548,11 +573,13 @@ local function OnContainerCreate(eventID : number, data : any)
     if data.index == MIN_CONTAINER_INDEX then
         local equipmentBag = PlayerContainers.GetEquipmentBag()
         if (equipmentBag == nil) then
-            CreateEquipmentBag(data.numSlots, nil, false)
+            CreateEquipmentBag(data.numSlots, nil, true)
         else
             for i = 1, equipmentBag.totalSlots do
                 equipmentBag:ClearSlot(i)
             end
+
+            -- TODO : Clear Stats?
         end
     else
         local bag = PlayerContainers.GetBag(data.index - 1)

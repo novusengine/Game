@@ -63,6 +63,7 @@ namespace Scripting
         zenith->RegisterEventType<Generated::LuaGameEventEnum>();
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataLoaded>(Generated::LuaGameEventEnum::Loaded);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataUpdated>(Generated::LuaGameEventEnum::Updated);
+        zenith->RegisterEventTypeID<Generated::LuaGameEventDataCharacterListChanged>(Generated::LuaGameEventEnum::CharacterListChanged);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataMapLoading>(Generated::LuaGameEventEnum::MapLoading);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataChatMessageReceived>(Generated::LuaGameEventEnum::ChatMessageReceived);
         zenith->RegisterEventTypeID<Generated::LuaGameEventDataLocalMoverChanged>(Generated::LuaGameEventEnum::LocalMoverChanged);

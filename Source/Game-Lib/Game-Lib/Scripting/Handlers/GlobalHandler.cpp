@@ -49,6 +49,13 @@ namespace Scripting
         zenith->CallEvent(Generated::LuaGameEventEnum::Loaded, Generated::LuaGameEventDataLoaded{
             .motd = motd
         });
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+        if (!networkState.isInWorld && networkState.authInfo.stage == ECS::AuthenticationStage::Completed)
+        {
+            zenith->CallEvent(Generated::LuaGameEventEnum::CharacterListChanged, Generated::LuaGameEventDataCharacterListChanged{});
+        }
     }
 
     void GlobalHandler::Update(Zenith* zenith, f32 deltaTime)
@@ -256,5 +263,190 @@ namespace Scripting
         });
 
         return 0;
+    }
+
+    i32 GlobalHandler::IsOfflineMode(Zenith* zenith)
+    {
+        CVarSystem* cvarSystem = CVarSystem::Get();
+        bool isOffline = *cvarSystem->GetIntCVar(CVarCategory::Network, "offlineMode") != 0;
+
+        zenith->Push(isOffline);
+        return 1;
+    }
+    i32 GlobalHandler::IsOnline(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        bool isConnected = networkState.client->IsConnected();
+        return 1;
+    }
+    i32 GlobalHandler::GetAuthStage(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        zenith->Push((i32)networkState.authInfo.stage);
+        return 1;
+    }
+    i32 GlobalHandler::IsInWorld(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        bool isInWorld = networkState.isInWorld;
+        zenith->Push(isInWorld);
+        return 1;
+    }
+    i32 GlobalHandler::GetAccountName(Zenith* zenith)
+    {
+        const char* accountName = CVarSystem::Get()->GetStringCVar(CVarCategory::Network, "accountName");
+        
+        zenith->Push(accountName);
+        return 1;
+    }
+    i32 GlobalHandler::Login(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        if (!networkState.client || networkState.client->IsConnected())
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        std::string username = zenith->CheckVal<const char*>(1);
+        std::string password = zenith->CheckVal<const char*>(2);
+        bool rememberMe = zenith->CheckVal<bool>(3);
+
+        if (username.length() < 2 || username.length() >= 32 || password.length() < 2 || password.length() >= 128)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        networkState.authInfo.username = username;
+        networkState.authInfo.password = password;
+
+        const char* connectIP = CVarSystem::Get()->GetStringCVar(CVarCategory::Network, "connectIP");
+        if (networkState.client->Connect(connectIP, 4000))
+        {
+            if (rememberMe)
+            {
+                CVarSystem::Get()->SetStringCVar(CVarCategory::Network, "accountName", username.c_str());
+            }
+            else
+            {
+                CVarSystem::Get()->SetStringCVar(CVarCategory::Network, "accountName", "");
+            }
+
+            ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
+                .accountName = username
+            });
+        }
+
+        zenith->Push(true);
+        return 1;
+    }
+    i32 GlobalHandler::Logout(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        if (!networkState.client || !networkState.client->IsConnected() || !networkState.isInWorld)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        ECS::Util::Network::SendPacket(networkState, Generated::ClientCharacterLogoutPacket{});
+
+        zenith->Push(true);
+        return 1;
+    }
+    i32 GlobalHandler::Disconnect(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        if (!networkState.client || !networkState.client->IsConnected())
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        networkState.client->Stop();
+
+        zenith->Push(true);
+        return 1;
+    }
+    i32 GlobalHandler::GetCharacterList(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        u32 numCharacters = static_cast<u32>(networkState.characterListInfo.list.size());
+
+        zenith->CreateTable();
+        for (u32 i = 0; i < numCharacters; i++)
+        {
+            const ECS::CharacterListEntry& characterListEntry = networkState.characterListInfo.list[i];
+
+            zenith->CreateTable();
+            zenith->AddTableField("name", characterListEntry.name.c_str());
+            zenith->AddTableField("race", characterListEntry.race);
+            zenith->AddTableField("gender", characterListEntry.gender);
+            zenith->AddTableField("class", characterListEntry.unitClass);
+            zenith->AddTableField("level", characterListEntry.level);
+            zenith->AddTableField("mapID", characterListEntry.mapID);
+
+            zenith->SetTableKey(i + 1);
+        }
+
+        return 1;
+    }
+    i32 GlobalHandler::SelectCharacter(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        if (!networkState.client || !networkState.client->IsConnected() || networkState.characterListInfo.characterSelected)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        u8 characterIndex = zenith->CheckVal<u8>(1) - 1;
+        u32 numCharacters = static_cast<u32>(networkState.characterListInfo.list.size());
+
+        if (characterIndex >= numCharacters)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        networkState.characterListInfo.characterSelected = true;
+
+        ECS::Util::Network::SendPacket(networkState, Generated::ClientCharacterSelectPacket{
+            .characterIndex = characterIndex
+        });
+
+        zenith->Push(true);
+        return 1;
+    }
+    i32 GlobalHandler::GetMapName(Zenith* zenith)
+    {
+        u16 mapID = zenith->CheckVal<u16>(1);
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+
+        auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
+        const auto& mapRecord = mapStorage->Get<Generated::MapRecord>(mapID);
+
+        std::string mapName = mapStorage->GetString(mapRecord.name);
+        zenith->Push(mapName.c_str());
+        return 1;
     }
 }

@@ -489,7 +489,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
                     return true;
                 elseif (keyID == keyIDEnter) then
                     inputBoxTable:Submit();
-                    return;
+                    return true;
                 elseif (keyID == keyIDTab) then
                     inputBoxTable.Tab();
                     return true;

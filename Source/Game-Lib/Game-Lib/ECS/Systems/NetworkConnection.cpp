@@ -64,12 +64,77 @@
 
 #include <entt/entt.hpp>
 #include <imgui/ImGuiNotify.hpp>
+#include <libsodium/sodium.h>
 
 #include <chrono>
 #include <numeric>
 
 namespace ECS::Systems
 {
+    bool HandleOnCharacterList(Network::SocketID socketID, Network::Message& message)
+    {
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
+
+        u8 numCharacters = 0;
+        if (!message.buffer->GetU8(numCharacters))
+            return false;
+
+        std::vector<CharacterListEntry> characterList;
+        characterList.reserve(numCharacters);
+
+        bool failed = false;
+
+        for (u8 i = 0; i < numCharacters; i++)
+        {
+            CharacterListEntry& entry = characterList.emplace_back();
+
+            failed |= !message.buffer->GetString(entry.name);
+            failed |= !message.buffer->GetU8(entry.race);
+            failed |= !message.buffer->GetU8(entry.gender);
+            failed |= !message.buffer->GetU8(entry.unitClass);
+            failed |= !message.buffer->GetU16(entry.level);
+            failed |= !message.buffer->GetU16(entry.mapID);
+        }
+
+        if (failed)
+            return false;
+
+        networkState.characterListInfo.list = std::move(characterList);
+
+        networkState.characterListInfo.nameHashToIndex.reserve(numCharacters);
+        networkState.characterListInfo.nameHashToIndex.clear();
+        for (u32 i = 0; i < numCharacters; i++)
+        {
+            const CharacterListEntry& entry = networkState.characterListInfo.list[i];
+
+            u32 nameHash = StringUtils::fnv1a_32(entry.name.c_str(), entry.name.length());
+            networkState.characterListInfo.nameHashToIndex[nameHash] = i;
+        }
+
+        for (auto itr = networkState.characterListInfo.nameHashToSortingIndex.begin(); itr != networkState.characterListInfo.nameHashToSortingIndex.end();)
+        {
+            u32 nameHash = itr->first;
+
+            bool characterNoLongerExists = networkState.characterListInfo.nameHashToIndex.find(nameHash) == networkState.characterListInfo.nameHashToIndex.end();
+            if (characterNoLongerExists)
+            {
+                itr = networkState.characterListInfo.nameHashToSortingIndex.erase(itr);
+            }
+            else
+            {
+                ++itr;
+            }
+        }
+
+        if (!networkState.isInWorld && networkState.authInfo.stage == AuthenticationStage::Completed)
+        {
+            Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+            zenith->CallEvent(Generated::LuaGameEventEnum::CharacterListChanged, Generated::LuaGameEventDataCharacterListChanged{});
+        }
+
+        return true;
+    }
     bool HandleOnCombatEvent(Network::SocketID socketID, Network::Message& message)
     {
         Generated::CombatLogEventsEnum eventID;
@@ -216,6 +281,67 @@ namespace ECS::Systems
         return true;
     }
 
+    bool HandleOnAuthChallenge(Network::SocketID socketID, Generated::ServerAuthChallengePacket& packet)
+    {
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
+
+        if (networkState.authInfo.stage != AuthenticationStage::None)
+        {
+            NC_LOG_WARNING("Network : Received Auth Challenge while not in None state");
+            networkState.authInfo.stage = AuthenticationStage::Failed;
+            return false;
+        }
+
+        unsigned char response1[crypto_spake_RESPONSE1BYTES];
+        i32 result = crypto_spake_step1(&networkState.authInfo.state, response1, packet.challenge.data(), networkState.authInfo.password.c_str(), networkState.authInfo.password.length());
+        if (result != 0)
+        {
+            NC_LOG_WARNING("Network : Failed to process Auth Challenge");
+            networkState.authInfo.stage = AuthenticationStage::Failed;
+            return false;
+        }
+
+        sodium_memzero(networkState.authInfo.password.data(), networkState.authInfo.password.length());
+
+        networkState.authInfo.stage = AuthenticationStage::Step1;
+        networkState.authInfo.password.clear();
+
+        Generated::ClientAuthChallengePacket responsePacket;
+        std::memcpy(responsePacket.challenge.data(), response1, crypto_spake_RESPONSE1BYTES);
+        Util::Network::SendPacket(networkState, responsePacket);
+
+        return true;
+    }
+    bool HandleOnAuthProof(Network::SocketID socketID, Generated::ServerAuthProofPacket& packet)
+    {
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
+
+        if (networkState.authInfo.stage != AuthenticationStage::Step1)
+        {
+            NC_LOG_WARNING("Network : Received Auth Proof while not in Step1 state");
+            networkState.authInfo.stage = AuthenticationStage::Failed;
+            return false;
+        }
+
+        unsigned char response3[crypto_spake_RESPONSE3BYTES];
+        i32 result = crypto_spake_step3(&networkState.authInfo.state, response3, &networkState.authInfo.sharedKeys, networkState.authInfo.username.c_str(), networkState.authInfo.username.length(), "NovusEngine", 11, packet.proof.data());
+        if (result != 0)
+        {
+            NC_LOG_WARNING("Network : Failed to process Auth Proof");
+            networkState.authInfo.stage = AuthenticationStage::Failed;
+            return false;
+        }
+
+        networkState.authInfo.stage = AuthenticationStage::Completed;
+
+        Generated::ClientAuthProofPacket authProofPacket;
+        std::memcpy(authProofPacket.proof.data(), response3, crypto_spake_RESPONSE3BYTES);
+        Util::Network::SendPacket(networkState, authProofPacket);
+
+        return true;
+    }
     bool HandleOnConnectResult(Network::SocketID socketID, Generated::ConnectResultPacket& packet)
     {
         auto result = static_cast<Network::ConnectResult>(packet.result);
@@ -262,6 +388,7 @@ namespace ECS::Systems
         }
 
         networkState.isLoadingMap = false;
+        networkState.isInWorld = true;
         networkState.entityToNetworkID.clear();
         networkState.networkIDToEntity.clear();
         networkState.networkVisTree->RemoveAll();
@@ -304,32 +431,78 @@ namespace ECS::Systems
         networkState.isLoadingMap = true;
         return true;
     }
+    bool HandleOnCharacterLogout(Network::SocketID socketID, Generated::ServerCharacterLogoutPacket& packet)
+    {
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
+
+        CharacterController::DeleteCharacterController(*gameRegistry, false);
+
+        for (auto& [entity, networkID] : networkState.entityToNetworkID)
+        {
+            if (!gameRegistry->valid(entity))
+                continue;
+
+            if (auto* attachmentData = gameRegistry->try_get<Components::AttachmentData>(entity))
+            {
+                for (auto& pair : attachmentData->attachmentToInstance)
+                {
+                    ::Util::Unit::RemoveItemFromAttachment(*gameRegistry, entity, pair.first);
+                }
+            }
+
+            if (auto* model = gameRegistry->try_get<Components::Model>(entity))
+            {
+                if (model->instanceID != std::numeric_limits<u32>().max())
+                {
+                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+                    modelLoader->UnloadModelForEntity(entity, *model);
+                }
+            }
+
+            gameRegistry->destroy(entity);
+        }
+
+        networkState.isLoadingMap = false;
+        networkState.isInWorld = false;
+        networkState.characterListInfo.characterSelected = false;
+        networkState.entityToNetworkID.clear();
+        networkState.networkIDToEntity.clear();
+        networkState.networkVisTree->RemoveAll();
+
+        ServiceLocator::GetLuaManager()->SetDirty();
+
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->UnloadMapImmediately();
+
+        return true;
+    }
     bool HandleOnPong(Network::SocketID socketID, Generated::PongPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         auto currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        f64 rtt = static_cast<f64>(currentTime) - static_cast<f64>(networkState.lastPingTime);
+        f64 rtt = static_cast<f64>(currentTime) - static_cast<f64>(networkState.pingInfo.lastPingTime);
         u16 ping = static_cast<u16>(rtt / 2.0f);
 
-        networkState.lastPongTime = currentTime;
+        networkState.pingInfo.lastPongTime = currentTime;
 
-        u8 pingHistoryCounter = networkState.pingHistoryIndex + 1;
-        if (pingHistoryCounter == networkState.pingHistory.size())
+        u8 pingHistoryCounter = networkState.pingInfo.pingHistoryIndex + 1;
+        if (pingHistoryCounter == networkState.pingInfo.pingHistory.size())
             pingHistoryCounter = 0;
 
-        networkState.pingHistorySize = glm::min(static_cast<u8>(networkState.pingHistorySize + 1u), static_cast<u8>(networkState.pingHistory.size()));
+        networkState.pingInfo.pingHistorySize = glm::min(static_cast<u8>(networkState.pingInfo.pingHistorySize + 1u), static_cast<u8>(networkState.pingInfo.pingHistory.size()));
 
-        networkState.pingHistoryIndex = pingHistoryCounter;
-        networkState.pingHistory[pingHistoryCounter] = ping;
+        networkState.pingInfo.pingHistoryIndex = pingHistoryCounter;
+        networkState.pingInfo.pingHistory[pingHistoryCounter] = ping;
 
         f32 accumulatedPing = 0.0f;
-        for (u16 ping : networkState.pingHistory)
+        for (u16 ping : networkState.pingInfo.pingHistory)
             accumulatedPing += static_cast<f32>(ping);
 
-        accumulatedPing /= networkState.pingHistorySize;
-        networkState.ping = static_cast<u16>(glm::round(accumulatedPing));
+        accumulatedPing /= networkState.pingInfo.pingHistorySize;
+        networkState.pingInfo.ping = static_cast<u16>(glm::round(accumulatedPing));
 
         return true;
     }
@@ -338,7 +511,7 @@ namespace ECS::Systems
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
-        networkState.serverUpdateDiff = packet.serverTickTime;
+        networkState.pingInfo.serverUpdateDiff = packet.serverTickTime;
 
         return true;
     }
@@ -1574,9 +1747,12 @@ namespace ECS::Systems
             networkState.networkVisTree = new RTree<ObjectGUID, f32, 3>();
             networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
 
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnAuthChallenge);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnAuthProof);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnConnectResult);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnWorldTransfer);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnLoadMap);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCharacterLogout);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnPong);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUpdateStats);
 
@@ -1613,7 +1789,8 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitAddAura);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitUpdateAura);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitRemoveAura);
-            
+
+            networkState.gameMessageRouter->SetMessageHandler(Generated::ServerCharacterListPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCharacterList));
             networkState.gameMessageRouter->SetMessageHandler(Generated::SendCombatEventPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCombatEvent));
         }
     }
@@ -1651,30 +1828,29 @@ namespace ECS::Systems
             {
                 // Just connected
                 wasConnected = true;
-
-                networkState.lastPingTime = currentTime;
+                networkState.pingInfo.lastPingTime = currentTime;
                 CharacterController::DeleteCharacterController(registry, true);
             }
             else
             {
-                u64 timeDiff = currentTime - networkState.lastPingTime;
+                u64 timeDiff = currentTime - networkState.pingInfo.lastPingTime;
                 if (timeDiff >= Singletons::NetworkState::PING_INTERVAL)
                 {
                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
                     if (Util::Network::SendPacket(networkState, Generated::PingPacket{
-                        .ping = networkState.ping
+                        .ping = networkState.pingInfo.ping
                     }))
                     {
-                        networkState.lastPingTime = currentTime;
+                        networkState.pingInfo.lastPingTime = currentTime;
                     }
                 }
 
-                if (networkState.lastPongTime != 0u)
+                if (networkState.pingInfo.lastPongTime != 0u)
                 {
-                    u64 timeDiff = currentTime - networkState.lastPongTime;
-                    if (currentTime - networkState.lastPongTime > Singletons::NetworkState::PING_INTERVAL)
+                    u64 timeDiff = currentTime - networkState.pingInfo.lastPongTime;
+                    if (currentTime - networkState.pingInfo.lastPongTime > Singletons::NetworkState::PING_INTERVAL)
                     {
-                        networkState.ping = static_cast<u16>(timeDiff);
+                        networkState.pingInfo.ping = static_cast<u16>(timeDiff);
                     }
                 }
             }
@@ -1734,14 +1910,12 @@ namespace ECS::Systems
                     proximityTriggerSingleton.proximityTriggers.Remove(triggerEntity);
                 });
 
-                networkState.lastPingTime = 0u;
-                networkState.lastPongTime = 0u;
-                networkState.ping = 0;
-                networkState.serverUpdateDiff = 0;
-                networkState.pingHistoryIndex = 0;
-                networkState.pingHistory.fill(0);
-                networkState.pingHistorySize = 0;
                 networkState.isLoadingMap = false;
+                networkState.isInWorld = false;
+
+                networkState.authInfo.Reset();
+                networkState.characterListInfo.Reset();
+                networkState.pingInfo.Reset();
                 networkState.entityToNetworkID.clear();
                 networkState.networkIDToEntity.clear();
                 networkState.networkVisTree->RemoveAll();

@@ -120,7 +120,8 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
             local resultCode = Unit.SetWidgetToNamePos(self.standaloneNameText, unitID);
 
             if resultCode ~= 2 then
-                self.standaloneNameText:SetVisible(resultCode or false);
+                local result = if resultCode == 1 then true else false;
+                self.standaloneNameText:SetVisible(result);
             end
         else
             local borderResultCode = Unit.SetWidgetToNamePos(self.border, unitID);
@@ -129,19 +130,23 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
             local nameResultCode = Unit.SetWidgetToNamePos(self.nameText, unitID);
 
             if borderResultCode ~= 2 then
-                self.border:SetVisible(borderResultCode or false);
+                local result = if borderResultCode == 1 then true else false;
+                self.border:SetVisible(result);
             end
 
             if backgroundResultCode ~= 2 then
-                self.background:SetVisible(backgroundResultCode or false);
+                local result = if backgroundResultCode == 1 then true else false;
+                self.background:SetVisible(result);
             end
 
             if fillResultCode ~= 2 then
-                self.fill:SetVisible(fillResultCode or false);
+                local result = if fillResultCode == 1 then true else false;
+                self.fill:SetVisible(result);
             end
 
             if nameResultCode ~= 2 then
-                self.nameText:SetVisible(nameResultCode or false);
+                local result = if nameResultCode == 1 then true else false;
+                self.nameText:SetVisible(result);
             end
         end
 
@@ -149,7 +154,8 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         local resultCode = Unit.SetWidgetToNamePos(widget, unitID);
 
         if resultCode ~= 2 then
-            widget:SetVisible(resultCode or false);
+            local result = if resultCode == 1 then true else false;
+            widget:SetVisible(result);
         end
     end
 

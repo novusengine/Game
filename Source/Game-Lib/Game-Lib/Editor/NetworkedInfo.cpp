@@ -40,8 +40,9 @@
 #include <string>
 
 AutoCVar_String CVAR_NetworkConnectIP(CVarCategory::Network, "connectIP", "Sets the connection IP", "127.0.0.1");
-AutoCVar_String CVAR_NetworkCharacterName(CVarCategory::Network, "characterName", "Sets the character name", "dev");
+AutoCVar_String CVAR_NetworkAccountName(CVarCategory::Network, "accountName", "Sets the account name", "dev");
 AutoCVar_Int CVAR_NetworkDrawTargetABB(CVarCategory::Network, "drawTargetAABB", "Debug Draws the target's AABB", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_NetworkOfflineMode(CVarCategory::Network, "offlineMode", "Skips login screen", 1, CVarFlags::EditCheckbox);
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
@@ -71,8 +72,8 @@ namespace Editor
 
             if (isConnected)
             {
-                ImGui::Text("Ping: %dms", networkState.ping);
-                ImGui::Text("Server Update Diff: %dms", networkState.serverUpdateDiff);
+                ImGui::Text("Ping: %dms", networkState.pingInfo.ping);
+                ImGui::Text("Server Update Diff: %dms", networkState.pingInfo.serverUpdateDiff);
                 ImGui::NewLine();
 
                 ImGui::Separator();
@@ -186,20 +187,20 @@ namespace Editor
                     ImGui::Separator();
                 }
 
-                const char* characterName = CVAR_NetworkCharacterName.Get();
-                size_t characterNameLength = strlen(characterName);
+                const char* accountName = CVAR_NetworkAccountName.Get();
+                size_t accountNameLength = strlen(accountName);
 
                 ImGui::Text("Not connected to server");
-                ImGui::Text("Character Name: %s", characterName);
+                ImGui::Text("Account Name: %s", accountName);
 
                 if (ImGui::Button("Connect"))
                 {
-                    if (networkState.client && characterNameLength > 0)
+                    if (networkState.client && accountNameLength > 0)
                     {
                         if (networkState.client->Connect(CVAR_NetworkConnectIP.Get(), 4000))
                         {
                             ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
-                                .characterName = characterName
+                                .accountName = accountName
                             });
                         }
                     }

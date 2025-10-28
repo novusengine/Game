@@ -23,6 +23,8 @@ export type ActionBar =
     buttonSize : number,
     buttonPadding : vector,
 
+    SetEnabled : (self : ActionBar, enabled : boolean) -> (),
+
     GetButtonFromKey : (self : ActionBar, key : number) -> ActionBarButton?,
     SetKeyForButton : (self : ActionBar, index : number, key : number) -> (),
 
@@ -33,6 +35,12 @@ export type ActionBar =
 local actionBarAPI : ActionBarAPI = {};
 
 local function SetupActionBarMethods(actionBarTable : ActionBar)
+    actionBarTable.SetEnabled = function(self, enabled : boolean)
+        for _, button in pairs(self.buttons) do
+            button.widget:SetEnabled(enabled);
+        end
+    end
+
     actionBarTable.GetButtonFromKey = function(self, key : number) : ActionBarButton?
         local index = self.keyToButtonIndex[key];
         if index == nil then
@@ -158,6 +166,7 @@ function actionBarAPI.CreateActionBar(parent : Widget, position : vector, numRow
         local keyID, action, modifierMask = ...;
         local actionButton = actionBarTable:GetButtonFromKey(keyID);
         if actionButton == nil then return false end
+        
         if (action == InputAction.Press) then
             actionButton.widget.panel:SetColor(vector.create(0.5, 0.5, 0.5));
             return true

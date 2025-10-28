@@ -1,9 +1,9 @@
-type ScrollBoxAPI =
+export type ScrollBoxAPI =
 {
     NewScrollBox : (parent : Panel, posX : number, posY : number, sizeX : number, sizeY : number, layer : number, scrollBoxTemplateTable : ScrollBoxTemplate) -> ScrollBox,
 }
 
-type ScrollBoxTemplate =
+export type ScrollBoxTemplate =
 {
     panelTemplate : string?,
     contentSizeX : number?,
@@ -19,15 +19,15 @@ type ScrollBoxTemplate =
     sensitivity : number?,
 
     scrollBarBackgroundTemplate : string?,
-    scrollBarBackgroundColor : Vector?,
+    scrollBarBackgroundColor : vector?,
     scrollBarBackgroundAlpha : number?,
 
     scrollBarTemplate : string?,
-    scrollBarColor : Vector?,
+    scrollBarColor : vector?,
     scrollBarAlpha : number?,
 }
 
-type ScrollBox =
+export type ScrollBox =
 {
     Scroll : (self : ScrollBox, event : string, x : number, y : number) -> (),
     ScrollToStart : (self : ScrollBox) -> (), -- Scrolls to the "start" (top for top-fill, bottom for bottom-fill)

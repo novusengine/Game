@@ -1,6 +1,6 @@
 local UIButton = require("@src/API/UI/Button")
-local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox")
-local UIStack : StackAPI = require("@src/API/UI/UIStack")
+local UIScrollBox = require("@src/API/UI/ScrollBox")
+local UIStack = require("@src/API/UI/UIStack")
 
 type CharacterSelectScreen =
 {
@@ -15,8 +15,8 @@ type CharacterSelectScreen =
     currentY : number,
     characters : { Character },
     selectedCharacterName : string | nil,
-    selectedCharacterNameText : Text,
-    characterListScrollBox : ScrollBox,
+    selectedCharacterNameText : TextWidget,
+    characterListScrollBox : UIScrollBox.ScrollBox,
 }
 
 type Character = 
@@ -27,9 +27,27 @@ type Character =
     class : string,
     location : string,
     panel : Panel | nil,
-    nameText : Text | nil,
-    levelAndClassText : Text | nil,
-    locationText : Text | nil,
+    nameText : TextWidget | nil,
+    levelAndClassText : TextWidget | nil,
+    locationText : TextWidget | nil,
+}
+
+local sceneData = {
+    characterSelectScreen = nil :: CharacterSelectScreen?,
+}
+
+local classIDToName = {
+    [1] = "Warrior",
+    [2] = "Paladin",
+    [3] = "Hunter",
+    [4] = "Rogue",
+    [5] = "Priest",
+    [6] = "Unused",
+    [7] = "Shaman",
+    [8] = "Mage",
+    [9] = "Warlock",
+    [10] = "Unused",
+    [11] = "Druid"
 }
 
 local function RegisterTemplates()
@@ -194,6 +212,23 @@ local function CreateMiddlePanel(characterSelectScreen : CharacterSelectScreen)
     });
     enterWorldButton:SetAnchor(0.5, 0.0);
     enterWorldButton:SetRelativePoint(0.5, 0.0);
+    enterWorldButton:SetOnMouseUp(function(eventID, widget, ...)
+        local characterIndex = nil
+
+        -- TODO : Implement custom character sorting order
+        if (characterSelectScreen.selectedCharacterName ~= nil) then
+            for i, character in characterSelectScreen.characters do
+                if (character.name == characterSelectScreen.selectedCharacterName) then
+                    characterIndex = i
+                    break;
+                end
+            end
+        end
+
+        if (characterIndex ~= nil) then
+            SelectCharacter(characterIndex);
+        end
+    end);
 
     -- Rotate character left button
     local rotateLeftButton = UIButton.NewButton(characterSelectScreen.widget, -22, 35, 40, 40, 0, {
@@ -274,8 +309,9 @@ local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     backButton:SetAnchor(1.0, 0.0);
     backButton:SetRelativePoint(1.0, 0.0);
     backButton:SetOnMouseUp(function(eventID, widget, ...)
-        local stack = UIStack.Get("Menu");
-        stack:Pop();
+        --local stack = UIStack.Get("Menu");
+        --stack:Pop();
+        Disconnect();
     end);
 
     -- Delete Character button
@@ -288,7 +324,7 @@ local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     deleteButton:SetRelativePoint(0.0, 0.5);
 end
 
-local function CreateCharacterSelectScreen(stack : Stack)
+local function CreateCharacterSelectScreen(stack : UIStack.Stack)
     local characterSelectScreen : CharacterSelectScreen = {};
 
     -- Create Canvas
@@ -374,27 +410,33 @@ local function CreateCharacterSelectScreen(stack : Stack)
     CreateMiddlePanel(characterSelectScreen);
     CreateRightPanel(characterSelectScreen);
 
-    characterSelectScreen:AddCharacter("Pursche", 60, "Paladin", "Stormwind");
-    characterSelectScreen:AddCharacter("Nix", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix1", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix2", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix3", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix4", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix5", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix6", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix7", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix8", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix9", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix10", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix11", 60, "Rogue", "Vietnam");
-    characterSelectScreen:AddCharacter("Nix12", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Pursche", 60, "Paladin", "Stormwind");
+    --characterSelectScreen:AddCharacter("Nix", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix1", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix2", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix3", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix4", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix5", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix6", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix7", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix8", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix9", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix10", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix11", 60, "Rogue", "Vietnam");
+    --characterSelectScreen:AddCharacter("Nix12", 60, "Rogue", "Vietnam");
 
-    local firstCharacterName = characterSelectScreen:GetCharacterNameByIndex(1);
-    if (firstCharacterName ~= nil) then
-        characterSelectScreen:SelectCharacterByName(firstCharacterName);
-    end
+    --local firstCharacterName = characterSelectScreen:GetCharacterNameByIndex(1);
+    --if (firstCharacterName ~= nil) then
+    --    characterSelectScreen:SelectCharacterByName(firstCharacterName);
+    --end
 
     stack:Register("CharacterSelect", characterSelectScreen.widget, 0); -- Name, widget, slot, onPush, onPop
+
+    local authStage = GetAuthStage();
+    local isInWorld = IsInWorld();
+    if not isInWorld and authStage == 4 then -- Authenticated, no character selected
+        stack:Push("CharacterSelect");
+    end
     --stack:Push("CharacterSelect");
 
     return characterSelectScreen;
@@ -405,6 +447,42 @@ local function OnGameLoaded(eventID : number, data : any)
     RegisterTemplates();
 
     local characterSelectScreen : CharacterSelectScreen = CreateCharacterSelectScreen(stack);
+    sceneData.characterSelectScreen = characterSelectScreen;
+end
+
+local function OnCharacterListChanged(eventID : number, data : any)
+    if sceneData.characterSelectScreen == nil then
+        return;
+    end
+
+    local stack = UIStack.Get("Menu");
+    stack:Clear();
+    stack:Push("CharacterSelect");
+
+    local characterSelectScreen : CharacterSelectScreen = sceneData.characterSelectScreen;
+
+    -- Remove all characters
+    for i = #characterSelectScreen.characters, 1, -1 do
+        characterSelectScreen.characters:Remove(i);
+    end
+
+    -- Add all characters
+    local characterList = GetCharacterList();
+    for k, v in characterList do
+        local level = if v.level == 0 then 1 else v.level;
+        local className = if v.class == 0 then "Unknown" else classIDToName[v.class];
+        local mapName = GetMapName(v.mapID);
+        characterSelectScreen:AddCharacter(v.name, level, className, mapName);
+    end
+
+    -- Refresh character list
+    characterSelectScreen:RefreshCharacterList();
+
+    local firstCharacterName = characterSelectScreen:GetCharacterNameByIndex(1);
+    if (firstCharacterName ~= nil) then
+        characterSelectScreen:SelectCharacterByName(firstCharacterName);
+    end
 end
 
 RegisterEvent(GameEvent.Loaded, OnGameLoaded);
+RegisterEvent(GameEvent.CharacterListChanged, OnCharacterListChanged);

@@ -283,6 +283,11 @@ local function OnGameLoaded(eventID : number, data : any)
     local chatCanvas : Canvas = UI.GetCanvas("Chat", 0, 0, 1920, 1080); -- Add layers here, for ordering input munching
 
     RegisterTemplates();
+
+    if not IsInWorld() then
+        return; -- Do not create chat if not in world
+    end
+    
     local mainChat = CreateChat(chatCanvas);
     RegisterOptions(mainChat);
 

@@ -37,9 +37,8 @@ local function RegisterTemplates()
     });
 end
 
-local function Login(accountInputBox, passwordInputBox)
-    print(`Logged in: {accountInputBox.text} {passwordInputBox.text}`)
-
+local function TryLogin(accountInputBox, passwordInputBox, rememberMe)
+    Login(accountInputBox.text, passwordInputBox.text, rememberMe);
     passwordInputBox:SetText("");
 end
 
@@ -54,12 +53,15 @@ local function CreateLoginScreen(stack)
     panel:SetRelativePoint(0.5, 0.5);
 
     -- Account Name Input
+    local accountName = GetAccountName();
     local accountNameInputBox = UIInputBox.NewInputBox(panel, 0, -40, 200, 40, 0, {
         panelTemplate = "DialogBox",
         textTemplate = "DefaultButtonText",
+        defaultText = accountName
     });
     accountNameInputBox.inputBox:SetAnchor(0.5, 0.5);
     accountNameInputBox.button:SetRelativePoint(0.5, 0.5);
+    accountNameInputBox.button.text:SetPos(5, 10);
 
     -- Account Name Text
     local accountNameText = accountNameInputBox.button:NewText("Account Name", 0, 5, 0, "LoginText");
@@ -89,6 +91,7 @@ local function CreateLoginScreen(stack)
     });
     passwordInputBox.inputBox:SetAnchor(0.5, 0.5);
     passwordInputBox.button:SetRelativePoint(0.5, 0.5);
+    passwordInputBox.button.text:SetPos(5, 7);
 
     -- Password Text
     local passwordText = passwordInputBox.button:NewText("Password", 0, 5, 0, "LoginText");
@@ -166,17 +169,20 @@ local function CreateLoginScreen(stack)
 
     -- Login handlers
     accountNameInputBox:SetOnSubmit(function(table)
-        Login(accountNameInputBox, passwordInputBox);
+        local rememberMe = rememberCheckbox:IsChecked();
+        TryLogin(accountNameInputBox, passwordInputBox, rememberMe);
         return true; -- Returning true will unfocus the widget
     end);
 
     passwordInputBox:SetOnSubmit(function(table)
-        Login(accountNameInputBox, passwordInputBox);
+        local rememberMe = rememberCheckbox:IsChecked();
+        TryLogin(accountNameInputBox, passwordInputBox, rememberMe);
         return true; -- Returning true will unfocus the widget
     end);
 
     loginButton:SetOnMouseUp(function(eventID, widget, ...)
-        Login(accountNameInputBox, passwordInputBox);
+        local rememberMe = rememberCheckbox:IsChecked();
+        TryLogin(accountNameInputBox, passwordInputBox, rememberMe);
     end)
 
     -- Tab Handlers (TODO: Make a system to set this up easier)
@@ -189,7 +195,18 @@ local function CreateLoginScreen(stack)
     end);
 
     stack:Register("LoginScreen", panel, 0); -- Name, widget, slot, onPush, onPop
-    --stack:Push("LoginScreen");
+
+    if not IsOfflineMode() then
+        if not IsInWorld() and GetAuthStage() == 0 then
+            stack:Push("LoginScreen");
+
+            if accountName ~= "" then
+                passwordInputBox:Focus();
+            else
+                accountNameInputBox:Focus();
+            end
+        end
+    end
 end
 
 local function OnGameLoaded(eventID : number, data : any)

@@ -741,7 +741,7 @@ bool GameConsoleCommands::HandleCreatureInfo(GameConsole* gameConsole, Generated
 
 bool GameConsoleCommands::HandleCheatLogin(GameConsole* gameConsole, Generated::CheatLoginCommand& command)
 {
-    if (command.characterName.size() < 2)
+    if (command.accountName.size() < 2)
         return false;
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -754,7 +754,7 @@ bool GameConsoleCommands::HandleCheatLogin(GameConsole* gameConsole, Generated::
     if (networkState.client->Connect(connectIP, 4000))
     {
         ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
-            .characterName = command.characterName
+            .accountName = command.accountName
         });
     }
 

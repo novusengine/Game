@@ -245,6 +245,8 @@ local function RemoveAuraFromTable(auraTable : AuraTable, auraID : number)
 end
 
 local function OnGameLoaded(eventID : number, data : any)
+    local isInWorld = IsInWorld();
+
     RegisterTemplates();
 
     -- Ensure UnitFrames Canvas is created
@@ -268,6 +270,7 @@ local function OnGameLoaded(eventID : number, data : any)
     local actionBarPos = vector.create(800, 360);
     local actionBarPadding = vector.create(1, 0);
     local actionBar = UIActionBar.CreateActionBar(canvas, actionBarPos, 1, 8, 40, actionBarPadding);
+    actionBar:SetEnabled(isInWorld);
 
     actionBar:SetSpell(1, 22);
     actionBar:SetKeyForButton(1, Input.GetKeyValue("1")); -- Key '1'
@@ -290,6 +293,11 @@ local function OnGameLoaded(eventID : number, data : any)
 end
 
 local function OnGameUpdated(eventID : number, data : any)
+    local isInWorld = IsInWorld();
+    if not isInWorld then
+        return;
+    end
+
     if unitFrames.playerUnitFrame:IsEnabled() then
         UpdateUnitFrame(unitFrames.playerUnitFrame);
         
@@ -320,6 +328,12 @@ local function OnGameUpdated(eventID : number, data : any)
 end
         
 local function OnLocalMoverChanged(eventID : number, data : any)
+    local isInWorld = IsInWorld();
+    if not isInWorld then
+        return;
+    end
+
+     -- Clear existing player buffs
     if data.moverID == INVALID_UNIT_ID then
         unitFrames.playerUnitFrame:SetEnabled(false);
     else
@@ -337,6 +351,11 @@ local function OnLocalMoverChanged(eventID : number, data : any)
 end
 
 local function OnTargetChanged(eventID : number, data : any)
+    local isInWorld = IsInWorld();
+    if not isInWorld then
+        return;
+    end
+
     local localUnitID = Unit.GetLocal();
     if data.unitID ~= localUnitID then
         return;

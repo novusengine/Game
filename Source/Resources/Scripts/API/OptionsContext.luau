@@ -116,7 +116,6 @@ local OptionMetatable = {
         end
 
         local cancelFunction = function()
-            print("Cancel");
             for i, value in self.activeCallbacks do
                 if (value == index) then
                     local callbackTable = self.onValueChangedCallbacks[index];

@@ -227,6 +227,9 @@ local function CreateGameMenu(stack)
     });
     logoutButton:SetAnchor(0.5, 1.0);
     logoutButton:SetRelativePoint(0.5, 0.5);
+    logoutButton:SetOnMouseUp(function(eventID, widget, ...)
+        Logout();
+    end)
 
     local exitButton = UIButton.NewButton(panel, 0, -345, 250, 40, 0, {
         text = "Exit Game"

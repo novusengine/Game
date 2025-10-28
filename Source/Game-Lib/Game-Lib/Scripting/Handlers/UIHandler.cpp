@@ -493,7 +493,7 @@ namespace Scripting::UI
         i32 sizeX = zenith->CheckVal<i32>(4);
         i32 sizeY = zenith->CheckVal<i32>(5);
 
-        bool isRenderTexture = zenith->CheckVal<bool>(6);
+        bool isRenderTexture = zenith->IsBoolean(6) ? zenith->ToBoolean(6) : false;
 
         Widget* widget = nullptr;
 
@@ -566,12 +566,8 @@ namespace Scripting::UI
 
         vec2 texCoord = vec2(static_cast<f32>(posX) / static_cast<f32>(sizeX), static_cast<f32>(posY) / static_cast<f32>(sizeY));
 
-        u32 top = zenith->GetTop();
-
         zenith->Push(texCoord.x);
         zenith->Push(texCoord.y);
-
-        top = zenith->GetTop();
 
         return 2;
     }
@@ -810,7 +806,7 @@ namespace Scripting::UI
         inputSingleton.globalKeyboardEvents.push_back(callback);
         inputSingleton.eventIDToKeyboardEventIndex[callback] = eventIndex;
 
-        return callback;
+        return 0;
     }
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
@@ -889,8 +885,8 @@ namespace Scripting::UI
     {
         lua_checkstack(zenith->state, 7);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
-        zenith->PushLightUserData(widget);
 
+        zenith->PushLightUserData(widget);
         luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
         lua_setmetatable(zenith->state, -2);
 
@@ -900,7 +896,7 @@ namespace Scripting::UI
         zenith->Push(modifierMask);
 
         zenith->PCall(5, 1);
-        bool result = zenith->CheckVal<bool>(1);
+        bool result = zenith->CheckVal<bool>(-1);
         zenith->Pop();
 
         return result; // Return if we should consume the event or not
@@ -916,8 +912,8 @@ namespace Scripting::UI
         zenith->Push(actionMask);
         zenith->Push(modifierMask);
 
-        zenith->PCall(4 , 1);
-        bool result = zenith->CheckVal<bool>(1);
+        zenith->PCall(4, 1);
+        bool result = zenith->CheckVal<bool>(-1);
         zenith->Pop();
 
         return result; // Return if we should consume the event or not
@@ -927,8 +923,8 @@ namespace Scripting::UI
     {
         lua_checkstack(zenith->state, 5);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
-        zenith->PushLightUserData(widget);
 
+        zenith->PushLightUserData(widget);
         luaL_getmetatable(zenith->state, widget->metaTableName.c_str());
         lua_setmetatable(zenith->state, -2);
 

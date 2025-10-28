@@ -23,13 +23,14 @@ declare Engine : Engine
 declare INVALID_UNIT_ID : number
 
 declare class GameEvent
-    Invalid             : number
-    Loaded              : number
-    Updated             : number
-    MapLoading          : number
-    ChatMessageReceived : number
-    LocalMoverChanged   : number
-    Count               : number
+    Invalid                 : number
+    Loaded                  : number
+    Updated                 : number
+    CharacterListChanged    : number
+    MapLoading              : number
+    ChatMessageReceived     : number
+    LocalMoverChanged       : number
+    Count                   : number
 end
 declare GameEvent : GameEvent
 
@@ -102,6 +103,18 @@ declare class ContainerItemEventData
     itemCount   : number
 end
 
+declare class CharacterInfo
+    name    : string
+    race    : number
+    gender  : number
+    class   : number
+    level   : number
+    mapID   : number
+end
+declare class CharacterList
+    [number] : CharacterInfo
+end
+
 declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, data : any) -> any)) : ()
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
@@ -113,6 +126,17 @@ declare function UnequipItem(slotIndex : number) : boolean
 declare function GetEquippedItem(slotIndex : number) : number
 declare function ExecCmd(command : string) : boolean
 declare function SendChatMessage(message : string) : ()
+declare function IsOfflineMode() : boolean
+declare function IsOnline() : boolean
+declare function GetAuthStage() : number
+declare function IsInWorld() : boolean
+declare function GetAccountName() : string
+declare function Login(accountName : string, password : string, rememberMe : boolean) : boolean
+declare function Logout() : boolean
+declare function Disconnect() : boolean
+declare function GetCharacterList() : CharacterList
+declare function SelectCharacter(index : number) : boolean
+declare function GetMapName(mapID : number) : string
 
 declare class UIInputEvent
     Invalid        : number
@@ -290,7 +314,7 @@ declare UI :
 
     RegisterSendMessageToChatCallback : ((callback : SendMessageToChatCallback) -> ()),
 
-    GetCanvas : ((name : string, pos : vec2, size : vec2) -> Canvas),
+    GetCanvas : ((name : string, pos : vec2, size : vec2, isRenderTexture : boolean?) -> Canvas),
     GetMousePos : (() -> vec2),
     GetTextureSize : ((path : string) -> vec2),
 
