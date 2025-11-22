@@ -27,7 +27,7 @@
 
 #include <FileFormat/Shared.h>
 
-#include <Meta/Generated/Shared/Networkpacket.h>
+#include <Meta/Generated/Shared/NetworkPacket.h>
 #include <Meta/Generated/Shared/UnitEnum.h>
 
 #include <Network/Client.h>
