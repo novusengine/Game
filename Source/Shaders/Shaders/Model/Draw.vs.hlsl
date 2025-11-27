@@ -3,8 +3,9 @@ permutation SHADOW_PASS = [0, 1];
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
 
 struct Constants
@@ -16,8 +17,8 @@ struct Constants
 
 struct VSInput
 {
-    uint vertexID : SV_VertexID;
-    uint culledInstanceID : SV_InstanceID;
+    uint vertexID : SV_VulkanVertexID;
+    uint culledInstanceID : SV_VulkanInstanceID;
 };
 
 struct VSOutput
@@ -29,6 +30,7 @@ struct VSOutput
 #endif
 };
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
     uint instanceRefID = GetInstanceRefID(input.culledInstanceID);

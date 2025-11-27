@@ -53,10 +53,12 @@ AutoCVar_Int CVAR_ModelValidateTransfers(CVarCategory::Client | CVarCategory::Re
 
 AutoCVar_Int CVAR_ModelsCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow", "should Models cast shadows", 1, CVarFlags::EditCheckbox);
 
-ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
-    : CulledRenderer(renderer, debugRenderer)
+ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
+    : CulledRenderer(renderer, gameRenderer, debugRenderer)
     , _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
+    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::MODEL)
 {
     CreatePermanentResources();
 
@@ -2593,8 +2595,245 @@ void ModelRenderer::CreatePermanentResources()
         _textureTransformMatrices.SetDebugName("ModelInstanceTextureTransformMatrices");
         _textureTransformMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
+
+    CreateModelPipelines();
 }
 
+void ModelRenderer::CreateModelPipelines()
+{
+    bool supportsExtendedTextures = _renderer->HasExtendedTextureSupport();
+
+    // Regular Draws
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer format
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> vertexPermutationFields =
+        {
+            { "EDITOR_PASS", "0" },
+            { "SHADOW_PASS", "0"},
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs.hlsl", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        vertexShaderDesc.shaderEntry.debugName = "Model/Draw.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+            
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        std::vector<Renderer::PermutationField> pixelPermutationFields =
+        {
+            { "SHADOW_PASS", "0" },
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps.hlsl", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        pixelShaderDesc.shaderEntry.debugName = "Model/Draw.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Shadows
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        pipelineDesc.states.rasterizerState.depthBiasEnabled = true;
+        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
+
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> vertexPermutationFields =
+        {
+            { "EDITOR_PASS", "0" },
+            { "SHADOW_PASS", "1"},
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs.hlsl", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        vertexShaderDesc.shaderEntry.debugName = "Model/Draw.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+            
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        std::vector<Renderer::PermutationField> pixelPermutationFields =
+        {
+            { "SHADOW_PASS", "1" },
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps.hlsl", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        pixelShaderDesc.shaderEntry.debugName = "Model/Draw.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+            
+        // Draw
+        _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Transparencies
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        // Blend state
+        pipelineDesc.states.blendState.independentBlendEnable = true;
+
+        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+
+        pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
+
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R16G16B16A16_FLOAT; // Transparency format
+        pipelineDesc.states.renderTargetFormats[1] = Renderer::ImageFormat::R16_FLOAT; // Transparency weight format
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> permutationFields =
+        {
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawTransparent.vs.hlsl", permutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        vertexShaderDesc.shaderEntry.debugName = "Model/DrawTransparent.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+            
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawTransparent.ps.hlsl", permutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        pixelShaderDesc.shaderEntry.debugName = "Model/DrawTransparent.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Draw
+        _drawTransparentPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Skybox Opaque
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        // Render targets
+        pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> vertexPermutationFields =
+        {
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.vs.hlsl", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        vertexShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        std::vector<Renderer::PermutationField> pixelPermutationFields =
+        {
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" },
+            { "TRANSPARENCY", "0"  }
+        };
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps.hlsl", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        pixelShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Draw
+        _drawSkyboxOpaquePipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Skybox Transparent
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = false; // Is this really correct?
+        pipelineDesc.states.depthStencilState.depthWriteEnable = false;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Blend state
+        pipelineDesc.states.blendState.independentBlendEnable = true;
+
+        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+        pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+
+        pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
+        pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
+        pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+        pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        // Render targets
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R16G16B16A16_FLOAT; // Transparency format
+        pipelineDesc.states.renderTargetFormats[1] = Renderer::ImageFormat::R16_FLOAT; // Transparency weight format
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> vertexPermutationFields =
+        {
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.vs.hlsl", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        vertexShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        std::vector<Renderer::PermutationField> pixelPermutationFields =
+        {
+            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" },
+            { "TRANSPARENCY", "1"  }
+        };
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps.hlsl", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+        pixelShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Draw
+        _drawSkyboxOpaquePipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+}
 
 void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets)
 {
@@ -3176,51 +3415,7 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     renderPassDesc.depthStencil = params.depth;
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-
-    // Shaders
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Model/Draw.vs.hlsl";
-    vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
-    vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
-    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Model/Draw.ps.hlsl";
-    pixelShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
-    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-    // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = true;
-    pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-    // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = (params.shadowPass) ? Renderer::CullMode::NONE : Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-    pipelineDesc.states.rasterizerState.depthBiasEnabled = params.shadowPass;
-    pipelineDesc.states.rasterizerState.depthClampEnabled = params.shadowPass;
-
-    // Render targets
-    if (!params.shadowPass)
-    {
-        const Renderer::ImageDesc& rt0Desc = graphResources.GetImageDesc(params.rt0);
-        pipelineDesc.states.renderTargetFormats[0] = rt0Desc.format;
-
-        if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-        {
-            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(params.rt1);
-            pipelineDesc.states.renderTargetFormats[1] = desc.format;
-        }
-    }
-    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
-    pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
-    // Draw
-    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    Renderer::GraphicsPipelineID pipeline = params.shadowPass ? _drawShadowPipeline : _drawPipeline;
     commandList.BeginPipeline(pipeline);
 
     struct PushConstants
@@ -3260,68 +3455,12 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
 
     // Render targets
     renderPassDesc.renderTargets[0] = params.rt0;
-    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-    {
-        renderPassDesc.renderTargets[1] = params.rt1;
-    }
+    renderPassDesc.renderTargets[1] = params.rt1;
+
     renderPassDesc.depthStencil = params.depth;
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-
-    // Shaders
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Model/DrawTransparent.vs.hlsl";
-    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Model/DrawTransparent.ps.hlsl";
-    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-    // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = true;
-    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-    // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-
-    // Blend state
-    pipelineDesc.states.blendState.independentBlendEnable = true;
-
-    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
-
-    pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
-    pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
-    pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-    pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
-    pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
-    pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
-
-    // Render targets
-    const Renderer::ImageDesc& rt0Desc = graphResources.GetImageDesc(params.rt0);
-    pipelineDesc.states.renderTargetFormats[0] = rt0Desc.format;
-    if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-    {
-        const Renderer::ImageDesc& rt1Desc = graphResources.GetImageDesc(params.rt1);
-        pipelineDesc.states.renderTargetFormats[1] = rt1Desc.format;
-    }
-    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
-    pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
-    // Draw
-    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    Renderer::GraphicsPipelineID pipeline = _drawTransparentPipeline;
     commandList.BeginPipeline(pipeline);
 
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
@@ -3357,66 +3496,7 @@ void ModelRenderer::DrawSkybox(const RenderResources& resources, u8 frameIndex, 
     renderPassDesc.depthStencil = params.depth;
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-
-    // Shaders
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Model/DrawSkybox.vs.hlsl";
-    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Model/DrawSkybox.ps.hlsl";
-    pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-    pixelShaderDesc.AddPermutationField("TRANSPARENCY", isTransparent ? "1" : "0");
-
-    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-    // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = !isTransparent;
-    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-    pipelineDesc.states.depthStencilState.depthWriteEnable = !isTransparent;
-
-    // Blend state
-    if (isTransparent)
-    {
-        pipelineDesc.states.blendState.independentBlendEnable = true;
-
-        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-        pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
-
-        pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
-        pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
-        pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
-        pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-        pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
-        pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
-        pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
-    }
-
-    // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-
-    // Render targets
-    const Renderer::ImageDesc& rt0Desc = graphResources.GetImageDesc(params.rt0);
-    pipelineDesc.states.renderTargetFormats[0] = rt0Desc.format;
-    if (isTransparent)
-    {
-        const Renderer::ImageDesc& rt1Desc = graphResources.GetImageDesc(params.rt1);
-        pipelineDesc.states.renderTargetFormats[1] = rt1Desc.format;
-    }
-    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
-    pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
-    // Draw
-    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    Renderer::GraphicsPipelineID pipeline = isTransparent ? _drawSkyboxTransparentPipeline : _drawSkyboxOpaquePipeline;
     commandList.BeginPipeline(pipeline);
 
     commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);

@@ -34,6 +34,7 @@ struct ScatterCB
 [[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint64_t> _writeKeys;			// The sorted keys or prefixed data
 [[vk::binding(6, PER_PASS)]] RWStructuredBuffer<uint> _writeValues;				// the sorted payload data
 
+[shader("compute")]
 [numthreads(FFX_PARALLELSORT_THREADGROUP_SIZE, 1, 1)]
 void main(uint localID : SV_GroupThreadID, uint groupID : SV_GroupID)
 {

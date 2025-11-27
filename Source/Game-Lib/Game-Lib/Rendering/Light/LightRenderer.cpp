@@ -10,6 +10,7 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/TerrainTools.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
@@ -26,10 +27,14 @@
 
 AutoCVar_ShowFlag CVAR_DebugLightTiles(CVarCategory::Client | CVarCategory::Rendering, "debugLightTiles", "Debug draw light tiles", ShowFlag::DISABLED);
 
-LightRenderer::LightRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer, ModelRenderer* modelRenderer)
+LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, ModelRenderer* modelRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
     , _modelRenderer(modelRenderer)
+    , _classifyPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _debugPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::LIGHT)
 {
     CreatePermanentResources();
 }
@@ -268,14 +273,7 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, LightClassificationPass);
 
-            Renderer::ComputePipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "Light/Classification.cs.hlsl";
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+            Renderer::ComputePipelineID pipeline = _classificationPipeline;
             commandList.BeginPipeline(pipeline);
 
             uvec2 outputSize = _renderer->GetImageDimensions(resources.sceneColor, 0);
@@ -348,7 +346,7 @@ void LightRenderer::AddDebugPass(Renderer::RenderGraph* renderGraph, RenderResou
             overlayParams.overlayImage = data.debug;
             overlayParams.descriptorSet = data.debugSet;
 
-            RenderUtils::Overlay(_renderer, graphResources, commandList, frameIndex, overlayParams);
+            RenderUtils::Overlay(_renderer, _gameRenderer, graphResources, commandList, frameIndex, overlayParams);
         });
 }
 
@@ -389,6 +387,17 @@ void LightRenderer::CreatePermanentResources()
 
     _decalAddWork.resize(64);
     _decalRemoveWork.resize(64);
+
+    // Create pipeline
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "LightClassification";
+
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Light/Classification.cs.hlsl"_h);
+    shaderDesc.shaderEntry.debugName = "Light/Classification.cs.hlsl";
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+    _classificationPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
 u32 LightRenderer::CalculateNumTiles(const vec2& size)

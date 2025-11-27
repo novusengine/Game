@@ -1,5 +1,5 @@
 
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<float4> _vertices;
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<float4> _widgetWorldPositions;
@@ -15,8 +15,8 @@ struct CharDrawData
 
 struct VertexInput
 {
-    uint vertexID : SV_VertexID;
-    uint charDrawDataID : SV_InstanceID;
+    uint vertexID : SV_VulkanVertexID;
+    uint charDrawDataID : SV_VulkanInstanceID;
 };
 
 struct VertexOutput 
@@ -26,6 +26,7 @@ struct VertexOutput
     uint charDrawDataID : TEXCOORD1;
 };
 
+[shader("vertex")]
 VertexOutput main(VertexInput input)
 {
     CharDrawData charDrawData = _charDrawDatas[input.charDrawDataID];

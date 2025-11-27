@@ -18,6 +18,7 @@
 #include <robinhood/robinhood.h>
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -307,7 +308,7 @@ private:
         };
 
 public:
-    ModelRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~ModelRenderer();
 
     void Update(f32 deltaTime);
@@ -371,6 +372,7 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreateModelPipelines();
 
     void AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets);
     void AllocateTextureData(u32 numTextureDatas, TextureDataOffsets& offsets);
@@ -393,6 +395,7 @@ private:
 
 private:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
 
     std::mutex _textureLoadMutex;
@@ -433,6 +436,12 @@ private:
 
     CullingResourcesIndexed<DrawCallData> _opaqueSkyboxCullingResources;
     CullingResourcesIndexed<DrawCallData> _transparentSkyboxCullingResources;
+
+    Renderer::GraphicsPipelineID _drawPipeline;
+    Renderer::GraphicsPipelineID _drawShadowPipeline;
+    Renderer::GraphicsPipelineID _drawTransparentPipeline;
+    Renderer::GraphicsPipelineID _drawSkyboxOpaquePipeline;
+    Renderer::GraphicsPipelineID _drawSkyboxTransparentPipeline;
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

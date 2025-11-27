@@ -11,6 +11,7 @@
 #endif
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 class JoltDebugRenderer : public CulledRenderer
@@ -21,7 +22,7 @@ class JoltDebugRenderer : public CulledRenderer
 public:
     JPH_OVERRIDE_NEW_DELETE
 
-    JoltDebugRenderer(Renderer::Renderer* renderer, ::DebugRenderer* debugRenderer);
+    JoltDebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, ::DebugRenderer* debugRenderer);
 
     void Update(f32 deltaTime);
     void Clear();
@@ -108,6 +109,8 @@ private:
     };
 
 private:
+    GameRenderer* _gameRenderer = nullptr;
+
     CullingResourcesIndexed<DrawCallData> _indexedCullingResources;
     std::vector<DrawManifest> _indexedDrawManifests;
     
@@ -118,4 +121,6 @@ private:
 
     Renderer::GPUVector<PackedVertex> _vertices;
     Renderer::GPUVector<u32> _indices;
+
+    Renderer::GraphicsPipelineID _drawPipeline;
 };

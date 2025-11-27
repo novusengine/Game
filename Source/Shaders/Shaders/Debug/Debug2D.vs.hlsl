@@ -10,7 +10,7 @@ struct Vertex2D
 
 struct VSInput
 {
-	uint vertexID : SV_VertexID;
+	uint vertexID : SV_VulkanVertexID;
 };
 
 struct VSOutput
@@ -31,6 +31,7 @@ float4 GetVertexColor(uint inColor)
 	return color;
 }
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
 	Vertex2D vertex = _vertices[input.vertexID];

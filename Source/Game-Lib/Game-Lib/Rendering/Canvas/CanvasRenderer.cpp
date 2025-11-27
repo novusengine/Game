@@ -13,6 +13,7 @@
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -39,9 +40,11 @@ void CanvasRenderer::Clear()
     _renderer->UnloadTexturesInArray(_textures, 2);
 }
 
-CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
+    , _descriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -504,12 +507,13 @@ void CanvasRenderer::CreatePermanentResources()
 
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.path = "UI/Panel.vs.hlsl";
-
-        Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.path = "UI/Panel.ps.hlsl";
-
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "UI/Panel.vs.hlsl";
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "UI/Panel.ps.hlsl";
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Blending
@@ -533,12 +537,13 @@ void CanvasRenderer::CreatePermanentResources()
 
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.path = "UI/Text.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "UI/Text.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.path = "UI/Text.ps.hlsl";
-
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "UI/Text.ps.hlsl";
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Blending

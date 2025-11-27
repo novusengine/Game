@@ -1,9 +1,10 @@
 #include "EditorRenderer.h"
 
-#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
-#include <Game-Lib/Rendering/RenderResources.h>
-#include <Game-Lib/Util/ServiceLocator.h>
-#include <Game-Lib/Application/EnttRegistries.h>
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Application/EnttRegistries.h"
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -16,8 +17,9 @@ AutoCVar_Int CVAR_WorldGridEnabled(CVarCategory::Client | CVarCategory::Renderin
 AutoCVar_Float CVAR_WorldGridFadeStart(CVarCategory::Client | CVarCategory::Rendering, "worldGridFadeStart", "set the starting value from where the world grid will start fading", 80.0f);
 AutoCVar_Float CVAR_WorldGridFadeEnd(CVarCategory::Client | CVarCategory::Rendering, "worldGridFadeEnd", "set the starting value from where the world grid will stop fading", 110.0f);
 
-EditorRenderer::EditorRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+EditorRenderer::EditorRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     //, _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
@@ -72,43 +74,8 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             renderPassDesc.depthStencil = data.depth;
             commandList.BeginRenderPass(renderPassDesc);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
-
-            // Shaders
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "Editor/WorldGrid.vs.hlsl";
-
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "Editor/WorldGrid.ps.hlsl";
-
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-            // Depth state
-            pipelineDesc.states.depthStencilState.depthEnable = true;
-            pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER_EQUAL;
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-            pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-            // Blending
-            pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-            pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-            pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-            pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
-            pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-
-            // Render targets
-            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.sceneColor);
-            pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-            const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(data.depth);
-            pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
             // Set pipeline
-            Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+            Renderer::GraphicsPipelineID pipeline = _worldGridPipeline;
             commandList.BeginPipeline(pipeline);
 
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
@@ -136,5 +103,37 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
 
 void EditorRenderer::CreatePermanentResources()
 {
+    Renderer::GraphicsPipelineDesc pipelineDesc;
 
+    // Shaders
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.vs.hlsl"_h);
+    vertexShaderDesc.shaderEntry.debugName = "Editor/WorldGrid.vs.hlsl";
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.ps.hlsl"_h);
+    pixelShaderDesc.shaderEntry.debugName = "Editor/WorldGrid.ps.hlsl";
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER_EQUAL;
+
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
+
+    // Blending
+    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ZERO;
+    pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+
+    // Render targets
+    pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+    pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+    _worldGridPipeline = _worldGridPipeline = _renderer->CreatePipeline(pipelineDesc);
 }

@@ -3,6 +3,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/TerrainTools.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
@@ -25,11 +26,14 @@ AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, 
 AutoCVar_Float CVAR_FogBeginDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin", "Fog blending start distance", 200.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_FogEndDist(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd", "Fog blending end distance", 600.0f, CVarFlags::EditFloatDrag);
 
-MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
+MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
     , _lightRenderer(lightRenderer)
+    , _preEffectsPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -84,15 +88,7 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, PreEffectsPass);
 
-            Renderer::ComputePipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "PreEffectsPass.cs.hlsl";
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
-            commandList.BeginPipeline(pipeline);
+            commandList.BeginPipeline(_preEffectsPipeline);
 
             data.preEffectsSet.Bind("_visibilityBuffer", data.visibilityBuffer);
             data.preEffectsSet.BindStorage("_packedNormals", data.packedNormals, 0);
@@ -116,7 +112,7 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 
-            commandList.EndPipeline(pipeline);
+            commandList.EndPipeline(_preEffectsPipeline);
         });
 }
 
@@ -179,21 +175,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, MaterialPass);
 
-            Renderer::ComputePipelineDesc pipelineDesc;
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            const i32 shadowFilterMode = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "MaterialPass.cs.hlsl";
-            shaderDesc.AddPermutationField("DEBUG_ID", std::to_string(visibilityBufferDebugID));
-            shaderDesc.AddPermutationField("SHADOW_FILTER_MODE", std::to_string(shadowFilterMode));
-            shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-            shaderDesc.AddPermutationField("EDITOR_MODE", CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED ? "1" : "0");
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
-            commandList.BeginPipeline(pipeline);
+            commandList.BeginPipeline(_materialPipeline);
 
             // For some reason, this works when we're binding to modelSet despite the GPU side being bound as PER_PASS???
             data.materialSet.Bind("_visibilityBuffer", data.visibilityBuffer);
@@ -274,7 +256,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             uvec2 dispatchSize = uvec2((outputSize.x + 7) / 8, (outputSize.y + 7) / 8);
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 
-            commandList.EndPipeline(pipeline);
+            commandList.EndPipeline(_materialPipeline);
         });
 }
 
@@ -313,6 +295,36 @@ bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, con
 
 void MaterialRenderer::CreatePermanentResources()
 {
+    // Create Pre-Effects Pipeline
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/PreEffectsPass.cs.hlsl"_h);
+    shaderDesc.shaderEntry.debugName = "Material/PreEffectsPass.cs.hlsl";
+
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+    _preEffectsPipeline = _renderer->CreatePipeline(pipelineDesc);
+
+    // Create Material Pipeline
+    CreateMaterialPipeline();
+
+    CVAR_VisibilityBufferDebugID.AddOnValueChanged([this](const i32& val)
+    {
+        CreateMaterialPipeline();
+    });
+    CVAR_DrawTerrainWireframe.AddOnValueChanged([this](const ShowFlag& val)
+    {
+        CreateMaterialPipeline();
+    });
+
+    CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h, [this](const i32& val)
+    {
+        CreateMaterialPipeline();
+    });
+
+    // Register pipelines with descriptor sets
+    _preEffectsPassDescriptorSet.RegisterPipeline(_renderer, _preEffectsPipeline);
+    _materialPassDescriptorSet.RegisterPipeline(_renderer, _materialPipeline);
+
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.enabled = true;
     samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
@@ -341,6 +353,29 @@ void MaterialRenderer::CreatePermanentResources()
     vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
 
     AddDirectionalLight(direction, color, intensity, groundAmbientColor, groundAmbientIntensity, skyAmbientColor, skyAmbientIntensity, shadowColor);
+}
+
+void MaterialRenderer::CreateMaterialPipeline()
+{
+    const i32 shadowFilterMode = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h);
+
+    std::vector<Renderer::PermutationField> permutationFields = 
+    {
+        { "DEBUG_ID", std::to_string(CVAR_VisibilityBufferDebugID.Get()) },
+        { "SHADOW_FILTER_MODE", std::to_string(shadowFilterMode) },
+        { "SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0" },
+        { "EDITOR_MODE", CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED ? "1" : "0" }
+    };
+    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Material/MaterialPass.cs.hlsl", permutationFields);
+
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+    shaderDesc.shaderEntry.debugName = "Material/MaterialPass.cs.hlsl";
+
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+    _materialPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
 void MaterialRenderer::SyncToGPU()

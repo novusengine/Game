@@ -13,10 +13,13 @@ namespace Renderer
     class RenderGraphResources;
     class CommandList;
 }
+class GameRenderer;
 
 class RenderUtils
 {
 public:
+    static void Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
+
     struct BlitParams
     {
     public:
@@ -30,7 +33,7 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void Blit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params);
+    static void Blit(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params);
 
     struct DepthBlitParams
     {
@@ -44,7 +47,7 @@ public:
         
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void DepthBlit(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params);
+    static void DepthBlit(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params);
 
     struct OverlayParams
     {
@@ -59,7 +62,7 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void Overlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params);
+    static void Overlay(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params);
 
     struct DepthOverlayParams
     {
@@ -73,7 +76,7 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void DepthOverlay(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params);
+    static void DepthOverlay(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params);
 
     struct PictureInPictureParams
     {
@@ -89,7 +92,7 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void PictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params);
+    static void PictureInPicture(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params);
 
     struct DepthPictureInPictureParams
     {
@@ -104,7 +107,7 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void DepthPictureInPicture(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params);
+    static void DepthPictureInPicture(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params);
 
     static u32 CalcCullingBitmaskSize(size_t numObjects)
     {
@@ -137,6 +140,6 @@ public:
 
         Renderer::DescriptorSetResource descriptorSet;
     };
-    static void CopyDepthToColor(Renderer::Renderer* renderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params);
+    static void CopyDepthToColor(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params);
 private:
 };

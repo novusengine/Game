@@ -1,13 +1,8 @@
 #ifndef SHADOWS_INCLUDED
 #define SHADOWS_INCLUDED
 
-#include "globalData.inc.hlsl"
-
-#define MAX_SHADOW_CASCADES 8 // Has to be kept in sync with the one in RenderSettings.h
-
-[[vk::binding(0, LIGHT)]] SamplerComparisonState _shadowCmpSampler;
-[[vk::binding(1, LIGHT)]] SamplerState _shadowPointClampSampler;
-[[vk::binding(2, LIGHT)]] Texture2D<float> _shadowCascadeRTs[MAX_SHADOW_CASCADES];
+#include "DescriptorSet/Global.inc.hlsl"
+#include "DescriptorSet/Light.inc.hlsl"
 
 struct ShadowSettings
 {

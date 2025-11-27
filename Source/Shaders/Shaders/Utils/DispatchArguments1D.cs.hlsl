@@ -1,3 +1,4 @@
+
 struct Constants
 {
 	uint sourceByteOffset;
@@ -10,6 +11,7 @@ struct Constants
 
 [[vk::push_constant]] Constants _constants;
 
+[shader("compute")]
 [numthreads(1, 1, 1)]
 void main()
 {

@@ -26,8 +26,13 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
+#include <Base/Memory/Bytebuffer.h>
+#include <Base/Memory/FileReader.h>
+
+#include <FileFormat/Novus/ShaderPack/ShaderPack.h>
 
 #include <Input/InputManager.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderSettings.h>
 #include <Renderer/RenderGraph.h>
@@ -134,6 +139,14 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
     _renderer = new Renderer::RendererVK(_window);
+    _renderer->SetGetShaderEntryCallback([this](u32 shaderNameHash) -> const Renderer::ShaderEntry&
+    {
+        return GetShaderEntry(shaderNameHash);
+    });
+    _renderer->SetGetBlitPipelineCallback([this](u32 shaderNameHash) -> Renderer::GraphicsPipelineID
+    {
+        return GetBlitPipeline(shaderNameHash);
+    });
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
@@ -142,38 +155,38 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     InitImgui();
     _renderer->InitDebug();
 
-    _debugRenderer = new DebugRenderer(_renderer);
-    _joltDebugRenderer = new JoltDebugRenderer(_renderer, _debugRenderer);
+    CreatePermanentResources();
 
-    _modelRenderer = new ModelRenderer(_renderer, _debugRenderer);
-    _lightRenderer = new LightRenderer(_renderer, _debugRenderer, _modelRenderer);
+    _debugRenderer = new DebugRenderer(_renderer, this);
+    _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
+
+    _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
+    _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
     _modelLoader = new ModelLoader(_modelRenderer, _lightRenderer);
     _modelLoader->Init();
 
-    _liquidRenderer = new LiquidRenderer(_renderer, _debugRenderer);
+    _liquidRenderer = new LiquidRenderer(_renderer, this, _debugRenderer);
     _liquidLoader = new LiquidLoader(_liquidRenderer);
 
-    _terrainRenderer = new TerrainRenderer(_renderer, _debugRenderer);
+    _terrainRenderer = new TerrainRenderer(_renderer, this, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
     _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
-    _textureRenderer = new TextureRenderer(_renderer, _debugRenderer);
+    _textureRenderer = new TextureRenderer(_renderer, this, _debugRenderer);
 
     _modelLoader->SetTerrainLoader(_terrainLoader);
 
     _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
     
-    _materialRenderer = new MaterialRenderer(_renderer, _terrainRenderer, _modelRenderer, _lightRenderer);
-    _skyboxRenderer = new SkyboxRenderer(_renderer, _debugRenderer);
-    _editorRenderer = new EditorRenderer(_renderer, _debugRenderer);
-    _canvasRenderer = new CanvasRenderer(_renderer, _debugRenderer);
+    _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _lightRenderer);
+    _skyboxRenderer = new SkyboxRenderer(_renderer, this, _debugRenderer);
+    _editorRenderer = new EditorRenderer(_renderer, this, _debugRenderer);
+    _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
-    _effectRenderer = new EffectRenderer(_renderer);
-    _shadowRenderer = new ShadowRenderer(_renderer, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
-    _pixelQuery = new PixelQuery(_renderer);
+    _effectRenderer = new EffectRenderer(_renderer, this);
+    _shadowRenderer = new ShadowRenderer(_renderer, this, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
+    _pixelQuery = new PixelQuery(_renderer, this);
 
-    CreatePermanentResources();
-
-    DepthPyramidUtils::InitBuffers(_renderer);
+    DepthPyramidUtils::Init(_renderer, this);
 
     _nameHashToCursor.reserve(128);
 }
@@ -355,6 +368,7 @@ f32 GameRenderer::Render()
 
             DepthPyramidUtils::BuildPyramidParams params;
             params.renderer = _renderer;
+            params.gameRenderer = this;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.resources = &_resources;
@@ -477,6 +491,25 @@ bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
     return true;
 }
 
+const Renderer::ShaderEntry& GameRenderer::GetShaderEntry(u32 shaderNameHash)
+{
+    if (_shaderNameHashToShaderEntry.contains(shaderNameHash) == false)
+    {
+        NC_LOG_CRITICAL("GameRenderer::GetShaderEntry Tried to get ShaderEntry for unknown shader name hash: {}", shaderNameHash);
+    }
+    return _shaderNameHashToShaderEntry[shaderNameHash];
+}
+
+Renderer::GraphicsPipelineID GameRenderer::GetBlitPipeline(u32 shaderNameHash)
+{
+    if (_blitPipelines.contains(shaderNameHash) == false)
+    {
+        NC_LOG_CRITICAL("GameRenderer::GetBlitPipeline Tried to get Blit Pipeline for unknown shader name hash: {}", shaderNameHash);
+    }
+
+    return _blitPipelines[shaderNameHash];
+}
+
 bool GameRenderer::SetImguiTheme(u32 themeNameHash)
 {
     if (!_themeNameHashToIndex.contains(themeNameHash))
@@ -499,6 +532,34 @@ const std::string& GameRenderer::GetGPUName()
 }
 
 void GameRenderer::CreatePermanentResources()
+{
+    CreateRenderTargets();
+    LoadShaderPacks();
+    CreateBlitPipelines();
+
+    // Frame allocator, this is a fast allocator for data that is only needed this frame
+    {
+        const size_t FRAME_ALLOCATOR_SIZE = 16 * 1024 * 1024; // 16 MB
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            _frameAllocator[i] = new Memory::StackAllocator();
+            _frameAllocator[i]->Init(FRAME_ALLOCATOR_SIZE);
+        }
+    }
+
+    _resources.sceneRenderedSemaphore = _renderer->CreateNSemaphore();
+    for (u32 i = 0; i < _resources.frameSyncSemaphores.Num; i++)
+    {
+        _resources.frameSyncSemaphores.Get(i) = _renderer->CreateNSemaphore();
+    }
+
+    _resources.cameras.SetDebugName("Cameras");
+    _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    _resources.cameras.Add(Camera());
+}
+
+void GameRenderer::CreateRenderTargets()
 {
     // Visibility Buffer rendertarget
     Renderer::ImageDesc visibilityBufferDesc;
@@ -615,27 +676,111 @@ void GameRenderer::CreatePermanentResources()
     depthColorCopyDesc.clearColor = Color::Clear;
 
     _resources.depthColorCopy = _renderer->CreateImage(depthColorCopyDesc);
+}
 
-    // Frame allocator, this is a fast allocator for data that is only needed this frame
+void GameRenderer::LoadShaderPacks()
+{
+    // Load all shader packs into memory
+    std::filesystem::path binPath = std::filesystem::path("Data/Shaders/");
+
+    // Load all .shaderpack files
+    for(const auto& entry : std::filesystem::recursive_directory_iterator(binPath))
     {
-        const size_t FRAME_ALLOCATOR_SIZE = 16 * 1024 * 1024; // 16 MB
+        if (entry.path().extension() != ".shaderpack")
+            continue;
 
-        for (u32 i = 0; i < 2; i++)
+        FileReader fileReader(entry.path().string());
+        if (!fileReader.Open())
         {
-            _frameAllocator[i] = new Memory::StackAllocator();
-            _frameAllocator[i]->Init(FRAME_ALLOCATOR_SIZE);
+            NC_LOG_ERROR("Failed to open shader pack: {}", entry.path().string());
+            continue;
+        }
+
+        u64 bufferSize = fileReader.Length();
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferSize);
+        fileReader.Read(buffer.get(), bufferSize);
+
+        FileFormat::ShaderPack shaderPack;
+        if (!FileFormat::ShaderPack::Read(buffer, shaderPack))
+        {
+            fileReader.Close();
+            NC_LOG_ERROR("Failed to read shader pack: {}", entry.path().string());
+            continue;
+        }
+
+        LoadShaderPack(buffer, shaderPack);
+
+        std::filesystem::path relativePath = std::filesystem::relative(entry.path(), binPath);
+        u32 shaderPackNameHash = StringUtils::fnv1a_32(relativePath.string().c_str(), relativePath.string().length());
+        _shaderPackBuffers[shaderPackNameHash] = std::move(buffer);
+    }
+}
+
+void GameRenderer::LoadShaderPack(std::shared_ptr<Bytebuffer> buffer, FileFormat::ShaderPack& shaderPack)
+{
+    for (u32 i = 0; i < shaderPack.GetNumShaders(); i++)
+    {
+        FileFormat::ShaderRef* shaderRef = shaderPack.GetShaderRef(buffer, i);
+
+        Renderer::ShaderEntry shaderEntry =
+        {
+            .permutationNameHash = shaderRef->permutationNameHash,
+            .shaderData = buffer->GetDataPointer() + shaderRef->dataOffset,
+            .shaderSize = shaderRef->dataSize,
+        };
+        _shaderNameHashToShaderEntry[shaderRef->permutationNameHash] = shaderEntry;
+    }
+}
+
+void GameRenderer::CreateBlitPipelines()
+{
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.shaderEntry = GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
+    vertexShaderDesc.shaderEntry.debugName = "Blitting/Blit.vs.hlsl";
+    Renderer::VertexShaderID vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    const char* textureTypes[] =
+    {
+        "float",
+        "int",
+        "uint"
+    };
+
+    Renderer::GraphicsPipelineDesc pipelineDesc;
+    pipelineDesc.states.vertexShader = vertexShader;
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
+    pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+
+    for (u32 i = 0; i < 3; i++)
+    {
+        const char* textureType = textureTypes[i];
+
+        for (u32 j = 1; j <= 4; j++)
+        {
+            std::string componentTypeName = textureType;
+            if (j > 1)
+            {
+                componentTypeName.append(std::to_string(j));
+            }
+
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "TEX_TYPE", componentTypeName }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
+
+            Renderer::PixelShaderDesc pixelShaderDesc;
+            pixelShaderDesc.shaderEntry = GetShaderEntry(shaderEntryNameHash);
+            pixelShaderDesc.shaderEntry.debugName = "Blit_" + componentTypeName;
+            pipelineDesc.debugName = "Blit_" + componentTypeName;
+            
+            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+            u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.length());
+            _blitPipelines[componentTypeNameHash] = _renderer->CreatePipeline(pipelineDesc);
         }
     }
-
-    _resources.sceneRenderedSemaphore = _renderer->CreateNSemaphore();
-    for (u32 i = 0; i < _resources.frameSyncSemaphores.Num; i++)
-    {
-        _resources.frameSyncSemaphores.Get(i) = _renderer->CreateNSemaphore();
-    }
-
-    _resources.cameras.SetDebugName("Cameras");
-    _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
-    _resources.cameras.Add(Camera());
 }
 
 void GameRenderer::CreateImguiThemes()

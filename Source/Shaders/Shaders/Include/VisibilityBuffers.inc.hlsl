@@ -1,9 +1,10 @@
 #ifndef VISIBILITYBUFFERS_INCLUDED
 #define VISIBILITYBUFFERS_INCLUDED
 
-#include "Terrain/TerrainShared.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
 #include "Model/ModelShared.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 // Choose barycentric reconstruction method method (default = plane). For ray, define RECONSTRUCT_BARY_RAY.
 //#define RECONSTRUCT_BARY_RAY
@@ -435,7 +436,7 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     for (uint i = 0; i < 3; i++) 
     {
         vertices[i] = LoadModelVertex(vertexIDs[i]);
-        if (instanceData.boneMatrixOffset != 4294967295) 
+        if (instanceData.boneMatrixOffset != 4294967295)
         {
             float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
             vertices[i].position = mul(float4(vertices[i].position, 1.0f), boneTransformMatrix).xyz;
@@ -458,6 +459,8 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
     result.uv0 = CalcFullBary2(bary, vertices[0].uv01.xy, vertices[1].uv01.xy, vertices[2].uv01.xy);
     result.uv1 = CalcFullBary2(bary, vertices[0].uv01.zw, vertices[1].uv01.zw, vertices[2].uv01.zw);
     result.color = float3(1, 1, 1);
+
+    //result.uv0.value = (vertices[0].uv01.xy + vertices[1].uv01.xy + vertices[2].uv01.xy) / 3.0f;
 
     float3 vertexNormal = normalize(InterpolateVertexAttribute(bary, vertices[0].normal, vertices[1].normal, vertices[2].normal));
     result.worldNormal = normalize(mul(vertexNormal, (float3x3)instanceMatrix));

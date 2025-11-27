@@ -31,6 +31,7 @@ struct CountCB
 [[vk::binding(1, PER_PASS)]] RWStructuredBuffer<uint64_t> _keys;				// The unsorted keys or scan data
 [[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint64_t> _sumTable;			// The sum table we will write sums to
 
+[shader("compute")]
 [numthreads(FFX_PARALLELSORT_THREADGROUP_SIZE, 1, 1)]
 void main(uint localID : SV_GroupThreadID, uint groupID : SV_GroupID)
 {

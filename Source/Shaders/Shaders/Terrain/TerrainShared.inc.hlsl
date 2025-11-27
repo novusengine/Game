@@ -1,10 +1,16 @@
 #ifndef TERRAIN_SHARED_INCLUDED
 #define TERRAIN_SHARED_INCLUDED
 
-#include "common.inc.hlsl"
+#include "DescriptorSet/Terrain.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 
-#define NUM_CHUNKS_PER_MAP_SIDE (64)
+#ifndef GEOMETRY_PASS
+#define GEOMETRY_PASS 0
+#endif
+
+
 #define NUM_CELLS_PER_CHUNK_SIDE (16)
 #define NUM_CELLS_PER_CHUNK (NUM_CELLS_PER_CHUNK_SIDE * NUM_CELLS_PER_CHUNK_SIDE)
 
@@ -150,7 +156,6 @@ bool IsHoleVertex(uint vertexId, uint2 holes)
     return isVertexAHole;
 }
 
-[[vk::binding(0, TERRAIN)]] StructuredBuffer<PackedCellData> _packedCellData;
 CellData LoadCellData(uint globalCellID)
 {
     const PackedCellData rawCellData = _packedCellData[globalCellID];
@@ -221,8 +226,6 @@ struct TerrainVertex
     float2 uv;
 #endif
 };
-
-[[vk::binding(1, TERRAIN)]] StructuredBuffer<PackedTerrainVertex> _packedTerrainVertices;
 
 float3 UnpackTerrainNormal(uint encoded)
 {
@@ -297,17 +300,5 @@ TerrainVertex LoadTerrainVertex(uint chunkID, uint cellID, uint vertexBaseOffset
 
     return vertex;
 }
-
-[[vk::binding(2, TERRAIN)]] StructuredBuffer<InstanceData> _instanceDatas;
-[[vk::binding(3, TERRAIN)]] StructuredBuffer<ChunkData> _chunkData;
-
-[[vk::binding(4, TERRAIN)]] SamplerState _alphaSampler;
-
-//[[vk::binding(5, TERRAIN)]] Texture2D<float4> _ambientOcclusion;
-
-//[[vk::binding(6, TERRAIN)]] RWTexture2D<float4> _resolvedColor;
-
-[[vk::binding(7, TERRAIN)]] Texture2D<float4> _terrainColorTextures[MAX_TEXTURES];
-[[vk::binding(8, TERRAIN)]] Texture2DArray<float4> _terrainAlphaTextures[NUM_CHUNKS_PER_MAP_SIDE * NUM_CHUNKS_PER_MAP_SIDE];
 
 #endif // TERRAIN_SHARED_INCLUDED

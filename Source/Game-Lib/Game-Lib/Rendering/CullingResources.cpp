@@ -3,6 +3,15 @@
 
 #include "Game-Lib/Rendering/RenderUtils.h"
 
+CullingResourcesBase::CullingResourcesBase()
+    : _occluderFillDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _cullingDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _geometryFillDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _geometryPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+{
+
+}
+
 void CullingResourcesBase::Init(InitParams& params)
 {
     NC_ASSERT(params.renderer != nullptr, "CullingResources : params.renderer is nullptr");

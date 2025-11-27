@@ -212,14 +212,17 @@ namespace Editor
                 {
                     bool bCheckbox = cvarSystem->GetCVarArray<i32>()->GetCurrent(p->arrayIndex) != 0;
                     if (ImGui::Checkbox("", &bCheckbox))
+                    {
                         cvarSystem->GetCVarArray<i32>()->SetCurrent(bCheckbox ? 1 : 0, p->arrayIndex);
-
-                    // intCVars[p->arrayIndex].current = bCheckbox ? 1 : 0;
+                    }
                 }
                 else
                 {
-                    if (ImGui::InputInt("", cvarSystem->GetCVarArray<i32>()->GetCurrentPtr(p->arrayIndex)))
-                        cvarSystem->MarkDirty();
+                    i32 val = cvarSystem->GetCVarArray<i32>()->GetCurrent(p->arrayIndex);
+                    if (ImGui::InputInt("", &val))
+                    {
+                        cvarSystem->GetCVarArray<i32>()->SetCurrent(val, p->arrayIndex);
+                    }
                 }
             }
             break;
@@ -236,13 +239,20 @@ namespace Editor
                 Label(p->name.c_str(), textWidth);
                 if (dragFlag)
                 {
-                    if (ImGui::InputDouble("", cvarSystem->GetCVarArray<f64>()->GetCurrentPtr(p->arrayIndex)))
-                        cvarSystem->MarkDirty();
+                    // TODO: Should this be a different kind of input for dragging?
+                    f64 val = cvarSystem->GetCVarArray<f64>()->GetCurrent(p->arrayIndex);
+                    if (ImGui::InputDouble("", &val))
+                    {
+                        cvarSystem->GetCVarArray<f64>()->SetCurrent(val, p->arrayIndex);
+                    }
                 }
                 else
                 {
-                    if (ImGui::InputDouble("", cvarSystem->GetCVarArray<f64>()->GetCurrentPtr(p->arrayIndex)))
-                        cvarSystem->MarkDirty();
+                    f64 val = cvarSystem->GetCVarArray<f64>()->GetCurrent(p->arrayIndex);
+                    if (ImGui::InputDouble("", &val))
+                    {
+                        cvarSystem->GetCVarArray<f64>()->SetCurrent(val, p->arrayIndex);
+                    }
                 }
             }
             break;
@@ -250,16 +260,22 @@ namespace Editor
         case CVarType::FLOATVEC:
         {
             Label(p->name.c_str(), textWidth);
-            if (ImGui::InputFloat4("", &(*cvarSystem->GetCVarArray<vec4>()->GetCurrentPtr(p->arrayIndex))[0]))
-                cvarSystem->MarkDirty();
+            vec4 val = cvarSystem->GetCVarArray<vec4>()->GetCurrent(p->arrayIndex);
+            if (ImGui::InputFloat4("", &(val)[0]))
+            {
+                cvarSystem->GetCVarArray<vec4>()->SetCurrent(val, p->arrayIndex);
+            }
 
             break;
         }
         case CVarType::INTVEC:
         {
             Label(p->name.c_str(), textWidth);
-            if (ImGui::InputInt4("", &(*cvarSystem->GetCVarArray<ivec4>()->GetCurrentPtr(p->arrayIndex))[0]))
-                cvarSystem->MarkDirty();
+            ivec4 val = cvarSystem->GetCVarArray<ivec4>()->GetCurrent(p->arrayIndex);
+            if (ImGui::InputInt4("", &(val)[0]))
+            {
+                cvarSystem->GetCVarArray<ivec4>()->SetCurrent(val, p->arrayIndex);
+            }
 
             break;
         }
@@ -273,20 +289,22 @@ namespace Editor
             else
             {
                 Label(p->name.c_str(), textWidth);
-                if (ImGui::InputText("", cvarSystem->GetCVarArray<std::string>()->GetCurrentPtr(p->arrayIndex)))
-                    cvarSystem->MarkDirty();
+                std::string val = cvarSystem->GetCVarArray<std::string>()->GetCurrent(p->arrayIndex);
+                if (ImGui::InputText("", &val))
+                {
+                    cvarSystem->GetCVarArray<std::string>()->SetCurrent(val, p->arrayIndex);
+                }
             }
             break;
         }
         case CVarType::SHOWFLAG:
         {
             Label(p->name.c_str(), textWidth);
-            bool enabled = *cvarSystem->GetCVarArray<ShowFlag>()->GetCurrentPtr(p->arrayIndex) == ShowFlag::ENABLED;
+            bool enabled = cvarSystem->GetCVarArray<ShowFlag>()->GetCurrent(p->arrayIndex) == ShowFlag::ENABLED;
 
             if (ImGui::Checkbox("", &enabled))
             {
-                *cvarSystem->GetCVarArray<ShowFlag>()->GetCurrentPtr(p->arrayIndex) = enabled ? ShowFlag::ENABLED : ShowFlag::DISABLED;
-                cvarSystem->MarkDirty();
+                cvarSystem->GetCVarArray<ShowFlag>()->SetCurrent(enabled ? ShowFlag::ENABLED : ShowFlag::DISABLED, p->arrayIndex);
             }
             break;
         }

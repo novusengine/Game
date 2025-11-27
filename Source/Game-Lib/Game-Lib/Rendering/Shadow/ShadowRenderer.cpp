@@ -32,8 +32,9 @@ AutoCVar_Float CVAR_ShadowDepthBiasSlopeFactor(CVarCategory::Client | CVarCatego
 
 #define TIMESLICED_CASCADES 0
 
-ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
+ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)

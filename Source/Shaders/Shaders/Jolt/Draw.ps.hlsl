@@ -1,4 +1,5 @@
-#include "common.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 
 struct PSInput
 {
@@ -11,6 +12,7 @@ struct PSOutput
 	uint4 vBuffer : SV_Target0;
 };
 
+[shader("fragment")]
 PSOutput main(PSInput input) : SV_Target0
 {
 	float4 color = input.color;

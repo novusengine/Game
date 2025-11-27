@@ -14,15 +14,18 @@ namespace Renderer
     class RenderGraphResources;
     class CommandList;
 }
+class GameRenderer;
+
 class DepthPyramidUtils
 {
 public:
-    static void InitBuffers(Renderer::Renderer* renderer);
+    static void Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
     struct BuildPyramidParams
     {
     public:
         Renderer::Renderer* renderer;
+        GameRenderer* gameRenderer;
         Renderer::RenderGraphResources* graphResources;
         Renderer::CommandList* commandList;
         RenderResources* resources;
@@ -42,4 +45,6 @@ public:
     static Renderer::DescriptorSet _copyDescriptorSet;
     static Renderer::DescriptorSet _pyramidDescriptorSet;
     static Renderer::BufferID _atomicBuffer;
+    static Renderer::ComputePipelineID _blitDepthPipeline;
+    static Renderer::ComputePipelineID _downsamplePipeline;
 };

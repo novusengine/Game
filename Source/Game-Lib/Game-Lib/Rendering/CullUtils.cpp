@@ -4,6 +4,8 @@
 #include "Downsampler/ffx_a.h"
 #include "Downsampler/ffx_spd.h"
 
+#include "Game-Lib/Rendering/GameRenderer.h"
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraphResources.h>
 #include <Renderer/CommandList.h>
@@ -13,16 +15,18 @@
 
 Renderer::SamplerID DepthPyramidUtils::_copySampler;
 Renderer::SamplerID DepthPyramidUtils::_pyramidSampler;
-Renderer::DescriptorSet DepthPyramidUtils::_copyDescriptorSet;
-Renderer::DescriptorSet DepthPyramidUtils::_pyramidDescriptorSet;
+Renderer::DescriptorSet DepthPyramidUtils::_copyDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS);
+Renderer::DescriptorSet DepthPyramidUtils::_pyramidDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS);
 Renderer::BufferID DepthPyramidUtils::_atomicBuffer;
+Renderer::ComputePipelineID DepthPyramidUtils::_blitDepthPipeline;
+Renderer::ComputePipelineID DepthPyramidUtils::_downsamplePipeline;
 
 inline u32 GetGroupCount(u32 threadCount, u32 localSize)
 {
     return (threadCount + localSize - 1) / localSize;
 }
 
-void DepthPyramidUtils::InitBuffers(Renderer::Renderer* renderer)
+void DepthPyramidUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
 {
     Renderer::BufferDesc desc;
     desc.name = "DepthPyramidAtomicCounters";
@@ -30,9 +34,9 @@ void DepthPyramidUtils::InitBuffers(Renderer::Renderer* renderer)
     desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
 
     _atomicBuffer = renderer->CreateAndFillBuffer(_atomicBuffer, desc, [](void* mappedMemory, size_t size)
-        {
-            memset(mappedMemory, 0, size);
-        });
+    {
+        memset(mappedMemory, 0, size);
+    });
     _pyramidDescriptorSet.Bind("spdGlobalAtomic", _atomicBuffer);
 
     Renderer::SamplerDesc copySamplerDesc;
@@ -58,6 +62,29 @@ void DepthPyramidUtils::InitBuffers(Renderer::Renderer* renderer)
 
     _pyramidSampler = renderer->CreateSampler(pyramidSamplerDesc);
     _pyramidDescriptorSet.Bind("srcSampler", _pyramidSampler);
+
+    // Init pipelines
+    Renderer::ComputePipelineDesc pipelineDesc;
+    {
+        pipelineDesc.debugName = "Blit Depthpyramid";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/BlitDepth.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "Blitting/BlitDepth.cs.hlsl";
+        pipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
+
+        _blitDepthPipeline = renderer->CreatePipeline(pipelineDesc);
+    }
+    {
+        pipelineDesc.debugName = "Downsample Depthpyramid";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = gameRenderer->GetShaderEntry("DownSampler/SinglePassDownsampler.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "DownSampler/SinglePassDownsampler.cs.hlsl";
+        pipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
+
+        _downsamplePipeline = renderer->CreatePipeline(pipelineDesc);
+    }
 }
 
 void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
@@ -66,15 +93,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
     // Copy first mip
     {
-        Renderer::ComputePipelineDesc blitPipelineDesc;
-        blitPipelineDesc.debugName = "Blit Depthpyramid";
-        params.graphResources->InitializePipelineDesc(blitPipelineDesc);
-
-        Renderer::ComputeShaderDesc shaderDesc;
-        shaderDesc.path = "Blitting/blitDepth.cs.hlsl";
-        blitPipelineDesc.computeShader = params.renderer->LoadShader(shaderDesc);
-
-        Renderer::ComputePipelineID pipeline = params.renderer->CreatePipeline(blitPipelineDesc);
+        Renderer::ComputePipelineID pipeline = _blitDepthPipeline;
         params.commandList->BeginPipeline(pipeline);
 
         params.copyDescriptorSet.Bind("_source", params.depth);
@@ -93,7 +112,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
         params.commandList->PushConstant(copyData, 0, sizeof(CopyParams));
 
-        params.commandList->BindDescriptorSet(Renderer::GLOBAL, params.copyDescriptorSet, params.frameIndex);
+        params.commandList->BindDescriptorSet(Renderer::PER_PASS, params.copyDescriptorSet, params.frameIndex);
         params.commandList->Dispatch(GetGroupCount(params.pyramidSize.x, 32), GetGroupCount(params.pyramidSize.y, 32), 1);
 
         params.commandList->EndPipeline(pipeline);
@@ -103,15 +122,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
     // Downsample
     {
-        Renderer::ComputePipelineDesc pipelineDesc;
-        pipelineDesc.debugName = "Downsample Depthpyramid";
-        params.graphResources->InitializePipelineDesc(pipelineDesc);
-
-        Renderer::ComputeShaderDesc shaderDesc;
-        shaderDesc.path = "DownSampler/SinglePassDownsampler.cs.hlsl";
-        pipelineDesc.computeShader = params.renderer->LoadShader(shaderDesc);
-
-        Renderer::ComputePipelineID pipeline = params.renderer->CreatePipeline(pipelineDesc);
+        Renderer::ComputePipelineID pipeline = _downsamplePipeline;
         params.commandList->BeginPipeline(pipeline);
 
         params.pyramidDescriptorSet.Bind("imgSrc", params.depthPyramid, 0);

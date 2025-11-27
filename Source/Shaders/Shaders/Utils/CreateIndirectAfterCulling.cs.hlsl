@@ -1,11 +1,12 @@
 permutation IS_INDEXED = [0, 1];
 permutation DEBUG_ORDERED = [0, 1];
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
-#include "Include/PyramidCulling.inc.hlsl"
 #include "Include/Debug.inc.hlsl"
+#include "Include/PyramidCulling.inc.hlsl"
 
 struct Constants
 {
@@ -52,6 +53,7 @@ struct CSInput
 };
 
 // One thread per drawcall
+[shader("compute")]
 #if DEBUG_ORDERED
 [numthreads(1, 1, 1)]
 #else

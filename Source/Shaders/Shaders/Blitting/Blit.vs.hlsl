@@ -1,7 +1,7 @@
 
 struct VSInput
 {
-    uint vertexID : SV_VertexID;
+    uint vertexID : SV_VulkanVertexID;
 };
 
 struct VSOutput
@@ -10,6 +10,7 @@ struct VSOutput
     float4 position : SV_POSITION;
 };
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
     VSOutput output;

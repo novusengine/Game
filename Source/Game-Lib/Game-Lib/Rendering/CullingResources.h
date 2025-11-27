@@ -18,6 +18,8 @@ struct InstanceRef
 class CullingResourcesBase
 {
 public:
+    CullingResourcesBase();
+
     struct InitParams
     {
         Renderer::Renderer* renderer = nullptr;

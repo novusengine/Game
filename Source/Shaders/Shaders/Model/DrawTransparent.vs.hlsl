@@ -1,12 +1,14 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
 
 struct VSInput
 {
-    uint vertexID : SV_VertexID;
-    uint culledInstanceID : SV_InstanceID;
+    uint vertexID : SV_VulkanVertexID;
+    uint culledInstanceID : SV_VulkanInstanceID;
 };
 
 struct VSOutput
@@ -18,6 +20,7 @@ struct VSOutput
     float4 posViewSpaceAndOpacity : TEXCOORD2;
 };
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
     uint instanceRefID = GetInstanceRefID(input.culledInstanceID);

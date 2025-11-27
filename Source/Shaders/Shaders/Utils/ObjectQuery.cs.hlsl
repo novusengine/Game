@@ -1,7 +1,7 @@
-permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
+
 #include "Include/VisibilityBuffers.inc.hlsl"
-#include "Terrain/TerrainShared.inc.hlsl"
 #include "Model/ModelShared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
 {
@@ -18,6 +18,7 @@ struct ObjectData
 [[vk::push_constant]] Constants _constants;
 [[vk::binding(0, PER_PASS)]] RWStructuredBuffer<ObjectData> _result;
 
+[shader("compute")]
 [numthreads(1, 1, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {

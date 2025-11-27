@@ -1,5 +1,5 @@
 
-#include "common.inc.hlsl"
+#include "Include/Common.inc.hlsl"
 
 struct PanelDrawData
 {
@@ -58,6 +58,7 @@ struct VertexOutput
     nointerpolation uint drawDataID : TEXCOORD1;
 };
 
+[shader("fragment")]
 float4 main(VertexOutput input) : SV_Target
 {
     PanelDrawData drawData = _panelDrawDatas[input.drawDataID];

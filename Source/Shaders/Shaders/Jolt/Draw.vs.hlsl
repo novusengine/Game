@@ -1,4 +1,5 @@
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
 
 struct PackedVertex
 {
@@ -30,8 +31,8 @@ struct InstanceRef
 
 struct VSInput
 {
-	uint vertexID : SV_VertexID;
-	uint culledInstanceID : SV_InstanceID;
+	uint vertexID : SV_VulkanVertexID;
+	uint culledInstanceID : SV_VulkanInstanceID;
 };
 
 struct VSOutput
@@ -54,6 +55,7 @@ Vertex LoadVertex(uint vertexID)
 	return vertex;
 }
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
 	uint instanceRefID = _culledInstanceLookupTable[input.culledInstanceID];

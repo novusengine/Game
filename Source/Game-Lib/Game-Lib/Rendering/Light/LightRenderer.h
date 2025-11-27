@@ -18,6 +18,7 @@ namespace Renderer
 }
 
 class DebugRenderer;
+class GameRenderer;
 class ModelRenderer;
 struct RenderResources;
 
@@ -27,7 +28,7 @@ class LightRenderer
     static constexpr u32 TILE_SIZE = 16; // in pixels, per axis (16 = 16x16 = 256 pixels per tile)
 
 public:
-    LightRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer, ModelRenderer* modelRenderer);
+    LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, ModelRenderer* modelRenderer);
     ~LightRenderer();
 
     void Update(f32 deltaTime);
@@ -41,7 +42,7 @@ public:
     void RemoveDecal(entt::entity entity);
 
     inline u32 CalculateNumTiles(const vec2& size);
-    inline uvec2 CalculateNumTiles2D(const vec2& size);
+    uvec2 CalculateNumTiles2D(const vec2& size);
 
     Renderer::DescriptorSet& GetTileDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
@@ -94,7 +95,7 @@ private:
 
     Renderer::BufferID _entityTilesBuffer;
 
-    Renderer::GraphicsPipelineID _debugPipeline;
+    Renderer::ComputePipelineID _classificationPipeline;
 
     moodycamel::ConcurrentQueue<DecalAddRequest> _decalAddRequests;
     std::vector<DecalAddRequest> _decalAddWork;
@@ -102,6 +103,7 @@ private:
     moodycamel::ConcurrentQueue<DecalRemoveRequest> _decalRemoveRequests;
     std::vector<DecalRemoveRequest> _decalRemoveWork;
 
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
 };

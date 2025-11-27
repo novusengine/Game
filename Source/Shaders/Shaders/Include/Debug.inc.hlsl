@@ -1,5 +1,7 @@
 #ifndef DEBUG_INCLUDED
 #define DEBUG_INCLUDED
+
+#include "DescriptorSet/Debug.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 
 static const float PI = 3.14159265f;
@@ -39,9 +41,6 @@ struct DebugVertex2D
 	float2 pos;
 	uint color;
 };
-
-[[vk::binding(0, DEBUG)]] RWStructuredBuffer<DebugVertex2D> _debugVertices2D;
-[[vk::binding(1, DEBUG)]] RWByteAddressBuffer _debugVertices2DCount;
 
 // The debug vertices need to be continuous in memory, so we have to allocate them upfront
 DebugDrawContext2D StartDraw2D(uint numVertices)
@@ -98,9 +97,6 @@ struct DebugVertex3D
 	float3 pos;
 	uint color;
 };
-
-[[vk::binding(2, DEBUG)]] RWStructuredBuffer<DebugVertex3D> _debugVertices3D;
-[[vk::binding(3, DEBUG)]] RWByteAddressBuffer _debugVertices3DCount;
 
 // The debug vertices need to be continuous in memory, so we have to allocate them upfront
 DebugDrawContext3D StartDraw3D(uint numVertices)

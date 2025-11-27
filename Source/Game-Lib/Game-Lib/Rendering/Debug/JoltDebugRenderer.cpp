@@ -31,8 +31,9 @@ AutoCVar_Int CVAR_JoltDebugDrawAABBs(CVarCategory::Client | CVarCategory::Render
 
 AutoCVar_Int CVAR_JoltDebugValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "joltValidateGPUVectors", "if enabled ON START we will validate GPUVector uploads", 0, CVarFlags::EditCheckbox);
 
-JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, ::DebugRenderer* debugRenderer)
-    : CulledRenderer(renderer, debugRenderer)
+JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, ::DebugRenderer* debugRenderer)
+    : CulledRenderer(renderer, gameRenderer, debugRenderer)
+    , _gameRenderer(gameRenderer)
 {
 #ifdef JPH_DEBUG_RENDERER
     // Initialize base class
@@ -851,34 +852,7 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
     renderPassDesc.depthStencil = params.depth;
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-
-    // Shader
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Jolt/Draw.vs.hlsl";
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Jolt/Draw.ps.hlsl";
-
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-    // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = true;
-    pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-    // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-
-    const Renderer::ImageDesc& desc = graphResources.GetImageDesc(params.rt0);
-    pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
-    pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
-    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+    Renderer::GraphicsPipelineID pipeline = _drawPipeline;
 
     commandList.BeginPipeline(pipeline);
 
@@ -942,6 +916,37 @@ void JoltDebugRenderer::CreatePermanentResources()
     _cullingResources.Init(initParams);
 
     SyncToGPU();
+
+    // Create pipeline
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+
+        // Shader
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "Jolt/Draw.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "Jolt/Draw.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer
+
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
 }
 
 void JoltDebugRenderer::SyncToGPU()

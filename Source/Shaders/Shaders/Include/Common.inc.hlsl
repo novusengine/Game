@@ -10,6 +10,10 @@
 #define MAX_TEXTURES_NORMAL 4096 // Don't increase this or we get issues with certain graphics cards not supporting enough textures
 #define MAX_TEXTURES_EXTENDED 8192 // Keep this synced with RenderSettings.h
 
+#ifndef SUPPORTS_EXTENDED_TEXTURES
+#define SUPPORTS_EXTENDED_TEXTURES 0
+#endif
+
 #if SUPPORTS_EXTENDED_TEXTURES
 #define MAX_TEXTURES MAX_TEXTURES_EXTENDED
 #else

@@ -12,6 +12,7 @@ namespace Renderer
 
 }
 
+class GameRenderer;
 struct RenderResources;
 //struct FfxCacaoContext;
 //struct FfxCacaoSettings;
@@ -19,7 +20,7 @@ struct RenderResources;
 class EffectRenderer
 {
 public:
-    EffectRenderer(Renderer::Renderer* renderer);
+    EffectRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
     ~EffectRenderer();
 
     void Update(f32 deltaTime);
@@ -30,7 +31,8 @@ private:
     void CreatePermanentResources();
 
 private:
-    Renderer::Renderer* _renderer;
+    Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
 
     //FfxCacaoContext* _cacaoContext = nullptr;
     //FfxCacaoSettings* _cacaoSettings = nullptr;

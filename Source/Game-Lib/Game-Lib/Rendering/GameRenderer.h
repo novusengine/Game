@@ -16,6 +16,11 @@ namespace Novus
     class Window;
 }
 
+namespace FileFormat
+{
+    struct ShaderPack;
+}
+
 struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
@@ -86,6 +91,9 @@ public:
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
 
+    const Renderer::ShaderEntry& GetShaderEntry(u32 shaderNameHash);
+    Renderer::GraphicsPipelineID GetBlitPipeline(u32 shaderNameHash);
+
     const std::vector<ImGuiTheme>& GetImguiThemes() { return _imguiThemes; }
     bool IsCurrentTheme(u32 themeNameHash) { return _currentThemeHash == themeNameHash; }
     bool SetImguiTheme(u32 themeNameHash);
@@ -95,6 +103,11 @@ public:
 
 private:
     void CreatePermanentResources();
+
+    void CreateRenderTargets();
+    void LoadShaderPacks();
+    void LoadShaderPack(std::shared_ptr<Bytebuffer> buffer, FileFormat::ShaderPack& shaderPack);
+    void CreateBlitPipelines();
 
     void CreateImguiThemes();
     void InitImgui();
@@ -148,4 +161,9 @@ private:
     robin_hood::unordered_map<u32, u32> _themeNameHashToIndex;
 
     robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;
+
+    robin_hood::unordered_map<u32, std::shared_ptr<Bytebuffer>> _shaderPackBuffers;
+    robin_hood::unordered_map<u32, Renderer::ShaderEntry> _shaderNameHashToShaderEntry;
+
+    robin_hood::unordered_map<u32, Renderer::GraphicsPipelineID> _blitPipelines;
 };

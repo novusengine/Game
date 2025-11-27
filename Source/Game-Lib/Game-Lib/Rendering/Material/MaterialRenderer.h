@@ -12,15 +12,16 @@ namespace Renderer
 
 }
 
-class TerrainRenderer;
-class ModelRenderer;
+class GameRenderer;
 class LightRenderer;
+class ModelRenderer;
+class TerrainRenderer;
 struct RenderResources;
 
 class MaterialRenderer
 {
 public:
-    MaterialRenderer(Renderer::Renderer* renderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer);
+    MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, LightRenderer* lightRenderer);
     ~MaterialRenderer();
 
     void Update(f32 deltaTime);
@@ -34,6 +35,7 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreateMaterialPipeline();
 
     void SyncToGPU();
 
@@ -49,6 +51,10 @@ private:
 
 private:
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer;
+
+    Renderer::ComputePipelineID _preEffectsPipeline;
+    Renderer::ComputePipelineID _materialPipeline;
 
     Renderer::DescriptorSet _preEffectsPassDescriptorSet;
     Renderer::DescriptorSet _materialPassDescriptorSet;

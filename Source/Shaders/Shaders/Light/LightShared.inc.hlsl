@@ -1,6 +1,6 @@
 #ifndef LIGHT_SHARED_INCLUDED
 #define LIGHT_SHARED_INCLUDED
-#include "common.inc.hlsl"
+#include "Include/Common.inc.hlsl"
 
 static const uint TILED_CULLING_BLOCKSIZE = 16;
 static const uint TILED_CULLING_THREADSIZE = 8;
@@ -33,7 +33,7 @@ struct Decal
     uint textureID;
     uint flags;
 
-    bool IsTwoSided() { return (flags & DECAL_FLAG_TWOSIDED) != 0; }
+    bool IsTwoSided() { return (flags & DecalFlags::DECAL_FLAG_TWOSIDED) != 0; }
 };
 
 float3 ApplyDecal(float3 pixelWS, float3 normalWS, Decal d, Texture2D decalTexture, SamplerState sampler)

@@ -12,6 +12,13 @@
 struct RenderResources
 {
 public:
+    RenderResources() 
+        : globalDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL)
+        , lightDescriptorSet(Renderer::DescriptorSetSlot::LIGHT)
+    {
+
+    }
+
     // Permanent resources
     Renderer::GPUVector<Camera> cameras;
 

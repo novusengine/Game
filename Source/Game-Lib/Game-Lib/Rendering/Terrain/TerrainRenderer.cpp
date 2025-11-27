@@ -33,9 +33,14 @@ AutoCVar_Int CVAR_TerrainValidateTransfers(CVarCategory::Client | CVarCategory::
 
 AutoCVar_Int CVAR_TerrainCastShadow(CVarCategory::Client | CVarCategory::Rendering, "shadowTerrainCastShadow", "should Terrain cast shadows", 1, CVarFlags::EditCheckbox);
 
-TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
+    , _geometryPassDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN)
+    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN)
+    , _cullingPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _fillPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     if (CVAR_TerrainValidateTransfers.Get())
     {
@@ -326,15 +331,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             {
                 commandList.PushMarker("Reset indirect", Color::White);
 
-                Renderer::ComputePipelineDesc pipelineDesc;
-                pipelineDesc.debugName = "Terrain Reset indirect";
-                graphResources.InitializePipelineDesc(pipelineDesc);
-
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/resetIndirectBuffer.cs.hlsl";
-                pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::ComputePipelineID pipeline = _resetIndirectBufferPipeline;
                 commandList.BeginPipeline(pipeline);
 
                 struct ResetIndirectBufferConstants
@@ -363,15 +360,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Cull instances on GPU
-            Renderer::ComputePipelineDesc pipelineDesc;
-            pipelineDesc.debugName = "Terrain Culling";
-            graphResources.InitializePipelineDesc(pipelineDesc);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "Terrain/Culling.cs.hlsl";
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+            Renderer::ComputePipelineID pipeline = _cullingPipeline;
             commandList.BeginPipeline(pipeline);
 
             struct CullConstants
@@ -999,6 +988,133 @@ void TerrainRenderer::CreatePermanentResources()
 
     _chunkDatas.SetDebugName("TerrainChunkData");
     _chunkDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    CreateTerrainPipelines();
+}
+
+void TerrainRenderer::CreateTerrainPipelines()
+{
+    bool supportsExtendedTextures = _renderer->HasExtendedTextureSupport();
+
+    // Reset Indirect Buffer
+    {
+        Renderer::ComputePipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Reset indirect";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Utils/ResetIndirectBuffer.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "Utils/ResetIndirectBuffer.cs.hlsl";
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _resetIndirectBufferPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Fill Draw Calls
+    {
+        Renderer::ComputePipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Fill Draw Calls";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Terrain/FillDrawCalls.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "Terrain/FillDrawCalls.cs.hlsl";
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _fillDrawCallsPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Culling
+    {
+        Renderer::ComputePipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Culling";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Terrain/Culling.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "Terrain/Culling.cs.hlsl";
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _cullingPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Draw regular
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Draw";
+
+        // Shaders
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "EDITOR_PASS", "0" },
+                { "SHADOW_PASS", "0" },
+                { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs.hlsl", permutationFields);
+            vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            vertexShaderDesc.shaderEntry.debugName = "Terrain/Draw.vs.hlsl";
+            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        }
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.ps.hlsl", permutationFields);
+            pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            pixelShaderDesc.shaderEntry.debugName = "Terrain/Draw.ps.hlsl";
+            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+        }
+
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        // Render targets
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer format
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // Draw shadow
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Draw Shadow";
+
+        // Shaders
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "EDITOR_PASS", "0" },
+                { "SHADOW_PASS", "1" },
+                { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs.hlsl", permutationFields);
+            vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            vertexShaderDesc.shaderEntry.debugName = "Terrain/Draw.vs.hlsl";
+            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        }
+
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+        pipelineDesc.states.rasterizerState.depthBiasEnabled = true;
+        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
+
+        // Render targets
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
 }
 
 void TerrainRenderer::SyncToGPU()
@@ -1082,48 +1198,8 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     renderPassDesc.depthStencil = params.depth;
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-
-    // Shaders
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Terrain/Draw.vs.hlsl";
-    vertexShaderDesc.AddPermutationField("EDITOR_PASS", "0");
-    vertexShaderDesc.AddPermutationField("SHADOW_PASS", params.shadowPass ? "1" : "0");
-    vertexShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-    if (!params.shadowPass)
-    {
-        Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.path = "Terrain/Draw.ps.hlsl";
-        pixelShaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-    }
-
-    // Depth state
-    pipelineDesc.states.depthStencilState.depthEnable = true;
-    pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-    // Rasterizer state
-    pipelineDesc.states.rasterizerState.cullMode = params.shadowPass ? Renderer::CullMode::NONE : Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-    pipelineDesc.states.rasterizerState.depthBiasEnabled = params.shadowPass;
-    pipelineDesc.states.rasterizerState.depthClampEnabled = params.shadowPass;
-
-    // Render targets
-    if (!params.shadowPass)
-    {
-        const Renderer::ImageDesc& desc = graphResources.GetImageDesc(params.visibilityBuffer);
-        pipelineDesc.states.renderTargetFormats[0] = desc.format;
-    }
-    const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(params.depth);
-    pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
     // Set pipeline
-    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    Renderer::GraphicsPipelineID pipeline = _drawPipeline;
     commandList.BeginPipeline(pipeline);
 
     // Set index buffer
@@ -1165,14 +1241,7 @@ void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResource
 {
     commandList.PushMarker(params.passName + " Fill", Color::White);
 
-    Renderer::ComputePipelineDesc pipelineDesc;
-    graphResources.InitializePipelineDesc(pipelineDesc);
-
-    Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.path = "Terrain/FillDrawCalls.cs.hlsl";
-    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-    Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+    Renderer::ComputePipelineID pipeline = _fillDrawCallsPipeline;
     commandList.BeginPipeline(pipeline);
 
     struct FillDrawCallConstants

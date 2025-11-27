@@ -1,7 +1,7 @@
 
-[[vk::binding(0, GLOBAL)]] SamplerState _sampler;
-[[vk::binding(1, GLOBAL)]] Texture2D<float> _source;
-[[vk::binding(2, GLOBAL)]] RWTexture2D<float> _target;
+[[vk::binding(0, PER_PASS)]] SamplerState _sampler;
+[[vk::binding(1, PER_PASS)]] Texture2D<float> _source;
+[[vk::binding(2, PER_PASS)]] RWTexture2D<float> _target;
 
 struct Constants
 {
@@ -12,6 +12,7 @@ struct Constants
 
 [[vk::push_constant]] Constants _constants;
 
+[shader("compute")]
 [numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
