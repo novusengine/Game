@@ -1,7 +1,8 @@
 permutation IS_INDEXED = [0, 1];
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 #include "Include/PyramidCulling.inc.hlsl"
 
@@ -35,8 +36,7 @@ struct CSInput
     uint3 groupThreadID : SV_GroupThreadID;
 };
 
-// TODO: Rewrite this for instanced rendering
-
+[shader("compute")]
 [numthreads(32, 1, 1)]
 void main(CSInput input)
 {

@@ -12,6 +12,7 @@
 #include <robinhood/robinhood.h>
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -39,7 +40,7 @@ public:
 class TerrainRenderer
 {
 public:
-    TerrainRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    TerrainRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~TerrainRenderer();
 
     void Update(f32 deltaTime);
@@ -70,6 +71,7 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreateTerrainPipelines();
 
     void SyncToGPU();
 
@@ -148,7 +150,14 @@ private:
 
 private:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
+
+    Renderer::ComputePipelineID _resetIndirectBufferPipeline;
+    Renderer::ComputePipelineID _fillDrawCallsPipeline;
+    Renderer::ComputePipelineID _cullingPipeline;
+    Renderer::GraphicsPipelineID _drawPipeline;
+    Renderer::GraphicsPipelineID _drawShadowPipeline;
 
     Renderer::GPUVector<u16> _cellIndices;
     Renderer::GPUVector<TerrainVertex> _vertices;

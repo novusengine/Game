@@ -15,13 +15,14 @@ namespace Renderer
 
 struct RenderResources;
 class DebugRenderer;
-class TerrainRenderer;
+class GameRenderer;
 class ModelRenderer;
+class TerrainRenderer;
 
 class ShadowRenderer
 {
 public:
-    ShadowRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources);
+    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources);
     ~ShadowRenderer();
 
     void Update(f32 deltaTime, RenderResources& resources);
@@ -42,6 +43,7 @@ private:
 
 private:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
     TerrainRenderer* _terrainRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;

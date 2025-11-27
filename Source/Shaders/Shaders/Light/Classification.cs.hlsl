@@ -1,13 +1,14 @@
 // Based on the work of WickedEngine, thank you! https://github.com/turanszkij/WickedEngine/
 // https://github.com/turanszkij/WickedEngine/blob/master/WickedEngine/shaders/lightCullingCS.hlsl
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 #include "Include/Debug.inc.hlsl"
 #include "Light/LightShared.inc.hlsl"
 
-#define DEBUG_TILEDLIGHTCULLING
+//#define DEBUG_TILEDLIGHTCULLING
 #define ADVANCED_CULLING
 
 struct Constants
@@ -108,6 +109,7 @@ inline AABB WorldAABB_To_DecalSpace(AABB worldBox, float3 decalCenter, float4 de
 	return outB; 
 }
 
+[shader("compute")]
 [numthreads(TILED_CULLING_THREADSIZE, TILED_CULLING_THREADSIZE, 1)]
 void main(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint groupIndex : SV_GroupIndex)
 {

@@ -3,14 +3,17 @@ permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
-#include "Include/VisibilityBuffers.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+#include "DescriptorSet/Light.inc.hlsl"
+#include "DescriptorSet/Tiles.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Editor.inc.hlsl"
 #include "Include/Lighting.inc.hlsl"
-#include "Terrain/TerrainShared.inc.hlsl"
-#include "Model/ModelShared.inc.hlsl"
+#include "Include/VisibilityBuffers.inc.hlsl"
 #include "Light/LightShared.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
 {
@@ -29,12 +32,6 @@ struct Constants
 };
 
 [[vk::push_constant]] Constants _constants;
-
-// Tiled culling
-[[vk::binding(0, TILES)]] StructuredBuffer<uint> _entityTiles;
-
-// Lighting
-[[vk::binding(0, LIGHT)]] StructuredBuffer<PackedDecal> _packedDecals; // All decals in the world
 
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float4> _skyboxColor;
@@ -240,7 +237,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
 {
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
-
+    
     TextureData textureData = LoadModelTextureData(pixelVertexData.extraID);
 
     // Shade
@@ -305,6 +302,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     return saturate(color);
 }
 
+[shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {

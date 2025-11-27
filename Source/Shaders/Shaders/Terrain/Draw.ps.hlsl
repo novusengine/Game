@@ -1,10 +1,11 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
-#include "Terrain/TerrainShared.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
+#include "Terrain/TerrainShared.inc.hlsl"
 
 struct PSInput
 {
@@ -17,6 +18,7 @@ struct PSOutput
     uint2 visibilityBuffer : SV_Target0;
 };
 
+[shader("fragment")]
 PSOutput main(PSInput input)
 {
     PSOutput output;

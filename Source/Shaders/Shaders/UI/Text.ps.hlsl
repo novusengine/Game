@@ -1,5 +1,5 @@
 
-#include "common.inc.hlsl"
+#include "Include/Common.inc.hlsl"
 
 struct CharDrawData
 {
@@ -38,6 +38,7 @@ bool ShouldDiscard(float2 pos, float2 clipMin, float2 clipMax)
     return pos.x < clipMin.x || pos.x > clipMax.x || pos.y < clipMin.y || pos.y > clipMax.y;
 }
 
+[shader("fragment")]
 float4 main(VertexOutput input) : SV_Target
 {
     //return float4(1.0f, 0.0f, 0.0f, 0.3f);

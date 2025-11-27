@@ -5,6 +5,7 @@
 #include <Renderer/GPUVector.h>
 
 struct RenderResources;
+class GameRenderer;
 
 namespace Renderer
 {
@@ -16,7 +17,7 @@ namespace Renderer
 class DebugRenderer
 {
 public:
-    DebugRenderer(Renderer::Renderer* renderer);
+    DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
     ~DebugRenderer();
 
     void Update(f32 deltaTime);
@@ -56,7 +57,11 @@ public:
     void RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
+    void CreatePermanentResources();
+
+private:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
 
     struct DebugVertex2D
     {
@@ -96,11 +101,17 @@ private:
     Renderer::DescriptorSet _draw3DDescriptorSet;
     Renderer::DescriptorSet _draw3DIndirectDescriptorSet;
 
+    Renderer::GraphicsPipelineID _debugLine2DPipeline;
+    Renderer::GraphicsPipelineID _debugLine3DPipeline;
+
     // Solid
     Renderer::GPUVector<DebugVertex2D> _debugVerticesSolid2D;
     Renderer::GPUVector<DebugVertexSolid3D> _debugVerticesSolid3D;
 
     Renderer::DescriptorSet _drawSolid2DDescriptorSet;
     Renderer::DescriptorSet _drawSolid3DDescriptorSet;
+
+    Renderer::GraphicsPipelineID _debugSolid2DPipeline;
+    Renderer::GraphicsPipelineID _debugSolid3DPipeline;
 
 };

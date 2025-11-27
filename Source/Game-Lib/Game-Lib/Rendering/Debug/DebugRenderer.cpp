@@ -1,4 +1,5 @@
 #include "DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -10,10 +11,23 @@
 AutoCVar_Int CVAR_DebugRendererNumGPUVertices(CVarCategory::Client | CVarCategory::Rendering, "debugRendererNumGPUVertices", "number of GPU vertices to allocate for", 32000000);
 AutoCVar_ShowFlag CVAR_DebugRendererAlwaysOnTop(CVarCategory::Client | CVarCategory::Rendering, "debugRendererAlwaysOnTop", "always show debug renderer on top", ShowFlag::DISABLED);
 
-DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
+DebugRenderer::DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
+    : _gameRenderer(gameRenderer)
+    , _debugDescriptorSet(Renderer::DescriptorSetSlot::DEBUG)
+    , _draw2DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _draw2DIndirectDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _draw3DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _draw3DIndirectDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _drawSolid2DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _drawSolid3DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     _renderer = renderer;
 
+    CreatePermanentResources();
+}
+
+void DebugRenderer::CreatePermanentResources()
+{
     _debugVertices2D.SetDebugName("DebugVertices2D");
     _debugVertices2D.SetUsage(Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER);
     _debugVertices2D.SyncToGPU(_renderer);
@@ -85,6 +99,80 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer)
             indirectDraw->instanceCount = 1;
         });
         _debugDescriptorSet.Bind("_debugVertices3DCount", _gpuDebugVertices3DArgumentBuffer);
+    }
+
+    // Create pipelines
+    Renderer::GraphicsPipelineDesc pipelineDesc;
+    // 2D Solid and Wireframe
+    {
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+
+        // Render targets.
+        pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+
+        // Shader
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "Debug/Debug2D.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "Debug/Debug2D.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
+        _debugLine2DPipeline = _renderer->CreatePipeline(pipelineDesc);
+            
+        pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
+        _debugSolid2DPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // 3D Solid
+    {
+        // Shader
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "Debug/DebugSolid3D.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "Debug/DebugSolid3D.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+        // Rasterizer state
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+        pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+
+        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+        pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
+        _debugSolid3DPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+    // 3D Wireframe
+    {
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.vs.hlsl"_h);
+        vertexShaderDesc.shaderEntry.debugName = "Debug/Debug3D.vs.hlsl";
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.ps.hlsl"_h);
+        pixelShaderDesc.shaderEntry.debugName = "Debug/Debug3D.ps.hlsl";
+        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+        pipelineDesc.states.depthStencilState.depthWriteEnable = false;
+
+        pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
+        _debugLine3DPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
 }
 
@@ -174,35 +262,12 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             Renderer::RenderPassDesc renderPassDesc;
             graphResources.InitializeRenderPassDesc(renderPassDesc);
-
-            // Render targets
             renderPassDesc.renderTargets[0] = data.color;
             commandList.BeginRenderPass(renderPassDesc);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-
-            // Render targets.
-            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.color);
-            pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-            // Shader
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "Debug/Debug2D.vs.hlsl";
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "Debug/Debug2D.ps.hlsl";
-
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
             // Solid
             {
-                pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
-
-                Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::GraphicsPipelineID pipeline = _debugSolid2DPipeline;
                 // CPU side debug rendering
                 {
                     commandList.BeginPipeline(pipeline);
@@ -220,9 +285,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             // Wireframe
             {
-                pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
-
-                Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::GraphicsPipelineID pipeline = _debugLine2DPipeline;
                 // CPU side debug rendering
                 {
                     commandList.BeginPipeline(pipeline);
@@ -321,38 +384,9 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
             renderPassDesc.depthStencil = data.depth;
             commandList.BeginRenderPass(renderPassDesc);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
-
-            // Shader
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "Debug/DebugSolid3D.vs.hlsl";
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "Debug/DebugSolid3D.ps.hlsl";
-
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-            // Depth state
-            pipelineDesc.states.depthStencilState.depthEnable = true;
-            pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-            pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-            pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-
-            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.color);
-            pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
-            const Renderer::DepthImageDesc& depthDesc = graphResources.GetImageDesc(data.depth);
-            pipelineDesc.states.depthStencilFormat = depthDesc.format;
-
             // Solid
             {
-                pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
-
-                Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::GraphicsPipelineID pipeline = _debugSolid3DPipeline;
 
                 // CPU side debug rendering
                 {
@@ -371,20 +405,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
             // Wireframe
             {
-                // Shader
-                Renderer::VertexShaderDesc vertexShaderDesc;
-                vertexShaderDesc.path = "Debug/Debug3D.vs.hlsl";
-
-                Renderer::PixelShaderDesc pixelShaderDesc;
-                pixelShaderDesc.path = "Debug/Debug3D.ps.hlsl";
-
-                pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-                pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-                pipelineDesc.states.depthStencilState.depthWriteEnable = false;
-                pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
-
-                Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::GraphicsPipelineID pipeline = _debugLine3DPipeline;
 
                 // CPU side debug rendering
                 {

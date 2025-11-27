@@ -1,5 +1,7 @@
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/OIT.inc.hlsl"
 
 struct Constants
@@ -76,6 +78,7 @@ float2 Rot2(float2 p, float degree)
     return mul(p, float2x2(cos(a), -sin(a), sin(a), cos(a)));
 }
 
+[shader("fragment")]
 PSOutput main(PSInput input)
 {
     DrawCallData drawCallData = LoadDrawCallData(input.drawCallID);

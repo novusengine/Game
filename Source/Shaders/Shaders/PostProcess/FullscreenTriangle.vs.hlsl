@@ -1,6 +1,6 @@
 struct VertexInput
 {
-    uint vertexID : SV_VertexID;
+    uint vertexID : SV_VulkanVertexID;
 };
 
 struct VertexOutput
@@ -9,6 +9,7 @@ struct VertexOutput
     float2 uv : TEXCOORD0;
 };
 
+[shader("vertex")]
 VertexOutput main(VertexInput input)
 {
     /*

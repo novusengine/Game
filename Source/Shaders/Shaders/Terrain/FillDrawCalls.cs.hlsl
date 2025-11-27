@@ -1,7 +1,9 @@
-#include "common.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
 #include "Include/PyramidCulling.inc.hlsl"
-#include "globalData.inc.hlsl"
 #include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
@@ -27,6 +29,7 @@ struct CSInput
     uint3 groupThreadID : SV_GroupThreadID;
 };
 
+[shader("compute")]
 [numthreads(32, 1, 1)]
 void main(CSInput input)
 {

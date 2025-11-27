@@ -1,4 +1,6 @@
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+
 #include "Terrain/TerrainShared.inc.hlsl"
 
 struct PackedDrawCallData
@@ -74,8 +76,8 @@ Vertex LoadVertex(DrawCallData drawCallData, uint vertexID)
 
 struct VSInput
 {
-    uint vertexID : SV_VertexID;
-    uint instanceID : SV_InstanceID;
+    uint vertexID : SV_VulkanVertexID;
+    uint instanceID : SV_VulkanInstanceID;
 };
 
 struct VSOutput
@@ -86,6 +88,7 @@ struct VSOutput
     float3 posViewSpace : TEXCOORD2;
 };
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
     VSOutput output;

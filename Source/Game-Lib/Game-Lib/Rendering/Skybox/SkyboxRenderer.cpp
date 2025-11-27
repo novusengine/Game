@@ -1,6 +1,7 @@
 #include "SkyboxRenderer.h"
 
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Application/EnttRegistries.h"
@@ -10,8 +11,9 @@
 
 #include <entt/entt.hpp>
 
-SkyboxRenderer::SkyboxRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+SkyboxRenderer::SkyboxRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     //, _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
@@ -64,32 +66,8 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             renderPassDesc.renderTargets[0] = data.skyboxColor;
             commandList.BeginRenderPass(renderPassDesc);
 
-            Renderer::GraphicsPipelineDesc pipelineDesc;
-
-            // Shaders
-            Renderer::VertexShaderDesc vertexShaderDesc;
-            vertexShaderDesc.path = "PostProcess/FullscreenTriangle.vs.hlsl";
-
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-            Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.path = "Skybox/Skybox.ps.hlsl";
-
-            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-            // Depth state
-            pipelineDesc.states.depthStencilState.depthEnable = false;
-
-            // Rasterizer state
-            pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-            pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-            // Render targets
-            const Renderer::ImageDesc& desc = graphResources.GetImageDesc(data.skyboxColor);
-            pipelineDesc.states.renderTargetFormats[0] = desc.format;
-
             // Set pipeline
-            Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+            Renderer::GraphicsPipelineID pipeline = _skyboxPipeline;
             commandList.BeginPipeline(pipeline);
 
             commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
@@ -116,5 +94,28 @@ void SkyboxRenderer::SetSkybandColors(const vec3& skyTopColor, const vec3& skyMi
 
 void SkyboxRenderer::CreatePermanentResources()
 {
+    Renderer::GraphicsPipelineDesc pipelineDesc;
 
+    // Shaders
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("PostProcess/FullscreenTriangle.vs.hlsl"_h);
+    vertexShaderDesc.shaderEntry.debugName = "PostProcess/FullscreenTriangle.vs.hlsl";
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Skybox/Skybox.ps.hlsl"_h);
+    pixelShaderDesc.shaderEntry.debugName = "Skybox/Skybox.ps.hlsl";
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = false;
+
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
+
+    // Render targets
+    pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
+
+    _skyboxPipeline = _renderer->CreatePipeline(pipelineDesc);
 }

@@ -1,6 +1,7 @@
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/VisibilityBuffers.inc.hlsl"
 
 struct Constants
@@ -13,6 +14,7 @@ struct Constants
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] RWTexture2D<float4> _packedNormals;
 
+[shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {

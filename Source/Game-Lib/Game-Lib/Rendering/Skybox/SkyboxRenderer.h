@@ -1,6 +1,8 @@
 #pragma once
 #include <Base/Types.h>
 
+#include <Renderer/Descriptors/GraphicsPipelineDesc.h>
+
 namespace Renderer
 {
     class Renderer;
@@ -8,6 +10,7 @@ namespace Renderer
 }
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 class SkyboxRenderer
@@ -24,7 +27,7 @@ public:
     };
 
 public:
-    SkyboxRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    SkyboxRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~SkyboxRenderer();
 
     void Update(f32 deltaTime);
@@ -37,7 +40,9 @@ private:
     void CreatePermanentResources();
 
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer = nullptr;
     //DebugRenderer* _debugRenderer;
 
+    Renderer::GraphicsPipelineID _skyboxPipeline;
     SkybandColors _skybandColors;
 };

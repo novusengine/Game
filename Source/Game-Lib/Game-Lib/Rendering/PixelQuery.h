@@ -15,6 +15,7 @@
 #include <random>
 #include <set>
 
+class GameRenderer;
 struct RenderResources;
 
 class PixelQuery
@@ -28,7 +29,7 @@ public:
     };
 
 public:
-    PixelQuery(Renderer::Renderer* renderer);
+    PixelQuery(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
     void Update(f32 deltaTime);
     void AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -71,6 +72,9 @@ private:
 
 private:
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer = nullptr;
+
+    Renderer::ComputePipelineID _queryPipeline;
 
     Renderer::DescriptorSet _queryDescriptorSet;
     Renderer::BufferID _pixelResultBuffer;

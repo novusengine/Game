@@ -25,6 +25,7 @@
 [[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint64_t> _scanDst;				// Destination for Scan Data
 [[vk::binding(3, PER_PASS)]] RWStructuredBuffer<uint64_t> _scanScratch;			// Scratch data for Scan
 
+[shader("compute")]
 [numthreads(FFX_PARALLELSORT_THREADGROUP_SIZE, 1, 1)]
 void main(uint localID : SV_GroupThreadID, uint groupID : SV_GroupID)
 {

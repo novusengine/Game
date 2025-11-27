@@ -1,7 +1,8 @@
 #ifndef CULLING_INCLUDED
 #define CULLING_INCLUDED
-#include "globalData.inc.hlsl"
-#include "common.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+#include "Include/Common.inc.hlsl"
 
 struct AABBMinMax
 {
@@ -9,7 +10,6 @@ struct AABBMinMax
     float3 max;
 };
 
-#define MAX_SHADOW_CASCADES 8
 #define NUM_CULL_VIEWS 1 + MAX_SHADOW_CASCADES // Main view plus max number of cascades
 
 // Based on the work of WickedEngine, thank you! https://github.com/turanszkij/WickedEngine/

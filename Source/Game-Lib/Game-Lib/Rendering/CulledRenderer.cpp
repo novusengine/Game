@@ -1,11 +1,20 @@
 #include "CulledRenderer.h"
 
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 
+bool CulledRenderer::_pipelinesCreated = false;
+Renderer::ComputePipelineID CulledRenderer::_fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+Renderer::ComputePipelineID CulledRenderer::_fillDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+Renderer::ComputePipelineID CulledRenderer::_createIndirectAfterCullingPipeline[2]; // [0] = non-indexed, [1] = indexed
+Renderer::ComputePipelineID CulledRenderer::_createIndirectAfterCullingOrderedPipeline[2]; // [0] = non-indexed, [1] = indexed
+Renderer::ComputePipelineID CulledRenderer::_cullingInstancedPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
+Renderer::ComputePipelineID CulledRenderer::_cullingPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
 
-CulledRenderer::CulledRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+CulledRenderer::CulledRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
 {
     CreatePermanentResources();
@@ -64,17 +73,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             std::string debugName = params.passName + " Instanced Occlusion Fill";
             params.commandList->PushMarker(debugName, Color::White);
 
-            Renderer::ComputePipelineDesc pipelineDesc;
-            pipelineDesc.debugName = debugName;
-            params.graphResources->InitializePipelineDesc(pipelineDesc);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "Utils/FillInstancedDrawCallsFromBitmask.cs.hlsl";
-            shaderDesc.AddPermutationField("IS_INDEXED", params.isIndexed ? "1" : "0");
-
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+            Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.isIndexed];
             params.commandList->BeginPipeline(pipeline);
 
             struct FillDrawCallConstants
@@ -118,14 +117,15 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             cullingPipelineDesc.debugName = debugName;
             params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "Utils/CreateIndirectAfterCulling.cs.hlsl";
-            shaderDesc.AddPermutationField("IS_INDEXED", params.cullingResources->IsIndexed() ? "1" : "0");
-            shaderDesc.AddPermutationField("DEBUG_ORDERED", debugOrdered ? "1" : "0");
-
-            cullingPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
+            Renderer::ComputePipelineID pipeline;
+            if (debugOrdered)
+            {
+                pipeline = _createIndirectAfterCullingOrderedPipeline[params.isIndexed];
+            }
+            else
+            {
+                pipeline = _createIndirectAfterCullingPipeline[params.isIndexed];
+            }
             params.commandList->BeginPipeline(pipeline);
 
             struct CullConstants
@@ -239,17 +239,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 std::string debugName = params.passName + " Occlusion Fill";
                 params.commandList->PushMarker(debugName, Color::White);
 
-                Renderer::ComputePipelineDesc pipelineDesc;
-                pipelineDesc.debugName = debugName;
-                params.graphResources->InitializePipelineDesc(pipelineDesc);
-
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/FillDrawCallsFromBitmask.cs.hlsl";
-                shaderDesc.AddPermutationField("IS_INDEXED", params.isIndexed ? "1" : "0");
-
-                pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.isIndexed];
                 params.commandList->BeginPipeline(pipeline);
 
                 struct FillDrawCallConstants
@@ -358,17 +348,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 std::string debugName = params.passName + " Instanced Culling";
                 params.commandList->PushMarker(debugName, Color::Yellow);
 
-                Renderer::ComputePipelineDesc cullingPipelineDesc;
-                cullingPipelineDesc.debugName = debugName;
-                params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
-
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/CullingInstanced.cs.hlsl";
-
-                shaderDesc.AddPermutationField("USE_BITMASKS", params.disableTwoStepCulling ? "0" : "1");
-                cullingPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
+                Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[!params.disableTwoStepCulling];
                 params.commandList->BeginPipeline(pipeline);
 
                 vec2 viewportSize = _renderer->GetRenderSize();
@@ -431,18 +411,16 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 std::string debugName = params.passName + " Create Indirect";
                 params.commandList->PushMarker(debugName, Color::Yellow);
 
-                Renderer::ComputePipelineDesc cullingPipelineDesc;
-                cullingPipelineDesc.debugName = debugName;
-                params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
 
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/CreateIndirectAfterCulling.cs.hlsl";
-                shaderDesc.AddPermutationField("IS_INDEXED", params.cullingResources->IsIndexed() ? "1" : "0");
-                shaderDesc.AddPermutationField("DEBUG_ORDERED", debugOrdered ? "1" : "0");
-
-                cullingPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
+                Renderer::ComputePipelineID pipeline;
+                if (debugOrdered)
+                {
+                    pipeline = _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()];
+                }
+                else
+                {
+                    pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
+                }
                 params.commandList->BeginPipeline(pipeline);
 
                 struct CullConstants
@@ -490,18 +468,8 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
             params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
-            Renderer::ComputePipelineDesc cullingPipelineDesc;
-            cullingPipelineDesc.debugName = debugName;
-            params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
-
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.path = "Utils/Culling.cs.hlsl";
-
-            shaderDesc.AddPermutationField("USE_BITMASKS", params.disableTwoStepCulling ? "0" : "1");
-            cullingPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
             // Do culling
-            Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(cullingPipelineDesc);
+            Renderer::ComputePipelineID pipeline = _cullingPipeline[!params.disableTwoStepCulling];
             params.commandList->BeginPipeline(pipeline);
 
             vec2 viewportSize = _renderer->GetRenderSize();
@@ -609,17 +577,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                 std::string debugName = params.passName + " Geometry Fill";
                 params.commandList->PushMarker(debugName, Color::White);
 
-                Renderer::ComputePipelineDesc pipelineDesc;
-                pipelineDesc.debugName = debugName;
-                params.graphResources->InitializePipelineDesc(pipelineDesc);
-
-                Renderer::ComputeShaderDesc shaderDesc;
-                shaderDesc.path = "Utils/FillDrawCallsFromBitmask.cs.hlsl";
-                shaderDesc.AddPermutationField("IS_INDEXED", params.isIndexed ? "1" : "0");
-
-                pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.isIndexed];
                 params.commandList->BeginPipeline(pipeline);
 
                 struct FillDrawCallConstants
@@ -755,6 +713,144 @@ void CulledRenderer::CreatePermanentResources()
 
     _cullingDatas.SetDebugName("CullDataBuffer");
     _cullingDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
+    // Create pipelines
+    if (!_pipelinesCreated)
+    {
+        _pipelinesCreated = true;
+        CreatePipelines();
+    }
+}
+
+void CulledRenderer::CreatePipelines()
+{
+    // Fill Drawcalls From Bitmask pipelines
+    Renderer::ComputePipelineDesc pipelineDesc;
+    {
+        pipelineDesc.debugName = "FillInstancedDrawcallsFromBitmask";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "IS_INDEXED", std::to_string(i) }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillInstancedDrawCallsFromBitmask.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/FillInstancedDrawCallsFromBitmask.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _fillInstancedDrawCallsFromBitmaskPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+    {
+        pipelineDesc.debugName = "FillDrawCallsFromBitmask";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "IS_INDEXED", std::to_string(i) }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillDrawCallsFromBitmask.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/FillDrawCallsFromBitmask.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _fillDrawCallsFromBitmaskPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+    // Create Indirect After Culling pipelines
+    {
+        pipelineDesc.debugName = "CreateIndirectAfterCulling";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "IS_INDEXED", std::to_string(i) },
+                { "DEBUG_ORDERED", "0" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/CreateIndirectAfterCulling.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _createIndirectAfterCullingPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+    {
+        pipelineDesc.debugName = "CreateIndirectAfterCullingOrdered";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "IS_INDEXED", std::to_string(i) },
+                { "DEBUG_ORDERED", "1" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/CreateIndirectAfterCulling.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _createIndirectAfterCullingOrderedPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+    // Culling Instanced Pipelines
+    {
+        pipelineDesc.debugName = "CullingInstanced";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "USE_BITMASKS", std::to_string(i) }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CullingInstanced.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/CullingInstanced.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _cullingInstancedPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+    // Culling Pipelines
+    {
+        pipelineDesc.debugName = "Culling";
+
+        for (u32 i = 0; i < 2; i++)
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "USE_BITMASKS", std::to_string(i) }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/Culling.cs.hlsl", permutationFields);
+
+            Renderer::ComputeShaderDesc shaderDesc;
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
+            shaderDesc.shaderEntry.debugName = "Utils/Culling.cs.hlsl";
+
+            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+            _cullingPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
 }
 
 void CulledRenderer::SyncToGPU()
