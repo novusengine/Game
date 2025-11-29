@@ -176,6 +176,7 @@ AH4 SpdReduce4H(AH4 v0, AH4 v1, AH4 v2, AH4 v3)
 // Main function
 //--------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------
+[shader("compute")]
 [numthreads(256, 1, 1)]
 void main(uint3 WorkGroupId : SV_GroupID, uint LocalThreadIndex : SV_GroupIndex)
 {

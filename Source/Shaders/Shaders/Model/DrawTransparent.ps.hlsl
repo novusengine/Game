@@ -1,10 +1,11 @@
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
-#include "Model/ModelShared.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/OIT.inc.hlsl"
+#include "Model/ModelShared.inc.hlsl"
 
 struct PSInput
 {
@@ -21,6 +22,7 @@ struct PSOutput
     float4 transparencyWeight : SV_Target1;
 };
 
+[shader("fragment")]
 PSOutput main(PSInput input)
 {
     TextureData textureData = LoadModelTextureData(input.textureDataID);

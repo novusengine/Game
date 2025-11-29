@@ -36,11 +36,12 @@ namespace ECS
 struct RenderResources;
 class Window;
 class DebugRenderer;
+class GameRenderer;
 
 class CanvasRenderer
 {
 public:
-    CanvasRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    CanvasRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     void Clear();
 
     void Update(f32 deltaTime);
@@ -102,6 +103,7 @@ private:
 
 private:
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer;
     DebugRenderer* _debugRenderer;
 
     Renderer::GPUVector<vec4> _vertices;

@@ -1,6 +1,7 @@
 #ifndef OIT_INC_INCLUDED
 #define OIT_INC_INCLUDED
-#include "common.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 
 #define MODE 0
 

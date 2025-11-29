@@ -1,5 +1,7 @@
-#include "globalData.inc.hlsl"
-#include "common.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 
 struct SkybandColors
 {
@@ -22,6 +24,7 @@ struct PSOutput
     float4 color : SV_Target0;
 };
 
+[shader("fragment")]
 PSOutput main(VertexOutput input) : SV_Target
 {
     float3 rotation = _cameras[0].eyeRotation.xyz;

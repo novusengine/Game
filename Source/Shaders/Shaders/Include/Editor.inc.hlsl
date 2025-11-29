@@ -1,5 +1,6 @@
 #ifndef EDITOR_INCLUDED
 #define EDITOR_INCLUDED
+
 #include "Include/VisibilityBuffers.inc.hlsl"
 
 float sdCapsule(float3 p, float3 a, float3 b)

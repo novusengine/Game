@@ -37,6 +37,7 @@ struct NumKeys
 [[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _countScatterArgs;			// Count and Scatter Args for indirect execution
 [[vk::binding(3, PER_PASS)]] RWStructuredBuffer<uint> _reduceScanArgs;				// Reduce and Scan Args for indirect execution
 
+[shader("compute")]
 [numthreads(1, 1, 1)]
 void main(uint localID : SV_GroupThreadID)
 {

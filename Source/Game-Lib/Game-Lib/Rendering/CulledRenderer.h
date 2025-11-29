@@ -13,6 +13,7 @@
 #include <Renderer/GPUVector.h>
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -51,7 +52,7 @@ protected:
         bool isIndexed = true;
     };
 
-    CulledRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    CulledRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~CulledRenderer();
 
     void Update(f32 deltaTime);
@@ -325,12 +326,22 @@ protected:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
 
 protected:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
 
     Renderer::GPUVector<Model::ComplexModel::CullingData> _cullingDatas;
+
+    static bool _pipelinesCreated;
+    static Renderer::ComputePipelineID _fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+    static Renderer::ComputePipelineID _fillDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+    static Renderer::ComputePipelineID _createIndirectAfterCullingPipeline[2]; // [0] = non-indexed, [1] = indexed
+    static Renderer::ComputePipelineID _createIndirectAfterCullingOrderedPipeline[2]; // [0] = non-indexed, [1] = indexed
+    static Renderer::ComputePipelineID _cullingInstancedPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
+    static Renderer::ComputePipelineID _cullingPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
 
     Renderer::SamplerID _occlusionSampler;
 };

@@ -1,6 +1,8 @@
 #pragma once
 #include <Base/Types.h>
 
+#include <Renderer/Descriptors/GraphicsPipelineDesc.h>
+
 namespace Renderer
 {
     class Renderer;
@@ -8,12 +10,13 @@ namespace Renderer
 }
 
 class DebugRenderer;
+class GameRenderer;
 struct RenderResources;
 
 class EditorRenderer
 {
 public:
-    EditorRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    EditorRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~EditorRenderer();
 
     void Update(f32 deltaTime);
@@ -24,5 +27,8 @@ private:
     void CreatePermanentResources();
 
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer;
     //DebugRenderer* _debugRenderer;
+
+    Renderer::GraphicsPipelineID _worldGridPipeline;
 };

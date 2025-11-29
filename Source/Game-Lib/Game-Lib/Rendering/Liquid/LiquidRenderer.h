@@ -9,6 +9,7 @@ namespace Renderer
 }
 
 class DebugRenderer;
+class GameRenderer;
 
 struct LiquidReserveOffsets
 {
@@ -72,7 +73,7 @@ private:
     };
 
 public:
-    LiquidRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    LiquidRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     ~LiquidRenderer();
 
     void Update(f32 deltaTime);
@@ -128,9 +129,12 @@ private:
 
 private:
     Renderer::Renderer* _renderer = nullptr;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
 
     Renderer::DescriptorSet _copyDescriptorSet;
+
+    Renderer::GraphicsPipelineID _liquidPipeline;
 
     Constants _constants;
 
@@ -141,6 +145,7 @@ private:
     CullingResourcesIndexed<DrawCallData> _cullingResources;
     Renderer::GPUVector<Vertex> _vertices;
     Renderer::GPUVector<u16> _indices;
+    Renderer::GPUVector<mat4x4> _instanceMatrices;
 
     robin_hood::unordered_map<u32, LiquidTextureMap> _liquidTypeIDToLiquidTextureMap;
 

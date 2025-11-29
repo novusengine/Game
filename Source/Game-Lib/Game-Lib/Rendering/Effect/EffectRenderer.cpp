@@ -34,8 +34,9 @@ AutoCVar_Float CVAR_SsaoDetailShadowStrength(CVarCategory::Client | CVarCategory
 AutoCVar_Float CVAR_SsaoBilateralSigmaSquared(CVarCategory::Client | CVarCategory::Rendering, "ssaoBilateralSigmaSquared", "[0.0,  ~ ] Sigma squared value for use in bilateral upsampler giving Gaussian blur term. Should be greater than 0.0", 5.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_SsaoBilateralSimilarityDistanceSigma(CVarCategory::Client | CVarCategory::Rendering, "ssaoBilateralSimilarityDistanceSigma", "[0.0,  ~ ] Sigma squared value for use in bilateral upsampler giving similarity weighting for neighbouring pixels. Should be greater than 0.0", 0.01f, CVarFlags::EditFloatDrag);
 
-EffectRenderer::EffectRenderer(Renderer::Renderer* renderer)
+EffectRenderer::EffectRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
 {
     CreatePermanentResources();
 }

@@ -1,8 +1,9 @@
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
 
 struct VertexInput
 {
-    uint vertexID : SV_VertexID;
+    uint vertexID : SV_VulkanVertexID;
 };
 
 struct VertexOutput
@@ -18,6 +19,7 @@ float3 UnprojectPoint(float2 xy, float z, Camera camera)
     return unprojectedPoint.xyz / unprojectedPoint.w;
 }
 
+[shader("vertex")]
 VertexOutput main(VertexInput input)
 {
     const float3 GRID_PLANE[6] = {

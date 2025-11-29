@@ -1,4 +1,5 @@
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
 
 struct Vertex3D
 {
@@ -10,7 +11,7 @@ struct Vertex3D
 
 struct VSInput
 {
-	uint vertexID : SV_VertexID;
+	uint vertexID : SV_VulkanVertexID;
 };
 
 struct VSOutput
@@ -32,6 +33,7 @@ float4 GetVertexColor(uint inColor)
 	return color;
 }
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
 	Vertex3D vertex = _vertices[input.vertexID];

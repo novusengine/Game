@@ -74,6 +74,7 @@ float unpackKey(float2 p)
 	return p.x * (256.0 / 257.0) + p.y * (1.0 / 257.0);
 }
 
+[shader("compute")]
 [numthreads(32, 32, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {

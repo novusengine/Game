@@ -1,5 +1,6 @@
 #pragma once
 #include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
@@ -19,11 +20,12 @@ namespace Renderer
 struct RenderResources;
 class Window;
 class DebugRenderer;
+class GameRenderer;
 
 class TextureRenderer
 {
 public:
-    TextureRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer);
+    TextureRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
     void Clear();
 
     void Update(f32 deltaTime);
@@ -66,6 +68,7 @@ private:
 
 private:
     Renderer::Renderer* _renderer;
+    GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer;
 
     robin_hood::unordered_map<Renderer::ImageFormat, Renderer::GraphicsPipelineID> _pipelines;

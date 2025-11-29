@@ -1,9 +1,11 @@
+
 struct PSInput
 {
 	float3 normal : TEXCOORD0;
 	float4 color : Color;
 };
 
+[shader("fragment")]
 float4 main(PSInput input) : SV_Target0
 {
 	float4 color = input.color;

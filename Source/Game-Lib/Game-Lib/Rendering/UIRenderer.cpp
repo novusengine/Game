@@ -13,7 +13,11 @@
 #include <tracy/Tracy.hpp>
 //#include <tracy/TracyVulkan.hpp>
 
-UIRenderer::UIRenderer(Renderer::Renderer* renderer) : _renderer(renderer)
+UIRenderer::UIRenderer(Renderer::Renderer* renderer) 
+    : _renderer(renderer)
+    , _passDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _drawImageDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _drawTextDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }

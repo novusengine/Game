@@ -1,7 +1,8 @@
-#include "common.inc.hlsl"
 
-[[vk::binding(0, GLOBAL)]] SamplerState _sampler;
-[[vk::binding(1, GLOBAL)]] Texture2D<float4> _texture;
+#include "Include/Common.inc.hlsl"
+
+[[vk::binding(0, PER_PASS)]] SamplerState _sampler;
+[[vk::binding(1, PER_PASS)]] Texture2D<float4> _texture;
 
 struct Constants
 {
@@ -18,6 +19,7 @@ struct VSOutput
     float2 uv : TEXCOORD0;
 };
 
+[shader("fragment")]
 float4 main(VSOutput input) : SV_Target
 {
     float2 dimensions;

@@ -9,7 +9,10 @@
 
 #include "RenderResources.h"
 
-PixelQuery::PixelQuery(Renderer::Renderer* renderer) : _renderer(renderer)
+PixelQuery::PixelQuery(Renderer::Renderer* renderer, GameRenderer* gameRenderer) 
+    : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
+    , _queryDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -26,6 +29,17 @@ void PixelQuery::CreatePermanentResources()
     }
 
     _generator.seed(_randomDevice());
+
+    {
+        Renderer::ComputePipelineDesc queryPipelineDesc;
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Utils/ObjectQuery.cs.hlsl"_h);
+        shaderDesc.shaderEntry.debugName = "Utils/ObjectQuery.cs.hlsl";
+        queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _queryPipeline = _renderer->CreatePipeline(queryPipelineDesc);
+    }
 }
 
 void PixelQuery::Update(f32 deltaTime)
@@ -106,17 +120,8 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                     TracyMessage(frameIndexStr.c_str(), frameIndexStr.length());
 
                     commandList.PushMarker("Pixel Queries " + std::to_string(numRequests), Color::White);
-                    Renderer::ComputePipelineDesc queryPipelineDesc;
-                    graphResources.InitializePipelineDesc(queryPipelineDesc);
 
-                    Renderer::ComputeShaderDesc shaderDesc;
-                    shaderDesc.path = "Utils/ObjectQuery.cs.hlsl";
-                    shaderDesc.AddPermutationField("SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0");
-
-                    queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-                    // Do culling
-                    Renderer::ComputePipelineID pipeline = _renderer->CreatePipeline(queryPipelineDesc);
+                    Renderer::ComputePipelineID pipeline = _queryPipeline;
                     commandList.BeginPipeline(pipeline);
 
                     // Set Number of Requests we processed

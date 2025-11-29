@@ -20,6 +20,7 @@
 [[vk::binding(0, PER_PASS)]] Texture2D<float> _source;
 [[vk::binding(1, PER_PASS)]] RWTexture2D<float> _destination;
 
+[shader("compute")]
 [numthreads(32, 32, 1)]
 void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 {

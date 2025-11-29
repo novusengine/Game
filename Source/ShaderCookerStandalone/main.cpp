@@ -20,14 +20,32 @@ i32 main(int argc, char* argv[])
     auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1", colors, "stderr");
     quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime, quill::ClockSourceType::System);
 
-    if (argc != 3)
+    int argIndex = 1;
+
+    // Handle force flag
+    bool debugSkipCache = false;
+    if (argc > 1 && std::string(argv[1]) == "-f")
     {
-        NC_LOG_ERROR("Expected two parameters, got {0}. Usage: <shader_source_dir> <shader_bin_dir>", argc);
+        debugSkipCache = true;
+        argIndex++;
+    }
+
+    // Handle debug SPV output flag
+    bool debugOutputSpv = false;
+    if (argc > argIndex && std::string(argv[argIndex]) == "-d")
+    {
+        debugOutputSpv = true;
+        argIndex++;
+    }
+
+    if (argc - argIndex != 2)
+    {
+        NC_LOG_ERROR("Expected two parameters, got {}. Usage: [-f] [-d] <shader_source_dir> <shader_bin_dir>", argc - 1);
         return -1;
     }
 
-    std::string sourceDir = argv[1];
-    std::string binDir = argv[2];
+    std::string sourceDir = argv[argIndex];
+    std::string binDir = argv[argIndex + 1];
     std::chrono::system_clock::time_point startTime = std::chrono::system_clock::now();
 
     std::filesystem::path shaderCachePath = std::filesystem::path(binDir) / "_shaders.cache";
@@ -35,7 +53,6 @@ i32 main(int argc, char* argv[])
 
     ShaderCooker::ShaderCache shaderCache;
 
-    const bool debugSkipCache = false;
     if (!debugSkipCache)
     {
         std::string shaderCachePathStr = shaderCachePath.string();
@@ -51,10 +68,11 @@ i32 main(int argc, char* argv[])
     }
     else
     {
-        NC_LOG_INFO("Skipped loading shadercache due to debugSkipCache being true");
+        NC_LOG_INFO("Skipped loading shadercache due to being ran with -f flag");
     }
 
     ShaderCooker::ShaderCompiler compiler;
+    compiler.SetDebugOutputSPV(debugOutputSpv);
 
     // Find all shader files in the source directory
     std::vector<std::filesystem::path> shadersToCompile;
@@ -107,7 +125,7 @@ i32 main(int argc, char* argv[])
     std::chrono::duration<double> duration = endTime - startTime;
 
     u32 numCompiledShaders = compiler.GetNumCompiledShaders();
-    u32 numSkippedShaders = numNonIncludeShaders - numCompiledShaders;
+    u32 numSkippedShaders = numNonIncludeShaders - numCompiledShaders - numFailedShaders;
     NC_LOG_INFO("Compiled {0} shaders ({1} up to date) in {2}s", numCompiledShaders, numSkippedShaders, duration.count());
     return 0;
 }

@@ -1,10 +1,11 @@
 permutation USE_BITMASKS = [0, 1];
 
-#include "common.inc.hlsl"
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
+#include "Include/Common.inc.hlsl"
 #include "Include/Culling.inc.hlsl"
-#include "Include/PyramidCulling.inc.hlsl"
 #include "Include/Debug.inc.hlsl"
+#include "Include/PyramidCulling.inc.hlsl"
 
 struct Constants
 {
@@ -108,18 +109,30 @@ bool SphereIsForwardPlane(float4 plane, float4 sphere)
     return (dot(plane.xyz, sphere.xyz) - plane.w) > -sphere.w;
 }
 
-bool IsSphereInsideFrustum(float4 frustum[6], float4 sphere)
+/*bool IsSphereInsideFrustum(Camera camera, float4 sphere)
 {
+    [unroll]
     for (int i = 0; i < 6; ++i)
     {
-        const float4 plane = frustum[i];
-
-        if (!SphereIsForwardPlane(plane, sphere))
+        if (!SphereIsForwardPlane(camera.frustum[i], sphere))
         {
             return false;
         }
     }
 
+    return true;
+}*/
+
+bool IsSphereInsideFrustum(Camera camera, float4 sphere)
+{
+    // Due to a Slang compiler bug we cannot use loops with unroll here
+    if (!SphereIsForwardPlane(camera.frustum[0], sphere)) return false;
+    if (!SphereIsForwardPlane(camera.frustum[1], sphere)) return false;
+    if (!SphereIsForwardPlane(camera.frustum[2], sphere)) return false;
+    if (!SphereIsForwardPlane(camera.frustum[3], sphere)) return false;
+    if (!SphereIsForwardPlane(camera.frustum[4], sphere)) return false;
+    if (!SphereIsForwardPlane(camera.frustum[5], sphere)) return false;
+    
     return true;
 }
 
@@ -166,7 +179,7 @@ void CullForCamera(DrawInput drawInput,
     CullOutput cullOutput)
 {
     bool isVisible = drawInput.instanceCount > 0;
-    if (!IsSphereInsideFrustum(camera.frustum, drawInput.sphere))
+    if (!IsSphereInsideFrustum(camera, drawInput.sphere))
     {
         isVisible = false;
     }
@@ -247,6 +260,7 @@ void CullForCamera(DrawInput drawInput,
     }
 }
 
+[shader("compute")]
 [numthreads(32, 1, 1)]
 void main(CSInput input)
 {

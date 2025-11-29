@@ -30,9 +30,12 @@ void TextureRenderer::Clear()
 
 }
 
-TextureRenderer::TextureRenderer(Renderer::Renderer* renderer, DebugRenderer* debugRenderer)
+TextureRenderer::TextureRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
+    , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
+    , _descriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _mipResolveDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -242,7 +245,8 @@ void TextureRenderer::CreatePermanentResources()
     pipelineDesc.debugName = "Downsample Mips";
 
     Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.path = "DownSampler/SinglePassDownsampler.cs.hlsl";
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("DownSampler/SinglePassDownsampler.cs.hlsl"_h);
+    shaderDesc.shaderEntry.debugName = "DownSampler/SinglePassDownsampler.cs.hlsl";
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
     _mipDownsamplerPipeline = _renderer->CreatePipeline(pipelineDesc);
@@ -280,7 +284,7 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
     commandList.BeginPipeline(pipeline);
 
     descriptorSet.BindRead("_texture", src);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -372,13 +376,13 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.path = "Blitting/blit.vs.hlsl";
-
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
+    vertexShaderDesc.shaderEntry.debugName = "Blitting/Blit.vs.hlsl";
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.path = "Blitting/blitSample.ps.hlsl";
-
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/BlitSample.ps.hlsl"_h);
+    pixelShaderDesc.shaderEntry.debugName = "Blitting/BlitSample.ps.hlsl";
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
@@ -399,6 +403,5 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
     pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
     pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::MAX;
 
-    // Set pipeline
     return _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
 }

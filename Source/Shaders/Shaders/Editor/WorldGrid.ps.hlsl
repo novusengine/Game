@@ -1,4 +1,5 @@
-#include "globalData.inc.hlsl"
+
+#include "DescriptorSet/Global.inc.hlsl"
 
 struct Constants
 {
@@ -47,6 +48,7 @@ float4 Grid(float3 pos, float scale, bool drawAxis)
     return color;
 }
 
+[shader("fragment")]
 PSOutput main(VertexOutput input) : SV_Target
 {
     float t = -input.nearPoint.y / (input.farPoint.y - input.nearPoint.y);

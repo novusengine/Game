@@ -3,7 +3,8 @@ permutation SHADOW_PASS = [0, 1];
 permutation SUPPORTS_EXTENDED_TEXTURES = [0, 1];
 #define GEOMETRY_PASS 1
 
-#include "globalData.inc.hlsl"
+#include "DescriptorSet/Global.inc.hlsl"
+
 #include "Terrain/TerrainShared.inc.hlsl"
 
 struct Constants
@@ -15,8 +16,8 @@ struct Constants
 
 struct VSInput
 {
-    uint vertexID : SV_VertexID;
-    uint culledInstanceID : SV_InstanceID;
+    uint vertexID : SV_VulkanVertexID;
+    uint culledInstanceID : SV_VulkanInstanceID;
 };
 
 struct VSOutput
@@ -27,6 +28,7 @@ struct VSOutput
 #endif
 };
 
+[shader("vertex")]
 VSOutput main(VSInput input)
 {
     InstanceData instanceData = _instanceDatas[input.culledInstanceID];

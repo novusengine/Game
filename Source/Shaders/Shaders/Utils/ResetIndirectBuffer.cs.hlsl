@@ -1,3 +1,4 @@
+
 struct IndirectArguments
 {
     uint indexCount;
@@ -16,6 +17,7 @@ struct Constants
 
 [[vk::binding(0, PER_PASS)]] RWStructuredBuffer<IndirectArguments> _arguments;
 
+[shader("compute")]
 [numthreads(1, 1, 1)]
 void main()
 {

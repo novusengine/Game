@@ -24,6 +24,7 @@
 [[vk::binding(1, PER_PASS)]] RWStructuredBuffer<uint64_t> _sumTable;			// The sum table we will write sums to
 [[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint64_t> _reducedSumTable;		// The reduced sum table we will write sums to
 
+[shader("compute")]
 [numthreads(FFX_PARALLELSORT_THREADGROUP_SIZE, 1, 1)]
 void main(uint localID : SV_GroupThreadID, uint groupID : SV_GroupID)
 {
