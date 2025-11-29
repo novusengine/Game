@@ -631,46 +631,46 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnUnitDisplayInfoUpdate(Network::SocketID socketID, Generated::UnitDisplayInfoUpdatePacket& packet)
-    {
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        entt::entity entity;
-        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
-            return true;
-        }
-
-        if (!registry->valid(entity))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
-            return true;
-        }
-
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        auto& model = registry->get<ECS::Components::Model>(entity);
-        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
-
-        if (displayInfo.displayID != packet.displayID)
-        {
-            displayInfo.displayID = packet.displayID;
-
-            if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
-            {
-                NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
-
-                modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
-                return true;
-            }
-        }
-
-        displayInfo.race = static_cast<GameDefine::UnitRace>(packet.race);
-        displayInfo.gender = static_cast<GameDefine::UnitGender>(packet.gender);
-
-        return true;
-    }
+//    bool HandleOnUnitDisplayInfoUpdate(Network::SocketID socketID, Generated::UnitDisplayInfoUpdatePacket& packet)
+//    {
+//        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+//        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+//
+//        entt::entity entity;
+//        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
+//        {
+//            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
+//            return true;
+//        }
+//
+//        if (!registry->valid(entity))
+//        {
+//            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
+//            return true;
+//        }
+//
+//        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+//        auto& model = registry->get<ECS::Components::Model>(entity);
+//        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
+//
+//        if (displayInfo.displayID != packet.displayID)
+//        {
+//            displayInfo.displayID = packet.displayID;
+//
+//            if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
+//            {
+//                NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
+//
+//                modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
+//                return true;
+//            }
+//        }
+//
+//        displayInfo.race = static_cast<GameDefine::UnitRace>(packet.race);
+//        displayInfo.gender = static_cast<GameDefine::UnitGender>(packet.gender);
+//
+//        return true;
+//    }
     bool HandleOnUnitEquippedItemUpdate(Network::SocketID socketID, Generated::ServerUnitEquippedItemUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -1760,7 +1760,7 @@ namespace ECS::Systems
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitRemove);
-            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitDisplayInfoUpdate);
+            //networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitDisplayInfoUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitEquippedItemUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitVisualItemUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitPowerUpdate);

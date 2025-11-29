@@ -15,7 +15,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     }
     Solution.Util.SetFiles(files)
 
-    local shaderCookerStandalonePath = (Solution.Projects.Current.BinDir .. "/%{cfg.buildcfg}/ShaderCookerStandalone.%{systemToExecutableExtensionMap[cfg.system]}")
+    local shaderCookerStandalonePath = (Solution.Projects.Current.BinDir .. "/%{cfg.buildcfg}/ShaderCookerStandalone%{systemToExecutableExtensionMap[cfg.system]}")
     local shaderOutputPath = (Solution.Projects.Current.BuildDir .. "/Data/Shaders")
 
     prebuildmessage ("Compiling Shaders...")
