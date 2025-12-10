@@ -1,7 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <robinhood/robinhood.h>
 
@@ -19,8 +19,8 @@ namespace ECS
         struct UnitStatsComponent
         {
         public:
-            robin_hood::unordered_map<Generated::StatTypeEnum, UnitStat> statTypeToValue;
-            robin_hood::unordered_set<Generated::StatTypeEnum> dirtyStatTypes;
+            robin_hood::unordered_map<MetaGen::Shared::Unit::StatTypeEnum, UnitStat> statTypeToValue;
+            robin_hood::unordered_set<MetaGen::Shared::Unit::StatTypeEnum> dirtyStatTypes;
         };
     }
 }

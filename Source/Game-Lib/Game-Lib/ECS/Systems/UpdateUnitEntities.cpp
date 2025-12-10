@@ -34,7 +34,7 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
@@ -147,9 +147,9 @@ namespace ECS::Systems
                         unitCustomization->componentSectionsInUse = { 0 };
 
                         auto& displayInfo = registry.get<Components::DisplayInfo>(entity);
-                        if (auto* displayInfoRow = creatureDisplayInfoStorage->TryGet<Generated::CreatureDisplayInfoRecord>(displayInfo.displayID))
+                        if (auto* displayInfoRow = creatureDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::CreatureDisplayInfoRecord>(displayInfo.displayID))
                         {
-                            if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<Generated::CreatureDisplayInfoExtraRecord>(displayInfoRow->extendedDisplayInfoID))
+                            if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<MetaGen::Shared::ClientDB::CreatureDisplayInfoExtraRecord>(displayInfoRow->extendedDisplayInfoID))
                             {
                                 u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(displayInfoExtraRow->bakedTexture);
                                 unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(bakedTextureHash);
@@ -201,21 +201,21 @@ namespace ECS::Systems
                     {
                         bool isEquipmentDirty = false;
                         bool isVisualEquipmentDirty = false;
-                        for (u32 i = (u32)Generated::ItemEquipSlotEnum::EquipmentStart; i <= (u32)Generated::ItemEquipSlotEnum::EquipmentEnd; i++)
+                        for (u32 i = (u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentStart; i <= (u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentEnd; i++)
                         {
                             u32 equipSlotIndex = i;
 
                             u32 equippedItemID = unitEquipment->equipmentSlotToItemID[equipSlotIndex];
                             if (equippedItemID != 0)
                             {
-                                unitEquipment->dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)equipSlotIndex);
+                                unitEquipment->dirtyItemIDSlots.insert((MetaGen::Shared::Unit::ItemEquipSlotEnum)equipSlotIndex);
                                 isEquipmentDirty = true;
                             }
 
                             u32 visualItemID = unitEquipment->equipmentSlotToVisualItemID[equipSlotIndex];
                             if (visualItemID != 0)
                             {
-                                unitEquipment->dirtyVisualItemIDSlots.insert((Generated::ItemEquipSlotEnum)equipSlotIndex);
+                                unitEquipment->dirtyVisualItemIDSlots.insert((MetaGen::Shared::Unit::ItemEquipSlotEnum)equipSlotIndex);
                                 isVisualEquipmentDirty = true;
                             }
                         }
@@ -314,7 +314,7 @@ namespace ECS::Systems
             }
 
             auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(entity);
-            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
             bool isAlive = healthPower.current > 0.0f;
             if (!isAlive)
@@ -416,33 +416,33 @@ namespace ECS::Systems
             bool needToRefreshGeometry = false;
             bool needToRefreshSkin = false;
 
-            for (const Generated::ItemEquipSlotEnum equipSlot : unitEquipment.dirtyVisualItemIDSlots)
+            for (const MetaGen::Shared::Unit::ItemEquipSlotEnum equipSlot : unitEquipment.dirtyVisualItemIDSlots)
             {
                 u32 itemID = unitEquipment.equipmentSlotToVisualItemID[(u32)equipSlot];
 
-                needToRefreshGeometry |= equipSlot != ::Generated::ItemEquipSlotEnum::MainHand && equipSlot != ::Generated::ItemEquipSlotEnum::OffHand && equipSlot != ::Generated::ItemEquipSlotEnum::Ranged;
-                needToRefreshSkin |= equipSlot == ::Generated::ItemEquipSlotEnum::Chest || equipSlot == ::Generated::ItemEquipSlotEnum::Shirt || equipSlot == ::Generated::ItemEquipSlotEnum::Tabard || 
-                    equipSlot == ::Generated::ItemEquipSlotEnum::Bracers || equipSlot == ::Generated::ItemEquipSlotEnum::Gloves || equipSlot == ::Generated::ItemEquipSlotEnum::Belt || 
-                    equipSlot == ::Generated::ItemEquipSlotEnum::Pants || equipSlot == ::Generated::ItemEquipSlotEnum::Boots;
+                needToRefreshGeometry |= equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand && equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand && equipSlot != ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Ranged;
+                needToRefreshSkin |= equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Chest || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shirt || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Tabard || 
+                    equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Bracers || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Gloves || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Belt || 
+                    equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Pants || equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Boots;
 
                 if (itemID == 0)
                 {
-                    if (equipSlot == ::Generated::ItemEquipSlotEnum::MainHand)
+                    if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)
                     {
                         ::Util::Unit::OpenHand(registry, entity, false);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandRight);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::OffHand)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)
                     {
                         ::Util::Unit::OpenHand(registry, entity, true);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::HandLeft);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Shield);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Helm)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Helm)
                     {
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::Helm);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Shoulders)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shoulders)
                     {
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderLeft);
                         ::Util::Unit::RemoveItemFromAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderRight);
@@ -450,29 +450,29 @@ namespace ECS::Systems
                 }
                 else
                 {
-                    auto& item = itemStorage->Get<Generated::ItemRecord>(itemID);
+                    auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(itemID);
 
-                    if (equipSlot == ::Generated::ItemEquipSlotEnum::MainHand)
+                    if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)
                     {
                         entt::entity itemEntity = entt::null;
 
                         if (::Util::Unit::AddWeaponToHand(registry, entity, item, false, itemEntity))
                             ::Util::Unit::CloseHand(registry, entity, false);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::OffHand)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)
                     {
                         entt::entity itemEntity = entt::null;
 
                         if (::Util::Unit::AddWeaponToHand(registry, entity, item, true, itemEntity))
                             ::Util::Unit::CloseHand(registry, entity, true);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Helm)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Helm)
                     {
                         entt::entity itemEntity = entt::null;
 
                         ::Util::Unit::AddHelm(registry, entity, item, displayInfo.race, displayInfo.gender, itemEntity);
                     }
-                    else if (equipSlot == ::Generated::ItemEquipSlotEnum::Shoulders)
+                    else if (equipSlot == ::MetaGen::Shared::Unit::ItemEquipSlotEnum::Shoulders)
                     {
                         entt::entity shoulderLeftEntity = entt::null;
                         entt::entity shoulderRightEntity = entt::null;
@@ -526,12 +526,12 @@ namespace ECS::Systems
             {
                 if (!unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
                         {
-                            auto& item = itemStorage->Get<Generated::ItemRecord>(glovesID);
+                            auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(glovesID);
                             if (item.displayID > 0)
                             {
                                 ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -540,12 +540,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 shirtID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Shirt];
+                u32 shirtID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Shirt];
                 if (shirtID > 0)
                 {
                     if (itemStorage->Has(shirtID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(shirtID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(shirtID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -553,12 +553,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bracersID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Bracers];
+                u32 bracersID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Bracers];
                 if (bracersID > 0)
                 {
                     if (itemStorage->Has(bracersID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(bracersID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(bracersID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -566,12 +566,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 bootsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Boots];
+                u32 bootsID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Boots];
                 if (bootsID > 0)
                 {
                     if (itemStorage->Has(bootsID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(bootsID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(bootsID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -579,12 +579,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 pantsID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Pants];
+                u32 pantsID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Pants];
                 if (pantsID > 0)
                 {
                     if (itemStorage->Has(pantsID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(pantsID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(pantsID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -592,12 +592,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 chestID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Chest];
+                u32 chestID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Chest];
                 if (chestID > 0)
                 {
                     if (itemStorage->Has(chestID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(chestID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(chestID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -607,12 +607,12 @@ namespace ECS::Systems
 
                 if (unitCustomization.flags.hasGloveModel)
                 {
-                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Gloves];
+                    u32 glovesID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Gloves];
                     if (glovesID > 0)
                     {
                         if (itemStorage->Has(glovesID))
                         {
-                            auto& item = itemStorage->Get<Generated::ItemRecord>(glovesID);
+                            auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(glovesID);
                             if (item.displayID > 0)
                             {
                                 ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -621,12 +621,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 beltID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Belt];
+                u32 beltID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Belt];
                 if (beltID > 0)
                 {
                     if (itemStorage->Has(beltID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(beltID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(beltID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);
@@ -634,12 +634,12 @@ namespace ECS::Systems
                     }
                 }
 
-                u32 tabardID = unitEquipment->equipmentSlotToVisualItemID[(u32)Generated::ItemEquipSlotEnum::Tabard];
+                u32 tabardID = unitEquipment->equipmentSlotToVisualItemID[(u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::Tabard];
                 if (tabardID > 0)
                 {
                     if (itemStorage->Has(tabardID))
                     {
-                        auto& item = itemStorage->Get<Generated::ItemRecord>(tabardID);
+                        auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(tabardID);
                         if (item.displayID > 0)
                         {
                             ECSUtil::UnitCustomization::WriteItemToSkin(textureSingleton, clientDBSingleton, itemSingleton, unitCustomizationSingleton, unitCustomization, item.displayID);

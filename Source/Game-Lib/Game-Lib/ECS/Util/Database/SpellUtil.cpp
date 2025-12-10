@@ -3,7 +3,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -23,14 +23,11 @@ namespace ECSUtil::Spell
 
         auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
 
-        if (!clientDBSingleton.Has(ClientDBHash::Spell))
+        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellRecord>())
         {
-            clientDBSingleton.Register(ClientDBHash::Spell, Generated::SpellEffectsRecord::Name);
-
             auto* storage = clientDBSingleton.Get(ClientDBHash::Spell);
-            storage->Initialize<Generated::SpellRecord>();
 
-            Generated::SpellRecord defaultSpell;
+            MetaGen::Shared::ClientDB::SpellRecord defaultSpell;
             defaultSpell.name = storage->AddString("Unused");
             defaultSpell.description = storage->AddString("Unused");
             defaultSpell.auraDescription = storage->AddString("Unused");
@@ -39,29 +36,25 @@ namespace ECSUtil::Spell
             storage->MarkDirty();
         }
 
-        if (clientDBSingleton.Register<Generated::SpellEffectsRecord>())
+        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellEffectsRecord>())
         {
             auto* storage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
 
-            Generated::SpellEffectsRecord defaultSpellEffect;
+            MetaGen::Shared::ClientDB::SpellEffectsRecord defaultSpellEffect;
             defaultSpellEffect.spellID = 0;
             defaultSpellEffect.effectPriority = 0;
             defaultSpellEffect.effectType = 0;
-            defaultSpellEffect.effectValue1 = 0;
-            defaultSpellEffect.effectValue2 = 0;
-            defaultSpellEffect.effectValue3 = 0;
-            defaultSpellEffect.effectMiscValue1 = 0;
-            defaultSpellEffect.effectMiscValue2 = 0;
-            defaultSpellEffect.effectMiscValue3 = 0;
+            defaultSpellEffect.effectValues = { 0 };
+            defaultSpellEffect.effectMiscValues = { 0 };
 
             storage->Replace(0, defaultSpellEffect);
         }
 
-        if (clientDBSingleton.Register<Generated::SpellProcDataRecord>())
+        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellProcDataRecord>())
         {
             auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcData);
 
-            Generated::SpellProcDataRecord defaultSpellProcData;
+            MetaGen::Shared::ClientDB::SpellProcDataRecord defaultSpellProcData;
             defaultSpellProcData.phaseMask = 0;
             defaultSpellProcData.typeMask = 0;
             defaultSpellProcData.hitMask = 0;
@@ -74,11 +67,11 @@ namespace ECSUtil::Spell
             storage->Replace(0, defaultSpellProcData);
         }
 
-        if (clientDBSingleton.Register<Generated::SpellProcLinkRecord>())
+        if (clientDBSingleton.Register<MetaGen::Shared::ClientDB::SpellProcLinkRecord>())
         {
             auto* storage = clientDBSingleton.Get(ClientDBHash::SpellProcLink);
 
-            Generated::SpellProcLinkRecord defaultSpellProcLink;
+            MetaGen::Shared::ClientDB::SpellProcLinkRecord defaultSpellProcLink;
             defaultSpellProcLink.spellID = 0;
             defaultSpellProcLink.effectMask = 0;
             defaultSpellProcLink.procDataID = 0;
@@ -89,7 +82,7 @@ namespace ECSUtil::Spell
         auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);
         auto* spellEffectsStorage = clientDBSingleton.Get(ClientDBHash::SpellEffects);
 
-        spellEffectsStorage->Each([&](u32 id, Generated::SpellEffectsRecord& spellEffect) -> bool
+        spellEffectsStorage->Each([&](u32 id, MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect) -> bool
         {
             AddSpellEffect(spellSingleton, spellEffect.spellID, id);
             return true;
@@ -128,8 +121,8 @@ namespace ECSUtil::Spell
         auto& effectList = spellSingleton.spellIDToEffectList[spellID];
         std::ranges::sort(effectList, [&spellEffectsStorage](const u32 spellEffectIDA, const u32 spellEffectIDB)
         {
-            const auto& spellEffectA = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectIDA);
-            const auto& spellEffectB = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectIDB);
+            const auto& spellEffectA = spellEffectsStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(spellEffectIDA);
+            const auto& spellEffectB = spellEffectsStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(spellEffectIDB);
 
             return spellEffectA.effectPriority > spellEffectB.effectPriority;
         });

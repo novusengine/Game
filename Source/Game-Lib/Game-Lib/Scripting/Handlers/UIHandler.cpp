@@ -19,7 +19,7 @@
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
 
-#include <Meta/Generated/Game/LuaEvent.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/Zenith.h>
 

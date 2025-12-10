@@ -39,7 +39,7 @@
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/CPUInfo.h>
 
-#include <Meta/Generated/Game/LuaEnum.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Network/Client.h>
 
@@ -343,13 +343,13 @@ bool Application::Init()
         _luaManager = new Scripting::LuaManager();
         ServiceLocator::SetLuaManager(_luaManager);
 
-        _luaManager->PrepareToAddLuaHandlers((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Count);
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Global, new Scripting::GlobalHandler());
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Event, new Scripting::EventHandler());
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Database, new Scripting::Database::DatabaseHandler());
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::UI, new Scripting::UI::UIHandler());
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
-        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)Generated::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
+        _luaManager->PrepareToAddLuaHandlers((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Count);
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Global, new Scripting::GlobalHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Event, new Scripting::EventHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Database, new Scripting::Database::DatabaseHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI, new Scripting::UI::UIHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
 
         auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
         _luaManager->GetZenithStateManager().Add(globalKey);

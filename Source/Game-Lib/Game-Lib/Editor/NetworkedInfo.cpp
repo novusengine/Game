@@ -27,8 +27,9 @@
 
 #include <FileFormat/Shared.h>
 
-#include <Meta/Generated/Shared/Networkpacket.h>
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Shared/Packet/Packet.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <Network/Client.h>
 
@@ -108,7 +109,7 @@ namespace Editor
                     if (ImGui::CollapsingHeader("Basic Info"))
                     {
                         auto& unitPowersComponent = registry.get<ECS::Components::UnitPowersComponent>(characterSingleton.moverEntity);
-                        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+                        auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
                         ImGui::Text("Name : %s", moverUnit.name.c_str());
                         ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", healthPower.base, healthPower.current, healthPower.max);
@@ -122,7 +123,7 @@ namespace Editor
                         {
                             auto& targetUnit = registry.get<ECS::Components::Unit>(moverUnit.targetEntity);
                             auto& unitPowersComponent = registry.get<ECS::Components::UnitPowersComponent>(moverUnit.targetEntity);
-                            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+                            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
                             ImGui::Text("Name : %s", targetUnit.name.c_str());
                             ImGui::Text("Health (Base, Current, Max) : (%.2f, %.2f, %.2f)", healthPower.base, healthPower.current, healthPower.max);
@@ -199,7 +200,7 @@ namespace Editor
                     {
                         if (networkState.client->Connect(CVAR_NetworkConnectIP.Get(), 4000))
                         {
-                            ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
+                            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{
                                 .accountName = accountName
                             });
                         }

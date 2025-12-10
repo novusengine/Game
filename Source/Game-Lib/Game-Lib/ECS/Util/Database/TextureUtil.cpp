@@ -4,7 +4,7 @@
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -22,7 +22,7 @@ namespace ECSUtil::Texture
             clientDBSingleton.Register(ClientDBHash::ItemDisplayMaterialResources, "ItemDisplayMaterialResources");
 
             auto* itemDisplayMaterialResourcesStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayMaterialResources);
-            itemDisplayMaterialResourcesStorage->Initialize<Generated::ItemDisplayInfoMaterialResourceRecord>();
+            itemDisplayMaterialResourcesStorage->Initialize<MetaGen::Shared::ClientDB::ItemDisplayInfoMaterialResourceRecord>();
         }
 
         if (!clientDBSingleton.Has(ClientDBHash::ItemDisplayMaterialResources))
@@ -30,7 +30,7 @@ namespace ECSUtil::Texture
             clientDBSingleton.Register(ClientDBHash::ItemDisplayModelMaterialResources, "ItemDisplayModelMaterialResources");
 
             auto* itemDisplayModelMaterialResourcesStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayModelMaterialResources);
-            itemDisplayModelMaterialResourcesStorage->Initialize<Generated::ItemDisplayInfoModelMaterialResourceRecord>();
+            itemDisplayModelMaterialResourcesStorage->Initialize<MetaGen::Shared::ClientDB::ItemDisplayInfoModelMaterialResourceRecord>();
         }
 
         auto* textureFileDataStorage = clientDBSingleton.Get(ClientDBHash::TextureFileData);
@@ -39,7 +39,7 @@ namespace ECSUtil::Texture
         textureSingleton.materialResourcesIDToTextureHashes.clear();
         textureSingleton.materialResourcesIDToTextureHashes.reserve(numRecords);
 
-        textureFileDataStorage->Each([&textureFileDataStorage, &textureSingleton](u32 id, const Generated::TextureFileDataRecord& row)
+        textureFileDataStorage->Each([&textureFileDataStorage, &textureSingleton](u32 id, const MetaGen::Shared::ClientDB::TextureFileDataRecord& row)
         {
             if (id == 0) return true;
 

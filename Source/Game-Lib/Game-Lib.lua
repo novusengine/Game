@@ -8,7 +8,10 @@ Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.De
     Solution.Util.SetLanguage("C++")
     Solution.Util.SetCppDialect(20)
 
+    local projFile = mod.Path .. "/" .. mod.Name .. ".lua"
     local files = Solution.Util.GetFilesForCpp(mod.Path)
+    table.insert(files, projFile)
+
     Solution.Util.SetFiles(files)
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetDefines(defines)
@@ -19,6 +22,10 @@ Solution.Util.CreateStaticLib(mod.Name, Solution.Projects.Current.BinDir, mod.De
     else
       Solution.Util.SetDefines("SHADER_SOURCE_DIR=\"" .. shaderSourceDir .. "\"")
     end
+
+    vpaths {
+        ["/*"] = { "*.lua", mod.Name .. "/**" }
+    }
 end)
 
 Solution.Util.CreateDep(mod.NameLow, mod.Dependencies, function()

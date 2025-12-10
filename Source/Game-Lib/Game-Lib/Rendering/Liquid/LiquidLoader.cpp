@@ -77,11 +77,11 @@ void LiquidLoader::Update(f32 deltaTime)
 
 vec2 GetChunkPosition(u32 chunkID)
 {
-    const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
-    const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+    const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
     const vec2 chunkPos = -Terrain::MAP_HALF_SIZE + (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
-    return chunkPos;
+    return vec2(chunkPos.x, -chunkPos.y);
 }
 
 vec2 GetCellPosition(u32 chunkID, u32 cellID)
@@ -92,8 +92,8 @@ vec2 GetCellPosition(u32 chunkID, u32 cellID)
     const vec2 chunkPos = GetChunkPosition(chunkID);
     const vec2 cellPos = vec2(cellX+1, cellY) * Terrain::CELL_SIZE;
 
-    vec2 cellWorldPos = chunkPos + cellPos;
-    return vec2(cellWorldPos.x, -cellWorldPos.y);
+    vec2 cellWorldPos = chunkPos + vec2(cellPos.x, -cellPos.y);
+    return vec2(cellWorldPos.x, cellWorldPos.y);
 }
 
 void LiquidLoader::LoadFromChunk(u16 chunkX, u16 chunkY, std::shared_ptr<Bytebuffer>& buffer, const Map::Chunk::LiquidHeader& liquidHeader)

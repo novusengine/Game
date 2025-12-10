@@ -4,7 +4,7 @@
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/StringUtils.h>
 
-#include <Meta/Generated/Game/Command.h>
+#include <MetaGen/Game/Command/Command.h>
 
 #include <robinhood/robinhood.h>
 
@@ -42,14 +42,14 @@ private:
         using CommandStruct = std::decay_t<std::tuple_element_t<1, function_args_t<CommandHandler>>>;
         static_assert(std::is_invocable_r_v<bool, CommandHandler, GameConsole*, CommandStruct&>, "GameConsoleCommandHandler - The Callback provided to 'RegisterCommand' must return a bool and take 2 parameters (GameConsole*, T&)");
 
-        // Static assert to ensure CommandStruct has CommandNameList and Read method
-        static_assert(requires { sizeof(CommandStruct::CommandNameList) > 0; }, "CommandStruct must have CommandNameList");
+        // Static assert to ensure CommandStruct has COMMAND_NAME_LIST and Read method
+        static_assert(requires { sizeof(CommandStruct::COMMAND_NAME_LIST) > 0; }, "CommandStruct must have COMMAND_NAME_LIST");
         static_assert(requires { CommandStruct::Read; }, "CommandStruct must have a static Read method");
 
-        // Register the dynamic handler for each command name in CommandNameList
-        constexpr u32 numCommandNames = static_cast<u32>(CommandStruct::CommandNameList.size());
+        // Register the dynamic handler for each command name in COMMAND_NAME_LIST
+        constexpr u32 numCommandNames = static_cast<u32>(CommandStruct::COMMAND_NAME_LIST.size());
 
-        const std::string_view& commandName = CommandStruct::CommandNameList[0];
+        const std::string_view& commandName = CommandStruct::COMMAND_NAME_LIST[0];
         u32 commandNameHash = StringUtils::fnv1a_32(commandName.data(), commandName.length());
 
         if (_commandRegistry.contains(commandNameHash))
@@ -61,10 +61,10 @@ private:
 
         GameConsoleCommandEntry& command = _commandRegistry[commandNameHash];
         command.name = commandName;
-        command.help = CommandStruct::CommandHelp;
+        command.help = CommandStruct::COMMAND_HELP_MESSAGE;
         command.nameWithAliases = commandName;
         command.nameHash = commandNameHash;
-        command.hasParameters = CommandStruct::NumParameters > 0 && CommandStruct::NumParameters != CommandStruct::NumParametersOptional;
+        command.hasParameters = CommandStruct::NUM_PARAMETERS > 0 && CommandStruct::NUM_PARAMETERS != CommandStruct::NUM_PARAMETERS_OPTIONAL;
         command.callback = [commandName, callback](GameConsole* gameConsole, std::vector<std::string>& parameters) -> u32
         {
             // Returns 0 for Success, 1 for Execution Failed, 2 for Read Failed
@@ -87,7 +87,7 @@ private:
             std::string aliases = " (";
             for (u32 commandAliasIndex = 1; commandAliasIndex < numCommandNames; commandAliasIndex++)
             {
-                const std::string_view& commandAliasName = CommandStruct::CommandNameList[commandAliasIndex];
+                const std::string_view& commandAliasName = CommandStruct::COMMAND_NAME_LIST[commandAliasIndex];
                 u32 commandAliasNameHash = StringUtils::fnv1a_32(commandAliasName.data(), commandAliasName.length());
 
                 if (_commandRegistry.contains(commandAliasNameHash))

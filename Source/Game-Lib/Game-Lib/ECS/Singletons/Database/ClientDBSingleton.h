@@ -79,8 +79,8 @@ namespace ECS
             template <typename T> requires ClientDB::ValidClientDB<T>
             bool Register()
             {
-                ClientDBHash hash = static_cast<ClientDBHash>(T::NameHash);
-                if (!Register(hash, T::Name))
+                ClientDBHash hash = static_cast<ClientDBHash>(T::NAME_HASH);
+                if (!Register(hash, T::NAME))
                     return false;
 
                 auto* storage = Get(hash);

@@ -7,8 +7,8 @@
 
 #include <Gameplay/GameDefine.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <entt/fwd.hpp>
 
@@ -43,20 +43,20 @@ namespace Model
 
 namespace Util::Unit
 {
-    bool HasPower(const ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType);
-    ECS::UnitPower& GetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType);
-    bool AddPower(ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max);
-    bool SetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max);
+    bool HasPower(const ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType);
+    ECS::UnitPower& GetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType);
+    bool AddPower(ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType, f64 base, f64 current, f64 max);
+    bool SetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType, f64 base, f64 current, f64 max);
 
-    bool HasResistance(const ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType);
-    ECS::UnitResistance& GetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType);
-    bool AddResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max);
-    bool SetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max);
+    bool HasResistance(const ECS::Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType);
+    ECS::UnitResistance& GetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType);
+    bool AddResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max);
+    bool SetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max);
 
-    bool HasStat(const ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType);
-    ECS::UnitStat& GetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType);
-    bool AddStat(ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current);
-    bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current);
+    bool HasStat(const ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType);
+    ECS::UnitStat& GetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType);
+    bool AddStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current);
+    bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current);
 
     bool PlayAnimationRaw(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
     bool PlayAnimation(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
@@ -66,9 +66,9 @@ namespace Util::Unit
     bool CloseHand(entt::registry& registry, entt::entity entity, bool isOffHand);
     bool OpenHand(entt::registry& registry, entt::entity entity, bool isOffHand);
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity);
-    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
-    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity);
+    bool AddShoulders(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
+    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
 
     bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
     bool RemoveItemFromAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment);

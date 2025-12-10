@@ -13,7 +13,7 @@ namespace Util
             // This is translated to remap positions [-17066 .. 17066] to [0 ..  34132]
             // This is because we want the Chunk Pos to be between [0 .. 64] and not [-32 .. 32]
 
-            return vec2(Terrain::MAP_HALF_SIZE - position.z, Terrain::MAP_HALF_SIZE - -position.x);
+            return vec2(Terrain::MAP_HALF_SIZE - -position.x, Terrain::MAP_HALF_SIZE - position.z);
         }
 
         vec2 GetChunkIndicesFromAdtPosition(const vec2& adtPosition)
@@ -33,8 +33,8 @@ namespace Util
 
         vec2 GetChunkPosition(u32 chunkID)
         {
-            const u32 chunkX = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
-            const u32 chunkY = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+            const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+            const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
             const vec2 chunkPos = -Terrain::MAP_HALF_SIZE + (vec2(chunkX, chunkY) * Terrain::CHUNK_SIZE);
             return vec2(chunkPos.x, -chunkPos.y);

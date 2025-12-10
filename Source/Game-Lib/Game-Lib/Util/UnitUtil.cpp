@@ -28,7 +28,7 @@
 
 #include <Base/Util/StringUtils.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -36,16 +36,16 @@ using namespace ECS;
 
 namespace Util::Unit
 {
-    bool HasPower(const Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType)
+    bool HasPower(const Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType)
     {
         bool hasPowerType = unitPowersComponent.powerTypeToValue.contains(powerType);
         return hasPowerType;
     }
-    UnitPower& GetPower(Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType)
+    UnitPower& GetPower(Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType)
     {
         return unitPowersComponent.powerTypeToValue.at(powerType);
     }
-    bool AddPower(Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
+    bool AddPower(Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
     {
         if (HasPower(unitPowersComponent, powerType))
             return false;
@@ -59,7 +59,7 @@ namespace Util::Unit
 
         return true;
     }
-    bool SetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, Generated::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
+    bool SetPower(ECS::Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType, f64 base, f64 current, f64 max)
     {
         if (!HasPower(unitPowersComponent, powerType))
             return false;
@@ -73,16 +73,16 @@ namespace Util::Unit
         return true;
     }
 
-    bool HasResistance(const Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType)
+    bool HasResistance(const Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType)
     {
         bool hasResistanceType = unitResistancesComponent.resistanceTypeToValue.contains(resistanceType);
         return hasResistanceType;
     }
-    UnitResistance& GetResistance(Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType)
+    UnitResistance& GetResistance(Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType)
     {
         return unitResistancesComponent.resistanceTypeToValue.at(resistanceType);
     }
-    bool AddResistance(Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
+    bool AddResistance(Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
     {
         if (HasResistance(unitResistancesComponent, resistanceType))
             return false;
@@ -96,7 +96,7 @@ namespace Util::Unit
 
         return true;
     }
-    bool SetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, Generated::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
+    bool SetResistance(ECS::Components::UnitResistancesComponent& unitResistancesComponent, MetaGen::Shared::Unit::ResistanceTypeEnum resistanceType, f64 base, f64 current, f64 max)
     {
         if (!HasResistance(unitResistancesComponent, resistanceType))
             return false;
@@ -110,16 +110,16 @@ namespace Util::Unit
         return true;
     }
 
-    bool HasStat(const Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType)
+    bool HasStat(const Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType)
     {
         bool hasStatType = unitStatsComponent.statTypeToValue.contains(statType);
         return hasStatType;
     }
-    UnitStat& GetStat(Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType)
+    UnitStat& GetStat(Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType)
     {
         return unitStatsComponent.statTypeToValue.at(statType);
     }
-    bool AddStat(Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current)
+    bool AddStat(Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current)
     {
         if (HasStat(unitStatsComponent, statType))
             return false;
@@ -132,7 +132,7 @@ namespace Util::Unit
 
         return true;
     }
-    bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, Generated::StatTypeEnum statType, f64 base, f64 current)
+    bool SetStat(ECS::Components::UnitStatsComponent& unitStatsComponent, MetaGen::Shared::Unit::StatTypeEnum statType, f64 base, f64 current)
     {
         if (!HasStat(unitStatsComponent, statType))
             return false;
@@ -208,7 +208,7 @@ namespace Util::Unit
 
         auto& unit = registry.get<Components::Unit>(entity);
         auto& unitPowerStats = registry.get<Components::UnitPowersComponent>(entity);
-        auto& healthPower = GetPower(unitPowerStats, Generated::PowerTypeEnum::Health);
+        auto& healthPower = GetPower(unitPowerStats, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
         bool isAlive = healthPower.current > 0.0f;
         if (!isAlive)
@@ -508,7 +508,7 @@ namespace Util::Unit
         return didOpenFingers;
     }
 
-    bool AddHelm(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity)
+    bool AddHelm(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, GameDefine::UnitRace race, GameDefine::UnitGender gender, entt::entity& itemEntity)
     {
         itemEntity = entt::null;
 
@@ -523,7 +523,7 @@ namespace Util::Unit
         if (item.displayID == 0 || !itemDisplayInfoStorage->Has(item.displayID))
             return false;
 
-        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(item.displayID);
+        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(item.displayID);
         u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
         if (!itemSingleton.helmModelResourcesIDToModelMapping.contains(modelResourcesID))
@@ -534,7 +534,7 @@ namespace Util::Unit
         if (!hasArmorTemplate)
             return false;
 
-        auto& armorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
+        auto& armorTemplate = itemArmorTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemArmorTemplateRecord>(item.armorTemplateID);
         auto equipType = static_cast<Database::Item::ItemArmorEquipType>(armorTemplate.equipType);
         if (equipType != Database::Item::ItemArmorEquipType::Helm)
             return false;
@@ -544,7 +544,7 @@ namespace Util::Unit
         return AddItemToAttachment(registry, entity, ::Attachment::Defines::Type::Helm, item.displayID, itemEntity, itemModelHash, helmVariant);
     }
 
-    bool AddShoulders(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity)
+    bool AddShoulders(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity)
     {
         shoulderLeftEntity = entt::null;
         shoulderRightEntity = entt::null;
@@ -560,7 +560,7 @@ namespace Util::Unit
         if (item.displayID == 0 || !itemDisplayInfoStorage->Has(item.displayID))
             return false;
 
-        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(item.displayID);
+        auto& itemDisplayInfo = itemDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(item.displayID);
         u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
         if (!itemSingleton.shoulderModelResourcesIDToModelMapping.contains(modelResourcesID))
@@ -571,7 +571,7 @@ namespace Util::Unit
         if (!hasArmorTemplate)
             return false;
 
-        auto& armorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(item.armorTemplateID);
+        auto& armorTemplate = itemArmorTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemArmorTemplateRecord>(item.armorTemplateID);
         auto equipType = static_cast<Database::Item::ItemArmorEquipType>(armorTemplate.equipType);
         if (equipType != Database::Item::ItemArmorEquipType::Shoulders)
             return false;
@@ -598,7 +598,7 @@ namespace Util::Unit
         return result;
     }
 
-    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const Generated::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity)
+    bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity)
     {
         itemEntity = entt::null;
             
@@ -625,7 +625,7 @@ namespace Util::Unit
 
         if (hasWeaponTemplate)
         {
-            auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(item.weaponTemplateID);
+            auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(item.weaponTemplateID);
             auto weaponStyle = static_cast<Database::Item::ItemWeaponStyle>(itemWeaponTemplate.weaponStyle);
 
             bool canWearInOffHand = weaponStyle == Database::Item::ItemWeaponStyle::Unspecified || weaponStyle == Database::Item::ItemWeaponStyle::OneHand || 
@@ -862,7 +862,7 @@ namespace Util::Unit
             if (itemID == 0)
                 return 0;
 
-            const auto& itemInfo = itemStorage->Get<::Generated::ItemRecord>(itemID);
+            const auto& itemInfo = itemStorage->Get<::MetaGen::Shared::ClientDB::ItemRecord>(itemID);
             return itemInfo.displayID;
         };
 
@@ -890,7 +890,7 @@ namespace Util::Unit
 
         if (glovesDisplayID > 0)
         {
-            auto* glovesDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(glovesDisplayID);
+            auto* glovesDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(glovesDisplayID);
             if (glovesDisplayInfo && glovesDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 401, 499);
@@ -905,7 +905,7 @@ namespace Util::Unit
         bool chestEnabled800 = false;
         if (!unitCustomization.flags.hasGloveModel && chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(chestDisplayID);
             if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[0])
             {
                 u32 geometryGroupID = 801 + chestDisplayInfo->modelGeosetGroups[0];
@@ -915,7 +915,7 @@ namespace Util::Unit
             }
         }
 
-        auto* tabardDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(tabardDisplayID);
+        auto* tabardDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(tabardDisplayID);
         if (tabardDisplayInfo)
         {
             if (!(tabardDisplayInfo->flags & 0x100000))
@@ -926,7 +926,7 @@ namespace Util::Unit
         }
         else if (chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(chestDisplayID);
             if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[3])
             {
                 u32 geometryGroupID = 2201 + chestDisplayInfo->modelGeosetGroups[3];
@@ -937,7 +937,7 @@ namespace Util::Unit
         
         unitCustomization.flags.hasBeltModel = false;
 
-        auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(beltDisplayID);
+        auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(beltDisplayID);
         if (beltDisplayInfo)
             unitCustomization.flags.hasBeltModel = beltDisplayInfo->flags & 0x200;
 
@@ -946,7 +946,7 @@ namespace Util::Unit
 
         if (chestDisplayID > 0)
         {
-            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+            auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(chestDisplayID);
             if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[2])
             {
                 unitCustomization.flags.hasChestDress = true;
@@ -963,7 +963,7 @@ namespace Util::Unit
         }
         else if (pantsDisplayID > 0)
         {
-            auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+            auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(pantsDisplayID);
             if (pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[2])
             {
                 unitCustomization.flags.hasChestDress = false;
@@ -982,7 +982,7 @@ namespace Util::Unit
         bool hasDress = unitCustomization.flags.hasChestDress || unitCustomization.flags.hasPantsDress;
         if (!hasDress)
         {
-            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(bootsDisplayID);
+            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(bootsDisplayID);
             if (bootsDisplayInfo && bootsDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 501, 599);
@@ -993,14 +993,14 @@ namespace Util::Unit
             }
             else
             {
-                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(pantsDisplayID);
                 u32 geometryGroupID = pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[1] ? 901 + pantsDisplayInfo->modelGeosetGroups[1] : 901;
                 EnableGeometryGroup(registry, entity, model, geometryGroupID);
             }
 
             if (!unitCustomization.flags.hasGloveModel && !chestEnabled800)
             {
-                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(shirtDisplayID);
+                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(shirtDisplayID);
                 if (shirtDisplayInfo && shirtDisplayInfo->modelGeosetGroups[0])
                 {
                     u32 geometryGroupID = 801 + shirtDisplayInfo->modelGeosetGroups[0];
@@ -1012,7 +1012,7 @@ namespace Util::Unit
         // Boots
         {
             bool bootsFlag = false;
-            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(bootsDisplayID);
+            auto* bootsDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(bootsDisplayID);
             if (bootsDisplayInfo)
                 bootsFlag = (bootsDisplayInfo->flags & 0x100000) == 0;
 
@@ -1053,7 +1053,7 @@ namespace Util::Unit
         {
             if (chestDisplayID)
             {
-                auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(chestDisplayID);
+                auto* chestDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(chestDisplayID);
                 if (chestDisplayInfo && chestDisplayInfo->modelGeosetGroups[1])
                 {
                     u32 geometryGroupID = 1001 + chestDisplayInfo->modelGeosetGroups[1];
@@ -1062,7 +1062,7 @@ namespace Util::Unit
             }
             else if (shirtDisplayID)
             {
-                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(shirtDisplayID);
+                auto* shirtDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(shirtDisplayID);
                 if (shirtDisplayInfo && shirtDisplayInfo->modelGeosetGroups[1])
                 {
                     u32 geometryGroupID = 1001 + shirtDisplayInfo->modelGeosetGroups[1];
@@ -1075,7 +1075,7 @@ namespace Util::Unit
         {
             if (pantsDisplayID)
             {
-                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(pantsDisplayID);
+                auto* pantsDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(pantsDisplayID);
                 if (pantsDisplayInfo && pantsDisplayInfo->modelGeosetGroups[0])
                 {
                     u32 geometryGroup = pantsDisplayInfo->modelGeosetGroups[0];
@@ -1096,7 +1096,7 @@ namespace Util::Unit
 
         if (cloakDisplayID)
         {
-            auto* cloakDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(cloakDisplayID);
+            auto* cloakDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(cloakDisplayID);
             if (cloakDisplayInfo && cloakDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 1500, 1599);
@@ -1108,7 +1108,7 @@ namespace Util::Unit
 
         if (beltDisplayID)
         {
-            auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<Generated::ItemDisplayInfoRecord>(beltDisplayID);
+            auto* beltDisplayInfo = itemDisplayInfoStorage->TryGet<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(beltDisplayID);
             if (beltDisplayInfo && beltDisplayInfo->modelGeosetGroups[0])
             {
                 DisableGeometryGroups(registry, entity, model, 1800, 1899);

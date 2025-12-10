@@ -8,7 +8,7 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -39,9 +39,9 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::Item, "Item");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::Item);
-            storage->Initialize<Generated::ItemRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemRecord>();
 
-            Generated::ItemRecord defaultItem;
+            MetaGen::Shared::ClientDB::ItemRecord defaultItem;
             defaultItem.displayID = 0;
             defaultItem.bind = 0;
             defaultItem.rarity = 1;
@@ -68,7 +68,7 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemStatTemplate, "ItemStatTemplate");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTemplate);
-            storage->Initialize<Generated::ItemStatTemplateRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemStatTemplateRecord>();
 
             storage->MarkDirty();
         }
@@ -78,7 +78,7 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemArmorTemplate, "ItemArmorTemplate");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemArmorTemplate);
-            storage->Initialize<Generated::ItemArmorTemplateRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemArmorTemplateRecord>();
 
             storage->MarkDirty();
         }
@@ -88,9 +88,9 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemWeaponTemplate, "ItemWeaponTemplate");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
-            storage->Initialize<Generated::ItemWeaponTemplateRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>();
 
-            Generated::ItemWeaponTemplateRecord defaultWeaponTemplate;
+            MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord defaultWeaponTemplate;
             defaultWeaponTemplate.weaponStyle = static_cast<u8>(::Database::Item::ItemWeaponStyle::Unspecified);
             defaultWeaponTemplate.damageRange.x = 0;
             defaultWeaponTemplate.damageRange.y = 0;
@@ -105,7 +105,7 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemShieldTemplate, "ItemShieldTemplate");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemShieldTemplate);
-            storage->Initialize<Generated::ItemShieldTemplateRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemShieldTemplateRecord>();
 
             storage->MarkDirty();
         }
@@ -115,9 +115,9 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemStatTypes, "ItemStatTypes");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemStatTypes);
-            storage->Initialize<Generated::ItemStatTypeRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemStatTypeRecord>();
 
-            Generated::ItemStatTypeRecord defaultStatType;
+            MetaGen::Shared::ClientDB::ItemStatTypeRecord defaultStatType;
             defaultStatType.name = storage->AddString("Unknown Stat");
             defaultStatType.description = storage->AddString("This is an unknown stat");
             storage->Replace(0, defaultStatType);
@@ -130,7 +130,7 @@ namespace ECSUtil::Item
             clientDBSingleton.Register(ClientDBHash::ItemEffects, "ItemEffects");
 
             auto* storage = clientDBSingleton.Get(ClientDBHash::ItemEffects);
-            storage->Initialize<Generated::ItemEffectRecord>();
+            storage->Initialize<MetaGen::Shared::ClientDB::ItemEffectRecord>();
 
             storage->MarkDirty();
         }
@@ -155,7 +155,7 @@ namespace ECSUtil::Item
         itemSingleton.itemIDToEffectMapping.reserve(numItems);
         itemSingleton.itemEffectIDs.reserve(numItemEffects);
 
-        itemStorage->Each([&](u32 id, Generated::ItemRecord& item) -> bool
+        itemStorage->Each([&](u32 id, MetaGen::Shared::ClientDB::ItemRecord& item) -> bool
         {
             itemSingleton.itemIDs.insert(id);
 
@@ -175,7 +175,7 @@ namespace ECSUtil::Item
         });
 
         std::map<u32, std::vector<u32>> itemIDToEffectIDs;
-        itemEffectsStorage->Each([&](u32 id, Generated::ItemEffectRecord& itemEffect) -> bool
+        itemEffectsStorage->Each([&](u32 id, MetaGen::Shared::ClientDB::ItemEffectRecord& itemEffect) -> bool
         {
             if (itemEffect.effectSpellID == 0)
                 return true;
@@ -193,8 +193,8 @@ namespace ECSUtil::Item
             {
                 std::ranges::sort(pair.second, [&itemEffectsStorage](const u32 itemEffectIDA, const u32 itemEffectIDB)
                 {
-                    const auto& itemEffectA = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectIDA);
-                    const auto& itemEffectB = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectIDB);
+                    const auto& itemEffectA = itemEffectsStorage->Get<MetaGen::Shared::ClientDB::ItemEffectRecord>(itemEffectIDA);
+                    const auto& itemEffectB = itemEffectsStorage->Get<MetaGen::Shared::ClientDB::ItemEffectRecord>(itemEffectIDB);
 
                     return itemEffectA.effectSlot < itemEffectB.effectSlot;
                 });
@@ -206,7 +206,7 @@ namespace ECSUtil::Item
 
                 std::erase_if(pair.second, [&itemEffectsStorage, &spellStorage, &itemEffectSlotSeen](const u32 itemEffectID)
                 {
-                    const auto& itemEffect = itemEffectsStorage->Get<Generated::ItemEffectRecord>(itemEffectID);
+                    const auto& itemEffect = itemEffectsStorage->Get<MetaGen::Shared::ClientDB::ItemEffectRecord>(itemEffectID);
                     bool spellDoesNotExist = !spellStorage->Has(itemEffect.effectSpellID);
                     if (spellDoesNotExist)
                         return true;
@@ -236,7 +236,7 @@ namespace ECSUtil::Item
 
         auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
         itemSingleton.helmModelResourcesIDToModelMapping.reserve(256);
-        modelFileDataStorage->Each([&](u32 id, const Generated::ModelFileDataRecord& modelFileData) -> bool
+        modelFileDataStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::ModelFileDataRecord& modelFileData) -> bool
         {
             static constexpr const char* HelmPathPrefix = "item/objectcomponents/head/";
             static constexpr const char* ShoulderPathPrefix = "item/objectcomponents/shoulder/";
@@ -313,14 +313,14 @@ namespace ECSUtil::Item
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.clear();
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.reserve(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.size() + numRecords);
 
-            itemDisplayMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayMaterialResourcesStorage](u32 id, const Generated::ItemDisplayInfoMaterialResourceRecord& row)
+            itemDisplayMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayMaterialResourcesStorage](u32 id, const MetaGen::Shared::ClientDB::ItemDisplayInfoMaterialResourceRecord& row)
             {
                 if (id == 0) return true;
 
                 u64 key = CreateItemDisplayMaterialResourcesKey(row.displayInfoID, row.componentSection, row.materialResourcesID);
                 if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(key))
                 {
-                    const auto& existingRow = itemDisplayMaterialResourcesStorage->Get<Generated::ItemDisplayInfoMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
+                    const auto& existingRow = itemDisplayMaterialResourcesStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
 
                     // Skip Duplicate Data
                     if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayInfoID == row.displayInfoID && existingRow.componentSection == row.componentSection)
@@ -352,14 +352,14 @@ namespace ECSUtil::Item
             u32 numRecords = itemDisplayModelMaterialResourcesStorage->GetNumRows();
             itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.reserve(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.size() + numRecords);
 
-            itemDisplayModelMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayModelMaterialResourcesStorage](u32 id, const Generated::ItemDisplayInfoModelMaterialResourceRecord& row)
+            itemDisplayModelMaterialResourcesStorage->Each([&itemSingleton, &textureSingleton, &itemDisplayModelMaterialResourcesStorage](u32 id, const MetaGen::Shared::ClientDB::ItemDisplayInfoModelMaterialResourceRecord& row)
             {
                 if (id == 0) return true;
 
                 u64 key = CreateItemDisplayModelMaterialResourcesKey(row.displayInfoID, row.modelIndex, row.textureType, row.materialResourcesID);
                 if (itemSingleton.itemDisplayInfoMaterialResourcesKeyToID.contains(key))
                 {
-                    const auto& existingRow = itemDisplayModelMaterialResourcesStorage->Get<Generated::ItemDisplayInfoModelMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
+                    const auto& existingRow = itemDisplayModelMaterialResourcesStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoModelMaterialResourceRecord>(itemSingleton.itemDisplayInfoMaterialResourcesKeyToID[key]);
 
                     // Skip Duplicate Data
                     if (existingRow.materialResourcesID == row.materialResourcesID && existingRow.displayInfoID == row.displayInfoID && existingRow.textureType == row.textureType && existingRow.modelIndex == row.modelIndex)

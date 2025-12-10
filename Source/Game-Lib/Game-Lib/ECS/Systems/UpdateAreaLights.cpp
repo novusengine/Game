@@ -14,7 +14,7 @@
 
 #include <Base/CVarSystem/CVarSystem.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -43,7 +43,7 @@ namespace ECS::Systems
         return glm::mix(color1Vec, color2Vec, blend);
     }
 
-    AreaLightColorData GetLightColorData(const Singletons::AreaLightInfo& areaLightInfo, const Singletons::DayNightCycle& dayNightCycle, ClientDB::Data* lightParamsStorage, ClientDB::Data* lightDataStorage, const Generated::LightRecord* light)
+    AreaLightColorData GetLightColorData(const Singletons::AreaLightInfo& areaLightInfo, const Singletons::DayNightCycle& dayNightCycle, ClientDB::Data* lightParamsStorage, ClientDB::Data* lightDataStorage, const MetaGen::Shared::ClientDB::LightRecord* light)
     {
         AreaLightColorData lightColor;
         if (!light)
@@ -54,7 +54,7 @@ namespace ECS::Systems
         if (!lightParamsStorage->Has(lightParamID))
             return lightColor;
 
-        auto& lightParams = lightParamsStorage->Get<Generated::LightParamRecord>(lightParamID);
+        auto& lightParams = lightParamsStorage->Get<MetaGen::Shared::ClientDB::LightParamRecord>(lightParamID);
 
         if (!areaLightInfo.lightParamIDToLightData.contains(lightParamID))
             return lightColor;
@@ -73,17 +73,17 @@ namespace ECS::Systems
             if (!lightDataStorage->Has(lightDataID))
                 return lightColor;
 
-            auto& lightData = lightDataStorage->Get<Generated::LightDataRecord>(lightDataID);
+            auto& lightData = lightDataStorage->Get<MetaGen::Shared::ClientDB::LightDataRecord>(lightDataID);
 
             lightColor.ambientColor = UnpackU32BGRToColor(lightData.ambientColor);
             lightColor.diffuseColor = UnpackU32BGRToColor(lightData.diffuseColor);
-            lightColor.fogColor = UnpackU32BGRToColor(lightData.skyFogColor);
+            lightColor.fogColor = UnpackU32BGRToColor(lightData.skyColors[5]);
             lightColor.shadowColor = UnpackU32BGRToColor(lightData.shadowColor);
-            lightColor.skybandTopColor = UnpackU32BGRToColor(lightData.skyTopColor);
-            lightColor.skybandMiddleColor = UnpackU32BGRToColor(lightData.skyMiddleColor);
-            lightColor.skybandBottomColor = UnpackU32BGRToColor(lightData.skyBand1Color);
-            lightColor.skybandAboveHorizonColor = UnpackU32BGRToColor(lightData.skyBand2Color);
-            lightColor.skybandHorizonColor = UnpackU32BGRToColor(lightData.skySmogColor);
+            lightColor.skybandTopColor = UnpackU32BGRToColor(lightData.skyColors[0]);
+            lightColor.skybandMiddleColor = UnpackU32BGRToColor(lightData.skyColors[1]);
+            lightColor.skybandBottomColor = UnpackU32BGRToColor(lightData.skyColors[2]);
+            lightColor.skybandAboveHorizonColor = UnpackU32BGRToColor(lightData.skyColors[3]);
+            lightColor.skybandHorizonColor = UnpackU32BGRToColor(lightData.skyColors[4]);
             lightColor.fogEnd = lightData.fogEnd;
             lightColor.fogScaler = lightData.fogScaler;
         }
@@ -99,7 +99,7 @@ namespace ECS::Systems
                 if (!lightDataStorage->Has(lightDataID))
                     continue;
 
-                auto& lightData = lightDataStorage->Get<Generated::LightDataRecord>(lightDataID);
+                auto& lightData = lightDataStorage->Get<MetaGen::Shared::ClientDB::LightDataRecord>(lightDataID);
 
                 if (lightData.timestamp <= timeInSecondsAsU32)
                 {
@@ -114,8 +114,8 @@ namespace ECS::Systems
             u32 currentLightDataID = lightDataIDs[currentLightDataIndex];
             u32 nextLightDataID = lightDataIDs[nextLightDataIndex];
 
-            auto& currentLightData = lightDataStorage->Get<Generated::LightDataRecord>(currentLightDataID);
-            auto& nextLightData = lightDataStorage->Get<Generated::LightDataRecord>(nextLightDataID);
+            auto& currentLightData = lightDataStorage->Get<MetaGen::Shared::ClientDB::LightDataRecord>(currentLightDataID);
+            auto& nextLightData = lightDataStorage->Get<MetaGen::Shared::ClientDB::LightDataRecord>(nextLightDataID);
 
             u32 currentTimestamp = currentLightData.timestamp;
             u32 nextTimestamp = nextLightData.timestamp;
@@ -136,13 +136,13 @@ namespace ECS::Systems
 
             lightColor.ambientColor = GetBlendedColor(currentLightData.ambientColor, nextLightData.ambientColor, progressTowardsNext);
             lightColor.diffuseColor = GetBlendedColor(currentLightData.diffuseColor, nextLightData.diffuseColor, progressTowardsNext);
-            lightColor.fogColor = GetBlendedColor(currentLightData.skyFogColor, nextLightData.skyFogColor, progressTowardsNext);
+            lightColor.fogColor = GetBlendedColor(currentLightData.skyColors[5], nextLightData.skyColors[5], progressTowardsNext);
             lightColor.shadowColor = GetBlendedColor(currentLightData.shadowColor, nextLightData.shadowColor, progressTowardsNext);
-            lightColor.skybandTopColor = GetBlendedColor(currentLightData.skyTopColor, nextLightData.skyTopColor, progressTowardsNext);
-            lightColor.skybandMiddleColor = GetBlendedColor(currentLightData.skyMiddleColor, nextLightData.skyMiddleColor, progressTowardsNext);
-            lightColor.skybandBottomColor = GetBlendedColor(currentLightData.skyBand1Color, nextLightData.skyBand1Color, progressTowardsNext);
-            lightColor.skybandAboveHorizonColor = GetBlendedColor(currentLightData.skyBand2Color, nextLightData.skyBand2Color, progressTowardsNext);
-            lightColor.skybandHorizonColor = GetBlendedColor(currentLightData.skySmogColor, nextLightData.skySmogColor, progressTowardsNext);
+            lightColor.skybandTopColor = GetBlendedColor(currentLightData.skyColors[0], nextLightData.skyColors[0], progressTowardsNext);
+            lightColor.skybandMiddleColor = GetBlendedColor(currentLightData.skyColors[1], nextLightData.skyColors[1], progressTowardsNext);
+            lightColor.skybandBottomColor = GetBlendedColor(currentLightData.skyColors[2], nextLightData.skyColors[2], progressTowardsNext);
+            lightColor.skybandAboveHorizonColor = GetBlendedColor(currentLightData.skyColors[3], nextLightData.skyColors[3], progressTowardsNext);
+            lightColor.skybandHorizonColor = GetBlendedColor(currentLightData.skyColors[4], nextLightData.skyColors[4], progressTowardsNext);
             lightColor.fogEnd = glm::mix(currentLightData.fogEnd, nextLightData.fogEnd, progressTowardsNext);
             lightColor.fogScaler = glm::mix(currentLightData.fogScaler, nextLightData.fogScaler, progressTowardsNext);
         }
@@ -167,7 +167,7 @@ namespace ECS::Systems
             areaLightInfo.mapIDToLightIDs.clear();
             areaLightInfo.mapIDToLightIDs.reserve(numMaps);
 
-            lightStorage->Each([&](u32 id, const Generated::LightRecord& light) -> bool
+            lightStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::LightRecord& light) -> bool
             {
                 u16 mapID = light.mapID;
 
@@ -188,7 +188,7 @@ namespace ECS::Systems
             areaLightInfo.lightParamIDToLightData.clear();
             areaLightInfo.lightParamIDToLightData.reserve(numLightParams);
 
-            lightDataStorage->Each([&](u32 id, const Generated::LightDataRecord& lightData) -> bool
+            lightDataStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::LightDataRecord& lightData) -> bool
             {
                 u16 lightParamID = lightData.lightParamID;
 
@@ -224,7 +224,7 @@ namespace ECS::Systems
 
         u32 currentMapID = mapLoader->GetCurrentMapID();
         bool forceDefaultLight = currentMapID == std::numeric_limits<u32>().max();
-        const auto* defaultLight = &lightStorage->Get<Generated::LightRecord>(1);
+        const auto* defaultLight = &lightStorage->Get<MetaGen::Shared::ClientDB::LightRecord>(1);
 
         if (!forceDefaultLight)
         {
@@ -249,7 +249,7 @@ namespace ECS::Systems
 
                 for (u16 lightID : lightIDs)
                 {
-                    const auto& light = lightStorage->Get<Generated::LightRecord>(lightID);
+                    const auto& light = lightStorage->Get<MetaGen::Shared::ClientDB::LightRecord>(lightID);
 
                     const vec3& lightPosition = light.position;
                     if (lightPosition.x == 0 && lightPosition.y == 0 && lightPosition.z == 0)

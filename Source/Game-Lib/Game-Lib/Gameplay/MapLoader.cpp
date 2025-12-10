@@ -20,7 +20,7 @@
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 #include <FileFormat/Novus/Map/Map.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -75,7 +75,7 @@ void MapLoader::Update(f32 deltaTime)
         if (!mapStorage->Has(mapID))
             return;
 
-        const auto& currentMap = mapStorage->Get<Generated::MapRecord>(mapID);
+        const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
         const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
         
         fs::path relativeParentPath = "Data/Map";

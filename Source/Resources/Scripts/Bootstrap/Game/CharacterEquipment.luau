@@ -97,14 +97,14 @@ local characterInfo : CharacterInfo =
     nameWidget = nil,
     statsPanel = nil,
     sortedStatTypes = {
-        { kind = StatType.Armor, name = "Armor" },
-        { kind = StatType.Stamina, name = "Stamina" },
-        { kind = StatType.Strength, name = "Strength" },
-        { kind = StatType.Agility, name = "Agility" },
-        { kind = StatType.Intellect, name = "Intellect" },
-        { kind = StatType.Spirit, name = "Spirit" },
-        { kind = StatType.AttackPower, name = "Attack Power" },
-        { kind = StatType.SpellPower, name = "Spell Power" },
+        { kind = StatTypeEnum.Armor, name = "Armor" },
+        { kind = StatTypeEnum.Stamina, name = "Stamina" },
+        { kind = StatTypeEnum.Strength, name = "Strength" },
+        { kind = StatTypeEnum.Agility, name = "Agility" },
+        { kind = StatTypeEnum.Intellect, name = "Intellect" },
+        { kind = StatTypeEnum.Spirit, name = "Spirit" },
+        { kind = StatTypeEnum.AttackPower, name = "Attack Power" },
+        { kind = StatTypeEnum.SpellPower, name = "Spell Power" },
     },
     stats = {}
 }

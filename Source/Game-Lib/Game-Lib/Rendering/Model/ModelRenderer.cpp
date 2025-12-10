@@ -27,7 +27,7 @@
 
 #include <Input/InputManager.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -1729,9 +1729,9 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
     auto* itemDisplayInfoStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayInfo);
     auto* itemDisplayModelMaterialStorage = clientDBSingleton.Get(ClientDBHash::ItemDisplayModelMaterialResources);
 
-    const Generated::CreatureDisplayInfoRecord* creatureDisplayInfo = nullptr;
-    const Generated::CreatureDisplayInfoExtraRecord* creatureDisplayInfoExtra = nullptr;
-    const Generated::ItemDisplayInfoRecord* itemDisplayInfo = nullptr;
+    const MetaGen::Shared::ClientDB::CreatureDisplayInfoRecord* creatureDisplayInfo = nullptr;
+    const MetaGen::Shared::ClientDB::CreatureDisplayInfoExtraRecord* creatureDisplayInfoExtra = nullptr;
+    const MetaGen::Shared::ClientDB::ItemDisplayInfoRecord* itemDisplayInfo = nullptr;
     ECS::Components::DisplayInfo* unitDisplayInfo = nullptr;
     ECS::Components::UnitCustomization* unitCustomization = nullptr;
 
@@ -1753,11 +1753,11 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
             {
                 if (creatureDisplayInfoStorage)
                 {
-                    creatureDisplayInfo = &creatureDisplayInfoStorage->Get<Generated::CreatureDisplayInfoRecord>(displayID);
+                    creatureDisplayInfo = &creatureDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::CreatureDisplayInfoRecord>(displayID);
 
                     if (creatureDisplayInfoExtraStorage && creatureDisplayInfo->extendedDisplayInfoID != 0)
                     {
-                        creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<Generated::CreatureDisplayInfoExtraRecord>(creatureDisplayInfo->extendedDisplayInfoID);
+                        creatureDisplayInfoExtra = &creatureDisplayInfoExtraStorage->Get<MetaGen::Shared::ClientDB::CreatureDisplayInfoExtraRecord>(creatureDisplayInfo->extendedDisplayInfoID);
                     }
 
                     if (gameRegistry->valid(entityID))
@@ -1774,7 +1774,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
             {
                 if (itemDisplayInfoStorage)
                 {
-                    itemDisplayInfo = &itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(displayID);
+                    itemDisplayInfo = &itemDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(displayID);
                 }
 
                 break;

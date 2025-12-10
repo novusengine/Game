@@ -8,13 +8,14 @@
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Game/LuaEvent.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 
-void ECS::Util::ProximityTriggerUtil::CreateTrigger(entt::registry& registry, u32 triggerID, const std::string& name, Generated::ProximityTriggerFlagEnum flags, u16 mapID, const vec3& position, const vec3& extents)
+void ECS::Util::ProximityTriggerUtil::CreateTrigger(entt::registry& registry, u32 triggerID, const std::string& name, MetaGen::Shared::ProximityTrigger::ProximityTriggerFlagEnum flags, u16 mapID, const vec3& position, const vec3& extents)
 {
     entt::entity entity = registry.create();
 
@@ -72,7 +73,7 @@ void ECS::Util::ProximityTriggerUtil::DestroyTrigger(entt::registry& registry, u
     if (proximityTrigger.playersInside.contains(playerEntity) )
     {
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnExit, Generated::LuaTriggerEventDataOnExit{
+        zenith->CallEvent(MetaGen::Game::Lua::TriggerEvent::OnExit, MetaGen::Game::Lua::TriggerEventDataOnExit{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
         });

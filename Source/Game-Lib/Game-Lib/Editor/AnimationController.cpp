@@ -13,7 +13,7 @@
 #include "Game-Lib/Util/UnitUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -75,7 +75,7 @@ namespace Editor
 
                         if (animationStorage->Has(selectedAnimation))
                         {
-                            auto& animationDataRec = animationStorage->Get<Generated::AnimationDataRecord>(selectedAnimation);
+                            auto& animationDataRec = animationStorage->Get<MetaGen::Shared::ClientDB::AnimationDataRecord>(selectedAnimation);
 
                             sequenceID = Util::Animation::GetFirstSequenceForAnimation(modelInfo, Type);
                             originalAnimFlags = *reinterpret_cast<Database::Unit::AnimationDataFlags*>(&animationDataRec.flags);

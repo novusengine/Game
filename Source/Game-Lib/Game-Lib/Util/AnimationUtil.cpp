@@ -9,13 +9,13 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
 namespace Util::Animation
 {
-    const Generated::AnimationDataRecord* GetAnimationDataRec(::Animation::Defines::Type type)
+    const MetaGen::Shared::ClientDB::AnimationDataRecord* GetAnimationDataRec(::Animation::Defines::Type type)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
@@ -25,12 +25,12 @@ namespace Util::Animation
             return nullptr;
 
         u32 typeIndex = static_cast<u32>(type);
-        return &animationDatas->Get<Generated::AnimationDataRecord>(typeIndex);
+        return &animationDatas->Get<MetaGen::Shared::ClientDB::AnimationDataRecord>(typeIndex);
     }
 
     bool HasAnimationSequence(const Model::ComplexModel* modelInfo, ::Animation::Defines::Type animationType)
     {
-        const ::Generated::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
+        const ::MetaGen::Shared::ClientDB::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 
@@ -171,7 +171,7 @@ namespace Util::Animation
             return true;
         }
 
-        const ::Generated::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
+        const ::MetaGen::Shared::ClientDB::AnimationDataRecord* animationDataRec = GetAnimationDataRec(animationType);
         if (!animationDataRec)
             return false;
 

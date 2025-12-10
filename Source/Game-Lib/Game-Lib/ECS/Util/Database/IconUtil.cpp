@@ -3,7 +3,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -20,9 +20,9 @@ namespace ECSUtil::Icon
             clientDBSingleton.Register(ClientDBHash::Icon, "Icon");
 
             auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
-            iconStorage->Initialize<Generated::IconRecord>();
+            iconStorage->Initialize<MetaGen::Shared::ClientDB::IconRecord>();
 
-            Generated::IconRecord defaultIcon;
+            MetaGen::Shared::ClientDB::IconRecord defaultIcon;
             defaultIcon.texture = iconStorage->AddString("Data/Texture/interface/icons/inv_misc_questionmark.dds");
 
             iconStorage->Replace(0, defaultIcon);
@@ -57,7 +57,7 @@ namespace ECSUtil::Icon
                 if (iconStorage->HasString(texturePath))
                     continue;
 
-                Generated::IconRecord icon;
+                MetaGen::Shared::ClientDB::IconRecord icon;
                 icon.texture = iconStorage->AddString(texturePath);
 
                 iconStorage->Add(icon);

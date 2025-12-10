@@ -695,7 +695,7 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
 
     // Calculate chunk origin
     vec2 chunkOrigin;
-    chunkOrigin.x = Terrain::MAP_HALF_SIZE - (chunkGridPos.x * Terrain::CHUNK_SIZE);
+    chunkOrigin.x = (chunkGridPos.x * Terrain::CHUNK_SIZE) - Terrain::MAP_HALF_SIZE;
     chunkOrigin.y = Terrain::MAP_HALF_SIZE - (chunkGridPos.y * Terrain::CHUNK_SIZE);
     vec2 flippedChunkOrigin = chunkOrigin;
     u32 chunkGridIndex = chunkGridPos.x + (chunkGridPos.y * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
@@ -811,9 +811,9 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
             f32 chunkCenterY = (chunkMinY + chunkMaxY) * 0.5f;
             f32 chunkExtentsY = chunkMaxY - chunkCenterY;
 
-            vec2 pos = flippedChunkOrigin - Terrain::MAP_HALF_SIZE;
+            vec2 pos = vec2(flippedChunkOrigin.x + Terrain::CHUNK_HALF_SIZE, flippedChunkOrigin.y - Terrain::CHUNK_HALF_SIZE);
             chunkBoundingBox.center = vec3(pos.x, chunkCenterY, pos.y);
-            chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, Terrain::CHUNK_HALF_SIZE);
+            chunkBoundingBox.extents = vec3(Terrain::CHUNK_HALF_SIZE, chunkExtentsY, -Terrain::CHUNK_HALF_SIZE);
         }
 
         if (maxDiffuseID > Renderer::Settings::MAX_TEXTURES)

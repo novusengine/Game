@@ -6,7 +6,7 @@
 #include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Scripting/Zenith.h>
 
@@ -42,7 +42,7 @@ namespace Scripting::Database
             if (!db->Has(itemID))
                 itemID = 0;
 
-            const auto& itemInfo = db->Get<Generated::ItemRecord>(itemID);
+            const auto& itemInfo = db->Get<MetaGen::Shared::ClientDB::ItemRecord>(itemID);
 
             // Name, Icon, Description RequiredText, SpecialText
             const std::string& name = db->GetString(itemInfo.name);
@@ -82,7 +82,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<Generated::ItemStatTemplateRecord>(templateID);
+            const auto& templateInfo = db->Get<MetaGen::Shared::ClientDB::ItemStatTemplateRecord>(templateID);
 
             zenith->CreateTable();
             u32 numStatsAdded = 0;
@@ -114,7 +114,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<Generated::ItemArmorTemplateRecord>(templateID);
+            const auto& templateInfo = db->Get<MetaGen::Shared::ClientDB::ItemArmorTemplateRecord>(templateID);
 
             zenith->CreateTable();
             zenith->AddTableField("EquipType", (u32)templateInfo.equipType);
@@ -136,7 +136,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<Generated::ItemWeaponTemplateRecord>(templateID);
+            const auto& templateInfo = db->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(templateID);
 
             zenith->CreateTable();
             zenith->AddTableField("WeaponStyle", (u32)templateInfo.weaponStyle);
@@ -160,7 +160,7 @@ namespace Scripting::Database
             if (!db->Has(templateID))
                 templateID = 0;
 
-            const auto& templateInfo = db->Get<Generated::ItemShieldTemplateRecord>(templateID);
+            const auto& templateInfo = db->Get<MetaGen::Shared::ClientDB::ItemShieldTemplateRecord>(templateID);
 
             zenith->CreateTable();
             zenith->AddTableField("BonusArmor", templateInfo.bonusArmor);
@@ -182,7 +182,7 @@ namespace Scripting::Database
             if (!db->Has(itemDisplayInfoID))
                 itemDisplayInfoID = 0;
 
-            const auto& itemDisplayInfo = db->Get<Generated::ItemDisplayInfoRecord>(itemDisplayInfoID);
+            const auto& itemDisplayInfo = db->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(itemDisplayInfoID);
 
             zenith->CreateTable();
             zenith->AddTableField("ItemRangedDisplayInfoID", itemDisplayInfo.itemRangedDisplayInfoID);
@@ -225,7 +225,7 @@ namespace Scripting::Database
             for (u32 i = 1; i <= effectCount; i++)
             {
                 u32 effectID = effectIDs[i - 1];
-                const auto& itemEffect = itemEffectsStorage->Get<Generated::ItemEffectRecord>(effectID);
+                const auto& itemEffect = itemEffectsStorage->Get<MetaGen::Shared::ClientDB::ItemEffectRecord>(effectID);
 
                 zenith->CreateTable();
                 zenith->AddTableField("ItemID", itemEffect.itemID);
@@ -252,7 +252,7 @@ namespace Scripting::Database
             if (!db->Has(iconID))
                 iconID = 0;
 
-            const auto& icon = db->Get<Generated::IconRecord>(iconID);
+            const auto& icon = db->Get<MetaGen::Shared::ClientDB::IconRecord>(iconID);
             const std::string& texture = db->GetString(icon.texture);
 
             zenith->CreateTable();

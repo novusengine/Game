@@ -5,8 +5,11 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
     
     Solution.Util.SetLanguage("C++")
     Solution.Util.SetCppDialect(20)
-  
+
+    local projFile = mod.Path .. "/" .. mod.Name .. ".lua"
     local files = Solution.Util.GetFilesForCpp(mod.Path)
+    table.insert(files, projFile)
+
     Solution.Util.SetFiles(files)
     Solution.Util.SetIncludes(mod.Path)
     Solution.Util.SetDefines(defines)
@@ -22,7 +25,7 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
         vpaths 
         {
             ['Resources/*'] = { '*.rc', '**.ico' },
-            ['*'] = { '**.*' }
+            ["/*"] = { "*.lua", mod.Name .. "/**" }
         }
     end)
 end)

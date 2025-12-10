@@ -28,7 +28,7 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -769,8 +769,8 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 if (!creatureDisplayInfoStorage->Has(displayID))
                     return false;
 
-                const auto& creatureDisplayInfo = creatureDisplayInfoStorage->Get<Generated::CreatureDisplayInfoRecord>(displayID);
-                const auto& creatureModelData = creatureModelDataStorage->Get<Generated::CreatureModelDataRecord>(creatureDisplayInfo.modelID);
+                const auto& creatureDisplayInfo = creatureDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::CreatureDisplayInfoRecord>(displayID);
+                const auto& creatureModelData = creatureModelDataStorage->Get<MetaGen::Shared::ClientDB::CreatureModelDataRecord>(creatureDisplayInfo.modelID);
 
                 modelHash = creatureModelDataStorage->GetStringHash(creatureModelData.model);
                 scale = creatureDisplayInfo.creatureModelScale;
@@ -793,12 +793,12 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                 if (!itemDisplayInfoStorage->Has(displayID))
                     return false;
 
-                const auto& itemDisplayInfo = itemDisplayInfoStorage->Get<Generated::ItemDisplayInfoRecord>(displayID);
+                const auto& itemDisplayInfo = itemDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(displayID);
                 u32 itemModelHash = std::numeric_limits<u32>().max();
                 u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
                 // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
-                modelFileDataStorage->Each([&modelFileDataStorage, &itemModelHash, modelResourcesID](u32 id, const Generated::ModelFileDataRecord& modelFileData) -> bool
+                modelFileDataStorage->Each([&modelFileDataStorage, &itemModelHash, modelResourcesID](u32 id, const MetaGen::Shared::ClientDB::ModelFileDataRecord& modelFileData) -> bool
                 {
                     if (modelFileData.modelResourcesID != modelResourcesID)
                         return true;

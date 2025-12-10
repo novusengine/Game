@@ -4,7 +4,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <Game-Lib/Util/CameraSaveUtil.h>
@@ -26,9 +26,9 @@ namespace ECSUtil::Camera
             clientDBSingleton.Register(ClientDBHash::CameraSave, "CameraSave");
 
             auto* cameraSaveStorage = clientDBSingleton.Get(ClientDBHash::CameraSave);
-            cameraSaveStorage->Initialize<Generated::CameraSaveRecord>();
+            cameraSaveStorage->Initialize<MetaGen::Shared::ClientDB::CameraSaveRecord>();
 
-            Generated::CameraSaveRecord cameraSave;
+            MetaGen::Shared::ClientDB::CameraSaveRecord cameraSave;
             cameraSave.name = cameraSaveStorage->AddString("Default");
             cameraSave.code = cameraSaveStorage->AddString("RGVmYXVsdAAAAAAAAAAAIEEAACDBAADwQQAAAAAAAAAAAACAPwAAgD8AAIA/AAAAAA==");
 
@@ -45,7 +45,7 @@ namespace ECSUtil::Camera
         u32 numRecords = cameraSaveStorage->GetNumRows();
         cameraSaveSingleton.cameraSaveNameHashToID.reserve(numRecords);
 
-        cameraSaveStorage->Each([&cameraSaveSingleton, &cameraSaveStorage](u32 id, const Generated::CameraSaveRecord& cameraSave) -> bool
+        cameraSaveStorage->Each([&cameraSaveSingleton, &cameraSaveStorage](u32 id, const MetaGen::Shared::ClientDB::CameraSaveRecord& cameraSave) -> bool
         {
             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
             u32 nameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
@@ -123,7 +123,7 @@ namespace ECSUtil::Camera
         auto& cameraSaveSingleton = ctx.get<ECS::Singletons::CameraSaveSingleton>();
         auto* cameraSaveStorage = clientDBSingleton.Get(ClientDBHash::CameraSave);
 
-        Generated::CameraSaveRecord cameraSave;
+        MetaGen::Shared::ClientDB::CameraSaveRecord cameraSave;
         cameraSave.name = cameraSaveStorage->AddString(cameraName);
         cameraSave.code = cameraSaveStorage->AddString(saveCode);
 

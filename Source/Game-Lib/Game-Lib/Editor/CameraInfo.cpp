@@ -16,7 +16,7 @@
 
 #include <FileFormat/Shared.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -136,7 +136,7 @@ namespace Editor
                     {
                         u32 numCameraSaves = cameraSaveStorage->GetNumRows();
 
-                        cameraSaveStorage->Each([&cameraSaveStorage](u32 id, const Generated::CameraSaveRecord& cameraSave) -> bool
+                        cameraSaveStorage->Each([&cameraSaveStorage](u32 id, const MetaGen::Shared::ClientDB::CameraSaveRecord& cameraSave) -> bool
                         {
                             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                             u32 cameraSaveNameHash = StringUtils::fnv1a_32(cameraSaveName.c_str(), cameraSaveName.length());
@@ -161,7 +161,7 @@ namespace Editor
                     if (hasSelectedCamera)
                     {
                         u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
-                        const auto& cameraSave = cameraSaveStorage->Get<Generated::CameraSaveRecord>(id);
+                        const auto& cameraSave = cameraSaveStorage->Get<MetaGen::Shared::ClientDB::CameraSaveRecord>(id);
 
                         const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                         ImGui::Text("Selected Save : %s", cameraSaveName.c_str());
@@ -177,7 +177,7 @@ namespace Editor
                         {
                             u32 id = ECSUtil::Camera::GetCameraSaveID(currentSelectedSaveNameHash);
 
-                            const auto& cameraSave = cameraSaveStorage->Get<Generated::CameraSaveRecord>(id);
+                            const auto& cameraSave = cameraSaveStorage->Get<MetaGen::Shared::ClientDB::CameraSaveRecord>(id);
                             const std::string& cameraSaveName = cameraSaveStorage->GetString(cameraSave.name);
                             const std::string& cameraSaveCode = cameraSaveStorage->GetString(cameraSave.code);
 

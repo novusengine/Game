@@ -20,13 +20,13 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleCameraSave);
     RegisterCommand(GameConsoleCommands::HandleCameraLoadByCode);
     RegisterCommand(GameConsoleCommands::HandleMapClear);
-    RegisterCommand(GameConsoleCommands::HandleUnitMorph);
-    RegisterCommand(GameConsoleCommands::HandleUnitDemorph);
+    RegisterCommand(GameConsoleCommands::HandleCheatMorph);
+    RegisterCommand(GameConsoleCommands::HandleCheatDemorph);
     RegisterCommand(GameConsoleCommands::HandleCharacterAdd);
     RegisterCommand(GameConsoleCommands::HandleCharacterRemove);
     RegisterCommand(GameConsoleCommands::HandleCheatFly);
-    RegisterCommand(GameConsoleCommands::HandleUnitSetRace);
-    RegisterCommand(GameConsoleCommands::HandleUnitSetGender);
+    RegisterCommand(GameConsoleCommands::HandleCheatSetRace);
+    RegisterCommand(GameConsoleCommands::HandleCheatSetGender);
     RegisterCommand(GameConsoleCommands::HandleItemSync);
     RegisterCommand(GameConsoleCommands::HandleItemSyncAll);
     RegisterCommand(GameConsoleCommands::HandleItemAdd);
@@ -53,6 +53,7 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleSpellSyncAll);
     RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
+    RegisterCommand(GameConsoleCommands::HandleCheatPathGenerate);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

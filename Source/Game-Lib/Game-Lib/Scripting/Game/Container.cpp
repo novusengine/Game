@@ -10,7 +10,7 @@
 #include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Network/Client.h>
 
@@ -176,7 +176,7 @@ namespace Scripting::Game
                 }
             }
 
-            bool result = ECS::Util::Network::SendPacket(networkState, Generated::ClientContainerSwapSlotsPacket{
+            bool result = ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::SharedContainerSwapSlotsPacket{
                 .srcContainer = static_cast<u16>(srcContainerIndex),
                 .dstContainer = static_cast<u8>(destContainerIndex),
                 .srcSlot = static_cast<u8>(srcSlotIndex),

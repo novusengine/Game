@@ -1,5 +1,6 @@
 #pragma once
 #include <Gameplay/GameDefine.h>
+#include <Gameplay/Network/Define.h>
 
 #include <robinhood/robinhood.h>
 
@@ -122,6 +123,11 @@ namespace ECS
             AuthenticationInfo authInfo;
             CharacterListInfo characterListInfo;
             PingInfo pingInfo;
+
+            Network::ObjectNetFieldsListener objectNetFieldListener;
+            Network::UnitNetFieldsListener unitNetFieldListener;
+
+            std::vector<vec3> pathToVisualize;
 
             robin_hood::unordered_map<ObjectGUID, entt::entity> networkIDToEntity;
             robin_hood::unordered_map<entt::entity, ObjectGUID> entityToNetworkID;

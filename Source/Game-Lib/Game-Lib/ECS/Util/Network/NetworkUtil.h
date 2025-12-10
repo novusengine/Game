@@ -35,7 +35,7 @@ namespace ECS
                 ::Network::MessageHeader header =
                 {
                     .opcode = PacketType::PACKET_ID,
-                    .size = packet.GetSerializedSize()
+                    .size = static_cast<u16>(packet.GetSerializedSize())
                 };
 
                 buffer->Put(header);
@@ -59,7 +59,7 @@ namespace ECS
                 ::Network::MessageHeader header =
                 {
                     .opcode = PacketType::PACKET_ID,
-                    .size = packet.GetSerializedSize()
+                    .size = static_cast<u16>(packet.GetSerializedSize())
                 };
 
                 failed |= !buffer->Put(header);

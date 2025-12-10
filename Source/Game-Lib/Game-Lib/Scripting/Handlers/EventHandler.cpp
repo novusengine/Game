@@ -1,7 +1,8 @@
 #include "EventHandler.h"
 
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/PacketList.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/PacketList.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -60,40 +61,40 @@ namespace Scripting
 
     void EventHandler::CreateEventTables(Zenith* zenith)
     {
-        zenith->RegisterEventType<Generated::LuaGameEventEnum>();
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataLoaded>(Generated::LuaGameEventEnum::Loaded);
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataUpdated>(Generated::LuaGameEventEnum::Updated);
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataCharacterListChanged>(Generated::LuaGameEventEnum::CharacterListChanged);
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataMapLoading>(Generated::LuaGameEventEnum::MapLoading);
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataChatMessageReceived>(Generated::LuaGameEventEnum::ChatMessageReceived);
-        zenith->RegisterEventTypeID<Generated::LuaGameEventDataLocalMoverChanged>(Generated::LuaGameEventEnum::LocalMoverChanged);
+        zenith->RegisterEventType<MetaGen::Game::Lua::GameEvent>();
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataLoaded>(MetaGen::Game::Lua::GameEvent::Loaded);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataUpdated>(MetaGen::Game::Lua::GameEvent::Updated);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataCharacterListChanged>(MetaGen::Game::Lua::GameEvent::CharacterListChanged);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataMapLoading>(MetaGen::Game::Lua::GameEvent::MapLoading);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataChatMessageReceived>(MetaGen::Game::Lua::GameEvent::ChatMessageReceived);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataLocalMoverChanged>(MetaGen::Game::Lua::GameEvent::LocalMoverChanged);
 
-        zenith->RegisterEventType<Generated::LuaUnitEventEnum>();
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAdd>(Generated::LuaUnitEventEnum::Add);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataRemove>(Generated::LuaUnitEventEnum::Remove);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataTargetChanged>(Generated::LuaUnitEventEnum::TargetChanged);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataPowerUpdate>(Generated::LuaUnitEventEnum::PowerUpdate);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataResistanceUpdate>(Generated::LuaUnitEventEnum::ResistanceUpdate);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataStatUpdate>(Generated::LuaUnitEventEnum::StatUpdate);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraAdd>(Generated::LuaUnitEventEnum::AuraAdd);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraUpdate>(Generated::LuaUnitEventEnum::AuraUpdate);
-        zenith->RegisterEventTypeID<Generated::LuaUnitEventDataAuraRemove>(Generated::LuaUnitEventEnum::AuraRemove);
+        zenith->RegisterEventType<MetaGen::Game::Lua::UnitEvent>();
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAdd>(MetaGen::Game::Lua::UnitEvent::Add);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataRemove>(MetaGen::Game::Lua::UnitEvent::Remove);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataTargetChanged>(MetaGen::Game::Lua::UnitEvent::TargetChanged);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataPowerUpdate>(MetaGen::Game::Lua::UnitEvent::PowerUpdate);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataResistanceUpdate>(MetaGen::Game::Lua::UnitEvent::ResistanceUpdate);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataStatUpdate>(MetaGen::Game::Lua::UnitEvent::StatUpdate);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraAdd>(MetaGen::Game::Lua::UnitEvent::AuraAdd);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraUpdate>(MetaGen::Game::Lua::UnitEvent::AuraUpdate);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraRemove>(MetaGen::Game::Lua::UnitEvent::AuraRemove);
 
-        zenith->RegisterEventType<Generated::LuaContainerEventEnum>();
-        zenith->RegisterEventTypeID<Generated::LuaContainerEventDataAdd>(Generated::LuaContainerEventEnum::Add);
-        zenith->RegisterEventTypeID<Generated::LuaContainerEventDataAddToSlot>(Generated::LuaContainerEventEnum::AddToSlot);
-        zenith->RegisterEventTypeID<Generated::LuaContainerEventDataRemoveFromSlot>(Generated::LuaContainerEventEnum::RemoveFromSlot);
-        zenith->RegisterEventTypeID<Generated::LuaContainerEventDataSwapSlots>(Generated::LuaContainerEventEnum::SwapSlots);
+        zenith->RegisterEventType<MetaGen::Game::Lua::ContainerEvent>();
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::ContainerEventDataAdd>(MetaGen::Game::Lua::ContainerEvent::Add);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::ContainerEventDataAddToSlot>(MetaGen::Game::Lua::ContainerEvent::AddToSlot);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::ContainerEventDataRemoveFromSlot>(MetaGen::Game::Lua::ContainerEvent::RemoveFromSlot);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::ContainerEventDataSwapSlots>(MetaGen::Game::Lua::ContainerEvent::SwapSlots);
 
-        zenith->RegisterEventType<Generated::LuaTriggerEventEnum>();
-        zenith->RegisterEventTypeID<Generated::LuaTriggerEventDataOnEnter>(Generated::LuaTriggerEventEnum::OnEnter);
-        zenith->RegisterEventTypeID<Generated::LuaTriggerEventDataOnExit>(Generated::LuaTriggerEventEnum::OnExit);
-        zenith->RegisterEventTypeID<Generated::LuaTriggerEventDataOnStay>(Generated::LuaTriggerEventEnum::OnStay);
+        zenith->RegisterEventType<MetaGen::Game::Lua::TriggerEvent>();
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::TriggerEventDataOnEnter>(MetaGen::Game::Lua::TriggerEvent::OnEnter);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::TriggerEventDataOnExit>(MetaGen::Game::Lua::TriggerEvent::OnExit);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::TriggerEventDataOnStay>(MetaGen::Game::Lua::TriggerEvent::OnStay);
 
-        zenith->RegisterEventType<Generated::PacketListEnum>();
-        for (const auto& pair : Generated::PacketListEnumMeta::EnumList)
+        zenith->RegisterEventType<MetaGen::PacketListEnum>();
+        for (const auto& pair : MetaGen::PacketListEnumMeta::ENUM_FIELD_LIST)
         {
-            zenith->RegisterEventTypeIDRaw(Generated::PacketListEnumMeta::EnumID, pair.second, 0);
+            zenith->RegisterEventTypeIDRaw(MetaGen::PacketListEnumMeta::ENUM_ID, pair.second, 0);
         }
     }
 }

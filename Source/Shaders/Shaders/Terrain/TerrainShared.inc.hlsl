@@ -68,11 +68,11 @@ uint GetGlobalCellID(uint chunkID, uint cellID)
 // We did not change this one yet
 float2 GetChunkPosition(uint chunkID)
 {
-    const uint chunkX = chunkID / NUM_CHUNKS_PER_MAP_SIDE;
-    const uint chunkY = chunkID % NUM_CHUNKS_PER_MAP_SIDE;
+    const uint chunkX = chunkID % NUM_CHUNKS_PER_MAP_SIDE;
+    const uint chunkY = chunkID / NUM_CHUNKS_PER_MAP_SIDE;
 
     const float2 chunkPos = -MAP_HALF_SIZE + (float2(chunkX, chunkY) * CHUNK_SIDE_SIZE);
-    return float2(chunkPos.x, chunkPos.y);
+    return float2(chunkPos.x, -chunkPos.y);
 }
 
 // We did not change this one yet
@@ -84,15 +84,15 @@ float2 GetCellPosition(uint chunkID, uint cellID)
     const float2 chunkPos = GetChunkPosition(chunkID);
     const float2 cellPos = float2(cellX+1, cellY) * CELL_SIDE_SIZE;
     
-    float2 pos = chunkPos + cellPos;
+    float2 pos = chunkPos + float2(cellPos.x, -cellPos.y);
 
-    return float2(pos.x, -pos.y);
+    return float2(pos.x, pos.y);
 }
 
 float2 GetGlobalVertexPosition(uint chunkID, uint cellID, uint vertexID)
 {
-    const int chunkX = chunkID / NUM_CHUNKS_PER_MAP_SIDE * NUM_CELLS_PER_CHUNK_SIDE;
-    const int chunkY = chunkID % NUM_CHUNKS_PER_MAP_SIDE * NUM_CELLS_PER_CHUNK_SIDE;
+    const int chunkX = chunkID % NUM_CHUNKS_PER_MAP_SIDE * NUM_CELLS_PER_CHUNK_SIDE;
+    const int chunkY = chunkID / NUM_CHUNKS_PER_MAP_SIDE * NUM_CELLS_PER_CHUNK_SIDE;
 
     const int cellX = ((cellID % NUM_CELLS_PER_CHUNK_SIDE) + chunkX);
     const int cellY = ((cellID / NUM_CELLS_PER_CHUNK_SIDE) + chunkY);

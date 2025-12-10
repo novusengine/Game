@@ -22,8 +22,8 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <Scripting/Zenith.h>
 
@@ -42,9 +42,9 @@ namespace Scripting::Unit
 
         // PowerType Enum
         {
-            zenith->CreateTable(Generated::PowerTypeEnumMeta::EnumName.data());
+            zenith->CreateTable(MetaGen::Shared::Unit::PowerTypeEnumMeta::ENUM_NAME.data());
 
-            for (const auto& pair : Generated::PowerTypeEnumMeta::EnumList)
+            for (const auto& pair : MetaGen::Shared::Unit::PowerTypeEnumMeta::ENUM_FIELD_LIST)
             {
                 zenith->AddTableField(pair.first.data(), pair.second);
             }
@@ -54,9 +54,9 @@ namespace Scripting::Unit
 
         // StatType Enum
         {
-            zenith->CreateTable(Generated::StatTypeEnumMeta::EnumName.data());
+            zenith->CreateTable(MetaGen::Shared::Unit::StatTypeEnumMeta::ENUM_NAME.data());
 
-            for (const auto& pair : Generated::StatTypeEnumMeta::EnumList)
+            for (const auto& pair : MetaGen::Shared::Unit::StatTypeEnumMeta::ENUM_FIELD_LIST)
             {
                 zenith->AddTableField(pair.first.data(), pair.second);
             }
@@ -82,7 +82,7 @@ namespace Scripting::Unit
                 if (!::ECS::Util::Network::GetEntityIDFromObjectGUID(networkState, objectGUID, entity))
                     return true;
 
-                zenith->CallEvent(Generated::LuaUnitEventEnum::Add, Generated::LuaUnitEventDataAdd{
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
                     .unitID = entt::to_integral(entity)
                 });
 
@@ -91,7 +91,7 @@ namespace Scripting::Unit
         }
 
         // Resend LocalMoverChanged
-        zenith->CallEvent(Generated::LuaGameEventEnum::LocalMoverChanged, Generated::LuaGameEventDataLocalMoverChanged{
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
             .moverID = entt::to_integral(characterSingleton.moverEntity)
         });
 
@@ -99,7 +99,7 @@ namespace Scripting::Unit
         {
             if (auto* unit = gameRegistry->try_get<ECS::Components::Unit>(characterSingleton.moverEntity))
             {
-                zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
                     .unitID = entt::to_integral(characterSingleton.moverEntity),
                     .targetID = entt::to_integral(unit->targetEntity)
                 });
@@ -157,7 +157,7 @@ namespace Scripting::Unit
         {
             if (auto* unitPowersComponent = registry->try_get<ECS::Components::UnitPowersComponent>(entityID))
             {
-                auto& healthPower = ::Util::Unit::GetPower(*unitPowersComponent, Generated::PowerTypeEnum::Health);
+                auto& healthPower = ::Util::Unit::GetPower(*unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
                 currentHealth = healthPower.current;
                 maxHealth = healthPower.max;
             }
@@ -194,7 +194,7 @@ namespace Scripting::Unit
         u32 unitID = zenith->CheckVal<u32>(1);
         entt::entity entityID = entt::entity(unitID);
 
-        Generated::PowerTypeEnum resourceType = Generated::PowerTypeEnum::Mana;
+        MetaGen::Shared::Unit::PowerTypeEnum resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Mana;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         if (registry->valid(entityID))
@@ -205,7 +205,7 @@ namespace Scripting::Unit
                 {
                     case GameDefine::UnitClass::Warrior:
                     {
-                        resourceType = Generated::PowerTypeEnum::Rage;
+                        resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Rage;
                         break;
                     }
 
@@ -216,19 +216,19 @@ namespace Scripting::Unit
                     case GameDefine::UnitClass::Warlock:
                     case GameDefine::UnitClass::Druid:
                     {
-                        resourceType = Generated::PowerTypeEnum::Mana;
+                        resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Mana;
                         break;
                     }
 
                     case GameDefine::UnitClass::Hunter:
                     {
-                        resourceType = Generated::PowerTypeEnum::Focus;
+                        resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Focus;
                         break;
                     }
 
                     case GameDefine::UnitClass::Rogue:
                     {
-                        resourceType = Generated::PowerTypeEnum::Energy;
+                        resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Energy;
                         break;
                     }
                 }
@@ -245,9 +245,9 @@ namespace Scripting::Unit
         u32 unitID = zenith->CheckVal<u32>(1);
         entt::entity entityID = entt::entity(unitID);
 
-        Generated::PowerTypeEnum resourceType = static_cast<Generated::PowerTypeEnum>(zenith->Get<u32>(2));
-        if (resourceType <= Generated::PowerTypeEnum::Invalid || resourceType >= Generated::PowerTypeEnum::Count)
-            resourceType = Generated::PowerTypeEnum::Mana;
+        MetaGen::Shared::Unit::PowerTypeEnum resourceType = static_cast<MetaGen::Shared::Unit::PowerTypeEnum>(zenith->Get<u32>(2));
+        if (resourceType <= MetaGen::Shared::Unit::PowerTypeEnum::Invalid || resourceType >= MetaGen::Shared::Unit::PowerTypeEnum::Count)
+            resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Mana;
 
         f64 currentResource = 0.0f;
         f64 maxResource = 1.0f;
@@ -276,8 +276,8 @@ namespace Scripting::Unit
         u32 unitID = zenith->CheckVal<u32>(1);
         entt::entity entityID = entt::entity(unitID);
 
-        Generated::StatTypeEnum statType = static_cast<Generated::StatTypeEnum>(zenith->Get<u32>(2));
-        if (statType <= Generated::StatTypeEnum::Invalid || statType >= Generated::StatTypeEnum::Count)
+        MetaGen::Shared::Unit::StatTypeEnum statType = static_cast<MetaGen::Shared::Unit::StatTypeEnum>(zenith->Get<u32>(2));
+        if (statType <= MetaGen::Shared::Unit::StatTypeEnum::Invalid || statType >= MetaGen::Shared::Unit::StatTypeEnum::Count)
             return 0;
 
         f64 currentStat = 0.0f;

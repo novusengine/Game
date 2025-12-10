@@ -50,8 +50,9 @@
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
 
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Network/Client.h>
 
@@ -169,7 +170,7 @@ namespace ECS::Systems
         {
             if (unit.targetEntity != entt::null)
             {
-                if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+                if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
                     .targetGUID = ObjectGUID::Empty
                     }))
                 {
@@ -183,7 +184,7 @@ namespace ECS::Systems
                     characterSingleton.primaryAttackTimer = 0.0f;
                     characterSingleton.secondaryAttackTimer = 0.0f;
 
-                    zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                    zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
                         .unitID = entt::to_integral(characterSingleton.moverEntity),
                         .targetID = entt::to_integral(unit.targetEntity)
                     });
@@ -257,7 +258,7 @@ namespace ECS::Systems
             return false;
         }
 
-        if (Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+        if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
             .targetGUID = targetNetworkID
             }))
         {
@@ -280,7 +281,7 @@ namespace ECS::Systems
             if (key == GLFW_MOUSE_BUTTON_RIGHT)
                 unit.isAutoAttacking = true;
 
-            zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+            zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
                 .unitID = entt::to_integral(characterSingleton.moverEntity),
                 .targetID = entt::to_integral(targetEntity)
             });
@@ -479,12 +480,12 @@ namespace ECS::Systems
                 {
                     unit.targetEntity = entt::null;
 
-                    Util::Network::SendPacket(networkState, Generated::ClientUnitTargetUpdatePacket{
+                    Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
                         .targetGUID = ObjectGUID::Empty
                     });
 
                     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-                    zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+                    zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
                         .unitID = entt::to_integral(characterSingleton.moverEntity),
                         .targetID = entt::to_integral(unit.targetEntity)
                     });
@@ -496,7 +497,7 @@ namespace ECS::Systems
             if (unit.isAutoAttacking)
             {
                 auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(unit.targetEntity);
-                auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+                auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
                 if (healthPower.current <= 0.0f)
                 {
@@ -511,7 +512,7 @@ namespace ECS::Systems
 
                         auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
                         auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
-                        auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(mainHandItemID);
+                        auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(mainHandItemID);
 
                         unit.attackReadyAnimation = ::Util::Unit::GetAttackReadyAnimation(itemTemplate.categoryType);
                     }
@@ -527,7 +528,7 @@ namespace ECS::Systems
                         if (distanceToTarget <= 5.0f && targetIsWithin45DegreeAngle) // TODO: Replace with real melee range
                         {
                             // Send Cast Auto Attack Spell Packet
-                            ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+                            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
                                 .spellID = 1
                             });
 
@@ -546,7 +547,7 @@ namespace ECS::Systems
                         if (distanceToTarget <= 5.0f && targetIsWithin45DegreeAngle) // TODO: Replace with real melee range
                         {
                             // Send Cast Auto Attack Spell Packet
-                            ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+                            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
                                 .spellID = 2
                             });
 
@@ -572,7 +573,7 @@ namespace ECS::Systems
             auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
             auto& movementInfo = registry.get<Components::MovementInfo>(characterSingleton.moverEntity);
             auto& unitPowersComponent = registry.get<Components::UnitPowersComponent>(characterSingleton.moverEntity);
-            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, Generated::PowerTypeEnum::Health);
+            auto& healthPower = ::Util::Unit::GetPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
 
             static JPH::Vec3 gravity = JPH::Vec3(0.0f, -19.291105f, 0.0f);
             static JPH::Vec3 flyingGravity = JPH::Vec3(0.0f, 0.0f, 0.0f);
@@ -760,7 +761,7 @@ namespace ECS::Systems
                 {
                     ZoneScopedN("CharacterController::Update - Network Update - Building Message");
 
-                    Util::Network::SendPacket(networkState, Generated::ClientUnitMovePacket{
+                    Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitMovePacket{
                         .movementFlags = *reinterpret_cast<u32*>(&movementInfo.movementFlags),
                         .position = transform.GetWorldPosition(),
                         .pitchYaw = vec2(movementInfo.pitch, movementInfo.yaw),
@@ -806,9 +807,9 @@ namespace ECS::Systems
             unit.gender = GameDefine::UnitGender::Female;
 
             auto& unitEquipment = registry.get_or_emplace<Components::UnitEquipment>(characterSingleton.moverEntity);
-            for (u32 i = 0; i <= (u32)Generated::ItemEquipSlotEnum::EquipmentEnd; i++)
+            for (u32 i = 0; i <= (u32)MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentEnd; i++)
             {
-                auto equipSlot = static_cast<Generated::ItemEquipSlotEnum>(i);
+                auto equipSlot = static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(i);
                 unitEquipment.dirtyItemIDSlots.insert(equipSlot);
             }
             registry.get_or_emplace<Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
@@ -819,7 +820,7 @@ namespace ECS::Systems
             auto& unitCustomization = registry.get_or_emplace<Components::UnitCustomization>(characterSingleton.moverEntity);
 
             auto& unitPowersComponent = registry.get_or_emplace<Components::UnitPowersComponent>(characterSingleton.moverEntity);
-            ::Util::Unit::AddPower(unitPowersComponent, Generated::PowerTypeEnum::Health, 100.0, 50.0, 100.0);
+            ::Util::Unit::AddPower(unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health, 100.0, 50.0, 100.0);
 
             transformSystem.SetWorldPosition(characterSingleton.moverEntity, vec3(0.0f, 0.0f, 0.0f));
 

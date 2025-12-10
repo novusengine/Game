@@ -19,7 +19,7 @@
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Game/LuaEnum.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -619,7 +619,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget);
         }
 
@@ -633,7 +633,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
@@ -647,7 +647,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value1, value2);
         }
 
@@ -661,7 +661,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
@@ -675,7 +675,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallUIInputEvent(zenith, eventRef, inputEvent, widget, value);
         }
 
@@ -689,7 +689,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             return uiHandler->CallKeyboardInputEvent(zenith, eventRef, widget, key, actionMask, modifierMask);
         }
 
@@ -703,7 +703,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             return uiHandler->CallKeyboardInputEvent(zenith, eventRef, key, actionMask, modifierMask);
         }
 
@@ -717,7 +717,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             return uiHandler->CallKeyboardUnicodeEvent(zenith, eventRef, widget, unicode);
         }
 
@@ -731,7 +731,7 @@ namespace ECS::Util
             Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
 
-            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)Generated::LuaHandlerTypeEnum::UI);
+            Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>((u16)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI);
             uiHandler->CallSendMessageToChat(zenith, eventRef, channel, playerName, text, isOutgoing);
         }
         

@@ -12,6 +12,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     {
         sourceDir .. "/main.cpp",
         sourceDir .. "/**.hlsl",
+        mod.Path .. "/" .. mod.Name .. ".lua"
     }
     Solution.Util.SetFiles(files)
 
@@ -26,4 +27,8 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     Solution.Util.SetFilter("files:**.hlsl", function()
         flags("ExcludeFromBuild")
     end)
+
+    vpaths {
+        ["/*"] = { "*.lua", mod.Name .. "/**" }
+    }
 end)

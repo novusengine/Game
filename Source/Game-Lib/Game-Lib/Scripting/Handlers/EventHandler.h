@@ -1,8 +1,6 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Shared/NetworkEnum.h>
-
 #include <Network/Define.h>
 
 #include <Scripting/Defines.h>

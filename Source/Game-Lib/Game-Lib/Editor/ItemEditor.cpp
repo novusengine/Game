@@ -9,7 +9,7 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>
@@ -70,7 +70,7 @@ namespace Editor
 
             auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
             auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
-            const auto& icon = iconStorage->Get<Generated::IconRecord>(iconID);
+            const auto& icon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(iconID);
 
             Renderer::TextureDesc textureDesc;
             textureDesc.path = iconStorage->GetString(icon.texture);
@@ -181,7 +181,7 @@ namespace Editor
                     filteredIconIDs.clear();
                     filteredIconIDs.reserve(iconStorage->GetNumRows());
 
-                    iconStorage->Each([&iconStorage](u32 id, const Generated::IconRecord& icon) -> bool
+                    iconStorage->Each([&iconStorage](u32 id, const MetaGen::Shared::ClientDB::IconRecord& icon) -> bool
                     {
                         const std::string& iconPath = iconStorage->GetString(icon.texture);
                         if (std::to_string(id).find(iconFilter) != std::string::npos || iconPath.find(iconFilter) != std::string::npos)
@@ -223,13 +223,13 @@ namespace Editor
                         i32 endIndex = glm::min(startIndex + desiredIconsPerRow, totalIcons);
                         i32 numIconsAdded = 0;
 
-                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const Generated::IconRecord& icon) -> bool
+                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&itemStorage, &iconStorage, &numIconsAdded, &isItemDirty](u32 id, const MetaGen::Shared::ClientDB::IconRecord& icon) -> bool
                         {
                             ImGui::PushID(id);
 
                             if (ImGui::ImageButton("Icon", GetItemIconTexture(id), ImVec2(iconSize, iconSize)))
                             {
-                                itemStorage->Get<Generated::ItemRecord>(currentIndex).iconID = id;
+                                itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex).iconID = id;
                                 isItemDirty = true;
                             }
 
@@ -274,13 +274,13 @@ namespace Editor
                             for (i32 i = startIndex; i < endIndex; ++i)
                             {
                                 u32 id = filteredIconIDs[i];
-                                const auto& icon = iconStorage->Get<Generated::IconRecord>(id);
+                                const auto& icon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(id);
 
                                 ImGui::PushID(id);
 
                                 if (ImGui::ImageButton("Icon", GetItemIconTexture(id), ImVec2(iconSize, iconSize)))
                                 {
-                                    itemStorage->Get<Generated::ItemRecord>(currentIndex).iconID = id;
+                                    itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex).iconID = id;
                                     isItemDirty = true;
                                 }
 
@@ -320,8 +320,8 @@ namespace Editor
                 {.id = 6, .label = "Spirit" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
-            auto& currentStatTemplate = itemStatTemplateStorage->Get<Generated::ItemStatTemplateRecord>(currentItem.statTemplateID);
+            auto& currentItem = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
+            auto& currentStatTemplate = itemStatTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemStatTemplateRecord>(currentItem.statTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.statTemplateID);
             ImGui::Separator();
@@ -387,8 +387,8 @@ namespace Editor
                 {.id = 18, .label = "Ammo" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
-            auto& currentArmorTemplate = itemArmorTemplateStorage->Get<Generated::ItemArmorTemplateRecord>(currentItem.armorTemplateID);
+            auto& currentItem = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
+            auto& currentArmorTemplate = itemArmorTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemArmorTemplateRecord>(currentItem.armorTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.armorTemplateID);
             ImGui::Separator();
@@ -439,8 +439,8 @@ namespace Editor
                 {.id = 8, .label = "Tool" }
             };
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
-            auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(currentItem.weaponTemplateID);
+            auto& currentItem = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
+            auto& currentWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(currentItem.weaponTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.weaponTemplateID);
             ImGui::Separator();
@@ -507,8 +507,8 @@ namespace Editor
 
         if (ImGui::BeginPopupModal("Shield Template Editor##ItemEditor", &shieldTemplateEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
-            auto& currentShieldTemplate = itemShieldTemplateStorage->Get<Generated::ItemShieldTemplateRecord>(currentItem.shieldTemplateID);
+            auto& currentItem = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
+            auto& currentShieldTemplate = itemShieldTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemShieldTemplateRecord>(currentItem.shieldTemplateID);
 
             ImGui::LabelText("##", "Template ID : %d", currentItem.shieldTemplateID);
             ImGui::Separator();
@@ -552,14 +552,14 @@ namespace Editor
             ImGui::Text("Filter (ID or Name)");
             ImGui::InputText("##Item Filter (ID or Name)", &filter);
 
-            auto& currentItem = itemStorage->Get<Generated::ItemRecord>(currentIndex);
+            auto& currentItem = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
             std::string currentItemlabel = std::to_string(currentIndex) + " - " + itemStorage->GetString(currentItem.name);
 
             ImGui::Text("Select Item");
             if (ImGui::BeginCombo("##Select Item", currentIndex >= 0 ? currentItemlabel.c_str() : "None"))
             {
                 char comboLabel[128];
-                itemStorage->Each([&](u32 id, Generated::ItemRecord& item) -> bool
+                itemStorage->Each([&](u32 id, MetaGen::Shared::ClientDB::ItemRecord& item) -> bool
                 {
                     std::snprintf(comboLabel, sizeof(comboLabel), "%u - %s", id, itemStorage->GetString(item.name).c_str());
                     if (std::strstr(comboLabel, filter.c_str()) != nullptr)
@@ -590,7 +590,7 @@ namespace Editor
         // If an item is selected, show the editing UI.
         if (currentIndex >= 0)
         {
-            auto& item = itemStorage->Get<Generated::ItemRecord>(currentIndex);
+            auto& item = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(currentIndex);
 
             // Group: General Information
             {
@@ -618,7 +618,7 @@ namespace Editor
 
                     if (ImGui::IsItemHovered())
                     {
-                        auto& currentIcon = iconStorage->Get<Generated::IconRecord>(item.iconID);
+                        auto& currentIcon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(item.iconID);
 
                         ImGui::BeginTooltip();
                         ImGui::Text("ID: %u", item.iconID);

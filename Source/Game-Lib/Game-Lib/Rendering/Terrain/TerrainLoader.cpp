@@ -31,7 +31,8 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-#include <Meta/Generated/Game/LuaEvent.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -581,7 +582,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     _numChunksToLoad = numChunksToLoad;
 
     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-    zenith->CallEvent(Generated::LuaGameEventEnum::MapLoading, Generated::LuaGameEventDataMapLoading{
+    zenith->CallEvent(MetaGen::Game::Lua::GameEvent::MapLoading, MetaGen::Game::Lua::GameEventDataMapLoading{
         .mapInternalName = mapName
     });
 

@@ -7,8 +7,8 @@
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Scripting/Zenith.h>
 
@@ -37,7 +37,7 @@ namespace Scripting::Database
             if (!db->Has(spellID))
                 spellID = 0;
 
-            const auto& spellInfo = db->Get<Generated::SpellRecord>(spellID);
+            const auto& spellInfo = db->Get<MetaGen::Shared::ClientDB::SpellRecord>(spellID);
 
             // Name, Icon, Description RequiredText, SpecialText
             const std::string& name = db->GetString(spellInfo.name);
@@ -66,7 +66,7 @@ namespace Scripting::Database
             if (!db->Has(iconID))
                 iconID = 0;
 
-            const auto& icon = db->Get<Generated::IconRecord>(iconID);
+            const auto& icon = db->Get<MetaGen::Shared::ClientDB::IconRecord>(iconID);
             const std::string& texture = db->GetString(icon.texture);
 
             zenith->CreateTable();
@@ -85,7 +85,7 @@ namespace Scripting::Database
             if (!ECS::Util::Network::IsConnected(networkState))
                 return 0;
 
-            ECS::Util::Network::SendPacket(networkState, Generated::ClientSpellCastPacket{
+            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
                 .spellID = spellID
             });
 

@@ -4,7 +4,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
@@ -38,7 +38,7 @@ namespace ECSUtil::Light
             areaLightInfo.mapIDToLightIDs.clear();
             areaLightInfo.mapIDToLightIDs.reserve(numMaps);
 
-            lightStorage->Each([&](u32 id, const Generated::LightRecord& light) -> bool
+            lightStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::LightRecord& light) -> bool
             {
                 u16 mapID = light.mapID;
 
@@ -59,7 +59,7 @@ namespace ECSUtil::Light
             areaLightInfo.lightParamIDToLightData.clear();
             areaLightInfo.lightParamIDToLightData.reserve(numLightParams);
 
-            lightDataStorage->Each([&](u32 id, const Generated::LightDataRecord& lightData) -> bool
+            lightDataStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::LightDataRecord& lightData) -> bool
             {
                 u16 lightParamID = lightData.lightParamID;
 

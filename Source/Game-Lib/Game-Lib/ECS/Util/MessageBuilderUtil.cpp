@@ -8,8 +8,8 @@
 #include <Gameplay/GameDefine.h>
 #include <Gameplay/Network/Define.h>
 
-#include <Meta/Generated/Shared/NetworkEnum.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <MetaGen/PacketList.h>
+#include <MetaGen/Shared/Packet/Packet.h>
 
 #include <entt/entt.hpp>
 
@@ -67,7 +67,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildConnectMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& charName)
         {
-            bool createPacketResult = CreatePacket(buffer, Generated::ConnectPacket::PACKET_ID, [&]()
+            bool createPacketResult = CreatePacket(buffer, MetaGen::Shared::Packet::ClientConnectPacket::PACKET_ID, [&]()
             {
                 buffer->PutString(charName);
             });
@@ -80,7 +80,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildPingMessage(std::shared_ptr<Bytebuffer>& buffer, u16 ping)
         {
-            bool result = CreatePacket(buffer, Generated::PingPacket::PACKET_ID, [&buffer, ping]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientPingPacket::PACKET_ID, [&buffer, ping]()
             {
                 buffer->PutU16(ping);
             });
@@ -93,7 +93,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildUnitMoveMessage(std::shared_ptr<Bytebuffer>& buffer, const vec3& position, const vec2& pitchYaw, const Components::MovementFlags& movementFlags, f32 verticalVelocity)
         {
-            bool result = CreatePacket(buffer, Generated::ClientUnitMovePacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientUnitMovePacket::PACKET_ID, [&]()
             {
                 buffer->Put(movementFlags);
                 buffer->Put(position);
@@ -106,7 +106,7 @@ namespace ECS::Util::MessageBuilder
         
         bool BuildUnitTargetUpdateMessage(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID targetGUID)
         {
-            bool result = CreatePacket(buffer, Generated::ClientUnitTargetUpdatePacket::PACKET_ID, [&, targetGUID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket::PACKET_ID, [&, targetGUID]()
             {
                 buffer->Serialize(targetGUID);
             });
@@ -119,7 +119,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildRequestSwapSlots(std::shared_ptr<Bytebuffer>& buffer, u16 srcContainerIndex, u16 destContainerIndex, u16 srcSlotIndex, u16 destSlotIndex)
         {
-            bool result = CreatePacket(buffer, Generated::ClientContainerSwapSlotsPacket::PACKET_ID, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::SharedContainerSwapSlotsPacket::PACKET_ID, [&buffer, srcContainerIndex, destContainerIndex, srcSlotIndex, destSlotIndex]()
             {
                 buffer->PutU16(srcContainerIndex);
                 buffer->PutU16(destContainerIndex);
@@ -135,7 +135,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID)
         {
-            bool result = CreatePacket(buffer, Generated::ClientSpellCastPacket::PACKET_ID, [&, spellID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSpellCastPacket::PACKET_ID, [&, spellID]()
             {
                 buffer->PutU32(spellID);
             });
@@ -148,7 +148,7 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildChatMessage(std::shared_ptr<Bytebuffer>& buffer, const std::string& message)
         {
-            bool result = CreatePacket(buffer, Generated::ClientSendChatMessagePacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendChatMessagePacket::PACKET_ID, [&]()
             {
                 buffer->PutString(message);
             });
@@ -165,9 +165,9 @@ namespace ECS::Util::MessageBuilder
     {
         bool BuildCheatDamage(std::shared_ptr<Bytebuffer>& buffer, u32 damage)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::Damage);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::Damage);
                 buffer->PutU32(damage);
             });
 
@@ -175,18 +175,18 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatKill(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::Kill);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::Kill);
             });
 
             return result;
         }
         bool BuildCheatHeal(std::shared_ptr<Bytebuffer>& buffer, u32 heal)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::Heal);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::Heal);
                 buffer->PutU32(heal);
             });
 
@@ -194,18 +194,18 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatResurrect(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::Resurrect);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::Resurrect);
             });
 
             return result;
         }
         bool BuildCheatUnitMorph(std::shared_ptr<Bytebuffer>& buffer, u32 displayID)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitMorph);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitMorph);
                 buffer->PutU32(displayID);
             });
 
@@ -213,18 +213,18 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatUnitDemorph(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitDemorph);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitDemorph);
             });
 
             return result;
         }
         bool BuildCheatTeleport(std::shared_ptr<Bytebuffer>& buffer, u32 mapID, const vec3& position)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::Teleport);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::Teleport);
                 buffer->PutU32(mapID);
                 buffer->Put(position);
             });
@@ -233,9 +233,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatCharacterAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CharacterAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CharacterAdd);
                 buffer->PutString(name);
             });
 
@@ -243,9 +243,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatCharacterRemove(std::shared_ptr<Bytebuffer>& buffer, const std::string& name)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CharacterRemove);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CharacterRemove);
                 buffer->PutString(name);
             });
 
@@ -253,9 +253,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatUnitSetRace(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitRace race)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitSetRace);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitSetRace);
                 buffer->Put(race);
             });
 
@@ -263,9 +263,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatUnitSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitSetGender);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitSetGender);
                 buffer->Put(gender);
             });
 
@@ -273,9 +273,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatUnitSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitSetClass);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitSetClass);
                 buffer->Put(unitClass);
             });
 
@@ -283,17 +283,17 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatUnitSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::UnitSetLevel);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitSetLevel);
                 buffer->PutU16(level);
             });
 
             return result;
         }
-        bool BuildCheatItemSetTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item)
+        bool BuildCheatItemSetTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const MetaGen::Shared::ClientDB::ItemRecord& item)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, itemID]()
             {
                 GameDefine::Database::ItemTemplate itemTemplate =
                 {
@@ -318,17 +318,17 @@ namespace ECS::Util::MessageBuilder
                     .shieldTemplateID = item.shieldTemplateID
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::ItemSetTemplate);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetTemplate);
                 GameDefine::Database::ItemTemplate::Write(buffer, itemTemplate);
             });
 
             return result;
         }
-        bool BuildCheatItemSetStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Generated::ItemStatTemplateRecord& statTemplate)
+        bool BuildCheatItemSetStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const MetaGen::Shared::ClientDB::ItemStatTemplateRecord& statTemplate)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, statTemplateID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, statTemplateID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::ItemSetStatTemplate);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetStatTemplate);
 
                 buffer->PutU32(statTemplateID);
                 buffer->Serialize(statTemplate);
@@ -336,9 +336,9 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatItemSetArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Generated::ItemArmorTemplateRecord& armorTemplate)
+        bool BuildCheatItemSetArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const MetaGen::Shared::ClientDB::ItemArmorTemplateRecord& armorTemplate)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, armorTemplateID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, armorTemplateID]()
             {
                 GameDefine::Database::ItemArmorTemplate itemArmorTemplate =
                 {
@@ -347,15 +347,15 @@ namespace ECS::Util::MessageBuilder
                     .bonusArmor = armorTemplate.bonusArmor,
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::ItemSetArmorTemplate);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetArmorTemplate);
                 GameDefine::Database::ItemArmorTemplate::Write(buffer, itemArmorTemplate);
             });
 
             return result;
         }
-        bool BuildCheatItemSetWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Generated::ItemWeaponTemplateRecord& weaponTemplate)
+        bool BuildCheatItemSetWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord& weaponTemplate)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, weaponTemplateID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, weaponTemplateID]()
             {
                 GameDefine::Database::ItemWeaponTemplate itemWeaponTemplate =
                 {
@@ -366,16 +366,16 @@ namespace ECS::Util::MessageBuilder
                     .speed = weaponTemplate.speed,
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::ItemSetWeaponTemplate);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetWeaponTemplate);
                 GameDefine::Database::ItemWeaponTemplate::Write(buffer, itemWeaponTemplate);
             });
 
             return result;
 
         }
-        bool BuildCheatItemSetShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Generated::ItemShieldTemplateRecord& shieldTemplate)
+        bool BuildCheatItemSetShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const MetaGen::Shared::ClientDB::ItemShieldTemplateRecord& shieldTemplate)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, shieldTemplateID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, shieldTemplateID]()
             {
                 GameDefine::Database::ItemShieldTemplate itemShieldTemplate =
                 {
@@ -384,7 +384,7 @@ namespace ECS::Util::MessageBuilder
                     .block = shieldTemplate.block,
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::ItemSetShieldTemplate);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetShieldTemplate);
                 GameDefine::Database::ItemShieldTemplate::Write(buffer, itemShieldTemplate);
             });
 
@@ -392,9 +392,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatItemAdd(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
             {
-                buffer->Put(Generated::CheatCommandEnum::ItemAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemAdd);
                 buffer->PutU32(itemID);
                 buffer->PutU32(itemCount);
             });
@@ -403,9 +403,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatItemRemove(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, itemID, itemCount]()
             {
-                buffer->Put(Generated::CheatCommandEnum::ItemRemove);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemRemove);
                 buffer->PutU32(itemID);
                 buffer->PutU32(itemCount);
             });
@@ -415,9 +415,9 @@ namespace ECS::Util::MessageBuilder
 
         bool BuildCheatCreatureAdd(std::shared_ptr<Bytebuffer>& buffer, u32 creatureTemplateID)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, creatureTemplateID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, creatureTemplateID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CreatureAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureAdd);
                 buffer->PutU32(creatureTemplateID);
             });
 
@@ -425,9 +425,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCheatCreatureRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, guid]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, guid]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CreatureRemove);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureRemove);
                 buffer->Serialize(guid);
             });
 
@@ -436,39 +436,40 @@ namespace ECS::Util::MessageBuilder
 
         bool BuildCheatCreatureInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, guid]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, guid]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CreatureInfo);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureInfo);
                 buffer->Serialize(guid);
             });
 
             return result;
         }
 
-        bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map)
+        bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, mapID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, mapID]()
             {
                 GameDefine::Database::Map mapTemplate =
                 {
                     .id = mapID,
                     .flags = 0,
+                    .internalName = mapStorage->GetString(map.nameInternal),
                     .name = mapStorage->GetString(map.name),
                     .type = map.instanceType,
                     .maxPlayers = map.maxPlayers,
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::MapAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::MapAdd);
                 GameDefine::Database::Map::Write(buffer, mapTemplate);
             });
 
             return result;
         }
-        bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddCommand& command)
+        bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoAdd);
                 buffer->PutString(command.location);
                 buffer->PutU32(command.mapID);
                 buffer->PutF32(command.x);
@@ -479,51 +480,51 @@ namespace ECS::Util::MessageBuilder
 
             return result;
         }
-        bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddHereCommand& command)
+        bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddHereCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoAddHere);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoAddHere);
                 buffer->PutString(command.location);
             });
 
             return result;
         }
-        bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoRemoveCommand& command)
+        bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoRemoveCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoRemove);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoRemove);
                 buffer->PutString(command.location);
             });
 
             return result;
         }
-        bool BuildCheatGotoMap(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoMapCommand& command)
+        bool BuildCheatGotoMap(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoMapCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoMap);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoMap);
                 buffer->PutU32(command.mapID);
             });
 
             return result;
         }
-        bool BuildCheatGotoLocation(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoLocationCommand& command)
+        bool BuildCheatGotoLocation(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoLocationCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoLocation);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoLocation);
                 buffer->PutString(command.location);
             });
 
             return result;
         }
-        bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoXYZCommand& command)
+        bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoXYZCommand& command)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::GotoXYZ);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::GotoXYZ);
                 buffer->PutF32(command.x);
                 buffer->PutF32(command.y);
                 buffer->PutF32(command.z);
@@ -534,9 +535,9 @@ namespace ECS::Util::MessageBuilder
 
         bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, mapID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, mapID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::TriggerAdd);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::TriggerAdd);
                 buffer->PutString(name);
                 buffer->PutU16(flags);
                 buffer->PutU16(mapID);
@@ -549,17 +550,17 @@ namespace ECS::Util::MessageBuilder
 
         bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, triggerID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, triggerID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::TriggerRemove);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::TriggerRemove);
                 buffer->PutU32(triggerID);
             });
 
             return result;
         }
-        bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const Generated::SpellRecord& spell)
+        bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const MetaGen::Shared::ClientDB::SpellRecord& spell)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellID]()
             {
                 GameDefine::Database::Spell spellDefinition =
                 {
@@ -575,15 +576,15 @@ namespace ECS::Util::MessageBuilder
                     .duration = spell.duration
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::SpellSet);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet);
                 GameDefine::Database::Spell::Write(buffer, spellDefinition);
             });
 
             return result;
         }
-        bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const Generated::SpellEffectsRecord& spellEffect)
+        bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellEffectsID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellEffectsID]()
             {
                 GameDefine::Database::SpellEffect spellEffectsDefinition =
                 {
@@ -592,37 +593,37 @@ namespace ECS::Util::MessageBuilder
                     .effectPriority = spellEffect.effectPriority,
                     .effectType = spellEffect.effectType,
 
-                    .effectValue1 = spellEffect.effectValue1,
-                    .effectValue2 = spellEffect.effectValue2,
-                    .effectValue3 = spellEffect.effectValue3,
+                    .effectValue1 = spellEffect.effectValues[0],
+                    .effectValue2 = spellEffect.effectValues[1],
+                    .effectValue3 = spellEffect.effectValues[2],
 
-                    .effectMiscValue1 = spellEffect.effectMiscValue1,
-                    .effectMiscValue2 = spellEffect.effectMiscValue2,
-                    .effectMiscValue3 = spellEffect.effectMiscValue3
+                    .effectMiscValue1 = spellEffect.effectMiscValues[0],
+                    .effectMiscValue2 = spellEffect.effectMiscValues[1],
+                    .effectMiscValue3 = spellEffect.effectMiscValues[2]
                 };
 
-                buffer->Put(Generated::CheatCommandEnum::SpellEffectSet);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellEffectSet);
                 GameDefine::Database::SpellEffect::Write(buffer, spellEffectsDefinition);
             });
 
             return result;
         }
-        bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const Generated::SpellProcDataRecord& spellProcData)
+        bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const MetaGen::Shared::ClientDB::SpellProcDataRecord& spellProcData)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellProcDataID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellProcDataID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::SpellProcDataSet);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcDataSet);
                 buffer->PutU32(spellProcDataID);
                 buffer->Serialize(spellProcData);
             });
 
             return result;
         }
-        bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const Generated::SpellProcLinkRecord& spellProcLink)
+        bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&, spellProcLinkID]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, spellProcLinkID]()
             {
-                buffer->Put(Generated::CheatCommandEnum::SpellProcLinkSet);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellProcLinkSet);
                 buffer->PutU32(spellProcLinkID);
                 buffer->Serialize(spellProcLink);
             });
@@ -631,9 +632,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CreatureAddScript);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureAddScript);
                 buffer->PutString(scriptName);
             });
 
@@ -641,9 +642,9 @@ namespace ECS::Util::MessageBuilder
         }
         bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer)
         {
-            bool result = CreatePacket(buffer, Generated::SendCheatCommandPacket::PACKET_ID, [&]()
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
-                buffer->Put(Generated::CheatCommandEnum::CreatureRemoveScript);
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureRemoveScript);
             });
 
             return result;

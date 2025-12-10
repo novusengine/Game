@@ -1,7 +1,7 @@
 #pragma once
 #include <Base/Types.h>
 
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <robinhood/robinhood.h>
 
@@ -20,8 +20,8 @@ namespace ECS
         struct UnitResistancesComponent
         {
         public:
-            robin_hood::unordered_map<Generated::ResistanceTypeEnum, UnitResistance> resistanceTypeToValue;
-            robin_hood::unordered_set<Generated::ResistanceTypeEnum> dirtyResistanceTypes;
+            robin_hood::unordered_map<MetaGen::Shared::Unit::ResistanceTypeEnum, UnitResistance> resistanceTypeToValue;
+            robin_hood::unordered_set<MetaGen::Shared::Unit::ResistanceTypeEnum> dirtyResistanceTypes;
         };
     }
 }

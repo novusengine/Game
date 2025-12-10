@@ -20,9 +20,10 @@
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Util/DebugHandler.h>
 
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
-#include <Meta/Generated/Shared/ProximityTriggerEnum.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/Packet/Packet.h>
+#include <MetaGen/Shared/ProximityTrigger/ProximityTrigger.h>
 
 #include <Network/Client.h>
 
@@ -50,16 +51,16 @@ namespace ECS::Systems
     void OnEnter(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
         // This is an optimization so the server doesn't need to repeatedly test all triggers for all players
-        if ((trigger.flags & Generated::ProximityTriggerFlagEnum::IsServerAuthorative) != Generated::ProximityTriggerFlagEnum::None)
+        if ((trigger.flags & MetaGen::Shared::ProximityTrigger::ProximityTriggerFlagEnum::IsServerAuthorative) != MetaGen::Shared::ProximityTrigger::ProximityTriggerFlagEnum::None)
         {
             // Serverside event for sure
-            Util::Network::SendPacket(networkState, Generated::ClientTriggerEnterPacket{
+            Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientTriggerEnterPacket{
                 .triggerID = trigger.networkID
             });
         }
 
         // Clientside event
-        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnEnter, Generated::LuaTriggerEventDataOnEnter{
+        zenith->CallEvent(MetaGen::Game::Lua::TriggerEvent::OnEnter, MetaGen::Game::Lua::TriggerEventDataOnEnter{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
         });
@@ -67,7 +68,7 @@ namespace ECS::Systems
 
     void OnExit(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
-        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnExit, Generated::LuaTriggerEventDataOnExit{
+        zenith->CallEvent(MetaGen::Game::Lua::TriggerEvent::OnExit, MetaGen::Game::Lua::TriggerEventDataOnExit{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
         });
@@ -75,7 +76,7 @@ namespace ECS::Systems
 
     void OnStay(Scripting::Zenith* zenith, ECS::Singletons::NetworkState& networkState, entt::entity triggerEntity, Components::ProximityTrigger& trigger, entt::entity playerEntity)
     {
-        zenith->CallEvent(Generated::LuaTriggerEventEnum::OnStay, Generated::LuaTriggerEventDataOnStay{
+        zenith->CallEvent(MetaGen::Game::Lua::TriggerEvent::OnStay, MetaGen::Game::Lua::TriggerEventDataOnStay{
             .triggerID = entt::to_integral(triggerEntity),
             .playerID = entt::to_integral(playerEntity)
         });

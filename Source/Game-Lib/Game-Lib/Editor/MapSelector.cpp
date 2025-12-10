@@ -11,7 +11,7 @@
 
 #include <Input/InputManager.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -32,7 +32,7 @@ namespace Editor
     {
     }
 
-    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map, std::string& filter, u32& selectedMapID, u32& popupMapID, ImTextureID* mapIcons)
+    bool DrawMapItem(ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map, std::string& filter, u32& selectedMapID, u32& popupMapID, ImTextureID* mapIcons)
     {
         static const char* InstanceTypeToName[] =
         {
@@ -216,7 +216,7 @@ namespace Editor
             {
                 if (hasFilter)
                 {
-                    mapStorage->Each([this, &mapStorage](u32 id, const Generated::MapRecord& map) -> bool
+                    mapStorage->Each([this, &mapStorage](u32 id, const MetaGen::Shared::ClientDB::MapRecord& map) -> bool
                     {
                         DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                         return true;
@@ -232,7 +232,7 @@ namespace Editor
                         u32 start = clipper.DisplayStart;
                         u32 count = (clipper.DisplayEnd - clipper.DisplayStart);
 
-                        mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const Generated::MapRecord& map) -> bool
+                        mapStorage->EachInRange(start, count, [this, &mapStorage](u32 id, const MetaGen::Shared::ClientDB::MapRecord& map) -> bool
                         {
                             DrawMapItem(mapStorage, id, map, currentFilter, currentMapIDSelected, popupMapID, reinterpret_cast<ImTextureID*>(&_mapIcons[0]));
                             return true;
@@ -248,7 +248,7 @@ namespace Editor
 
                     if (ImGui::BeginPopupEx(popupContextID, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
                     {
-                        const auto& map = mapStorage->Get<Generated::MapRecord>(popupMapID);
+                        const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(popupMapID);
                         const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
                         const std::string& mapName = mapStorage->GetString(map.name);
 
@@ -291,7 +291,7 @@ namespace Editor
         {
             MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
 
-            const auto& map = mapStorage->Get<Generated::MapRecord>(_currentSelectedMapID);
+            const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(_currentSelectedMapID);
             const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
 
             u32 internalMapNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());

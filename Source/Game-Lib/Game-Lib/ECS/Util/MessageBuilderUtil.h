@@ -7,9 +7,9 @@
 
 #include <Gameplay/GameDefine.h>
 
-#include <Meta/Generated/Game/Command.h>
-#include <Meta/Generated/Shared/ClientDB.h>
-#include <Meta/Generated/Shared/NetworkEnum.h>
+#include <MetaGen/PacketList.h>
+#include <MetaGen/Game/Command/Command.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Network/Define.h>
 
@@ -88,29 +88,29 @@ namespace ECS
             bool BuildCheatUnitSetGender(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitGender gender);
             bool BuildCheatUnitSetClass(std::shared_ptr<Bytebuffer>& buffer, GameDefine::UnitClass unitClass);
             bool BuildCheatUnitSetLevel(std::shared_ptr<Bytebuffer>& buffer, u16 level);
-            bool BuildCheatItemSetTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const Generated::ItemRecord& item);
-            bool BuildCheatItemSetStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const Generated::ItemStatTemplateRecord& statTemplate);
-            bool BuildCheatItemSetArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const Generated::ItemArmorTemplateRecord& armorTemplate);
-            bool BuildCheatItemSetWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const Generated::ItemWeaponTemplateRecord& weaponTemplate);
-            bool BuildCheatItemSetShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const Generated::ItemShieldTemplateRecord& shieldTemplate);
+            bool BuildCheatItemSetTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* itemStorage, u32 itemID, const MetaGen::Shared::ClientDB::ItemRecord& item);
+            bool BuildCheatItemSetStatTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* statTemplateStorage, u32 statTemplateID, const MetaGen::Shared::ClientDB::ItemStatTemplateRecord& statTemplate);
+            bool BuildCheatItemSetArmorTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* armorTemplateStorage, u32 armorTemplateID, const MetaGen::Shared::ClientDB::ItemArmorTemplateRecord& armorTemplate);
+            bool BuildCheatItemSetWeaponTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* weaponTemplateStorage, u32 weaponTemplateID, const MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord& weaponTemplate);
+            bool BuildCheatItemSetShieldTemplate(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* shieldTemplateStorage, u32 shieldTemplateID, const MetaGen::Shared::ClientDB::ItemShieldTemplateRecord& shieldTemplate);
             bool BuildCheatItemAdd(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount);
             bool BuildCheatItemRemove(std::shared_ptr<Bytebuffer>& buffer, u32 itemID, u32 itemCount);
             bool BuildCheatCreatureAdd(std::shared_ptr<Bytebuffer>& buffer, u32 creatureTemplateID);
             bool BuildCheatCreatureRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
             bool BuildCheatCreatureInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
-            bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const Generated::MapRecord& map);
-            bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddCommand& command);
-            bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoAddHereCommand& command);
-            bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoRemoveCommand& command);
-            bool BuildCheatGotoMap(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoMapCommand& command);
-            bool BuildCheatGotoLocation(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoLocationCommand& command);
-            bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const Generated::GotoXYZCommand& command);
+            bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map);
+            bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command);
+            bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddHereCommand& command);
+            bool BuildCheatGotoRemove(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoRemoveCommand& command);
+            bool BuildCheatGotoMap(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoMapCommand& command);
+            bool BuildCheatGotoLocation(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoLocationCommand& command);
+            bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoXYZCommand& command);
             bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents);
             bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID);
-            bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const Generated::SpellRecord& spell);
-            bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const Generated::SpellEffectsRecord& spellEffect);
-            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const Generated::SpellProcDataRecord& spellProcData);
-            bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const Generated::SpellProcLinkRecord& spellProcLink);
+            bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const MetaGen::Shared::ClientDB::SpellRecord& spell);
+            bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect);
+            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const MetaGen::Shared::ClientDB::SpellProcDataRecord& spellProcData);
+            bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
         }

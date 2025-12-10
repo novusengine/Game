@@ -18,9 +18,9 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/ClientDB.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
+#include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Packet/Packet.h>
 
 #include <Network/Client.h>
 
@@ -46,7 +46,7 @@ namespace Scripting
     void GlobalHandler::PostLoad(Zenith* zenith)
     {
         const char* motd = CVarSystem::Get()->GetStringCVar(CVarCategory::Client, "scriptingMotd");
-        zenith->CallEvent(Generated::LuaGameEventEnum::Loaded, Generated::LuaGameEventDataLoaded{
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Loaded, MetaGen::Game::Lua::GameEventDataLoaded{
             .motd = motd
         });
 
@@ -54,13 +54,13 @@ namespace Scripting
         auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
         if (!networkState.isInWorld && networkState.authInfo.stage == ECS::AuthenticationStage::Completed)
         {
-            zenith->CallEvent(Generated::LuaGameEventEnum::CharacterListChanged, Generated::LuaGameEventDataCharacterListChanged{});
+            zenith->CallEvent(MetaGen::Game::Lua::GameEvent::CharacterListChanged, MetaGen::Game::Lua::GameEventDataCharacterListChanged{});
         }
     }
 
     void GlobalHandler::Update(Zenith* zenith, f32 deltaTime)
     {
-        zenith->CallEvent(Generated::LuaGameEventEnum::Updated, Generated::LuaGameEventDataUpdated{
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::Updated, MetaGen::Game::Lua::GameEventDataUpdated{
             .deltaTime = deltaTime
         });
     }
@@ -123,7 +123,7 @@ namespace Scripting
             return 1;
         }
 
-        Generated::MapRecord* map = nullptr;
+        MetaGen::Shared::ClientDB::MapRecord* map = nullptr;
         if (!ECSUtil::Map::GetMapFromInternalName(mapInternalName, map))
         {
             zenith->Push(false);
@@ -184,7 +184,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = itemID;
-        unitEquipment.dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((MetaGen::Shared::Unit::ItemEquipSlotEnum)slotIndex);
         gameRegistry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         zenith->Push(true);
@@ -214,7 +214,7 @@ namespace Scripting
         }
 
         unitEquipment.equipmentSlotToItemID[slotIndex] = 0;
-        unitEquipment.dirtyItemIDSlots.insert((Generated::ItemEquipSlotEnum)slotIndex);
+        unitEquipment.dirtyItemIDSlots.insert((MetaGen::Shared::Unit::ItemEquipSlotEnum)slotIndex);
         registry->get_or_emplace<ECS::Components::UnitEquipmentDirty>(characterSingleton.moverEntity);
 
         zenith->Push(true);
@@ -258,7 +258,7 @@ namespace Scripting
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
         
-        ECS::Util::Network::SendPacket(networkState, Generated::ClientSendChatMessagePacket{
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSendChatMessagePacket{
             .message = message
         });
 
@@ -341,7 +341,7 @@ namespace Scripting
                 CVarSystem::Get()->SetStringCVar(CVarCategory::Network, "accountName", "");
             }
 
-            ECS::Util::Network::SendPacket(networkState, Generated::ConnectPacket{
+            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientConnectPacket{
                 .accountName = username
             });
         }
@@ -360,7 +360,7 @@ namespace Scripting
             return 1;
         }
 
-        ECS::Util::Network::SendPacket(networkState, Generated::ClientCharacterLogoutPacket{});
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientCharacterLogoutPacket{});
 
         zenith->Push(true);
         return 1;
@@ -428,7 +428,7 @@ namespace Scripting
 
         networkState.characterListInfo.characterSelected = true;
 
-        ECS::Util::Network::SendPacket(networkState, Generated::ClientCharacterSelectPacket{
+        ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientCharacterSelectPacket{
             .characterIndex = characterIndex
         });
 
@@ -443,7 +443,7 @@ namespace Scripting
         auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
 
         auto* mapStorage = clientDBSingleton.Get(ClientDBHash::Map);
-        const auto& mapRecord = mapStorage->Get<Generated::MapRecord>(mapID);
+        const auto& mapRecord = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
 
         std::string mapName = mapStorage->GetString(mapRecord.name);
         zenith->Push(mapName.c_str());

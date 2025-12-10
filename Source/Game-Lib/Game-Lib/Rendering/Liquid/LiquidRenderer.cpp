@@ -11,7 +11,7 @@
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -134,7 +134,7 @@ void LiquidRenderer::Load(LoadDesc& desc)
     bool isLavaOrSlime = false;
     if (liquidTypes->Has(desc.typeID))
     {
-        const auto& liquidType = liquidTypes->Get<Generated::LiquidTypeRecord>(desc.typeID);
+        const auto& liquidType = liquidTypes->Get<MetaGen::Shared::ClientDB::LiquidTypeRecord>(desc.typeID);
 
         const auto& liquidTextureMap = _liquidTypeIDToLiquidTextureMap[desc.typeID];
         drawCallData.textureStartIndex = liquidTextureMap.baseTextureIndex;
@@ -560,7 +560,7 @@ void LiquidRenderer::CreatePermanentResources()
     _liquidTypeIDToLiquidTextureMap.reserve(numLiquidTypes);
 
     char textureNameBuffer[512] = { 0 };
-    liquidTypes->Each([this, &liquidTypes, &textureNameBuffer](u32 id, const Generated::LiquidTypeRecord& liquidType)
+    liquidTypes->Each([this, &liquidTypes, &textureNameBuffer](u32 id, const MetaGen::Shared::ClientDB::LiquidTypeRecord& liquidType)
     {
         // Ensure we always have a base index for all liquidTypes, default to 0
         _liquidTypeIDToLiquidTextureMap[id] =

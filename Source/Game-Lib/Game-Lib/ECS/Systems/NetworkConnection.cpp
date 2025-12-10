@@ -38,6 +38,7 @@
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -46,18 +47,20 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
 
+#include <Gameplay/ECS/Components/ObjectFields.h>
+#include <Gameplay/ECS/Components/UnitFields.h>
 #include <Gameplay/Network/GameMessageRouter.h>
 
-#include <Meta/Generated/Shared/ProximityTriggerEnum.h>
+#include <MetaGen/Shared/ProximityTrigger/ProximityTrigger.h>
 
 #include <Network/Client.h>
 #include <Network/Define.h>
 
-#include <Meta/Generated/Game/LuaEnum.h>
-#include <Meta/Generated/Game/LuaEvent.h>
-#include <Meta/Generated/Shared/CombatLogEnum.h>
-#include <Meta/Generated/Shared/NetworkPacket.h>
-#include <Meta/Generated/Shared/UnitEnum.h>
+#include <MetaGen/EnumTraits.h>
+#include <MetaGen/Game/Lua/Lua.h>
+#include <MetaGen/Shared/CombatLog/CombatLog.h>
+#include <MetaGen/Shared/Packet/Packet.h>
+#include <MetaGen/Shared/Unit/Unit.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -130,14 +133,173 @@ namespace ECS::Systems
         if (!networkState.isInWorld && networkState.authInfo.stage == AuthenticationStage::Completed)
         {
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-            zenith->CallEvent(Generated::LuaGameEventEnum::CharacterListChanged, Generated::LuaGameEventDataCharacterListChanged{});
+            zenith->CallEvent(MetaGen::Game::Lua::GameEvent::CharacterListChanged, MetaGen::Game::Lua::GameEventDataCharacterListChanged{});
+        }
+
+        return true;
+    }
+
+    bool HandleOnObjectNetFieldUpdate(Network::SocketID socketID, Network::Message& message)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        ObjectGUID objectGUID;
+        if (!message.buffer->Deserialize(objectGUID))
+            return false;
+
+        entt::entity entity;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, objectGUID, entity))
+        {
+            NC_LOG_WARNING("Network : Received Object NetField Update for non existing entity ({0})", objectGUID.ToString());
+            return true;
+        }
+
+        if (!registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Object NetField Update for non existing entity ({0})", objectGUID.ToString());
+            return true;
+        }
+
+        u8 byteMaskOffset = 0;
+        u8 numMaskBytes = 0;
+
+        if (!message.buffer->GetU8(byteMaskOffset))
+            return false;
+
+        if (!message.buffer->GetU8(numMaskBytes))
+            return false;
+
+        std::vector<u8> maskBytes(numMaskBytes);
+        if (!message.buffer->GetBytes(maskBytes.data(), numMaskBytes))
+            return false;
+
+        auto& objectFields = registry->get<Components::ObjectFields>(entity);
+
+        // Apply NetField Updates
+        for (u32 i = 0; i < numMaskBytes; i++)
+        {
+            u8 maskByte = maskBytes[i];
+
+            while (maskByte)
+            {
+                u16 bitIndex = static_cast<u16>(std::countr_zero(maskByte));
+                maskByte &= (maskByte - 1);
+
+                u16 fieldID = static_cast<u16>(byteMaskOffset * 8 + bitIndex);
+                u32 data = 0;
+
+                if (!message.buffer->GetU32(data))
+                {
+                    NC_LOG_WARNING("Network : Failed to read Object NetField Update data for entity ({0}) fieldID ({1})", objectGUID.ToString(), fieldID);
+                    return false;
+                }
+
+                auto objectField = static_cast<MetaGen::Shared::NetField::ObjectNetFieldEnum>(fieldID);
+                objectFields.fields.SetField(objectField, data);
+            }
+        }
+
+        // Call Field Update Callback Handlers
+        for (u32 i = 0; i < numMaskBytes; i++)
+        {
+            u8 maskByte = maskBytes[i];
+
+            while (maskByte)
+            {
+                u16 bitIndex = static_cast<u16>(std::countr_zero(maskByte));
+                maskByte &= (maskByte - 1);
+
+                u16 fieldID = static_cast<u16>(byteMaskOffset * 8 + bitIndex);
+                auto objectField = static_cast<MetaGen::Shared::NetField::ObjectNetFieldEnum>(fieldID);
+                networkState.objectNetFieldListener.NotifyFieldChanged(entity, objectGUID, objectField);
+            }
+        }
+
+        return true;
+    }
+    bool HandleOnUnitNetFieldUpdate(Network::SocketID socketID, Network::Message& message)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        ObjectGUID objectGUID;
+        if (!message.buffer->Deserialize(objectGUID))
+            return false;
+
+        entt::entity entity;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, objectGUID, entity))
+        {
+            NC_LOG_WARNING("Network : Received Unit NetField Update for non existing entity ({0})", objectGUID.ToString());
+            return true;
+        }
+
+        if (!registry->valid(entity))
+        {
+            NC_LOG_WARNING("Network : Received Unit NetField Update for non existing entity ({0})", objectGUID.ToString());
+            return true;
+        }
+
+        u8 byteMaskOffset = 0;
+        u8 numMaskBytes = 0;
+
+        if (!message.buffer->GetU8(byteMaskOffset))
+            return false;
+
+        if (!message.buffer->GetU8(numMaskBytes))
+            return false;
+
+        std::vector<u8> maskBytes(numMaskBytes);
+        if (!message.buffer->GetBytes(maskBytes.data(), numMaskBytes))
+            return false;
+
+        auto& unitFields = registry->get<Components::UnitFields>(entity);
+
+        // Apply NetField Updates
+        for (u32 i = 0; i < numMaskBytes; i++)
+        {
+            u8 maskByte = maskBytes[i];
+
+            while (maskByte)
+            {
+                u16 bitIndex = static_cast<u16>(std::countr_zero(maskByte));
+                maskByte &= (maskByte - 1);
+
+                u16 fieldID = static_cast<u16>(byteMaskOffset * 8 + bitIndex);
+                u32 data = 0;
+
+                if (!message.buffer->GetU32(data))
+                {
+                    NC_LOG_WARNING("Network : Failed to read Unit NetField Update data for entity ({0}) fieldID ({1})", objectGUID.ToString(), fieldID);
+                    return false;
+                }
+
+                auto unitField = static_cast<MetaGen::Shared::NetField::UnitNetFieldEnum>(fieldID);
+                unitFields.fields.SetField(unitField, data);
+            }
+        }
+
+        // Call Field Update Callback Handlers
+        for (u32 i = 0; i < numMaskBytes; i++)
+        {
+            u8 maskByte = maskBytes[i];
+
+            while (maskByte)
+            {
+                u16 bitIndex = static_cast<u16>(std::countr_zero(maskByte));
+                maskByte &= (maskByte - 1);
+
+                u16 fieldID = static_cast<u16>(byteMaskOffset * 8 + bitIndex);
+                auto unitField = static_cast<MetaGen::Shared::NetField::UnitNetFieldEnum>(fieldID);
+                networkState.unitNetFieldListener.NotifyFieldChanged(entity, objectGUID, unitField);
+            }
         }
 
         return true;
     }
     bool HandleOnCombatEvent(Network::SocketID socketID, Network::Message& message)
     {
-        Generated::CombatLogEventsEnum eventID;
+        MetaGen::Shared::CombatLog::CombatLogEventEnum eventID;
         ObjectGUID sourceNetworkID;
 
         if (!message.buffer->Get(eventID))
@@ -165,8 +327,8 @@ namespace ECS::Systems
         switch (eventID)
         {
             // Damage Taken
-            case Generated::CombatLogEventsEnum::DamageDealt:
-            case Generated::CombatLogEventsEnum::HealingDone:
+            case MetaGen::Shared::CombatLog::CombatLogEventEnum::DamageDealt:
+            case MetaGen::Shared::CombatLog::CombatLogEventEnum::HealingDone:
             {
                 ObjectGUID targetNetworkID;
                 f64 value = 0.0f;
@@ -205,7 +367,7 @@ namespace ECS::Systems
 
                 std::string result = "";
 
-                if (eventID == Generated::CombatLogEventsEnum::DamageDealt)
+                if (eventID == MetaGen::Shared::CombatLog::CombatLogEventEnum::DamageDealt)
                 {
                     // Damage Dealt
                     if (overValue)
@@ -235,7 +397,7 @@ namespace ECS::Systems
                 break;
             }
 
-            case Generated::CombatLogEventsEnum::Resurrected:
+            case MetaGen::Shared::CombatLog::CombatLogEventEnum::Resurrected:
             {
                 ObjectGUID targetNetworkID;
                 f64 restoredHealth = 0.0f;
@@ -280,8 +442,26 @@ namespace ECS::Systems
         }
         return true;
     }
+    bool HandleOnVisualizePath(Network::SocketID socketID, Network::Message& message)
+    {
+        u32 numPaths;
+        if (!message.buffer->GetU32(numPaths))
+            return false;
 
-    bool HandleOnAuthChallenge(Network::SocketID socketID, Generated::ServerAuthChallengePacket& packet)
+        std::vector<vec3> positions(numPaths);
+        if (!message.buffer->GetBytes(positions.data(), numPaths * sizeof(vec3)))
+            return false;
+
+        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
+
+        networkState.pathToVisualize.resize(numPaths);
+        memcpy(networkState.pathToVisualize.data(), positions.data(), numPaths * sizeof(vec3));
+
+        return true;
+    }
+
+    bool HandleOnAuthChallenge(Network::SocketID socketID, MetaGen::Shared::Packet::ServerAuthChallengePacket& packet)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
@@ -307,13 +487,13 @@ namespace ECS::Systems
         networkState.authInfo.stage = AuthenticationStage::Step1;
         networkState.authInfo.password.clear();
 
-        Generated::ClientAuthChallengePacket responsePacket;
+        MetaGen::Shared::Packet::ClientAuthChallengePacket responsePacket;
         std::memcpy(responsePacket.challenge.data(), response1, crypto_spake_RESPONSE1BYTES);
         Util::Network::SendPacket(networkState, responsePacket);
 
         return true;
     }
-    bool HandleOnAuthProof(Network::SocketID socketID, Generated::ServerAuthProofPacket& packet)
+    bool HandleOnAuthProof(Network::SocketID socketID, MetaGen::Shared::Packet::ServerAuthProofPacket& packet)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
@@ -336,13 +516,13 @@ namespace ECS::Systems
 
         networkState.authInfo.stage = AuthenticationStage::Completed;
 
-        Generated::ClientAuthProofPacket authProofPacket;
+        MetaGen::Shared::Packet::ClientAuthProofPacket authProofPacket;
         std::memcpy(authProofPacket.proof.data(), response3, crypto_spake_RESPONSE3BYTES);
         Util::Network::SendPacket(networkState, authProofPacket);
 
         return true;
     }
-    bool HandleOnConnectResult(Network::SocketID socketID, Generated::ConnectResultPacket& packet)
+    bool HandleOnConnectResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerConnectResultPacket& packet)
     {
         auto result = static_cast<Network::ConnectResult>(packet.result);
 
@@ -355,7 +535,7 @@ namespace ECS::Systems
         NC_LOG_INFO("Network : Logged in to character");
         return true;
     }
-    bool HandleOnWorldTransfer(Network::SocketID socketID, Generated::ServerWorldTransferPacket& packet)
+    bool HandleOnWorldTransfer(Network::SocketID socketID, MetaGen::Shared::Packet::ServerWorldTransferPacket& packet)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
@@ -400,7 +580,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnLoadMap(Network::SocketID socketID, Generated::ServerLoadMapPacket& packet)
+    bool HandleOnLoadMap(Network::SocketID socketID, MetaGen::Shared::Packet::ServerLoadMapPacket& packet)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -423,7 +603,7 @@ namespace ECS::Systems
             return false;
         }
 
-        const auto& map = mapStorage->Get<Generated::MapRecord>(packet.mapID);
+        const auto& map = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(packet.mapID);
         const std::string& mapInternalName = mapStorage->GetString(map.nameInternal);
 
         u32 internalMapNameHash = StringUtils::fnv1a_32(mapInternalName.c_str(), mapInternalName.length());
@@ -431,7 +611,7 @@ namespace ECS::Systems
         networkState.isLoadingMap = true;
         return true;
     }
-    bool HandleOnCharacterLogout(Network::SocketID socketID, Generated::ServerCharacterLogoutPacket& packet)
+    bool HandleOnCharacterLogout(Network::SocketID socketID, MetaGen::Shared::Packet::ServerCharacterLogoutPacket& packet)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
@@ -477,7 +657,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnPong(Network::SocketID socketID, Generated::PongPacket& packet)
+    bool HandleOnPong(Network::SocketID socketID, MetaGen::Shared::Packet::ServerPongPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -506,7 +686,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnServerUpdateStats(Network::SocketID socketID, Generated::ServerUpdateStatsPacket& packet)
+    bool HandleOnServerUpdateStats(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUpdateStatsPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -516,19 +696,19 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnCheatCommandResult(Network::SocketID socketID, Generated::CheatCommandResultPacket& packet)
+    bool HandleOnCheatCommandResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerCheatCommandResultPacket& packet)
     {
         return true;
     }
 
-    bool HandleOnUnitAdd(Network::SocketID socketID, Generated::UnitAddPacket& packet)
+    bool HandleOnUnitAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitAddPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         if (Util::Network::IsObjectGUIDKnown(networkState, packet.guid))
         {
-            NC_LOG_WARNING("Network : Received UnitAdd for already existing entity ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Received ServerUnitAdd for already existing entity ({0})", packet.guid.ToString());
             return true;
         }
 
@@ -564,6 +744,12 @@ namespace ECS::Systems
         movementInfo.yaw = packet.pitchYaw.y;
         movementInfo.movementFlags.grounded = true;
 
+        auto& objectFields = registry->emplace<Components::ObjectFields>(newEntity);
+        auto& unitFields = registry->emplace<Components::UnitFields>(newEntity);
+
+        objectFields.fields.SetField(MetaGen::Shared::NetField::ObjectNetFieldEnum::ObjectGUIDLow, packet.guid);
+        objectFields.fields.SetField(MetaGen::Shared::NetField::ObjectNetFieldEnum::Scale, 1.0f);
+
         TransformSystem& transformSystem = TransformSystem::Get(*registry);
 
         quat rotation = quat(glm::vec3(packet.pitchYaw.x, packet.pitchYaw.y, 0.0f));
@@ -584,13 +770,13 @@ namespace ECS::Systems
         networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::Add, Generated::LuaUnitEventDataAdd{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
             .unitID = entt::to_integral(newEntity)
         });
 
         return true;
     }
-    bool HandleOnUnitRemove(Network::SocketID socketID, Generated::UnitRemovePacket& packet)
+    bool HandleOnUnitRemove(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitRemovePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -598,7 +784,7 @@ namespace ECS::Systems
         entt::entity entity;
         if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
         {
-            NC_LOG_WARNING("Network : Received UnitRemove for unknown entity ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Received ServerUnitRemove for unknown entity ({0})", packet.guid.ToString());
             return true;
         }
 
@@ -625,53 +811,14 @@ namespace ECS::Systems
         registry->destroy(entity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::Remove, Generated::LuaUnitEventDataRemove{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Remove, MetaGen::Game::Lua::UnitEventDataRemove{
             .unitID = entt::to_integral(entity)
         });
 
         return true;
     }
-    bool HandleOnUnitDisplayInfoUpdate(Network::SocketID socketID, Generated::UnitDisplayInfoUpdatePacket& packet)
-    {
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
-
-        entt::entity entity;
-        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
-            return true;
-        }
-
-        if (!registry->valid(entity))
-        {
-            NC_LOG_WARNING("Network : Received Display Info Update for non existing entity ({0})", packet.guid.ToString());
-            return true;
-        }
-
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-        auto& model = registry->get<ECS::Components::Model>(entity);
-        auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
-
-        if (displayInfo.displayID != packet.displayID)
-        {
-            displayInfo.displayID = packet.displayID;
-
-            if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, packet.displayID))
-            {
-                NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", packet.guid.ToString(), packet.displayID);
-
-                modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
-                return true;
-            }
-        }
-
-        displayInfo.race = static_cast<GameDefine::UnitRace>(packet.race);
-        displayInfo.gender = static_cast<GameDefine::UnitGender>(packet.gender);
-
-        return true;
-    }
-    bool HandleOnUnitEquippedItemUpdate(Network::SocketID socketID, Generated::ServerUnitEquippedItemUpdatePacket& packet)
+    
+    bool HandleOnUnitEquippedItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitEquippedItemUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -697,11 +844,11 @@ namespace ECS::Systems
         }
 
         unitEquipment.equipmentSlotToItemID[packet.slot] = packet.itemID;
-        unitEquipment.dirtyItemIDSlots.insert(static_cast<Generated::ItemEquipSlotEnum>(packet.slot));
+        unitEquipment.dirtyItemIDSlots.insert(static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitEquipmentDirty>(entity);
         return true;
     }
-    bool HandleOnUnitVisualItemUpdate(Network::SocketID socketID, Generated::ServerUnitVisualItemUpdatePacket& packet)
+    bool HandleOnUnitVisualItemUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitVisualItemUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -727,15 +874,15 @@ namespace ECS::Systems
         }
 
         unitEquipment.equipmentSlotToVisualItemID[packet.slot] = packet.itemID;
-        unitEquipment.dirtyVisualItemIDSlots.insert(static_cast<Generated::ItemEquipSlotEnum>(packet.slot));
+        unitEquipment.dirtyVisualItemIDSlots.insert(static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.slot));
         registry->emplace_or_replace<Components::UnitVisualEquipmentDirty>(entity);
         return true;
     }
 
-    bool HandleOnUnitPowerUpdate(Network::SocketID socketID, Generated::UnitPowerUpdatePacket& packet)
+    bool HandleOnUnitPowerUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitPowerUpdatePacket& packet)
     {
-        auto powerType = static_cast<Generated::PowerTypeEnum>(packet.kind);
-        if (powerType <= Generated::PowerTypeEnum::Invalid || powerType >= Generated::PowerTypeEnum::Count)
+        auto powerType = static_cast<MetaGen::Shared::Unit::PowerTypeEnum>(packet.kind);
+        if (powerType <= MetaGen::Shared::Unit::PowerTypeEnum::Invalid || powerType >= MetaGen::Shared::Unit::PowerTypeEnum::Count)
         {
             NC_LOG_WARNING("Network : Received Power Update for unknown PowerType ({0})", packet.kind);
             return true;
@@ -764,7 +911,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::PowerUpdate, Generated::LuaUnitEventDataPowerUpdate{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::PowerUpdate, MetaGen::Game::Lua::UnitEventDataPowerUpdate{
             .unitID = entt::to_integral(entity),
             .powerType = packet.kind,
             .base = packet.base,
@@ -774,10 +921,10 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnUnitResistanceUpdate(Network::SocketID socketID, Generated::UnitResistanceUpdatePacket& packet)
+    bool HandleOnUnitResistanceUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitResistanceUpdatePacket& packet)
     {
-        auto resistanceType = static_cast<Generated::ResistanceTypeEnum>(packet.kind);
-        if (resistanceType <= Generated::ResistanceTypeEnum::Invalid || resistanceType >= Generated::ResistanceTypeEnum::Count)
+        auto resistanceType = static_cast<MetaGen::Shared::Unit::ResistanceTypeEnum>(packet.kind);
+        if (resistanceType <= MetaGen::Shared::Unit::ResistanceTypeEnum::Invalid || resistanceType >= MetaGen::Shared::Unit::ResistanceTypeEnum::Count)
         {
             NC_LOG_WARNING("Network : Received Resistance Update for unknown ResistanceType ({0})", packet.kind);
             return true;
@@ -800,7 +947,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::ResistanceUpdate, Generated::LuaUnitEventDataResistanceUpdate{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ResistanceUpdate, MetaGen::Game::Lua::UnitEventDataResistanceUpdate{
             .unitID = entt::to_integral(entity),
             .resistanceType = packet.kind,
             .base = packet.base,
@@ -810,10 +957,10 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnUnitStatUpdate(Network::SocketID socketID, Generated::UnitStatUpdatePacket& packet)
+    bool HandleOnUnitStatUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitStatUpdatePacket& packet)
     {
-        auto statType = static_cast<Generated::StatTypeEnum>(packet.kind);
-        if (statType <= Generated::StatTypeEnum::Invalid || statType >= Generated::StatTypeEnum::Count)
+        auto statType = static_cast<MetaGen::Shared::Unit::StatTypeEnum>(packet.kind);
+        if (statType <= MetaGen::Shared::Unit::StatTypeEnum::Invalid || statType >= MetaGen::Shared::Unit::StatTypeEnum::Count)
         {
             NC_LOG_WARNING("Network : Received Stat Update for unknown StatType ({0})", packet.kind);
             return true;
@@ -836,7 +983,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::StatUpdate, Generated::LuaUnitEventDataStatUpdate{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::StatUpdate, MetaGen::Game::Lua::UnitEventDataStatUpdate{
             .unitID = entt::to_integral(entity),
             .statType = packet.kind,
             .base = packet.base,
@@ -845,7 +992,7 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnUnitTargetUpdate(Network::SocketID socketID, Generated::ServerUnitTargetUpdatePacket& packet)
+    bool HandleOnUnitTargetUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitTargetUpdatePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -868,14 +1015,14 @@ namespace ECS::Systems
         unit.targetEntity = targetEntity;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::TargetChanged, Generated::LuaUnitEventDataTargetChanged{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
             .unitID = entt::to_integral(entity),
             .targetID = entt::to_integral(targetEntity)
         });
 
         return true;
     }
-    bool HandleOnUnitCastSpell(Network::SocketID socketID, Generated::UnitCastSpellPacket& packet)
+    bool HandleOnUnitCastSpell(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitCastSpellPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -911,14 +1058,14 @@ namespace ECS::Systems
             auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
             auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
-            u32 mainHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(Generated::ItemEquipSlotEnum::MainHand)];
-            auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(mainHandItemID);
+            u32 mainHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand)];
+            auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(mainHandItemID);
 
             if (characterSingleton.moverEntity == entity)
             {
                 u32 itemWeaponTemplateID = ::ECSUtil::Item::GetItemWeaponTemplateID(itemSingleton, mainHandItemID);
                 auto* itemWeaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
-                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
+                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
                 
                 characterSingleton.primaryAttackTimer = itemWeaponTemplate.speed;
             }
@@ -945,14 +1092,14 @@ namespace ECS::Systems
             auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
 
             auto& unitEquipment = registry->get<Components::UnitEquipment>(entity);
-            u32 offHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(Generated::ItemEquipSlotEnum::OffHand)];
-            auto& itemTemplate = itemStorage->Get<Generated::ItemRecord>(offHandItemID);
+            u32 offHandItemID = unitEquipment.equipmentSlotToItemID[static_cast<u32>(MetaGen::Shared::Unit::ItemEquipSlotEnum::OffHand)];
+            auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(offHandItemID);
 
             if (characterSingleton.moverEntity == entity)
             {
                 u32 itemWeaponTemplateID = ::ECSUtil::Item::GetItemWeaponTemplateID(itemSingleton, offHandItemID);
                 auto* itemWeaponTemplateStorage = clientDBSingleton.Get(ClientDBHash::ItemWeaponTemplate);
-                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<Generated::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
+                auto& itemWeaponTemplate = itemWeaponTemplateStorage->Get<MetaGen::Shared::ClientDB::ItemWeaponTemplateRecord>(itemWeaponTemplateID);
                 
                 characterSingleton.secondaryAttackTimer = itemWeaponTemplate.speed;
             }
@@ -980,7 +1127,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnUnitSetMover(Network::SocketID socketID, Generated::UnitSetMoverPacket& packet)
+    bool HandleOnUnitSetMover(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitSetMoverPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -988,7 +1135,7 @@ namespace ECS::Systems
         entt::entity entity;
         if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
         {
-            NC_LOG_WARNING("Network : Received UnitSetMover for non-existent entity ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Received ServerUnitSetMover for non-existent entity ({0})", packet.guid.ToString());
             return true;
         }
 
@@ -998,13 +1145,13 @@ namespace ECS::Systems
         CharacterController::InitCharacterController(*registry, false);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaGameEventEnum::LocalMoverChanged, Generated::LuaGameEventDataLocalMoverChanged{
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
             .moverID = entt::to_integral(entity)
         });
 
         return true;
     }
-    bool HandleOnUnitMove(Network::SocketID socketID, Generated::ServerUnitMovePacket& packet)
+    bool HandleOnUnitMove(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitMovePacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -1055,11 +1202,11 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnUnitMoveStop(Network::SocketID socketID, Generated::UnitMoveStopPacket& packet)
+    bool HandleOnUnitMoveStop(Network::SocketID socketID, MetaGen::Shared::Packet::SharedUnitMoveStopPacket& packet)
     {
         return true;
     }
-    bool HandleOnUnitTeleport(Network::SocketID socketID, Generated::ServerUnitTeleportPacket& packet)
+    bool HandleOnUnitTeleport(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitTeleportPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
@@ -1141,14 +1288,14 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnItemAdd(Network::SocketID socketID, Generated::ItemAddPacket& packet)
+    bool HandleOnItemAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerItemAddPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         if (Util::Network::IsObjectGUIDKnown(networkState, packet.guid))
         {
-            NC_LOG_WARNING("Network : Received ItemAdd for already existing item ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Received ServerItemAdd for already existing item ({0})", packet.guid.ToString());
             return true;
         }
 
@@ -1173,14 +1320,14 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnContainerAdd(Network::SocketID socketID, Generated::ContainerAddPacket& packet)
+    bool HandleOnContainerAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerAddPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
 
         if (Util::Network::IsObjectGUIDKnown(networkState, packet.guid))
         {
-            NC_LOG_WARNING("Network : Received ContainerAdd for already existing container ({0})", packet.guid.ToString());
+            NC_LOG_WARNING("Network : Received ServerContainerAdd for already existing container ({0})", packet.guid.ToString());
             return true;
         }
 
@@ -1228,14 +1375,14 @@ namespace ECS::Systems
         characterSingleton.containers[packet.index] = packet.guid;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaContainerEventEnum::Add, Generated::LuaContainerEventDataAdd{
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::Add, MetaGen::Game::Lua::ContainerEventDataAdd{
             .index = packet.index + 1u,
             .numSlots = container.numSlots,
             .itemID = container.itemID
         });
         return true;
     }
-    bool HandleOnContainerAddToSlot(Network::SocketID socketID, Generated::ContainerAddToSlotPacket& packet)
+    bool HandleOnContainerAddToSlot(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerAddToSlotPacket& packet)
     {
         if (packet.index >= 6)
         {
@@ -1298,7 +1445,7 @@ namespace ECS::Systems
         auto& item = registry->get<Components::Item>(itemEntity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaContainerEventEnum::AddToSlot, Generated::LuaContainerEventDataAddToSlot{
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::AddToSlot, MetaGen::Game::Lua::ContainerEventDataAddToSlot{
             .containerIndex = packet.index + 1u,
             .slotIndex = packet.slot + 1u,
             .itemID = item.itemID,
@@ -1307,7 +1454,7 @@ namespace ECS::Systems
 
         return true;
     }
-    bool HandleOnContainerRemoveFromSlot(Network::SocketID socketID, Generated::ContainerRemoveFromSlotPacket& packet)
+    bool HandleOnContainerRemoveFromSlot(Network::SocketID socketID, MetaGen::Shared::Packet::ServerContainerRemoveFromSlotPacket& packet)
     {
         if (packet.index >= 6)
         {
@@ -1370,14 +1517,14 @@ namespace ECS::Systems
         };
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaContainerEventEnum::RemoveFromSlot, Generated::LuaContainerEventDataRemoveFromSlot{
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::RemoveFromSlot, MetaGen::Game::Lua::ContainerEventDataRemoveFromSlot{
             .containerIndex = packet.index + 1u,
             .slotIndex = packet.slot + 1u
         });
 
         return true;
     }
-    bool HandleOnContainerSwapSlots(Network::SocketID socketID, Generated::ServerContainerSwapSlotsPacket& packet)
+    bool HandleOnContainerSwapSlots(Network::SocketID socketID, MetaGen::Shared::Packet::SharedContainerSwapSlotsPacket& packet)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
@@ -1475,8 +1622,8 @@ namespace ECS::Systems
         {
             if (packet.srcContainer == 0)
             {
-                auto equippedSlot = static_cast<Generated::ItemEquipSlotEnum>(packet.srcSlot);
-                if (equippedSlot >= Generated::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= Generated::ItemEquipSlotEnum::EquipmentEnd)
+                auto equippedSlot = static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.srcSlot);
+                if (equippedSlot >= MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentEnd)
                 {
                     const ObjectGUID itemGUID = srcContainer->GetItem(packet.srcSlot);
                     bool hasItemInSlot = itemGUID.IsValid();
@@ -1503,8 +1650,8 @@ namespace ECS::Systems
 
             if (packet.dstContainer == 0)
             {
-                auto equippedSlot = static_cast<Generated::ItemEquipSlotEnum>(packet.dstSlot);
-                if (equippedSlot >= Generated::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= Generated::ItemEquipSlotEnum::EquipmentEnd)
+                auto equippedSlot = static_cast<MetaGen::Shared::Unit::ItemEquipSlotEnum>(packet.dstSlot);
+                if (equippedSlot >= MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentStart && equippedSlot <= MetaGen::Shared::Unit::ItemEquipSlotEnum::EquipmentEnd)
                 {
                     const ObjectGUID itemGUID = dstContainer->GetItem(packet.dstSlot);
                     bool hasItemInSlot = itemGUID.IsValid();
@@ -1531,7 +1678,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaContainerEventEnum::SwapSlots, Generated::LuaContainerEventDataSwapSlots{
+        zenith->CallEvent(MetaGen::Game::Lua::ContainerEvent::SwapSlots, MetaGen::Game::Lua::ContainerEventDataSwapSlots{
             .srcContainerIndex = packet.srcContainer + 1u,
             .destContainerIndex = packet.dstContainer + 1u,
             .srcSlotIndex = packet.srcSlot + 1u,
@@ -1541,7 +1688,7 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnServerSpellCastResult(Network::SocketID socketID, Generated::ServerSpellCastResultPacket& packet)
+    bool HandleOnServerSpellCastResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerSpellCastResultPacket& packet)
     {
         if (packet.result == 0)
             return true;
@@ -1551,7 +1698,7 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnSendChatMessage(Network::SocketID socketID, Generated::ServerSendChatMessagePacket& packet)
+    bool HandleOnSendChatMessage(Network::SocketID socketID, MetaGen::Shared::Packet::ServerSendChatMessagePacket& packet)
     {
         std::string senderName = "";
         std::string channel = "System";
@@ -1586,7 +1733,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaGameEventEnum::ChatMessageReceived, Generated::LuaGameEventDataChatMessageReceived{
+        zenith->CallEvent(MetaGen::Game::Lua::GameEvent::ChatMessageReceived, MetaGen::Game::Lua::GameEventDataChatMessageReceived{
             .sender = senderName,
             .channel = channel,
             .message = packet.message
@@ -1595,23 +1742,23 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnServerTriggerAdd(Network::SocketID socketID, Generated::ServerTriggerAddPacket& packet)
+    bool HandleOnServerTriggerAdd(Network::SocketID socketID, MetaGen::Shared::Packet::ServerTriggerAddPacket& packet)
     {
         entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
 
-        auto flags = static_cast<Generated::ProximityTriggerFlagEnum>(packet.flags);
+        auto flags = static_cast<MetaGen::Shared::ProximityTrigger::ProximityTriggerFlagEnum>(packet.flags);
         ECS::Util::ProximityTriggerUtil::CreateTrigger(registry, packet.triggerID, packet.name, flags, packet.mapID, packet.position, packet.extents);
         return true;
     }
 
-    bool HandleOnServerTriggerRemove(Network::SocketID socketID, Generated::ServerTriggerRemovePacket& packet)
+    bool HandleOnServerTriggerRemove(Network::SocketID socketID, MetaGen::Shared::Packet::ServerTriggerRemovePacket& packet)
     {
         entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
         ECS::Util::ProximityTriggerUtil::DestroyTrigger(registry, packet.triggerID);
         return true;
     }
 
-    bool HandleOnServerUnitAddAura(Network::SocketID socketID, Generated::ServerUnitAddAuraPacket& packet)
+    bool HandleOnServerUnitAddAura(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitAddAuraPacket& packet)
     {
         entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry.ctx().get<Singletons::NetworkState>();
@@ -1641,7 +1788,7 @@ namespace ECS::Systems
         unitAuraInfo.spellIDToAuraIndex[packet.spellID] = auraIndex;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraAdd, Generated::LuaUnitEventDataAuraAdd{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraAdd, MetaGen::Game::Lua::UnitEventDataAuraAdd{
             .unitID = entt::to_integral(unitID),
             .auraID = packet.auraInstanceID,
             .spellID = packet.spellID,
@@ -1652,7 +1799,7 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnServerUnitUpdateAura(Network::SocketID socketID, Generated::ServerUnitUpdateAuraPacket& packet)
+    bool HandleOnServerUnitUpdateAura(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitUpdateAuraPacket& packet)
     {
         entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry.ctx().get<Singletons::NetworkState>();
@@ -1680,7 +1827,7 @@ namespace ECS::Systems
         auraInfo.stacks = packet.stacks;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraUpdate, Generated::LuaUnitEventDataAuraUpdate{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraUpdate, MetaGen::Game::Lua::UnitEventDataAuraUpdate{
             .unitID = entt::to_integral(unitID),
             .auraID = packet.auraInstanceID,
             .duration = packet.duration,
@@ -1690,7 +1837,7 @@ namespace ECS::Systems
         return true;
     }
 
-    bool HandleOnServerUnitRemoveAura(Network::SocketID socketID, Generated::ServerUnitRemoveAuraPacket& packet)
+    bool HandleOnServerUnitRemoveAura(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitRemoveAuraPacket& packet)
     {
         entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry.ctx().get<Singletons::NetworkState>();
@@ -1710,7 +1857,7 @@ namespace ECS::Systems
         }
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
-        zenith->CallEvent(Generated::LuaUnitEventEnum::AuraRemove, Generated::LuaUnitEventDataAuraRemove{
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::AuraRemove, MetaGen::Game::Lua::UnitEventDataAuraRemove{
             .unitID = entt::to_integral(unitID),
             .auraID = packet.auraInstanceID
         });
@@ -1760,7 +1907,6 @@ namespace ECS::Systems
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitRemove);
-            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitDisplayInfoUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitEquippedItemUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitVisualItemUpdate);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitPowerUpdate);
@@ -1790,8 +1936,42 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitUpdateAura);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUnitRemoveAura);
 
-            networkState.gameMessageRouter->SetMessageHandler(Generated::ServerCharacterListPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCharacterList));
-            networkState.gameMessageRouter->SetMessageHandler(Generated::SendCombatEventPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCombatEvent));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerCharacterListPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCharacterList));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerObjectNetFieldUpdatePacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnObjectNetFieldUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerUnitNetFieldUpdatePacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnUnitNetFieldUpdate));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerSendCombatEventPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnCombatEvent));
+            networkState.gameMessageRouter->SetMessageHandler(MetaGen::Shared::Packet::ServerPathVisualizationPacket::PACKET_ID, Network::GameMessageHandler(Network::ConnectionStatus::Connected, 0u, -1, &HandleOnVisualizePath));
+
+            networkState.unitNetFieldListener.RegisterFieldListener(MetaGen::Shared::NetField::UnitNetFieldEnum::DisplayID, [](entt::entity entity, ObjectGUID guid, MetaGen::Shared::NetField::UnitNetFieldEnum field)
+            {
+                auto* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+                auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+                ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+
+                auto& unitFields = registry->get<Components::UnitFields>(entity);
+                u32 levelRaceGenderClassPacked = unitFields.fields.GetField<u32>(MetaGen::Shared::NetField::UnitNetFieldEnum::LevelRaceGenderClassPacked);
+
+                u32 displayID = unitFields.fields.GetField<u32>(field);
+                GameDefine::UnitRace race = static_cast<GameDefine::UnitRace>((levelRaceGenderClassPacked >> 16) & 0x7F);
+                GameDefine::UnitGender gender = static_cast<GameDefine::UnitGender>((levelRaceGenderClassPacked >> 23) & 0x3);
+
+                auto& model = registry->get<ECS::Components::Model>(entity);
+                auto& displayInfo = registry->get<Components::DisplayInfo>(entity);
+
+                displayInfo.displayID = displayID;
+                displayInfo.race = race;
+                displayInfo.gender = gender;
+
+                if (!modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, displayID))
+                {
+                    NC_LOG_WARNING("Network : Failed to load DisplayID({1}) for entity ({0})", guid.ToString(), displayID);
+
+                    modelLoader->LoadDisplayIDForEntity(entity, model, Database::Unit::DisplayInfoType::Creature, 10045);
+                    return true;
+                }
+
+                return true;
+            });
         }
     }
 
@@ -1837,7 +2017,7 @@ namespace ECS::Systems
                 if (timeDiff >= Singletons::NetworkState::PING_INTERVAL)
                 {
                     std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<16>();
-                    if (Util::Network::SendPacket(networkState, Generated::PingPacket{
+                    if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientPingPacket{
                         .ping = networkState.pingInfo.ping
                     }))
                     {
@@ -1851,6 +2031,24 @@ namespace ECS::Systems
                     if (currentTime - networkState.pingInfo.lastPongTime > Singletons::NetworkState::PING_INTERVAL)
                     {
                         networkState.pingInfo.ping = static_cast<u16>(timeDiff);
+                    }
+                }
+
+                // Visualize Path
+                {
+                    DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
+
+                    u32 numPointsToVisualize = static_cast<u32>(networkState.pathToVisualize.size());
+                    for (u32 i = 0; i < numPointsToVisualize; i++)
+                    {
+                        const vec3& point = networkState.pathToVisualize[i];
+                        debugRenderer->DrawSphere3D(point, 0.5f, 8, Color::Red);
+
+                        if (i > 0)
+                        {
+                            const vec3& lastPoint = networkState.pathToVisualize[i - 1];
+                            debugRenderer->DrawLine3D(lastPoint, point, Color::Blue);
+                        }
                     }
                 }
             }
@@ -1916,6 +2114,7 @@ namespace ECS::Systems
                 networkState.authInfo.Reset();
                 networkState.characterListInfo.Reset();
                 networkState.pingInfo.Reset();
+                networkState.pathToVisualize.clear();
                 networkState.entityToNetworkID.clear();
                 networkState.networkIDToEntity.clear();
                 networkState.networkVisTree->RemoveAll();

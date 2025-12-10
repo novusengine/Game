@@ -1,19 +1,3 @@
-declare class point
-    x : number
-end
-
-declare class vec2 extends point
-    y : number
-end
-
-declare class vec3 extends vec2
-    z : number
-end
-
-declare class vec4 extends vec3
-    w : number
-end
-
 declare class Engine
     Name : string
     Version : vector
@@ -68,7 +52,7 @@ declare class TriggerEvent
 end
 declare TriggerEvent : TriggerEvent
 
-declare class PowerType
+declare class PowerTypeEnum
     Invalid         : number
     Health          : number
     Mana            : number
@@ -78,9 +62,9 @@ declare class PowerType
     Happiness       : number
     Count           : number
 end
-declare PowerType : PowerType
+declare PowerTypeEnum : PowerTypeEnum
 
-declare class StatType
+declare class StatTypeEnum
     Invalid         : number
     Health          : number
     Stamina         : number
@@ -93,7 +77,7 @@ declare class StatType
     SpellPower      : number
     Count           : number
 end
-declare StatType : StatType
+declare StatTypeEnum : StatTypeEnum
 
 type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
 
@@ -352,7 +336,7 @@ declare Unit :
     GetLocal            : (() -> number),
     GetName             : ((unitID : number) -> string),
     GetHealth           : ((unitID : number) -> (number, number)),
-    GetResourceType     : ((unitID : number) -> PowerType),
+    GetResourceType     : ((unitID : number) -> PowerTypeEnum),
     GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
     GetStat             : ((unitID : number, statType : number) -> (number, number)),
     GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),

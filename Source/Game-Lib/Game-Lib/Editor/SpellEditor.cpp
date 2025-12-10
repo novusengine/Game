@@ -11,8 +11,8 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Meta/Generated/Shared/ClientDB.h>
-#include <Meta/Generated/Shared/SpellEnum.h>
+#include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>
@@ -71,7 +71,7 @@ namespace Editor
 
             auto& clientDBSingleton = ctx.get<ClientDBSingleton>();
             auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
-            const auto& icon = iconStorage->Get<Generated::IconRecord>(iconID);
+            const auto& icon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(iconID);
 
             Renderer::TextureDesc textureDesc;
             textureDesc.path = iconStorage->GetString(icon.texture);
@@ -173,27 +173,27 @@ namespace Editor
         return result;
     }
 
-    bool RenderEffectEnumDropDown(const std::string& label, Generated::SpellEffectTypeEnumMeta::Type& currentID)
+    bool RenderEffectEnumDropDown(const std::string& label, MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::Type& currentID)
     {
         bool result = false;
-        Generated::SpellEffectTypeEnumMeta::Type prevVal = currentID;
+        MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::Type prevVal = currentID;
 
         ImGui::Text("%s", label.c_str());
 
-        Generated::SpellEffectTypeEnumMeta::Type enumlistIndex = currentID;
-        if (enumlistIndex >= static_cast<Generated::SpellEffectTypeEnumMeta::Type>(Generated::SpellEffectTypeEnum::AuraApply))
+        MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::Type enumlistIndex = currentID;
+        if (enumlistIndex >= static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::Type>(MetaGen::Shared::Spell::SpellEffectTypeEnum::AuraApply))
             enumlistIndex -= 125;
 
-        std::string_view previewLabel = Generated::SpellEffectTypeEnumMeta::EnumList[enumlistIndex].first;
+        std::string_view previewLabel = MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::ENUM_FIELD_LIST[enumlistIndex].first;
 
         if (ImGui::BeginCombo(("##" + label).c_str(), previewLabel.data()))
         {
-            u32 numEnumValues = static_cast<u32>(Generated::SpellEffectTypeEnumMeta::EnumList.size());
+            u32 numEnumValues = static_cast<u32>(MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::ENUM_FIELD_LIST.size());
             u32 lastEntry = static_cast<u32>(glm::max(0, static_cast<i32>(numEnumValues - 1)));
 
             for (u32 i = 1; i < lastEntry; i++)
             {
-                const auto& option = Generated::SpellEffectTypeEnumMeta::EnumList[i];
+                const auto& option = MetaGen::Shared::Spell::SpellEffectTypeEnumMeta::ENUM_FIELD_LIST[i];
 
                 bool isSelected = (currentID == option.second);
                 if (ImGui::Selectable(option.first.data(), isSelected))
@@ -247,7 +247,7 @@ namespace Editor
                     filteredIconIDs.clear();
                     filteredIconIDs.reserve(iconStorage->GetNumRows());
 
-                    iconStorage->Each([&iconStorage](u32 id, const Generated::IconRecord& icon) -> bool
+                    iconStorage->Each([&iconStorage](u32 id, const MetaGen::Shared::ClientDB::IconRecord& icon) -> bool
                     {
                         const std::string& iconPath = iconStorage->GetString(icon.texture);
                         if (std::to_string(id).find(iconFilter) != std::string::npos || iconPath.find(iconFilter) != std::string::npos)
@@ -289,13 +289,13 @@ namespace Editor
                         i32 endIndex = glm::min(startIndex + desiredIconsPerRow, totalIcons);
                         i32 numIconsAdded = 0;
 
-                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&spellStorage, &iconStorage, &numIconsAdded, &isSpellDirty](u32 id, const Generated::IconRecord& icon) -> bool
+                        iconStorage->EachInRange(startIndex, endIndex - startIndex, [&spellStorage, &iconStorage, &numIconsAdded, &isSpellDirty](u32 id, const MetaGen::Shared::ClientDB::IconRecord& icon) -> bool
                         {
                             ImGui::PushID(id);
 
                             if (ImGui::ImageButton("Icon", GetSpellIconTexture(id), ImVec2(iconSize, iconSize)))
                             {
-                                spellStorage->Get<Generated::SpellRecord>(currentIndex).iconID = id;
+                                spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(currentIndex).iconID = id;
                                 isSpellDirty = true;
                             }
 
@@ -340,13 +340,13 @@ namespace Editor
                             for (i32 i = startIndex; i < endIndex; ++i)
                             {
                                 u32 id = filteredIconIDs[i];
-                                const auto& icon = iconStorage->Get<Generated::IconRecord>(id);
+                                const auto& icon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(id);
 
                                 ImGui::PushID(id);
 
                                 if (ImGui::ImageButton("Icon", GetSpellIconTexture(id), ImVec2(iconSize, iconSize)))
                                 {
-                                    spellStorage->Get<Generated::SpellRecord>(currentIndex).iconID = id;
+                                    spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(currentIndex).iconID = id;
                                     isSpellDirty = true;
                                 }
 
@@ -377,18 +377,18 @@ namespace Editor
         ImGui::SetNextWindowSizeConstraints(ImVec2(500, 300), ImVec2(FLT_MAX, FLT_MAX));
         if (ImGui::BeginPopupModal("Effects Editor##SpellEditor", &effectEditorEnabled, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
         {
-            static robin_hood::unordered_map<Generated::SpellEffectTypeEnum, std::vector<std::string>> effectTypeToFieldNames =
+            static robin_hood::unordered_map<MetaGen::Shared::Spell::SpellEffectTypeEnum, std::vector<std::string>> effectTypeToFieldNames =
             {
-                { Generated::SpellEffectTypeEnum::Dummy, { "Unused", "Unused", "Unused", "Unused", "Unused", "Unused" }},
-                { Generated::SpellEffectTypeEnum::WeaponDamage, { "Calculation Type", "Weapon Slot", "Unused", "Unused", "Unused", "Unused" }},
-                { Generated::SpellEffectTypeEnum::AuraApply, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
-                { Generated::SpellEffectTypeEnum::AuraRemove, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
-                { Generated::SpellEffectTypeEnum::AuraPeriodicDamage, { "Interval (MS)", "Min Damage", "Max Damage", "Damage School", "Unused", "Unused" }},
-                { Generated::SpellEffectTypeEnum::AuraPeriodicHeal, { "Interval (MS)", "Min Heal", "Max Heal", "Heal School", "Unused", "Unused" }}
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::Dummy, { "Unused", "Unused", "Unused", "Unused", "Unused", "Unused" }},
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::WeaponDamage, { "Calculation Type", "Weapon Slot", "Unused", "Unused", "Unused", "Unused" }},
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::AuraApply, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::AuraRemove, { "Spell ID", "Stacks", "Unused", "Unused", "Unused", "Unused" }},
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::AuraPeriodicDamage, { "Interval (MS)", "Min Damage", "Max Damage", "Damage School", "Unused", "Unused" }},
+                { MetaGen::Shared::Spell::SpellEffectTypeEnum::AuraPeriodicHeal, { "Interval (MS)", "Min Heal", "Max Heal", "Heal School", "Unused", "Unused" }}
             };
             
-            auto& currentSpell = spellStorage->Get<Generated::SpellRecord>(currentIndex);
-            auto& currentSpellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(currentEffectID);
+            auto& currentSpell = spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(currentIndex);
+            auto& currentSpellEffect = spellEffectsStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(currentEffectID);
             
             ImGui::LabelText("##", "Effect ID : %d", currentEffectID);
             ImGui::Separator();
@@ -418,12 +418,12 @@ namespace Editor
 
             ImGui::Columns(3, nullptr, false);
             {
-                auto spellEffectType = static_cast<Generated::SpellEffectTypeEnum>(currentSpellEffect.effectType);
+                auto spellEffectType = static_cast<MetaGen::Shared::Spell::SpellEffectTypeEnum>(currentSpellEffect.effectType);
                 const std::vector<std::string>& fieldNames = effectTypeToFieldNames[spellEffectType];
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[0].c_str());
-                if (ImGui::InputScalar("##EffectValue1", ImGuiDataType_S32, &currentSpellEffect.effectValue1))
+                if (ImGui::InputScalar("##EffectValue1", ImGuiDataType_S32, &currentSpellEffect.effectValues[0]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -433,7 +433,7 @@ namespace Editor
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[1].c_str());
-                if (ImGui::InputScalar("##EffectValue2", ImGuiDataType_S32, &currentSpellEffect.effectValue2))
+                if (ImGui::InputScalar("##EffectValue2", ImGuiDataType_S32, &currentSpellEffect.effectValues[1]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -443,7 +443,7 @@ namespace Editor
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[2].c_str());
-                if (ImGui::InputScalar("##EffectValue3", ImGuiDataType_S32, &currentSpellEffect.effectValue3))
+                if (ImGui::InputScalar("##EffectValue3", ImGuiDataType_S32, &currentSpellEffect.effectValues[2]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -453,7 +453,7 @@ namespace Editor
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[3].c_str());
-                if (ImGui::InputScalar("##EffectMiscValue1", ImGuiDataType_S32, &currentSpellEffect.effectMiscValue1))
+                if (ImGui::InputScalar("##EffectMiscValue1", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[0]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -463,7 +463,7 @@ namespace Editor
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[4].c_str());
-                if (ImGui::InputScalar("##EffectMiscValue2", ImGuiDataType_S32, &currentSpellEffect.effectMiscValue2))
+                if (ImGui::InputScalar("##EffectMiscValue2", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[1]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -473,7 +473,7 @@ namespace Editor
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
                 ImGui::Text(fieldNames[5].c_str());
-                if (ImGui::InputScalar("##EffectMiscValue3", ImGuiDataType_S32, &currentSpellEffect.effectMiscValue3))
+                if (ImGui::InputScalar("##EffectMiscValue3", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[2]))
                 {
                     isSpellEffectsDirty = true;
                 }
@@ -496,14 +496,14 @@ namespace Editor
             ImGui::Text("Filter (ID or Name)");
             ImGui::InputText("##Item Filter (ID or Name)", &filter);
 
-            auto& currentSpell = spellStorage->Get<Generated::SpellRecord>(currentIndex);
+            auto& currentSpell = spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(currentIndex);
             std::string currentlabel = std::to_string(currentIndex) + " - " + spellStorage->GetString(currentSpell.name);
 
             ImGui::Text("Select Item");
             if (ImGui::BeginCombo("##Select Item", currentIndex >= 0 ? currentlabel.c_str() : "None"))
             {
                 char comboLabel[128];
-                spellStorage->Each([&](u32 id, Generated::SpellRecord& spell) -> bool
+                spellStorage->Each([&](u32 id, MetaGen::Shared::ClientDB::SpellRecord& spell) -> bool
                 {
                     std::snprintf(comboLabel, sizeof(comboLabel), "%u - %s", id, spellStorage->GetString(spell.name).c_str());
                     if (std::strstr(comboLabel, filter.c_str()) != nullptr)
@@ -534,7 +534,7 @@ namespace Editor
         // If an item is selected, show the editing UI.
         if (currentIndex >= 0)
         {
-            auto& spell = spellStorage->Get<Generated::SpellRecord>(currentIndex);
+            auto& spell = spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(currentIndex);
 
             // Group: General Information
             {
@@ -562,7 +562,7 @@ namespace Editor
 
                     if (ImGui::IsItemHovered())
                     {
-                        auto& currentIcon = iconStorage->Get<Generated::IconRecord>(spell.iconID);
+                        auto& currentIcon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(spell.iconID);
 
                         ImGui::BeginTooltip();
                         ImGui::Text("ID: %u", spell.iconID);
@@ -788,7 +788,7 @@ namespace Editor
                 {
                     u32 spellEffectID = spellEffectIDs->at(i);
 
-                    const auto& spellEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(spellEffectID);
+                    const auto& spellEffect = spellEffectsStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(spellEffectID);
 
                     ImGui::PushID(spellEffectID);
                     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
@@ -800,12 +800,12 @@ namespace Editor
                         ImGui::Text("ID: %u", spellEffectID);
                         ImGui::Text("Effect Priority: %u", spellEffect.effectPriority);
                         ImGui::Text("Effect Type: %u", spellEffect.effectType);
-                        ImGui::Text("Value 1: %d", spellEffect.effectValue1);
-                        ImGui::Text("Value 2: %d", spellEffect.effectValue2);
-                        ImGui::Text("Value 3: %d", spellEffect.effectValue3);
-                        ImGui::Text("Misc Value 1: %d", spellEffect.effectMiscValue1);
-                        ImGui::Text("Misc Value 2: %d", spellEffect.effectMiscValue2);
-                        ImGui::Text("Misc Value 3: %d", spellEffect.effectMiscValue3);
+                        ImGui::Text("Value 1: %d", spellEffect.effectValues[0]);
+                        ImGui::Text("Value 2: %d", spellEffect.effectValues[1]);
+                        ImGui::Text("Value 3: %d", spellEffect.effectValues[2]);
+                        ImGui::Text("Misc Value 1: %d", spellEffect.effectMiscValues[0]);
+                        ImGui::Text("Misc Value 2: %d", spellEffect.effectMiscValues[1]);
+                        ImGui::Text("Misc Value 3: %d", spellEffect.effectMiscValues[2]);
                         ImGui::EndTooltip();
                     }
 
@@ -845,7 +845,7 @@ namespace Editor
                         u32 newEffectID = 0;
                         if (spellEffectsStorage->Copy(0, newEffectID))
                         {
-                            auto& newEffect = spellEffectsStorage->Get<Generated::SpellEffectsRecord>(newEffectID);
+                            auto& newEffect = spellEffectsStorage->Get<MetaGen::Shared::ClientDB::SpellEffectsRecord>(newEffectID);
                             newEffect.spellID = currentIndex;
                             newEffect.effectPriority = 0; // Default to low priority, user can change it later.
                             newEffect.effectType = 1;
