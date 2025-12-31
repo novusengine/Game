@@ -7,6 +7,8 @@
 #include <Renderer/Buffer.h>
 #include <Renderer/GPUVector.h>
 
+class CulledRenderer;
+
 struct InstanceRef
 {
     u32 instanceID;
@@ -23,10 +25,12 @@ public:
     struct InitParams
     {
         Renderer::Renderer* renderer = nullptr;
+        CulledRenderer* culledRenderer = nullptr;
         std::string bufferNamePrefix = "";
         Renderer::DescriptorSet* materialPassDescriptorSet = nullptr;
 
         bool enableTwoStepCulling = true;
+        bool isInstanced = true;
     };
     virtual void Init(InitParams& params);
 
@@ -37,6 +41,7 @@ public:
 
     virtual u32 GetDrawCallCount() = 0;
     virtual bool IsIndexed() = 0;
+    bool IsInstanced() { return _isInstanced; }
 
     Renderer::GPUVector<InstanceRef>& GetInstanceRefs() { return _instanceRefs; }
 
@@ -60,6 +65,7 @@ public:
 
     Renderer::DescriptorSet& GetOccluderFillDescriptorSet() { return _occluderFillDescriptorSet; }
     Renderer::DescriptorSet& GetCullingDescriptorSet() { return _cullingDescriptorSet; }
+    Renderer::DescriptorSet& GetCreateIndirectAfterCullDescriptorSet() { return _createIndirectAfterCullingDescriptorSet; }
     Renderer::DescriptorSet& GetGeometryFillDescriptorSet() { return _geometryFillDescriptorSet; }
     Renderer::DescriptorSet& GetGeometryPassDescriptorSet() { return _geometryPassDescriptorSet; }
 
@@ -81,6 +87,7 @@ protected:
     Renderer::Renderer* _renderer;
     std::string _bufferNamePrefix = "";
     bool _enableTwoStepCulling;
+    bool _isInstanced;
 
     Renderer::GPUVector<InstanceRef> _instanceRefs;
 
@@ -103,6 +110,7 @@ protected:
 
     Renderer::DescriptorSet _occluderFillDescriptorSet;
     Renderer::DescriptorSet _cullingDescriptorSet;
+    Renderer::DescriptorSet _createIndirectAfterCullingDescriptorSet;
     Renderer::DescriptorSet _geometryFillDescriptorSet;
     Renderer::DescriptorSet _geometryPassDescriptorSet;
     Renderer::DescriptorSet* _materialPassDescriptorSet;
@@ -192,7 +200,7 @@ public:
         _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
-        SyncToGPU(false);
+        //SyncToGPU(false);
     }
 
     virtual u32 Add() override
@@ -239,15 +247,14 @@ public:
         // DrawCallDatas
         if (_drawCallDatas.SyncToGPU(_renderer))
         {
-            _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
-            if (_materialPassDescriptorSet != nullptr)
+            if (_isInstanced)
             {
-                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
+                _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+                _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             }
+            _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _createIndirectAfterCullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
+            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer(), true);
             gotRecreated = true;
         }
 
@@ -310,7 +317,7 @@ public:
         _drawCallDatas.SetDebugName(_bufferNamePrefix + "DrawCallDataBuffer");
         _drawCallDatas.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
-        SyncToGPU(false);
+        //SyncToGPU(false);
     }
 
     virtual u32 Add() override
@@ -360,12 +367,7 @@ public:
             _occluderFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _cullingDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
             _geometryFillDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer());
-            _geometryPassDescriptorSet.Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
-            if (_materialPassDescriptorSet != nullptr)
-            {
-                _materialPassDescriptorSet->Bind("_packedModelDrawCallDatas"_h, _drawCallDatas.GetBuffer()); // TODO: This should not be this hardcoded...
-            }
+            _geometryPassDescriptorSet.Bind("_drawCallDatas"_h, _drawCallDatas.GetBuffer(), true);
             gotRecreated = true;
         }
 

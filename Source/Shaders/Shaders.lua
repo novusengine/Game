@@ -11,7 +11,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     local files =
     {
         sourceDir .. "/main.cpp",
-        sourceDir .. "/**.hlsl",
+        sourceDir .. "/**.slang",
         mod.Path .. "/" .. mod.Name .. ".lua"
     }
     Solution.Util.SetFiles(files)
@@ -24,7 +24,7 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     
     BuildSettings:Add("Shader Source Dir", sourceDir)
 
-    Solution.Util.SetFilter("files:**.hlsl", function()
+    Solution.Util.SetFilter("files:**.slang", function()
         flags("ExcludeFromBuild")
     end)
 

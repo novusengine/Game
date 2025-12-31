@@ -44,7 +44,6 @@ public:
     inline u32 CalculateNumTiles(const vec2& size);
     uvec2 CalculateNumTiles2D(const vec2& size);
 
-    Renderer::DescriptorSet& GetTileDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
@@ -87,7 +86,6 @@ private:
 
     Renderer::DescriptorSet _classifyPassDescriptorSet;
     Renderer::DescriptorSet _debugPassDescriptorSet;
-    Renderer::DescriptorSet _materialPassDescriptorSet;
 
     Renderer::GPUVector<GPUDecal> _decals;
     robin_hood::unordered_map<u32, entt::entity> _decalIDToEntity;

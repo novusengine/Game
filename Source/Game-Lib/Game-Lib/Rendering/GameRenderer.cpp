@@ -50,6 +50,7 @@
 
 #include <gli/gli.hpp>
 #include <GLFW/glfw3.h>
+#include "RenderUtils.h"
 
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 
@@ -139,14 +140,8 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
     _renderer = new Renderer::RendererVK(_window);
-    _renderer->SetGetShaderEntryCallback([this](u32 shaderNameHash) -> const Renderer::ShaderEntry&
-    {
-        return GetShaderEntry(shaderNameHash);
-    });
-    _renderer->SetGetBlitPipelineCallback([this](u32 shaderNameHash) -> Renderer::GraphicsPipelineID
-    {
-        return GetBlitPipeline(shaderNameHash);
-    });
+    _renderer->SetGetShaderEntryCallback(std::bind_front(&GameRenderer::GetShaderEntry, this));
+    _renderer->SetGetBlitPipelineCallback(std::bind_front(&GameRenderer::GetBlitPipeline, this));
 
     std::string shaderSourcePath = SHADER_SOURCE_DIR;
     _renderer->SetShaderSourceDirectory(shaderSourcePath);
@@ -156,6 +151,9 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _renderer->InitDebug();
 
     CreatePermanentResources();
+
+    RenderUtils::Init(_renderer, this);
+    DepthPyramidUtils::Init(_renderer, this);
 
     _debugRenderer = new DebugRenderer(_renderer, this);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
@@ -186,8 +184,6 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _shadowRenderer = new ShadowRenderer(_renderer, this, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
     _pixelQuery = new PixelQuery(_renderer, this);
 
-    DepthPyramidUtils::Init(_renderer, this);
-
     _nameHashToCursor.reserve(128);
 }
 
@@ -198,6 +194,7 @@ GameRenderer::~GameRenderer()
 
 bool GameRenderer::UpdateWindow(f32 deltaTime)
 {
+    ZoneScoped;
     return _window->Update(deltaTime);
 }
 
@@ -291,6 +288,12 @@ f32 GameRenderer::Render()
         struct StartFramePassData
         {
             Renderer::ImageMutableResource sceneColor;
+
+            Renderer::DescriptorSetResource debugSet;
+            Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource lightSet;
+            Renderer::DescriptorSetResource modelSet;
+            Renderer::DescriptorSetResource terrainSet;
         };
 
         renderGraph.AddPass<StartFramePassData>("StartFramePass",
@@ -308,7 +311,13 @@ f32 GameRenderer::Render()
                 builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.packedNormals, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.ssaoTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                
+
+                data.debugSet = builder.Use(_resources.debugDescriptorSet);
+                data.globalSet = builder.Use(_resources.globalDescriptorSet);
+                data.lightSet = builder.Use(_resources.lightDescriptorSet);
+                data.modelSet = builder.Use(_resources.modelDescriptorSet);
+                data.terrainSet = builder.Use(_resources.terrainDescriptorSet);
+
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
             [this](StartFramePassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
@@ -367,8 +376,6 @@ f32 GameRenderer::Render()
             GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
 
             DepthPyramidUtils::BuildPyramidParams params;
-            params.renderer = _renderer;
-            params.gameRenderer = this;
             params.graphResources = &graphResources;
             params.commandList = &commandList;
             params.resources = &_resources;
@@ -491,13 +498,20 @@ bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
     return true;
 }
 
-const Renderer::ShaderEntry& GameRenderer::GetShaderEntry(u32 shaderNameHash)
+const Renderer::ShaderEntry* GameRenderer::GetShaderEntry(u32 shaderNameHash, const std::string& debugName)
 {
     if (_shaderNameHashToShaderEntry.contains(shaderNameHash) == false)
     {
         NC_LOG_CRITICAL("GameRenderer::GetShaderEntry Tried to get ShaderEntry for unknown shader name hash: {}", shaderNameHash);
     }
-    return _shaderNameHashToShaderEntry[shaderNameHash];
+
+    Renderer::ShaderEntry& entry = _shaderNameHashToShaderEntry[shaderNameHash];
+    if (entry.debugName.empty())
+    {
+        entry.debugName = debugName;
+    }
+
+    return &entry;
 }
 
 Renderer::GraphicsPipelineID GameRenderer::GetBlitPipeline(u32 shaderNameHash)
@@ -508,6 +522,16 @@ Renderer::GraphicsPipelineID GameRenderer::GetBlitPipeline(u32 shaderNameHash)
     }
 
     return _blitPipelines[shaderNameHash];
+}
+
+Renderer::GraphicsPipelineID GameRenderer::GetOverlayPipeline(u32 shaderNameHash)
+{
+    if (_overlayPipelines.contains(shaderNameHash) == false)
+    {
+        NC_LOG_CRITICAL("GameRenderer::GetOverlayPipeline Tried to get Overlay Pipeline for unknown shader name hash: {}", shaderNameHash);
+    }
+
+    return _overlayPipelines[shaderNameHash];
 }
 
 bool GameRenderer::SetImguiTheme(u32 themeNameHash)
@@ -535,6 +559,7 @@ void GameRenderer::CreatePermanentResources()
 {
     CreateRenderTargets();
     LoadShaderPacks();
+    InitDescriptorSets();
     CreateBlitPipelines();
 
     // Frame allocator, this is a fast allocator for data that is only needed this frame
@@ -678,6 +703,44 @@ void GameRenderer::CreateRenderTargets()
     _resources.depthColorCopy = _renderer->CreateImage(depthColorCopyDesc);
 }
 
+void GameRenderer::InitDescriptorSets()
+{
+    // Load dummy shader containing includes of all descriptor sets
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = GetShaderEntry("DescriptorSet/_IncludeAll.cs"_h, "DescriptorSet/_IncludeAll.cs");
+    Renderer::ComputeShaderID computeShader = _renderer->LoadShader(shaderDesc);
+
+    // Create a dummy pipeline from it
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.computeShader = computeShader;
+    _allDescriptorSetComputePipeline = _renderer->CreatePipeline(pipelineDesc);
+
+   Renderer::DescriptorSet* descriptorSets[] =
+   {
+       &_resources.debugDescriptorSet,
+       &_resources.globalDescriptorSet,
+       &_resources.lightDescriptorSet,
+       &_resources.terrainDescriptorSet,
+       &_resources.modelDescriptorSet
+   };
+
+   for(Renderer::DescriptorSet* descriptorSet : descriptorSets)
+   {
+       descriptorSet->RegisterPipeline(_renderer, _allDescriptorSetComputePipeline);
+       descriptorSet->Init(_renderer);
+   }
+
+   // Create a dummy graphics pipeline
+   Renderer::VertexShaderDesc vertexShaderDesc;
+   vertexShaderDesc.shaderEntry = GetShaderEntry("DescriptorSet/_IncludeAll.vs"_h, "DescriptorSet/_IncludeAll.vs");
+   Renderer::VertexShaderID vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+   Renderer::GraphicsPipelineDesc graphicsPipelineDesc;
+   graphicsPipelineDesc.states.vertexShader = vertexShader;
+
+   _allDescriptorSetGraphicsPipeline = _renderer->CreatePipeline(graphicsPipelineDesc);
+}
+
 void GameRenderer::LoadShaderPacks()
 {
     // Load all shader packs into memory
@@ -728,6 +791,8 @@ void GameRenderer::LoadShaderPack(std::shared_ptr<Bytebuffer> buffer, FileFormat
             .shaderData = buffer->GetDataPointer() + shaderRef->dataOffset,
             .shaderSize = shaderRef->dataSize,
         };
+        shaderPack.GetShaderReflection(buffer, i, shaderEntry.reflection);
+
         _shaderNameHashToShaderEntry[shaderRef->permutationNameHash] = shaderEntry;
     }
 }
@@ -735,8 +800,7 @@ void GameRenderer::LoadShaderPack(std::shared_ptr<Bytebuffer> buffer, FileFormat
 void GameRenderer::CreateBlitPipelines()
 {
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    vertexShaderDesc.shaderEntry.debugName = "Blitting/Blit.vs.hlsl";
+    vertexShaderDesc.shaderEntry = GetShaderEntry("Blitting/Blit.vs"_h, "Blitting/Blit.vs");
     Renderer::VertexShaderID vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     const char* textureTypes[] =
@@ -752,6 +816,7 @@ void GameRenderer::CreateBlitPipelines()
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
     pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();
 
+    // Create blit pipelines for all texture types and component counts
     for (u32 i = 0; i < 3; i++)
     {
         const char* textureType = textureTypes[i];
@@ -768,17 +833,52 @@ void GameRenderer::CreateBlitPipelines()
             {
                 { "TEX_TYPE", componentTypeName }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps", permutationFields);
 
             Renderer::PixelShaderDesc pixelShaderDesc;
-            pixelShaderDesc.shaderEntry = GetShaderEntry(shaderEntryNameHash);
-            pixelShaderDesc.shaderEntry.debugName = "Blit_" + componentTypeName;
+            pixelShaderDesc.shaderEntry = GetShaderEntry(shaderEntryNameHash, "Blitting/Blit.ps");
             pipelineDesc.debugName = "Blit_" + componentTypeName;
             
             pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
             u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.length());
             _blitPipelines[componentTypeNameHash] = _renderer->CreatePipeline(pipelineDesc);
+        }
+    }
+
+    // Set additive blending for overlay pipelines
+    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
+
+    // Create overlay pipelines for all texture types and component counts
+    for (u32 i = 0; i < 3; i++)
+    {
+        const char* textureType = textureTypes[i];
+
+        for (u32 j = 1; j <= 4; j++)
+        {
+            std::string componentTypeName = textureType;
+            if (j > 1)
+            {
+                componentTypeName.append(std::to_string(j));
+            }
+
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "TEX_TYPE", componentTypeName }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps", permutationFields);
+
+            Renderer::PixelShaderDesc pixelShaderDesc;
+            pixelShaderDesc.shaderEntry = GetShaderEntry(shaderEntryNameHash, "Blitting/Blit.ps");
+            pipelineDesc.debugName = "Blit_" + componentTypeName;
+
+            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+            u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.length());
+            _overlayPipelines[componentTypeNameHash] = _renderer->CreatePipeline(pipelineDesc);
         }
     }
 }

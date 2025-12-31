@@ -56,7 +56,6 @@ public:
     u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
     u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
 
-    Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
     // Drawcall stats
@@ -71,7 +70,8 @@ public:
 
 private:
     void CreatePermanentResources();
-    void CreateTerrainPipelines();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
     void SyncToGPU();
 
@@ -186,10 +186,10 @@ private:
     Renderer::SamplerID _alphaSampler;
     Renderer::SamplerID _occlusionSampler;
 
-    Renderer::DescriptorSet _fillPassDescriptorSet;
+    Renderer::DescriptorSet _occluderFillPassDescriptorSet;
+    Renderer::DescriptorSet _resetIndirectDescriptorSet;
     Renderer::DescriptorSet _cullingPassDescriptorSet;
-    Renderer::DescriptorSet _geometryPassDescriptorSet;
-    Renderer::DescriptorSet _materialPassDescriptorSet;
+    Renderer::DescriptorSet _geometryFillPassDescriptorSet;
 
     std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
     std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;

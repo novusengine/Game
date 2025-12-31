@@ -78,7 +78,7 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             Renderer::GraphicsPipelineID pipeline = _worldGridPipeline;
             commandList.BeginPipeline(pipeline);
 
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
 
             struct Constants
             {
@@ -107,13 +107,11 @@ void EditorRenderer::CreatePermanentResources()
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.vs.hlsl"_h);
-    vertexShaderDesc.shaderEntry.debugName = "Editor/WorldGrid.vs.hlsl";
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.vs"_h, "Editor/WorldGrid.vs");
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.ps.hlsl"_h);
-    pixelShaderDesc.shaderEntry.debugName = "Editor/WorldGrid.ps.hlsl";
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.ps"_h, "Editor/WorldGrid.ps");
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state

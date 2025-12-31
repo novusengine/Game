@@ -87,11 +87,11 @@ i32 main(int argc, char* argv[])
         if (!dirEntry.is_regular_file())
             continue;
 
-        // Skip non .hlsl files
-        if (!StringUtils::EndsWith(path.filename().string(), ".hlsl"))
+        // Skip non .slang files
+        if (!StringUtils::EndsWith(path.filename().string(), ".slang"))
             continue;
 
-        if (!StringUtils::EndsWith(path.filename().string(), ".inc.hlsl"))
+        if (!StringUtils::EndsWith(path.filename().string(), ".inc.slang"))
             numNonIncludeShaders++;
 
         // Add this file to our list of shaders to compile
@@ -126,6 +126,6 @@ i32 main(int argc, char* argv[])
 
     u32 numCompiledShaders = compiler.GetNumCompiledShaders();
     u32 numSkippedShaders = numNonIncludeShaders - numCompiledShaders - numFailedShaders;
-    NC_LOG_INFO("Compiled {0} shaders ({1} up to date) in {2}s", numCompiledShaders, numSkippedShaders, duration.count());
+    NC_LOG_INFO("Compiled {0} shaders ({1} failed, {2} up to date) in {3}s", numCompiledShaders, numFailedShaders, numSkippedShaders, duration.count());
     return 0;
 }

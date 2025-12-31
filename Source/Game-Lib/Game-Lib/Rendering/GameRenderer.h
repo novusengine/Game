@@ -4,6 +4,8 @@
 #include <Base/Types.h>
 #include <Base/Memory/StackAllocator.h>
 
+#include <FileFormat/Novus/ShaderPack/ShaderPack.h>
+
 #include <robinhood/robinhood.h>
 
 namespace Renderer
@@ -14,11 +16,6 @@ namespace Renderer
 namespace Novus
 {
     class Window;
-}
-
-namespace FileFormat
-{
-    struct ShaderPack;
 }
 
 struct GLFWwindow;
@@ -91,8 +88,9 @@ public:
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
 
-    const Renderer::ShaderEntry& GetShaderEntry(u32 shaderNameHash);
+    const Renderer::ShaderEntry* GetShaderEntry(u32 shaderNameHash, const std::string& debugName);
     Renderer::GraphicsPipelineID GetBlitPipeline(u32 shaderNameHash);
+    Renderer::GraphicsPipelineID GetOverlayPipeline(u32 shaderNameHash);
 
     const std::vector<ImGuiTheme>& GetImguiThemes() { return _imguiThemes; }
     bool IsCurrentTheme(u32 themeNameHash) { return _currentThemeHash == themeNameHash; }
@@ -103,6 +101,7 @@ public:
 
 private:
     void CreatePermanentResources();
+    void InitDescriptorSets();
 
     void CreateRenderTargets();
     void LoadShaderPacks();
@@ -129,6 +128,9 @@ private:
     u8 _frameIndex = 0;
     vec2 _lastWindowSize = vec2(1, 1);
     RenderResources _resources;
+
+    Renderer::ComputePipelineID _allDescriptorSetComputePipeline;
+    Renderer::GraphicsPipelineID _allDescriptorSetGraphicsPipeline;
 
     // Sub Renderers
     TerrainRenderer* _terrainRenderer = nullptr;
@@ -166,4 +168,5 @@ private:
     robin_hood::unordered_map<u32, Renderer::ShaderEntry> _shaderNameHashToShaderEntry;
 
     robin_hood::unordered_map<u32, Renderer::GraphicsPipelineID> _blitPipelines;
+    robin_hood::unordered_map<u32, Renderer::GraphicsPipelineID> _overlayPipelines;
 };

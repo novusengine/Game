@@ -131,7 +131,7 @@ namespace Editor
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
                 _mapIcons[0] = renderer->GetImguiTextureID(textureID);
-                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetDesc(textureID);
                 _mapIconSizes[0] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
@@ -141,7 +141,7 @@ namespace Editor
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
                 _mapIcons[1] = renderer->GetImguiTextureID(textureID);
-                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetDesc(textureID);
                 _mapIconSizes[1] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
@@ -151,7 +151,7 @@ namespace Editor
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
                 _mapIcons[2] = renderer->GetImguiTextureID(textureID);
-                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetDesc(textureID);
                 _mapIconSizes[2] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
@@ -161,7 +161,7 @@ namespace Editor
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
                 _mapIcons[3] = renderer->GetImguiTextureID(textureID);
-                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetDesc(textureID);
                 _mapIconSizes[3] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
 
@@ -171,7 +171,7 @@ namespace Editor
                 textureDesc.path = path.string();
                 Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
                 _mapIcons[4] = renderer->GetImguiTextureID(textureID);
-                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = renderer->GetDesc(textureID);
                 _mapIconSizes[4] = ImVec2(static_cast<f32>(textureBaseDesc.width), static_cast<f32>(textureBaseDesc.height));
             }
         }

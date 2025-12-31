@@ -193,7 +193,10 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.drawCallback = [&](DrawParams& drawParams)
                 {
-                    drawParams.isIndexed = true;
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.drawSet
+                    };
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
@@ -202,8 +205,6 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.enableDrawing = CVAR_JoltDebugDrawOccluders.Get();
                 params.disableTwoStepCulling = CVAR_JoltDebugDisableTwoStepCulling.Get();
-                params.isIndexed = true;
-                params.useInstancedCulling = true;
 
                 OccluderPass(params);
             });
@@ -266,7 +267,10 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.drawCallback = [&](DrawParams& drawParams)
                 {
-                    drawParams.isIndexed = false;
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.drawSet
+                    };
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
@@ -275,8 +279,6 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.enableDrawing = CVAR_JoltDebugDrawOccluders.Get();
                 params.disableTwoStepCulling = CVAR_JoltDebugDisableTwoStepCulling.Get();
-                params.isIndexed = false;
-                params.useInstancedCulling = true;
 
                 OccluderPass(params);
             });
@@ -311,6 +313,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
+        Renderer::DescriptorSetResource createIndirectAfterCullSet;
     };
 
     if (_indexedCullingResources.GetDrawCalls().Count() > 0)
@@ -364,6 +367,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.debugDescriptorSet = data.debugSet;
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
+                params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
                 params.numCascades = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
@@ -372,8 +376,6 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.debugDrawColliders = CVAR_JoltDebugDrawAABBs.Get();
 
                 params.drawCallDataSize = sizeof(DrawCallData);
-
-                params.useInstancedCulling = true;
 
                 CullingPass(params);
             });
@@ -438,8 +440,6 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.debugDrawColliders = CVAR_JoltDebugDrawAABBs.Get();
 
                 params.drawCallDataSize = sizeof(DrawCallData);
-
-                params.useInstancedCulling = true;
 
                 CullingPass(params);
             });
@@ -527,14 +527,15 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.drawCallback = [&](DrawParams& drawParams)
                 {
-                    drawParams.isIndexed = true;
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.drawSet
+                    };
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
-                params.useInstancedCulling = true;
-                params.isIndexed = true;
                 params.numCascades = 0;
 
                 GeometryPass(params);
@@ -608,14 +609,15 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.drawCallback = [&](DrawParams& drawParams)
                 {
-                    drawParams.isIndexed = false;
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.drawSet
+                    };
                     Draw(resources, frameIndex, graphResources, commandList, drawParams);
                 };
 
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
-                params.useInstancedCulling = true;
-                params.isIndexed = false;
                 params.numCascades = 0;
 
                 GeometryPass(params);
@@ -856,10 +858,10 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
 
     commandList.BeginPipeline(pipeline);
 
-    commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt32);
-
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.drawDescriptorSet, frameIndex);
+    for (auto& descriptorSet : params.descriptorSets)
+    {
+        commandList.BindDescriptorSet(*descriptorSet, frameIndex);
+    }
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 
@@ -867,7 +869,7 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
     {
         u32 drawCountBufferOffset = params.drawCountIndex * sizeof(u32);
 
-        if (params.isIndexed)
+        if (params.cullingResources->IsIndexed())
         {
             commandList.DrawIndexedIndirectCount(params.argumentBuffer, 0, params.drawCountBuffer, drawCountBufferOffset, params.numMaxDrawCalls);
         }
@@ -878,7 +880,7 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
     }
     else
     {
-        if (params.isIndexed)
+        if (params.cullingResources->IsIndexed())
         {
             commandList.DrawIndexedIndirect(params.argumentBuffer, 0, params.numMaxDrawCalls);
         }
@@ -894,6 +896,8 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
 
 void JoltDebugRenderer::CreatePermanentResources()
 {
+    CreatePipelines();
+
     _instances.SetDebugName("JoltInstances");
     _instances.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
@@ -905,47 +909,65 @@ void JoltDebugRenderer::CreatePermanentResources()
 
     CullingResourcesIndexed<DrawCallData>::InitParams indexedInitParams;
     indexedInitParams.renderer = _renderer;
+    indexedInitParams.culledRenderer = this;
     indexedInitParams.bufferNamePrefix = "IndexedJolt";
     indexedInitParams.enableTwoStepCulling = true;
+    indexedInitParams.isInstanced = true;
     _indexedCullingResources.Init(indexedInitParams);
 
     CullingResourcesNonIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
+    initParams.culledRenderer = this;
     initParams.bufferNamePrefix = "Jolt";
     initParams.enableTwoStepCulling = true;
+    indexedInitParams.isInstanced = true;
     _cullingResources.Init(initParams);
 
+    InitDescriptorSets();
     SyncToGPU();
+}
 
-    // Create pipeline
+void JoltDebugRenderer::CreatePipelines()
+{
+    Renderer::GraphicsPipelineDesc pipelineDesc;
+
+    // Shader
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.vs"_h, "Jolt/Draw.vs");
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.ps"_h, "Jolt/Draw.ps");
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+
+    pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer
+
+    pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+    _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
+}
+
+void JoltDebugRenderer::InitDescriptorSets()
+{
+    CullingResourcesBase* cullingResources[] = {
+        &_indexedCullingResources,
+        & _cullingResources
+    };
+
+    for (CullingResourcesBase* cullingResource : cullingResources)
     {
-        Renderer::GraphicsPipelineDesc pipelineDesc;
-
-        // Shader
-        Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "Jolt/Draw.vs.hlsl";
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-        Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "Jolt/Draw.ps.hlsl";
-        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-
-        // Depth state
-        pipelineDesc.states.depthStencilState.depthEnable = true;
-        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-        // Rasterizer state
-        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-
-        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer
-
-        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
-
-        _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
+        Renderer::DescriptorSet& geometryPassDescriptorSet = cullingResource->GetGeometryPassDescriptorSet();
+        geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawPipeline);
+        geometryPassDescriptorSet.Init(_renderer);
     }
 }
 

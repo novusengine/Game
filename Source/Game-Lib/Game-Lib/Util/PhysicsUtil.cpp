@@ -21,6 +21,7 @@ namespace Util
     {
         bool GetMouseWorldPosition(Editor::Viewport* viewport, vec3& outMouseWorldPosition)
         {
+            ZoneScoped;
             vec2 mousePosition;
             if (viewport->GetMousePosition(mousePosition))
             {
@@ -66,6 +67,7 @@ namespace Util
 
         bool CastRay(JPH::PhysicsSystem& physicsSystem, vec3& start, vec3& direction, JPH::RayCastResult& result)
         {
+            ZoneScoped;
             JPH::Vec3 joltStart = JPH::Vec3(start.x, start.y, start.z);
             JPH::Vec3 joltDirection = JPH::Vec3(direction.x, direction.y, direction.z);
 

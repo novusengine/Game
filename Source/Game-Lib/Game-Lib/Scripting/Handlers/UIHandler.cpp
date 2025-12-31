@@ -545,7 +545,7 @@ namespace Scripting::UI
             textureDesc.path = texturePath;
             Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
 
-            Renderer::TextureBaseDesc baseDesc = renderer->GetTextureDesc(textureID);
+            Renderer::TextureBaseDesc baseDesc = renderer->GetDesc(textureID);
             zenith->Push(baseDesc.width);
             zenith->Push(baseDesc.height);
         }

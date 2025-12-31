@@ -70,12 +70,12 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             Renderer::GraphicsPipelineID pipeline = _skyboxPipeline;
             commandList.BeginPipeline(pipeline);
 
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
 
             // Skyband Color Push Constant
             commandList.PushConstant(&_skybandColors, 0, sizeof(SkybandColors));
 
-            // NumVertices hardcoded as we use a Fullscreen Triangle (Check FullscreenTriangle.vs.hlsl for more information)
+            // NumVertices hardcoded as we use a Fullscreen Triangle (Check FullscreenTriangle.vs for more information)
             commandList.Draw(3, 1, 0, 0);
 
             commandList.EndPipeline(pipeline);
@@ -98,13 +98,11 @@ void SkyboxRenderer::CreatePermanentResources()
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("PostProcess/FullscreenTriangle.vs.hlsl"_h);
-    vertexShaderDesc.shaderEntry.debugName = "PostProcess/FullscreenTriangle.vs.hlsl";
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("PostProcess/FullscreenTriangle.vs"_h, "PostProcess/FullscreenTriangle.vs");
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Skybox/Skybox.ps.hlsl"_h);
-    pixelShaderDesc.shaderEntry.debugName = "Skybox/Skybox.ps.hlsl";
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Skybox/Skybox.ps"_h, "Skybox/Skybox.ps");
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state

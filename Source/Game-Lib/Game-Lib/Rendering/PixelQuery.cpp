@@ -19,27 +19,26 @@ PixelQuery::PixelQuery(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
 
 void PixelQuery::CreatePermanentResources()
 {
-    {
-        Renderer::BufferDesc desc;
-        desc.name = "PixelQueryResultBuffer";
-        desc.size = sizeof(PixelQuery::PixelData) * MaxQueryRequestPerFrame;
-        desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER;
-        desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
-        _pixelResultBuffer = _renderer->CreateBuffer(desc);
-    }
+    Renderer::BufferDesc desc;
+    desc.name = "PixelQueryResultBuffer";
+    desc.size = sizeof(PixelQuery::PixelData) * MaxQueryRequestPerFrame;
+    desc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::STORAGE_BUFFER;
+    desc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
+    _pixelResultBuffer = _renderer->CreateBuffer(desc);
 
     _generator.seed(_randomDevice());
 
-    {
-        Renderer::ComputePipelineDesc queryPipelineDesc;
 
-        Renderer::ComputeShaderDesc shaderDesc;
-        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Utils/ObjectQuery.cs.hlsl"_h);
-        shaderDesc.shaderEntry.debugName = "Utils/ObjectQuery.cs.hlsl";
-        queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+    Renderer::ComputePipelineDesc queryPipelineDesc;
 
-        _queryPipeline = _renderer->CreatePipeline(queryPipelineDesc);
-    }
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Utils/ObjectQuery.cs"_h, "Utils/ObjectQuery.cs");
+    queryPipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+    _queryPipeline = _renderer->CreatePipeline(queryPipelineDesc);
+
+    _queryDescriptorSet.RegisterPipeline(_renderer, _queryPipeline);
+    _queryDescriptorSet.Init(_renderer);
 }
 
 void PixelQuery::Update(f32 deltaTime)
@@ -95,14 +94,11 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                 data.pixelResultBuffer = builder.Write(_pixelResultBuffer, Renderer::BufferPassUsage::COMPUTE);
 
                 TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
-                Renderer::DescriptorSet& terrainDescriptorSet = terrainRenderer->GetMaterialPassDescriptorSet();
-
                 ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
-                Renderer::DescriptorSet& modelDescriptorSet = modelRenderer->GetMaterialPassDescriptorSet();
 
                 data.querySet = builder.Use(_queryDescriptorSet);
-                data.terrainSet = builder.Use(terrainDescriptorSet);
-                data.modelSet = builder.Use(modelDescriptorSet);
+                data.terrainSet = builder.Use(resources.terrainDescriptorSet);
+                data.modelSet = builder.Use(resources.modelDescriptorSet);
 
                 terrainRenderer->RegisterMaterialPassBufferUsage(builder);
                 modelRenderer->RegisterMaterialPassBufferUsage(builder);
@@ -140,9 +136,9 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                     data.querySet.Bind("_visibilityBuffer", data.visibilityBuffer);
                     data.querySet.Bind("_result", data.pixelResultBuffer);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.querySet, _frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, _frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, _frameIndex);
+                    commandList.BindDescriptorSet(data.querySet, _frameIndex);
+                    commandList.BindDescriptorSet(data.terrainSet, _frameIndex);
+                    commandList.BindDescriptorSet(data.modelSet, _frameIndex);
 
                     commandList.Dispatch(1, 1, 1);
 

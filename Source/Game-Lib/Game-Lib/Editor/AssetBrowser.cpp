@@ -402,7 +402,7 @@ namespace Editor
                 Renderer::TextureID textureID = _renderer->LoadTexture(textureDesc);
                 _images[i] = _renderer->GetImguiTextureID(textureID);
 
-                Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(textureID);
+                Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetDesc(textureID);
 
                 _imagesSize[i] = ImVec2(static_cast<f32>(textureBaseDesc.width),
                     static_cast<f32>(textureBaseDesc.height));

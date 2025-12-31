@@ -26,11 +26,4 @@ private:
 
 private:
     Renderer::Renderer* _renderer;
-
-    Renderer::SamplerID _linearSampler;
-    Renderer::BufferID _indexBuffer;
-
-    Renderer::DescriptorSet _passDescriptorSet;
-    Renderer::DescriptorSet _drawImageDescriptorSet;
-    Renderer::DescriptorSet _drawTextDescriptorSet;
 };

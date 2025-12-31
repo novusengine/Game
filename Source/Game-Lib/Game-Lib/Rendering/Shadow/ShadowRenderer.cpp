@@ -93,7 +93,7 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
     {
         Renderer::DepthImageMutableResource shadowDepthCascades[Renderer::Settings::MAX_SHADOW_CASCADES];
 
-        Renderer::DescriptorSetResource shadowDescriptorSet;
+        Renderer::DescriptorSetResource lightDescriptorSet;
     };
 
     CVarSystem* cvarSystem = CVarSystem::Get();
@@ -113,7 +113,7 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
                 data.shadowDepthCascades[i] = builder.Write(resources.shadowDepthCascades[i], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
             }
 
-            data.shadowDescriptorSet = builder.Use(resources.lightDescriptorSet);
+            data.lightDescriptorSet = builder.Use(resources.lightDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -127,7 +127,7 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
                     cascadeDepthResource = data.shadowDepthCascades[i];
                 }
 
-                data.shadowDescriptorSet.BindArray("_shadowCascadeRTs", cascadeDepthResource, i);
+                data.lightDescriptorSet.BindArray("_shadowCascadeRTs", cascadeDepthResource, i);
             }
         });
 }

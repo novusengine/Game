@@ -63,6 +63,8 @@ private:
 
     Renderer::SamplerID _sampler;
 
+    vec3 _mouseWorldPosition;
+
     TerrainRenderer* _terrainRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
     LightRenderer* _lightRenderer = nullptr;

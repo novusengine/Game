@@ -13,11 +13,21 @@ struct RenderResources
 {
 public:
     RenderResources() 
-        : globalDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL)
+        : debugDescriptorSet(Renderer::DescriptorSetSlot::DEBUG)
+        , globalDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL)
         , lightDescriptorSet(Renderer::DescriptorSetSlot::LIGHT)
+        , terrainDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN)
+        , modelDescriptorSet(Renderer::DescriptorSetSlot::MODEL)
     {
 
     }
+
+    // Descriptor sets
+    Renderer::DescriptorSet debugDescriptorSet;
+    Renderer::DescriptorSet globalDescriptorSet;
+    Renderer::DescriptorSet lightDescriptorSet;
+    Renderer::DescriptorSet terrainDescriptorSet;
+    Renderer::DescriptorSet modelDescriptorSet;
 
     // Permanent resources
     Renderer::GPUVector<Camera> cameras;
@@ -44,9 +54,6 @@ public:
     std::vector<Renderer::DepthImageID> shadowDepthCascades;
 
     Renderer::DepthImageID debugRendererDepth;
-
-    Renderer::DescriptorSet globalDescriptorSet;
-    Renderer::DescriptorSet lightDescriptorSet;
 
     Renderer::SemaphoreID sceneRenderedSemaphore; // This semaphore tells the present function when the scene is ready to be blitted and presented
     FrameResource<Renderer::SemaphoreID, 2> frameSyncSemaphores; // This semaphore makes sure the GPU handles frames in order

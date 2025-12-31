@@ -34,7 +34,6 @@ TextureRenderer::TextureRenderer(Renderer::Renderer* renderer, GameRenderer* gam
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
-    , _descriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _mipResolveDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
@@ -122,7 +121,8 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
 {
     struct Data
     {
-        Renderer::DescriptorSetResource descriptorSet;
+        u32 numRenderTextureToTextureRequests;
+        robin_hood::unordered_map<Renderer::ImageFormat, Renderer::DescriptorSetResource> descriptorSets;
         Renderer::DescriptorSetResource mipResolveDescriptorSet;
     };
     renderGraph->AddPass<Data>("TextureRenderer",
@@ -130,7 +130,26 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
-            data.descriptorSet = builder.Use(_descriptorSet);
+            // Init pipelines
+            data.numRenderTextureToTextureRequests = static_cast<u32>(_renderTextureToTextureRequests.try_dequeue_bulk(_renderTextureToTextureWork.begin(), 256));
+            for(u32 i = 0; i < data.numRenderTextureToTextureRequests; i++)
+            {
+                RenderTextureToTextureRequest& request = _renderTextureToTextureWork[i];
+
+                // Make sure the pipeline for this format exists
+                Renderer::ImageFormat format = _renderer->GetDesc(request.dst).format;
+                GetPipelineForFormat(format);
+
+                // Add textures to array
+                _renderTextureToTextureWorkTextureArrayIndex[i] = _renderer->AddTextureToArray(request.src, _sourceTextures);
+            }
+            _renderer->FlushTextureArrayDescriptors(_sourceTextures);
+
+            for(auto& [format, descriptorSet] : _descriptorSets)
+            {
+                data.descriptorSets[format] = builder.Use(descriptorSet);
+            }
+
             data.mipResolveDescriptorSet = builder.Use(_mipResolveDescriptorSet);
 
             builder.Write(_mipAtomicBuffer, BufferUsage::COMPUTE);
@@ -141,14 +160,14 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TextureRendering);
 
-            u32 numRenderTextureToTextureRequests = static_cast<u32>(_renderTextureToTextureRequests.try_dequeue_bulk(_renderTextureToTextureWork.begin(), 256));
-            if (numRenderTextureToTextureRequests > 0)
+            if (data.numRenderTextureToTextureRequests > 0)
             {
                 ZoneScopedN("Render Texture To Texture Requests");
-                for (u32 i = 0; i < numRenderTextureToTextureRequests; i++)
+                for (u32 i = 0; i < data.numRenderTextureToTextureRequests; i++)
                 {
                     RenderTextureToTextureRequest& request = _renderTextureToTextureWork[i];
-                    RenderTextureToTexture(graphResources, commandList, frameIndex, data.descriptorSet, request.dst, request.dstRectMin, request.dstRectMax, request.src, request.srcRectMin, request.srcRectMax);
+                    u32 srcArrayIndex = _renderTextureToTextureWorkTextureArrayIndex[i];
+                    RenderTextureToTexture(graphResources, commandList, frameIndex, data.descriptorSets, request.dst, request.dstRectMin, request.dstRectMax, srcArrayIndex, request.srcRectMin, request.srcRectMax);
                 }
 
                 // Resolve mips
@@ -162,13 +181,16 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                 vec2 renderSize = _renderer->GetRenderSize();
                 commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+
+                // DEBUG: Enable this to keep rendering requests every frame for easier capture
+                //_renderTextureToTextureRequests.enqueue_bulk(&_renderTextureToTextureWork[0], data.numRenderTextureToTextureRequests);
             }
         });
 }
 
 Renderer::TextureID TextureRenderer::MakeRenderableCopy(Renderer::TextureID texture, u32 width, u32 height)
 {
-    Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(texture);
+    Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetDesc(texture);
 
     Renderer::DataTextureDesc desc;
     desc.width = width > 0 ? width : textureBaseDesc.width;
@@ -202,7 +224,15 @@ void TextureRenderer::RequestRenderTextureToTexture(Renderer::TextureID dst, con
 
 void TextureRenderer::CreatePermanentResources()
 {
+    CreatePipelines();
+    InitDescriptorSets();
+
+    Renderer::TextureArrayDesc textureArrayDesc;
+    textureArrayDesc.size = 4096;
+    _sourceTextures = _renderer->CreateTextureArray(textureArrayDesc);
+
     _renderTextureToTextureWork.resize(256);
+    _renderTextureToTextureWorkTextureArrayIndex.resize(256);
 
     // Mip resolve atomic buffer
     Renderer::BufferDesc mipAtomicBufferDesc;
@@ -226,7 +256,6 @@ void TextureRenderer::CreatePermanentResources()
     blitSamplerDesc.maxLOD = 16.f;
 
     _blitSampler = _renderer->CreateSampler(blitSamplerDesc);
-    _descriptorSet.Bind("_sampler"_h, _blitSampler);
 
     // Mip resolve sampler
     Renderer::SamplerDesc mipDownSamplerDesc;
@@ -239,22 +268,30 @@ void TextureRenderer::CreatePermanentResources()
 
     _mipResolveSampler = _renderer->CreateSampler(mipDownSamplerDesc);
     _mipResolveDescriptorSet.Bind("srcSampler", _mipResolveSampler);
+}
 
+void TextureRenderer::CreatePipelines()
+{
     // Mip resolve compute pipeline
     Renderer::ComputePipelineDesc pipelineDesc;
     pipelineDesc.debugName = "Downsample Mips";
 
     Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("DownSampler/SinglePassDownsampler.cs.hlsl"_h);
-    shaderDesc.shaderEntry.debugName = "DownSampler/SinglePassDownsampler.cs.hlsl";
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("DownSampler/SinglePassDownsampler.cs"_h, "DownSampler/SinglePassDownsampler.cs");
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
     _mipDownsamplerPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
-void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DescriptorSetResource& descriptorSet, Renderer::TextureID dst, const vec2& dstRectMin, const vec2& dstRectMax, Renderer::TextureID src, const vec2& srcRectMin, const vec2& srcRectMax)
+void TextureRenderer::InitDescriptorSets()
 {
-    Renderer::TextureBaseDesc destinationDesc = _renderer->GetTextureDesc(dst);
+    _mipResolveDescriptorSet.RegisterPipeline(_renderer, _mipDownsamplerPipeline);
+    _mipResolveDescriptorSet.Init(_renderer);
+}
+
+void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, robin_hood::unordered_map<Renderer::ImageFormat, Renderer::DescriptorSetResource>& descriptorSets, Renderer::TextureID dst, const vec2& dstRectMin, const vec2& dstRectMax, u32 srcArrayIndex, const vec2& srcRectMin, const vec2& srcRectMax)
+{
+    Renderer::TextureBaseDesc destinationDesc = _renderer->GetDesc(dst);
     vec2 dstSize = vec2(destinationDesc.width, destinationDesc.height);
 
     Renderer::TextureRenderPassDesc renderPassDesc;
@@ -279,12 +316,14 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
         static_cast<i32>(pixelOffset.y + pixelExtent.y)
     );
 
-    Renderer::ImageFormat format = _renderer->GetTextureDesc(dst).format;
+    Renderer::ImageFormat format = _renderer->GetDesc(dst).format;
     Renderer::GraphicsPipelineID pipeline = GetPipelineForFormat(format);
     commandList.BeginPipeline(pipeline);
 
-    descriptorSet.BindRead("_texture", src);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, descriptorSet, frameIndex);
+    Renderer::DescriptorSetResource& descriptorSet = descriptorSets[format];
+
+    //descriptorSet.Bind2("_texture", src);
+    commandList.BindDescriptorSet(descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -292,6 +331,7 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
         vec4 additiveColor;
         vec4 uvOffsetAndExtent;
         u32 channelRedirectors;
+        u32 textureIndex;
     };
 
     BlitConstant* constants = graphResources.FrameNew<BlitConstant>();
@@ -300,6 +340,7 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
     constants->uvOffsetAndExtent = vec4(srcRectMin, srcRectMax - srcRectMin);
 
     constants->channelRedirectors = 0x03020100;
+    constants->textureIndex = srcArrayIndex;
 
     commandList.PushConstant(constants, 0, sizeof(BlitConstant));
 
@@ -313,7 +354,7 @@ void TextureRenderer::RenderTextureToTexture(Renderer::RenderGraphResources& gra
 
 void TextureRenderer::ResolveMips(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DescriptorSetResource& descriptorSet, Renderer::TextureID textureID)
 {
-    Renderer::TextureBaseDesc textureDesc = _renderer->GetTextureDesc(textureID);
+    Renderer::TextureBaseDesc textureDesc = _renderer->GetDesc(textureID);
 
     Renderer::TextureRenderPassDesc renderPassDesc;
     renderPassDesc.renderTargets[0] = textureID;
@@ -321,15 +362,17 @@ void TextureRenderer::ResolveMips(Renderer::RenderGraphResources& graphResources
     commandList.BeginTextureComputeWritePass(renderPassDesc);
     commandList.BeginPipeline(_mipDownsamplerPipeline);
 
-    descriptorSet.BindReadWrite("imgSrc", textureID);// , 0);
-    descriptorSet.BindWrite("imgDst", textureID, 1, 12);
-    descriptorSet.BindWrite("imgDst5", textureID, 6);
-
     varAU2(dispatchThreadGroupCountXY);
     varAU2(workGroupOffset);
     varAU2(numWorkGroupsAndMips);
     varAU4(rectInfo) = initAU4(0, 0, static_cast<AU1>(textureDesc.width), static_cast<AU1>(textureDesc.height)); // left, top, width, height
     SpdSetup(dispatchThreadGroupCountXY, workGroupOffset, numWorkGroupsAndMips, rectInfo);
+
+    numWorkGroupsAndMips[1] = numWorkGroupsAndMips[1] - 1; // We seem to disagree how many mips we have...
+
+    descriptorSet.Bind("imgSrc", textureID);
+    descriptorSet.Bind("imgDst", textureID, 1, numWorkGroupsAndMips[1]);
+    descriptorSet.Bind("imgDst5", textureID, 6);
 
     struct Constants
     {
@@ -349,7 +392,7 @@ void TextureRenderer::ResolveMips(Renderer::RenderGraphResources& graphResources
 
     commandList.PushConstant(constants, 0, sizeof(Constants));
 
-    commandList.BindDescriptorSet(Renderer::PER_PASS, descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(descriptorSet, frameIndex);
 
     commandList.Dispatch(dispatchThreadGroupCountXY[0], dispatchThreadGroupCountXY[1], 1);
 
@@ -364,10 +407,7 @@ Renderer::GraphicsPipelineID TextureRenderer::GetPipelineForFormat(Renderer::Ima
         return _pipelines[format];
     }
 
-    Renderer::GraphicsPipelineID pipeline = CreatePipeline(format);
-    _pipelines[format] = pipeline;
-
-    return pipeline;
+    return CreatePipeline(format);
 }
 
 Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageFormat format)
@@ -376,13 +416,11 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
 
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    vertexShaderDesc.shaderEntry.debugName = "Blitting/Blit.vs.hlsl";
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/Blit.vs"_h, "Blitting/Blit.vs");;
     pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
     Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/BlitSample.ps.hlsl"_h);
-    pixelShaderDesc.shaderEntry.debugName = "Blitting/BlitSample.ps.hlsl";
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/BlitSampleTexArray.ps"_h, "Blitting/BlitSampleTexArray.ps");
     pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
     // Depth state
@@ -403,5 +441,18 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
     pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
     pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::MAX;
 
-    return _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+    Renderer::GraphicsPipelineID pipeline = _renderer->CreatePipeline(pipelineDesc);
+    _pipelines[format] = pipeline;
+
+    // Create descriptor set for this pipeline
+    auto [it, inserted] = _descriptorSets.try_emplace(format, Renderer::DescriptorSet(Renderer::DescriptorSetSlot::PER_PASS));
+
+    Renderer::DescriptorSet& descriptorSet = it->second;
+    descriptorSet.RegisterPipeline(_renderer, pipeline);
+    descriptorSet.Init(_renderer);
+
+    descriptorSet.Bind("_sampler"_h, _blitSampler);
+    descriptorSet.Bind("_textures"_h, _sourceTextures);
+
+    return pipeline;
 }

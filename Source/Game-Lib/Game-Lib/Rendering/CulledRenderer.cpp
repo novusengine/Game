@@ -12,6 +12,33 @@ Renderer::ComputePipelineID CulledRenderer::_createIndirectAfterCullingOrderedPi
 Renderer::ComputePipelineID CulledRenderer::_cullingInstancedPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
 Renderer::ComputePipelineID CulledRenderer::_cullingPipeline[2]; // [0] = no bitmasks, [1] = use bitmasks
 
+void CulledRenderer::InitCullingResources(CullingResourcesBase& cullingResources)
+{
+    bool isIndexed = cullingResources.IsIndexed();
+    bool isInstanced = cullingResources.IsInstanced();
+    bool supportsTwoPassCulling = cullingResources.HasSupportForTwoStepCulling();
+
+    Renderer::ComputePipelineID fillPipeline = (isInstanced) ? _fillInstancedDrawCallsFromBitmaskPipeline[isIndexed] : _fillDrawCallsFromBitmaskPipeline[isIndexed];
+    Renderer::ComputePipelineID cullingPipeline = (isInstanced) ? _cullingInstancedPipeline[supportsTwoPassCulling] : _cullingPipeline[supportsTwoPassCulling];
+
+    // Init descriptor sets
+    Renderer::DescriptorSet& occluderFillDescriptorSet = cullingResources.GetOccluderFillDescriptorSet();
+    occluderFillDescriptorSet.RegisterPipeline(_renderer, fillPipeline);
+    occluderFillDescriptorSet.Init(_renderer);
+
+    Renderer::DescriptorSet& cullingDescriptorSet = cullingResources.GetCullingDescriptorSet();
+    cullingDescriptorSet.RegisterPipeline(_renderer, cullingPipeline);
+    cullingDescriptorSet.Init(_renderer);
+
+    Renderer::DescriptorSet& createIndirectAfterCullDescriptorSet = cullingResources.GetCreateIndirectAfterCullDescriptorSet();
+    createIndirectAfterCullDescriptorSet.RegisterPipeline(_renderer, _createIndirectAfterCullingPipeline[isIndexed]);
+    createIndirectAfterCullDescriptorSet.Init(_renderer);
+
+    Renderer::DescriptorSet& geometryFillDescriptorSet = cullingResources.GetGeometryFillDescriptorSet();
+    geometryFillDescriptorSet.RegisterPipeline(_renderer, fillPipeline);
+    geometryFillDescriptorSet.Init(_renderer);
+}
+
 CulledRenderer::CulledRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
@@ -53,8 +80,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         return;
     }
-
-    if (params.useInstancedCulling)
+    
+    if (params.cullingResources->IsInstanced())
     {
         const bool debugOrdered = false;
 
@@ -73,7 +100,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             std::string debugName = params.passName + " Instanced Occlusion Fill";
             params.commandList->PushMarker(debugName, Color::White);
 
-            Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.isIndexed];
+            Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
             params.commandList->BeginPipeline(pipeline);
 
             struct FillDrawCallConstants
@@ -93,10 +120,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             params.occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
 
             // Bind descriptorset
-            //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &params.renderResources->debugDescriptorSet, frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-            //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.occluderFillDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
 
             params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
 
@@ -120,11 +145,11 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             Renderer::ComputePipelineID pipeline;
             if (debugOrdered)
             {
-                pipeline = _createIndirectAfterCullingOrderedPipeline[params.isIndexed];
+                pipeline = _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()];
             }
             else
             {
-                pipeline = _createIndirectAfterCullingPipeline[params.isIndexed];
+                pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
             }
             params.commandList->BeginPipeline(pipeline);
 
@@ -141,10 +166,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             cullConstants->drawCallDataSize = params.drawCallDataSize;
             params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
-            //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-            //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, params.frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.createIndirectDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
 
             if (debugOrdered)
             {
@@ -170,8 +193,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
             drawParams.shadowPass = false;
             drawParams.viewIndex = 0;
-            drawParams.globalDescriptorSet = params.globalDescriptorSet;
-            drawParams.drawDescriptorSet = params.drawDescriptorSet;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
             drawParams.depth = params.depth[0];
@@ -239,7 +260,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 std::string debugName = params.passName + " Occlusion Fill";
                 params.commandList->PushMarker(debugName, Color::White);
 
-                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.isIndexed];
+                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
                 params.commandList->BeginPipeline(pipeline);
 
                 struct FillDrawCallConstants
@@ -259,10 +280,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 params.occluderFillDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMaskBuffer);
 
                 // Bind descriptorset
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &params.renderResources->debugDescriptorSet, frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.occluderFillDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
 
                 params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
@@ -284,8 +303,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
                 drawParams.shadowPass = i > 0;
                 drawParams.viewIndex = i;
-                drawParams.globalDescriptorSet = params.globalDescriptorSet;
-                drawParams.drawDescriptorSet = params.drawDescriptorSet;
                 drawParams.rt0 = params.rt0;
                 drawParams.rt1 = params.rt1;
                 drawParams.depth = params.depth[i];
@@ -326,7 +343,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
     if (numDrawCalls > 0 && numInstances > 0)
     {
-        if (params.useInstancedCulling)
+        if (params.cullingResources->IsInstanced())
         {
             const bool debugOrdered = false;
 
@@ -393,10 +410,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     params.cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.currentCulledDrawCallsBitMask);
                 }
 
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.cullingDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
 
                 params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
 
@@ -436,10 +452,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 cullConstants->drawCallDataSize = params.drawCallDataSize;
                 params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.cullingDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.createIndirectAfterCullSet, params.frameIndex);
 
                 if (debugOrdered)
                 {
@@ -513,10 +528,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 params.cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.currentCulledDrawCallsBitMask);
             }
 
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, params.debugDescriptorSet, params.frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-            //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, params.frameIndex);
-            params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.cullingDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
 
             params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
@@ -527,7 +541,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     }
     else if (numDrawCalls > 0)
     {
-        if (params.useInstancedCulling)
+        if (params.cullingResources->IsInstanced())
         {
             // Reset the counters
             params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
@@ -556,7 +570,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         params.commandList->PushMarker(markerName, Color::PastelYellow);
 
         // Reset the counters
-        if (!params.useInstancedCulling && params.cullingResources->HasSupportForTwoStepCulling())
+        if (!params.cullingResources->IsInstanced() && params.cullingResources->HasSupportForTwoStepCulling())
         {
             params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
             params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
@@ -577,7 +591,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                 std::string debugName = params.passName + " Geometry Fill";
                 params.commandList->PushMarker(debugName, Color::White);
 
-                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.isIndexed];
+                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
                 params.commandList->BeginPipeline(pipeline);
 
                 struct FillDrawCallConstants
@@ -597,10 +611,8 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                 params.fillDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMaskBuffer);
 
                 // Bind descriptorset
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, &params.renderResources->debugDescriptorSet, frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, params.frameIndex);
-                //params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &params.renderResources->shadowDescriptorSet, frameIndex);
-                params.commandList->BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.fillDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+                params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
 
                 params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
@@ -632,8 +644,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             drawParams.cullingEnabled = params.cullingEnabled;
             drawParams.shadowPass = i > 0;
             drawParams.viewIndex = i;
-            drawParams.globalDescriptorSet = params.globalDescriptorSet;
-            drawParams.drawDescriptorSet = params.drawDescriptorSet;
+            drawParams.cullingResources = params.cullingResources;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
             drawParams.depth = params.depth[i];
@@ -655,7 +666,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                 drawParams.argumentBuffer = params.drawCallsBuffer;
             }
 
-            if (params.useInstancedCulling)
+            if (params.cullingResources->IsInstanced())
             {
                 drawParams.drawCountBuffer = params.culledDrawCallCountBuffer;
                 drawParams.drawCountIndex = debugDrawCallBufferIndex;
@@ -735,11 +746,10 @@ void CulledRenderer::CreatePipelines()
             {
                 { "IS_INDEXED", std::to_string(i) }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillInstancedDrawCallsFromBitmask.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillInstancedDrawCallsFromBitmask.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/FillInstancedDrawCallsFromBitmask.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/FillInstancedDrawCallsFromBitmask.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
@@ -755,11 +765,10 @@ void CulledRenderer::CreatePipelines()
             {
                 { "IS_INDEXED", std::to_string(i) }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillDrawCallsFromBitmask.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillDrawCallsFromBitmask.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/FillDrawCallsFromBitmask.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/FillDrawCallsFromBitmask.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
@@ -777,11 +786,10 @@ void CulledRenderer::CreatePipelines()
                 { "IS_INDEXED", std::to_string(i) },
                 { "DEBUG_ORDERED", "0" }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/CreateIndirectAfterCulling.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/CreateIndirectAfterCulling.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
@@ -798,11 +806,10 @@ void CulledRenderer::CreatePipelines()
                 { "IS_INDEXED", std::to_string(i) },
                 { "DEBUG_ORDERED", "1" }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CreateIndirectAfterCulling.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/CreateIndirectAfterCulling.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/CreateIndirectAfterCulling.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
@@ -819,11 +826,10 @@ void CulledRenderer::CreatePipelines()
             {
                 { "USE_BITMASKS", std::to_string(i) }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CullingInstanced.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/CullingInstanced.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/CullingInstanced.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/CullingInstanced.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
@@ -840,11 +846,10 @@ void CulledRenderer::CreatePipelines()
             {
                 { "USE_BITMASKS", std::to_string(i) }
             };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/Culling.cs.hlsl", permutationFields);
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/Culling.cs", permutationFields);
 
             Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-            shaderDesc.shaderEntry.debugName = "Utils/Culling.cs.hlsl";
+            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/Culling.cs");
 
             pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 

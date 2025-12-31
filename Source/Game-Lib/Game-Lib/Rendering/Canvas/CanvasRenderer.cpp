@@ -44,7 +44,8 @@ CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
-    , _descriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _panelDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _textDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -219,22 +220,24 @@ void CanvasRenderer::Update(f32 deltaTime)
 
     if (_vertices.SyncToGPU(_renderer))
     {
-        _descriptorSet.Bind("_vertices", _vertices.GetBuffer());
+        _panelDescriptorSet.Bind("_vertices", _vertices.GetBuffer());
+        _textDescriptorSet.Bind("_vertices", _vertices.GetBuffer());
     }
 
     if (_panelDrawDatas.SyncToGPU(_renderer))
     {
-        _descriptorSet.Bind("_panelDrawDatas", _panelDrawDatas.GetBuffer());
+        _panelDescriptorSet.Bind("_panelDrawDatas", _panelDrawDatas.GetBuffer());
     }
 
     if (_charDrawDatas.SyncToGPU(_renderer))
     {
-        _descriptorSet.Bind("_charDrawDatas", _charDrawDatas.GetBuffer());
+        _textDescriptorSet.Bind("_charDrawDatas", _charDrawDatas.GetBuffer());
     }
 
     if (_widgetWorldPositions.SyncToGPU(_renderer))
     {
-        _descriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
+        _panelDescriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
+        _textDescriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
     }
 
     uiRegistry->clear<DirtyWidgetData>();
@@ -266,7 +269,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::ImageMutableResource target;
 
         Renderer::DescriptorSetResource globalDescriptorSet;
-        Renderer::DescriptorSetResource descriptorSet;
+        Renderer::DescriptorSetResource panelDescriptorSet;
+        Renderer::DescriptorSetResource textDescriptorSet;
     };
     renderGraph->AddPass<Data>("Canvases",
         [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
@@ -284,7 +288,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             builder.Read(_widgetWorldPositions.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalDescriptorSet = builder.Use(resources.globalDescriptorSet);
-            data.descriptorSet = builder.Use(_descriptorSet);
+            data.panelDescriptorSet = builder.Use(_panelDescriptorSet);
+            data.textDescriptorSet = builder.Use(_textDescriptorSet);
 
             return true;// Return true from setup to enable this pass, return false to disable it
         },
@@ -300,7 +305,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
             // Loop over dirty rendertarget canvases
             registry->view<Canvas, CanvasRenderTargetTag, DirtyCanvasTag>().each([&](auto entity, auto& canvas)
             {
-                Renderer::TextureBaseDesc textureDesc = _renderer->GetTextureDesc(canvas.renderTexture);
+                Renderer::TextureBaseDesc textureDesc = _renderer->GetDesc(canvas.renderTexture);
                 commandList.SetViewport(0, 0, static_cast<f32>(textureDesc.width), static_cast<f32>(textureDesc.height), 0.0f, 1.0f);
                 commandList.SetScissorRect(0, static_cast<u32>(textureDesc.width), 0, static_cast<u32>(textureDesc.height));
 
@@ -330,7 +335,14 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     if (ChangePipelineIfNecessary(commandList, currentPipeline, childWidget.type))
                     {
-                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
+                        if (childWidget.type == WidgetType::Panel)
+                        {
+                            commandList.BindDescriptorSet(data.panelDescriptorSet, frameIndex);
+                        }
+                        else if (childWidget.type == WidgetType::Text)
+                        {
+                            commandList.BindDescriptorSet(data.textDescriptorSet, frameIndex);
+                        }
                     }
 
                     if (childWidget.type == WidgetType::Panel)
@@ -394,8 +406,15 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                     if (ChangePipelineIfNecessary(commandList, currentPipeline, childWidget.type))
                     {
-                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalDescriptorSet, frameIndex);
-                        commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.descriptorSet, frameIndex);
+                        commandList.BindDescriptorSet(data.globalDescriptorSet, frameIndex);
+                        if (childWidget.type == WidgetType::Panel)
+                        {
+                            commandList.BindDescriptorSet(data.panelDescriptorSet, frameIndex);
+                        }
+                        else if (childWidget.type == WidgetType::Text)
+                        {
+                            commandList.BindDescriptorSet(data.textDescriptorSet, frameIndex);
+                        }
                     }
 
                     if (childWidget.type == WidgetType::Panel)
@@ -433,11 +452,15 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 void CanvasRenderer::CreatePermanentResources()
 {
+    CreatePipelines();
+    InitDescriptorSets();
+
     Renderer::TextureArrayDesc textureArrayDesc;
     textureArrayDesc.size = 4096;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
-    _descriptorSet.Bind("_textures", _textures);
+    _panelDescriptorSet.Bind("_textures", _textures);
+    _textDescriptorSet.Bind("_textures", _textures);
 
     Renderer::DataTextureDesc dataTextureDesc;
     dataTextureDesc.width = 1;
@@ -468,7 +491,8 @@ void CanvasRenderer::CreatePermanentResources()
     samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
 
     _sampler = _renderer->CreateSampler(samplerDesc);
-    _descriptorSet.Bind("_sampler"_h, _sampler);
+    _panelDescriptorSet.Bind("_sampler"_h, _sampler);
+    _textDescriptorSet.Bind("_sampler"_h, _sampler);
 
     textureArrayDesc.size = 256;
     _fontTextures = _renderer->CreateTextureArray(textureArrayDesc);
@@ -476,7 +500,7 @@ void CanvasRenderer::CreatePermanentResources()
     _font = Renderer::Font::GetDefaultFont(_renderer);
     _renderer->AddTextureToArray(_font->GetTextureID(), _fontTextures);
 
-    _descriptorSet.Bind("_fontTextures"_h, _fontTextures);
+    _textDescriptorSet.Bind("_fontTextures"_h, _fontTextures);
 
     _vertices.SetDebugName("UIVertices");
     _vertices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
@@ -492,7 +516,10 @@ void CanvasRenderer::CreatePermanentResources()
 
     // Push a debug position
     _widgetWorldPositions.Add(vec4(0, 0, 0, 1));
+}
 
+void CanvasRenderer::CreatePipelines()
+{
     // Create pipelines
     Renderer::ImageFormat renderTargetFormat = _renderer->GetSwapChainImageFormat();
 
@@ -507,13 +534,11 @@ void CanvasRenderer::CreatePermanentResources()
 
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "UI/Panel.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.vs"_h, "UI/Panel.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-        
+
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "UI/Panel.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Panel.ps"_h, "UI/Panel.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Blending
@@ -537,13 +562,11 @@ void CanvasRenderer::CreatePermanentResources()
 
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "UI/Text.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.vs"_h, "UI/Text.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "UI/Text.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Text.ps"_h, "UI/Text.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Blending
@@ -555,6 +578,15 @@ void CanvasRenderer::CreatePermanentResources()
 
         _textPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
+}
+
+void CanvasRenderer::InitDescriptorSets()
+{
+    _panelDescriptorSet.RegisterPipeline(_renderer, _panelPipeline);
+    _panelDescriptorSet.Init(_renderer);
+    _textDescriptorSet.RegisterPipeline(_renderer, _textPipeline);
+    _textDescriptorSet.Init(_renderer);
+    
 }
 
 void CanvasRenderer::UpdatePanelVertices(const vec2& clipPos, const vec2& clipSize, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate)
@@ -797,7 +829,7 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     const vec2& widgetSize = transform.GetSize();
 
     Renderer::TextureID textureID = _renderer->GetTextureID(_textures, textureIndex);
-    Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetTextureDesc(textureID);
+    Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetDesc(textureID);
     vec2 texSize = vec2(textureBaseDesc.width, textureBaseDesc.height);
 
     vec2 textureScaleToWidgetSize = texSize / widgetSize;

@@ -56,6 +56,8 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
     void UpdatePanelVertices(const vec2& clipPos, const vec2& clipSize, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
     void UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, const vec2& canvasSize);
@@ -125,7 +127,8 @@ private:
     Renderer::GraphicsPipelineID _panelPipeline;
     Renderer::GraphicsPipelineID _textPipeline;
 
-    Renderer::DescriptorSet _descriptorSet;
+    Renderer::DescriptorSet _panelDescriptorSet;
+    Renderer::DescriptorSet _textDescriptorSet;
 
     ECS::Components::UI::WidgetType _lastRenderedWidgetType = ECS::Components::UI::WidgetType::None;
 };

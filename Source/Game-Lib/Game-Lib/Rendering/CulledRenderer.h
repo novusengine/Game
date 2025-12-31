@@ -29,6 +29,9 @@ struct DrawParams;
 
 class CulledRenderer
 {
+public:
+    void InitCullingResources(CullingResourcesBase& resources);
+
 protected:
     struct DrawParams
     {
@@ -36,6 +39,8 @@ protected:
         bool cullingEnabled = false;
         bool shadowPass = false;
         u32 viewIndex = 0;
+
+        CullingResourcesBase* cullingResources;
         
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
@@ -44,12 +49,10 @@ protected:
         Renderer::BufferMutableResource argumentBuffer;
         Renderer::BufferMutableResource drawCountBuffer;
 
-        Renderer::DescriptorSetResource globalDescriptorSet;
-        Renderer::DescriptorSetResource drawDescriptorSet;
+        std::vector<Renderer::DescriptorSetResource*> descriptorSets;
 
         u32 drawCountIndex = 0;
         u32 numMaxDrawCalls = 0;
-        bool isIndexed = true;
     };
 
     CulledRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer);
@@ -89,7 +92,7 @@ protected:
         builder.Write(cullingResources->GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
 
         data.occluderFillSet = builder.Use(cullingResources->GetOccluderFillDescriptorSet());
-        data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+        data.createIndirectDescriptorSet = builder.Use(cullingResources->GetCreateIndirectAfterCullDescriptorSet());
         data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
     }
 
@@ -155,8 +158,6 @@ protected:
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool disableTwoStepCulling = false;
-        bool isIndexed = true;
-        bool useInstancedCulling = false;
     };
     void OccluderPass(OccluderPassParams& params);
 
@@ -179,6 +180,7 @@ protected:
         builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
 
         data.cullingSet = builder.Use(cullingResources->GetCullingDescriptorSet());
+        data.createIndirectAfterCullSet = builder.Use(cullingResources->GetCreateIndirectAfterCullDescriptorSet());
     }
 
     template <typename Data>
@@ -224,6 +226,7 @@ protected:
         Renderer::DescriptorSetResource debugDescriptorSet;
         Renderer::DescriptorSetResource globalDescriptorSet;
         Renderer::DescriptorSetResource cullingDescriptorSet;
+        Renderer::DescriptorSetResource createIndirectAfterCullSet;
 
         u32 numCascades = 0;
         bool occlusionCull = true;
@@ -237,8 +240,6 @@ protected:
         u32 modelIDOffset = 0;
         u32 baseInstanceLookupOffset = 0;
         u32 drawCallDataSize = 0;
-
-        bool useInstancedCulling = false;
     };
     void CullingPass(CullingPassParams& params);
 
@@ -316,8 +317,6 @@ protected:
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool cullingEnabled = false;
-        bool isIndexed = true;
-        bool useInstancedCulling = false;
     };
     void GeometryPass(GeometryPassParams& params);
 

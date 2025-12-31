@@ -122,6 +122,8 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
     void SyncToGPU();
 

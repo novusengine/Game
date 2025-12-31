@@ -13,6 +13,7 @@
 
 #include <GLFW/glfw3.h>
 #include <imgui_internal.h>
+#include <tracy/Tracy.hpp>
 
 AutoCVar_Int CVAR_GameConsoleEnabled(CVarCategory::Client, "consoleEnabled", "enable game console", 1, CVarFlags::Hidden | CVarFlags::DoNotSave);
 AutoCVar_Int CVAR_GameConsoleDuplicateToTerminal(CVarCategory::Client, "consoleDuplicateToTerminal", "enable printing to terminal", 1, CVarFlags::EditCheckbox);
@@ -65,6 +66,7 @@ bool MatchesCommand(const std::string& command, const std::string& _searchText)
 
 void GameConsole::Render(f32 deltaTime)
 {
+    ZoneScoped;
     i32* isGameConsoleEnabled = CVAR_GameConsoleEnabled.GetPtr();
     if (*isGameConsoleEnabled == 0)
         return;

@@ -58,7 +58,6 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
-    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::MODEL)
 {
     CreatePermanentResources();
 
@@ -427,6 +426,8 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource modelSet;
+
         Renderer::DescriptorSetResource occluderFillSet;
         Renderer::DescriptorSetResource createIndirectDescriptorSet;
         Renderer::DescriptorSetResource drawSet;
@@ -463,6 +464,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -499,8 +501,12 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.createIndirectDescriptorSet = data.createIndirectDescriptorSet;
             params.drawDescriptorSet = data.drawSet;
 
-            params.drawCallback = [&](const DrawParams& drawParams)
+            params.drawCallback = [&](DrawParams& drawParams)
             {
+                drawParams.descriptorSets = {
+                    &data.globalSet,
+                    &data.modelSet
+                };
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
@@ -515,8 +521,6 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.enableDrawing = CVAR_ModelDrawOccluders.Get();
             params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
-            params.isIndexed = true;
-            params.useInstancedCulling = true;
 
             OccluderPass(params);
         });
@@ -550,6 +554,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
+        Renderer::DescriptorSetResource createIndirectAfterCullSet;
     };
 
     renderGraph->AddPass<Data>("Model (O) Culling",
@@ -604,6 +609,7 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.debugDescriptorSet = data.debugSet;
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
+            params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
             params.numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
@@ -615,8 +621,6 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
             params.drawCallDataSize = sizeof(DrawCallData);
-
-            params.useInstancedCulling = true;
 
             CullingPass(params);
         });
@@ -658,6 +662,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource fillSet;
         Renderer::DescriptorSetResource drawSet;
     };
@@ -693,6 +698,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.fillSet = builder.Use(_opaqueCullingResources.GetGeometryFillDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
@@ -729,8 +735,12 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.fillDescriptorSet = data.fillSet;
             params.drawDescriptorSet = data.drawSet;
 
-            params.drawCallback = [&](const DrawParams& drawParams)
+            params.drawCallback = [&](DrawParams& drawParams)
             {
+                drawParams.descriptorSets = {
+                    &data.globalSet,
+                    &data.modelSet
+                };
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
@@ -742,8 +752,6 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.useInstancedCulling = true;
-            params.isIndexed = true;
 
             GeometryPass(params);
         });
@@ -776,6 +784,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
+        Renderer::DescriptorSetResource createIndirectAfterCullSet;
     };
 
     renderGraph->AddPass<Data>("Model (T) Culling",
@@ -826,6 +835,7 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.debugDescriptorSet = data.debugSet;
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
+            params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
@@ -837,8 +847,6 @@ void ModelRenderer::AddTransparencyCullingPass(Renderer::RenderGraph* renderGrap
             params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.modelIDOffset = offsetof(DrawCallData, modelID);
             params.drawCallDataSize = sizeof(DrawCallData);
-
-            params.useInstancedCulling = true;
 
             CullingPass(params);
         });
@@ -872,6 +880,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource fillSet;
         Renderer::DescriptorSetResource drawSet;
     };
@@ -901,6 +910,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.fillSet = builder.Use(_transparentCullingResources.GetGeometryFillDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
@@ -933,8 +943,13 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
             params.fillDescriptorSet = data.fillSet;
             params.drawDescriptorSet = data.drawSet;
 
-            params.drawCallback = [&](const DrawParams& drawParams)
+            params.drawCallback = [&](DrawParams& drawParams)
             {
+                drawParams.descriptorSets = {
+                    &data.globalSet,
+                    &data.modelSet,
+                    &data.drawSet
+                };
                 DrawTransparent(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
@@ -942,8 +957,6 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.useInstancedCulling = true;
-            params.isIndexed = true;
 
             GeometryPass(params);
         });
@@ -971,6 +984,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
             Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource modelSet;
             Renderer::DescriptorSetResource drawSet;
         };
 
@@ -1005,6 +1019,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 data.triangleCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.modelSet = builder.Use(resources.modelDescriptorSet);
                 data.drawSet = builder.Use(_opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet());
 
                 return true; // Return true from setup to enable this pass, return false to disable it
@@ -1033,8 +1048,13 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 params.globalDescriptorSet = data.globalSet;
                 params.drawDescriptorSet = data.drawSet;
 
-                params.drawCallback = [&](const DrawParams& drawParams)
+                params.drawCallback = [&](DrawParams& drawParams)
                 {
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.modelSet,
+                        &data.drawSet
+                    };
                     DrawSkybox(resources, frameIndex, graphResources, commandList, drawParams, false);
                 };
 
@@ -1062,6 +1082,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
             Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource modelSet;
             Renderer::DescriptorSetResource drawSet;
         };
 
@@ -1097,6 +1118,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 data.triangleCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.modelSet = builder.Use(resources.modelDescriptorSet);
                 data.drawSet = builder.Use(_transparentSkyboxCullingResources.GetGeometryPassDescriptorSet());
 
                 return true; // Return true from setup to enable this pass, return false to disable it
@@ -1126,8 +1148,13 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 params.globalDescriptorSet = data.globalSet;
                 params.drawDescriptorSet = data.drawSet;
 
-                params.drawCallback = [&](const DrawParams& drawParams)
+                params.drawCallback = [&](DrawParams& drawParams)
                 {
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.modelSet,
+                        &data.drawSet
+                    };
                     DrawSkybox(resources, frameIndex, graphResources, commandList, drawParams, true);
                 };
 
@@ -2440,15 +2467,15 @@ bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 local
 void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
+    CreateModelPipelines();
+
+    RenderResources& resources = _gameRenderer->GetRenderResources();
+
     Renderer::TextureArrayDesc textureArrayDesc;
     textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
 
     _textures = _renderer->CreateTextureArray(textureArrayDesc);
-    _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
-    _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
-    _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
-    _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextures"_h, _textures);
-    _materialPassDescriptorSet.Bind("_modelTextures"_h, _textures);
+    resources.modelDescriptorSet.Bind("_modelTextures"_h, _textures);
 
     Renderer::DataTextureDesc dataTextureDesc;
     dataTextureDesc.width = 1;
@@ -2537,17 +2564,14 @@ void ModelRenderer::CreatePermanentResources()
 
     for (u32 i = 0; i < NumSamplers; i++)
     {
-        _opaqueCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
-        _transparentCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
-        _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
-        _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().BindArray("_samplers"_h, _samplers[i], i);
-        _materialPassDescriptorSet.BindArray("_samplers"_h, _samplers[i], i);
+        resources.modelDescriptorSet.BindArray("_samplers"_h, _samplers[i], i);
     }
 
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
+    initParams.culledRenderer = this;
     initParams.bufferNamePrefix = "OpaqueModels";
-    initParams.materialPassDescriptorSet = &_materialPassDescriptorSet;
+    initParams.materialPassDescriptorSet = &resources.modelDescriptorSet;
     initParams.enableTwoStepCulling = true;
     _opaqueCullingResources.Init(initParams);
 
@@ -2565,6 +2589,8 @@ void ModelRenderer::CreatePermanentResources()
     initParams.materialPassDescriptorSet = nullptr;
     initParams.enableTwoStepCulling = false;
     _transparentSkyboxCullingResources.Init(initParams);
+
+    InitDescriptorSets();
 
     // Set GPU Buffers name and usage
     {
@@ -2595,8 +2621,6 @@ void ModelRenderer::CreatePermanentResources()
         _textureTransformMatrices.SetDebugName("ModelInstanceTextureTransformMatrices");
         _textureTransformMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
-
-    CreateModelPipelines();
 }
 
 void ModelRenderer::CreateModelPipelines()
@@ -2622,23 +2646,19 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "0"},
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            { "SHADOW_PASS", "0"}
         };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs.hlsl", vertexPermutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        vertexShaderDesc.shaderEntry.debugName = "Model/Draw.vs.hlsl";
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
             
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
         {
-            { "SHADOW_PASS", "0" },
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            { "SHADOW_PASS", "0" }
         };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps.hlsl", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        pixelShaderDesc.shaderEntry.debugName = "Model/Draw.ps.hlsl";
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
@@ -2657,23 +2677,19 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "1"},
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            { "SHADOW_PASS", "1"}
         };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs.hlsl", vertexPermutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        vertexShaderDesc.shaderEntry.debugName = "Model/Draw.vs.hlsl";
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
             
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
         {
-            { "SHADOW_PASS", "1" },
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
+            { "SHADOW_PASS", "1" }
         };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps.hlsl", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        pixelShaderDesc.shaderEntry.debugName = "Model/Draw.ps.hlsl";
+        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
             
         // Draw
@@ -2714,20 +2730,12 @@ void ModelRenderer::CreateModelPipelines()
         pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
         Renderer::VertexShaderDesc vertexShaderDesc;
-        std::vector<Renderer::PermutationField> permutationFields =
-        {
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
-        };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawTransparent.vs.hlsl", permutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        vertexShaderDesc.shaderEntry.debugName = "Model/DrawTransparent.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawTransparent.vs"_h, "Model/DrawTransparent.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
             
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawTransparent.ps.hlsl", permutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        pixelShaderDesc.shaderEntry.debugName = "Model/DrawTransparent.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawTransparent.ps"_h, "Model/DrawTransparent.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Draw
@@ -2750,24 +2758,16 @@ void ModelRenderer::CreateModelPipelines()
         pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
         Renderer::VertexShaderDesc vertexShaderDesc;
-        std::vector<Renderer::PermutationField> vertexPermutationFields =
-        {
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
-        };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.vs.hlsl", vertexPermutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        vertexShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawSkybox.vs"_h, "Model/DrawSkybox.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
         {
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" },
             { "TRANSPARENCY", "0"  }
         };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps.hlsl", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        pixelShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.ps.hlsl";
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/DrawSkybox.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Draw
@@ -2810,28 +2810,51 @@ void ModelRenderer::CreateModelPipelines()
         pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
         Renderer::VertexShaderDesc vertexShaderDesc;
-        std::vector<Renderer::PermutationField> vertexPermutationFields =
-        {
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" }
-        };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.vs.hlsl", vertexPermutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        vertexShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawSkybox.vs"_h, "Model/DrawSkybox.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
         {
-            { "SUPPORTS_EXTENDED_TEXTURES", supportsExtendedTextures ? "1" : "0" },
             { "TRANSPARENCY", "1"  }
         };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps.hlsl", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-        pixelShaderDesc.shaderEntry.debugName = "Model/DrawSkybox.ps.hlsl";
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSkybox.ps", pixelPermutationFields);
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/DrawSkybox.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Draw
-        _drawSkyboxOpaquePipeline = _renderer->CreatePipeline(pipelineDesc);
+        _drawSkyboxTransparentPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+}
+
+void ModelRenderer::InitDescriptorSets()
+{
+    // Opaque
+    {
+        Renderer::DescriptorSet& geometryPassDescriptorSet = _opaqueCullingResources.GetGeometryPassDescriptorSet();
+        geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawPipeline);
+        geometryPassDescriptorSet.Init(_renderer);
+    }
+
+    // Transparent
+    {
+        Renderer::DescriptorSet& geometryPassDescriptorSet = _transparentCullingResources.GetGeometryPassDescriptorSet();
+        geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawTransparentPipeline);
+        geometryPassDescriptorSet.Init(_renderer);
+    }
+
+    // Opaque Skybox
+    {
+        Renderer::DescriptorSet& geometryPassDescriptorSet = _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet();
+        geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawSkyboxOpaquePipeline);
+        geometryPassDescriptorSet.Init(_renderer);
+    }
+
+    // Transparent Skybox
+    {
+        Renderer::DescriptorSet& geometryPassDescriptorSet = _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet();
+        geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawSkyboxTransparentPipeline);
+        geometryPassDescriptorSet.Init(_renderer);
     }
 }
 
@@ -3253,6 +3276,7 @@ void ModelRenderer::CompactInstanceRefs()
 void ModelRenderer::SyncToGPU()
 {
     ZoneScopedN("ModelRenderer::SyncToGPU");
+    RenderResources& resources = _gameRenderer->GetRenderResources();
 
     CulledRenderer::SyncToGPU();
 
@@ -3260,11 +3284,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_vertices.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelVertices"_h, _vertices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
         }
     }
 
@@ -3281,11 +3301,7 @@ void ModelRenderer::SyncToGPU()
 
         if (_animatedVertices.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_animatedModelVertexPositions"_h, _animatedVertices.GetBuffer());
         }
     }
 
@@ -3293,11 +3309,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_indices.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
         }
     }
 
@@ -3305,11 +3317,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_textureDatas.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
-            _materialPassDescriptorSet.Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
+            resources.modelDescriptorSet.Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
         }
     }
 
@@ -3317,11 +3325,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_textureUnits.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
-            _materialPassDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
+            resources.modelDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
         }
     }
 
@@ -3329,16 +3333,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_instanceDatas.SyncToGPU(_renderer))
         {
-            _opaqueCullingResources.GetCullingDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-
-            _transparentCullingResources.GetCullingDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
-
-            _materialPassDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
+            resources.modelDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
         }
     }
 
@@ -3348,13 +3343,8 @@ void ModelRenderer::SyncToGPU()
         {
             _opaqueCullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices"_h, _instanceMatrices.GetBuffer());
             _transparentCullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices"_h, _instanceMatrices.GetBuffer());
-            //_animationPrepassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
 
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_modelInstanceMatrices"_h, _instanceMatrices.GetBuffer());
         }
     }
 
@@ -3362,13 +3352,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_boneMatrices.SyncToGPU(_renderer))
         {
-            //_animationPrepassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
-
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
         }
     }
 
@@ -3376,13 +3360,7 @@ void ModelRenderer::SyncToGPU()
     {
         if (_textureTransformMatrices.SyncToGPU(_renderer))
         {
-            //_animationPrepassDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
-
-            _opaqueCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
-            _transparentCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
-            _opaqueSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
-            _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet().Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
-            _materialPassDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
+            resources.modelDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
         }
     }
 
@@ -3428,9 +3406,10 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     constants->viewIndex = params.viewIndex;
     commandList.PushConstant(constants, 0, sizeof(PushConstants));
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
-    //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
+    for (auto& descriptorSet : params.descriptorSets)
+    {
+        commandList.BindDescriptorSet(*descriptorSet, frameIndex);
+    }
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 
@@ -3463,8 +3442,10 @@ void ModelRenderer::DrawTransparent(const RenderResources& resources, u8 frameIn
     Renderer::GraphicsPipelineID pipeline = _drawTransparentPipeline;
     commandList.BeginPipeline(pipeline);
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
+    for (auto& descriptorSet : params.descriptorSets)
+    {
+        commandList.BindDescriptorSet(*descriptorSet, frameIndex);
+    }
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 
@@ -3499,8 +3480,10 @@ void ModelRenderer::DrawSkybox(const RenderResources& resources, u8 frameIndex, 
     Renderer::GraphicsPipelineID pipeline = isTransparent ? _drawSkyboxTransparentPipeline : _drawSkyboxOpaquePipeline;
     commandList.BeginPipeline(pipeline);
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, params.drawDescriptorSet, frameIndex);
+    for (auto& descriptorSet : params.descriptorSets)
+    {
+        commandList.BindDescriptorSet(*descriptorSet, frameIndex);
+    }
 
     commandList.SetIndexBuffer(_indices.GetBuffer(), Renderer::IndexFormat::UInt16);
 

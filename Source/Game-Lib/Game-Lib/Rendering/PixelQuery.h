@@ -75,7 +75,7 @@ private:
     GameRenderer* _gameRenderer = nullptr;
 
     Renderer::ComputePipelineID _queryPipeline;
-
     Renderer::DescriptorSet _queryDescriptorSet;
+
     Renderer::BufferID _pixelResultBuffer;
 };

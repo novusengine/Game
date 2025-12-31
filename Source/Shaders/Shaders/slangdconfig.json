@@ -1,15 +1,16 @@
 {
-    "slang.predefinedMacros": [
-        "DEBUG=0",
-        "GLOBAL=1",
-        "TILES=2",
-        "LIGHT=3",
-        "TERRAIN=4",
-        "MODEL=5",
-        "PER_PASS=6",
-        "PER_DRAW=7"
-    ],
-    "slang.additionalSearchPaths": [
-        "/"
-    ]
+  "slang.predefinedMacros": [
+    "DEBUG=0",
+    "GLOBAL=1",
+    "TILES=2",
+    "LIGHT=3",
+    "TERRAIN=4",
+    "MODEL=5",
+    "PER_PASS=6",
+    "PER_DRAW=7"
+  ],
+  "slang.additionalSearchPaths": [
+    "./",
+    "C:/Projects/Novus/Game/Source/Shaders/Shaders"
+  ]
 }

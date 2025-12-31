@@ -10,7 +10,30 @@
 #include <Renderer/Descriptors/VertexShaderDesc.h>
 #include <Renderer/Descriptors/PixelShaderDesc.h>
 
-void RenderUtils::Blit(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params)
+Renderer::Renderer* RenderUtils::_renderer = nullptr;
+GameRenderer* RenderUtils::_gameRenderer = nullptr;
+
+Renderer::ComputePipelineID RenderUtils::_copyDepthToColorPipeline;
+
+void RenderUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
+{
+    _renderer = renderer;
+    _gameRenderer = gameRenderer;
+
+    // Create pipelines
+    {
+        Renderer::ComputePipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "CopyDepthToColor";
+
+        Renderer::ComputeShaderDesc shaderDesc;
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/BlitDepth.cs"_h, "Blitting/BlitDepth.cs");
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _copyDepthToColorPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
+}
+
+void RenderUtils::Blit(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
 
@@ -23,32 +46,10 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
 
     const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "Blit";
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetBlitPipeline(componentTypeNameHash);
 
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.output);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
     commandList.BeginPipeline(pipeline);
 
     u32 mipLevel = params.inputMipLevel;
@@ -58,7 +59,7 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
     }
 
     params.descriptorSet.Bind("_texture", params.input, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -89,7 +90,7 @@ void RenderUtils::Blit(Renderer::Renderer* renderer, GameRenderer* gameRenderer,
     commandList.PopMarker();
 }
 
-void RenderUtils::DepthBlit(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params)
+void RenderUtils::DepthBlit(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthBlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);
 
@@ -102,36 +103,13 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, GameRenderer* gameRend
 
     const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.input);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "DepthBlit";
-
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.output);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetBlitPipeline(componentTypeNameHash);
     commandList.BeginPipeline(pipeline);
 
     params.descriptorSet.Bind("_texture", params.input);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -162,7 +140,7 @@ void RenderUtils::DepthBlit(Renderer::Renderer* renderer, GameRenderer* gameRend
     commandList.PopMarker();
 }
 
-void RenderUtils::Overlay(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params)
+void RenderUtils::Overlay(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const OverlayParams& params)
 {
     commandList.PushMarker("Overlay", Color::White);
 
@@ -175,37 +153,9 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, GameRenderer* gameRender
 
     const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.overlayImage);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "Overlay";
-
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetOverlayPipeline(componentTypeNameHash);
 
     commandList.BeginPipeline(pipeline);
 
@@ -216,7 +166,7 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, GameRenderer* gameRender
     }
 
     params.descriptorSet.Bind("_texture", params.overlayImage, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -247,7 +197,7 @@ void RenderUtils::Overlay(Renderer::Renderer* renderer, GameRenderer* gameRender
     commandList.PopMarker();
 }
 
-void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params)
+void RenderUtils::DepthOverlay(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthOverlayParams& params)
 {
     commandList.PushMarker("DepthOverlay", Color::White);
 
@@ -260,42 +210,14 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, GameRenderer* gameR
 
     const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.overlayImage);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "DepthOverlay";
-
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
-    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetOverlayPipeline(componentTypeNameHash);
 
     commandList.BeginPipeline(pipeline);
 
     params.descriptorSet.Bind("_texture", params.overlayImage);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -326,7 +248,7 @@ void RenderUtils::DepthOverlay(Renderer::Renderer* renderer, GameRenderer* gameR
     commandList.PopMarker();
 }
 
-void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params)
+void RenderUtils::PictureInPicture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const PictureInPictureParams& params)
 {
     commandList.PushMarker("PictureInPicture", Color::White);
 
@@ -346,37 +268,9 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, GameRenderer* g
 
     const Renderer::ImageDesc& imageDesc = graphResources.GetImageDesc(params.pipImage);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "PictureInPicture";
-
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    pipelineDesc.states.blendState.renderTargets[0].blendEnable = false;
-    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ZERO;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetBlitPipeline(componentTypeNameHash);
 
     commandList.BeginPipeline(pipeline);
 
@@ -387,7 +281,7 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, GameRenderer* g
     }
 
     params.descriptorSet.Bind("_texture", params.pipImage, mipLevel);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -417,14 +311,14 @@ void RenderUtils::PictureInPicture(Renderer::Renderer* renderer, GameRenderer* g
     commandList.EndRenderPass(renderPassDesc);
 
     // Reset the viewport and scissor
-    vec2 renderSize = renderer->GetRenderSize();
+    vec2 renderSize = _renderer->GetRenderSize();
     commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
     commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
 
     commandList.PopMarker();
 }
 
-void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params)
+void RenderUtils::DepthPictureInPicture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const DepthPictureInPictureParams& params)
 {
     commandList.PushMarker("DepthPictureInPicture", Color::White);
 
@@ -444,42 +338,14 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, GameRender
 
     const Renderer::DepthImageDesc& imageDesc = graphResources.GetImageDesc(params.pipImage);
 
-    // Setup pipeline
-    Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "DepthPictureInPicture";
-
-    Renderer::VertexShaderDesc vertexShaderDesc;
-    vertexShaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/Blit.vs.hlsl"_h);
-    pipelineDesc.states.vertexShader = renderer->LoadShader(vertexShaderDesc);
-
-    std::string textureTypeName = Renderer::GetTextureTypeName(imageDesc.format);
-    std::vector<Renderer::PermutationField> permutationFields =
-    {
-        { "TEX_TYPE", textureTypeName }
-    };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Blitting/Blit.ps.hlsl", permutationFields);
-
-    Renderer::PixelShaderDesc pixelShaderDesc;
-    pixelShaderDesc.shaderEntry = gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    pipelineDesc.states.pixelShader = renderer->LoadShader(pixelShaderDesc);
-
-    const Renderer::ImageDesc& outputDesc = graphResources.GetImageDesc(params.baseImage);
-    pipelineDesc.states.renderTargetFormats[0] = outputDesc.format;
-
-    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
-
-    pipelineDesc.states.blendState.renderTargets[0].blendEnable = false;
-    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ZERO;
-
-    Renderer::GraphicsPipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    std::string componentTypeName = GetTextureTypeName(imageDesc.format);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID pipeline = _gameRenderer->GetBlitPipeline(componentTypeNameHash);
 
     commandList.BeginPipeline(pipeline);
 
     params.descriptorSet.Bind("_texture", params.pipImage);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
 
     struct BlitConstant
     {
@@ -509,26 +375,16 @@ void RenderUtils::DepthPictureInPicture(Renderer::Renderer* renderer, GameRender
     commandList.EndRenderPass(renderPassDesc);
 
     // Reset the viewport and scissor
-    vec2 renderSize = renderer->GetRenderSize();
+    vec2 renderSize = _renderer->GetRenderSize();
     commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
     commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
 
     commandList.PopMarker();
 }
 
-void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, GameRenderer* gameRenderer, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params)
+void RenderUtils::CopyDepthToColor(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params)
 {
-    Renderer::ComputePipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "CopyDepthToColor";
-    graphResources.InitializePipelineDesc(pipelineDesc);
-
-    Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = gameRenderer->GetShaderEntry("Blitting/BlitDepth.cs.hlsl"_h);
-    shaderDesc.shaderEntry.debugName = "Blitting/BlitDepth.cs.hlsl";
-    pipelineDesc.computeShader = renderer->LoadShader(shaderDesc);
-
-    // Do culling
-    Renderer::ComputePipelineID pipeline = renderer->CreatePipeline(pipelineDesc);
+    Renderer::ComputePipelineID pipeline = _copyDepthToColorPipeline;
     commandList.BeginPipeline(pipeline);
 
     commandList.PushMarker("CopyDepthToColorRT", Color::White);
@@ -539,7 +395,7 @@ void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, GameRenderer* g
     uvec2 destinationSize = graphResources.GetImageDimensions(params.destination, params.destinationMip);
 
     params.descriptorSet.Bind("_source", params.source);
-    params.descriptorSet.BindStorage("_target", params.destination, params.destinationMip);
+    params.descriptorSet.Bind("_target", params.destination, params.destinationMip);
 
     struct CopyParams
     {
@@ -554,7 +410,7 @@ void RenderUtils::CopyDepthToColor(Renderer::Renderer* renderer, GameRenderer* g
 
     commandList.PushConstant(copyParams, 0, sizeof(CopyParams));
 
-    commandList.BindDescriptorSet(Renderer::PER_PASS, params.descriptorSet, frameIndex);
+    commandList.BindDescriptorSet(params.descriptorSet, frameIndex);
     commandList.Dispatch(GetGroupCount(destinationSize.x, 32), GetGroupCount(destinationSize.y, 32), 1);
 
     commandList.EndPipeline(pipeline);

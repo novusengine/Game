@@ -28,6 +28,9 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
 
 void DebugRenderer::CreatePermanentResources()
 {
+    CreatePipelines();
+    InitDescriptorSets();
+
     _debugVertices2D.SetDebugName("DebugVertices2D");
     _debugVertices2D.SetUsage(Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER);
     _debugVertices2D.SyncToGPU(_renderer);
@@ -100,7 +103,10 @@ void DebugRenderer::CreatePermanentResources()
         });
         _debugDescriptorSet.Bind("_debugVertices3DCount", _gpuDebugVertices3DArgumentBuffer);
     }
+}
 
+void DebugRenderer::CreatePipelines()
+{
     // Create pipelines
     Renderer::GraphicsPipelineDesc pipelineDesc;
     // 2D Solid and Wireframe
@@ -113,18 +119,16 @@ void DebugRenderer::CreatePermanentResources()
 
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "Debug/Debug2D.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.vs"_h, "Debug/Debug2D.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "Debug/Debug2D.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.ps"_h, "Debug/Debug2D.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
         _debugLine2DPipeline = _renderer->CreatePipeline(pipelineDesc);
-            
+
         pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
         _debugSolid2DPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
@@ -132,13 +136,11 @@ void DebugRenderer::CreatePermanentResources()
     {
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "Debug/DebugSolid3D.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.vs"_h, "Debug/DebugSolid3D.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "Debug/DebugSolid3D.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.ps"_h, "Debug/DebugSolid3D.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         // Depth state
@@ -160,13 +162,11 @@ void DebugRenderer::CreatePermanentResources()
     // 3D Wireframe
     {
         Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "Debug/Debug3D.vs.hlsl";
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.vs"_h, "Debug/Debug3D.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
         Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "Debug/Debug3D.ps.hlsl";
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.ps"_h, "Debug/Debug3D.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         pipelineDesc.states.depthStencilState.depthWriteEnable = false;
@@ -174,6 +174,35 @@ void DebugRenderer::CreatePermanentResources()
         pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Lines;
         _debugLine3DPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
+}
+
+void DebugRenderer::InitDescriptorSets()
+{
+    // Line 2d
+    _draw2DDescriptorSet.RegisterPipeline(_renderer, _debugLine2DPipeline);
+    _draw2DDescriptorSet.Init(_renderer);
+
+    _draw2DIndirectDescriptorSet.RegisterPipeline(_renderer, _debugLine2DPipeline);
+    _draw2DIndirectDescriptorSet.Init(_renderer);
+
+    // Line 3d
+    _draw3DDescriptorSet.RegisterPipeline(_renderer, _debugLine3DPipeline);
+    _draw3DDescriptorSet.Init(_renderer);
+
+    _draw3DIndirectDescriptorSet.RegisterPipeline(_renderer, _debugLine3DPipeline);
+    _draw3DIndirectDescriptorSet.Init(_renderer);
+
+    // Solid 2d
+    _drawSolid2DDescriptorSet.RegisterPipeline(_renderer, _debugSolid2DPipeline);
+    _drawSolid2DDescriptorSet.Init(_renderer);
+
+    // Solid 3d
+    _drawSolid3DDescriptorSet.RegisterPipeline(_renderer, _debugSolid3DPipeline);
+    _drawSolid3DDescriptorSet.Init(_renderer);
+
+    // Material pass descriptor set
+    _debugDescriptorSet.RegisterPipeline(_renderer, _debugLine2DPipeline);
+    _debugDescriptorSet.Init(_renderer);
 }
 
 void DebugRenderer::Update(f32 deltaTime)
@@ -272,8 +301,8 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.drawSolid2DSet, frameIndex);
+                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
+                    commandList.BindDescriptorSet(data.drawSolid2DSet, frameIndex);
 
                     // Draw
                     commandList.Draw(static_cast<u32>(_debugVerticesSolid2D.Count()), 1, 0, 0);
@@ -290,8 +319,8 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DSet, frameIndex);
+                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
+                    commandList.BindDescriptorSet(data.draw2DSet, frameIndex);
 
                     // Draw
                     commandList.Draw(static_cast<u32>(_debugVertices2D.Count()), 1, 0, 0);
@@ -304,8 +333,8 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw2DIndirectSet, frameIndex);
+                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
+                    commandList.BindDescriptorSet(data.draw2DIndirectSet, frameIndex);
 
                     // Draw
                     commandList.DrawIndirect(data.gpuDebugVertices2DArgumentBuffer, 0, 1);
@@ -392,8 +421,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.drawSolid3DSet, frameIndex);
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.drawSolid3DSet, frameIndex);
 
                     // Draw
                     commandList.Draw(static_cast<u32>(_debugVerticesSolid3D.Count()), 1, 0, 0);
@@ -411,8 +440,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DSet, frameIndex);
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.draw3DSet, frameIndex);
 
                     // Draw
                     commandList.Draw(static_cast<u32>(_debugVertices3D.Count()), 1, 0, 0);
@@ -425,8 +454,8 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.draw3DIndirectSet, frameIndex);
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.draw3DIndirectSet, frameIndex);
 
                     // Draw
                     commandList.DrawIndirect(data.gpuDebugVertices3DArgumentBuffer, 0, 1);

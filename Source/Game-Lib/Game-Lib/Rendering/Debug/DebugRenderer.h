@@ -58,6 +58,8 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
 private:
     Renderer::Renderer* _renderer = nullptr;

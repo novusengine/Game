@@ -351,7 +351,6 @@ public:
     void AddTransparencyCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
-    Renderer::DescriptorSet& GetMaterialPassDescriptorSet() { return _materialPassDescriptorSet; }
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
     Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
@@ -373,6 +372,7 @@ public:
 private:
     void CreatePermanentResources();
     void CreateModelPipelines();
+    void InitDescriptorSets();
 
     void AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets);
     void AllocateTextureData(u32 numTextureDatas, TextureDataOffsets& offsets);
@@ -454,8 +454,6 @@ private:
 
     std::vector<Renderer::SamplerID> _samplers;
     Renderer::SamplerID _occlusionSampler;
-
-    Renderer::DescriptorSet _materialPassDescriptorSet;
 
     u32 _numOccluderDrawCalls = 0;
     u32 _numSurvivingDrawCalls[Renderer::Settings::MAX_VIEWS] = { 0 };

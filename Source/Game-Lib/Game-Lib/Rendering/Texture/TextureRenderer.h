@@ -42,8 +42,10 @@ public:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
-    void RenderTextureToTexture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DescriptorSetResource& descriptorSet, Renderer::TextureID dst, const vec2& dstRectMin, const vec2& dstRectMax, Renderer::TextureID src, const vec2& srcRectMin, const vec2& srcRectMax);
+    void RenderTextureToTexture(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, robin_hood::unordered_map<Renderer::ImageFormat, Renderer::DescriptorSetResource>& descriptorSets, Renderer::TextureID dst, const vec2& dstRectMin, const vec2& dstRectMax, u32 srcArrayIndex, const vec2& srcRectMin, const vec2& srcRectMax);
     void ResolveMips(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, Renderer::DescriptorSetResource& descriptorSet, Renderer::TextureID textureID);
 
     Renderer::GraphicsPipelineID GetPipelineForFormat(Renderer::ImageFormat format);
@@ -72,17 +74,21 @@ private:
     DebugRenderer* _debugRenderer;
 
     robin_hood::unordered_map<Renderer::ImageFormat, Renderer::GraphicsPipelineID> _pipelines;
+    robin_hood::unordered_map<Renderer::ImageFormat, Renderer::DescriptorSet> _descriptorSets;
 
     Renderer::ComputePipelineID _mipDownsamplerPipeline;
     Renderer::BufferID _mipAtomicBuffer;
     Renderer::SamplerID _blitSampler;
     Renderer::SamplerID _mipResolveSampler;
-    
-    Renderer::DescriptorSet _descriptorSet;
+
+    Renderer::TextureArrayID _sourceTextures;
+
+    //Renderer::DescriptorSet _descriptorSet;
     Renderer::DescriptorSet _mipResolveDescriptorSet;
 
     moodycamel::ConcurrentQueue<RenderTextureToTextureRequest> _renderTextureToTextureRequests;
     std::vector<RenderTextureToTextureRequest> _renderTextureToTextureWork;
+    std::vector<u32> _renderTextureToTextureWorkTextureArrayIndex;
 
     robin_hood::unordered_set<Renderer::TextureID::type> _texturesNeedingMipResolve;
 };

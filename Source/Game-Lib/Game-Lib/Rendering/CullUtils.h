@@ -24,8 +24,6 @@ public:
     struct BuildPyramidParams
     {
     public:
-        Renderer::Renderer* renderer;
-        GameRenderer* gameRenderer;
         Renderer::RenderGraphResources* graphResources;
         Renderer::CommandList* commandList;
         RenderResources* resources;
@@ -47,4 +45,8 @@ public:
     static Renderer::BufferID _atomicBuffer;
     static Renderer::ComputePipelineID _blitDepthPipeline;
     static Renderer::ComputePipelineID _downsamplePipeline;
+
+private:
+    static Renderer::Renderer* _renderer;
+    static GameRenderer* _gameRenderer;
 };

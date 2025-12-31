@@ -15,9 +15,6 @@
 
 UIRenderer::UIRenderer(Renderer::Renderer* renderer) 
     : _renderer(renderer)
-    , _passDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
-    , _drawImageDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
-    , _drawTextDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources();
 }
@@ -68,47 +65,6 @@ void UIRenderer::AddImguiPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void UIRenderer::CreatePermanentResources()
 {
-    // Sampler
-    Renderer::SamplerDesc samplerDesc;
-    samplerDesc.enabled = true;
-    samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
-    samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
-    samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
 
-    _linearSampler = _renderer->CreateSampler(samplerDesc);
-    _passDescriptorSet.Bind("_sampler"_h, _linearSampler);
-
-    // Index buffer
-    static const u32 indexBufferSize = sizeof(u16) * 6;
-
-    Renderer::BufferDesc bufferDesc;
-    bufferDesc.name = "IndexBuffer";
-    bufferDesc.size = indexBufferSize;
-    bufferDesc.usage = Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
-    bufferDesc.cpuAccess = Renderer::BufferCPUAccess::AccessNone;
-
-    _indexBuffer = _renderer->CreateBuffer(bufferDesc);
-
-    Renderer::BufferDesc stagingBufferDesc;
-    stagingBufferDesc.name = "StagingBuffer";
-    stagingBufferDesc.size = indexBufferSize;
-    stagingBufferDesc.usage = Renderer::BufferUsage::INDEX_BUFFER | Renderer::BufferUsage::TRANSFER_SOURCE;
-    stagingBufferDesc.cpuAccess = Renderer::BufferCPUAccess::WriteOnly;
-
-    Renderer::BufferID stagingBuffer = _renderer->CreateBuffer(stagingBufferDesc);
-
-    u16* index = static_cast<u16*>(_renderer->MapBuffer(stagingBuffer));
-    index[0] = 0;
-    index[1] = 1;
-    index[2] = 2;
-    index[3] = 1;
-    index[4] = 3;
-    index[5] = 2;
-    _renderer->UnmapBuffer(stagingBuffer);
-
-    _renderer->QueueDestroyBuffer(stagingBuffer);
-    _renderer->CopyBuffer(_indexBuffer, 0, stagingBuffer, 0, indexBufferSize);
 }
 

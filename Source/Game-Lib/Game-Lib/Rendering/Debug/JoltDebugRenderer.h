@@ -65,6 +65,8 @@ private:
 
 private:
     void CreatePermanentResources();
+    void CreatePipelines();
+    void InitDescriptorSets();
 
     void SyncToGPU();
     void Compact();

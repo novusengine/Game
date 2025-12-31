@@ -433,19 +433,26 @@ namespace Editor
                 ImGui::Text("%.3f", average.deltaTimeS * 1000);
                 ImGui::TableNextColumn();
 
-                ImGui::Text("Update");
+                ImGui::Text("   Update");
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", average.simulationFrameTimeS * 1000);
                 ImGui::TableNextColumn();
 
-                ImGui::Text("Render CPU");
+                ImGui::Text("   Render CPU");
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", average.renderFrameTimeS * 1000);
                 ImGui::TableNextColumn();
 
-                ImGui::Text("CPU wait for GPU");
+                ImGui::Text("       CPU wait for GPU");
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", average.renderWaitTimeS * 1000);
+                ImGui::TableNextColumn();
+
+                // Separate GPU from Total above since it does not add to it (it would be a part of CPU wait for GPU)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, IM_COL32(200, 200, 200, 255));
+                ImGui::Dummy(vec2(0, 1));
+                ImGui::TableNextColumn();
+                ImGui::Dummy(vec2(0, 1));
                 ImGui::TableNextColumn();
 
                 ImGui::Text("GPU frame time");

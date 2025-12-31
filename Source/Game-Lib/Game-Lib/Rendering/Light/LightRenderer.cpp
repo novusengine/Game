@@ -34,7 +34,6 @@ LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _modelRenderer(modelRenderer)
     , _classifyPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _debugPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
-    , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::LIGHT)
 {
     CreatePermanentResources();
 }
@@ -196,8 +195,7 @@ void LightRenderer::Update(f32 deltaTime)
         }
     }
 
-    /*
-    ECS::Util::EventUtil::OnEvent<ECS::Components::MapLoadedEvent>([&](const ECS::Components::MapLoadedEvent& event)
+    /*ECS::Util::EventUtil::OnEvent<ECS::Components::MapLoadedEvent>([&](const ECS::Components::MapLoadedEvent& event)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
@@ -298,12 +296,12 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
             commandList.PushConstant(constants, 0, sizeof(Constants));
 
             data.classifySet.Bind("_depthRT", data.depth);
-            data.classifySet.BindStorage("_debugTexture", data.debugColor);
+            //data.classifySet.Bind("_debugTexture", data.debugColor);
 
             // Bind descriptorset
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::DEBUG, data.debugSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.classifySet, frameIndex);
+            commandList.BindDescriptorSet(data.debugSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.classifySet, frameIndex);
 
             commandList.Dispatch(numTilesX, numTilesY, 1);
 
@@ -346,7 +344,7 @@ void LightRenderer::AddDebugPass(Renderer::RenderGraph* renderGraph, RenderResou
             overlayParams.overlayImage = data.debug;
             overlayParams.descriptorSet = data.debugSet;
 
-            RenderUtils::Overlay(_renderer, _gameRenderer, graphResources, commandList, frameIndex, overlayParams);
+            RenderUtils::Overlay(graphResources, commandList, frameIndex, overlayParams);
         });
 }
 
@@ -377,6 +375,20 @@ void LightRenderer::RemoveDecal(entt::entity entity)
 
 void LightRenderer::CreatePermanentResources()
 {
+    // Create pipeline
+    Renderer::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.debugName = "LightClassification";
+
+    Renderer::ComputeShaderDesc shaderDesc;
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Light/Classification.cs"_h, "Light/Classification.cs");
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+    _classificationPipeline = _renderer->CreatePipeline(pipelineDesc);
+
+    // Create descriptor sets
+    _classifyPassDescriptorSet.RegisterPipeline(_renderer, _classificationPipeline);
+    _classifyPassDescriptorSet.Init(_renderer);
+
     _decals.SetDebugName("Decals");
     _decals.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
@@ -388,16 +400,12 @@ void LightRenderer::CreatePermanentResources()
     _decalAddWork.resize(64);
     _decalRemoveWork.resize(64);
 
-    // Create pipeline
-    Renderer::ComputePipelineDesc pipelineDesc;
-    pipelineDesc.debugName = "LightClassification";
-
-    Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Light/Classification.cs.hlsl"_h);
-    shaderDesc.shaderEntry.debugName = "Light/Classification.cs.hlsl";
-    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
-
-    _classificationPipeline = _renderer->CreatePipeline(pipelineDesc);
+    // Init debug pass descriptor set
+    std::string componentTypeName = Renderer::GetTextureTypeName(Renderer::ImageFormat::B8G8R8A8_UNORM_SRGB);
+    u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
+    Renderer::GraphicsPipelineID debugPipeline = _gameRenderer->GetOverlayPipeline(componentTypeNameHash);
+    _debugPassDescriptorSet.RegisterPipeline(_renderer, debugPipeline);
+    _debugPassDescriptorSet.Init(_renderer);
 }
 
 u32 LightRenderer::CalculateNumTiles(const vec2& size)
@@ -424,6 +432,8 @@ void LightRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
 
 void LightRenderer::RecreateBuffer(const vec2& size)
 {
+    RenderResources& resources = _gameRenderer->GetRenderResources();
+
     u32 numTiles = CalculateNumTiles(size);
 
     Renderer::BufferDesc bufferDesc;
@@ -434,14 +444,15 @@ void LightRenderer::RecreateBuffer(const vec2& size)
 
     _entityTilesBuffer = _renderer->CreateBuffer(_entityTilesBuffer, bufferDesc);
     _classifyPassDescriptorSet.Bind("_entityTiles", _entityTilesBuffer);
-    _materialPassDescriptorSet.Bind("_entityTiles", _entityTilesBuffer);
+    resources.lightDescriptorSet.Bind("_entityTiles", _entityTilesBuffer);
 }
 
 void LightRenderer::SyncToGPU()
 {
     if (_decals.SyncToGPU(_renderer))
     {
+        RenderResources& resources = _gameRenderer->GetRenderResources();
         _classifyPassDescriptorSet.Bind("_packedDecals", _decals.GetBuffer());
-        _materialPassDescriptorSet.Bind("_packedDecals", _decals.GetBuffer());
+        resources.lightDescriptorSet.Bind("_packedDecals", _decals.GetBuffer());
     }
 }

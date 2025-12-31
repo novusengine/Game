@@ -48,6 +48,9 @@ void MaterialRenderer::Update(f32 deltaTime)
     ZoneScoped;
 
     SyncToGPU();
+
+    Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
+    Util::Physics::GetMouseWorldPosition(viewport, _mouseWorldPosition);
 }
 
 void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -58,9 +61,9 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
         Renderer::ImageMutableResource packedNormals;
 
         Renderer::DescriptorSetResource globalSet;
-        Renderer::DescriptorSetResource preEffectsSet;
         Renderer::DescriptorSetResource terrainSet;
         Renderer::DescriptorSetResource modelSet;
+        Renderer::DescriptorSetResource preEffectsSet;
     };
 
     renderGraph->AddPass<PreEffectsPassData>("Pre Effects",
@@ -71,13 +74,10 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
 
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
-            Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
-            Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
-
             data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.terrainSet = builder.Use(resources.terrainDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.preEffectsSet = builder.Use(_preEffectsPassDescriptorSet);
-            data.terrainSet = builder.Use(terrainDescriptorSet);
-            data.modelSet = builder.Use(modelDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
             _modelRenderer->RegisterMaterialPassBufferUsage(builder);
@@ -91,13 +91,13 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             commandList.BeginPipeline(_preEffectsPipeline);
 
             data.preEffectsSet.Bind("_visibilityBuffer", data.visibilityBuffer);
-            data.preEffectsSet.BindStorage("_packedNormals", data.packedNormals, 0);
+            data.preEffectsSet.Bind("_packedNormals", data.packedNormals);
 
             // Bind descriptorset
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.preEffectsSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+            commandList.BindDescriptorSet(data.modelSet, frameIndex);
+            commandList.BindDescriptorSet(data.preEffectsSet, frameIndex);
 
             vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(resources.packedNormals, 0));
 
@@ -124,17 +124,16 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::ImageResource skyboxColor;
         Renderer::ImageResource transparency;
         Renderer::ImageResource transparencyWeights;
-        Renderer::DepthImageResource depth;
         Renderer::ImageMutableResource resolvedColor;
 
         Renderer::ImageResource ambientOcclusion;
 
+        Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
-        Renderer::DescriptorSetResource tilesSet;
         Renderer::DescriptorSetResource lightSet;
-        Renderer::DescriptorSetResource materialSet;
         Renderer::DescriptorSetResource terrainSet;
         Renderer::DescriptorSetResource modelSet;
+        Renderer::DescriptorSetResource materialSet;
     };
 
     const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
@@ -146,7 +145,6 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
             data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
             data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
-            data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
             data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
             data.ambientOcclusion = builder.Read(resources.ssaoTarget, Renderer::PipelineType::COMPUTE);
@@ -154,16 +152,12 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
             builder.Read(_directionalLights.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
-            Renderer::DescriptorSet& tileDescriptorSet = _lightRenderer->GetTileDescriptorSet();
-            Renderer::DescriptorSet& terrainDescriptorSet = _terrainRenderer->GetMaterialPassDescriptorSet();
-            Renderer::DescriptorSet& modelDescriptorSet = _modelRenderer->GetMaterialPassDescriptorSet();
-
+            data.debugSet = builder.Use(resources.debugDescriptorSet);
             data.globalSet = builder.Use(resources.globalDescriptorSet);
-            data.tilesSet = builder.Use(tileDescriptorSet);
             data.lightSet = builder.Use(resources.lightDescriptorSet);
+            data.terrainSet = builder.Use(resources.terrainDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.materialSet = builder.Use(_materialPassDescriptorSet);
-            data.terrainSet = builder.Use(terrainDescriptorSet);
-            data.modelSet = builder.Use(modelDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
             _modelRenderer->RegisterMaterialPassBufferUsage(builder);
@@ -182,26 +176,20 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.materialSet.Bind("_skyboxColor", data.skyboxColor);
             data.materialSet.Bind("_transparency", data.transparency);
             data.materialSet.Bind("_transparencyWeights", data.transparencyWeights);
-            data.materialSet.Bind("_depth"_h, data.depth);
-            data.materialSet.BindStorage("_resolvedColor", data.resolvedColor, 0);
+            data.materialSet.Bind("_resolvedColor", data.resolvedColor);
 
             data.materialSet.Bind("_ambientOcclusion", data.ambientOcclusion);
 
             // Bind descriptorset
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TILES, data.tilesSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::LIGHT, data.lightSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::TERRAIN, data.terrainSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::MODEL, data.modelSet, frameIndex);
-            commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, data.materialSet, frameIndex);
+            commandList.BindDescriptorSet(data.debugSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.lightSet, frameIndex);
+            commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+            commandList.BindDescriptorSet(data.modelSet, frameIndex);
+            commandList.BindDescriptorSet(data.materialSet, frameIndex);
 
             //if (CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED)
             {
-                Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
-
-                vec3 mouseWorldPosition = vec3(0, 0, 0);
-                Util::Physics::GetMouseWorldPosition(viewport, mouseWorldPosition);
-
                 struct Constants
                 {
                     vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height 
@@ -235,7 +223,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->fogSettings.y = CVAR_FogBeginDist.GetFloat();
                 constants->fogSettings.z = CVAR_FogEndDist.GetFloat();
 
-                constants->mouseWorldPos = vec4(mouseWorldPosition, 1.0f);
+                constants->mouseWorldPos = vec4(_mouseWorldPosition, 1.0f);
                 Editor::TerrainTools* terrainTools = ServiceLocator::GetEditorHandler()->GetTerrainTools();
                 constants->brushSettings.x = terrainTools->GetHardness();
                 constants->brushSettings.y = terrainTools->GetRadius();
@@ -297,8 +285,7 @@ void MaterialRenderer::CreatePermanentResources()
 {
     // Create Pre-Effects Pipeline
     Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/PreEffectsPass.cs.hlsl"_h);
-    shaderDesc.shaderEntry.debugName = "Material/PreEffectsPass.cs.hlsl";
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/PreEffectsPass.cs"_h, "Material/PreEffectsPass.cs");
 
     Renderer::ComputePipelineDesc pipelineDesc;
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
@@ -321,9 +308,12 @@ void MaterialRenderer::CreatePermanentResources()
         CreateMaterialPipeline();
     });
 
-    // Register pipelines with descriptor sets
+    // Register pipelines with descriptor sets and init
     _preEffectsPassDescriptorSet.RegisterPipeline(_renderer, _preEffectsPipeline);
+    _preEffectsPassDescriptorSet.Init(_renderer);
+
     _materialPassDescriptorSet.RegisterPipeline(_renderer, _materialPipeline);
+    _materialPassDescriptorSet.Init(_renderer);
 
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.enabled = true;
@@ -363,14 +353,12 @@ void MaterialRenderer::CreateMaterialPipeline()
     {
         { "DEBUG_ID", std::to_string(CVAR_VisibilityBufferDebugID.Get()) },
         { "SHADOW_FILTER_MODE", std::to_string(shadowFilterMode) },
-        { "SUPPORTS_EXTENDED_TEXTURES", _renderer->HasExtendedTextureSupport() ? "1" : "0" },
         { "EDITOR_MODE", CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED ? "1" : "0" }
     };
-    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Material/MaterialPass.cs.hlsl", permutationFields);
+    u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Material/MaterialPass.cs", permutationFields);
 
     Renderer::ComputeShaderDesc shaderDesc;
-    shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash);
-    shaderDesc.shaderEntry.debugName = "Material/MaterialPass.cs.hlsl";
+    shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Material/MaterialPass.cs");
 
     Renderer::ComputePipelineDesc pipelineDesc;
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);

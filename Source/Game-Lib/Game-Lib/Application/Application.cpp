@@ -166,6 +166,7 @@ void Application::Run()
         ECS::Singletons::FrameTimes timings;
         while (true)
         {
+            ZoneScoped;
             f32 deltaTime = timer.GetDeltaTime();
             timer.Tick();
 
@@ -192,42 +193,48 @@ void Application::Run()
             if (!Render(deltaTime, timeSpentWaiting))
                 break;
 
-            timings.renderFrameTimeS = renderTimer.GetLifeTime() - timeSpentWaiting;
-            timings.renderWaitTimeS = timeSpentWaiting;
-
-            // Get last GPU Frame time
-            Renderer::Renderer* renderer = _gameRenderer->GetRenderer();
-
-            const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
-            if (frameTimeQueries.size() > 0)
             {
-                for (Renderer::TimeQueryID timeQueryID : frameTimeQueries)
-                {
-                    const std::string& name = renderer->GetTimeQueryName(timeQueryID);
-                    f32 durationMS = renderer->GetLastTimeQueryDuration(timeQueryID);
+                ZoneScopedN("TimeQueries");
+                timings.renderFrameTimeS = renderTimer.GetLifeTime() - timeSpentWaiting;
+                timings.renderWaitTimeS = timeSpentWaiting;
 
-                    engineStats.AddNamedStat(name, durationMS);
+                // Get last GPU Frame time
+                Renderer::Renderer* renderer = _gameRenderer->GetRenderer();
+
+                const std::vector<Renderer::TimeQueryID> frameTimeQueries = renderer->GetFrameTimeQueries();
+                if (frameTimeQueries.size() > 0)
+                {
+                    for (Renderer::TimeQueryID timeQueryID : frameTimeQueries)
+                    {
+                        const std::string& name = renderer->GetTimeQueryName(timeQueryID);
+                        f32 durationMS = renderer->GetLastTimeQueryDuration(timeQueryID);
+
+                        engineStats.AddNamedStat(name, durationMS);
+                    }
+
+                    Renderer::TimeQueryID totalTimeQuery = frameTimeQueries[0];
+                    timings.gpuFrameTimeMS = renderer->GetLastTimeQueryDuration(totalTimeQuery);
+                }
+                else
+                {
+                    timings.gpuFrameTimeMS = 0;
                 }
 
-                Renderer::TimeQueryID totalTimeQuery = frameTimeQueries[0];
-                timings.gpuFrameTimeMS = renderer->GetLastTimeQueryDuration(totalTimeQuery);
-            }
-            else
-            {
-                timings.gpuFrameTimeMS = 0;
+                engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.renderWaitTimeS, timings.gpuFrameTimeMS);
             }
 
-            engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.renderWaitTimeS, timings.gpuFrameTimeMS);
-
-            bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
-            if (limitFrameRate)
             {
-                f32 targetFramerate = Math::Max(static_cast<f32>(CVAR_FramerateLimitTarget.Get()), 10.0f);
-                f32 targetDelta = 1.0f / targetFramerate;
-
-                for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
+                ZoneScopedN("Framerate Limit");
+                bool limitFrameRate = CVAR_FramerateLimit.Get() == 1;
+                if (limitFrameRate)
                 {
-                    std::this_thread::yield();
+                    f32 targetFramerate = Math::Max(static_cast<f32>(CVAR_FramerateLimitTarget.Get()), 10.0f);
+                    f32 targetDelta = 1.0f / targetFramerate;
+
+                    for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
+                    {
+                        std::this_thread::yield();
+                    }
                 }
             }
 
@@ -362,12 +369,26 @@ bool Application::Init()
 
 bool Application::Tick(f32 deltaTime)
 {
+    ZoneScoped;
     // Imgui New Frame
     {
+        ZoneScopedN("_editorHandler->NewFrame");
         _editorHandler->NewFrame();
+    }
+    {
+        ZoneScopedN("ImGui_ImplVulkan_NewFrame");
         ImGui_ImplVulkan_NewFrame();
+    }
+    {
+        ZoneScopedN("ImGui_ImplGlfw_NewFrame");
         ImGui_ImplGlfw_NewFrame();
+    }
+    {
+        ZoneScopedN("ImGui::NewFrame");
         ImGui::NewFrame();
+    }
+    {
+        ZoneScopedN("ImGuizmo::BeginFrame");
         ImGuizmo::BeginFrame();
     }
 
@@ -481,10 +502,17 @@ bool Application::Tick(f32 deltaTime)
 
 bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
 {
+    ZoneScoped;
     timeSpentWaiting = _gameRenderer->Render();
 
-    ImGui::UpdatePlatformWindows();
-    ImGui::RenderPlatformWindowsDefault();
+    {
+        ZoneScopedN("ImGui::UpdatePlatformWindows");
+        ImGui::UpdatePlatformWindows();
+    }
+    {
+        ZoneScopedN("ImGui::RenderPlatformWindowsDefault");
+        ImGui::RenderPlatformWindowsDefault();
+    }
 
     return true;
 }

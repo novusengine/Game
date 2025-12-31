@@ -283,6 +283,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource cullingSet;
+        Renderer::DescriptorSetResource createIndirectAfterCullSet;
     };
 
     renderGraph->AddPass<Data>("Liquid Culling",
@@ -337,6 +338,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.debugDescriptorSet = data.debugSet;
             params.globalDescriptorSet = data.globalSet;
             params.cullingDescriptorSet = data.cullingSet;
+            params.createIndirectAfterCullSet = data.cullingSet;
 
             params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
             params.occlusionCull = CVAR_LiquidOcclusionCullingEnabled.Get();
@@ -391,7 +393,7 @@ void LiquidRenderer::AddCopyDepthPass(Renderer::RenderGraph* renderGraph, Render
             copyParams.destinationMip = 0;
             copyParams.descriptorSet = data.copySet;
 
-            RenderUtils::CopyDepthToColor(_renderer, _gameRenderer, graphResources, commandList, frameIndex, copyParams);
+            RenderUtils::CopyDepthToColor(graphResources, commandList, frameIndex, copyParams);
         });
 }
 
@@ -482,8 +484,13 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
             params.globalDescriptorSet = data.globalSet;
             params.drawDescriptorSet = data.drawSet;
 
-            params.drawCallback = [&](const DrawParams& drawParams)
+            params.drawCallback = [&](DrawParams& drawParams)
             {
+                drawParams.descriptorSets = {
+                    &data.globalSet,
+                    &data.drawSet
+                };
+
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
@@ -497,12 +504,18 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
 
 void LiquidRenderer::CreatePermanentResources()
 {
+    CreatePipelines();
+
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
     initParams.renderer = _renderer;
+    initParams.culledRenderer = this;
     initParams.bufferNamePrefix = "Liquid";
     initParams.materialPassDescriptorSet = nullptr; // Transparencies, we don't draw these in materialPass
     initParams.enableTwoStepCulling = false;
+    initParams.isInstanced = false;
     _cullingResources.Init(initParams);
+
+    InitDescriptorSets();
 
     _constants.shallowOceanColor    = Color::FromBGR32(2635575);
     _constants.deepOceanColor       = Color::FromBGR32(1387070);
@@ -610,57 +623,65 @@ void LiquidRenderer::CreatePermanentResources()
 
         return true;
     });
+}
 
-    // Create pipeline
-    {
-        Renderer::GraphicsPipelineDesc pipelineDesc;
+void LiquidRenderer::CreatePipelines()
+{
+    Renderer::GraphicsPipelineDesc pipelineDesc;
 
-        // Shaders
-        Renderer::VertexShaderDesc vertexShaderDesc;
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.vs.hlsl"_h);
-        vertexShaderDesc.shaderEntry.debugName = "Liquid/Draw.vs.hlsl";
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    // Shaders
+    Renderer::VertexShaderDesc vertexShaderDesc;
+    vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.vs"_h, "Liquid/Draw.vs");
+    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
-        Renderer::PixelShaderDesc pixelShaderDesc;
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.ps.hlsl"_h);
-        pixelShaderDesc.shaderEntry.debugName = "Liquid/Draw.ps.hlsl";
-        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+    Renderer::PixelShaderDesc pixelShaderDesc;
+    pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.ps"_h, "Liquid/Draw.ps");
+    pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
-        // Depth state
-        pipelineDesc.states.depthStencilState.depthEnable = true;
-        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+    // Depth state
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
 
-        // Rasterizer state
-        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
-        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+    // Rasterizer state
+    pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
+    pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
-        // Blend state
-        pipelineDesc.states.blendState.independentBlendEnable = true;
+    // Blend state
+    pipelineDesc.states.blendState.independentBlendEnable = true;
 
-        pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-        pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
-        pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
-        pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[0].blendOp = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::ONE;
+    pipelineDesc.states.blendState.renderTargets[0].blendOpAlpha = Renderer::BlendOp::ADD;
 
-        pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
-        pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
-        pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
-        pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
-        pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
-        pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
-        pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[1].blendEnable = true;
+    pipelineDesc.states.blendState.renderTargets[1].blendOp = Renderer::BlendOp::ADD;
+    pipelineDesc.states.blendState.renderTargets[1].srcBlend = Renderer::BlendMode::ZERO;
+    pipelineDesc.states.blendState.renderTargets[1].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[1].srcBlendAlpha = Renderer::BlendMode::ZERO;
+    pipelineDesc.states.blendState.renderTargets[1].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[1].blendOpAlpha = Renderer::BlendOp::ADD;
 
-        // Render targets
-        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R16G16B16A16_FLOAT;
-        pipelineDesc.states.renderTargetFormats[1] = Renderer::ImageFormat::R16_FLOAT;
+    // Render targets
+    pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R16G16B16A16_FLOAT;
+    pipelineDesc.states.renderTargetFormats[1] = Renderer::ImageFormat::R16_FLOAT;
 
-        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+    pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
-        _liquidPipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
-    }
+    _liquidPipeline = _renderer->CreatePipeline(pipelineDesc); // This will compile the pipeline and return the ID, or just return ID of cached pipeline
+}
+
+void LiquidRenderer::InitDescriptorSets()
+{
+    Renderer::DescriptorSet& geometryPassDescriptorSet = _cullingResources.GetGeometryPassDescriptorSet();
+    geometryPassDescriptorSet.RegisterPipeline(_renderer, _liquidPipeline);
+    geometryPassDescriptorSet.Init(_renderer);
+
+    _copyDescriptorSet.RegisterPipeline(_renderer, RenderUtils::GetCopyDepthToColorPipeline());
+    _copyDescriptorSet.Init(_renderer);
 }
 
 void LiquidRenderer::SyncToGPU()
@@ -684,7 +705,7 @@ void LiquidRenderer::SyncToGPU()
 
         if (_indices.SyncToGPU(_renderer))
         {
-            _cullingResources.GetGeometryPassDescriptorSet().Bind("_modelIndices"_h, _indices.GetBuffer());
+
         }
     }
 
@@ -716,8 +737,10 @@ void LiquidRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rende
     Renderer::GraphicsPipelineID pipeline = _liquidPipeline;
     commandList.BeginPipeline(pipeline);
 
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::GLOBAL, params.globalDescriptorSet, frameIndex);
-    commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS, params.drawDescriptorSet, frameIndex);
+    for (auto& descriptorSet : params.descriptorSets)
+    {
+        commandList.BindDescriptorSet(*descriptorSet, frameIndex);
+    }
 
     commandList.PushConstant(&_constants, 0, sizeof(Constants));
 
