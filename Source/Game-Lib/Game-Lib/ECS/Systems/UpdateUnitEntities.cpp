@@ -41,7 +41,7 @@
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 
-#include <tracy/tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace ECS::Systems
 {

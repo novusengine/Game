@@ -422,7 +422,7 @@ namespace Editor
                 const std::vector<std::string>& fieldNames = effectTypeToFieldNames[spellEffectType];
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[0].c_str());
+                ImGui::TextUnformatted(fieldNames[0].c_str());
                 if (ImGui::InputScalar("##EffectValue1", ImGuiDataType_S32, &currentSpellEffect.effectValues[0]))
                 {
                     isSpellEffectsDirty = true;
@@ -432,7 +432,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[1].c_str());
+                ImGui::TextUnformatted(fieldNames[1].c_str());
                 if (ImGui::InputScalar("##EffectValue2", ImGuiDataType_S32, &currentSpellEffect.effectValues[1]))
                 {
                     isSpellEffectsDirty = true;
@@ -442,7 +442,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[2].c_str());
+                ImGui::TextUnformatted(fieldNames[2].c_str());
                 if (ImGui::InputScalar("##EffectValue3", ImGuiDataType_S32, &currentSpellEffect.effectValues[2]))
                 {
                     isSpellEffectsDirty = true;
@@ -452,7 +452,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[3].c_str());
+                ImGui::TextUnformatted(fieldNames[3].c_str());
                 if (ImGui::InputScalar("##EffectMiscValue1", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[0]))
                 {
                     isSpellEffectsDirty = true;
@@ -462,7 +462,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[4].c_str());
+                ImGui::TextUnformatted(fieldNames[4].c_str());
                 if (ImGui::InputScalar("##EffectMiscValue2", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[1]))
                 {
                     isSpellEffectsDirty = true;
@@ -472,7 +472,7 @@ namespace Editor
                 ImGui::NextColumn();
 
                 ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
-                ImGui::Text(fieldNames[5].c_str());
+                ImGui::TextUnformatted(fieldNames[5].c_str());
                 if (ImGui::InputScalar("##EffectMiscValue3", ImGuiDataType_S32, &currentSpellEffect.effectMiscValues[2]))
                 {
                     isSpellEffectsDirty = true;
