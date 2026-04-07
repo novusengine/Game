@@ -2,6 +2,7 @@
 #define VISIBILITYBUFFERS_INCLUDED
 
 #include "DescriptorSet/Global.inc.slang"
+#include "DescriptorSet/Model.inc.slang"
 
 #include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
@@ -423,22 +424,22 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
 
 PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBuffer vBuffer, const uint cameraIndex, float2 renderSize)
 {
-    InstanceRef instanceRef = GetOpaqueModelInstanceID(vBuffer.instanceID);
+    InstanceRef instanceRef = _opaqueInstanceRefTable[vBuffer.instanceID];
     uint instanceID = instanceRef.instanceID;
     uint drawID = instanceRef.drawID;
 
     ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
-    IndexedDraw draw = _modelDraws[drawID];
+    IndexedDraw draw = _opaqueModelDraws[drawID];
     uint3 vertexIDs = GetVertexIDs(vBuffer.triangleID, draw, _modelIndices);
 
     ModelVertex vertices[3];
     [unroll]
-    for (uint i = 0; i < 3; i++) 
+    for (uint i = 0; i < 3; i++)
     {
-        vertices[i] = LoadModelVertex(vertexIDs[i]);
+        vertices[i] = LoadModelVertex(_packedModelVertices, vertexIDs[i]);
         if (instanceData.boneMatrixOffset != 4294967295)
         {
-            float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertices[i]);
+            float4x4 boneTransformMatrix = CalcBoneTransformMatrix(_instanceBoneMatrices, instanceData, vertices[i]);
             vertices[i].position = mul(float4(vertices[i].position, 1.0f), boneTransformMatrix).xyz;
             vertices[i].normal = mul(vertices[i].normal, (float3x3)boneTransformMatrix);
         }

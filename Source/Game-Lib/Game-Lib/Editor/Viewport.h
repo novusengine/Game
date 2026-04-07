@@ -37,7 +37,7 @@ namespace Editor
         vec2 _lastPanelSize = vec2(1920, 1080);
 
         vec2 _viewportPos = vec2(0, 0);
-        vec2 _viewportSize = vec2(0, 0);
+        vec2 _viewportSize = vec2(1920, 1080);
 
         bool _rightClickStartedInViewport = false;
     };

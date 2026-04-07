@@ -1,8 +1,6 @@
 #ifndef MODEL_SHARED_INCLUDED
 #define MODEL_SHARED_INCLUDED
 
-#include "DescriptorSet/Model.inc.slang"
-
 #include "Include/Common.inc.slang"
 
 #ifndef GEOMETRY_PASS
@@ -42,19 +40,9 @@ struct InstanceRef
     uint padding;
 };
 
-uint GetOpaqueInstanceRefID(uint culledInstanceID)
+TextureData LoadModelTextureData(StructuredBuffer<PackedTextureData> packedModelTextureDatas, uint textureDataID)
 {
-    return _opaqueCulledInstanceLookupTable[culledInstanceID];
-}
-
-InstanceRef GetOpaqueModelInstanceID(uint instanceRefID)
-{
-    return _opaqueInstanceRefTable[instanceRefID];
-}
-
-TextureData LoadModelTextureData(uint textureDataID)
-{
-    PackedTextureData packedTextureData = _packedModelTextureDatas[textureDataID];
+    PackedTextureData packedTextureData = packedModelTextureDatas[textureDataID];
 
     TextureData textureData;
     textureData.textureUnitOffset = packedTextureData.textureUnitOffset;
@@ -143,9 +131,9 @@ float4 UnpackModelBoneWeights(PackedModelVertex packedVertex)
     return boneWeights;
 }
 
-ModelVertex LoadModelVertex(uint vertexID)
+ModelVertex LoadModelVertex(StructuredBuffer<PackedModelVertex> packedModelVertices, uint vertexID)
 {
-    PackedModelVertex packedVertex = _packedModelVertices[vertexID];
+    PackedModelVertex packedVertex = packedModelVertices[vertexID];
 
     ModelVertex vertex;
     vertex.position = float3(UnpackModelPosition(packedVertex).x, UnpackModelPosition(packedVertex).y, UnpackModelPosition(packedVertex).z);
@@ -169,19 +157,19 @@ struct PackedAnimatedVertexPosition
     uint packed1; // half position.z, padding
 };
 
-void StoreAnimatedVertexPosition(uint animatedVertexID, float3 position)
+void StoreAnimatedVertexPosition(RWStructuredBuffer<PackedAnimatedVertexPosition> animatedModelVertexPositions, uint animatedVertexID, float3 position)
 {
     PackedAnimatedVertexPosition packedAnimatedVertexPosition;
     packedAnimatedVertexPosition.packed0 = f32tof16(position.x);
     packedAnimatedVertexPosition.packed0 |= f32tof16(position.y) << 16;
     packedAnimatedVertexPosition.packed1 = f32tof16(position.z);
 
-    _animatedModelVertexPositions[animatedVertexID] = packedAnimatedVertexPosition;
+    animatedModelVertexPositions[animatedVertexID] = packedAnimatedVertexPosition;
 }
 
-float3 LoadAnimatedVertexPosition(uint animatedVertexID)
+float3 LoadAnimatedVertexPosition(RWStructuredBuffer<PackedAnimatedVertexPosition> animatedModelVertexPositions, uint animatedVertexID)
 {
-    PackedAnimatedVertexPosition packedAnimatedVertexPosition = _animatedModelVertexPositions[animatedVertexID];
+    PackedAnimatedVertexPosition packedAnimatedVertexPosition = animatedModelVertexPositions[animatedVertexID];
 
     float3 position;
     position.x = f16tof32(packedAnimatedVertexPosition.packed0);
@@ -190,7 +178,7 @@ float3 LoadAnimatedVertexPosition(uint animatedVertexID)
     return position;
 }
 
-float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVertex vertex)
+float4x4 CalcBoneTransformMatrix(StructuredBuffer<float4x4> instanceBoneMatrices, const ModelInstanceData instanceData, ModelVertex vertex)
 {
     float4x4 boneTransformMatrix = float4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
 
@@ -202,7 +190,7 @@ float4x4 CalcBoneTransformMatrix(const ModelInstanceData instanceData, ModelVert
         for (int j = 0; j < 4; j++)
         {
             //boneTransformMatrix += mul(vertex.boneWeights[j], _instanceBoneMatrices[instanceData.boneMatrixOffset + vertex.boneIndices[j]]); // Previous line, Slang did not like this
-            boneTransformMatrix += _instanceBoneMatrices[instanceData.boneMatrixOffset + vertex.boneIndices[j]] * vertex.boneWeights[j];
+            boneTransformMatrix += instanceBoneMatrices[instanceData.boneMatrixOffset + vertex.boneIndices[j]] * vertex.boneWeights[j];
         }
     }
 

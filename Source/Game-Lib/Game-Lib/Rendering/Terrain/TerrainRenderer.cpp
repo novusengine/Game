@@ -164,6 +164,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_chunkDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer, BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
@@ -457,9 +458,10 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_chunkDatas.GetBuffer(), BufferUsage::GRAPHICS);
             if (cullingEnabled)
             {
-                builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+                builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
             }
 
             data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -1124,7 +1126,7 @@ void TerrainRenderer::SyncToGPU()
 
     if (_instanceDatas.SyncToGPU(_renderer))
     {
-        resources.terrainDescriptorSet.Bind("_instanceDatas", _instanceDatas.GetBuffer());
+        resources.terrainDescriptorSet.Bind("_instanceDatas"_h, _instanceDatas.GetBuffer());
         _occluderFillPassDescriptorSet.Bind("_instances"_h, _instanceDatas.GetBuffer());
         _geometryFillPassDescriptorSet.Bind("_instances"_h, _instanceDatas.GetBuffer());
         _cullingPassDescriptorSet.Bind("_instances"_h, _instanceDatas.GetBuffer());
@@ -1136,6 +1138,7 @@ void TerrainRenderer::SyncToGPU()
             desc.name = "TerrainCulledInstanceBuffer";
             _culledInstanceBuffer = _renderer->CreateBuffer(_culledInstanceBuffer, desc);
 
+            resources.terrainDescriptorSet.Bind("_culledInstanceDatas"_h, _culledInstanceBuffer);
             _cullingPassDescriptorSet.Bind("_culledInstances"_h, _culledInstanceBuffer);
             _occluderFillPassDescriptorSet.Bind("_culledInstances"_h, _culledInstanceBuffer);
             _geometryFillPassDescriptorSet.Bind("_culledInstances"_h, _culledInstanceBuffer);
