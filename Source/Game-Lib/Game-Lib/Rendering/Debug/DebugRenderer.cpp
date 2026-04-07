@@ -301,7 +301,6 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
                     commandList.BindDescriptorSet(data.drawSolid2DSet, frameIndex);
 
                     // Draw
@@ -319,7 +318,6 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
                     commandList.BindDescriptorSet(data.draw2DSet, frameIndex);
 
                     // Draw
@@ -333,7 +331,6 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
                 {
                     commandList.BeginPipeline(pipeline);
 
-                    //commandList.BindDescriptorSet2(data.globalSet, frameIndex); // TODO: Enable this with validation layers and find a way to print a better warning that this shader doesn't need this descriptorset
                     commandList.BindDescriptorSet(data.draw2DIndirectSet, frameIndex);
 
                     // Draw

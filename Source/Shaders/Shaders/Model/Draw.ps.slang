@@ -34,7 +34,7 @@ PSOutput main(PSInput input)
     uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
     uint instanceRefID = input.drawIDInstanceIDTextureDataIDInstanceRefID.w;
 
-    TextureData textureData = LoadModelTextureData(textureDataID);
+    TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, textureDataID);
 
     for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
     {

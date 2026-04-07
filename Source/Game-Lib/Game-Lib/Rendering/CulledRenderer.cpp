@@ -120,7 +120,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             params.occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
 
             // Bind descriptorset
-            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
             params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
 
             params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
@@ -166,7 +165,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             cullConstants->drawCallDataSize = params.drawCallDataSize;
             params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
-            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
             params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
 
             if (debugOrdered)
@@ -453,7 +451,6 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
                 params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
                 params.commandList->BindDescriptorSet(params.createIndirectAfterCullSet, params.frameIndex);
 
                 if (debugOrdered)
@@ -604,7 +601,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                 FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
                 fillConstants->numTotalDraws = numDrawCalls;
                 fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
-                fillConstants->diffAgainstPrev = 1; // Geomeyry should diff against prev
+                fillConstants->diffAgainstPrev = 1; // Geometry should diff against prev
                 params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
 
                 params.fillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);

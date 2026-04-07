@@ -33,8 +33,7 @@ struct HeightRange
 
 // Outputs
 [[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _culledInstancesBitMask;
-[[vk::binding(6, PER_PASS)]] RWByteAddressBuffer _arguments;
-[[vk::binding(7, PER_PASS)]] RWByteAddressBuffer _culledInstances;
+[[vk::binding(6, PER_PASS)]] RWByteAddressBuffer _culledInstances;
 
 float2 ReadHeightRange(uint instanceIndex)
 {

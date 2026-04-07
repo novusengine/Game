@@ -176,6 +176,7 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                     Renderer::TextureID textureID = Renderer::TextureID(texture);
                     ResolveMips(graphResources, commandList, frameIndex, data.mipResolveDescriptorSet, textureID);
                 }
+                //commandList.ImageBarrier()
 
                 // Reset the viewport and scissor
                 vec2 renderSize = _renderer->GetRenderSize();

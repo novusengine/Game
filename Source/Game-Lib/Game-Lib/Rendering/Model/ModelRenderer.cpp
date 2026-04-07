@@ -1174,6 +1174,7 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_opaqueCullingResources.GetDrawCalls().GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_opaqueCullingResources.GetInstanceRefs().GetBuffer(), BufferUsage::COMPUTE);
+    builder.Read(_opaqueCullingResources.GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE);
     builder.Read(_vertices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_indices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_textureDatas.GetBuffer(), BufferUsage::COMPUTE);

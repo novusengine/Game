@@ -54,13 +54,13 @@ struct CullingData
 [[vk::binding(5, PER_PASS)]] SamplerState _depthSampler;
 [[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
 
-//#if USE_BITMASKS
+#if USE_BITMASKS
 // TODO: When instanceCounts resizes we need to invalidate (zero out) _prevCulledInstancesBitMask since a single index in current and prev would point to different actual drawcalls
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _prevCulledDrawCallsBitMask; // TODO: Rename to _prevCulledInstancesBitMask, with instanced rendering we need to count these per instance instead of per draw
 
 // Outputs
 [[vk::binding(8, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask; // TODO: Rename to _culledInstancesBitMask, with instanced rendering we need to count these per instance instead of per draw
-//#endif
+#endif
 
 [[vk::binding(9, PER_PASS)]] RWByteAddressBuffer _culledInstanceCounts; // One uint per draw call
 [[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _culledInstanceLookupTable; // One uint per instance, contains instanceRefID of what survives culling, and thus can get reordered

@@ -1,7 +1,9 @@
 
 #define GEOMETRY_PASS 1
+#define MAX_MODEL_SAMPLERS 4
 
 #include "DescriptorSet/Global.inc.slang"
+#include "DescriptorSet/Model.inc.slang"
 
 #include "Include/Common.inc.slang"
 #include "Include/OIT.inc.slang"
@@ -25,7 +27,7 @@ struct PSOutput
 [shader("fragment")]
 PSOutput main(PSInput input)
 {
-    TextureData textureData = LoadModelTextureData(input.textureDataID);
+    TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, input.textureDataID);
 
     float4 color = float4(0, 0, 0, 0);
 

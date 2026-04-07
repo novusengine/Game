@@ -3,6 +3,7 @@ permutation SHADOW_PASS = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "DescriptorSet/Global.inc.slang"
+#include "DescriptorSet/Model.inc.slang"
 
 #include "Include/Common.inc.slang"
 #include "Model/ModelShared.inc.slang"
@@ -32,16 +33,16 @@ struct VSOutput
 [shader("vertex")]
 VSOutput main(VSInput input)
 {
-    uint instanceRefID = GetOpaqueInstanceRefID(input.culledInstanceID);
-    InstanceRef instanceRef = GetOpaqueModelInstanceID(instanceRefID);
+    uint instanceRefID = _opaqueCulledInstanceLookupTable[input.culledInstanceID];
+    InstanceRef instanceRef = _opaqueInstanceRefTable[instanceRefID];
     uint instanceID = instanceRef.instanceID;
     uint drawID = instanceRef.drawID;
 
     ModelInstanceData instanceData = _modelInstanceDatas[instanceID];
 
     // Skin this vertex
-    ModelVertex vertex = LoadModelVertex(input.vertexID);
-    float4x4 boneTransformMatrix = CalcBoneTransformMatrix(instanceData, vertex);
+    ModelVertex vertex = LoadModelVertex(_packedModelVertices, input.vertexID);
+    float4x4 boneTransformMatrix = CalcBoneTransformMatrix(_instanceBoneMatrices, instanceData, vertex);
     float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
 
     // Save the skinned vertex position (in model-space) if this vertex was animated
@@ -50,7 +51,7 @@ VSOutput main(VSInput input)
         uint localVertexID = input.vertexID - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
         uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
 
-        StoreAnimatedVertexPosition(animatedVertexID, position.xyz);
+        StoreAnimatedVertexPosition(_animatedModelVertexPositions, animatedVertexID, position.xyz);
     }
 
     float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
@@ -67,7 +68,7 @@ VSOutput main(VSInput input)
 
     if (instanceData.textureTransformMatrixOffset != 4294967295)
     {
-        TextureData textureData = LoadModelTextureData(instanceRef.extraID);
+        TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, instanceRef.extraID);
         uint numTextureUnits = textureData.numTextureUnits;
 
         if (numTextureUnits > 0)

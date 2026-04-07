@@ -324,6 +324,7 @@ void MaterialRenderer::CreatePermanentResources()
     samplerDesc.shaderVisibility = Renderer::ShaderVisibility::ALL;
 
     _sampler = _renderer->CreateSampler(samplerDesc);
+    _preEffectsPassDescriptorSet.Bind("_sampler"_h, _sampler);
     _materialPassDescriptorSet.Bind("_sampler"_h, _sampler);
 
     _directionalLights.SetDebugName("Directional Lights");

@@ -29,6 +29,6 @@ Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDi
     end)
 
     vpaths {
-        ["/*"] = { "*.lua", mod.Name .. "/**" }
+        ["/*"] = { "*.lua", mod.Name }
     }
 end)

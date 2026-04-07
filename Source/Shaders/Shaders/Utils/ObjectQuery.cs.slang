@@ -1,4 +1,6 @@
 
+#include "DescriptorSet/Model.inc.slang"
+
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
@@ -41,7 +43,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
         else
         {
-            InstanceRef instanceRef = GetOpaqueModelInstanceID(vBuffer.instanceID);
+            InstanceRef instanceRef = _opaqueInstanceRefTable[vBuffer.instanceID];
             objectID = instanceRef.instanceID;
         }
 

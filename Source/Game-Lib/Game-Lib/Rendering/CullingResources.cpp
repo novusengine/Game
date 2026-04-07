@@ -280,7 +280,7 @@ bool CullingResourcesIndexedBase::SyncToGPU(bool forceRecount)
         _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
         if (_materialPassDescriptorSet != nullptr)
         {
-            _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+            _materialPassDescriptorSet->Bind("_opaqueModelDraws"_h, _drawCalls.GetBuffer());
         }
 
         // (Re)create Culled Instance Counts Buffer
@@ -435,7 +435,7 @@ bool CullingResourcesNonIndexedBase::SyncToGPU(bool forceRecount)
         _cullingDescriptorSet.Bind("_drawCalls"_h, _drawCalls.GetBuffer());
         if (_materialPassDescriptorSet != nullptr)
         {
-            _materialPassDescriptorSet->Bind("_modelDraws"_h, _drawCalls.GetBuffer());
+            _materialPassDescriptorSet->Bind("_opaqueModelDraws"_h, _drawCalls.GetBuffer());
         }
 
         // (Re)create Culled Instance Counts Buffer

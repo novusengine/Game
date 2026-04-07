@@ -237,7 +237,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Get the interpolated vertex data from the visibility buffer
     PixelVertexData pixelVertexData = GetPixelVertexDataModel(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
     
-    TextureData textureData = LoadModelTextureData(pixelVertexData.extraID);
+    TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, pixelVertexData.extraID);
 
     // Shade
     float4 color = float4(0, 0, 0, 0);
