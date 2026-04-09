@@ -4,6 +4,7 @@
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/Descriptors/SamplerDesc.h>
 #include <Renderer/GPUVector.h>
+#include <Renderer/RenderGraphBuilder.h>
 
 #include <Base/Container/ConcurrentQueue.h>
 
