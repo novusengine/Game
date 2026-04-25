@@ -4,16 +4,16 @@
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<float4> _vertices;
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<float4> _widgetWorldPositions;
 
-struct PanelDrawData
+struct WidgetDrawData
 {
-    uint4 packed0; // x: textureIndex & additiveTextureIndex, y: clipMaskTextureIndex, z: color, w: textureScaleToWidgetSizeXY
-    float4 texCoord;
-    float4 slicingCoord;
-    float4 cornerRadiusAndBorder; // xy: cornerRadius, zw: border
-    uint4 packed1; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
-    int4 packed2; // x: worldPositionIndex, yzw: unused
+    uint4 packed0; // x: type, y: vertexBase, z: clipMaskTextureIndex, w: worldPositionIndex (int reinterpret)
+    uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
+    float4 texCoord;            // Panel only
+    float4 slicingCoord;        // Panel only
+    float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius. Text: x: borderSize, zw: unitRange
+    uint4 packed2; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
 };
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<PanelDrawData> _panelDrawDatas;
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<WidgetDrawData> _widgetDrawDatas;
 
 struct VertexInput
 {
@@ -31,13 +31,15 @@ struct VertexOutput
 [shader("vertex")]
 VertexOutput main(VertexInput input)
 {
-    float4 vertex = _vertices[input.vertexID];
+    WidgetDrawData drawData = _widgetDrawDatas[input.drawDataID];
+
+    uint vertexBase = drawData.packed0.y;
+    float4 vertex = _vertices[vertexBase + input.vertexID];
 
     float2 position = vertex.xy;
     float2 uv = vertex.zw;
 
-    PanelDrawData drawData = _panelDrawDatas[input.drawDataID];
-    int worldPositionIndex = drawData.packed2.x;
+    int worldPositionIndex = (int)drawData.packed0.w;
     float4 finalPos;
 
     if (worldPositionIndex >= 0)

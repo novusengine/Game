@@ -34,6 +34,42 @@ namespace ECS::Util
 {
     namespace UI
     {
+        entt::entity FindOwningCanvas(entt::registry* registry, entt::entity entity)
+        {
+            if (entity == entt::null) 
+                return entt::null;
+
+            auto* widget = registry->try_get<ECS::Components::UI::Widget>(entity);
+            if (!widget) 
+                return entt::null;
+
+            if (widget->type == ECS::Components::UI::WidgetType::Canvas)
+                return entity;
+
+            if (widget->scriptWidget)
+                return widget->scriptWidget->canvasEntity;
+
+            return entt::null;
+        }
+
+        void MarkCanvasSortDirty(entt::registry* registry, entt::entity canvasEntity)
+        {
+            if (canvasEntity == entt::null) 
+                return;
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasSort>(canvasEntity);
+        }
+
+        void MarkAllCanvasSortDirty(entt::registry* registry)
+        {
+            registry->view<ECS::Components::UI::Canvas>().each([&](entt::entity canvasEntity, auto&)
+            {
+                registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasSort>(canvasEntity);
+            });
+            // The canvas SET changed -> canvasOrder ranking is stale; gates the (relatively
+            // expensive) RebuildCanvasOrder pass next time CanvasRenderer::Update runs.
+            registry->ctx().emplace<ECS::Components::UI::DirtyCanvasOrderFlag>();
+        }
+
         entt::entity GetOrEmplaceCanvas(Scripting::UI::Widget*& widget, entt::registry* registry, const char* name, vec2 pos, ivec2 size, bool isRenderTexture)
         {
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -108,6 +144,11 @@ namespace ECS::Util
                 canvasComp.renderTexture = renderer->CreateDataTexture(desc);
                 registry->emplace<ECS::Components::UI::CanvasRenderTargetTag>(entity);
             }
+
+            // A new canvas entering the system shifts canvasOrder for everyone;
+            // mark every canvas (including this one) so all widget sortKeys get their
+            // canvasOrder bits refreshed on the next CanvasRenderer::Update tick.
+            MarkAllCanvasSortDirty(registry);
 
             return entity;
         }
@@ -201,6 +242,9 @@ namespace ECS::Util
             eventInputInfo.onFocusEndEvent = panelTemplateComp.onFocusEndEvent;
             eventInputInfo.onFocusHeldEvent = panelTemplateComp.onFocusHeldEvent;
 
+            // New widget entering the tree -> owning canvas needs sort-key rebuild.
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, parent));
+
             return entity;
         }
 
@@ -285,6 +329,9 @@ namespace ECS::Util
             eventInputInfo.onFocusEndEvent = textTemplate.onFocusEndEvent;
             eventInputInfo.onFocusHeldEvent = textTemplate.onFocusHeldEvent;
 
+            // New widget entering the tree -> owning canvas needs sort-key rebuild.
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, parent));
+
             return entity;
         }
 
@@ -311,6 +358,9 @@ namespace ECS::Util
             widgetComp.type = ECS::Components::UI::WidgetType::Widget;
             widgetComp.scriptWidget = widget;
 
+            // New widget entering the tree -> owning canvas needs sort-key rebuild.
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, parent));
+
             return entity;
         }
 
@@ -318,6 +368,10 @@ namespace ECS::Util
         {
             if (!registry->all_of<ECS::Components::UI::Widget>(entity))
                 return false;
+
+            // Widgets leaving the tree changes the sibling set in their owning canvas.
+            // Mark it dirty BEFORE we mutate the scriptWidget or clear the parent, so FindOwningCanvas still resolves.
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, entity));
 
             auto& transform2DSystem = Transform2DSystem::Get(*registry);
             transform2DSystem.ClearParent(entity);
@@ -382,6 +436,10 @@ namespace ECS::Util
                     CallLuaEvent(eventInputInfo->onFocusBeginEvent, Scripting::UI::UIInputEvent::FocusBegin, widget.scriptWidget);
                 }
             }
+
+            // Focus affects sortKey (priority bits), so both the previously focused and the newly focused widget's canvases need their sortKeys rebuilt.
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, oldFocus));
+            MarkCanvasSortDirty(registry, FindOwningCanvas(registry, entity));
         }
 
         entt::entity GetFocusedWidgetEntity(entt::registry* registry)

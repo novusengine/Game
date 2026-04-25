@@ -40,3 +40,5 @@ CMakeSettings.json
 # Exceptions
 .cache/
 *.patch
+.claude/
+images/

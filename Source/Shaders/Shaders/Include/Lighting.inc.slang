@@ -39,9 +39,6 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
     {
         DirectionalLight light = LoadDirectionalLight(i);
 
-        light.groundAmbientColor.rgb = float3(0.4f, 0.4f, 0.4f);
-        light.skyAmbientColor.rgb = float3(0.4f, 0.4f, 0.4f);
-
         // Ambient Light
         float nDotUp = saturate(dot(pixelVertexData.worldNormal, float3(0.0f, 1.0f, 0.0f))); // Dot product between normal and up direction
         float4 lightAmbientColor = lerp(light.groundAmbientColor, light.skyAmbientColor, nDotUp); // Ambient color based on normal

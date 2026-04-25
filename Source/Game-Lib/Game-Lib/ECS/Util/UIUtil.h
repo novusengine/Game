@@ -36,6 +36,18 @@ namespace ECS::Util
         void FocusWidgetEntity(entt::registry* registry, entt::entity entity);
         entt::entity GetFocusedWidgetEntity(entt::registry* registry);
 
+        // Returns the canvas entity that owns the given widget entity (the widget itself if it IS a canvas).
+        // Walks the scriptWidget->canvasEntity chain; returns entt::null if the entity has no Widget component.
+        entt::entity FindOwningCanvas(entt::registry* registry, entt::entity entity);
+
+        // Mark a single canvas as needing its widget sort-keys recomputed (by CanvasRenderer::Update next frame).
+        // Safe to call with entt::null; becomes a no-op.
+        void MarkCanvasSortDirty(entt::registry* registry, entt::entity canvasEntity);
+
+        // Mark every canvas in the registry as needing sort-keys recomputed. Used when the set of canvases itself
+        // changes (new canvas, canvas SetLayer) so that canvasOrder bits are refreshed everywhere.
+        void MarkAllCanvasSortDirty(entt::registry* registry);
+
         void RefreshText(entt::registry* registry, entt::entity entity, std::string_view newText);
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
         void RefreshClipper(entt::registry* registry, entt::entity entity);
