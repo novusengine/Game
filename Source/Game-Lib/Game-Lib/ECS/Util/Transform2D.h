@@ -287,8 +287,10 @@ namespace ECS::Components
                     prevSibling->nextSibling = nextSibling;
                     nextSibling->prevSibling = prevSibling;
 
+                    // If we were the head of the list, the new head is the next sibling
+                    // (which preserves insertion order: the second-inserted child becomes first).
                     if (parent->firstChild == this)
-                        parent->firstChild = prevSibling;
+                        parent->firstChild = nextSibling;
                 }
 
                 nextSibling = nullptr;
@@ -312,14 +314,20 @@ namespace ECS::Components
             }
             else
             {
-                //insert after the firstchild
-                nextSibling = newParent->firstChild->nextSibling;
-                prevSibling = newParent->firstChild;
+                // Append to the END of the circular sibling list (i.e. insert just before firstChild).
+                // This makes iteration order match insertion order, so siblings are drawn in the order they were created.
+                nextSibling = newParent->firstChild;
+                prevSibling = newParent->firstChild->prevSibling;
 
                 prevSibling->nextSibling = this;
                 nextSibling->prevSibling = this;
             }
             parent = newParent;
+
+            // Assign a unique-within-current-siblings index. Using a monotonic counter on
+            // the parent rather than parent->children guarantees uniqueness even after
+            // detach+reattach cycles (where children decrements but nextSiblingIndex does not).
+            siblingIndex = newParent->nextSiblingIndex++;
         }
 
         //updates transform matrix of the children. does not recalculate matrix
@@ -385,6 +393,21 @@ namespace ECS::Components
         SceneNode2D* nextSibling{};
         SceneNode2D* prevSibling{};
         i32 children{ 0 };
+
+        // Monotonic per-parent counter. Bumped each time a child is attached; used
+        // to assign a unique siblingIndex that never collides with concurrent siblings,
+        // even after detach/reattach cycles on the same parent. u32 so wraparound is
+        // irrelevant at any realistic UI churn rate.
+        u32 nextSiblingIndex{ 0 };
+        // Unique index within this node's current parent. Set by SetParent. Used as
+        // the tiebreaker when two siblings have the same Z in the draw sort.
+        u32 siblingIndex{ 0 };
+
+    public:
+        u32 GetSiblingIndex() const 
+        { 
+            return siblingIndex; 
+        }
     };
 }
 
