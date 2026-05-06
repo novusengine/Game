@@ -4,6 +4,9 @@ local UIComboBox = require("@src/API/UI/ComboBox")
 local UIInputBox = require("@src/API/UI/InputBox")
 local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox")
 local UIStack : StackAPI = require("@src/API/UI/UIStack")
+local UIVerticalLayout = require("@src/API/UI/VerticalLayout")
+local UIHorizontalLayout = require("@src/API/UI/HorizontalLayout")
+local UIGridLayout = require("@src/API/UI/GridLayout")
 
 type ClassInfo =
 {
@@ -269,45 +272,27 @@ local appearanceOptions : AppearanceOptions = {
     }
 }
 
-local function CreateFactionSelectPanel(characterCreationScreen : CharacterCreationScreen, factionInfoIndex : number, currentX : number, currentY : number, width : number, panelHeight : number, maxNumRaces : number)
+local function CreateFactionSelectPanel(characterCreationScreen : CharacterCreationScreen, parent : any, factionInfoIndex : number, columnWidth : number, panelHeight : number, maxNumRaces : number)
     local factionInfo : FactionInfo = factionInfos[factionInfoIndex];
-    
-    -- Create the parent panel
-    local panel : Panel = characterCreationScreen.optionsPanel:NewPanel(currentX, currentY, width, panelHeight, 0, "DebugRed");
-    panel:SetAnchor(0.0, 1.0);
-    panel:SetRelativePoint(0.0, 1.0);
-    panel:SetAlpha(0.0);
 
-    -- Create header text at the top of the column for the faction name.
-    -- Here, 1.0 on the Y-axis is the top of the panel, so we anchor the label there.
-    local nameLabel : Text = panel:NewText(factionInfo.name, 0, 0, 0, "YellowText");
-    nameLabel:SetAnchor(0.5, 1.0);
-    nameLabel:SetRelativePoint(0.5, 1.0);
+    -- Square race icon: constrained by column width and a fraction of available height.
+    -- Approximates the original gapY-spread; spacing is uniform here rather than auto-distributed.
+    local s = math.floor(math.min(columnWidth, panelHeight / (maxNumRaces + 1)));
+    local spacing = math.floor((panelHeight - maxNumRaces * s - 30) / math.max(1, maxNumRaces));
 
-    -- Measure the text height
-    local headerHeight = select(2, nameLabel:GetSize()) + 10;
+    local column = UIVerticalLayout.NewVerticalLayout(parent, 0, 0, columnWidth, panelHeight, 0, {
+        panelTemplate = "DebugRed", alpha = 0.0,
+        alignH = "center",
+        spacing = spacing,
+        paddingTop = 0,
+    });
 
-    -- Calculate how much space is left for icons (below the header)
-    local availableHeight = panelHeight - headerHeight;
+    column:NewText(factionInfo.name, 0, 0, 0, "YellowText");
 
-    -- Determine the size of each square race panel based on maxNumRaces
-    local s = math.min(width, availableHeight / (maxNumRaces + 1));
-    local gapY = (availableHeight - maxNumRaces * s) / (maxNumRaces);
-
-    -- The top "usable" coordinate for icons (just below the header)
-    local topOfIcons = panelHeight - headerHeight;
-
-    -- Create each race panel as a child of the parent panel.
-    -- We'll position them from the top downward, leaving room for the header.
     for i = 1, #factionInfo.races do
         local race = factionInfo.races[i];
 
-        local childX = (width - s) / 2;  -- Center horizontally
-        -- We move downward from topOfIcons by i*(s + gapY), 
-        -- so that the first icon is right under the header, and subsequent icons stack down.
-        local childY = topOfIcons - (i * s + (i - 1) * gapY);
-
-        local raceButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(panel, childX, childY, s, s, 0, {
+        local raceButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(column, 0, 0, s, s, 0, {
             texture = factionInfo.raceAtlasTexture,
             numTexturesX = factionInfo.raceAtlasTextureNumTexturesX,
             numTexturesY = factionInfo.raceAtlasTextureNumTexturesY,
@@ -321,113 +306,102 @@ local function CreateFactionSelectPanel(characterCreationScreen : CharacterCreat
         characterCreationScreen.raceIndexToFactionIndex[raceIndex] = factionInfoIndex;
         characterCreationScreen.raceIndexToFactionLocalRaceIndex[raceIndex] = i;
     end
+
+    return column;
 end
 
-local function CreateRaceSelectPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, optionsWidth : number, panelHeight : number)
+local function CreateRaceSelectPanel(characterCreationScreen : CharacterCreationScreen, parent : any, panelHeight : number)
     characterCreationScreen.buttons.raceButtons = {};
     characterCreationScreen.raceIndexToFactionIndex = {};
     characterCreationScreen.raceIndexToFactionLocalRaceIndex = {};
-    
-    -- Number of factions
-    local numFactions = #factionInfos;
 
-    -- Max races in a faction
+    local numFactions = #factionInfos;
     local maxNumRaces = 0;
     for i = 1, numFactions do
         local numRaces = #factionInfos[i].races;
-        if numRaces > maxNumRaces then
-            maxNumRaces = numRaces;
-        end
+        if numRaces > maxNumRaces then maxNumRaces = numRaces end
     end
 
-    -- Adjustable horizontal padding
+    local optionsWidth = parent:GetWidth();
     local paddingX = 5;
+    local factionSelectWidth = math.floor((optionsWidth - (numFactions + 1) * paddingX) / numFactions);
 
-    -- Calculate each faction column's width after subtracting all padding.
-    local factionSelectWidth = (optionsWidth - (numFactions + 1) * paddingX) / numFactions;
-
-    -- Start at the left padding.
-    local currentX = paddingX;
+    -- Outer H layout splits the row into N equal-width columns with paddingX gutters.
+    local row = UIHorizontalLayout.NewHorizontalLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+        panelTemplate = "DebugRed", alpha = 0.0,
+        spacing = paddingX, paddingLeft = paddingX, paddingRight = paddingX,
+        defaultChildOpts = { modeY = "flex" },  -- columns fill the row height
+    });
 
     for i = 1, numFactions do
-        CreateFactionSelectPanel(characterCreationScreen, i, currentX, currentY, factionSelectWidth, panelHeight, maxNumRaces);
-        -- Move currentX by adding the width of the column plus an extra paddingX.
-        currentX = currentX + factionSelectWidth + paddingX;
+        local column = CreateFactionSelectPanel(characterCreationScreen, row, i, factionSelectWidth, panelHeight, maxNumRaces);
+        row:SetChildOpts(column, { sizeX = factionSelectWidth, modeY = "flex" });
     end
+
+    return row;
 end
 
-local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, optionsWidth : number, panelHeight : number)
+local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreationScreen, parent : any, panelHeight : number)
     characterCreationScreen.buttons.genderButtons = {};
-    
-    -- Create the parent panel
-    local panel : Panel = characterCreationScreen.optionsPanel:NewPanel(0, currentY, optionsWidth, panelHeight, 0, "DebugRed");
-    panel:SetAnchor(0.5, 1.0);
-    panel:SetRelativePoint(0.5, 1.0);
-    panel:SetAlpha(0.0);
 
     local padding = 4;
     local iconSize = panelHeight - padding;
-    local iconOffsetX = (iconSize / 2) + (padding / 2);
-    local iconOffsetY = -padding / 2;
 
-    -- Male button
-    local maleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(panel, -iconOffsetX, iconOffsetY, iconSize, iconSize, 0, {
-        texture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
-        numTexturesX = 2,
-        numTexturesY = 1,
+    -- H layout that shrinks horizontally to fit its 2 icons + spacing. The parent V layout
+    -- centers it horizontally via alignH="center" set by the caller (CreateLeftPanel).
+    -- H layout fills the full parent width; alignH="center" packs the icon pair into the
+    -- middle of the row instead of starting at the left edge.
+    local row = UIHorizontalLayout.NewHorizontalLayout(parent, 0, 0, parent:GetWidth(), panelHeight, 0, {
+        panelTemplate = "DebugRed", alpha = 0.0,
+        spacing = padding, alignV = "center", alignH = "center",
     });
-    maleButton:SetAnchor(0.5, 1.0);
-    maleButton:SetRelativePoint(0.5, 1.0);
+
+    local maleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
+        texture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
+        numTexturesX = 2, numTexturesY = 1,
+    });
     maleButton:SetOnMouseUp(function(eventID, widget, ...)
         characterCreationScreen:SetGender(1);
     end);
     table.insert(characterCreationScreen.buttons.genderButtons, maleButton);
 
-    -- Female button
-    local femaleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(panel, iconOffsetX, iconOffsetY, iconSize, iconSize, 0, {
+    local femaleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
         texture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
-        numTexturesX = 2,
-        numTexturesY = 1,
-        atlasIndex = 2,
+        numTexturesX = 2, numTexturesY = 1, atlasIndex = 2,
     });
-    femaleButton:SetAnchor(0.5, 1.0);
-    femaleButton:SetRelativePoint(0.5, 1.0);
     femaleButton:SetOnMouseUp(function(eventID, widget, ...)
         characterCreationScreen:SetGender(2);
     end);
     table.insert(characterCreationScreen.buttons.genderButtons, femaleButton);
+
+    return row;
 end
 
-local function CreateClassSelectPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, optionsWidth : number, panelHeight : number, maxIconSize : number)
+local function CreateClassSelectPanel(characterCreationScreen : CharacterCreationScreen, parent : any, panelHeight : number, maxIconSize : number)
     characterCreationScreen.buttons.classButtons = {};
-    
-    -- Create the parent panel
-    local panel : Panel = characterCreationScreen.optionsPanel:NewPanel(0, currentY, optionsWidth, panelHeight, 0, "DebugRed");
-    panel:SetAnchor(0.5, 1.0);
-    panel:SetRelativePoint(0.5, 1.0);
-    panel:SetAlpha(0.0);
 
-    local padding = 5;  -- adjustable padding variable
-
+    -- Compute per-cell size from class count + maxIconSize so the grid still hits the target
+    -- icon dimensions; GridLayout positions the cells with cellAlign="center".
     local numClasses = #classInfos;
+    local padding = 5;
     local columns = math.ceil(math.sqrt(numClasses));
     local rows = math.ceil(numClasses / columns);
+    local optionsWidth = parent:GetWidth();
     local availableWidthPerIcon = (optionsWidth - (columns - 1) * padding) / columns;
     local availableHeightPerIcon = (panelHeight - (rows - 1) * padding) / rows;
-    local iconSize = math.floor(math.min(availableWidthPerIcon, availableHeightPerIcon));
-    iconSize = math.min(iconSize, maxIconSize);
+    local iconSize = math.min(math.floor(math.min(availableWidthPerIcon, availableHeightPerIcon)), maxIconSize);
 
-    local totalGridWidth = columns * iconSize + (columns - 1) * padding;
-    local xOffset = (optionsWidth - totalGridWidth) / 2;
-    local totalGridHeight = rows * iconSize + (rows - 1) * padding;
-    local yOffset = (panelHeight - totalGridHeight) / 2;
+    local grid = UIGridLayout.NewGridLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+        panelTemplate = "DebugRed", alpha = 0.0,
+        columns = columns,
+        cellSizeX = iconSize, cellSizeY = iconSize,
+        spacing = padding,
+        cellAlign = "center",
+        gridAlignH = "center", gridAlignV = "center",
+    });
 
     for i, classInfo in classInfos do
-        local col = (i - 1) % columns;
-        local row = math.floor((i - 1) / columns);
-        local x = xOffset + col * (iconSize + padding);
-        local y = yOffset + (rows - 1 - row) * (iconSize + padding);
-        local classButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(panel, x, y, iconSize, iconSize, 0, {
+        local classButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(grid, 0, 0, iconSize, iconSize, 0, {
             texture = classInfo.iconAtlasTexture,
             numTexturesX = classInfo.iconAtlasTextureNumTexturesX,
             numTexturesY = classInfo.iconAtlasTextureNumTexturesY,
@@ -439,85 +413,88 @@ local function CreateClassSelectPanel(characterCreationScreen : CharacterCreatio
         end);
         table.insert(characterCreationScreen.buttons.classButtons, classButton);
     end
+
+    return grid;
 end
 
-local function CreateAppearanceSelectPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, optionsWidth : number, panelHeight : number)
-    -- Create the parent panel
-    local panel : Panel = characterCreationScreen.optionsPanel:NewPanel(0, currentY, optionsWidth, panelHeight, 0, "DebugRed");
-    panel:SetAnchor(0.5, 1.0);
-    panel:SetRelativePoint(0.5, 1.0);
-    panel:SetAlpha(0.0);
-
+local function CreateAppearanceSelectPanel(characterCreationScreen : CharacterCreationScreen, parent : any, panelHeight : number)
+    local optionsWidth = parent:GetWidth();
     local padding = 5;
-    local currentY = 0;
-    local height = (panelHeight / #appearanceOptions) - padding;
-    local width = 200;
-    
+    local rowHeight = math.floor((panelHeight / #appearanceOptions) - padding);
+    local comboBoxWidth = 200;
+
+    local panel = UIVerticalLayout.NewVerticalLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+        panelTemplate = "DebugRed", alpha = 0.0,
+        spacing = padding,
+    });
+
+    -- World position used to anchor the combobox dropdowns to the right of the options panel.
+    -- Computed up-front because the combobox.selectionPanel positioning is independent of the row layout.
     local sidePanelPosX, sidePanelPosY = panel:GetWorldPos();
     sidePanelPosX += optionsWidth;
     sidePanelPosY += panelHeight;
 
-    for i=1, #appearanceOptions do
-        local availableSpaceForName = optionsWidth - width;
+    for i = 1, #appearanceOptions do
+        local row = UIHorizontalLayout.NewHorizontalLayout(panel, 0, 0, optionsWidth, rowHeight, 0, {
+            panelTemplate = "DebugRed", alpha = 0.0,
+            alignV = "center",
+            paddingLeft = 5, paddingRight = padding,
+        });
+        panel:SetChildOpts(row, { sizeY = rowHeight, modeX = "flex" });
 
-        local optionName : Text = panel:NewText(appearanceOptions[i].name, availableSpaceForName/2.0, currentY, 0, "YellowText");
-        optionName:SetAnchor(0.0, 1.0);
-        optionName:SetRelativePoint(0.5, 1.0);
-
-        local comboBox = UIComboBox.NewComboBox(panel, -padding, currentY, width, height, 0, {
+        -- Order matters: create label, spacer (flex, fills remaining), then combobox at the right.
+        local optionName : Text = row:NewText(appearanceOptions[i].name, 0, 0, 0, "YellowText");
+        local spacer = row:NewWidget(0, 0, 0);
+        local comboBox = UIComboBox.NewComboBox(row, 0, 0, comboBoxWidth, rowHeight, 0, {
             options = appearanceOptions[i].options,
             disableButtons = true,
         });
-        comboBox:SetAnchor(1.0, 1.0);
-        comboBox:SetRelativePoint(1.0, 1.0);
+
+        row:SetChildOpts(spacer,   { modeX = "flex", weightX = 1 });
+        row:SetChildOpts(comboBox, { sizeX = comboBoxWidth });
 
         comboBox.selectionPanel:SetWorldPos(sidePanelPosX, sidePanelPosY);
         comboBox.selectionPanel:SetAnchor(0.0, 0.0);
         comboBox.selectionPanel:SetRelativePoint(0.0, 1.0);
-
-        currentY -= height + padding;
     end
+
+    return panel;
 end
 
 local function CreateLeftPanel(characterCreationScreen : CharacterCreationScreen)
-    -- Options panel
     local optionsWidth = 400;
     local optionsHeight = 980;
-    characterCreationScreen.optionsPanel = characterCreationScreen.widget:NewPanel(20, -80, optionsWidth, optionsHeight, 0, "DialogBox");
+    local maxIconSize = 80;
+    local spacing = 10;
+
+    local raceSelectHeight   = 400;
+    local genderSelectHeight = 80;
+    local classSelectHeight  = 250;
+    -- Appearance fills whatever's left after the three above + spacing gutters.
+    local appearanceHeight = optionsHeight - raceSelectHeight - genderSelectHeight - classSelectHeight - spacing * 3;
+
+    -- optionsPanel is a V layout: subpanels become its children stacked top-down.
+    characterCreationScreen.optionsPanel = UIVerticalLayout.NewVerticalLayout(
+        characterCreationScreen.widget, 20, -80, optionsWidth, optionsHeight, 0,
+        { panelTemplate = "DialogBox", spacing = spacing });
     characterCreationScreen.optionsPanel:SetAnchor(0.0, 1.0);
     characterCreationScreen.optionsPanel:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.optionsPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    characterCreationScreen.optionsPanel:SetBorderSize(2);
 
-    local currentY = 0;
-    local maxIconSize = 80;
+    local optionsPanel = characterCreationScreen.optionsPanel;
 
-    -- Race select panel
-    local raceSelectHeight = 400;
-    CreateRaceSelectPanel(characterCreationScreen, currentY, optionsWidth, raceSelectHeight);
-    currentY -= raceSelectHeight;
+    local raceSelect = CreateRaceSelectPanel(characterCreationScreen, optionsPanel, raceSelectHeight);
+    optionsPanel:SetChildOpts(raceSelect, { sizeY = raceSelectHeight, modeX = "flex" });
 
-    -- Padding
-    currentY -= 10;
+    local genderSelect = CreateGenderSelectPanel(characterCreationScreen, optionsPanel, genderSelectHeight);
+    optionsPanel:SetChildOpts(genderSelect, { sizeY = genderSelectHeight, alignH = "center" });
 
-    -- Gender select panel
-    local genderSelectHeight = 80;
-    CreateGenderSelectPanel(characterCreationScreen, currentY, optionsWidth, genderSelectHeight);
-    currentY -= genderSelectHeight;
+    local classSelect = CreateClassSelectPanel(characterCreationScreen, optionsPanel, classSelectHeight, maxIconSize);
+    optionsPanel:SetChildOpts(classSelect, { sizeY = classSelectHeight, modeX = "flex" });
 
-    -- Padding
-    currentY -= 10;
-
-    -- Class select panel
-    local classSelectHeight = 250;
-    CreateClassSelectPanel(characterCreationScreen, currentY, optionsWidth, classSelectHeight, maxIconSize);
-    currentY -= classSelectHeight;
-
-    -- Padding
-    currentY -= 10;
-
-    -- Appearance select panel
-    local appearanceSelectHeight = optionsHeight - math.abs(currentY); -- currentY to the end
-    CreateAppearanceSelectPanel(characterCreationScreen, currentY, optionsWidth, appearanceSelectHeight);
-    currentY -= appearanceSelectHeight;
+    local appearance = CreateAppearanceSelectPanel(characterCreationScreen, optionsPanel, appearanceHeight);
+    optionsPanel:SetChildOpts(appearance, { sizeY = appearanceHeight, modeX = "flex" });
 end
 
 local function CreateMiddlePanel(characterCreationScreen : CharacterCreationScreen)
@@ -532,6 +509,8 @@ local function CreateMiddlePanel(characterCreationScreen : CharacterCreationScre
     });
     characterCreationScreen.nameInputBox.inputBox:SetAnchor(0.5, 0.0);
     characterCreationScreen.nameInputBox.button:SetRelativePoint(0.5, 0.0);
+    characterCreationScreen.nameInputBox.button.panel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    characterCreationScreen.nameInputBox.button.panel:SetBorderSize(2);
 end
 
 local function UpdateScrollBoxBasedOnContent(scrollBox : ScrollBox, description : Text)
@@ -560,6 +539,8 @@ local function CreateFactionInfoPanel(characterCreationScreen : CharacterCreatio
     local factionInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, factionInfoHeight, 0, "DialogBox");
     factionInfoPanel:SetAnchor(1.0, 1.0);
     factionInfoPanel:SetRelativePoint(1.0, 1.0);
+    factionInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    factionInfoPanel:SetBorderSize(2);
 
     -- Faction icon
     local factionIconSize = 50;
@@ -596,6 +577,8 @@ local function CreateFactionInfoPanel(characterCreationScreen : CharacterCreatio
     characterCreationScreen.selectedFactionDescription:SetRelativePoint(0.0, 1.0);
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedFactionDescriptionScrollBox, characterCreationScreen.selectedFactionDescription);
+
+    return factionInfoPanel;
 end
 
 local function CreateRaceInfoPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, characterInfoWidth : number, raceInfoHeight : number)
@@ -605,6 +588,8 @@ local function CreateRaceInfoPanel(characterCreationScreen : CharacterCreationSc
     local raceInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, raceInfoHeight, 0, "DialogBox");
     raceInfoPanel:SetAnchor(1.0, 1.0);
     raceInfoPanel:SetRelativePoint(1.0, 1.0);
+    raceInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    raceInfoPanel:SetBorderSize(2);
 
     -- Race icon
     local raceIconSize = 50;
@@ -639,6 +624,8 @@ local function CreateRaceInfoPanel(characterCreationScreen : CharacterCreationSc
     characterCreationScreen.selectedRaceDescription:SetRelativePoint(0.0, 1.0);
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedRaceDescriptionScrollBox, characterCreationScreen.selectedRaceDescription);
+
+    return raceInfoPanel;
 end
 
 local function CreateClassInfoPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, characterInfoWidth : number, classInfoHeight : number)
@@ -647,6 +634,8 @@ local function CreateClassInfoPanel(characterCreationScreen : CharacterCreationS
     local classInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, classInfoHeight, 0, "DialogBox");
     classInfoPanel:SetAnchor(1.0, 1.0);
     classInfoPanel:SetRelativePoint(1.0, 1.0);
+    classInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    classInfoPanel:SetBorderSize(2);
 
     -- Class icon
     local classIconSize = 50;
@@ -681,39 +670,38 @@ local function CreateClassInfoPanel(characterCreationScreen : CharacterCreationS
     characterCreationScreen.selectedClassDescription:SetRelativePoint(0.0, 1.0);
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedClassDescriptionScrollBox, characterCreationScreen.selectedClassDescription);
+
+    return classInfoPanel;
 end
 
 local function CreateRightPanel(characterCreationScreen : CharacterCreationScreen)
-    -- Character info panel
     local characterInfoWidth = 430;
     local characterInfoPanelHeight = 900;
-    characterCreationScreen.characterInfoPanel = characterCreationScreen.widget:NewPanel(-20, -40, characterInfoWidth, characterInfoPanelHeight, 0, "DialogBox");
+    local spacing = 15;
+
+    local factionInfoHeight = 250;
+    local raceInfoHeight = 410;
+    local classInfoHeight = characterInfoPanelHeight - factionInfoHeight - raceInfoHeight - spacing * 2;
+
+    -- characterInfoPanel becomes a V layout. The three info subpanels stack with `spacing` between them.
+    -- alpha=0.2 preserves the dialog tint that the original SetAlpha(0.2) set on the container.
+    characterCreationScreen.characterInfoPanel = UIVerticalLayout.NewVerticalLayout(
+        characterCreationScreen.widget, -20, -40, characterInfoWidth, characterInfoPanelHeight, 0,
+        { panelTemplate = "DialogBox", alpha = 0.2, spacing = spacing });
     characterCreationScreen.characterInfoPanel:SetAnchor(1.0, 1.0);
     characterCreationScreen.characterInfoPanel:SetRelativePoint(1.0, 1.0);
-    characterCreationScreen.characterInfoPanel:SetAlpha(0.2);
 
-    local currentY = 0;
+    local right = characterCreationScreen.characterInfoPanel;
 
-    -- Faction info panel
-    local factionInfoHeight = 250;
-    CreateFactionInfoPanel(characterCreationScreen, currentY, characterInfoWidth, factionInfoHeight);
-    currentY -= factionInfoHeight;
+    -- Sub-info functions still take (currentY, width, height) but currentY is ignored —
+    -- the V layout owns positioning. Each returns the panel it created so we can SetChildOpts.
+    local factionPanel = CreateFactionInfoPanel(characterCreationScreen, 0, characterInfoWidth, factionInfoHeight);
+    local racePanel    = CreateRaceInfoPanel(characterCreationScreen, 0, characterInfoWidth, raceInfoHeight);
+    local classPanel   = CreateClassInfoPanel(characterCreationScreen, 0, characterInfoWidth, classInfoHeight);
 
-    -- Padding
-    currentY -= 15;
-
-    -- Race info panel
-    local raceInfoHeight = 410;
-    CreateRaceInfoPanel(characterCreationScreen, currentY, characterInfoWidth, raceInfoHeight);
-    currentY -= raceInfoHeight;
-
-    -- Padding
-    currentY -= 15;
-
-    -- Class info panel
-    local classInfoHeight = characterInfoPanelHeight - math.abs(currentY); -- currentY to the end
-    CreateClassInfoPanel(characterCreationScreen, currentY, characterInfoWidth, classInfoHeight);
-    currentY -= classInfoHeight;
+    right:SetChildOpts(factionPanel, { sizeY = factionInfoHeight, modeX = "flex" });
+    right:SetChildOpts(racePanel,    { sizeY = raceInfoHeight,    modeX = "flex" });
+    right:SetChildOpts(classPanel,   { sizeY = classInfoHeight,   modeX = "flex" });
 
     -- Accept button
     local acceptButton = UIButton.NewButton(characterCreationScreen.widget, -20, 80, 200, 40, 0, {
@@ -877,6 +865,15 @@ local function CreateCharacterCreationScreen(stack : Stack)
 
     -- Methods
     characterCreationScreen = CreateCharacterCreationScreenMethods(characterCreationScreen);
+
+    -- Force the layouts to settle before the first SetText calls below. Text widgets emit
+    -- their GPU vertices using the parent's world position at SetText time, and a parent
+    -- transform change does not propagate DirtyWidgetTransform to descendants — so without
+    -- this, descriptions whose owning sub-panel moves during the first layout pass end up
+    -- with stale vertices and stay invisible until the user manually re-triggers SetText
+    -- (e.g. by selecting a different race/class).
+    characterCreationScreen.optionsPanel:Refresh();
+    characterCreationScreen.characterInfoPanel:Refresh();
 
     -- Default options
     characterCreationScreen:SetRace(1);

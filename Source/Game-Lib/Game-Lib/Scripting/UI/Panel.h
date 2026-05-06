@@ -27,6 +27,8 @@ namespace Scripting::UI
         i32 SetTexCoords(Zenith* zenith, Panel* panel);
         i32 SetColor(Zenith* zenith, Panel* panel);
         i32 SetAlpha(Zenith* zenith, Panel* panel);
+        i32 SetBorderColor(Zenith* zenith, Panel* panel);
+        i32 SetBorderSize(Zenith* zenith, Panel* panel);
     };
 
     static LuaRegister<Panel> panelMethods[] =
@@ -45,6 +47,9 @@ namespace Scripting::UI
         { "SetTexCoords", PanelMethods::SetTexCoords },
 
         { "SetColor", PanelMethods::SetColor },
-        { "SetAlpha", PanelMethods::SetAlpha }
+        { "SetAlpha", PanelMethods::SetAlpha },
+
+        { "SetBorderColor", PanelMethods::SetBorderColor },
+        { "SetBorderSize", PanelMethods::SetBorderSize }
     };
 }

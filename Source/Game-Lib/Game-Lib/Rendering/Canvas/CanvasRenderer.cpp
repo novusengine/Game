@@ -5,6 +5,7 @@
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
+#include "Game-Lib/ECS/Components/UI/LayoutEventInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Text.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
@@ -15,7 +16,10 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Scripting/Zenith.h>
 
 #include <Input/InputManager.h>
 
@@ -64,6 +68,38 @@ void CanvasRenderer::Update(f32 deltaTime)
     // UI stuff
     entt::registry* uiRegistry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& transformSystem2D = ECS::Transform2DSystem::Get(*uiRegistry);
+
+    // Lua layouts: refresh any whose Lua-side state was invalidated since the last frame.
+    // Layouts are lazy-refresh-on-read in Lua (LinearLayout/GridLayout), so they otherwise
+    // never run unless something explicitly reads GetMeasured*. The refresh closure (set
+    // via Widget:RegisterLayoutRefresh) runs `self:Refresh()` which writes positions/sizes
+    // via SetPos/SetWidth/SetHeight; those calls cascade into DirtyCanvasTag /
+    // DirtyCanvasSort / DirtyWidgetData and are picked up by the passes below.
+    {
+        auto layoutView = uiRegistry->view<LayoutEventInfo, DirtyLayoutTag>();
+        if (layoutView.begin() != layoutView.end())
+        {
+            ZoneScopedN("CanvasRenderer::Update::LayoutRefresh");
+            ::Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+            if (zenith != nullptr)
+            {
+                // TODO(layouts perf): each invalidated layout costs one Lua PCall. For
+                // deeply nested UI where a single mutation cascades up N levels, that's N
+                // PCalls per frame. Profile if it shows up; the obvious optimisation is to
+                // gather all dirty refresh closures into a single PCall (push the closures
+                // as a stack of values and let one Lua function dispatch them).
+                for (entt::entity entity : layoutView)
+                {
+                    i32 ref = layoutView.get<LayoutEventInfo>(entity).onLayoutRefresh;
+                    if (ref == -1) continue;
+
+                    zenith->GetRawI(LUA_REGISTRYINDEX, ref);
+                    zenith->PCall(0, 0);
+                }
+                uiRegistry->clear<DirtyLayoutTag>();
+            }
+        }
+    }
 
     uiRegistry->view<Widget, DestroyWidget>().each([&](entt::entity entity, Widget& widget)
     {
@@ -766,14 +802,20 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
         panel.gpuDataIndex = _widgetDrawDatas.Add();
     }
     vec2 size = transform.GetSize();
-    vec2 cornerRadius = vec2(panelTemplate.cornerRadius / size.x, panelTemplate.cornerRadius / size.y);
+    vec2 cornerRadius = (size.x > 0.0f && size.y > 0.0f)
+        ? vec2(panelTemplate.cornerRadius / size.x, panelTemplate.cornerRadius / size.y)
+        : vec2(0.0f);
+    vec2 normalizedBorderSize = (panelTemplate.borderSize > 0.0f && size.x > 0.0f && size.y > 0.0f)
+        ? vec2(panelTemplate.borderSize / size.x, panelTemplate.borderSize / size.y)
+        : vec2(0.0f);
 
     // Update draw data
     auto& drawData = _widgetDrawDatas[panel.gpuDataIndex];
     drawData.packed0.x = static_cast<u32>(WidgetDrawType::Panel);
     drawData.packed0.y = static_cast<u32>(panel.gpuVertexIndex); // vertexBase
+    drawData.packed1.y = panelTemplate.borderColor.ToRGBA32();
     drawData.packed1.z = panelTemplate.color.ToRGBA32();
-    drawData.cornerRadiusAndBorder = vec4(cornerRadius, 0.0f, 0.0f);
+    drawData.cornerRadiusAndBorder = vec4(cornerRadius, normalizedBorderSize);
 
     // Update textures
     u16 textureIndex = 0;

@@ -7,10 +7,10 @@
 struct WidgetDrawData
 {
     uint4 packed0; // x: type, y: vertexBase, z: clipMaskTextureIndex, w: worldPositionIndex (int reinterpret)
-    uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
+    uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
     float4 texCoord;            // Panel only
     float4 slicingCoord;        // Panel only
-    float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius. Text: x: borderSize, zw: unitRange
+    float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
     uint4 packed2; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
 };
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<WidgetDrawData> _widgetDrawDatas;
@@ -95,21 +95,49 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
     color.a = max(color.a, additiveIntensity);
 
     float2 cornerRadius = drawData.cornerRadiusAndBorder.xy;
+    float2 normalizedBorderSize = drawData.cornerRadiusAndBorder.zw;
 
     // Calculate distance to nearest edge
     float2 edgeDist = min(uv, 1.0 - uv);
 
-    if (cornerRadius.x > 0 && cornerRadius.y > 0)
-    {
-        if (edgeDist.x < cornerRadius.x && edgeDist.y < cornerRadius.y)
-        {
-            float2 normalizedDist = 1.0 - ((edgeDist) / cornerRadius);
-            float distToCorner = length(normalizedDist);
+    bool inCornerZone = cornerRadius.x > 0 && cornerRadius.y > 0
+        && edgeDist.x < cornerRadius.x && edgeDist.y < cornerRadius.y;
 
-            if (distToCorner > 1.0)
-            {
-                discard;
-            }
+    if (inCornerZone)
+    {
+        float2 normalizedDist = 1.0 - (edgeDist / cornerRadius);
+        float distToCorner = length(normalizedDist);
+
+        if (distToCorner > 1.0)
+        {
+            discard;
+        }
+    }
+
+    if (normalizedBorderSize.x > 0.0 || normalizedBorderSize.y > 0.0)
+    {
+        float4 borderColor = PackedUnormsToFloat4(drawData.packed1.y);
+        bool inBorder;
+
+        if (inCornerZone)
+        {
+            // Corner zone: pixel is in the border ring if it lies outside
+            // the inner corner ellipse (radii shrunken by borderSize).
+            float2 innerR = max(cornerRadius - normalizedBorderSize, float2(1e-5, 1e-5));
+            float2 toInner = 1.0 - edgeDist / innerR;
+            bool insideInnerBox = toInner.x > 0.0 && toInner.y > 0.0;
+            inBorder = !insideInnerBox || length(toInner) > 1.0;
+        }
+        else
+        {
+            inBorder = edgeDist.x < normalizedBorderSize.x
+                || edgeDist.y < normalizedBorderSize.y;
+        }
+
+        if (inBorder)
+        {
+            color.rgb = lerp(color.rgb, borderColor.rgb, borderColor.a);
+            color.a   = max(color.a, borderColor.a);
         }
     }
 

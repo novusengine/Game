@@ -109,10 +109,10 @@ private:
     {
     public:
         uvec4 packed0 = uvec4(0, 0, 0, 0xFFFFFFFFu); // x: type, y: vertexBase, z: clipMaskTextureIndex, w: worldPositionIndex (i32 reinterpret as -1)
-        uvec4 packed1 = uvec4(0, 0, 0, 0); // Panel: x: textureIndex|additiveTextureIndex, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
+        uvec4 packed1 = uvec4(0, 0, 0, 0); // Panel: x: textureIndex|additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
         vec4 texCoord = vec4(0.0f);                  // Panel only
         vec4 slicingCoord = vec4(0.0f);              // Panel only
-        vec4 cornerRadiusAndBorder = vec4(0.0f);     // Panel: xy: cornerRadius. Text: x: borderSize, zw: unitRange
+        vec4 cornerRadiusAndBorder = vec4(0.0f);     // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
         hvec4 clipRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f);     // xy: min, zw: max
         hvec4 clipMaskRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
     };

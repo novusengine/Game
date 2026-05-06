@@ -1,9 +1,12 @@
 #include "UIHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
+#include "Game-Lib/ECS/Components/UI/LayoutEventInfo.h"
 #include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
+#include "Game-Lib/ECS/Util/UIRefCleanup.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
@@ -33,6 +36,14 @@ namespace Scripting::UI
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         registry->ctx().emplace<ECS::Singletons::UISingleton>();
         registry->ctx().emplace<ECS::Singletons::InputSingleton>();
+
+        // Release Lua-registry refs (SetOnMouseUp, RegisterLayoutRefresh, etc.)
+        // when their owning entities are destroyed; otherwise the registry slot
+        // leaks for the lifetime of the Lua state.
+        registry->on_destroy<ECS::Components::UI::EventInputInfo>()
+            .connect<&ECS::Util::UIRefCleanup::ReleaseEventInputInfoRefs>();
+        registry->on_destroy<ECS::Components::UI::LayoutEventInfo>()
+            .connect<&ECS::Util::UIRefCleanup::ReleaseLayoutEventInfoRefs>();
 
         // UI
         LuaMethodTable::Set(zenith, uiGlobalMethods, "UI");

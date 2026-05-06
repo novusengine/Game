@@ -5,159 +5,131 @@ local UISlider = require("@src/API/UI/Slider")
 local UICheckbox = require("@src/API/UI/Checkbox")
 local UIComboBox = require("@src/API/UI/ComboBox")
 local UIInputBox = require("@src/API/UI/InputBox")
+local UIVerticalLayout = require("@src/API/UI/VerticalLayout")
+local UIHorizontalLayout = require("@src/API/UI/HorizontalLayout")
 local OptionsContext = require("@src/API/OptionsContext")
 
-local function CreateOption(optionsMenu, currentY, option)
+local function CreateOption(parent : any, option)
     local optionType = option.type;
     local optionName = option.name;
     local optionValue = option.value;
-    local optionDefaultValue = option.defaultValue;
 
-    local currentX = 0;
+    -- Each option is a horizontal row: label first, then control(s). Row height = 40 to fit
+    -- the tallest control (input box / combo box). alignV="center" vertically centers everything.
+    local rowHeight = 40;
+    local row = UIHorizontalLayout.NewHorizontalLayout(parent, 0, 0, parent:GetWidth(), rowHeight, 0, {
+        alignV = "center", spacing = 5,
+    });
+    parent:SetChildOpts(row, { sizeY = rowHeight, modeX = "flex" });
 
-    local optionText = optionsMenu.mainPanelContent.content:NewText(optionName, currentX, currentY, 0, "DefaultButtonText");
-    optionText:SetRelativePoint(0.0, 1.0);
-    currentX += select(1, optionText:GetSize()) + 5;
+    row:NewText(optionName, 0, 0, 0, "DefaultButtonText");
 
     if (optionType == OptionType.InputBox) then
-        local inputBox = UIInputBox.NewInputBox(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 40, 0, {
+        local inputBox = UIInputBox.NewInputBox(row, 0, 0, 200, 40, 0, {
             defaultText = optionValue,
         });
-        inputBox.button:SetRelativePoint(0.0, 1.0);
+        row:SetChildOpts(inputBox, { sizeX = 200 });
 
         inputBox:SetOnSubmit(function(inputBoxTable)
             local previousValue = option.value;
-
             option.value = inputBoxTable.text;
-
             local result = option:InvokeOnValueChanged(inputBoxTable.text);
             if (not result) then
-                option.value = previousValue; -- Revert to previous state
-                return false; -- Returning false will prevent the value from changing
+                option.value = previousValue;
+                return false;
             end
-
-            return true; -- Returning false will prevent the value from changing
+            return true;
         end)
     elseif (optionType == OptionType.Checkbox) then
-        local checkbox = UICheckbox.NewCheckbox(optionsMenu.mainPanelContent.content, currentX, currentY, 24, 24, 0,
-        {
+        local checkbox = UICheckbox.NewCheckbox(row, 0, 0, 24, 24, 0, {
             backgroundTemplate = "DefaultCheckboxBackground",
             fillTemplate = "DefaultCheckboxFill",
             isChecked = optionValue,
         });
-        checkbox.background:SetRelativePoint(0.0, 1.0);
+        row:SetChildOpts(checkbox, { sizeX = 24 });
 
         checkbox:SetOnValueChanged(function(checkboxTable, state)
             local previousState = option.value;
-
             option.value = state;
-
             local result = option:InvokeOnValueChanged(state);
             if (not result) then
-                option.value = previousState; -- Revert to previous state
-                return false; -- Returning false will prevent the value from changing
+                option.value = previousState;
+                return false;
             end
-
-            return true; -- Returning false will prevent the value from changing
+            return true;
         end)
     elseif (optionType == OptionType.Slider) then
-        local valueText = optionsMenu.mainPanelContent.content:NewText(optionValue, currentX, currentY, 0, "DefaultButtonText");
-        valueText:SetRelativePoint(0.0, 1.0);
-        currentX += select(1, valueText:GetSize()) + 20;
-
-        local minValueText = optionsMenu.mainPanelContent.content:NewText(option.settings.Min, currentX, currentY, 0, "DefaultButtonText");
-        minValueText:SetRelativePoint(0.0, 1.0);
-        currentX += select(1, minValueText:GetSize()) + 5;
-
-        local slider = UISlider.NewSlider(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 25, 0, {
+        local valueText    = row:NewText(optionValue, 0, 0, 0, "DefaultButtonText");
+        local minValueText = row:NewText(option.settings.Min, 0, 0, 0, "DefaultButtonText");
+        local slider = UISlider.NewSlider(row, 0, 0, 200, 25, 0, {
             backgroundTemplate = "DefaultSliderBackground",
             fillTemplate = "DefaultSliderFill",
             Min = option.settings.Min,
             Max = option.settings.Max,
             Step = option.settings.Step,
         });
-        slider.background:SetRelativePoint(0.0, 1.0);
         slider:SetValue(optionValue);
-
-        local maxValueText = optionsMenu.mainPanelContent.content:NewText(option.settings.Max, currentX + 200, currentY, 0, "DefaultButtonText");
-        maxValueText:SetRelativePoint(0.0, 1.0);
-        currentX += select(1, maxValueText:GetSize()) + 5;
-
-        --slider:SetProgress(optionValue);
-        --slider:SetMinMax(option.settings.Min, option.settings.Max, option.settings.Step);
+        local maxValueText = row:NewText(option.settings.Max, 0, 0, 0, "DefaultButtonText");
+        row:SetChildOpts(slider, { sizeX = 200 });
 
         slider:SetOnValueChanged(function(sliderTable, value)
             local previousValue = option.value;
-
             option.value = value;
-
             local result = option:InvokeOnValueChanged(value);
             if (not result) then
-                option.value = previousValue; -- Revert to previous state
-                return false; -- Returning false will prevent the value from changing
+                option.value = previousValue;
+                return false;
             end
-
-            valueText:SetText(value); -- Update text with new value
-            return true; -- Returning false will prevent the value from changing
+            valueText:SetText(value);
+            return true;
         end)
     elseif (optionType == OptionType.ComboBox) then
-        local comboBox = UIComboBox.NewComboBox(optionsMenu.mainPanelContent.content, currentX, currentY, 200, 40, 0, {
+        local comboBox = UIComboBox.NewComboBox(row, 0, 0, 200, 40, 0, {
             options = option.settings.options,
             disableButtons = true,
         });
-        comboBox.button:SetRelativePoint(0.0, 1.0);
+        row:SetChildOpts(comboBox, { sizeX = 200 });
         comboBox:SelectOption(optionValue);
 
         comboBox:SetOnValueChanged(function(comboBoxTable, index)
             local previousValue = option.value;
-
             option.value = index;
-
             local result = option:InvokeOnValueChanged(index);
             if (not result) then
-                option.value = previousValue; -- Revert to previous state
-                return false; -- Returning false will prevent the value from changing
+                option.value = previousValue;
+                return false;
             end
-
-            return true; -- Returning false will prevent the value from changing
+            return true;
         end)
     end
-
-    currentY -= select(2, optionText:GetSize()) + 5;
-    return currentY;
 end
 
 local function UpdateMainPanel(optionsMenu, category, group, section)
-    -- Set title
     local title = category.name;
-    if (group) then
-        title = title .. "/" .. group.name;
-    end
-    if (section) then
-        title = title .. "/" .. section.name;
-    end
+    if (group) then title = title .. "/" .. group.name end
+    if (section) then title = title .. "/" .. section.name end
     optionsMenu.mainPanelTitle:SetText(title);
 
-    -- Clear content
+    -- Clear previous content (rebuilds the V layout from scratch each navigation).
     for i, child in optionsMenu.mainPanelContent.content:GetChildrenRecursive() do
         UI.DestroyWidget(child);
     end
 
-    -- Create new content
-    local currentY = 0;
+    local content = optionsMenu.mainPanelContent.content;
+    local layout = UIVerticalLayout.NewVerticalLayout(content, 0, 0, content:GetWidth(), 0, 0, {
+        heightMode = "shrink", spacing = 5, paddingTop = 5,
+    });
+    layout:SetAnchor(0.0, 1.0);
+    layout:SetRelativePoint(0.0, 1.0);
 
     for i, option in section.options.list do
-        currentY = CreateOption(optionsMenu, currentY, option);
+        CreateOption(layout, option);
     end
 
-    -- Update scrollbox
-    local currentHeight = math.abs(currentY);
-    if (currentHeight > optionsMenu.mainPanelContent.content:GetHeight()) then
-        optionsMenu.mainPanelContent:SetVerticalScrollBarVisible(true);
-    else
-        optionsMenu.mainPanelContent:SetVerticalScrollBarVisible(false);
-    end
-    optionsMenu.mainPanelContent:SetContentHeight(currentHeight+5);
+    -- Implicit Refresh via GetMeasuredHeight feeds the scrollbox.
+    local currentHeight = layout:GetMeasuredHeight();
+    optionsMenu.mainPanelContent:SetVerticalScrollBarVisible(currentHeight > optionsMenu.mainPanelContent.content:GetHeight());
+    optionsMenu.mainPanelContent:SetContentHeight(currentHeight + 5);
 end
 
 function ToggleEscapeMenu(panelWrapper)
@@ -313,50 +285,43 @@ local function CreateSidePanel(parent : Panel, width : number, optionsMenu)
     optionsMenu.sidePanel:SetRelativePoint(0.0, 1.0);
     optionsMenu.sidePanel.scrollBox:SetAlpha(1.0);
 
-    -- Categories
+    -- Tree: categories at root indent, groups indented +15, sections indented +15 again.
+    -- Nested V layouts let each level's paddingLeft compose naturally instead of every line
+    -- carrying its own absolute X offset.
+    local treeLayout = UIVerticalLayout.NewVerticalLayout(optionsMenu.sidePanel.content, 0, 0, width, 0, 0, {
+        heightMode = "shrink", spacing = 5,
+    });
+    treeLayout:SetAnchor(0.0, 1.0);
+    treeLayout:SetRelativePoint(0.0, 1.0);
+
     local categories = OptionsContext:GetCategories();
-    local currentY = 0;
 
     for i, category in categories do
-        local categoryText = optionsMenu.sidePanel.content:NewText(category.name, 0, currentY, 0, "DefaultButtonText");
-        categoryText:SetAnchor(0.0, 1.0);
-        categoryText:SetRelativePoint(0.0, 1.0);
-        --categoryText:SetOnMouseUp(function(eventID, widget, ...)
-        --    UpdateMainPanel(optionsMenu, category, nil, nil);
-        --end)
+        treeLayout:NewText(category.name, 0, 0, 0, "DefaultButtonText");
 
-        currentY -= select(2, categoryText:GetSize()) + 5;
+        local groupsContainer = UIVerticalLayout.NewVerticalLayout(treeLayout, 0, 0, width, 0, 0, {
+            heightMode = "shrink", paddingLeft = 15, spacing = 5,
+        });
 
         for j, group in category.groups.list do
-            local groupText = optionsMenu.sidePanel.content:NewText(group.name, 15, currentY, 0, "DefaultButtonText");
-            groupText:SetAnchor(0.0, 1.0);
-            groupText:SetRelativePoint(0.0, 1.0);
-            --groupText:SetOnMouseUp(function(eventID, widget, ...)
-            --    UpdateMainPanel(optionsMenu, category, group, nil);
-            --end)
+            groupsContainer:NewText(group.name, 0, 0, 0, "DefaultButtonText");
 
-            currentY -= select(2, groupText:GetSize()) + 5;
+            local sectionsContainer = UIVerticalLayout.NewVerticalLayout(groupsContainer, 0, 0, width, 0, 0, {
+                heightMode = "shrink", paddingLeft = 15, spacing = 5,
+            });
 
             for k, section in group.sections.list do
-                local sectionText = optionsMenu.sidePanel.content:NewText(section.name, 30, currentY, 0, "DefaultButtonText");
-                sectionText:SetAnchor(0.0, 1.0);
-                sectionText:SetRelativePoint(0.0, 1.0);
+                local sectionText = sectionsContainer:NewText(section.name, 0, 0, 0, "DefaultButtonText");
                 sectionText:SetOnMouseUp(function(eventID, widget, ...)
                     UpdateMainPanel(optionsMenu, category, group, section);
                 end)
-
-                currentY -= select(2, sectionText:GetSize()) + 5;
             end
         end
     end
 
-    local currentHeight = math.abs(currentY);
-    if (currentHeight > height) then
-        optionsMenu.sidePanel:SetVerticalScrollBarVisible(true);
-    else
-        optionsMenu.sidePanel:SetVerticalScrollBarVisible(false);
-    end
-    optionsMenu.sidePanel:SetContentHeight(currentHeight+5);
+    local currentHeight = treeLayout:GetMeasuredHeight();
+    optionsMenu.sidePanel:SetVerticalScrollBarVisible(currentHeight > height);
+    optionsMenu.sidePanel:SetContentHeight(currentHeight + 5);
 
     return optionsMenu;
 end

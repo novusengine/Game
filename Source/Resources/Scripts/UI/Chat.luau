@@ -1,6 +1,7 @@
 local UIButton = require("@src/API/UI/Button");
 local UIInputBox = require("@src/API/UI/InputBox");
 --local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox");
+local UIVerticalLayout = require("@src/API/UI/VerticalLayout");
 local ChatListener = require("@src/API/Game/ChatListener");
 local OptionsContext = require("@src/API/OptionsContext");
 
@@ -79,10 +80,7 @@ local function FormatMessage(message : ChatMessage, showTimestamp : boolean) : s
 end
 
 local function RefreshText(chat : Chat)
-    local yPadding = 5;
-    local currentY = yPadding; -- Add a bit of padding to the bottom of the "scroll box"
-
-    local startIndex = #chat.chatHistoryQueue - chat.chatScrollIndex + 1; -- Calculate the starting index based on the scroll index
+    local startIndex = #chat.chatHistoryQueue - chat.chatScrollIndex + 1;
 
     local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
     local optionGroup = optionCategory:Get("Chat");
@@ -91,41 +89,36 @@ local function RefreshText(chat : Chat)
     local showTimestamp = (optionSection.options:Has("Show Timestamps") and optionSection:GetOption("Show Timestamps"):Get()) or false;
     local textSize = (optionSection.options:Has("Text Size") and optionSection:GetOption("Text Size"):Get()) or 18.0;
 
-    -- Loop through the chat history queue backwards beginning at the startIndex
+    -- Iterate newest-to-oldest. With the layout's reverse=true the first-added child sits
+    -- at the bottom, so the newest message ends up at the bottom (matches original behavior).
+    -- Each text mutation invalidates the layout via the proxy; GetMeasuredHeight triggers
+    -- a Refresh and tells us when we've filled the visible area so we can stop.
     local widgetIndex = 1;
     for i = startIndex, 1, -1 do
-        if (currentY <= chat.scrollBoxHeight) then
-            local message = chat.chatHistoryQueue[i];
+        local message = chat.chatHistoryQueue[i];
 
-            -- Create a new text widget if we need to display more messages than we have text widgets
-            if (chat.chatHistoryTexts[widgetIndex] == nil) then
-                chat.chatHistoryTexts[widgetIndex] = chat.clipPanel:NewText("", 0, currentY, 0, "ChatText");
-                chat.chatHistoryTexts[widgetIndex]:SetAnchor(0.0, 0.0);
-                chat.chatHistoryTexts[widgetIndex]:SetRelativePoint(0.0, 0.0);
-                chat.chatHistoryTexts[widgetIndex]:SetWrapWidth(chat.scrollBoxWidth); -- Set the wrap width to fit the scroll box
-                chat.chatHistoryTexts[widgetIndex]:SetWrapIndent(4);
-            end
-            chat.chatHistoryTexts[widgetIndex]:SetPosY(currentY); -- Set the Y position of the text widget
+        if (chat.chatHistoryTexts[widgetIndex] == nil) then
+            local text = chat.layout:NewText("", 0, 0, 0, "ChatText");
+            text:SetWrapWidth(chat.scrollBoxWidth);
+            text:SetWrapIndent(4);
+            chat.chatHistoryTexts[widgetIndex] = text;
+        end
 
-            -- Update the text widget with the message content
-            chat.chatHistoryTexts[widgetIndex]:SetFontSize(textSize); -- Set the font size from options
-            chat.chatHistoryTexts[widgetIndex]:SetText(FormatMessage(message, showTimestamp));
+        local text = chat.chatHistoryTexts[widgetIndex];
+        text:SetEnabled(true);
+        text:SetFontSize(textSize);
+        text:SetText(FormatMessage(message, showTimestamp));
+        text:SetColor(GetTextColor(message));
 
-            -- Update the text color based on the message
-            local textColor = GetTextColor(message);
-            chat.chatHistoryTexts[widgetIndex]:SetColor(textColor);
-            chat.chatHistoryTexts[widgetIndex]:SetEnabled(true); -- Enable the text widget
+        widgetIndex += 1;
 
-            currentY += chat.chatHistoryTexts[widgetIndex]:GetHeight(); -- Move down for the next message
-            widgetIndex += 1;
-        else
+        if chat.layout:GetMeasuredHeight() > chat.scrollBoxHeight then
             break;
         end
     end
 
     for j = widgetIndex, #chat.chatHistoryTexts do
-        -- Disable any remaining text widget that are not used
-        chat.chatHistoryTexts[j]:SetEnabled(false); -- Disable the text widget
+        chat.chatHistoryTexts[j]:SetEnabled(false);
     end
 end
 
@@ -197,6 +190,15 @@ local function CreateChat(chatCanvas : Canvas)
     chat.clipPanel:SetRelativePoint(0.0, 1.0);
     chat.clipPanel:SetClipChildren(true); -- Enable clipping for the panel
     chat.clipPanel:SetAlpha(0.3);
+
+    -- VerticalLayout(reverse=true): children stack bottom-up so newest message is at the bottom.
+    -- heightMode="shrink" lets the layout grow upward as messages arrive; the clipPanel's clip
+    -- mask hides anything that grows past its top edge.
+    chat.layout = UIVerticalLayout.NewVerticalLayout(chat.clipPanel, 0, 0, chat.scrollBoxWidth, chat.scrollBoxHeight, 0, {
+        reverse = true, heightMode = "shrink",
+    });
+    chat.layout:SetAnchor(0.0, 0.0);
+    chat.layout:SetRelativePoint(0.0, 0.0);
 
     -- Add scroll handlers
     chat.clipPanel:SetOnMouseScroll(function(eventID : number, widget : Widget, deltaX : number, deltaY : number)

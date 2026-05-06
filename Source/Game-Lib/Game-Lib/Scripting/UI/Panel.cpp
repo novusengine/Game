@@ -239,5 +239,42 @@ namespace Scripting::UI
 
             return 0;
         }
+
+        i32 SetBorderColor(Zenith* zenith, Panel* panel)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
+
+            vec3 colorVec = zenith->CheckVal<vec3>(2);
+            f32 alpha = zenith->IsNumber(3) ? zenith->Get<f32>(3) : -1.0f;
+
+            Color colorWithAlpha = Color(colorVec.r, colorVec.g, colorVec.b, panelTemplate.borderColor.a);
+            if (alpha >= 0.0f)
+            {
+                colorWithAlpha.a = alpha;
+            }
+            panelTemplate.borderColor = colorWithAlpha;
+            panelTemplate.setFlags.border = 1;
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
+
+            return 0;
+        }
+
+        i32 SetBorderSize(Zenith* zenith, Panel* panel)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+            auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
+
+            f32 borderSize = zenith->CheckVal<f32>(2);
+            panelTemplate.borderSize = glm::max(borderSize, 0.0f);
+            panelTemplate.setFlags.border = 1;
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
+
+            return 0;
+        }
     }
 }
