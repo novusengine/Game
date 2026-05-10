@@ -92,6 +92,12 @@ namespace Scripting::UI
         i32 SetPos3D(Zenith* zenith, Widget* widget);
 
         i32 ForceRefresh(Zenith* zenith, Widget* widget);
+
+        // Layout system hooks: Lua-side LinearLayout/GridLayout register a 0-arg
+        // refresh closure here; CanvasRenderer::Update fires it pre-frame for any
+        // widget tagged DirtyLayoutTag (set by InvalidateLayout from Lua's Invalidate).
+        i32 RegisterLayoutRefresh(Zenith* zenith, Widget* widget);
+        i32 InvalidateLayout(Zenith* zenith, Widget* widget);
     }
 
     static LuaRegister<Widget> widgetMethods[] =
@@ -141,7 +147,10 @@ namespace Scripting::UI
 
         { "SetPos3D", WidgetMethods::SetPos3D },
 
-        { "ForceRefresh", WidgetMethods::ForceRefresh }
+        { "ForceRefresh", WidgetMethods::ForceRefresh },
+
+        { "RegisterLayoutRefresh", WidgetMethods::RegisterLayoutRefresh },
+        { "InvalidateLayout", WidgetMethods::InvalidateLayout }
     };
 
     namespace WidgetInputMethods

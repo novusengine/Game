@@ -1,9 +1,14 @@
 #include "UIHandler.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
+#include "Game-Lib/ECS/Components/UI/LayoutEventInfo.h"
+#include "Game-Lib/ECS/Singletons/DayNightCycle.h"
 #include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
+#include "Game-Lib/ECS/Systems/UpdateDayNightCycle.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
+#include "Game-Lib/ECS/Util/UIRefCleanup.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
@@ -11,6 +16,7 @@
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/UI/Box.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -34,6 +40,14 @@ namespace Scripting::UI
         registry->ctx().emplace<ECS::Singletons::UISingleton>();
         registry->ctx().emplace<ECS::Singletons::InputSingleton>();
 
+        // Release Lua-registry refs (SetOnMouseUp, RegisterLayoutRefresh, etc.)
+        // when their owning entities are destroyed; otherwise the registry slot
+        // leaks for the lifetime of the Lua state.
+        registry->on_destroy<ECS::Components::UI::EventInputInfo>()
+            .connect<&ECS::Util::UIRefCleanup::ReleaseEventInputInfoRefs>();
+        registry->on_destroy<ECS::Components::UI::LayoutEventInfo>()
+            .connect<&ECS::Util::UIRefCleanup::ReleaseLayoutEventInfoRefs>();
+
         // UI
         LuaMethodTable::Set(zenith, uiGlobalMethods, "UI");
 
@@ -47,6 +61,20 @@ namespace Scripting::UI
         Box::Register(zenith);
 
         CreateUIInputEventTable(zenith);
+
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        const bool inDeveloperMode = luaManager && luaManager->IsDeveloperMode();
+        const Scripting::LuaMethodFlags excludeFlags = inDeveloperMode
+            ? Scripting::LuaMethodFlags::None
+            : Scripting::LuaMethodFlags::DeveloperOnly;
+
+        LuaMethodTable::Set(zenith, timeGlobalMethods, "Time", excludeFlags);
+
+        zenith->GetGlobalKey("Time");
+        zenith->AddTableField("SecondsPerDay", ECS::Singletons::DayNightCycle::SecondsPerDay);
+        zenith->Pop();
+
+        _timeOnSecondChangedRef = LUA_NOREF;
 
         // Setup Cursor Canvas
         {
@@ -79,6 +107,8 @@ namespace Scripting::UI
 
         transformSystem.ClearQueue();
         ServiceLocator::GetGameRenderer()->GetCanvasRenderer()->Clear();
+
+        _timeOnSecondChangedRef = LUA_NOREF;
 
         if (ctx.contains<ECS::Singletons::UISingleton>())
         {
@@ -1003,5 +1033,103 @@ namespace Scripting::UI
 
             zenith->Pop();
         }
+    }
+
+    static ECS::Singletons::DayNightCycle* GetDayNightCycle()
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (!registries || !registries->gameRegistry)
+            return nullptr;
+        auto& ctx = registries->gameRegistry->ctx();
+        if (!ctx.contains<ECS::Singletons::DayNightCycle>())
+            return nullptr;
+        return &ctx.get<ECS::Singletons::DayNightCycle>();
+    }
+
+    i32 UIHandler::TimeGetSeconds(Zenith* zenith)
+    {
+        ECS::Singletons::DayNightCycle* dnc = GetDayNightCycle();
+        zenith->Push(dnc ? dnc->timeInSeconds : 0.0);
+        return 1;
+    }
+
+    i32 UIHandler::TimeSetSeconds(Zenith* zenith)
+    {
+        f64 seconds = zenith->CheckVal<f64>(1);
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (registries && registries->gameRegistry)
+            ECS::Systems::UpdateDayNightCycle::SetTime(*registries->gameRegistry, seconds);
+        return 0;
+    }
+
+    i32 UIHandler::TimeReset(Zenith* /*zenith*/)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (registries && registries->gameRegistry)
+            ECS::Systems::UpdateDayNightCycle::SetTimeToDefault(*registries->gameRegistry);
+        return 0;
+    }
+
+    i32 UIHandler::TimeSetToNoon(Zenith* /*zenith*/)
+    {
+        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+        if (registries && registries->gameRegistry)
+        {
+            f64 noon = static_cast<f64>(ECS::Singletons::DayNightCycle::SecondsPerDay) / 2.0;
+            ECS::Systems::UpdateDayNightCycle::SetTime(*registries->gameRegistry, noon);
+        }
+        return 0;
+    }
+
+    i32 UIHandler::TimeGetSpeedModifier(Zenith* zenith)
+    {
+        ECS::Singletons::DayNightCycle* dnc = GetDayNightCycle();
+        zenith->Push(dnc ? dnc->speedModifier : 1.0f);
+        return 1;
+    }
+
+    i32 UIHandler::TimeSetSpeedModifier(Zenith* zenith)
+    {
+        f32 multiplier = zenith->CheckVal<f32>(1);
+        ECS::Singletons::DayNightCycle* dnc = GetDayNightCycle();
+        if (dnc)
+            dnc->speedModifier = multiplier;
+        return 0;
+    }
+
+    i32 UIHandler::TimeGetSecondsPerDay(Zenith* zenith)
+    {
+        zenith->Push(ECS::Singletons::DayNightCycle::SecondsPerDay);
+        return 1;
+    }
+
+    i32 UIHandler::TimeSetOnSecondChanged(Zenith* zenith)
+    {
+        LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        UIHandler* self = luaManager
+            ? luaManager->GetLuaHandler<UIHandler>(static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::UI))
+            : nullptr;
+        if (!self)
+            return 0;
+
+        Scripting::Util::Zenith::Unref(zenith, self->_timeOnSecondChangedRef);
+        self->_timeOnSecondChangedRef = LUA_NOREF;
+
+        // Pass `nil` to clear; otherwise expects a function. Single-slot.
+        if (zenith->IsFunction(1))
+        {
+            self->_timeOnSecondChangedRef = zenith->GetRef(1);
+        }
+        return 0;
+    }
+
+    void UIHandler::OnSecondChanged(Zenith* zenith, f64 timeInSeconds)
+    {
+        if (_timeOnSecondChangedRef == LUA_NOREF)
+            return;
+
+        zenith->GetRawI(LUA_REGISTRYINDEX, _timeOnSecondChangedRef);
+        zenith->Push(timeInSeconds);
+        zenith->PCall(1);
     }
 }

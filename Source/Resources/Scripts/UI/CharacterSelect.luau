@@ -1,6 +1,7 @@
 local UIButton = require("@src/API/UI/Button")
 local UIScrollBox = require("@src/API/UI/ScrollBox")
 local UIStack = require("@src/API/UI/UIStack")
+local UIVerticalLayout = require("@src/API/UI/VerticalLayout")
 
 type CharacterSelectScreen =
 {
@@ -12,21 +13,22 @@ type CharacterSelectScreen =
 
     canvas : Canvas,
     widget : Widget,
-    currentY : number,
     characters : { Character },
     selectedCharacterName : string | nil,
     selectedCharacterNameText : TextWidget,
     characterListScrollBox : UIScrollBox.ScrollBox,
+    characterListLayout : any,  -- VerticalLayout instance
 }
 
-type Character = 
+type Character =
 {
     index : number,
     name : string,
     level : number,
     class : string,
     location : string,
-    panel : Panel | nil,
+    entryLayout : any,           -- VerticalLayout per-entry; nil until first build
+    panel : Panel | nil,         -- alias of entryLayout.panel kept for SelectCharacterByName
     nameText : TextWidget | nil,
     levelAndClassText : TextWidget | nil,
     locationText : TextWidget | nil,
@@ -137,54 +139,34 @@ local function RegisterTemplates()
 end
 
 local function CreateOrModifyCharacterEntry(characterSelectScreen : CharacterSelectScreen, character : Character)
-    local localY = -15;
-    if (character.panel == nil) then
-        -- Background
-        character.panel = characterSelectScreen.characterListScrollBox.content:NewPanel(0, characterSelectScreen.currentY, 390, 100, 0, "CharacterEntryButtonPanel");
-        character.panel:SetAnchor(0.5, 1.0);
-        character.panel:SetRelativePoint(0.5, 1.0);
-        character.panel:SetOnMouseUp(function(eventID, widget, ...)
+    if (character.entryLayout == nil) then
+        -- Each entry is a VerticalLayout: panel template provides the background, paddings
+        -- frame the texts (top=15, bottom=25, left=25), heightMode="shrink" sizes to content.
+        local entry = UIVerticalLayout.NewVerticalLayout(
+            characterSelectScreen.characterListLayout, 0, 0, 390, 0, 0,
+            {
+                panelTemplate = "CharacterEntryButtonPanel",
+                heightMode = "shrink",
+                paddingTop = 15, paddingBottom = 25, paddingLeft = 25,
+                spacing = 0,
+            });
+        entry:SetOnMouseUp(function(eventID, widget, ...)
             characterSelectScreen:SelectCharacterByName(character.name);
         end);
 
-        -- Name
-        character.nameText = character.panel:NewText(character.name, 25, localY, 0, "NameText");
-        character.nameText:SetAnchor(0.0, 1.0);
-        character.nameText:SetRelativePoint(0.0, 1.0);
-        localY -= select(2, character.nameText:GetSize());
+        character.nameText          = entry:NewText(character.name, 0, 0, 0, "NameText");
+        character.levelAndClassText = entry:NewText(`Level {character.level} {character.class}`, 0, 0, 0, "LevelText");
+        character.locationText      = entry:NewText(character.location, 0, 0, 0, "LocationText");
 
-        -- Level and class
-        character.levelAndClassText = character.panel:NewText(`Level {character.level} {character.class}`, 25, localY, 0, "LevelText");
-        character.levelAndClassText:SetAnchor(0.0, 1.0);
-        character.levelAndClassText:SetRelativePoint(0.0, 1.0);
-        localY -= select(2, character.levelAndClassText:GetSize());
-
-        -- Location
-        character.locationText = character.panel:NewText(character.location, 25, localY, 0, "LocationText");
-        character.locationText:SetAnchor(0.0, 1.0);
-        character.locationText:SetRelativePoint(0.0, 1.0);
-        localY -= select(2, character.locationText:GetSize());
-
-        local padding = 25;
-        localY -= padding;
-        character.panel:SetHeight(math.abs(localY));
+        character.entryLayout = entry;
+        character.panel       = entry.panel;  -- alias kept so SelectCharacterByName's :SetForeground still works
     else
-        character.panel:SetPos(0, characterSelectScreen.currentY);
-
+        -- Update path: just swap text on the existing proxies. SetText is size-affecting,
+        -- so the proxy invalidates the entry layout (and the outer list layout) automatically.
         character.nameText:SetText(character.name);
-        character.nameText:SetPos(25, localY);
-        localY -= select(2, character.nameText:GetSize());
-
         character.levelAndClassText:SetText(`Level {character.level} {character.class}`);
-        character.levelAndClassText:SetPos(25, localY);
-        localY -= select(2, character.levelAndClassText:GetSize());
-
         character.locationText:SetText(character.location);
-        character.locationText:SetPos(25, localY);
-        localY -= select(2, character.locationText:GetSize());
     end
-
-    characterSelectScreen.currentY += localY;
 end
 
 local function CreateLeftPanel(characterSelectScreen : CharacterSelectScreen)
@@ -250,6 +232,8 @@ local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     local characterSelectPanel = characterSelectScreen.widget:NewPanel(-20, -40, 400, 850, 0, "DialogBox");
     characterSelectPanel:SetAnchor(1.0, 1.0);
     characterSelectPanel:SetRelativePoint(1.0, 1.0);
+    characterSelectPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    characterSelectPanel:SetBorderSize(2);
 
     local currentY = 0;
 
@@ -275,6 +259,16 @@ local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     });
     characterSelectScreen.characterListScrollBox:SetAnchor(0.0, 1.0);
     characterSelectScreen.characterListScrollBox:SetRelativePoint(0.0, 1.0);
+
+    -- Outer list layout: stacks character entries top-down inside the scrollbox content.
+    -- heightMode="shrink" makes its measured height match the sum of entry heights, which we
+    -- feed back to the scrollbox in RefreshCharacterList.
+    characterSelectScreen.characterListLayout = UIVerticalLayout.NewVerticalLayout(
+        characterSelectScreen.characterListScrollBox.content, 0, 0,
+        characterSelectScreen.characterListScrollBox.width, 0, 0,
+        { heightMode = "shrink", spacing = 0 });
+    characterSelectScreen.characterListLayout:SetAnchor(0.0, 1.0);
+    characterSelectScreen.characterListLayout:SetRelativePoint(0.0, 1.0);
 
     -- Create New Character button
     local loginButton = UIButton.NewButton(characterSelectPanel, -40, 20, 250, 40, 0, {
@@ -337,22 +331,19 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
     characterSelectScreen.widget:SetRelativePoint(0.5, 0.5);
 
     -- Variables
-    characterSelectScreen.currentY = 0;
     characterSelectScreen.characters = setmetatable({}, {__index = table});
 
     -- Methods
     characterSelectScreen.RefreshCharacterList = function(self : CharacterSelectScreen)
-        self.currentY = 0;
-
         for i, character in self.characters do
             CreateOrModifyCharacterEntry(self, character);
         end
 
+        local contentHeight   = self.characterListLayout:GetMeasuredHeight();
         local scrollBoxHeight = self.characterListScrollBox.height;
-        local visibleScrollBar = math.abs(self.currentY) > scrollBoxHeight;
 
-        self.characterListScrollBox:SetVerticalScrollBarVisible(visibleScrollBar);
-        self.characterListScrollBox:SetContentHeight(math.abs(self.currentY));
+        self.characterListScrollBox:SetVerticalScrollBarVisible(contentHeight > scrollBoxHeight);
+        self.characterListScrollBox:SetContentHeight(contentHeight);
     end
 
     characterSelectScreen.AddCharacter = function(self : CharacterSelectScreen, name : string, level : number, class : string, location : string)

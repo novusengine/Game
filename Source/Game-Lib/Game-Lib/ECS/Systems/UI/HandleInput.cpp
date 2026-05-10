@@ -439,15 +439,12 @@ namespace ECS::Systems::UI
 
             if (isWithin)
             {
-                Components::Transform2D& transform = registry.get<Components::Transform2D>(childEntity);
-
                 vec2 middlePoint = (min + max) * 0.5f;
+                u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos));
 
-                u16 numParents = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetHierarchyDepth());
-                u16 layer = std::numeric_limits<u16>::max() - static_cast<u16>(transform.GetLayer());
-                u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos)); // Distance in pixels
-
-                u64 key = (static_cast<u64>(numParents) << 48) | (static_cast<u64>(layer) << 32) | distanceToMouse;
+                // Invert sortKey: higher sortKey draws on top, but the map dispatches smallest first.
+                u32 invertedSortKey = std::numeric_limits<u32>::max() - widget.sortKey;
+                u64 key = (static_cast<u64>(invertedSortKey) << 32) | distanceToMouse;
                 allHoveredEntities[key] = childEntity;
             }
 

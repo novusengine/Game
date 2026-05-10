@@ -79,6 +79,16 @@ namespace Scripting::UI
 
         static i32 AddOnKeyboard(Zenith* zenith);
 
+        // Time
+        static i32 TimeGetSeconds(Zenith* zenith);
+        static i32 TimeSetSeconds(Zenith* zenith);
+        static i32 TimeReset(Zenith* zenith);
+        static i32 TimeSetToNoon(Zenith* zenith);
+        static i32 TimeGetSpeedModifier(Zenith* zenith);
+        static i32 TimeSetSpeedModifier(Zenith* zenith);
+        static i32 TimeGetSecondsPerDay(Zenith* zenith);
+        static i32 TimeSetOnSecondChanged(Zenith* zenith);
+
         // Event calls
         void CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget);
         void CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value);
@@ -92,8 +102,26 @@ namespace Scripting::UI
 
         void CallSendMessageToChat(Zenith* zenith, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing);
 
+    public:
+        // Called by UpdateDayNightCycle when the integer game-second flips.
+        void OnSecondChanged(Zenith* zenith, f64 timeInSeconds);
+
     private:
         void CreateUIInputEventTable(Zenith* zenith);
+
+        i32 _timeOnSecondChangedRef = LUA_NOREF;
+    };
+
+    static LuaRegister<> timeGlobalMethods[] =
+    {
+        { "GetSeconds",          UIHandler::TimeGetSeconds },
+        { "SetSeconds",          UIHandler::TimeSetSeconds,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Reset",               UIHandler::TimeReset,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetToNoon",           UIHandler::TimeSetToNoon,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetSpeedModifier",    UIHandler::TimeGetSpeedModifier },
+        { "SetSpeedModifier",    UIHandler::TimeSetSpeedModifier,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetSecondsPerDay",    UIHandler::TimeGetSecondsPerDay },
+        { "SetOnSecondChanged",  UIHandler::TimeSetOnSecondChanged },
     };
 
     static LuaRegister<> uiGlobalMethods[] =

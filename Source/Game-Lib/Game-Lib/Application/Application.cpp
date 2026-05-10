@@ -67,6 +67,7 @@ AutoCVar_Int CVAR_ApplicationNumThreads(CVarCategory::Client, "numThreads", "num
 AutoCVar_Int CVAR_ClientDBSaveMethod(CVarCategory::Client, "clientDBSaveMethod", "specifies when clientDBs are saved. (0 = Immediately, 1 = Every x Seconds, 2 = On Shutdown, 3+ = Disabled, default is 1)", 1);
 AutoCVar_Float CVAR_ClientDBSaveTimer(CVarCategory::Client, "clientDBSaveTimer", "specifies how often clientDBs are saved when using save method 1 (Specified in seconds, default is 5 seconds)", 5.0f);
 AutoCVar_String CVAR_ImguiTheme(CVarCategory::Client, "imguiTheme", "specifies the current imgui theme", "Blue Teal", CVarFlags::Hidden);
+AutoCVar_Int CVAR_DeveloperMode(CVarCategory::Client, "developerMode", "enables developer-only Luau APIs (Editor, Time) and dev-tool scripts under Resources/Scripts/Editor", 1, CVarFlags::EditCheckbox);
 
 Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
 Application::~Application()
@@ -360,6 +361,14 @@ bool Application::Init()
 
         auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
         _luaManager->GetZenithStateManager().Add(globalKey);
+
+        _luaManager->SetDeveloperMode(CVAR_DeveloperMode.Get() != 0);
+
+        CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client, "developerMode"_h, 
+            [this](const i32& value)
+            {
+                _luaManager->SetDeveloperMode(value != 0);
+            });
 
         _luaManager->Init();
     }

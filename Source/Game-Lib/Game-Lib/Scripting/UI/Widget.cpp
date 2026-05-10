@@ -3,6 +3,7 @@
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
+#include "Game-Lib/ECS/Components/UI/LayoutEventInfo.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
@@ -11,6 +12,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Util/StringUtils.h>
@@ -171,6 +173,7 @@ i32 Scripting::UI::WidgetMethods::SetEnabled(Zenith* zenith, Widget* widget)
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+    ECS::Util::UI::MarkCanvasSortDirty(registry, widget->canvasEntity);
 
     return 0;
 }
@@ -192,6 +195,7 @@ i32 Scripting::UI::WidgetMethods::SetVisible(Zenith* zenith, Widget* widget)
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
+    ECS::Util::UI::MarkCanvasSortDirty(registry, widget->canvasEntity);
 
     return 0;
 }
@@ -737,6 +741,28 @@ i32 Scripting::UI::WidgetMethods::ForceRefresh(Zenith* zenith, Widget* widget)
     registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
     ECS::Util::UI::RefreshClipper(registry, widget->entity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::RegisterLayoutRefresh(Zenith* zenith, Widget* widget)
+{
+    i32 callback = zenith->IsFunction(2) ? zenith->GetRef(2) : -1;
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& layoutEventInfo = registry->get_or_emplace<ECS::Components::UI::LayoutEventInfo>(widget->entity);
+
+    // Replacing an existing ref leaks the old one; release first.
+    Scripting::Util::Zenith::Unref(zenith, layoutEventInfo.onLayoutRefresh);
+    layoutEventInfo.onLayoutRefresh = callback;
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::InvalidateLayout(Zenith* zenith, Widget* widget)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    registry->emplace_or_replace<ECS::Components::UI::DirtyLayoutTag>(widget->entity);
 
     return 0;
 }

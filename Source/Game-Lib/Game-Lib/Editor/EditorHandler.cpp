@@ -2,9 +2,9 @@
 #include "ActionStack.h"
 #include "AnimationController.h"
 #include "AssetBrowser.h"
+#include "BaseEditor.h"
 #include "CameraInfo.h"
 #include "CDBEditor.h"
-#include "Clock.h"
 #include "CVarEditor.h"
 #include "EaseCurveTool.h"
 #include "Hierarchy.h"
@@ -50,7 +50,6 @@ namespace Editor
         _editors.push_back(new CVarEditor());
         _editors.push_back(new CameraInfo());
         _editors.push_back(new CDBEditor());
-        _editors.push_back(new Clock());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
         _editors.push_back(new NetworkedInfo());
