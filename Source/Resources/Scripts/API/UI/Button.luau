@@ -210,6 +210,8 @@ function buttonAPI.NewButton(parent, posX, posY, sizeX, sizeY, layer, buttonTemp
     local textTemplate = buttonTemplateTable["textTemplate"] or "DefaultButtonText";
 
     buttonTable.panel = parent:NewPanel(posX, posY, sizeX, sizeY, 0, panelTemplate);
+    -- +3 Y compensates for the drop shadow in DefaultButtonPanel — the visible
+    -- frame ends ~3px above the panel extent.
     buttonTable.text = buttonTable.panel:NewText(text, 0, 3, 0, textTemplate);
     buttonTable.text:SetAnchor(0.5, 0.5);
     buttonTable.text:SetRelativePoint(0.5, 0.5);

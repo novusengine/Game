@@ -309,7 +309,7 @@ namespace ECS::Systems
 
         MaterialRenderer* materialRenderer = ServiceLocator::GetGameRenderer()->GetMaterialRenderer();
         
-        vec3 direction = GetLightDirection(dayNightCycle.timeInSeconds);
+        vec3 direction = GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
         const vec3& diffuseColor = glm::normalize(areaLightInfo.finalColorData.diffuseColor);
         const vec3& ambientColor = glm::normalize(areaLightInfo.finalColorData.ambientColor);
         vec3 groundAmbientColor = ambientColor * 0.7f;

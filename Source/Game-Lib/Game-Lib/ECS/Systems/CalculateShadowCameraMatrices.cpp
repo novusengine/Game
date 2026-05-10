@@ -75,7 +75,7 @@ namespace ECS::Systems
         auto& dayNightCycle = ctx.get<Singletons::DayNightCycle>();
 
         // Get light settings
-        vec3 lightDirection = UpdateAreaLights::GetLightDirection(dayNightCycle.timeInSeconds);
+        vec3 lightDirection = UpdateAreaLights::GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
 
         // Get active render camera
         auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();

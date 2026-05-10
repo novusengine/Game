@@ -17,6 +17,8 @@ namespace Scripting::Util::Zenith
     void Unref(::Scripting::Zenith* zenith, i32 ref)
     {
         if (ref == -1) return;
+        // lua_State is transiently null between Zenith::Clear and the next LoadBytecode.
+        if (zenith == nullptr || zenith->state == nullptr) return;
         lua_unref(zenith->state, ref);
     }
 }

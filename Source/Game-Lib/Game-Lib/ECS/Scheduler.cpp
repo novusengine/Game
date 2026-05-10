@@ -87,7 +87,11 @@ namespace ECS
 
         joltState.updateTimer += glm::clamp(clampedDeltaTime, 0.0f, Singletons::JoltState::FixedDeltaTime);
 
-        Systems::UpdateDayNightCycle::Update(gameRegistry, clampedDeltaTime);
+        // Day/night cycle is a wall-clock-style timer: pass the unclamped deltaTime so
+        // the in-game time tracks real seconds 1:1. Clamping (as the rest of this
+        // function uses for physics/animation stability) makes the cycle drift behind
+        // wall-clock whenever the framerate dips below 60 FPS.
+        Systems::UpdateDayNightCycle::Update(gameRegistry, deltaTime);
         Systems::NetworkConnection::Update(gameRegistry, clampedDeltaTime);
         Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
         Systems::Animation::Update(gameRegistry, clampedDeltaTime);
