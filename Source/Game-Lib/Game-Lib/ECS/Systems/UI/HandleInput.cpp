@@ -3,6 +3,7 @@
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
+#include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
@@ -27,6 +28,7 @@
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <tracy/Tracy.hpp>
 
 #include <map>
 #include <numeric>
@@ -412,13 +414,37 @@ namespace ECS::Systems::UI
             if (!widget.IsVisible())
                 return false;
 
+            auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
+            auto* clipper = registry.try_get<Components::UI::Clipper>(childEntity);
+
+            // Broad-phase: the cursor can only hover a descendant if it's inside this widget's subtree
+            // bound (its rect unioned with all descendants). Only non-clipped widgets keep maintained
+            // subtree bounds; clipped descendants are broad-phased by the clip-prune just below.
+            bool isClipped = clipper != nullptr && clipper->clipRegionOverrideEntity != entt::null;
+            if (rect != nullptr && !isClipped &&
+                !IsWithin(mousePos, rect->subtreeMin + parentMin, rect->subtreeMax + parentMin))
+                return false;
+
+            // Clip pruning: a clipChildren container whose clip region doesn't contain the cursor
+            // can't have any hoverable descendant (they're all clipped to it), so skip the whole
+            // subtree. Done before the interactable check because the container is usually an inert
+            // panel (e.g. a scrollbox viewport) that consumes nothing itself.
+            if (rect != nullptr && clipper != nullptr && clipper->clipChildren)
+            {
+                vec2 clipBase = rect->min + parentMin;
+                vec2 clipSize = rect->max - rect->min;
+                vec2 clipMin = clipBase + clipSize * clipper->clipRegionMin;
+                vec2 clipMax = clipBase + clipSize * clipper->clipRegionMax;
+                if (!IsWithin(mousePos, clipMin, clipMax))
+                    return false;
+            }
+
             if (!widget.IsInteractable())
                 return true;
 
             if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
                 return true;
 
-            auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
             if (rect == nullptr)
             {
                 return true;
@@ -431,14 +457,34 @@ namespace ECS::Systems::UI
             // Cap it so we can't go outside the parent max and interact with clipped children
             max = glm::min(max, parentMax);
 
-            // Update hoveredMin and hoveredMax
-            rect->hoveredMin = min;
-            rect->hoveredMax = max;
-
             bool isWithin = IsWithin(mousePos, min, max);
+
+            // Respect clipping for input: a widget inside a clip-children ancestor (e.g. a scrollbox)
+            // must not capture clicks outside that ancestor's visible region, even though its own
+            // rect — when scrolled — extends beyond it. (parentMax above only caps to the screen.)
+            if (isWithin)
+            {
+                entt::entity clipAncestor = ECS::Util::UI::GetClippingAncestor(&registry, childEntity);
+                if (clipAncestor != entt::null)
+                {
+                    auto* clipRect = registry.try_get<Components::UI::BoundingRect>(clipAncestor);
+                    auto* clipper = registry.try_get<Components::UI::Clipper>(clipAncestor);
+                    if (clipRect != nullptr && clipper != nullptr)
+                    {
+                        vec2 clipSize = clipRect->max - clipRect->min;
+                        vec2 clipMin = clipRect->min + clipSize * clipper->clipRegionMin;
+                        vec2 clipMax = clipRect->min + clipSize * clipper->clipRegionMax;
+                        isWithin = IsWithin(mousePos, clipMin, clipMax);
+                    }
+                }
+            }
 
             if (isWithin)
             {
+                // Cached for the hover-event dispatch's hit-test; only needed for hovered widgets.
+                rect->hoveredMin = min;
+                rect->hoveredMax = max;
+
                 vec2 middlePoint = (min + max) * 0.5f;
                 u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos));
 
@@ -463,6 +509,7 @@ namespace ECS::Systems::UI
 
     void HandleInput::Update(entt::registry& registry, f32 deltaTime)
     {
+        ZoneScopedN("UI::HandleInput::Update");
         auto& ctx = registry.ctx();
         auto& uiSingleton = ctx.get<Singletons::UISingleton>();
 
@@ -486,6 +533,7 @@ namespace ECS::Systems::UI
         // Loop over widget roots
         if (!inputManager->IsCursorVirtual())
         {
+            ZoneScopedN("UI::HandleInput::FindHovered");
             registry.view<Components::UI::Canvas>(entt::exclude<Components::UI::CanvasRenderTargetTag>).each([&](auto entity, auto& canvas)
             {
                 RecursivelyFindHoveredInCanvas(registry, entity, mousePos, uiSingleton.allHoveredEntities, vec2(0,0), renderSize);
@@ -551,6 +599,7 @@ namespace ECS::Systems::UI
         bool foundHoverEvent = false;
         if (!imGuiWantsMouseInput)
         {
+            ZoneScopedN("UI::HandleInput::HoverEvents");
             for (auto& pair : uiSingleton.allHoveredEntities)
             {
                 entt::entity entity = pair.second;
@@ -562,9 +611,23 @@ namespace ECS::Systems::UI
                     continue;
                 }
 
+                const bool hasHoverEffect = eventInputInfo->onHoverTemplateHash != 0
+                    || eventInputInfo->onHoverBeginEvent != -1
+                    || eventInputInfo->onHoverEndEvent != -1
+                    || eventInputInfo->onHoverHeldEvent != -1;
+                const bool hasMouseEffect = eventInputInfo->onClickTemplateHash != 0
+                    || eventInputInfo->onMouseDownEvent != -1
+                    || eventInputInfo->onMouseUpEvent != -1
+                    || eventInputInfo->onMouseHeldEvent != -1
+                    || eventInputInfo->onMouseScrollEvent != -1;
+
+                // A widget with mouse handlers but no hover handlers still consumes
+                // the hover so it doesn't fall through to a widget behind it.
+                if (!hasHoverEffect && !hasMouseEffect)
+                    continue;
+
                 if (uiSingleton.hoveredEntity == entity)
                 {
-                    // Same entity is being hovered
                     if (eventInputInfo->onHoverHeldEvent != -1)
                     {
                         auto& widget = registry.get<Components::UI::Widget>(uiSingleton.hoveredEntity);
@@ -573,11 +636,6 @@ namespace ECS::Systems::UI
 
                     foundHoverEvent = true;
                     break;
-                }
-
-                if (eventInputInfo->onHoverTemplateHash == 0 && eventInputInfo->onHoverBeginEvent == -1)
-                {
-                    continue;
                 }
 
                 if (uiSingleton.hoveredEntity != entt::null)
@@ -600,19 +658,26 @@ namespace ECS::Systems::UI
                     }
                 }
 
-                eventInputInfo->isHovered = true;
-
-                u32 hoverTemplate = eventInputInfo->onHoverTemplateHash;
-                if (hoverTemplate != 0)
-                    ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
-
-                if (eventInputInfo->onHoverBeginEvent != -1)
+                if (hasHoverEffect)
                 {
-                    auto& widget = registry.get<Components::UI::Widget>(entity);
-                    ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvent::HoverBegin, widget.scriptWidget);
-                }
+                    eventInputInfo->isHovered = true;
 
-                uiSingleton.hoveredEntity = entity;
+                    u32 hoverTemplate = eventInputInfo->onHoverTemplateHash;
+                    if (hoverTemplate != 0)
+                        ECS::Util::UI::RefreshTemplate(&registry, entity, *eventInputInfo);
+
+                    if (eventInputInfo->onHoverBeginEvent != -1)
+                    {
+                        auto& widget = registry.get<Components::UI::Widget>(entity);
+                        ECS::Util::UI::CallLuaEvent(eventInputInfo->onHoverBeginEvent, Scripting::UI::UIInputEvent::HoverBegin, widget.scriptWidget);
+                    }
+
+                    uiSingleton.hoveredEntity = entity;
+                }
+                else
+                {
+                    uiSingleton.hoveredEntity = entt::null;
+                }
                 foundHoverEvent = true;
                 break;
             }
@@ -650,6 +715,7 @@ namespace ECS::Systems::UI
             {
                 if (clickedEventInputInfo->onMouseHeldEvent != -1)
                 {
+                    ZoneScopedN("UI::HandleInput::MouseHeld");
                     auto& widget = registry.get<Components::UI::Widget>(uiSingleton.clickedEntity);
                     ECS::Util::UI::CallLuaEvent(clickedEventInputInfo->onMouseHeldEvent, Scripting::UI::UIInputEvent::MouseHeld, widget.scriptWidget, mousePos);
                 }

@@ -224,7 +224,6 @@ local function CreateChat(chatCanvas : Canvas)
         --defaultText = "Type your message here...",
     });
     chat.inputBox:SetAnchor(0.0, 1.0);
-    chat.inputBox:SetRelativePoint(0.0, 1.0);
     chat.inputBox:SetOnSubmit(function(inputBox : InputBox)
         return OnSubmit(chat, inputBox);
     end);

@@ -106,9 +106,9 @@ local function SetupActionBarMethods(actionBarTable : ActionBar)
             self:SetButtonCallback(index, nil);
         else
             local spellInfo = Spell.GetSpellInfo(spellID);
-            local spellIcon = Spell.GetIconInfo(spellInfo.IconID);
+            --local spellIcon = Spell.GetIconInfo(spellInfo.IconID);
 
-            local iconTexture = spellIcon.Texture or nil;
+            local iconTexture = nil;--spellIcon.Texture or nil;
             actionButton.widget.panel:SetBackground(iconTexture);
 
             self:SetButtonCallback(index, function()

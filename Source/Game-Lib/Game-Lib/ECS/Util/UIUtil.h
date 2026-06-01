@@ -52,6 +52,23 @@ namespace ECS::Util
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo);
         void RefreshClipper(entt::registry* registry, entt::entity entity);
 
+        // Nearest ancestor of `child` whose Clipper.clipChildren is set, or whose own
+        // clipRegionOverrideEntity is non-null. Returns entt::null at the root.
+        entt::entity GetClippingAncestor(entt::registry* registry, entt::entity child);
+
+        // Push the widget's current BoundingRect + clipRegionMin/Max + mask texture into
+        // its reserved GPU slot(s) on CanvasRenderer. No-op if no slot is reserved.
+        void RecomputeClipSlots(entt::registry* registry, entt::entity entity);
+
+        // Lazy slot reservation hooks. Idempotent — first call reserves, subsequent calls
+        // are no-ops. ReserveMaskSlot must be paired with a call to upload the texture
+        // index (use SetClipMaskTexture flow or call RecomputeClipSlots after the texture
+        // path is set on the Clipper).
+        void ReserveClipRectSlot(entt::registry* registry, entt::entity entity);
+        void ReserveMaskSlot(entt::registry* registry, entt::entity entity);
+        void ReleaseClipRectSlot(entt::registry* registry, entt::entity entity);
+        void ReleaseMaskSlot(entt::registry* registry, entt::entity entity);
+
         void ResetTemplate(entt::registry* registry, entt::entity entity); // Sets it back to base
         void ApplyTemplateAdditively(entt::registry* registry, entt::entity entity, u32 templateHash);
 

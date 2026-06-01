@@ -4,11 +4,8 @@
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
-#include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
-#include "Game-Lib/ECS/Util/Database/MapUtil.h"
 #include <Game-Lib/ECS/Util/Network/NetworkUtil.h>
-#include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Gameplay/Attachment/Defines.h"
 #include "Game-Lib/Gameplay/Database/Item.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
@@ -101,52 +98,6 @@ namespace Scripting
         bool result = gameRenderer->SetCursor(hash);
 
         zenith->Push(result);
-        return 1;
-    }
-
-    i32 GlobalHandler::GetCurrentMap(Zenith* zenith)
-    {
-        const std::string& currentMapInternalName = ServiceLocator::GetGameRenderer()->GetTerrainLoader()->GetCurrentMapInternalName();
-        zenith->Push(currentMapInternalName.c_str());
-
-        return 1;
-    }
-
-    i32 GlobalHandler::LoadMap(Zenith* zenith)
-    {
-        const char* mapInternalName = zenith->CheckVal<const char*>(1);
-        size_t mapInternalNameLen = strlen(mapInternalName);
-
-        if (mapInternalName == nullptr)
-        {
-            zenith->Push(false);
-            return 1;
-        }
-
-        MetaGen::Shared::ClientDB::MapRecord* map = nullptr;
-        if (!ECSUtil::Map::GetMapFromInternalName(mapInternalName, map))
-        {
-            zenith->Push(false);
-            return 1;
-        }
-
-        u32 mapNameHash = StringUtils::fnv1a_32(mapInternalName, mapInternalNameLen);
-
-        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
-        mapLoader->LoadMap(mapNameHash);
-
-        zenith->Push(true);
-        return 1;
-    }
-
-    i32 GlobalHandler::GetMapLoadingProgress(Zenith* zenith)
-    {
-        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        f32 terrainProgress = gameRenderer->GetTerrainLoader()->GetLoadingProgress();
-        f32 modelProgress = gameRenderer->GetModelLoader()->GetLoadingProgress();
-
-        f32 totalProgress = (terrainProgress + modelProgress) / 2.0f;
-        zenith->Push(totalProgress);
         return 1;
     }
 

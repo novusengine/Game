@@ -18,9 +18,6 @@ namespace Scripting
     public: // Registered Functions
         static i32 AddCursor(Zenith* zenith);
         static i32 SetCursor(Zenith* zenith);
-        static i32 GetCurrentMap(Zenith* zenith);
-        static i32 LoadMap(Zenith* zenith);
-        static i32 GetMapLoadingProgress(Zenith* zenith);
         static i32 EquipItem(Zenith* zenith);
         static i32 UnEquipItem(Zenith* zenith);
         static i32 GetEquippedItem(Zenith* zenith);
@@ -43,9 +40,6 @@ namespace Scripting
     {
         { "AddCursor",		        GlobalHandler::AddCursor },
         { "SetCursor",		        GlobalHandler::SetCursor },
-        { "GetCurrentMap",	        GlobalHandler::GetCurrentMap },
-        { "LoadMap",		        GlobalHandler::LoadMap },
-        { "GetMapLoadingProgress",  GlobalHandler::GetMapLoadingProgress },
         { "EquipItem",		        GlobalHandler::EquipItem },
         { "UnEquipItem",	        GlobalHandler::UnEquipItem },
         { "GetEquippedItem",        GlobalHandler::GetEquippedItem },

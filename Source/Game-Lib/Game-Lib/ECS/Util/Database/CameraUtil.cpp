@@ -2,15 +2,31 @@
 
 #include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/Scripting/Handlers/CameraHandler.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <MetaGen/Game/Lua/Lua.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+
+#include <Scripting/LuaManager.h>
 
 #include <entt/entt.hpp>
 #include <Game-Lib/Util/CameraSaveUtil.h>
 
 namespace ECSUtil::Camera
 {
+    static void NotifySavesChanged()
+    {
+        Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        if (!luaManager || !zenith)
+            return;
+        auto* handler = luaManager->GetLuaHandler<Scripting::Camera::CameraHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Camera));
+        if (handler)
+            handler->OnCameraSavesChanged(zenith);
+    }
+
     bool Refresh()
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -100,6 +116,7 @@ namespace ECSUtil::Camera
         cameraSaveSingleton.cameraSaveNameHashToID.erase(cameraNameHash);
 
         cameraSaveStorage->MarkDirty();
+        NotifySavesChanged();
         return true;
     }
 
@@ -131,6 +148,7 @@ namespace ECSUtil::Camera
         cameraSaveSingleton.cameraSaveNameHashToID[cameraNameHash] = cameraID;
 
         cameraSaveStorage->MarkDirty();
+        NotifySavesChanged();
         return true;
     }
 

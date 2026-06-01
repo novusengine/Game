@@ -3,7 +3,6 @@
 #include "AnimationController.h"
 #include "AssetBrowser.h"
 #include "BaseEditor.h"
-#include "CameraInfo.h"
 #include "CDBEditor.h"
 #include "CVarEditor.h"
 #include "EaseCurveTool.h"
@@ -48,7 +47,6 @@ namespace Editor
         _editors.push_back(_viewport);
         _editors.push_back(new AnimationController());
         _editors.push_back(new CVarEditor());
-        _editors.push_back(new CameraInfo());
         _editors.push_back(new CDBEditor());
         _editors.push_back(new PerformanceDiagnostics());
         _editors.push_back(new MapSelector());
@@ -356,7 +354,6 @@ namespace Editor
         ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy);
         ImGui::DockBuilderDockWindow("Map", hierarchy);
         ImGui::DockBuilderDockWindow("Performance", hierarchy);
-        ImGui::DockBuilderDockWindow("Camera Info", hierarchy);
 
         ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), belowHierarchy);
 

@@ -25,6 +25,7 @@
 #include <Scripting/Zenith.h>
 
 #include <Renderer/Font.h>
+#include <Renderer/RenderSettings.h>
 
 #include <Base/Util/StringUtils.h>
 
@@ -194,7 +195,8 @@ namespace ECS::Util
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
 
             // Clipper
-            registry->emplace<ECS::Components::UI::Clipper>(entity);
+            auto& panelClipper = registry->emplace<ECS::Components::UI::Clipper>(entity);
+            panelClipper.clipRegionOverrideEntity = GetClippingAncestor(registry, entity);
 
             // Panel
             auto& panelComp = registry->emplace<ECS::Components::UI::Panel>(entity);
@@ -276,7 +278,8 @@ namespace ECS::Util
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
 
             // Clipper
-            registry->emplace<ECS::Components::UI::Clipper>(entity);
+            auto& textClipper = registry->emplace<ECS::Components::UI::Clipper>(entity);
+            textClipper.clipRegionOverrideEntity = GetClippingAncestor(registry, entity);
 
             // Text
             auto& textComp = registry->emplace<ECS::Components::UI::Text>(entity);
@@ -478,7 +481,9 @@ namespace ECS::Util
             }
 
             textComponent.sizeChanged |= oldLength != textComponent.text.size();
-            textComponent.hasGrown |= oldLength < textComponent.text.size();
+
+            // Note: the draw bucket is kept in sync by CanvasRenderer (incremental slot patch for
+            // glyph-count changes; full rebuild only when the text appears/disappears), not here.
 
             vec2 textSize = font->CalculateTextSize(textComponent.text, textTemplate.size, textTemplate.borderSize);
             transform2DSystem.SetSize(entity, textSize);
@@ -535,6 +540,107 @@ namespace ECS::Util
                 registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetClipper>(clipper->clipRegionOverrideEntity);
                 registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(clipper->clipRegionOverrideEntity);
             }
+        }
+
+        entt::entity GetClippingAncestor(entt::registry* registry, entt::entity child)
+        {
+            auto* childTransform = registry->try_get<ECS::Components::Transform2D>(child);
+            if (childTransform == nullptr)
+                return entt::null;
+
+            ECS::Components::Transform2D* cursor = childTransform->GetParentTransform();
+            while (cursor != nullptr)
+            {
+                entt::entity ancestorEntity = cursor->ownerNode != nullptr ? cursor->ownerNode->GetOwner() : entt::null;
+                if (ancestorEntity != entt::null)
+                {
+                    auto* ancestorClipper = registry->try_get<ECS::Components::UI::Clipper>(ancestorEntity);
+                    if (ancestorClipper != nullptr)
+                    {
+                        if (ancestorClipper->clipChildren)
+                            return ancestorEntity;
+                        if (ancestorClipper->clipRegionOverrideEntity != entt::null)
+                            return ancestorClipper->clipRegionOverrideEntity;
+                    }
+                }
+                cursor = cursor->GetParentTransform();
+            }
+            return entt::null;
+        }
+
+        void RecomputeClipSlots(entt::registry* registry, entt::entity entity)
+        {
+            auto* clipper = registry->try_get<ECS::Components::UI::Clipper>(entity);
+            auto* rect = registry->try_get<ECS::Components::UI::BoundingRect>(entity);
+            if (clipper == nullptr || rect == nullptr)
+                return;
+
+            const bool hasClipSlot = clipper->clipRectBufferIndex != 0;
+            const bool hasMaskSlot = clipper->maskBufferIndex != 0;
+            if (!hasClipSlot && !hasMaskSlot)
+                return;
+
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+
+            const vec2 refSize(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+            const vec2 size = rect->max - rect->min;
+
+            if (hasClipSlot)
+            {
+                vec2 clipMin = (rect->min + size * clipper->clipRegionMin) / refSize;
+                vec2 clipMax = (rect->min + size * clipper->clipRegionMax) / refSize;
+                canvasRenderer->UpdateClipRect(clipper->clipRectBufferIndex, vec4(clipMin.x, clipMin.y, clipMax.x, clipMax.y));
+            }
+
+            if (hasMaskSlot)
+            {
+                vec2 maskMin = rect->min / refSize;
+                vec2 maskMax = rect->max / refSize;
+                u32 textureIndex = clipper->hasClipMaskTexture
+                    ? canvasRenderer->LoadTextureByPath(clipper->clipMaskTexture)
+                    : 0;
+                canvasRenderer->UpdateMaskInfo(clipper->maskBufferIndex, vec4(maskMin.x, maskMin.y, maskMax.x, maskMax.y), textureIndex);
+            }
+        }
+
+        void ReserveClipRectSlot(entt::registry* registry, entt::entity entity)
+        {
+            auto& clipper = registry->get<ECS::Components::UI::Clipper>(entity);
+            if (clipper.clipRectBufferIndex != 0)
+                return;
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+            clipper.clipRectBufferIndex = canvasRenderer->ReserveClipRect();
+            RecomputeClipSlots(registry, entity);
+        }
+
+        void ReserveMaskSlot(entt::registry* registry, entt::entity entity)
+        {
+            auto& clipper = registry->get<ECS::Components::UI::Clipper>(entity);
+            if (clipper.maskBufferIndex != 0)
+                return;
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+            clipper.maskBufferIndex = canvasRenderer->ReserveMaskInfo();
+            RecomputeClipSlots(registry, entity);
+        }
+
+        void ReleaseClipRectSlot(entt::registry* registry, entt::entity entity)
+        {
+            auto& clipper = registry->get<ECS::Components::UI::Clipper>(entity);
+            if (clipper.clipRectBufferIndex == 0)
+                return;
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+            canvasRenderer->ReleaseClipRect(clipper.clipRectBufferIndex);
+            clipper.clipRectBufferIndex = 0;
+        }
+
+        void ReleaseMaskSlot(entt::registry* registry, entt::entity entity)
+        {
+            auto& clipper = registry->get<ECS::Components::UI::Clipper>(entity);
+            if (clipper.maskBufferIndex == 0)
+                return;
+            auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
+            canvasRenderer->ReleaseMaskInfo(clipper.maskBufferIndex);
+            clipper.maskBufferIndex = 0;
         }
 
         void ResetTemplate(entt::registry* registry, entt::entity entity)

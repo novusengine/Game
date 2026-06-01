@@ -5,6 +5,7 @@
 #include "Game-Lib/ECS/Singletons/AreaLightInfo.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
 #include "Game-Lib/ECS/Singletons/DayNightCycle.h"
+#include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Singletons/EngineStats.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
@@ -26,6 +27,7 @@
 #include "Game-Lib/ECS/Systems/UpdateSkyboxes.h"
 #include "Game-Lib/ECS/Systems/UpdateAABBs.h"
 #include "Game-Lib/ECS/Systems/CharacterController.h"
+#include "Game-Lib/ECS/Systems/Editor/EditorTools.h"
 #include "Game-Lib/ECS/Systems/UI/HandleInput.h"
 #include "Game-Lib/ECS/Systems/UI/UpdateBoundingRects.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
@@ -61,11 +63,13 @@ namespace ECS
         Systems::UpdateDayNightCycle::Init(gameRegistry);
         Systems::UpdateAreaLights::Init(gameRegistry);
         Systems::UpdateSkyboxes::Init(gameRegistry);
+        Systems::Editor::EditorTools::Init(gameRegistry);
 
         entt::registry::context& ctx = gameRegistry.ctx();
         ctx.emplace<Singletons::EngineStats>();
         ctx.emplace<Singletons::RenderState>();
         ctx.emplace<Singletons::ProximityTriggerSingleton>();
+        ctx.emplace<Singletons::EditorSelection>();
 
         // UI
         entt::registry& uiRegistry = *registries.uiRegistry;
@@ -103,6 +107,7 @@ namespace ECS
         Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);
+        Systems::Editor::EditorTools::Update(gameRegistry, clampedDeltaTime);
         Systems::CalculateTransformMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAABBs::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdatePhysics::Update(gameRegistry, clampedDeltaTime);

@@ -102,9 +102,25 @@ end
 declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, data : any) -> any)) : ()
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
-declare function GetCurrentMap() : string
-declare function LoadMap(name : string) : ()
-declare function GetMapLoadingProgress() : number
+type MapInfo = {
+    id : number,
+    internalName : string,
+    name : string,
+    flags : number,
+    instanceType : number,
+    expansionID : number,
+    maxPlayers : number,
+}
+
+declare Map : {
+    GetCurrent : () -> string,
+    GetLoadingProgress : () -> number,
+    GetList : () -> { MapInfo },
+    Load : (internalName : string) -> boolean,
+    LoadByID : (id : number) -> boolean,
+    Unload : () -> boolean,
+    SetOnCurrentMapChanged : (fn : (() -> ())?) -> (),
+}
 declare function EquipItem(itemID : number, slotIndex : number) : boolean
 declare function UnequipItem(slotIndex : number) : boolean
 declare function GetEquippedItem(slotIndex : number) : number

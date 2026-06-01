@@ -169,7 +169,11 @@ i32 Scripting::UI::WidgetMethods::SetEnabled(Zenith* zenith, Widget* widget)
     toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Enabled);
     toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Enabled);
 
-    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * enabled + toRemove * !enabled);
+    auto newFlags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * enabled + toRemove * !enabled);
+    if (newFlags == widgetComponent.flags)
+        return 0; // No change -> don't dirty (avoids redundant per-frame canvas re-sorts)
+
+    widgetComponent.flags = newFlags;
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
@@ -191,7 +195,11 @@ i32 Scripting::UI::WidgetMethods::SetVisible(Zenith* zenith, Widget* widget)
     toAdd |= static_cast<u32>(ECS::Components::UI::WidgetFlags::Visible);
     toRemove &= ~static_cast<u32>(ECS::Components::UI::WidgetFlags::Visible);
 
-    widgetComponent.flags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * visible + toRemove * !visible);
+    auto newFlags = static_cast<ECS::Components::UI::WidgetFlags>(toAdd * visible + toRemove * !visible);
+    if (newFlags == widgetComponent.flags)
+        return 0; // No change -> don't dirty (avoids redundant per-frame canvas re-sorts)
+
+    widgetComponent.flags = newFlags;
     registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetFlags>(widget->entity);
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
@@ -460,6 +468,15 @@ i32 Scripting::UI::WidgetMethods::SetClipChildren(Zenith* zenith, Widget* widget
 
     clipper.clipChildren = clipChildren;
 
+    if (clipChildren)
+    {
+        ECS::Util::UI::ReserveClipRectSlot(registry, widget->entity);
+    }
+    else
+    {
+        ECS::Util::UI::ReleaseClipRectSlot(registry, widget->entity);
+    }
+
     registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(widget->entity);
     if (!clipper.clipChildren)
     {
@@ -500,6 +517,7 @@ i32 Scripting::UI::WidgetMethods::SetClipRect(Zenith* zenith, Widget* widget)
 
     if (clipper.clipChildren)
     {
+        ECS::Util::UI::RecomputeClipSlots(registry, widget->entity);
         registry->emplace_or_replace<ECS::Components::UI::DirtyChildClipper>(widget->entity);
     }
     else
@@ -540,11 +558,13 @@ i32 Scripting::UI::WidgetMethods::SetClipMaskTexture(Zenith* zenith, Widget* wid
     {
         clipper.hasClipMaskTexture = false;
         clipper.clipMaskTexture.clear();
+        ECS::Util::UI::ReleaseMaskSlot(registry, widget->entity);
     }
     else
     {
         clipper.hasClipMaskTexture = true;
         clipper.clipMaskTexture = texture;
+        ECS::Util::UI::ReserveMaskSlot(registry, widget->entity);
     }
 
     if (clipper.clipChildren)
@@ -554,6 +574,7 @@ i32 Scripting::UI::WidgetMethods::SetClipMaskTexture(Zenith* zenith, Widget* wid
     else
     {
         registry->emplace_or_replace<ECS::Components::UI::DirtyClipper>(widget->entity);
+        registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
     }
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);

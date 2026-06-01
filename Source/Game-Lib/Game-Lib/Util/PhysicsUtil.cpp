@@ -11,9 +11,14 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
+#include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/RayCast.h>
+
+#include <limits>
 
 namespace Util
 {
@@ -74,6 +79,41 @@ namespace Util
             JPH::RRayCast ray(joltStart, joltDirection);
 
             return physicsSystem.GetNarrowPhaseQuery().CastRay(ray, result);
+        }
+
+        bool CastRayWorld(const vec3& start, const vec3& dir, u32 ignoreBodyID, vec3& outHitPos)
+        {
+            ZoneScoped;
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+
+            // CastRay travels start + fraction*direction (fraction 0..1), so extend the (possibly
+            // normalized) direction into a long segment before casting.
+            constexpr f32 RAY_LENGTH = 10000.0f;
+            vec3 d = glm::normalize(dir) * RAY_LENGTH;
+
+            JPH::RRayCast ray(JPH::Vec3(start.x, start.y, start.z), JPH::Vec3(d.x, d.y, d.z));
+            JPH::RayCastResult hit;
+
+            bool didHit;
+            if (ignoreBodyID != std::numeric_limits<u32>::max())
+            {
+                JPH::BodyID ignoredBody(ignoreBodyID);
+                JPH::IgnoreSingleBodyFilter bodyFilter(ignoredBody);
+                didHit = joltState.physicsSystem.GetNarrowPhaseQuery().CastRay(ray, hit, {}, {}, bodyFilter);
+            }
+            else
+            {
+                didHit = joltState.physicsSystem.GetNarrowPhaseQuery().CastRay(ray, hit);
+            }
+
+            if (!didHit)
+                return false;
+
+            JPH::Vec3 hitPos = ray.GetPointOnRay(hit.mFraction);
+            outHitPos = vec3(hitPos.GetX(), hitPos.GetY(), hitPos.GetZ());
+            return true;
         }
     }
 }

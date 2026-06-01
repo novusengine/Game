@@ -24,7 +24,12 @@ local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_
             { label = "Reload Shaders", enabled = false },
         }},
         { label = "Window", items = {
+            { label = "Camera Info", enabled = true, onClick = function() EditorRegistry.Toggle("CameraInfo") end },
             { label = "Clock", enabled = true, onClick = function() EditorRegistry.Toggle("Clock") end },
+            { label = "Map", enabled = true, onClick = function() EditorRegistry.Toggle("Map") end },
+            { label = "Hierarchy", enabled = true, onClick = function() EditorRegistry.Toggle("Hierarchy") end },
+            { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
+            { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
         }},
         { label = "Editor", items = {
             { label = "(none)", enabled = false },

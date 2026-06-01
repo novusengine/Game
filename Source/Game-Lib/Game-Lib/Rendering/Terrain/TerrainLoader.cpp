@@ -19,6 +19,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
+#include "Game-Lib/Scripting/Handlers/MapHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/JoltStream.h"
 #include "Game-Lib/Util/MapUtil.h"
@@ -61,6 +62,17 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
     _chunkIDToLoadedID.reserve(4096);
     _chunkIDToBodyID.reserve(4096);
     _chunkIDToChunkInfo.reserve(4096);
+}
+
+static void NotifyCurrentMapChanged()
+{
+    Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+    Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+    if (!luaManager || !zenith)
+        return;
+    auto* handler = luaManager->GetLuaHandler<Scripting::Map::MapHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Map));
+    if (handler)
+        handler->OnCurrentMapChanged(zenith);
 }
 
 void TerrainLoader::Clear()
@@ -122,8 +134,11 @@ void TerrainLoader::Clear()
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     editorHandler->GetInspector()->ClearSelection();
     
+    const bool mapInternalNameChanged = !_currentMapInternalName.empty();
     _currentMapInternalName.clear();
-    
+    if (mapInternalNameChanged)
+        NotifyCurrentMapChanged();
+
     auto view = registry->view<ECS::Components::Model>();
     view.each([&](ECS::Components::Model& model)
     {
@@ -579,6 +594,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     Clear();
 
     _currentMapInternalName = mapName;
+    NotifyCurrentMapChanged();
     _numChunksToLoad = numChunksToLoad;
 
     Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();

@@ -217,7 +217,6 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _liquidRenderer->Update(deltaTime);
     _materialRenderer->Update(deltaTime);
     _joltDebugRenderer->Update(deltaTime);
-    _debugRenderer->Update(deltaTime);
     _lightRenderer->Update(deltaTime);
     _pixelQuery->Update(deltaTime);
     _editorRenderer->Update(deltaTime);
@@ -225,6 +224,9 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
+
+    // Last: uploads debug verts, so it must run after other renderers' debug draws and before FlipFrame.
+    _debugRenderer->Update(deltaTime);
 }
 
 f32 GameRenderer::Render()
@@ -450,6 +452,11 @@ f32 GameRenderer::Render()
     renderGraph.Execute();
 
     _renderer->Present(_window, finalTarget, _resources.sceneRenderedSemaphore);
+
+    // Render is done; re-open staging uploads for the next frame's Update phase. Uploads are locked
+    // from FlipFrame's ExecuteUploadTasks until here, so anything trying to upload during render-graph
+    // build/execute (which would land a frame late) asserts.
+    _renderer->UnlockUploads();
 
     // Flip the frameIndex between 0 and 1
     _frameIndex = !_frameIndex;

@@ -1,7 +1,7 @@
 #include "UpdateDayNightCycle.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/DayNightCycle.h"
-#include "Game-Lib/Scripting/Handlers/UIHandler.h"
+#include "Game-Lib/Scripting/Handlers/TimeHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -59,10 +59,10 @@ namespace ECS::Systems
             Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
             if (luaManager && zenith)
             {
-                Scripting::UI::UIHandler* uiHandler = luaManager->GetLuaHandler<Scripting::UI::UIHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::UI));
-                if (uiHandler)
+                Scripting::Time::TimeHandler* timeHandler = luaManager->GetLuaHandler<Scripting::Time::TimeHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Time));
+                if (timeHandler)
                 {
-                    uiHandler->OnSecondChanged(zenith, dayNightCycle.timeInSeconds);
+                    timeHandler->OnSecondChanged(zenith, dayNightCycle.timeInSeconds);
                 }
             }
         }

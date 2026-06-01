@@ -177,6 +177,10 @@ local function SetupInputBoxMethods(inputBoxTable)
         UI.UnfocusWidget(table.button.panel);
     end
 
+    local function FireTextChanged(t)
+        if t.onTextChanged ~= nil then t.onTextChanged(t) end
+    end
+
     inputBoxTable.AddUnicodeToInput = function(table, unicode)
         local char = utf8.char(unicode);
         if inputBoxTable.numericOnly then
@@ -198,6 +202,7 @@ local function SetupInputBoxMethods(inputBoxTable)
         inputBoxTable.cursorPos = inputBoxTable.cursorPos + 1;
 
         RefreshText(inputBoxTable);
+        FireTextChanged(inputBoxTable);
     end
 
     inputBoxTable.Backspace = function()
@@ -223,6 +228,7 @@ local function SetupInputBoxMethods(inputBoxTable)
             inputBoxTable.cursorPos = cursorPos - 1;
 
             RefreshText(inputBoxTable);
+            FireTextChanged(inputBoxTable);
         end
     end
 
@@ -247,6 +253,7 @@ local function SetupInputBoxMethods(inputBoxTable)
             -- Cursor position remains the same
 
             RefreshText(inputBoxTable);
+            FireTextChanged(inputBoxTable);
         end
     end
 
@@ -322,37 +329,41 @@ local function SetupInputBoxMethods(inputBoxTable)
         table.cursorPos = utf8.len(text);
 
         RefreshText(table);
+        FireTextChanged(table);
+    end
+
+    inputBoxTable.SetOnTextChanged = function(table, fn)
+        table.onTextChanged = fn;
     end
 
     inputBoxTable.SetAnchor = function(table, anchorX, anchorY)
-        table.inputBox:SetAnchor(anchorX, anchorY);
+        table.button:SetAnchor(anchorX, anchorY);
     end
     inputBoxTable.SetRelativePoint = function(table, relativeX, relativeY)
-        table.inputBox:SetRelativePoint(relativeX, relativeY);
+        table.button:SetRelativePoint(relativeX, relativeY);
     end
 
     inputBoxTable.GetPos = function(table)
-        return table.inputBox:GetPos();
+        return table.button:GetPos();
     end
     inputBoxTable.GetPosX = function(table)
-        return table.inputBox:GetPosX();
+        return table.button:GetPosX();
     end
     inputBoxTable.GetPosY = function(table)
-        return table.inputBox:GetPosY();
+        return table.button:GetPosY();
     end
 
     inputBoxTable.SetPos = function(table, x, y)
-        table.inputBox:SetPos(x, y);
+        table.button:SetPos(x, y);
     end
     inputBoxTable.SetPosX = function(table, x)
-        table.inputBox:SetPosX(x);
+        table.button:SetPosX(x);
     end
     inputBoxTable.SetPosY = function(table, y)
-        table.inputBox:SetPosY(y);
+        table.button:SetPosY(y);
     end
 
     inputBoxTable.ForceRefresh = function(table)
-        table.inputBox:ForceRefresh();
         table.button:ForceRefresh();
     end
 
@@ -361,8 +372,6 @@ end
 
 function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTemplateTable)
     local inputBoxTable = {};
-
-    inputBoxTable.inputBox = parent:NewWidget(posX, posY, layer);
 
     inputBoxTemplateTable = inputBoxTemplateTable or {};
     local panelTemplate = inputBoxTemplateTable["panelTemplate"] or "DialogBox";
@@ -385,10 +394,13 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     inputBoxTable.numericOnly = inputBoxTemplateTable["numericOnly"] or false;
     inputBoxTable.secure = inputBoxTemplateTable["secure"] or false;
 
-    inputBoxTable.button = UIButton.NewButton(inputBoxTable.inputBox, 0, 0, sizeX, sizeY, 0, {
+    inputBoxTable.button = UIButton.NewButton(parent, posX, posY, sizeX, sizeY, layer, {
         panelTemplate = panelTemplate,
         textTemplate = textTemplate
     });
+
+    -- Aliased so LayoutCommon's proxy walker (which looks for a {_raw,_layout} child) finds the button's panel.
+    inputBoxTable.inputBox = inputBoxTable.button.panel;
     inputBoxTable.button:SetText(defaultText);
     if defaultTextFontSize then
         inputBoxTable.button:SetFontSize(defaultTextFontSize);
