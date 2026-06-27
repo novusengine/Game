@@ -3,6 +3,7 @@
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
 #include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
+#include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -12,91 +13,98 @@
 
 namespace ECS::Systems::UI
 {
-    // Recompute one widget's subtree bound = its rect unioned with every direct child's subtree bound.
-    // A clipChildren widget clamps to its clip rect (descendants can't draw/hit outside it), which
-    // also stops upward propagation -- so widgets scrolling inside a clip viewport never dirty ancestors.
-    static void RecomputeSubtreeBound(entt::registry& registry, ECS::Transform2DSystem& transform2DSystem, entt::entity entity, Components::UI::BoundingRect& rect)
-    {
-        auto* clipper = registry.try_get<Components::UI::Clipper>(entity);
-        if (clipper != nullptr && clipper->clipChildren)
-        {
-            vec2 size = rect.max - rect.min;
-            rect.subtreeMin = rect.min + size * clipper->clipRegionMin;
-            rect.subtreeMax = rect.min + size * clipper->clipRegionMax;
-            return;
-        }
-
-        vec2 mn = rect.min;
-        vec2 mx = rect.max;
-        transform2DSystem.IterateChildren(entity, [&](entt::entity child)
-        {
-            if (auto* childRect = registry.try_get<Components::UI::BoundingRect>(child))
-            {
-                mn = glm::min(mn, childRect->subtreeMin);
-                mx = glm::max(mx, childRect->subtreeMax);
-            }
-        });
-        rect.subtreeMin = mn;
-        rect.subtreeMax = mx;
-    }
-
     void UpdateBoundingRects::Update(entt::registry& registry, f32 deltaTime)
     {
         ZoneScopedN("UI::UpdateBoundingRects::Update");
         auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
+        auto& uiSingleton = registry.ctx().get<ECS::Singletons::UISingleton>();
 
-        // Dirty transforms
+        // Entities that moved this frame. Only the moved entity's own world rect is updated -- a container
+        // move no longer recomputes its descendants (the GPU chain recomposes them, and hover composes
+        // their rects on demand). We keep the set so a clip source whose ancestor moved can be re-derived.
+        robin_hood::unordered_set<entt::entity> movedEntities;
+
         transform2DSystem.ProcessMovedEntities([&](entt::entity entity)
         {
             if (!registry.valid(entity))
                 return;
 
-            auto& transform = registry.get<Components::Transform2D>(entity);
-            auto* rect = registry.try_get<Components::UI::BoundingRect>(entity);
+            movedEntities.insert(entity);
 
-            if (rect == nullptr)
-            {
-                return;
-            }
-
-            vec2 pos = transform.GetWorldPosition();
-            vec2 size = transform.GetSize();
-
-            rect->min = pos;
-            rect->max = pos + size;
-
+            // Every chain participant re-uploads its matrix on move -- including rect-less containers, whose
+            // slot anchors their children's GPU chain. The transform pass early-outs for canvas/3D widgets.
             registry.get_or_emplace<Components::UI::DirtyWidgetTransform>(entity);
 
-            // If this widget is a clip source (owns a slot in _widgetClipRects or
-            // _widgetMaskInfo), re-upload the slot from the new BoundingRect. The
-            // descendants' draw-data indexes are stable; only the source's slot value
-            // changes — one upload, not N.
+            auto& transform = registry.get<Components::Transform2D>(entity);
+
+            auto* rect = registry.try_get<Components::UI::BoundingRect>(entity);
+            if (rect != nullptr)
+            {
+                vec2 pos = transform.ComputeWorldTranslation();
+                vec2 size = transform.GetSize();
+
+                // A size change alters the local vertices (quad / glyph layout), so re-bake them; a
+                // position-only move leaves the local verts untouched (only the screen matrix re-uploads).
+                if (size != (rect->max - rect->min))
+                    registry.get_or_emplace<Components::UI::DirtyWidgetData>(entity);
+
+                rect->min = pos;
+                rect->max = pos + size;
+            }
+
+            // A moved clip source re-uploads its own slot from the new rect.
             auto* clipper = registry.try_get<Components::UI::Clipper>(entity);
             if (clipper != nullptr && (clipper->clipRectBufferIndex != 0 || clipper->maskBufferIndex != 0))
                 ECS::Util::UI::RecomputeClipSlots(&registry, entity);
-
-            // Subtree bounds are maintained (and consumed) only for non-clipped widgets; everything
-            // inside a clip region is broad-phased by its clip source. Scrolling moves only clipped
-            // widgets, so skipping them here keeps it out of this O(siblings) up-walk.
-            bool isClipped = clipper != nullptr && clipper->clipRegionOverrideEntity != entt::null;
-            entt::entity cur = isClipped ? entt::null : entity;
-            while (cur != entt::null && registry.valid(cur))
-            {
-                auto* curRect = registry.try_get<Components::UI::BoundingRect>(cur);
-                if (curRect == nullptr)
-                    break;
-
-                vec2 oldMin = curRect->subtreeMin;
-                vec2 oldMax = curRect->subtreeMax;
-                RecomputeSubtreeBound(registry, transform2DSystem, cur, *curRect);
-                if (curRect->subtreeMin == oldMin && curRect->subtreeMax == oldMax)
-                    break;
-
-                auto& curTransform = registry.get<Components::Transform2D>(cur);
-                auto* node = curTransform.ownerNode;
-                auto* parentNode = node ? node->GetParent() : nullptr;
-                cur = parentNode ? parentNode->GetOwner() : entt::null;
-            }
         });
+
+        if (movedEntities.empty())
+            return;
+
+        // A clip source whose ANCESTOR moved (but which wasn't itself moved) now has a stale world rect,
+        // since descendant rects are no longer propagated. Clip sources are few, so iterate them and
+        // re-derive the ones an ancestor moved. Stale/destroyed entries are dropped lazily.
+        std::vector<entt::entity> deadSources;
+        for (entt::entity sourceEntity : uiSingleton.clipSourceEntities)
+        {
+            auto* clipper = registry.valid(sourceEntity) ? registry.try_get<Components::UI::Clipper>(sourceEntity) : nullptr;
+            if (clipper == nullptr || (clipper->clipRectBufferIndex == 0 && clipper->maskBufferIndex == 0))
+            {
+                deadSources.push_back(sourceEntity); // no longer a clip source / destroyed
+                continue;
+            }
+
+            if (movedEntities.count(sourceEntity) != 0)
+                continue; // already re-derived in the moved loop above
+
+            auto& transform = registry.get<Components::Transform2D>(sourceEntity);
+            auto* node = transform.ownerNode;
+            auto* parentNode = node ? node->GetParent() : nullptr;
+
+            bool ancestorMoved = false;
+            while (parentNode != nullptr)
+            {
+                if (movedEntities.count(parentNode->GetOwner()) != 0)
+                {
+                    ancestorMoved = true;
+                    break;
+                }
+                parentNode = parentNode->GetParent();
+            }
+
+            if (!ancestorMoved)
+                continue;
+
+            if (auto* rect = registry.try_get<Components::UI::BoundingRect>(sourceEntity))
+            {
+                vec2 pos = transform.ComputeWorldTranslation();
+                rect->min = pos;
+                rect->max = pos + transform.GetSize();
+            }
+            ECS::Util::UI::RecomputeClipSlots(&registry, sourceEntity);
+        }
+
+        for (entt::entity dead : deadSources)
+            uiSingleton.clipSourceEntities.erase(dead);
     }
 }

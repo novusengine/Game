@@ -397,113 +397,102 @@ namespace ECS::Systems::UI
         });
     }
 
-    // This function is called on a canvas to find all hovered entities within it
-    // It's recursive because we can have Panels with a RenderTarget canvas as a texture
-    // When it finds one of those we need to offset the panel position and call this function again on the nested canvas
-    void RecursivelyFindHoveredInCanvas(entt::registry& registry, entt::entity entity, const vec2& mousePos, std::map<u64, entt::entity>& allHoveredEntities, const vec2& parentMin, const vec2& parentMax)
+    // Walks `entity`'s widget subtree to collect hovered entities. Each widget's world rect is composed
+    // top-down: `originWorldPos` is where `entity`'s child-origin lands in screen space, and every level
+    // adds its own local offset. (Translation only — matches the legacy cached-rect behaviour, which also
+    // ignores ancestor scale/rotation in hit-testing.) Recursive because a Panel can host a RenderTarget
+    // canvas as its texture; there we reset the origin to the host panel's screen rect.
+    void RecursivelyFindHoveredInCanvas(entt::registry& registry, entt::entity entity, const vec2& mousePos, std::map<u64, entt::entity>& allHoveredEntities, const vec2& originWorldPos, const vec2& clipMax)
     {
         auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
-        //auto& boundingRect = registry.get<Components::UI::BoundingRect>(entity);
-        //bool isWithin = IsWithin(mousePos, boundingRect.min, boundingRect.max);
-        
-        // Loop over children recursively (depth first)
-        transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
+
+        // A hidden (sub)canvas hides its whole subtree (the legacy DFS skipped it via the per-node visibility check).
+        if (auto* entityWidget = registry.try_get<Components::UI::Widget>(entity); entityWidget != nullptr && !entityWidget->IsVisible())
+            return;
+
+        transform2DSystem.IterateChildren(entity, [&](entt::entity childEntity)
         {
             auto& widget = registry.get<Components::UI::Widget>(childEntity);
 
             if (!widget.IsVisible())
-                return false;
+                return; // skip this widget and its subtree
 
+            auto& childTransform = registry.get<Components::Transform2D>(childEntity);
             auto* rect = registry.try_get<Components::UI::BoundingRect>(childEntity);
             auto* clipper = registry.try_get<Components::UI::Clipper>(childEntity);
 
-            // Broad-phase: the cursor can only hover a descendant if it's inside this widget's subtree
-            // bound (its rect unioned with all descendants). Only non-clipped widgets keep maintained
-            // subtree bounds; clipped descendants are broad-phased by the clip-prune just below.
-            bool isClipped = clipper != nullptr && clipper->clipRegionOverrideEntity != entt::null;
-            if (rect != nullptr && !isClipped &&
-                !IsWithin(mousePos, rect->subtreeMin + parentMin, rect->subtreeMax + parentMin))
-                return false;
+            // Compose this widget's world rect from the parent's origin. 3D-anchored widgets are
+            // camera-projected (not chain-composed), so fall back to their maintained BoundingRect.
+            bool is3D = widget.worldTransformIndex != std::numeric_limits<u32>::max();
+            vec2 size = childTransform.GetSize();
+            vec2 worldMin = is3D ? (rect != nullptr ? rect->min : originWorldPos)
+                                 : originWorldPos + childTransform.GetLocalTranslation();
+            vec2 cappedMax = glm::min(worldMin + size, clipMax);
 
-            // Clip pruning: a clipChildren container whose clip region doesn't contain the cursor
-            // can't have any hoverable descendant (they're all clipped to it), so skip the whole
-            // subtree. Done before the interactable check because the container is usually an inert
-            // panel (e.g. a scrollbox viewport) that consumes nothing itself.
-            if (rect != nullptr && clipper != nullptr && clipper->clipChildren)
+            // Clip pruning: a clipChildren container whose clip region doesn't contain the cursor can't
+            // have any hoverable descendant (they're all clipped to it), so skip the whole subtree.
+            if (clipper != nullptr && clipper->clipChildren)
             {
-                vec2 clipBase = rect->min + parentMin;
-                vec2 clipSize = rect->max - rect->min;
-                vec2 clipMin = clipBase + clipSize * clipper->clipRegionMin;
-                vec2 clipMax = clipBase + clipSize * clipper->clipRegionMax;
-                if (!IsWithin(mousePos, clipMin, clipMax))
-                    return false;
+                vec2 clipMin = worldMin + size * clipper->clipRegionMin;
+                vec2 clipRegionMax = worldMin + size * clipper->clipRegionMax;
+                if (!IsWithin(mousePos, clipMin, clipRegionMax))
+                    return;
             }
 
-            if (!widget.IsInteractable())
-                return true;
-
-            if (widget.type == Components::UI::WidgetType::Canvas) // For now we don't let canvas consume input
-                return true;
-
-            if (rect == nullptr)
+            // Narrow-phase hit test. Non-interactable / canvas / rect-less widgets don't consume input
+            // but we still descend into their children.
+            if (widget.IsInteractable() && widget.type != Components::UI::WidgetType::Canvas && rect != nullptr)
             {
-                return true;
-            }
+                bool isWithin = IsWithin(mousePos, worldMin, cappedMax);
 
-            // Offset the rect by the parents position
-            vec2 min = rect->min + parentMin;
-            vec2 max = rect->max + parentMin;
-
-            // Cap it so we can't go outside the parent max and interact with clipped children
-            max = glm::min(max, parentMax);
-
-            bool isWithin = IsWithin(mousePos, min, max);
-
-            // Respect clipping for input: a widget inside a clip-children ancestor (e.g. a scrollbox)
-            // must not capture clicks outside that ancestor's visible region, even though its own
-            // rect — when scrolled — extends beyond it. (parentMax above only caps to the screen.)
-            if (isWithin)
-            {
-                entt::entity clipAncestor = ECS::Util::UI::GetClippingAncestor(&registry, childEntity);
-                if (clipAncestor != entt::null)
+                // Respect clipping for input: a widget inside a clip-children ancestor (e.g. a scrollbox)
+                // must not capture clicks outside that ancestor's visible region, even though its own
+                // rect — when scrolled — extends beyond it.
+                if (isWithin)
                 {
-                    auto* clipRect = registry.try_get<Components::UI::BoundingRect>(clipAncestor);
-                    auto* clipper = registry.try_get<Components::UI::Clipper>(clipAncestor);
-                    if (clipRect != nullptr && clipper != nullptr)
+                    entt::entity clipAncestor = ECS::Util::UI::GetClippingAncestor(&registry, childEntity);
+                    if (clipAncestor != entt::null)
                     {
-                        vec2 clipSize = clipRect->max - clipRect->min;
-                        vec2 clipMin = clipRect->min + clipSize * clipper->clipRegionMin;
-                        vec2 clipMax = clipRect->min + clipSize * clipper->clipRegionMax;
-                        isWithin = IsWithin(mousePos, clipMin, clipMax);
+                        auto* clipRect = registry.try_get<Components::UI::BoundingRect>(clipAncestor);
+                        auto* ancestorClipper = registry.try_get<Components::UI::Clipper>(clipAncestor);
+                        if (clipRect != nullptr && ancestorClipper != nullptr)
+                        {
+                            vec2 clipSize = clipRect->max - clipRect->min;
+                            vec2 clipMin = clipRect->min + clipSize * ancestorClipper->clipRegionMin;
+                            vec2 clipRegionMax = clipRect->min + clipSize * ancestorClipper->clipRegionMax;
+                            isWithin = IsWithin(mousePos, clipMin, clipRegionMax);
+                        }
                     }
+                }
+
+                if (isWithin)
+                {
+                    // Cached for the hover/mouse-up dispatch's hit-test (read on a later frame).
+                    rect->hoveredMin = worldMin;
+                    rect->hoveredMax = cappedMax;
+
+                    vec2 middlePoint = (worldMin + cappedMax) * 0.5f;
+                    u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos));
+
+                    // Invert sortKey: higher sortKey draws on top, but the map dispatches smallest first.
+                    u32 invertedSortKey = std::numeric_limits<u32>::max() - widget.sortKey;
+                    u64 key = (static_cast<u64>(invertedSortKey) << 32) | distanceToMouse;
+                    allHoveredEntities[key] = childEntity;
                 }
             }
 
-            if (isWithin)
-            {
-                // Cached for the hover-event dispatch's hit-test; only needed for hovered widgets.
-                rect->hoveredMin = min;
-                rect->hoveredMax = max;
-
-                vec2 middlePoint = (min + max) * 0.5f;
-                u32 distanceToMouse = static_cast<u32>(glm::distance(middlePoint, mousePos));
-
-                // Invert sortKey: higher sortKey draws on top, but the map dispatches smallest first.
-                u32 invertedSortKey = std::numeric_limits<u32>::max() - widget.sortKey;
-                u64 key = (static_cast<u64>(invertedSortKey) << 32) | distanceToMouse;
-                allHoveredEntities[key] = childEntity;
-            }
-
+            // Recurse into a hosted RenderTarget canvas (origin resets to this panel's screen rect)...
             if (widget.type == Components::UI::WidgetType::Panel)
             {
                 auto& panelTemplate = registry.get<Components::UI::PanelTemplate>(childEntity);
                 if (panelTemplate.setFlags.backgroundRT)
                 {
-                    RecursivelyFindHoveredInCanvas(registry, panelTemplate.backgroundRTEntity, mousePos, allHoveredEntities, min, max);
+                    RecursivelyFindHoveredInCanvas(registry, panelTemplate.backgroundRTEntity, mousePos, allHoveredEntities, worldMin, cappedMax);
                 }
             }
 
-            return true;
+            // ...and into this widget's own children, composing from this widget's world origin.
+            RecursivelyFindHoveredInCanvas(registry, childEntity, mousePos, allHoveredEntities, worldMin, clipMax);
         });
     }
 
@@ -536,7 +525,8 @@ namespace ECS::Systems::UI
             ZoneScopedN("UI::HandleInput::FindHovered");
             registry.view<Components::UI::Canvas>(entt::exclude<Components::UI::CanvasRenderTargetTag>).each([&](auto entity, auto& canvas)
             {
-                RecursivelyFindHoveredInCanvas(registry, entity, mousePos, uiSingleton.allHoveredEntities, vec2(0,0), renderSize);
+                vec2 canvasWorldPos = registry.get<Components::Transform2D>(entity).GetWorldPosition();
+                RecursivelyFindHoveredInCanvas(registry, entity, mousePos, uiSingleton.allHoveredEntities, canvasWorldPos, renderSize);
                 /*// Loop over children recursively (depth first)
                 transform2DSystem.IterateChildrenRecursiveDepth(entity, [&](auto childEntity)
                 {

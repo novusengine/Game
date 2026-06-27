@@ -193,6 +193,7 @@ namespace ECS::Util
             widgetComp.scriptWidget = widget;
 
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
+            registry->emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
 
             // Clipper
             auto& panelClipper = registry->emplace<ECS::Components::UI::Clipper>(entity);
@@ -276,6 +277,7 @@ namespace ECS::Util
             widgetComp.scriptWidget = widget;
 
             registry->emplace<ECS::Components::UI::DirtyWidgetData>(entity);
+            registry->emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
 
             // Clipper
             auto& textClipper = registry->emplace<ECS::Components::UI::Clipper>(entity);
@@ -360,6 +362,10 @@ namespace ECS::Util
             auto& widgetComp = registry->emplace<ECS::Components::UI::Widget>(entity);
             widgetComp.type = ECS::Components::UI::WidgetType::Widget;
             widgetComp.scriptWidget = widget;
+
+            // Containers don't render, but they get a matrix slot so their children can chain through them.
+            // A move then only re-uploads this slot and the GPU recomposes the subtree (no CPU propagation).
+            registry->emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
 
             // New widget entering the tree -> owning canvas needs sort-key rebuild.
             MarkCanvasSortDirty(registry, FindOwningCanvas(registry, parent));
@@ -466,7 +472,7 @@ namespace ECS::Util
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(entity);
 
-            size_t oldLength = textComponent.text.size();
+            std::string oldText = textComponent.text;
 
             textComponent.text = newText;
             ReplaceTextNewLines(textComponent.text);
@@ -480,7 +486,12 @@ namespace ECS::Util
                 textComponent.text = GenWrapText(textComponent.rawText, font, textTemplate.size, textTemplate.borderSize, textTemplate.wrapWidth, textTemplate.wrapIndent);
             }
 
-            textComponent.sizeChanged |= oldLength != textComponent.text.size();
+            // sizeChanged gates recomputing numCharsNonWhitespace -- the non-whitespace glyph count that
+            // drives vertex/draw-data allocation, the dirty range, and the indirect-draw instanceCount.
+            // Compare the resolved CONTENT, not the byte length: same-length text can have a different
+            // glyph count (e.g. swapping a space for a letter), which would otherwise leave the glyph
+            // machinery desynced and overrun/under-fill the GPU slots.
+            textComponent.sizeChanged |= oldText != textComponent.text;
 
             // Note: the draw bucket is kept in sync by CanvasRenderer (incremental slot patch for
             // glyph-count changes; full rebuild only when the text appears/disappears), not here.
@@ -610,6 +621,7 @@ namespace ECS::Util
                 return;
             auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
             clipper.clipRectBufferIndex = canvasRenderer->ReserveClipRect();
+            registry->ctx().get<ECS::Singletons::UISingleton>().clipSourceEntities.insert(entity);
             RecomputeClipSlots(registry, entity);
         }
 
@@ -620,6 +632,7 @@ namespace ECS::Util
                 return;
             auto* canvasRenderer = ServiceLocator::GetGameRenderer()->GetCanvasRenderer();
             clipper.maskBufferIndex = canvasRenderer->ReserveMaskInfo();
+            registry->ctx().get<ECS::Singletons::UISingleton>().clipSourceEntities.insert(entity);
             RecomputeClipSlots(registry, entity);
         }
 

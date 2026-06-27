@@ -3,10 +3,12 @@
 
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<float4> _vertices;
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<float4> _widgetWorldPositions;
+[[vk::binding(8, PER_PASS)]] StructuredBuffer<float4x4> _widgetLocalMatrices;
+[[vk::binding(9, PER_PASS)]] StructuredBuffer<uint> _widgetParentSlots;
 
 struct WidgetDrawData
 {
-    uint4 packed0; // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (int reinterpret)
+    uint4 packed0; // x: type, y: vertexBase, z: matrix slot (into _widgetLocalMatrices), w: worldPositionIndex (int reinterpret)
     uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
     float4 texCoord;            // Panel only
     float4 slicingCoord;        // Panel only
@@ -46,7 +48,7 @@ VertexOutput main(VertexInput input)
     {
         float3 worldPos = _widgetWorldPositions[worldPositionIndex].xyz;
 
-        // Transform the world position to clip space.
+        // 3D-anchored: transform the world position to clip space (camera-projected).
         float4 clipPos = mul(float4(worldPos, 1.0), _cameras[0].worldToClip);
         clipPos.xyz /= clipPos.w; // Perform perspective division.
 
@@ -54,7 +56,25 @@ VertexOutput main(VertexInput input)
     }
     else
     {
-        finalPos = float4(position, 0.0, 1.0);
+        // Uniform 2D path: compose the parent chain of local matrices to screen/NDC. A chain root
+        // (parent slot == ~0u) carries the pixel->NDC fold, so the accumulated matrix lands in NDC.
+        // glm matrices upload transposed (column-major read as row-major), so mul(A,B) = (B*A)^T;
+        // accumulating with acc on the LEFT (mul(acc, parent)) yields the correct root*...*leaf order.
+        uint slot = drawData.packed0.z;
+        float4x4 acc = _widgetLocalMatrices[slot];
+        uint p = _widgetParentSlots[slot];
+
+        [unroll(16)]
+        for (uint i = 0; i < 16; i++)
+        {
+            if (p == 0xFFFFFFFFu)
+                break;
+            acc = mul(acc, _widgetLocalMatrices[p]);
+            p = _widgetParentSlots[p];
+        }
+
+        float4 ndc = mul(float4(position, 0.0, 1.0), acc);
+        finalPos = float4(ndc.xy, 0.0, 1.0);
     }
 
     VertexOutput output;

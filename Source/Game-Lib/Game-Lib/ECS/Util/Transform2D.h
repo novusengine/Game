@@ -13,6 +13,15 @@ namespace Editor { class Inspector; }
 
 namespace ECS
 {
+    // Classifies what changed on a transform so RefreshTransform can decide how far it must propagate.
+    // Until the descendant-propagation cut, every kind propagates the full subtree (behaviour unchanged).
+    enum class Transform2DDirtyKind
+    {
+        LocalPose,  // position/rotation/scale/anchor/relativePoint/layer: only this widget's own matrix changes
+        Size,       // size: also changes direct children's anchorOffset (anchor * parentSize)
+        Structural, // (re)parenting: the whole subtree's world matrices change
+    };
+
     struct Transform2DSystem
     {
     public:
@@ -35,7 +44,7 @@ namespace ECS
         void SetRelativePoint(entt::entity entity, const vec2& newRelativePoint);
 
         //manually flags the entity as moved. will refresh its matrix and do the same for children
-        void RefreshTransform(entt::entity entity, ECS::Components::Transform2D& transform);
+        void RefreshTransform(entt::entity entity, ECS::Components::Transform2D& transform, Transform2DDirtyKind kind = Transform2DDirtyKind::Structural);
 
         //api with transform component and entity ID to save lookup. Only local transforms
         void SetLocalPosition(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& newPosition);
@@ -130,7 +139,20 @@ namespace ECS::Components
 
         mat4x4 GetMatrix() const;
 
-        mat4a GetLocalMatrix() const
+        // Composes the world-space affine by walking up the parent chain (stops at the first ignoreParent
+        // node, mirroring RefreshMatrix). On-demand: SceneNode2D::matrix is no longer maintained for the
+        // descendants of a moved widget, so GetMatrix/GetWorldPosition compose instead of reading the cache.
+        mat4a ComputeWorldMatrix() const;
+
+        // Just the world translation, summing local translations up the chain without building affines.
+        // Matches the hover walk's accumulator (axis-aligned; ignores ancestor rotation/scale like the
+        // rest of UI hit-testing). For the hot BoundingRect path; GetWorldPosition stays exact.
+        vec2 ComputeWorldTranslation() const;
+
+        // The widget's origin in its parent's frame (the translation column of GetLocalMatrix) without
+        // building the full affine. The hover walk's top-down accumulator only needs positions, so this
+        // keeps the per-widget cost off the quaternion->matrix path.
+        vec2 GetLocalTranslation() const
         {
             vec2 relativePointOffset = relativePoint * size;
             vec2 anchorOffset = vec2(0, 0);
@@ -141,8 +163,12 @@ namespace ECS::Components
                 anchorOffset = anchor * parentTransform->size;
             }
 
-            vec2 finalPosition = (position - relativePointOffset) + anchorOffset;
-            return Math::AffineMatrix::TransformMatrix(vec3(finalPosition, 0.0f), rotation, vec3(scale, 1.0f));
+            return (position - relativePointOffset) + anchorOffset;
+        }
+
+        mat4a GetLocalMatrix() const
+        {
+            return Math::AffineMatrix::TransformMatrix(vec3(GetLocalTranslation(), 0.0f), rotation, vec3(scale, 1.0f));
         }
 
         void SetDirty(ECS::Transform2DSystem& dirtyQueue, entt::entity ownerEntity)
@@ -411,25 +437,46 @@ namespace ECS::Components
     };
 }
 
+inline mat4a ECS::Components::Transform2D::ComputeWorldMatrix() const
+{
+    mat4a m = GetLocalMatrix();
+    if (ownerNode == nullptr)
+        return m;
+
+    const SceneNode2D* cur = ownerNode;
+    while (cur->transform != nullptr && !cur->transform->ignoreParent && cur->parent != nullptr)
+    {
+        cur = cur->parent;
+        m = Math::AffineMatrix::MatrixMul(cur->transform->GetLocalMatrix(), m);
+    }
+    return m;
+}
+
 inline mat4x4 ECS::Components::Transform2D::GetMatrix() const
 {
-    if (ownerNode)
-    {
-        mat4x4 mt = ownerNode->matrix;
-        mt[3][3] = 1.f; //glm does not finish the matrix properly when transforming m4a into m4x4
-        return mt;
-    }
-    else
-    {
-        mat4x4 mt = GetLocalMatrix();
-        mt[3][3] = 1.f; //glm does not finish the matrix properly when transforming m4a into m4x4
-        return mt;
-    }
+    mat4x4 mt = ComputeWorldMatrix();
+    mt[3][3] = 1.f; //glm does not finish the matrix properly when transforming m4a into m4x4
+    return mt;
 }
 
 inline const vec2 ECS::Components::Transform2D::GetWorldPosition() const
 {
-    return ownerNode ? vec2(ownerNode->matrix[3]) : GetLocalPosition();
+    return ownerNode ? vec2(ComputeWorldMatrix()[3]) : GetLocalPosition();
+}
+
+inline vec2 ECS::Components::Transform2D::ComputeWorldTranslation() const
+{
+    vec2 p = GetLocalTranslation();
+    if (ownerNode == nullptr)
+        return p;
+
+    const SceneNode2D* cur = ownerNode;
+    while (cur->transform != nullptr && !cur->transform->ignoreParent && cur->parent != nullptr)
+    {
+        cur = cur->parent;
+        p += cur->transform->GetLocalTranslation();
+    }
+    return p;
 }
 inline const quat ECS::Components::Transform2D::GetWorldRotation() const
 {

@@ -158,6 +158,12 @@ void CanvasRenderer::Update(f32 deltaTime)
             }
         }
 
+        if (widget.gpuMatrixSlot != -1)
+        {
+            ReleaseMatrixSlot(static_cast<u32>(widget.gpuMatrixSlot));
+            widget.gpuMatrixSlot = -1;
+        }
+
         if (widget.scriptWidget != nullptr)
         {
             delete widget.scriptWidget;
@@ -192,57 +198,70 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
     });
 
-    // Dirty transforms
+    // Dirty transforms: a move only updates the widget's world matrix (verts are local and stay put).
     uiRegistry->view<DirtyWidgetTransform>().each([&](entt::entity entity)
     {
         auto& widget = uiRegistry->get<Widget>(entity);
 
         if (widget.type == WidgetType::Canvas)
-        {
-            return; // Nothing to do for canvas
-        }
+            return;
 
-        auto& canvasComponent = uiRegistry->get<Canvas>(widget.scriptWidget->canvasEntity);
-        vec2 refSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
-        vec2 size = refSize;
-
-        if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
-        {
-            auto& canvasTransform = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity);
-            size = canvasTransform.GetSize();
-        }
+        // 3D-anchored widgets are positioned via _widgetWorldPositions + the camera shader branch;
+        // they don't use a world matrix.
+        if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            return;
 
         auto& transform = uiRegistry->get<ECS::Components::Transform2D>(entity);
-        if (widget.type == WidgetType::Panel)
+
+        if (widget.gpuMatrixSlot == -1)
+            widget.gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
+        u32 slot = static_cast<u32>(widget.gpuMatrixSlot);
+
+        // Resolve the parent's matrix slot. Top-level widgets (parent == canvas) and any widget whose
+        // parent isn't slotted yet are roots; everything else composes against its parent in the shader.
+        auto* node = transform.ownerNode;
+        auto* parentNode = node ? node->GetParent() : nullptr;
+        entt::entity parentEntity = parentNode ? parentNode->GetOwner() : entt::null;
+
+        i32 parentMatrixSlot = -1;
+        if (parentEntity != entt::null && parentEntity != widget.scriptWidget->canvasEntity)
         {
-            auto& panel = uiRegistry->get<Panel>(entity);
-            auto& panelTemplate = uiRegistry->get<PanelTemplate>(entity);
-
-            // In pixel units
-            vec2 panelPos = transform.GetWorldPosition();
-            vec2 panelSize = transform.GetSize();
-
-            // Convert to clip space units
-            panelSize = PixelSizeToNDC(panelSize, size);
-
-            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            auto* parentWidget = uiRegistry->try_get<Widget>(parentEntity);
+            if (parentWidget != nullptr)
             {
-                panelPos = (panelPos / refSize) * 2.0f;
+                // Ensure the parent owns a slot so we can chain through it. If the parent is created this
+                // same frame and hasn't been processed yet, it fills the slot's matrix when its own dirty
+                // entry is handled this pass (every widget is dirtied on creation). This keeps the chain
+                // connected -- no widget falls back to a self-contained world matrix that would go stale
+                // once descendant propagation stops.
+                if (parentWidget->gpuMatrixSlot == -1)
+                    parentWidget->gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
+                parentMatrixSlot = parentWidget->gpuMatrixSlot;
             }
-            else
-            {
-                // Convert to clip space units
-                panelPos = PixelPosToNDC(panelPos, size);
-            }
-
-            UpdatePanelVertices(panelPos, panelSize, panel, panelTemplate);
         }
-        else if (widget.type == WidgetType::Text)
-        {
-            auto& text = uiRegistry->get<Text>(entity);
-            auto& textTemplate = uiRegistry->get<TextTemplate>(entity);
 
-            UpdateTextVertices(widget, transform, text, textTemplate, size);
+        if (parentMatrixSlot >= 0)
+        {
+            // Nested: upload the local matrix; the shader walks the parent chain to screen space.
+            UpdateLocalMatrix(slot, transform.GetLocalMatrix());
+            UpdateParentSlot(slot, static_cast<u32>(parentMatrixSlot));
+        }
+        else
+        {
+            // Root: self-contained pixel->NDC * world matrix (the chain bottoms out here).
+            auto& canvasComponent = uiRegistry->get<Canvas>(widget.scriptWidget->canvasEntity);
+            vec2 size = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+            if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
+                size = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity).GetSize();
+
+            mat4x4 ndcFromPixel(1.0f);
+            ndcFromPixel[0][0] = 2.0f / size.x;
+            ndcFromPixel[1][1] = 2.0f / size.y;
+            ndcFromPixel[3][0] = -1.0f;
+            ndcFromPixel[3][1] = -1.0f;
+
+            UpdateLocalMatrix(slot, ndcFromPixel * transform.GetMatrix());
+            UpdateParentSlot(slot, std::numeric_limits<u32>().max());
         }
     });
     uiRegistry->clear<DirtyWidgetTransform>();
@@ -266,6 +285,19 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->view<DirtyWidgetData>().each([&](entt::entity entity)
     {
         auto& widget = uiRegistry->get<Widget>(entity);
+
+        // A renderable widget must own a matrix slot before its draw data (packed0.z) is baked,
+        // else it falls back to the identity sentinel (slot 0) and renders off-screen. Creation
+        // pairs DirtyWidgetTransform with DirtyWidgetData so the transform pass above reserves it
+        // first; this guards any path that bakes data without a transform (one identity frame, then
+        // the queued transform sets the matrix).
+        if (widget.type != WidgetType::Canvas && widget.gpuMatrixSlot == -1 &&
+            widget.worldTransformIndex == std::numeric_limits<u32>().max())
+        {
+            widget.gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
+            uiRegistry->emplace_or_replace<DirtyWidgetTransform>(entity);
+        }
+
         if (widget.type == WidgetType::Canvas)
         {
             //auto& canvas = registry->get<Canvas>(entity);
@@ -277,13 +309,39 @@ void CanvasRenderer::Update(f32 deltaTime)
             auto& panel = uiRegistry->get<Panel>(entity);
             auto& panelTemplate = uiRegistry->get<PanelTemplate>(entity);
 
+            // Bake local verts. Non-3D widgets bake a pixel-local quad (0..size) that the widget's
+            // world matrix maps to NDC; 3D-anchored widgets keep the reference-space bake.
+            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            {
+                vec2 refSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+                vec2 canvasSize = refSize;
+                auto& canvasComponent = uiRegistry->get<Canvas>(widget.scriptWidget->canvasEntity);
+                if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
+                    canvasSize = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity).GetSize();
+
+                vec2 panelPos = (transform.GetWorldPosition() / refSize) * 2.0f;
+                vec2 panelSize = PixelSizeToNDC(transform.GetSize(), canvasSize);
+                UpdatePanelVertices(panelPos, panelSize, panel, panelTemplate);
+            }
+            else
+            {
+                UpdatePanelVertices(vec2(0.0f), transform.GetSize(), panel, panelTemplate);
+            }
+
             UpdatePanelData(entity, transform, panel, panelTemplate);
         }
         else if (widget.type == WidgetType::Text)
         {
             auto& text = uiRegistry->get<Text>(entity);
             auto& textTemplate = uiRegistry->get<TextTemplate>(entity);
+            auto& transform = uiRegistry->get<ECS::Components::Transform2D>(entity);
 
+            vec2 canvasSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
+            auto& canvasComponent = uiRegistry->get<Canvas>(widget.scriptWidget->canvasEntity);
+            if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
+                canvasSize = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity).GetSize();
+
+            UpdateTextVertices(widget, transform, text, textTemplate, canvasSize);
             UpdateTextData(entity, text, textTemplate);
         }
     });
@@ -303,6 +361,16 @@ void CanvasRenderer::Update(f32 deltaTime)
         if (_widgetWorldPositions.SyncToGPU(_renderer))
         {
             _widgetDescriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
+        }
+
+        if (_widgetLocalMatrices.SyncToGPU(_renderer))
+        {
+            _widgetDescriptorSet.Bind("_widgetLocalMatrices", _widgetLocalMatrices.GetBuffer());
+        }
+
+        if (_widgetParentSlots.SyncToGPU(_renderer))
+        {
+            _widgetDescriptorSet.Bind("_widgetParentSlots", _widgetParentSlots.GetBuffer());
         }
 
         if (_widgetClipRects.SyncToGPU(_renderer))
@@ -379,6 +447,35 @@ void CanvasRenderer::UpdateWorldTransform(u32 index, const vec3& position)
     _widgetWorldPositions.SetDirtyElement(index);
 }
 
+u32 CanvasRenderer::ReserveMatrixSlot()
+{
+    // Local matrix + parent slot share one index; allocate in lockstep so the indices stay aligned.
+    u32 index = _widgetLocalMatrices.Add(mat4x4(1.0f));
+    u32 parentIndex = _widgetParentSlots.Add(std::numeric_limits<u32>().max());
+    (void)parentIndex; // same index by construction
+    return index;
+}
+
+void CanvasRenderer::ReleaseMatrixSlot(u32 index)
+{
+    _widgetLocalMatrices.Remove(index);
+    _widgetParentSlots.Remove(index);
+}
+
+void CanvasRenderer::UpdateLocalMatrix(u32 index, const mat4x4& localMatrix)
+{
+    _widgetLocalMatrices[index] = localMatrix;
+    _widgetLocalMatrices.SetDirtyElement(index);
+}
+
+void CanvasRenderer::UpdateParentSlot(u32 index, u32 parentSlot)
+{
+    if (_widgetParentSlots[index] == parentSlot)
+        return;
+    _widgetParentSlots[index] = parentSlot;
+    _widgetParentSlots.SetDirtyElement(index);
+}
+
 u32 CanvasRenderer::ReserveClipRect()
 {
     return _widgetClipRects.Add();
@@ -450,6 +547,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             builder.Read(_widgetDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_widgetWorldPositions.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_widgetLocalMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_widgetParentSlots.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_widgetClipRects.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_widgetMaskInfo.GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -631,6 +730,14 @@ void CanvasRenderer::CreatePermanentResources()
     // Push a debug position
     _widgetWorldPositions.Add(vec4(0, 0, 0, 1));
 
+    _widgetLocalMatrices.SetDebugName("WidgetLocalMatrices");
+    _widgetLocalMatrices.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    _widgetParentSlots.SetDebugName("WidgetParentSlots");
+    _widgetParentSlots.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    // Index 0 is the identity/root sentinel (a widget with no reserved slot draws untransformed).
+    _widgetLocalMatrices.Add(mat4x4(1.0f));
+    _widgetParentSlots.Add(std::numeric_limits<u32>().max());
+
     _widgetClipRects.SetDebugName("WidgetClipRects");
     _widgetClipRects.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     // Index 0 is the "no clip" sentinel.
@@ -793,7 +900,10 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
         text.gpuVertexCapacity = static_cast<i32>(neededVertices);
     }
 
-    vec2 worldPos = transform.GetWorldPosition();
+    // Non-3D widgets bake glyphs in text-local pixel space (origin 0); the text's world matrix places
+    // them. 3D-anchored widgets keep the old world-position + reference-space bake.
+    bool is3D = widget.worldTransformIndex != std::numeric_limits<u32>().max();
+    vec2 worldPos = is3D ? transform.GetWorldPosition() : vec2(0.0f);
     vec2 refSize = vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
     Renderer::Font* font = Renderer::Font::GetFont(_renderer, textTemplate.font);
@@ -832,6 +942,14 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
         const Renderer::Glyph& glyph = font->GetGlyph(c);
         if (!glyph.isWhitespace())
         {
+            // Same desync guard as UpdateTextData: never bake past the numCharsNonWhitespace*6 vertices
+            // allocated + dirtied for this text. Should never fire.
+            if (vertexIndex + 6u > static_cast<u32>(text.gpuVertexIndex) + static_cast<u32>(text.numCharsNonWhitespace) * 6u)
+            {
+                NC_LOG_ERROR("CanvasRenderer::UpdateTextVertices: baked glyphs exceed numCharsNonWhitespace ({}) -- text/glyph desync on '{}'", text.numCharsNonWhitespace, text.text);
+                break;
+            }
+
             f64 planeLeft, planeBottom, planeRight, planeTop;
             f64 atlasLeft, atlasBottom, atlasRight, atlasTop;
 
@@ -858,16 +976,16 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
 
             vec2 planeMin;
             vec2 planeMax;
-            if (widget.worldTransformIndex != std::numeric_limits<u32>().max())
+            if (is3D)
             {
                 planeMin = (vec2(planeLeft, planeBottom) / refSize) * 2.0f;
                 planeMax = (vec2(planeRight, planeTop) / refSize) * 2.0f;
             }
             else
             {
-                // Convert the plane coordinates to NDC space
-                planeMin = PixelPosToNDC(vec2(planeLeft, planeBottom), canvasSize);
-                planeMax = PixelPosToNDC(vec2(planeRight, planeTop), canvasSize);
+                // Local pixel space; the text's world matrix maps these to NDC in the shader.
+                planeMin = vec2(planeLeft, planeBottom);
+                planeMax = vec2(planeRight, planeTop);
             }
 
             // Scale the atlas coordinates by the texel dimensions
@@ -971,12 +1089,12 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
                 maskBoundsIndex = ancestorClipper.maskBufferIndex;
         }
 
-        drawData.packed0.z = 0; // reserved (previously per-widget clipMaskTextureIndex)
         drawData.packed2 = uvec4(clipBoundsIndex, maskBoundsIndex, 0u, 0u);
     }
 
-    // World position UI (UINT_MAX bit-pattern == -1 when reinterpreted as int in the shader)
+    // packed0.z = screen-matrix slot (0 = identity sentinel); packed0.w = 3D worldpos index (-1 = none).
     auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
+    drawData.packed0.z = (widget.gpuMatrixSlot < 0) ? 0u : static_cast<u32>(widget.gpuMatrixSlot);
     drawData.packed0.w = widget.worldTransformIndex;
 
     _widgetDrawDatas.SetDirtyElement(panel.gpuDataIndex);
@@ -1072,6 +1190,7 @@ void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Compon
 
     auto& widget = registry->get<ECS::Components::UI::Widget>(entity);
     u32 worldTransformIndex = widget.worldTransformIndex;
+    u32 screenMatrixSlot = (widget.gpuMatrixSlot < 0) ? 0u : static_cast<u32>(widget.gpuMatrixSlot);
     f32 distanceRange = font->upperPixelRange - font->lowerPixelRange;
     f32 unitRangeX = distanceRange / font->width;
     f32 unitRangeY = distanceRange / font->height;
@@ -1099,10 +1218,19 @@ void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Compon
             continue;
         }
 
+        // Guard against a glyph-count / numCharsNonWhitespace desync (see RefreshText): the slots
+        // [gpuDataIndex, gpuDataIndex + numCharsNonWhitespace) are all that's allocated + dirtied +
+        // drawn. Baking past that overruns into neighbouring widgets' draw data. Should never fire.
+        if (charIndex >= static_cast<u32>(text.numCharsNonWhitespace))
+        {
+            NC_LOG_ERROR("CanvasRenderer::UpdateTextData: baked glyphs exceed numCharsNonWhitespace ({}, cap {}) -- text/glyph desync on '{}'", text.numCharsNonWhitespace, text.gpuDataCapacity, text.text);
+            break;
+        }
+
         auto& drawData = _widgetDrawDatas[text.gpuDataIndex + charIndex];
         drawData.packed0.x = static_cast<u32>(WidgetDrawType::Text);
         drawData.packed0.y = static_cast<u32>(text.gpuVertexIndex) + (charIndex * 6); // vertexBase
-        drawData.packed0.z = 0; // reserved
+        drawData.packed0.z = screenMatrixSlot;
         drawData.packed0.w = worldTransformIndex;
         drawData.packed1.x = packedTextureIndex;
         drawData.packed1.z = textColorPacked;

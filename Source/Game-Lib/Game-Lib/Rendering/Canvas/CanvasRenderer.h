@@ -57,6 +57,13 @@ public:
     void ReleaseWorldTransform(u32 index);
     void UpdateWorldTransform(u32 index, const vec3& position);
 
+    // Per-widget transform slot. The vertex shader composes the parent chain (_widgetLocalMatrices +
+    // _widgetParentSlots) to screen/NDC; the canvas root's local matrix folds in pixel->NDC.
+    u32 ReserveMatrixSlot();
+    void ReleaseMatrixSlot(u32 index);
+    void UpdateLocalMatrix(u32 index, const mat4x4& localMatrix);
+    void UpdateParentSlot(u32 index, u32 parentSlot);
+
     u32 ReserveClipRect();
     void ReleaseClipRect(u32 index);
     void UpdateClipRect(u32 index, const vec4& rect);
@@ -141,6 +148,8 @@ private:
     Renderer::GPUVector<WidgetDrawData> _widgetDrawDatas;
 
     Renderer::GPUVector<vec4> _widgetWorldPositions;
+    Renderer::GPUVector<mat4x4> _widgetLocalMatrices;
+    Renderer::GPUVector<u32> _widgetParentSlots; // parent's slot, or UINT_MAX for a root (canvas)
     Renderer::GPUVector<vec4> _widgetClipRects;
     Renderer::GPUVector<uvec4> _widgetMaskInfo;
 
