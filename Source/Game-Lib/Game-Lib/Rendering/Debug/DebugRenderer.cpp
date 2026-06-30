@@ -20,6 +20,7 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _draw3DIndirectDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _drawSolid2DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _drawSolid3DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _drawSolid3DOverlayDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     _renderer = renderer;
 
@@ -50,6 +51,11 @@ void DebugRenderer::CreatePermanentResources()
     _debugVerticesSolid3D.SetUsage(Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER);
     _debugVerticesSolid3D.SyncToGPU(_renderer);
     _drawSolid3DDescriptorSet.Bind("_vertices", _debugVerticesSolid3D.GetBuffer());
+
+    _debugVerticesSolid3DOverlay.SetDebugName("DebugVerticesSolid3DOnTop");
+    _debugVerticesSolid3DOverlay.SetUsage(Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::STORAGE_BUFFER);
+    _debugVerticesSolid3DOverlay.SyncToGPU(_renderer);
+    _drawSolid3DOverlayDescriptorSet.Bind("_vertices", _debugVerticesSolid3DOverlay.GetBuffer());
 
     // Create indirect buffers for GPU-side debugging
     u32 numGPUVertices = CVAR_DebugRendererNumGPUVertices.Get();
@@ -158,6 +164,13 @@ void DebugRenderer::CreatePipelines()
 
         pipelineDesc.states.primitiveTopology = Renderer::PrimitiveTopology::Triangles;
         _debugSolid3DPipeline = _renderer->CreatePipeline(pipelineDesc);
+
+        // Overlay variant: same shaders, but no depth test/write and no culling, so editor overlays
+        // (the transform gizmo) always draw over the scene from any angle.
+        pipelineDesc.states.depthStencilState.depthEnable = false;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = false;
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        _debugSolid3DOverlayPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
     // 3D Wireframe
     {
@@ -200,6 +213,10 @@ void DebugRenderer::InitDescriptorSets()
     _drawSolid3DDescriptorSet.RegisterPipeline(_renderer, _debugSolid3DPipeline);
     _drawSolid3DDescriptorSet.Init(_renderer);
 
+    // Solid 3d on-top
+    _drawSolid3DOverlayDescriptorSet.RegisterPipeline(_renderer, _debugSolid3DOverlayPipeline);
+    _drawSolid3DOverlayDescriptorSet.Init(_renderer);
+
     // Material pass descriptor set
     _debugDescriptorSet.RegisterPipeline(_renderer, _debugLine2DPipeline);
     _debugDescriptorSet.Init(_renderer);
@@ -213,6 +230,32 @@ void DebugRenderer::Update(f32 deltaTime)
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), Color::Red);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), Color::Green);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), Color::Blue);
+
+    SyncToGPU();
+}
+
+void DebugRenderer::SyncToGPU()
+{
+    if (_debugVertices2D.SyncToGPU(_renderer))
+    {
+        _draw2DDescriptorSet.Bind("_vertices", _debugVertices2D.GetBuffer());
+    }
+    if (_debugVerticesSolid2D.SyncToGPU(_renderer))
+    {
+        _drawSolid2DDescriptorSet.Bind("_vertices", _debugVerticesSolid2D.GetBuffer());
+    }
+    if (_debugVertices3D.SyncToGPU(_renderer))
+    {
+        _draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
+    }
+    if (_debugVerticesSolid3D.SyncToGPU(_renderer))
+    {
+        _drawSolid3DDescriptorSet.Bind("_vertices", _debugVerticesSolid3D.GetBuffer());
+    }
+    if (_debugVerticesSolid3DOverlay.SyncToGPU(_renderer))
+    {
+        _drawSolid3DOverlayDescriptorSet.Bind("_vertices", _debugVerticesSolid3DOverlay.GetBuffer());
+    }
 }
 
 void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -244,15 +287,7 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 
 void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    // Sync to GPU
-    if (_debugVertices2D.SyncToGPU(_renderer))
-    {
-        _draw2DDescriptorSet.Bind("_vertices", _debugVertices2D.GetBuffer());
-    }
-    if (_debugVerticesSolid2D.SyncToGPU(_renderer))
-    {
-        _drawSolid2DDescriptorSet.Bind("_vertices", _debugVerticesSolid2D.GetBuffer());
-    }
+    // Buffers are uploaded in SyncToGPU() during the Update phase (see its comment), not here.
 
     struct Data
     {
@@ -346,15 +381,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    // Sync to GPU
-    if (_debugVertices3D.SyncToGPU(_renderer))
-    {
-        _draw3DDescriptorSet.Bind("_vertices", _debugVertices3D.GetBuffer());
-    }
-    if (_debugVerticesSolid3D.SyncToGPU(_renderer))
-    {
-        _drawSolid3DDescriptorSet.Bind("_vertices", _debugVerticesSolid3D.GetBuffer());
-    }
+    // Buffers are uploaded in SyncToGPU() during the Update phase (see its comment), not here.
 
     struct Data
     {
@@ -368,6 +395,7 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
         Renderer::DescriptorSetResource draw3DSet;
         Renderer::DescriptorSetResource draw3DIndirectSet;
         Renderer::DescriptorSetResource drawSolid3DSet;
+        Renderer::DescriptorSetResource drawSolid3DOverlaySet;
     };
     renderGraph->AddPass<Data>("DebugRender3D",
         [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
@@ -390,11 +418,13 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_debugVertices3D.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_debugVerticesSolid3D.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_debugVerticesSolid3DOverlay.GetBuffer(), BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.draw3DSet = builder.Use(_draw3DDescriptorSet);
             data.draw3DIndirectSet = builder.Use(_draw3DIndirectDescriptorSet);
             data.drawSolid3DSet = builder.Use(_drawSolid3DDescriptorSet);
+            data.drawSolid3DOverlaySet = builder.Use(_drawSolid3DOverlayDescriptorSet);
 
             return true;// Return true from setup to enable this pass, return false to disable it
         },
@@ -459,6 +489,22 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
                     commandList.EndPipeline(pipeline);
                 }
+            }
+
+            // Solid overlay (depth disabled) — editor overlays like the gizmo
+            {
+                Renderer::GraphicsPipelineID pipeline = _debugSolid3DOverlayPipeline;
+
+                commandList.BeginPipeline(pipeline);
+
+                commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                commandList.BindDescriptorSet(data.drawSolid3DOverlaySet, frameIndex);
+
+                commandList.Draw(static_cast<u32>(_debugVerticesSolid3DOverlay.Count()), 1, 0, 0);
+
+                commandList.EndPipeline(pipeline);
+
+                _debugVerticesSolid3DOverlay.Clear();
             }
 
             commandList.EndRenderPass(renderPassDesc);
@@ -1025,15 +1071,26 @@ void DebugRenderer::DrawTriangleSolid3D(const vec3& v0, const vec3& v1, const ve
     u32 colorInt = color.ToABGR32();
     f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
     
-    u32 index = _debugVerticesSolid3D.AddCount(6);
+    // The solid pipeline is a triangle list, so emit the three triangle corners directly.
+    // (This previously used the wireframe line-pair layout, producing degenerate triangles.)
+    u32 index = _debugVerticesSolid3D.AddCount(3);
     _debugVerticesSolid3D[index + 0] = { vec4(v0, 0.0f), vec4(normal, colorFloat) };
     _debugVerticesSolid3D[index + 1] = { vec4(v1, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3D[index + 2] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
+}
 
-    _debugVerticesSolid3D[index + 2] = { vec4(v1, 0.0f), vec4(normal, colorFloat) };
-    _debugVerticesSolid3D[index + 3] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
+void DebugRenderer::DrawTriangleSolid3DOverlay(const vec3& v0, const vec3& v1, const vec3& v2, Color color, bool shaded)
+{
+    vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
 
-    _debugVerticesSolid3D[index + 4] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
-    _debugVerticesSolid3D[index + 5] = { vec4(v0, 0.0f), vec4(normal, colorFloat) };
+    color.a = static_cast<f32>(shaded);
+    u32 colorInt = color.ToABGR32();
+    f32 colorFloat = *reinterpret_cast<f32*>(&colorInt);
+
+    u32 index = _debugVerticesSolid3DOverlay.AddCount(3);
+    _debugVerticesSolid3DOverlay[index + 0] = { vec4(v0, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3DOverlay[index + 1] = { vec4(v1, 0.0f), vec4(normal, colorFloat) };
+    _debugVerticesSolid3DOverlay[index + 2] = { vec4(v2, 0.0f), vec4(normal, colorFloat) };
 }
 
 void DebugRenderer::RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder)

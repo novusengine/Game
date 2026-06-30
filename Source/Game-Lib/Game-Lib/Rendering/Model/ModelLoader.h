@@ -156,6 +156,9 @@ public:
     bool GetModelIDFromInstanceID(u32 instanceID, u32& modelID);
     bool GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entityID);
 
+    // Raw Jolt body id (IndexAndSequenceNumber) for an instance's collision body, if it has one.
+    bool GetBodyIDFromInstanceID(u32 instanceID, u32& bodyID);
+
     bool ContainsDiscoveredModel(u32 modelHash);
     DiscoveredModel& GetDiscoveredModel(u32 modelHash);
     DiscoveredModel& GetDiscoveredModelFromModelID(u32 modelID);

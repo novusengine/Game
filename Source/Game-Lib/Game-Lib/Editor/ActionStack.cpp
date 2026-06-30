@@ -1,6 +1,5 @@
 #include "ActionStack.h"
 #include "EditorHandler.h"
-#include "Inspector.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Input/InputManager.h>
@@ -37,7 +36,6 @@ namespace Editor
                 delete lastAction;
 
                 _actionStack.pop_back();
-                ServiceLocator::GetEditorHandler()->GetInspector()->DirtySelection();
 
                 return true;
             });

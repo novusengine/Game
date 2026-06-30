@@ -39,6 +39,11 @@ namespace ECS::Components::UI
         WidgetFlags flags = WidgetFlags::Default;
         u32 worldTransformIndex = std::numeric_limits<u32>().max();
 
+        // Slot in CanvasRenderer's transform buffers (_widgetLocalMatrices + _widgetParentSlots).
+        // The vertex shader composes the parent chain to screen/NDC. -1 until reserved. A widget is
+        // matrix-composed (this) XOR 3D-anchored (worldTransformIndex), never both.
+        i32 gpuMatrixSlot = -1;
+
         // Packed draw-order sortkey computed by CanvasRenderer. See CanvasRenderer::DfsAssignSortKey for the layout.
         // Sibling-order tiebreaker lives on SceneNode2D as siblingIndex (monotonic per-parent).
         u32 sortKey = 0;

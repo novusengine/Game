@@ -57,6 +57,24 @@ public:
     void ReleaseWorldTransform(u32 index);
     void UpdateWorldTransform(u32 index, const vec3& position);
 
+    // Per-widget transform slot. The vertex shader composes the parent chain (_widgetLocalMatrices +
+    // _widgetParentSlots) to screen/NDC; the canvas root's local matrix folds in pixel->NDC.
+    u32 ReserveMatrixSlot();
+    void ReleaseMatrixSlot(u32 index);
+    void UpdateLocalMatrix(u32 index, const mat4x4& localMatrix);
+    void UpdateParentSlot(u32 index, u32 parentSlot);
+
+    u32 ReserveClipRect();
+    void ReleaseClipRect(u32 index);
+    void UpdateClipRect(u32 index, const vec4& rect);
+
+    u32 ReserveMaskInfo();
+    void ReleaseMaskInfo(u32 index);
+    void UpdateMaskInfo(u32 index, const vec4& region, u32 textureIndex);
+
+    // Public for clip-mask consumers; hash-cached so repeat calls are O(1).
+    u32 LoadTextureByPath(std::string_view path);
+
     void AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
 private:
@@ -96,6 +114,11 @@ private:
     // canvasEntity == entt::null signals "main bucket" (every non-RT canvas merged).
     void RefreshBucketCPU(entt::registry* registry, entt::entity canvasEntity, bool isRT);
 
+    // Patch one text's IndirectDraw entry in its bucket's finalSortedArgs in place (offset upload),
+    // skipping the full DFS + gather + sort. No-op if the text isn't bucketed yet or its slot is
+    // stale (a later full rebuild covers it). Used when only glyph count / data index changed.
+    void PatchTextBucketSlot(entt::registry* registry, entt::entity entity, ECS::Components::UI::Text& text);
+
 
 public:
     enum class WidgetDrawType : u32
@@ -108,13 +131,12 @@ private:
     struct WidgetDrawData
     {
     public:
-        uvec4 packed0 = uvec4(0, 0, 0, 0xFFFFFFFFu); // x: type, y: vertexBase, z: clipMaskTextureIndex, w: worldPositionIndex (i32 reinterpret as -1)
+        uvec4 packed0 = uvec4(0, 0, 0, 0xFFFFFFFFu); // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (i32 reinterpret as -1)
         uvec4 packed1 = uvec4(0, 0, 0, 0); // Panel: x: textureIndex|additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
         vec4 texCoord = vec4(0.0f);                  // Panel only
         vec4 slicingCoord = vec4(0.0f);              // Panel only
         vec4 cornerRadiusAndBorder = vec4(0.0f);     // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
-        hvec4 clipRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f);     // xy: min, zw: max
-        hvec4 clipMaskRegionRect = hvec4(0.0f, 0.0f, 1.0f, 1.0f); // xy: min, zw: max
+        uvec4 packed2 = uvec4(0, 0, 0, 0); // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
     };
 
 private:
@@ -126,6 +148,10 @@ private:
     Renderer::GPUVector<WidgetDrawData> _widgetDrawDatas;
 
     Renderer::GPUVector<vec4> _widgetWorldPositions;
+    Renderer::GPUVector<mat4x4> _widgetLocalMatrices;
+    Renderer::GPUVector<u32> _widgetParentSlots; // parent's slot, or UINT_MAX for a root (canvas)
+    Renderer::GPUVector<vec4> _widgetClipRects;
+    Renderer::GPUVector<uvec4> _widgetMaskInfo;
 
     Renderer::Font* _font;
     Renderer::SamplerID _sampler;
@@ -164,6 +190,10 @@ private:
 
         // Single-element u32 count buffer for DrawIndirectCount.
         Renderer::BufferID finalCount = Renderer::BufferID::Invalid();
+
+        // Entity owning each slot in finalSortedArgs, for the stale-slot guard when patching a
+        // single entry in place (see PatchTextBucketSlot). Rebuilt by RefreshBucketCPU.
+        std::vector<entt::entity> slotOwners;
     };
 
     robin_hood::unordered_map<entt::entity, BucketResources> _rtBuckets; // key: RT canvas entity
@@ -171,7 +201,7 @@ private:
 
     // CPU scratch for gather+sort+upload inside RefreshBucketCPU. Reused across refreshes;
     // `.clear()` preserves capacity.
-    struct SortEntry { u32 key; Renderer::IndirectDraw draw; };
+    struct SortEntry { u32 key; Renderer::IndirectDraw draw; entt::entity entity; };
     std::vector<SortEntry>              _sortScratch;
     std::vector<Renderer::IndirectDraw> _uploadScratch;
 };

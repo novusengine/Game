@@ -1072,6 +1072,17 @@ bool ModelLoader::GetEntityIDFromInstanceID(u32 instanceID, entt::entity& entity
     return true;
 }
 
+bool ModelLoader::GetBodyIDFromInstanceID(u32 instanceID, u32& bodyID)
+{
+    ZoneScopedN("ModelLoader::GetBodyIDFromInstanceID");
+
+    if (!_instanceIDToBodyID.contains(instanceID))
+        return false;
+
+    bodyID = _instanceIDToBodyID[instanceID];
+    return true;
+}
+
 bool ModelLoader::ContainsDiscoveredModel(u32 modelHash)
 {
     ZoneScopedN("ModelLoader::ContainsDiscoveredModel");

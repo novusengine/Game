@@ -143,13 +143,42 @@ void ECS::Transform2DSystem::SetRelativePoint(entt::entity entity, const vec2& n
     if (tf) SetRelativePoint(entity, *tf, newRelativePoint);
 }
 
-void ECS::Transform2DSystem::RefreshTransform(entt::entity entity, ECS::Components::Transform2D& transform)
+void ECS::Transform2DSystem::RefreshTransform(entt::entity entity, ECS::Components::Transform2D& transform, Transform2DDirtyKind kind)
 {
     transform.SetDirty(*this, entity);
-    if (transform.ownerNode)
+    if (!transform.ownerNode)
+        return;
+
+    transform.ownerNode->RefreshMatrix();
+
+    switch (kind)
     {
-        transform.ownerNode->RefreshMatrix();
-        transform.ownerNode->PropagateMatrixToChildren(this);
+        case Transform2DDirtyKind::LocalPose:
+            // Only this widget's own matrix changed. Descendants recompose from the GPU parent chain, and
+            // hover/clip read their world rects on demand, so we no longer touch them -- this is the O(1) move.
+            break;
+
+        case Transform2DDirtyKind::Size:
+        {
+            // A size change alters each DIRECT child's anchorOffset (anchor * parentSize), so their local
+            // matrices changed: re-dirty them for a GPU re-upload. Grandchildren depend on their own
+            // parent's size, not this one, so the GPU chain handles them -- one level only.
+            ECS::Components::SceneNode2D* child = transform.ownerNode->firstChild;
+            if (child)
+            {
+                do
+                {
+                    child->transform->SetDirty(*this, child->ownerEntity);
+                    child = child->nextSibling;
+                } while (child != transform.ownerNode->firstChild);
+            }
+            break;
+        }
+
+        case Transform2DDirtyKind::Structural:
+            // (Re)parenting changes the whole subtree's world transforms; keep the full propagate (rare).
+            transform.ownerNode->PropagateMatrixToChildren(this);
+            break;
     }
 }
 
@@ -157,8 +186,8 @@ void ECS::Transform2DSystem::SetLocalPosition(entt::entity entity, ECS::Componen
 {
     if (newPosition != transform.position)
     {
-        transform.position = newPosition; 
-        RefreshTransform(entity,transform);
+        transform.position = newPosition;
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -167,7 +196,7 @@ void ECS::Transform2DSystem::SetLocalRotation(entt::entity entity, ECS::Componen
     if (newRotation != transform.rotation)
     {
         transform.rotation = newRotation;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -176,7 +205,7 @@ void ECS::Transform2DSystem::SetLocalScale(entt::entity entity, ECS::Components:
     if (newScale != transform.scale)
     {
         transform.scale = newScale;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -189,7 +218,7 @@ void ECS::Transform2DSystem::SetLocalPositionAndRotation(entt::entity entity,
     {
         transform.position = newPosition;
         transform.rotation = newRotation;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -204,14 +233,14 @@ void ECS::Transform2DSystem::SetLocalTransform(entt::entity entity,
         transform.position = newPosition;
         transform.rotation = newRotation;
         transform.scale = newScale;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
 void ECS::Transform2DSystem::AddLocalOffset(entt::entity entity, ECS::Components::Transform2D& transform, const vec2& offset)
 {
     transform.position += offset;
-    RefreshTransform(entity, transform);
+    RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
 }
 
 void ECS::Transform2DSystem::SetLayer(entt::entity entity, ECS::Components::Transform2D& transform, u32 newLayer)
@@ -219,7 +248,7 @@ void ECS::Transform2DSystem::SetLayer(entt::entity entity, ECS::Components::Tran
     if (newLayer != transform.layer)
     {
         transform.layer = newLayer;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -228,7 +257,7 @@ void ECS::Transform2DSystem::SetSize(entt::entity entity, ECS::Components::Trans
     if (newSize != transform.size)
     {
         transform.size = newSize;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::Size);
     }
 }
 
@@ -237,7 +266,7 @@ void ECS::Transform2DSystem::SetAnchor(entt::entity entity, ECS::Components::Tra
     if (newAnchor != transform.anchor)
     {
         transform.anchor = newAnchor;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 
@@ -246,7 +275,7 @@ void ECS::Transform2DSystem::SetRelativePoint(entt::entity entity, ECS::Componen
     if (newRelativePoint != transform.relativePoint)
     {
         transform.relativePoint = newRelativePoint;
-        RefreshTransform(entity, transform);
+        RefreshTransform(entity, transform, Transform2DDirtyKind::LocalPose);
     }
 }
 

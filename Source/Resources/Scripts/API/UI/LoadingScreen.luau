@@ -67,7 +67,7 @@ local function OnGameUpdated(eventID : number, data : any)
         return
     end
 
-    local progress = GetMapLoadingProgress()
+    local progress = Map.GetLoadingProgress()
     __LoadingScreenData.loadingBarSlider:SetProgress(progress)
 end
 

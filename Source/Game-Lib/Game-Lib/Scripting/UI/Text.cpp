@@ -45,11 +45,20 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
             ECS::Components::UI::Text& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+
+            if (textComponent.rawText == rawText)
+                return 0;
+
             textComponent.rawText = rawText;
             ECS::Util::UI::RefreshText(registry, text->entity, rawText);
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
-            ECS::Util::UI::RefreshClipper(registry, text->entity);
+
+            // Only a clip source's own clip region depends on its size; refreshing for a plain label
+            // would re-propagate the ancestor's clip across its whole subtree every frame.
+            auto* clipper = registry->try_get<ECS::Components::UI::Clipper>(text->entity);
+            if (clipper != nullptr && (clipper->clipChildren || clipper->hasClipMaskTexture))
+                ECS::Util::UI::RefreshClipper(registry, text->entity);
 
             return 0;
         }

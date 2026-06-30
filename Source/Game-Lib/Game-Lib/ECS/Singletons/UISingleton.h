@@ -30,6 +30,11 @@ namespace ECS::Singletons
         std::vector<ECS::Components::UI::TextTemplate> textTemplates;
         robin_hood::unordered_map<u32, u32> templateHashToTextTemplateIndex;
 
+        // Active clip sources (widgets owning a clip/mask slot). Few in practice; used by
+        // UpdateBoundingRects to re-derive a source's screen-space clip rect when it or an ancestor
+        // moves (descendant world rects are no longer propagated). Self-cleaned lazily.
+        robin_hood::unordered_set<entt::entity> clipSourceEntities;
+
         // Input handling
         std::map<u64, entt::entity> allHoveredEntities;
         vec2 lastClickPosition = vec2(-1.0f, -1.0f);

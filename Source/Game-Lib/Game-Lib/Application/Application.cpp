@@ -28,6 +28,12 @@
 #include "Game-Lib/Scripting/Handlers/UIHandler.h"
 #include "Game-Lib/Scripting/Handlers/GameHandler.h"
 #include "Game-Lib/Scripting/Handlers/UnitHandler.h"
+#include "Game-Lib/Scripting/Handlers/TimeHandler.h"
+#include "Game-Lib/Scripting/Handlers/CameraHandler.h"
+#include "Game-Lib/Scripting/Handlers/MapHandler.h"
+#include "Game-Lib/Scripting/Handlers/SceneHandler.h"
+#include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
+#include "Game-Lib/Scripting/Handlers/AssetHandler.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/TextureUtil.h"
@@ -358,6 +364,12 @@ bool Application::Init()
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::UI, new Scripting::UI::UIHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Time, new Scripting::Time::TimeHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Camera, new Scripting::Camera::CameraHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Map, new Scripting::Map::MapHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scene, new Scripting::Scene::SceneHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Editor, new Scripting::Editor::EditorToolHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Asset, new Scripting::Asset::AssetHandler());
 
         auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
         _luaManager->GetZenithStateManager().Add(globalKey);

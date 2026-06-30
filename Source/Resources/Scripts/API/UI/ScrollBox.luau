@@ -42,6 +42,7 @@ export type ScrollBox =
     SetVerticalScrollBarVisible : (self : ScrollBox, visible : boolean) -> (),
     RefreshScrollbar : (self : ScrollBox) -> (),
     RefreshScrollbarHandleSize : (self : ScrollBox) -> (),
+    SetOnScroll : (self : ScrollBox, fn : () -> ()) -> (),
 }
 
 local scrollBoxAPI : ScrollBoxAPI = {};
@@ -101,6 +102,8 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
 
             scrollBoxTable:MoveScrollBar(scrollBarY);
         end
+
+        if scrollBoxTable.onScroll then scrollBoxTable.onScroll() end
     end
 
     scrollBoxTable.ScrollToStart = function(self : ScrollBox)
@@ -215,6 +218,12 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
         scrollBoxTable.scrollBar:SetHeight(newHandleHeight);
     end
 
+    -- Notified after scrollPosY changes (wheel or scrollbar drag). Used by virtualized lists to
+    -- rebind the visible window.
+    scrollBoxTable.SetOnScroll = function(self : ScrollBox, fn)
+        self.onScroll = fn;
+    end
+
     return scrollBoxTable;
 end
 
@@ -296,6 +305,51 @@ function scrollBoxAPI.NewScrollBox(parent : Widget, posX : number, posY : number
     scrollBoxTable = SetupScrollBoxMethods(scrollBoxTable);
 
     scrollBoxTable.scrollBox:SetOnMouseScroll(scrollBoxTable.Scroll);
+
+    if scrollBoxTable.canHaveVerticalScrollBar then
+        local startMouseY = 0
+        local startScrollPosY = 0
+
+        scrollBoxTable.scrollBar:SetOnMouseDown(function()
+            local _, my = UI.GetMousePos()
+            startMouseY = my
+            startScrollPosY = scrollBoxTable.scrollPosY
+        end)
+
+        scrollBoxTable.scrollBar:SetOnMouseHeld(function()
+            local _, my = UI.GetMousePos()
+            local visibleH = scrollBoxTable.scrollBox:GetHeight()
+            local contentH = scrollBoxTable.content:GetHeight()
+            local trackH = scrollBoxTable.scrollBarBackground:GetHeight() - scrollBoxTable.scrollBar:GetHeight()
+            if trackH <= 0 then return end
+
+            local upperBoundY = scrollBoxTable.fillFromBottom
+                and math.min(0, visibleH - contentH)
+                or math.max(0, contentH - visibleH)
+            if upperBoundY == 0 then return end
+
+            -- World Y is positive-up, so dragging the cursor downward (lower Y) means
+            -- (startMouseY - my) > 0, which should advance us toward more-scrolled content.
+            local newScrollPosY = startScrollPosY + (startMouseY - my) * (upperBoundY / trackH)
+
+            if scrollBoxTable.fillFromBottom then
+                scrollBoxTable.scrollPosY = math.max(upperBoundY, math.min(0, newScrollPosY))
+            else
+                scrollBoxTable.scrollPosY = math.max(0, math.min(upperBoundY, newScrollPosY))
+            end
+            scrollBoxTable:MoveContent(scrollBoxTable.scrollPosX, scrollBoxTable.scrollPosY)
+
+            local barY
+            if scrollBoxTable.fillFromBottom then
+                barY = (scrollBoxTable.scrollPosY / upperBoundY) * trackH
+            else
+                barY = -(scrollBoxTable.scrollPosY / upperBoundY) * trackH
+            end
+            scrollBoxTable:MoveScrollBar(barY)
+
+            if scrollBoxTable.onScroll then scrollBoxTable.onScroll() end
+        end)
+    end
 
     return scrollBoxTable;
 end

@@ -64,6 +64,11 @@ namespace Scripting::UI
 
             ts.SetSize(panel->entity, vec2(x, y));
 
+            // Size feeds the rendered quad and the border thickness (borderSize / size), so the widget
+            // data + transform must be regenerated or they keep rendering at the stale size.
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(panel->entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
             return 0;
@@ -80,6 +85,9 @@ namespace Scripting::UI
             size.x = x;
             ts.SetSize(panel->entity, size);
 
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(panel->entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
             return 0;
@@ -96,6 +104,9 @@ namespace Scripting::UI
             size.y = y;
             ts.SetSize(panel->entity, size);
 
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(panel->entity);
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(panel->entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
             return 0;
@@ -207,7 +218,6 @@ namespace Scripting::UI
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(panel->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
 
             vec3 colorVec = zenith->CheckVal<vec3>(2);
             f32 alpha = zenith->IsNumber(3) ? zenith->Get<f32>(3) : -1.0f;
@@ -217,9 +227,16 @@ namespace Scripting::UI
             {
                 colorWithAlpha.a = alpha;
             }
+
+            if (panelTemplate.setFlags.color &&
+                panelTemplate.color.r == colorWithAlpha.r && panelTemplate.color.g == colorWithAlpha.g &&
+                panelTemplate.color.b == colorWithAlpha.b && panelTemplate.color.a == colorWithAlpha.a)
+                return 0;
+
             panelTemplate.color = colorWithAlpha;
             panelTemplate.setFlags.color = 1;
 
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
             return 0;
@@ -229,12 +246,16 @@ namespace Scripting::UI
         {
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             auto& panelTemplate = registry->get<ECS::Components::UI::PanelTemplate>(panel->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
 
             f32 alpha = zenith->CheckVal<f32>(2);
+
+            if (panelTemplate.setFlags.color && panelTemplate.color.a == alpha)
+                return 0;
+
             panelTemplate.color.a = alpha;
             panelTemplate.setFlags.color = 1;
 
+            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 
             return 0;

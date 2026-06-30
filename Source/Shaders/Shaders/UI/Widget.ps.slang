@@ -6,17 +6,28 @@
 
 struct WidgetDrawData
 {
-    uint4 packed0; // x: type, y: vertexBase, z: clipMaskTextureIndex, w: worldPositionIndex (int reinterpret)
+    uint4 packed0; // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (int reinterpret)
     uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
     float4 texCoord;            // Panel only
     float4 slicingCoord;        // Panel only
     float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
-    uint4 packed2; // x: clipRegionMinXY, y: clipRegionMaxXY, z: clipMaskRegionMinXY, w: clipMaskRegionMaxXY
+    uint4 packed2; // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
 };
+
+struct WidgetMaskInfo
+{
+    uint regionMinXY; // two f16 packed
+    uint regionMaxXY; // two f16 packed
+    uint textureIndex;
+    uint reserved;
+};
+
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<WidgetDrawData> _widgetDrawDatas;
 [[vk::binding(3, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(4, PER_PASS)]] Texture2D<float4> _textures[4096];
 [[vk::binding(5, PER_PASS)]] Texture2D<float4> _fontTextures[4096];
+[[vk::binding(6, PER_PASS)]] StructuredBuffer<float4> _widgetClipRects;
+[[vk::binding(7, PER_PASS)]] StructuredBuffer<WidgetMaskInfo> _widgetMaskInfo;
 
 float NineSliceAxis(float coord, float pixelSizeUV, float texCoordMin, float texCoordMax, float borderSizeMin, float borderSizeMax)
 {
@@ -190,11 +201,11 @@ float4 main(VertexOutput input) : SV_Target
 {
     WidgetDrawData drawData = _widgetDrawDatas[input.drawDataID];
 
-    // Shared clip-region discard
+    // Shared clip-region discard. Index 0 is the "no clip" sentinel (0,0,1,1).
     float2 screenPos = input.uvAndScreenPos.zw;
-    float2 clipRegionMin = float2(f16tof32(drawData.packed2.x), f16tof32(drawData.packed2.x >> 16));
-    float2 clipRegionMax = float2(f16tof32(drawData.packed2.y), f16tof32(drawData.packed2.y >> 16));
-    if (ShouldDiscard(screenPos, clipRegionMin, clipRegionMax))
+    uint clipBoundsIndex = drawData.packed2.x;
+    float4 clipRect = _widgetClipRects[clipBoundsIndex];
+    if (ShouldDiscard(screenPos, clipRect.xy, clipRect.zw))
     {
         discard;
     }
@@ -210,13 +221,14 @@ float4 main(VertexOutput input) : SV_Target
         color = ShadeText(drawData, input);
     }
 
-    // Shared clipMask
-    float2 clipMaskRegionMin = float2(f16tof32(drawData.packed2.z), f16tof32(drawData.packed2.z >> 16));
-    float2 clipMaskRegionMax = float2(f16tof32(drawData.packed2.w), f16tof32(drawData.packed2.w >> 16));
+    // Shared clipMask. Index 0 is the sentinel (full region + default-white texture
+    // at index 0), so widgets without a mask trivially pass.
+    uint maskBoundsIndex = drawData.packed2.y;
+    WidgetMaskInfo maskInfo = _widgetMaskInfo[maskBoundsIndex];
+    float2 clipMaskRegionMin = float2(f16tof32(maskInfo.regionMinXY), f16tof32(maskInfo.regionMinXY >> 16));
+    float2 clipMaskRegionMax = float2(f16tof32(maskInfo.regionMaxXY), f16tof32(maskInfo.regionMaxXY >> 16));
     float2 maskUV = (screenPos - clipMaskRegionMin) / (clipMaskRegionMax - clipMaskRegionMin);
-
-    uint clipMaskTextureIndex = drawData.packed0.z;
-    float clipMask = _textures[clipMaskTextureIndex].Sample(_sampler, maskUV).a;
+    float clipMask = _textures[maskInfo.textureIndex].Sample(_sampler, maskUV).a;
     if (clipMask < 0.5f)
     {
         discard;

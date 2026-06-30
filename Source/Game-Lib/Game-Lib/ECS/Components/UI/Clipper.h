@@ -15,6 +15,12 @@ namespace ECS::Components::UI
 
         bool hasClipMaskTexture = false;
         std::string clipMaskTexture = "";
+
+        // Slot indexes into CanvasRenderer::_widgetClipRects / _widgetMaskInfo.
+        // 0 is the sentinel "no clip" / "no mask" entry — reserved on demand
+        // when this widget becomes a clip source (clipChildren or hasClipMaskTexture).
+        u32 clipRectBufferIndex = 0;
+        u32 maskBufferIndex = 0;
     };
 
     // This clipper itself is dirty

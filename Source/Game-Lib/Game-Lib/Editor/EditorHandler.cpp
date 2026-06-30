@@ -1,16 +1,11 @@
 #include "EditorHandler.h"
 #include "ActionStack.h"
 #include "AnimationController.h"
-#include "AssetBrowser.h"
 #include "BaseEditor.h"
-#include "CameraInfo.h"
 #include "CDBEditor.h"
 #include "CVarEditor.h"
 #include "EaseCurveTool.h"
-#include "Hierarchy.h"
-#include "Inspector.h"
 #include "ItemEditor.h"
-#include "MapSelector.h"
 #include "NetworkedInfo.h"
 #include "PerformanceDiagnostics.h"
 #include "SkyboxSelector.h"
@@ -48,10 +43,8 @@ namespace Editor
         _editors.push_back(_viewport);
         _editors.push_back(new AnimationController());
         _editors.push_back(new CVarEditor());
-        _editors.push_back(new CameraInfo());
         _editors.push_back(new CDBEditor());
         _editors.push_back(new PerformanceDiagnostics());
-        _editors.push_back(new MapSelector());
         _editors.push_back(new NetworkedInfo());
         _editors.push_back(new SkyboxSelector);
         _editors.push_back(new EaseCurveTool());
@@ -60,21 +53,6 @@ namespace Editor
 
         _actionStackEditor = new ActionStackEditor(64);
         _editors.push_back(_actionStackEditor);
-
-        _inspector = new Inspector();
-        _editors.push_back(_inspector);
-
-        _viewport->SetInspector(_inspector);
-        _inspector->SetViewport(_viewport);
-
-        _hierarchy = new Hierarchy();
-        _editors.push_back(_hierarchy);
-
-        _inspector->SetHierarchy(_hierarchy);
-        _hierarchy->SetInspector(_inspector);
-
-        _assetBrowser = new AssetBrowser();
-        _editors.push_back(_assetBrowser);
 
         _terrainTools = new TerrainTools();
         _editors.push_back(_terrainTools);
@@ -340,29 +318,14 @@ namespace Editor
     void EditorHandler::ResetLayoutToDefault()
     {
         ImGuiID left;
-        ImGuiID right = ImGui::DockBuilderSplitNode(_mainDockID, ImGuiDir_Right, 0.4f, NULL, &left);
+        ImGuiID right = ImGui::DockBuilderSplitNode(_mainDockID, ImGuiDir_Right, 0.25f, NULL, &left);
 
-        ImGuiID inspector;
-        ImGuiID farRight = ImGui::DockBuilderSplitNode(right, ImGuiDir_Right, 0.5f, NULL, &inspector);
+        ImGuiID rightBottom;
+        ImGuiID rightTop = ImGui::DockBuilderSplitNode(right, ImGuiDir_Up, 0.5f, NULL, &rightBottom);
 
-        ImGuiID hierarchy;
-        ImGuiID belowHierarchy = ImGui::DockBuilderSplitNode(farRight, ImGuiDir_Down, 0.2f, NULL, &hierarchy);
-
-        ImGuiID viewport;
-        ImGuiID assetBrowser = ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.3f, NULL, &viewport);
-
-        ImGui::DockBuilderDockWindow(_inspector->GetName(), inspector);
-        
-        ImGui::DockBuilderDockWindow(_hierarchy->GetName(), hierarchy);
-        ImGui::DockBuilderDockWindow("Map", hierarchy);
-        ImGui::DockBuilderDockWindow("Performance", hierarchy);
-        ImGui::DockBuilderDockWindow("Camera Info", hierarchy);
-
-        ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), belowHierarchy);
-
-        ImGui::DockBuilderDockWindow(_viewport->GetName(), viewport);
-
-        ImGui::DockBuilderDockWindow(_assetBrowser->GetName(), assetBrowser);
+        ImGui::DockBuilderDockWindow("Performance", rightTop);
+        ImGui::DockBuilderDockWindow(_actionStackEditor->GetName(), rightBottom);
+        ImGui::DockBuilderDockWindow(_viewport->GetName(), left);
 
         ImGui::DockBuilderFinish(_mainDockID);
 

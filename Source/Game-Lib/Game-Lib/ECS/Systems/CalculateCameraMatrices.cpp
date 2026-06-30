@@ -4,11 +4,17 @@
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Scripting/Handlers/CameraHandler.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
+#include <MetaGen/Game/Lua/Lua.h>
+
 #include <Renderer/RenderSettings.h>
+
+#include <Scripting/LuaManager.h>
 
 #include <entt/entt.hpp>
 
@@ -108,6 +114,18 @@ namespace ECS::Systems
                 }
 
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);
+            }
+
+            if (camera.dirtyView)
+            {
+                Scripting::LuaManager* luaManager = ServiceLocator::GetLuaManager();
+                Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+                if (luaManager && zenith)
+                {
+                    auto* cameraHandler = luaManager->GetLuaHandler<Scripting::Camera::CameraHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Camera));
+                    if (cameraHandler)
+                        cameraHandler->OnCameraTransformChanged(zenith);
+                }
             }
 
             camera.dirtyPerspective = false;

@@ -51,12 +51,20 @@ public:
     void DrawTriangleSolid2D(const vec2& v0, const vec2& v1, const vec2& v2, Color color, bool shaded = false);
     void DrawTriangleSolid3D(const vec3& v0, const vec3& v1, const vec3& v2, Color color, bool shaded = false);
 
+    // Same as DrawTriangleSolid3D but rendered with depth testing disabled, so it draws as an
+    // overlay over the scene. Used by editor overlays like the transform gizmo so they're never
+    // buried in geometry.
+    void DrawTriangleSolid3DOverlay(const vec3& v0, const vec3& v1, const vec3& v2, Color color, bool shaded = false);
+
     static vec3 UnProject(const vec3& point, const mat4x4& m);
 
     Renderer::DescriptorSet& GetDebugDescriptorSet() { return _debugDescriptorSet; }
     void RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
+    // Uploads the CPU vertex buffers. Called from Update() (before FlipFrame) so they land this frame.
+    void SyncToGPU();
+
     void CreatePermanentResources();
     void CreatePipelines();
     void InitDescriptorSets();
@@ -109,11 +117,14 @@ private:
     // Solid
     Renderer::GPUVector<DebugVertex2D> _debugVerticesSolid2D;
     Renderer::GPUVector<DebugVertexSolid3D> _debugVerticesSolid3D;
+    Renderer::GPUVector<DebugVertexSolid3D> _debugVerticesSolid3DOverlay; // depth test disabled
 
     Renderer::DescriptorSet _drawSolid2DDescriptorSet;
     Renderer::DescriptorSet _drawSolid3DDescriptorSet;
+    Renderer::DescriptorSet _drawSolid3DOverlayDescriptorSet;
 
     Renderer::GraphicsPipelineID _debugSolid2DPipeline;
     Renderer::GraphicsPipelineID _debugSolid3DPipeline;
+    Renderer::GraphicsPipelineID _debugSolid3DOverlayPipeline;
 
 };

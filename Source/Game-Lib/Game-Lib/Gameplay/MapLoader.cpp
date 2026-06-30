@@ -1,8 +1,7 @@
 #include "MapLoader.h"
 #include "Game-Lib/Application/EnttRegistries.h"
-#include "Game-Lib/Editor/EditorHandler.h"
-#include "Game-Lib/Editor/Inspector.h"
 #include "Game-Lib/ECS/Components/Events.h"
+#include "Game-Lib/ECS/Systems/Editor/EditorTools.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
@@ -160,6 +159,6 @@ void MapLoader::ClearRenderersForMap()
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
 
-    Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
-    editorHandler->GetInspector()->ClearSelection();
+    // Clear any editor selection -- the unloaded map's selected entity no longer exists.
+    ECS::Systems::Editor::EditorTools::SetSelectedEntity(*registry, entt::null);
 }
