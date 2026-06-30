@@ -43,6 +43,7 @@ namespace Scripting::Map
 
     void MapHandler::Clear(Zenith* zenith)
     {
+        Scripting::Util::Zenith::Unref(zenith, _onCurrentMapChangedRef);
         _onCurrentMapChangedRef = LUA_NOREF;
     }
 

@@ -49,6 +49,8 @@ namespace Scripting::Camera
 
     void CameraHandler::Clear(Zenith* zenith)
     {
+        Scripting::Util::Zenith::Unref(zenith, _onTransformChangedRef);
+        Scripting::Util::Zenith::Unref(zenith, _onSavesChangedRef);
         _onTransformChangedRef = LUA_NOREF;
         _onSavesChangedRef = LUA_NOREF;
     }

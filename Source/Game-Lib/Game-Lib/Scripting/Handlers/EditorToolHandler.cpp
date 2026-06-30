@@ -30,6 +30,8 @@ namespace Scripting::Editor
 
     void EditorToolHandler::Clear(Zenith* zenith)
     {
+        Scripting::Util::Zenith::Unref(zenith, _onSelectionChangedRef);
+        Scripting::Util::Zenith::Unref(zenith, _onGizmoChangedRef);
         _onSelectionChangedRef = LUA_NOREF;
         _onGizmoChangedRef = LUA_NOREF;
     }

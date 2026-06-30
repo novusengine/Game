@@ -90,8 +90,9 @@ namespace Util
             // CastRay travels start + fraction*direction (fraction 0..1), so extend the (possibly
             // normalized) direction into a long segment before casting.
             constexpr f32 RAY_LENGTH = 10000.0f;
+            if (glm::dot(dir, dir) <= std::numeric_limits<f32>::epsilon())
+                return false;
             vec3 d = glm::normalize(dir) * RAY_LENGTH;
-
             JPH::RRayCast ray(JPH::Vec3(start.x, start.y, start.z), JPH::Vec3(d.x, d.y, d.z));
             JPH::RayCastResult hit;
 

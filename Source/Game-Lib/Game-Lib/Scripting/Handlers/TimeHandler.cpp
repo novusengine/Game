@@ -34,6 +34,7 @@ namespace Scripting::Time
 
     void TimeHandler::Clear(Zenith* zenith)
     {
+        Scripting::Util::Zenith::Unref(zenith, _onSecondChangedRef);
         _onSecondChangedRef = LUA_NOREF;
     }
 
