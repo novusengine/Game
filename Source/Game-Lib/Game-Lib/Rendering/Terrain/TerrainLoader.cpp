@@ -9,7 +9,7 @@
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Systems/CharacterController.h"
-#include "Game-Lib/ECS/Singletons/EditorSelection.h"
+#include "Game-Lib/ECS/Systems/Editor/EditorTools.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
@@ -130,10 +130,8 @@ void TerrainLoader::Clear()
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
     _terrainRenderer->Clear();
     
-    // Clear any editor selection -- the selected entity is being unloaded.
-    entt::registry::context& ctx = ServiceLocator::GetEnttRegistries()->gameRegistry->ctx();
-    if (ctx.contains<ECS::Singletons::EditorSelection>())
-        ctx.get<ECS::Singletons::EditorSelection>().selectedEntity = entt::null;
+    // Clear any editor selection -- the unloaded map's selected entity no longer exists.
+    ECS::Systems::Editor::EditorTools::SetSelectedEntity(*ServiceLocator::GetEnttRegistries()->gameRegistry, entt::null);
 
     const bool mapInternalNameChanged = !_currentMapInternalName.empty();
     _currentMapInternalName.clear();

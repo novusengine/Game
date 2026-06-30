@@ -14,5 +14,10 @@ namespace ECS::Systems::Editor
     public:
         static void Init(entt::registry& registry);
         static void Update(entt::registry& registry, f32 deltaTime);
+
+        // Sets the editor selection (pass entt::null to clear) and notifies the Lua editor tools so
+        // their listeners (Hierarchy/Inspector) refresh. The single entry point for changing selection
+        // from C++ -- writing EditorSelection::selectedEntity directly skips the notification.
+        static void SetSelectedEntity(entt::registry& registry, entt::entity entity);
     };
 }

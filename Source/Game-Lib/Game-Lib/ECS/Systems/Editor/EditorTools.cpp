@@ -321,6 +321,20 @@ namespace ECS::Systems::Editor
             handler->OnGizmoChanged(zenith);
     }
 
+    void EditorTools::SetSelectedEntity(entt::registry& registry, entt::entity entity)
+    {
+        entt::registry::context& ctx = registry.ctx();
+        if (!ctx.contains<Singletons::EditorSelection>())
+            return;
+
+        auto& selection = ctx.get<Singletons::EditorSelection>();
+        if (selection.selectedEntity == entity)
+            return;
+
+        selection.selectedEntity = entity;
+        NotifySelectionChanged();
+    }
+
     void EditorTools::Update(entt::registry& registry, f32 /*deltaTime*/)
     {
         entt::registry::context& ctx = registry.ctx();
@@ -345,8 +359,7 @@ namespace ECS::Systems::Editor
                     gameRenderer->GetModelLoader()->UnloadModelForEntity(toDelete, *model);
 
                 registry.destroy(toDelete);
-                selection.selectedEntity = entt::null;
-                NotifySelectionChanged();
+                SetSelectedEntity(registry, entt::null);
             }
         }
 
@@ -421,8 +434,7 @@ namespace ECS::Systems::Editor
                         model->flags.forcedTransparency = false;
                         model->opacity = 1.0f;
                     }
-                    selection.selectedEntity = s.dragSpawnEntity;
-                    NotifySelectionChanged();
+                    SetSelectedEntity(registry, s.dragSpawnEntity);
                 }
                 s.dragSpawnActive = false;
                 s.dragSpawnEntity = entt::null;
@@ -531,11 +543,7 @@ namespace ECS::Systems::Editor
                         entt::entity picked;
                         if (gameRenderer->GetModelLoader()->GetEntityIDFromInstanceID(pixelData.value, picked))
                         {
-                            if (selection.selectedEntity != picked)
-                            {
-                                selection.selectedEntity = picked;
-                                NotifySelectionChanged();
-                            }
+                            SetSelectedEntity(registry, picked);
                         }
                     }
                     // Terrain has no entity, so it doesn't change the selection.
