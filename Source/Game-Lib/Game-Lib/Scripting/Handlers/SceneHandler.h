@@ -7,7 +7,7 @@
 namespace Scripting::Scene
 {
     // Backs the dev-only "Scene" Lua table: entity enumeration and per-component get/set
-    // for the Lua Hierarchy and Inspector. Mirrors the data the C++ Editor::Inspector reads.
+    // for the Lua Hierarchy and Inspector.
     class SceneHandler : public LuaHandlerBase
     {
     public:

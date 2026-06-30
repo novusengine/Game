@@ -9,7 +9,6 @@
 #include <queue>
 
 namespace ECS::Components { struct Transform2D; }
-namespace Editor { class Inspector; }
 
 namespace ECS
 {
@@ -116,7 +115,6 @@ namespace ECS::Components
     struct Transform2D
     {
         friend struct ECS::Transform2DSystem;
-        friend class Editor::Inspector;
     public:
         // We are using Unitys Right Handed coordinate system
         // +X = right
@@ -253,7 +251,6 @@ namespace ECS::Components
     {
         friend struct ECS::Transform2DSystem;
         friend struct Transform2D;
-        friend class Editor::Inspector;
 
     public:
         //makes the component use pointer stable references in entt. do not remove

@@ -11,7 +11,7 @@
 namespace Scripting::Asset
 {
     // Backs the dev-only "Asset" Lua table: filesystem enumeration under Data/ and model
-    // spawning, for the Lua Asset Browser. Mirrors Editor::AssetBrowser's data access.
+    // spawning, for the Lua Asset Browser.
     class AssetHandler : public LuaHandlerBase
     {
     public:

@@ -8,7 +8,6 @@
 #include <entt/entt.hpp>
 
 namespace ECS::Components { struct Transform; }
-namespace Editor { class Inspector; }
 
 namespace ECS
 {
@@ -87,7 +86,6 @@ namespace ECS::Components
     struct Transform
     {
         friend struct ECS::TransformSystem;
-        friend class Editor::Inspector;
     public:
         // We are using Unitys Right Handed coordinate system
         // +X = right
@@ -168,7 +166,6 @@ namespace ECS::Components
     {
         friend struct ECS::TransformSystem;
         friend struct Transform;
-        friend class Editor::Inspector;
 
     public:
         //makes the component use pointer stable references in entt. do not remove

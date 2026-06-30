@@ -11,7 +11,6 @@
 #include <Game-Lib/ECS/Systems/FreeflyingCamera.h>
 #include <Game-Lib/ECS/Util/CameraUtil.h>
 #include <Game-Lib/Util/ImguiUtil.h>
-#include <Game-Lib/Editor/Inspector.h>
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -24,6 +23,8 @@
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/imguizmo/ImGuizmo.h>
+
+#include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_IsEditorMode(CVarCategory::Client, "isEditorMode", "enable editor mode", 0, CVarFlags::Hidden);
 
@@ -75,11 +76,6 @@ namespace Editor
 
             return true;
         });
-    }
-
-    void Viewport::SetInspector(Inspector* inspector)
-    {
-        _inspector = inspector;
     }
 
     void Viewport::Update(f32 deltaTime)

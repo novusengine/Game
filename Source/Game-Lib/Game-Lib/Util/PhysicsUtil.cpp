@@ -6,7 +6,6 @@
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
-#include "Game-Lib/Editor/Inspector.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 

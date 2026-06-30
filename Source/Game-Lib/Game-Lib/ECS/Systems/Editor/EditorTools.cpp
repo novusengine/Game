@@ -491,7 +491,7 @@ namespace ECS::Systems::Editor
             }
         }
 
-        // ---- Resolve any outstanding pixel query (mirrors Editor::Inspector::Update) ----
+        // ---- Resolve any outstanding pixel query (entity picking) ----
         PixelQuery* pixelQuery = gameRenderer->GetPixelQuery();
         if (pixelQuery && !dragSpawnHandledThisFrame)
         {

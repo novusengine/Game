@@ -5,13 +5,10 @@
 
 namespace Editor
 {
-    class Inspector;
-    
     class Viewport : public BaseEditor
     {
     public:
         Viewport();
-        void SetInspector(Inspector* inspector);
 
         virtual const char* GetName() override { return "Viewport"; }
 
@@ -32,8 +29,6 @@ namespace Editor
         void DrawBottomBar(vec2 viewportContentSize);
 
     private:
-        Inspector* _inspector = nullptr;
-
         vec2 _lastPanelSize = vec2(1920, 1080);
 
         vec2 _viewportPos = vec2(0, 0);
