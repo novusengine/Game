@@ -190,12 +190,9 @@ namespace Scripting::Asset
 
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         entt::registry::context& ctx = registries->gameRegistry->ctx();
-        if (ctx.contains<ECS::Singletons::EditorSelection>())
-        {
-            auto& selection = ctx.get<ECS::Singletons::EditorSelection>();
-            selection.dragSpawnRequested = true;
-            selection.dragSpawnModelPath = relativeRaw;
-        }
+        auto& selection = ctx.get<ECS::Singletons::EditorSelection>();
+        selection.dragSpawnRequested = true;
+        selection.dragSpawnModelPath = relativeRaw;
 
         return 0;
     }

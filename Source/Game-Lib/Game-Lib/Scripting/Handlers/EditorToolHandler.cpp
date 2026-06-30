@@ -48,8 +48,6 @@ namespace Scripting::Editor
         if (!registries || !registries->gameRegistry)
             return nullptr;
         auto& ctx = registries->gameRegistry->ctx();
-        if (!ctx.contains<ECS::Singletons::EditorSelection>())
-            return nullptr;
         return &ctx.get<ECS::Singletons::EditorSelection>();
     }
 

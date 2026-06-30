@@ -118,9 +118,6 @@ namespace ECS::Systems::Editor
                     return false;
 
                 entt::registry::context& ctx = registries->gameRegistry->ctx();
-                if (!ctx.contains<Singletons::EditorSelection>())
-                    return false;
-
                 auto& selection = ctx.get<Singletons::EditorSelection>();
                 if (selection.selectedEntity == entt::null || !registries->gameRegistry->valid(selection.selectedEntity))
                     return false;
@@ -324,9 +321,6 @@ namespace ECS::Systems::Editor
     void EditorTools::SetSelectedEntity(entt::registry& registry, entt::entity entity)
     {
         entt::registry::context& ctx = registry.ctx();
-        if (!ctx.contains<Singletons::EditorSelection>())
-            return;
-
         auto& selection = ctx.get<Singletons::EditorSelection>();
         if (selection.selectedEntity == entity)
             return;
@@ -338,9 +332,6 @@ namespace ECS::Systems::Editor
     void EditorTools::Update(entt::registry& registry, f32 /*deltaTime*/)
     {
         entt::registry::context& ctx = registry.ctx();
-        if (!ctx.contains<Singletons::EditorSelection>())
-            return;
-
         auto& selection = ctx.get<Singletons::EditorSelection>();
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
