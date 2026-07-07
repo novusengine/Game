@@ -207,6 +207,15 @@ bool CullingResourcesBase::SyncToGPU(bool forceRecount)
                     memset(mappedMemory, 0, size);
                 });
             }
+
+            // Both generations stay bound; the passes select current/prev with a push constant
+            const StringUtils::StringHash bitMaskBindings[2] = { "_culledDrawCallsBitMask0"_h, "_culledDrawCallsBitMask1"_h };
+            for (u32 i = 0; i < _culledDrawCallsBitMaskBuffer.Num; i++)
+            {
+                _occluderFillDescriptorSet.Bind(bitMaskBindings[i], _culledDrawCallsBitMaskBuffer.Get(i));
+                _cullingDescriptorSet.Bind(bitMaskBindings[i], _culledDrawCallsBitMaskBuffer.Get(i));
+                _geometryFillDescriptorSet.Bind(bitMaskBindings[i], _culledDrawCallsBitMaskBuffer.Get(i), true);
+            }
         }
 
         gotRecreated = true;

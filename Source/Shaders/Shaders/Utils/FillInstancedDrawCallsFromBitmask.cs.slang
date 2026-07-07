@@ -11,6 +11,7 @@ struct Constants
     uint numTotalInstances;
     uint baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
     uint drawCallDataSize;
+    uint currentBitmaskIndex;
 };
 
 struct InstanceRef
@@ -29,9 +30,11 @@ typedef Draw DrawType;
 
 [[vk::push_constant]] Constants _constants;
 
+// Both bitmask generations stay bound; currentBitmaskIndex selects which one is current this frame
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<InstanceRef> _instanceRefTable;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask0;
 [[vk::binding(2, PER_PASS)]] ByteAddressBuffer _drawCallDatas;
+[[vk::binding(5, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask1;
 
 [[vk::binding(3, PER_PASS)]] RWByteAddressBuffer _culledInstanceCounts; // One uint per draw call
 [[vk::binding(4, PER_PASS)]] RWStructuredBuffer<uint> _culledInstanceLookupTable; // One uint per instance, contains instanceRefID of what survives culling, and thus can get reordered
@@ -58,7 +61,15 @@ void main(CSInput input)
 
     if (instanceRefID >= _constants.numTotalInstances)
         return;
-    uint bitMask = _culledDrawCallsBitMask[input.groupID.x];
+    uint bitMask;
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        bitMask = _culledDrawCallsBitMask0[input.groupID.x];
+    }
+    else
+    {
+        bitMask = _culledDrawCallsBitMask1[input.groupID.x];
+    }
     uint bitIndex = input.groupThreadID.x;
 
     if (bitMask & (1u << bitIndex))

@@ -79,7 +79,7 @@ protected:
 
         data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-        data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+        builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
         data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -103,7 +103,7 @@ protected:
 
         data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.culledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-        data.prevCulledDrawCallsBitMaskBuffer = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+        builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
         data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
@@ -131,7 +131,6 @@ protected:
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
         Renderer::BufferMutableResource culledInstanceCountsBuffer;
         
@@ -188,8 +187,8 @@ protected:
     {
         using BufferUsage = Renderer::BufferPassUsage;
 
-        data.prevCulledDrawCallsBitMask = builder.Read(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
-        data.currentCulledDrawCallsBitMask = builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+        builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE); // Write because both bitmask bindings are RW in the shader
+        builder.Write(cullingResources->GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
         data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::COMPUTE);
         data.culledInstanceCountsBuffer = builder.Write(cullingResources->GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
         data.culledDrawCallCountBuffer = builder.Write(cullingResources->GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
@@ -211,9 +210,6 @@ protected:
     public:
         Renderer::ImageResource depthPyramid;
 
-        Renderer::BufferResource prevCulledDrawCallsBitMask;
-
-        Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
         Renderer::BufferMutableResource culledInstanceCountsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
@@ -292,9 +288,6 @@ protected:
 
         Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
-
-        Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
 

@@ -103,9 +103,7 @@ private:
         u32 cellCount;
         u32 viewIndex;
         bool diffAgainstPrev = false;
-
-        Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledInstanceBitMaskBuffer;
+        u32 currentBitmaskIndex = 0;
 
         Renderer::DescriptorSetResource fillSet;
     };

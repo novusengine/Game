@@ -14,6 +14,7 @@ struct Constants
     uint numCascades;
     uint occlusionCull;
     uint bitMaskBufferSizePerView;
+    uint currentBitmaskIndex;
 };
 
 struct HeightRange
@@ -29,11 +30,26 @@ struct HeightRange
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<HeightRange> _heightRanges;
 [[vk::binding(2, PER_PASS)]] SamplerState _depthSampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float> _depthPyramid;
-[[vk::binding(4, PER_PASS)]] StructuredBuffer<uint> _prevCulledInstancesBitMask;
 
 // Outputs
-[[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _culledInstancesBitMask;
+// Both bitmask generations stay bound; currentBitmaskIndex selects which one is written this frame
+[[vk::binding(4, PER_PASS)]] RWStructuredBuffer<uint> _culledInstancesBitMask0;
+[[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _culledInstancesBitMask1;
 [[vk::binding(6, PER_PASS)]] RWByteAddressBuffer _culledInstances;
+
+// Selection is branched at the access site instead of assigning the buffers to struct members,
+// Slang fails to legalize conditionally selected resources
+void WriteCurrentBitmask(uint index, uint value)
+{
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        _culledInstancesBitMask0[index] = value;
+    }
+    else
+    {
+        _culledInstancesBitMask1[index] = value;
+    }
+}
 
 float2 ReadHeightRange(uint instanceIndex)
 {
@@ -80,8 +96,6 @@ struct BitmaskInput
 {
     bool useBitmasks;
     uint bitmaskOffset;
-    StructuredBuffer<uint> prevCulledInstancesBitMask;
-    RWStructuredBuffer<uint> outCulledInstancesBitMask;
 };
 
 void CullForCamera(DrawInput drawInput,
@@ -113,7 +127,7 @@ void CullForCamera(DrawInput drawInput,
         if (drawInput.csInput.groupThreadID.x == 0)
         {
             uint bitMaskIndex = drawInput.csInput.groupID.x + bitmaskInput.bitmaskOffset;
-            bitmaskInput.outCulledInstancesBitMask[bitMaskIndex] = bitMask;
+            WriteCurrentBitmask(bitMaskIndex, bitMask);
         }
     }
 
@@ -160,8 +174,6 @@ void main(CSInput input)
     BitmaskInput bitmaskInput;
     bitmaskInput.useBitmasks = true;
     bitmaskInput.bitmaskOffset = 0;
-    bitmaskInput.prevCulledInstancesBitMask = _prevCulledInstancesBitMask;
-    bitmaskInput.outCulledInstancesBitMask = _culledInstancesBitMask;
 
     // Main camera view
     {

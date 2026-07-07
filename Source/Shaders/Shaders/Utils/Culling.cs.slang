@@ -21,6 +21,7 @@ struct Constants
     uint cullingDataIsWorldspace;
     uint debugDrawColliders;
     uint bitMaskBufferUintsPerView;
+    uint currentBitmaskIndex;
 };
 
 struct PackedCullingData
@@ -47,10 +48,23 @@ struct CullingData
 [[vk::binding(5, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
 
 #if USE_BITMASKS
-[[vk::binding(6, PER_PASS)]] StructuredBuffer<uint> _prevCulledDrawCallsBitMask;
+// Both bitmask generations stay bound; currentBitmaskIndex selects which one is written this frame
+[[vk::binding(6, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask0;
+[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask1;
 
-// Outputs
-[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask;
+// Selection is branched at the access site instead of assigning the buffers to struct members,
+// Slang fails to legalize conditionally selected resources
+void WriteCurrentBitmask(uint index, uint value)
+{
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        _culledDrawCallsBitMask0[index] = value;
+    }
+    else
+    {
+        _culledDrawCallsBitMask1[index] = value;
+    }
+}
 #endif
 
 [[vk::binding(8, PER_PASS)]] RWByteAddressBuffer _drawCount;
@@ -130,8 +144,6 @@ struct BitmaskInput
 {
     bool useBitmasks;
     uint bitmaskOffset;
-    StructuredBuffer<uint> prevCulledDrawCallsBitMask;
-    RWStructuredBuffer<uint> outCulledDrawCallsBitMask;
 };
 #else
 struct CullOutput
@@ -188,7 +200,7 @@ void CullForCamera(DrawInput drawInput,
         if (drawInput.csInput.groupThreadID.x == 0)
         {
             uint bitMaskIndex = drawInput.csInput.groupID.x + bitmaskInput.bitmaskOffset;
-            bitmaskInput.outCulledDrawCallsBitMask[bitMaskIndex] = bitMask;
+            WriteCurrentBitmask(bitMaskIndex, bitMask);
         }
     }
 #else
@@ -288,8 +300,6 @@ void main(CSInput input)
     BitmaskInput bitmaskInput;
     bitmaskInput.useBitmasks = true;
     bitmaskInput.bitmaskOffset = 0;
-    bitmaskInput.prevCulledDrawCallsBitMask = _prevCulledDrawCallsBitMask;
-    bitmaskInput.outCulledDrawCallsBitMask = _culledDrawCallsBitMask;
 #else
     CullOutput cullOutput;
     cullOutput.drawCalls = _culledDrawCalls;

@@ -20,6 +20,7 @@ struct Constants
     uint drawCallDataSize;
     uint cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
     uint debugDrawColliders;
+    uint currentBitmaskIndex;
 };
 
 struct InstanceRef
@@ -55,11 +56,34 @@ struct CullingData
 [[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
 
 #if USE_BITMASKS
-// TODO: When instanceCounts resizes we need to invalidate (zero out) _prevCulledInstancesBitMask since a single index in current and prev would point to different actual drawcalls
-[[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _prevCulledDrawCallsBitMask; // TODO: Rename to _prevCulledInstancesBitMask, with instanced rendering we need to count these per instance instead of per draw
+// TODO: When instanceCounts resizes we need to invalidate (zero out) the prev bitmask since a single index in current and prev would point to different actual drawcalls
+// Both bitmask generations stay bound; currentBitmaskIndex selects which one is written this frame
+// TODO: Rename to _culledInstancesBitMask0/1, with instanced rendering we need to count these per instance instead of per draw
+[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask0;
+[[vk::binding(8, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask1;
 
-// Outputs
-[[vk::binding(8, PER_PASS)]] RWStructuredBuffer<uint> _culledDrawCallsBitMask; // TODO: Rename to _culledInstancesBitMask, with instanced rendering we need to count these per instance instead of per draw
+// Selection is branched at the access site instead of assigning the buffers to struct members,
+// Slang fails to legalize conditionally selected resources
+void WriteCurrentBitmask(uint index, uint value)
+{
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        _culledDrawCallsBitMask0[index] = value;
+    }
+    else
+    {
+        _culledDrawCallsBitMask1[index] = value;
+    }
+}
+
+uint ReadPrevBitmask(uint index)
+{
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        return _culledDrawCallsBitMask1[index];
+    }
+    return _culledDrawCallsBitMask0[index];
+}
 #endif
 
 [[vk::binding(9, PER_PASS)]] RWByteAddressBuffer _culledInstanceCounts; // One uint per draw call
@@ -158,8 +182,6 @@ struct DrawInput
 struct BitmaskInput
 {
     bool useBitmasks;
-    StructuredBuffer<uint> prevCulledDrawCallsBitMask;
-    RWStructuredBuffer<uint> outCulledDrawCallsBitMask;
 };
 #endif
 
@@ -212,10 +234,10 @@ void CullForCamera(DrawInput drawInput,
         // The first thread writes the bitmask
         if (drawInput.csInput.groupThreadID.x == 0)
         {
-            bitmaskInput.outCulledDrawCallsBitMask[drawInput.csInput.groupID.x] = bitMask;
+            WriteCurrentBitmask(drawInput.csInput.groupID.x, bitMask);
         }
 
-        uint occluderBitMask = bitmaskInput.prevCulledDrawCallsBitMask[drawInput.csInput.groupID.x];
+        uint occluderBitMask = ReadPrevBitmask(drawInput.csInput.groupID.x);
         uint renderBitMask = bitMask & ~occluderBitMask; // This should give us all currently visible objects that were not occluders
 
         shouldRender = renderBitMask & (1u << drawInput.csInput.groupThreadID.x);
@@ -340,10 +362,9 @@ void main(CSInput input)
 
 #if USE_BITMASKS
     // Set up BitmaskInput
+    // TODO: These are not per drawcall anymore, they are per InstanceRef
     BitmaskInput bitmaskInput;
     bitmaskInput.useBitmasks = true;
-    bitmaskInput.prevCulledDrawCallsBitMask = _prevCulledDrawCallsBitMask; // TODO: These are not per drawcall anymore, they are per InstanceRef
-    bitmaskInput.outCulledDrawCallsBitMask = _culledDrawCallsBitMask;
 #endif
 
     // Set up CullOutput

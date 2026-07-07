@@ -394,7 +394,9 @@ void TextureRenderer::ResolveMips(Renderer::RenderGraphResources& graphResources
 
     commandList.PushConstant(constants, 0, sizeof(Constants));
 
-    commandList.BindDescriptorSet(descriptorSet, frameIndex);
+    // Each resolve rebinds imgSrc/imgDst on the same descriptor set, so a snapshot is needed to keep
+    // earlier dispatches from seeing the last texture's bindings
+    commandList.BindTempDescriptorSet(descriptorSet, frameIndex);
 
     commandList.Dispatch(dispatchThreadGroupCountXY[0], dispatchThreadGroupCountXY[1], 1);
 

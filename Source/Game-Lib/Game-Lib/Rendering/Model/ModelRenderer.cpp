@@ -416,7 +416,6 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
         Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
         Renderer::BufferMutableResource culledInstanceCountsBuffer;
 
@@ -488,7 +487,6 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
             params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
             params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
-            params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
             params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
 
             params.drawCountBuffer = data.drawCountBuffer;
@@ -540,9 +538,6 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
     {
         Renderer::ImageResource depthPyramid;
 
-        Renderer::BufferResource prevCulledDrawCallsBitMask;
-
-        Renderer::BufferMutableResource currentCulledDrawCallsBitMask;
         Renderer::BufferMutableResource culledInstanceCountsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
@@ -569,8 +564,8 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
 
             CullingPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
-            data.prevCulledDrawCallsBitMask = builder.Read(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE);
-            data.currentCulledDrawCallsBitMask = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::COMPUTE); // Write because both bitmask bindings are RW in the shader
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::COMPUTE);
 
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::COMPUTE);
 
@@ -594,9 +589,6 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
 
             params.depthPyramid = data.depthPyramid;
 
-            params.prevCulledDrawCallsBitMask = data.prevCulledDrawCallsBitMask;
-
-            params.currentCulledDrawCallsBitMask = data.currentCulledDrawCallsBitMask;
             params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
             params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
@@ -653,8 +645,6 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::BufferMutableResource drawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
-        Renderer::BufferMutableResource culledDrawCallsBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledDrawCallsBitMaskBuffer;
 
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
@@ -692,8 +682,8 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             GeometryPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
-            data.culledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            data.prevCulledDrawCallsBitMaskBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
 
@@ -723,8 +713,6 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
             params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
-            params.culledDrawCallsBitMaskBuffer = data.culledDrawCallsBitMaskBuffer;
-            params.prevCulledDrawCallsBitMaskBuffer = data.prevCulledDrawCallsBitMaskBuffer;
 
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;

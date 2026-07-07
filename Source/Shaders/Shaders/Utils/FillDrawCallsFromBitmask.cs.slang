@@ -11,6 +11,7 @@ struct Constants
     uint numTotalDraws;
     uint bitmaskOffset;
     uint diffAgainstPrev;
+    uint currentBitmaskIndex;
 };
 
 #if IS_INDEXED
@@ -21,9 +22,10 @@ typedef Draw DrawType;
 
 [[vk::push_constant]] Constants _constants;
 
+// Both bitmask generations stay bound; currentBitmaskIndex selects which one is current this frame
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<DrawType> _drawCalls;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask;
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<uint> _prevCulledDrawCallsBitMask;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask0;
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<uint> _culledDrawCallsBitMask1;
 
 [[vk::binding(3, PER_PASS)]] RWStructuredBuffer<DrawType> _culledDrawCalls;
 [[vk::binding(4, PER_PASS)]] RWByteAddressBuffer _drawCount;
@@ -46,8 +48,18 @@ void main(CSInput input)
         return;
 
     uint bitMaskIndex = _constants.bitmaskOffset + input.groupID.x;
-    uint bitMask = _culledDrawCallsBitMask[bitMaskIndex];
-    uint prevBitMask = _prevCulledDrawCallsBitMask[bitMaskIndex];
+    uint bitMask;
+    uint prevBitMask;
+    if (_constants.currentBitmaskIndex == 0)
+    {
+        bitMask = _culledDrawCallsBitMask0[bitMaskIndex];
+        prevBitMask = _culledDrawCallsBitMask1[bitMaskIndex];
+    }
+    else
+    {
+        bitMask = _culledDrawCallsBitMask1[bitMaskIndex];
+        prevBitMask = _culledDrawCallsBitMask0[bitMaskIndex];
+    }
     uint bitIndex = input.groupThreadID.x;
 
     bool isVisible = bitMask & (1u << bitIndex);

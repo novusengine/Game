@@ -88,7 +88,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
         params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
 
-        Renderer::BufferID culledDrawCallsBitMaskBuffer = params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex);
         if (params.disableTwoStepCulling)
         {
             params.commandList->FillBuffer(params.culledDrawCallsBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(numInstances), 0);
@@ -108,16 +107,16 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 u32 numTotalInstances;
                 u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
                 u32 drawCallDataSize;
+                u32 currentBitmaskIndex;
             };
 
             FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
             fillConstants->numTotalInstances = numInstances;
             fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
             fillConstants->drawCallDataSize = params.drawCallDataSize;
+            fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
 
             params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-            params.occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
 
             // Bind descriptorset
             params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
@@ -216,7 +215,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
     }
     else
     {
-        Renderer::BufferID culledDrawCallsBitMaskBuffer = params.cullingResources->GetCulledDrawCallsBitMaskBuffer(!params.frameIndex);
         if (params.disableTwoStepCulling)
         {
             u32 sizePerView = params.cullingResources->GetBitMaskBufferSizePerView();
@@ -266,16 +264,15 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                     u32 numTotalDraws;
                     u32 bitmaskOffset;
                     u32 diffAgainstPrev;
+                    u32 currentBitmaskIndex;
                 };
 
                 FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
                 fillConstants->numTotalDraws = numDrawCalls;
                 fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
                 fillConstants->diffAgainstPrev = 0; // Occluders should not diff against prev
+                fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
                 params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-                params.occluderFillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
-                params.occluderFillDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMaskBuffer);
 
                 // Bind descriptorset
                 params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
@@ -381,6 +378,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 drawCallDataSize;
                     u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
                     u32 debugDrawColliders;
+                    u32 currentBitmaskIndex;
                 };
                 CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
                 cullConstants->viewportSizeX = u32(viewportSize.x);
@@ -398,15 +396,10 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
 
                 cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
                 cullConstants->debugDrawColliders = params.debugDrawColliders;
+                cullConstants->currentBitmaskIndex = params.frameIndex;
                 params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
                 params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
-
-                if (params.cullingResources->HasSupportForTwoStepCulling())
-                {
-                    params.cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMask);
-                    params.cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.currentCulledDrawCallsBitMask);
-                }
 
                 params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
                 params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
@@ -500,6 +493,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 u32 cullingDataIsWorldspace;
                 u32 debugDrawColliders;
                 u32 bitMaskBufferUintsPerView;
+                u32 currentBitmaskIndex;
             };
             CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
             cullConstants->viewportSizeX = u32(viewportSize.x);
@@ -515,15 +509,10 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
             cullConstants->debugDrawColliders = params.debugDrawColliders;
             cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
+            cullConstants->currentBitmaskIndex = params.frameIndex;
             params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
             params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
-
-            if (params.cullingResources->HasSupportForTwoStepCulling())
-            {
-                params.cullingDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMask);
-                params.cullingDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.currentCulledDrawCallsBitMask);
-            }
 
             params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
             params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
@@ -596,16 +585,15 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
                     u32 numTotalDraws;
                     u32 bitmaskOffset;
                     u32 diffAgainstPrev;
+                    u32 currentBitmaskIndex;
                 };
 
                 FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
                 fillConstants->numTotalDraws = numDrawCalls;
                 fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
                 fillConstants->diffAgainstPrev = 1; // Geometry should diff against prev
+                fillConstants->currentBitmaskIndex = params.frameIndex;
                 params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-                params.fillDescriptorSet.Bind("_culledDrawCallsBitMask"_h, params.culledDrawCallsBitMaskBuffer);
-                params.fillDescriptorSet.Bind("_prevCulledDrawCallsBitMask"_h, params.prevCulledDrawCallsBitMaskBuffer);
 
                 // Bind descriptorset
                 params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);

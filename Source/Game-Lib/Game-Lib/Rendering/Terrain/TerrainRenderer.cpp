@@ -140,7 +140,6 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
         Renderer::BufferMutableResource culledInstanceBuffer;
         Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledInstanceBitMaskBuffer;
         Renderer::BufferMutableResource argumentBuffer;
         Renderer::BufferMutableResource occluderDrawCountReadBackBuffer;
 
@@ -169,7 +168,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
             data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer, BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
             data.culledInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.prevCulledInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             data.occluderDrawCountReadBackBuffer = builder.Write(_occluderDrawCountReadBackBuffer, BufferUsage::TRANSFER);
 
@@ -210,8 +209,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 fillParams.cellCount = cellCount;
                 fillParams.viewIndex = i;
                 fillParams.diffAgainstPrev = false;
-                fillParams.culledInstanceBitMaskBuffer = data.culledInstanceBitMaskBuffer;
-                fillParams.prevCulledInstanceBitMaskBuffer = data.prevCulledInstanceBitMaskBuffer;
+                fillParams.currentBitmaskIndex = !frameIndex; // Occluders consume last frame's culling output
                 fillParams.fillSet = data.fillSet;
 
                 FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
@@ -290,8 +288,6 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     {
         Renderer::ImageResource depthPyramid;
 
-        Renderer::BufferResource prevInstanceBitMaskBuffer;
-
         Renderer::BufferMutableResource argumentBuffer;
         Renderer::BufferMutableResource currentInstanceBitMaskBuffer;
 
@@ -308,7 +304,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
 
-            data.prevInstanceBitMaskBuffer = builder.Read(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE); // Write because both bitmask bindings are RW in the shader
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
             builder.Read(_cellHeightRanges.GetBuffer(), BufferUsage::COMPUTE);
@@ -373,6 +369,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
                 u32 numCascades;
                 u32 occlusionEnabled;
                 u32 bitMaskBufferSizePerView;
+                u32 currentBitmaskIndex;
             };
 
             vec2 viewportSize = _renderer->GetRenderSize();
@@ -384,12 +381,11 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             cullConstants->occlusionEnabled = CVAR_OcclusionCullingEnabled.Get();
             const u32 cellCount = static_cast<u32>(_cellDatas.Count());
             cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
+            cullConstants->currentBitmaskIndex = frameIndex;
 
             commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
 
             data.cullingSet.Bind("_depthPyramid"_h, data.depthPyramid);
-            data.cullingSet.Bind("_prevCulledInstancesBitMask"_h, data.prevInstanceBitMaskBuffer);
-            data.cullingSet.Bind("_culledInstancesBitMask"_h, data.currentInstanceBitMaskBuffer);
 
             // Bind descriptorset
             commandList.BindDescriptorSet(data.debugSet, frameIndex);
@@ -427,8 +423,6 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
 
-        Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
-        Renderer::BufferMutableResource prevCulledInstanceBitMaskBuffer;
         Renderer::BufferMutableResource culledInstanceBuffer;
 
         Renderer::BufferMutableResource argumentBuffer;
@@ -452,8 +446,8 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                 data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             }
 
-            data.culledInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.prevCulledInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             data.culledInstanceBuffer = builder.Write(cullingEnabled ? _culledInstanceBuffer : _instanceDatas.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -499,8 +493,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                     fillParams.cellCount = cellCount;
                     fillParams.viewIndex = i;
                     fillParams.diffAgainstPrev = true;
-                    fillParams.culledInstanceBitMaskBuffer = data.culledInstanceBitMaskBuffer;
-                    fillParams.prevCulledInstanceBitMaskBuffer = data.prevCulledInstanceBitMaskBuffer;
+                    fillParams.currentBitmaskIndex = frameIndex;
                     fillParams.fillSet = data.fillSet;
 
                     FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
@@ -1164,6 +1157,15 @@ void TerrainRenderer::SyncToGPU()
                     memset(mappedMemory, 0, size);
                 });
             }
+
+            // Both generations stay bound; the passes select current/prev with a push constant
+            const StringUtils::StringHash bitMaskBindings[2] = { "_culledInstancesBitMask0"_h, "_culledInstancesBitMask1"_h };
+            for (u32 i = 0; i < _culledInstanceBitMaskBuffer.Num; i++)
+            {
+                _cullingPassDescriptorSet.Bind(bitMaskBindings[i], _culledInstanceBitMaskBuffer.Get(i));
+                _occluderFillPassDescriptorSet.Bind(bitMaskBindings[i], _culledInstanceBitMaskBuffer.Get(i));
+                _geometryFillPassDescriptorSet.Bind(bitMaskBindings[i], _culledInstanceBitMaskBuffer.Get(i));
+            }
         }
     }
 
@@ -1246,6 +1248,7 @@ void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResource
         u32 numTotalInstances;
         u32 bitmaskOffset;
         u32 diffAgainstPrev;
+        u32 currentBitmaskIndex;
     };
 
     FillDrawCallConstants* fillConstants = graphResources.FrameNew<FillDrawCallConstants>();
@@ -1254,10 +1257,8 @@ void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResource
     u32 uintsNeededPerView = (params.cellCount + 31) / 32;
     fillConstants->bitmaskOffset = params.viewIndex * uintsNeededPerView;
     fillConstants->diffAgainstPrev = params.diffAgainstPrev;
+    fillConstants->currentBitmaskIndex = params.currentBitmaskIndex;
     commandList.PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-    params.fillSet.Bind("_culledInstancesBitMask"_h, params.culledInstanceBitMaskBuffer);
-    params.fillSet.Bind("_prevCulledInstancesBitMask"_h, params.prevCulledInstanceBitMaskBuffer);
 
     // Bind descriptorset
     commandList.BindDescriptorSet(params.fillSet, frameIndex);
