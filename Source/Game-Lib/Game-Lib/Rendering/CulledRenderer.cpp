@@ -4,6 +4,10 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
+
+AutoCVar_Int CVAR_ShadowDebugCullingView(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView", "debug draw culling results for a view as AABBs (green = kept, red = culled), 0 = main view, 1..N = cascades, -1 = off", -1);
+
 bool CulledRenderer::_pipelinesCreated = false;
 Renderer::ComputePipelineID CulledRenderer::_fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
 Renderer::ComputePipelineID CulledRenderer::_fillDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
@@ -90,7 +94,8 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
         if (params.disableTwoStepCulling)
         {
-            params.commandList->FillBuffer(params.culledDrawCallsBitMaskBuffer, 0, RenderUtils::CalcCullingBitmaskSize(numInstances), 0);
+            u32 sizePerView = params.cullingResources->GetBitMaskBufferSizePerView();
+            params.commandList->FillBuffer(params.culledDrawCallsBitMaskBuffer, 0, sizePerView * Renderer::Settings::MAX_VIEWS, 0);
             params.commandList->BufferBarrier(params.culledDrawCallsBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
         }
 
@@ -108,6 +113,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
                 u32 drawCallDataSize;
                 u32 currentBitmaskIndex;
+                u32 bitmaskOffset;
             };
 
             FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
@@ -115,6 +121,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
             fillConstants->drawCallDataSize = params.drawCallDataSize;
             fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
+            fillConstants->bitmaskOffset = 0; // Occluders only draw the main view
 
             params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
 
@@ -379,6 +386,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
                     u32 debugDrawColliders;
                     u32 currentBitmaskIndex;
+                    u32 numCascades;
+                    u32 bitMaskBufferUintsPerView;
+                    u32 debugDrawView;
                 };
                 CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
                 cullConstants->viewportSizeX = u32(viewportSize.x);
@@ -397,6 +407,9 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
                 cullConstants->debugDrawColliders = params.debugDrawColliders;
                 cullConstants->currentBitmaskIndex = params.frameIndex;
+                cullConstants->numCascades = params.numCascades;
+                cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
+                cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
                 params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
                 params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
@@ -555,22 +568,22 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
         params.commandList->PushMarker(markerName, Color::PastelYellow);
 
+        if (i == 1)
+        {
+            uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
+
+            params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
+            params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
+
+            params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
+        }
+
         // Reset the counters
         if (!params.cullingResources->IsInstanced() && params.cullingResources->HasSupportForTwoStepCulling())
         {
             params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
             params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
             params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-        
-            if (i == 1)
-            {
-                uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
-
-                params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-
-                params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
-            }
 
             // Fill the geometry to draw
             {
@@ -607,6 +620,95 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             }
 
             params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
+            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+        }
+        else if (params.cullingResources->IsInstanced() && params.cullingResources->HasSupportForTwoStepCulling() && i > 0)
+        {
+            // The main view (i == 0) consumes the culling pass's output directly, cascades rebuild the
+            // shared instance counts/lookup/argument buffers from their bitmask slice before drawing
+            const u32 numInstances = params.cullingResources->GetNumInstances();
+
+            // Reset the counters and per-drawcall instance counts
+            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+            params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+
+            // Fill the instances visible in this cascade
+            {
+                std::string debugName = params.passName + " Instanced Geometry Fill";
+                params.commandList->PushMarker(debugName, Color::White);
+
+                Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
+                params.commandList->BeginPipeline(pipeline);
+
+                struct FillDrawCallConstants
+                {
+                    u32 numTotalInstances;
+                    u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+                    u32 drawCallDataSize;
+                    u32 currentBitmaskIndex;
+                    u32 bitmaskOffset;
+                };
+
+                FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
+                fillConstants->numTotalInstances = numInstances;
+                fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+                fillConstants->drawCallDataSize = params.drawCallDataSize;
+                fillConstants->currentBitmaskIndex = params.frameIndex;
+                fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
+                params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
+
+                params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
+
+                params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+
+                params.commandList->EndPipeline(pipeline);
+                params.commandList->PopMarker();
+            }
+
+            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
+
+            params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+
+            // Create indirect argument buffer
+            {
+                std::string debugName = params.passName + " Create Indirect";
+                params.commandList->PushMarker(debugName, Color::Yellow);
+
+                Renderer::ComputePipelineID pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
+                params.commandList->BeginPipeline(pipeline);
+
+                struct CreateIndirectConstants
+                {
+                    u32 numTotalDrawCalls;
+                    u32 baseInstanceLookupOffset;
+                    u32 drawCallDataSize;
+                };
+                CreateIndirectConstants* createIndirectConstants = params.graphResources->FrameNew<CreateIndirectConstants>();
+
+                createIndirectConstants->numTotalDrawCalls = numDrawCalls;
+                createIndirectConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+                createIndirectConstants->drawCallDataSize = params.drawCallDataSize;
+                params.commandList->PushConstant(createIndirectConstants, 0, sizeof(CreateIndirectConstants));
+
+                params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
+
+                params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
+
+                params.commandList->EndPipeline(pipeline);
+                params.commandList->PopMarker();
+            }
+
+            params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
+            params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
             params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
             params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
         }

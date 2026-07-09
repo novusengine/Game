@@ -603,7 +603,11 @@ void ModelRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRes
             params.cullingDescriptorSet = data.cullingSet;
             params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
-            params.numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+            params.numCascades = 0;
+            if (CVAR_ModelsCastShadow.Get() == 1)
+            {
+                params.numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+            }
             params.occlusionCull = CVAR_ModelOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
 
@@ -646,6 +650,8 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
+        Renderer::BufferMutableResource culledInstanceCountsBuffer;
+
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -654,6 +660,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource modelSet;
         Renderer::DescriptorSetResource fillSet;
+        Renderer::DescriptorSetResource createIndirectSet;
         Renderer::DescriptorSetResource drawSet;
     };
 
@@ -685,11 +692,14 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
-            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+            data.culledInstanceCountsBuffer = builder.Write(_opaqueCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.modelSet = builder.Use(resources.modelDescriptorSet);
             data.fillSet = builder.Use(_opaqueCullingResources.GetGeometryFillDescriptorSet());
+            data.createIndirectSet = builder.Use(_opaqueCullingResources.GetCreateIndirectAfterCullDescriptorSet());
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -713,6 +723,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.drawCallsBuffer = data.drawCallsBuffer;
             params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
             params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
 
             params.drawCountBuffer = data.drawCountBuffer;
             params.triangleCountBuffer = data.triangleCountBuffer;
@@ -721,6 +732,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.globalDescriptorSet = data.globalSet;
             params.fillDescriptorSet = data.fillSet;
+            params.createIndirectDescriptorSet = data.createIndirectSet;
             params.drawDescriptorSet = data.drawSet;
 
             params.drawCallback = [&](DrawParams& drawParams)
@@ -731,6 +743,9 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
                 };
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
+
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.drawCallDataSize = sizeof(DrawCallData);
 
             params.numCascades = numCascades;
 

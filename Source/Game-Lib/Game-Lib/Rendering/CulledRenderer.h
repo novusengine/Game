@@ -246,15 +246,15 @@ protected:
 
         data.drawCallsBuffer = builder.Write(cullingResources->GetDrawCalls().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.culledDrawCallsBuffer = builder.Write(cullingResources->GetCulledDrawsBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-        data.culledDrawCallCountBuffer = builder.Write(cullingResources->GetCulledDrawCallCountBuffer(), BufferUsage::GRAPHICS);
+        data.culledDrawCallCountBuffer = builder.Write(cullingResources->GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
         data.drawCountBuffer = builder.Write(cullingResources->GetDrawCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.triangleCountBuffer = builder.Write(cullingResources->GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
         data.drawCountReadBackBuffer = builder.Write(cullingResources->GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
         data.triangleCountReadBackBuffer = builder.Write(cullingResources->GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
 
-        builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS);
-        builder.Read(cullingResources->GetCulledInstanceLookupTableBuffer(), BufferUsage::GRAPHICS);
+        builder.Read(cullingResources->GetInstanceRefs().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+        builder.Write(cullingResources->GetCulledInstanceLookupTableBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
 
         data.drawSet = builder.Use(cullingResources->GetGeometryPassDescriptorSet());
     }
@@ -291,6 +291,8 @@ protected:
 
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
 
+        Renderer::BufferMutableResource culledInstanceCountsBuffer; // Instanced only, used to rebuild per-cascade draw sets
+
         Renderer::BufferMutableResource drawCountBuffer;
         Renderer::BufferMutableResource triangleCountBuffer;
         Renderer::BufferMutableResource drawCountReadBackBuffer;
@@ -298,9 +300,13 @@ protected:
 
         Renderer::DescriptorSetResource globalDescriptorSet;
         Renderer::DescriptorSetResource fillDescriptorSet;
+        Renderer::DescriptorSetResource createIndirectDescriptorSet; // Instanced only
         Renderer::DescriptorSetResource drawDescriptorSet;
 
         std::function<void(DrawParams&)> drawCallback;
+
+        u32 baseInstanceLookupOffset = 0; // Instanced only
+        u32 drawCallDataSize = 0; // Instanced only
 
         u32 numCascades = 0;
 

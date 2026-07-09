@@ -21,6 +21,9 @@ struct Constants
     uint cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
     uint debugDrawColliders;
     uint currentBitmaskIndex;
+    uint numCascades;
+    uint bitMaskBufferUintsPerView;
+    uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
 };
 
 struct InstanceRef
@@ -192,6 +195,34 @@ struct CullOutput
     uint baseInstanceLookup; // Used to index into instanceLookupTable, + atomic_add(instanceCounts[drawCallID])
     RWStructuredBuffer<uint> instanceLookupTable;
 };
+
+#if USE_BITMASKS
+// Shadow cascades only need the visibility bitmask, the per-view draw sets are filled from it later in the geometry pass
+void CullForCascade(DrawInput drawInput, Camera camera, uint bitmaskOffset, bool debugDrawResults)
+{
+    bool isVisible = drawInput.instanceCount > 0 && IsSphereInsideFrustum(camera, drawInput.sphere);
+
+    uint bitMask = WaveActiveBallot(isVisible).x;
+
+    // The first thread writes the bitmask
+    if (drawInput.csInput.groupThreadID.x == 0)
+    {
+        WriteCurrentBitmask(drawInput.csInput.groupID.x + bitmaskOffset, bitMask);
+    }
+
+    if (debugDrawResults)
+    {
+        if (isVisible)
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        }
+        else
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::RED);
+        }
+    }
+}
+#endif
 
 void CullForCamera(DrawInput drawInput,
     Camera camera,
@@ -383,4 +414,13 @@ void main(CSInput input)
 #endif
             cullOutput);
     }
+
+#if USE_BITMASKS
+    // Shadow cascades
+    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    {
+        bool debugDrawResults = (_constants.debugDrawView == i);
+        CullForCascade(drawInput, _cameras[i], _constants.bitMaskBufferUintsPerView * i, debugDrawResults);
+    }
+#endif
 }

@@ -12,6 +12,7 @@ struct Constants
     uint baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
     uint drawCallDataSize;
     uint currentBitmaskIndex;
+    uint bitmaskOffset; // Selects which view's bitmask slice to fill from
 };
 
 struct InstanceRef
@@ -64,11 +65,11 @@ void main(CSInput input)
     uint bitMask;
     if (_constants.currentBitmaskIndex == 0)
     {
-        bitMask = _culledDrawCallsBitMask0[input.groupID.x];
+        bitMask = _culledDrawCallsBitMask0[input.groupID.x + _constants.bitmaskOffset];
     }
     else
     {
-        bitMask = _culledDrawCallsBitMask1[input.groupID.x];
+        bitMask = _culledDrawCallsBitMask1[input.groupID.x + _constants.bitmaskOffset];
     }
     uint bitIndex = input.groupThreadID.x;
 

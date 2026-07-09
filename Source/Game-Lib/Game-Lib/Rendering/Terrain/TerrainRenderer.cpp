@@ -370,6 +370,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
                 u32 occlusionEnabled;
                 u32 bitMaskBufferSizePerView;
                 u32 currentBitmaskIndex;
+                u32 debugDrawView;
             };
 
             vec2 viewportSize = _renderer->GetRenderSize();
@@ -382,6 +383,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             const u32 cellCount = static_cast<u32>(_cellDatas.Count());
             cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
             cullConstants->currentBitmaskIndex = frameIndex;
+            cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
 
             commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
 
