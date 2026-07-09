@@ -131,8 +131,8 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.enabled = true;
     samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
-    samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
-    samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
+    samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
+    samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
     samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
     samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
     samplerDesc.comparisonEnabled = true;

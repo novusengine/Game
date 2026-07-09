@@ -57,12 +57,13 @@ float FilterPCF(float2 screenUV, float4 shadowCoord, ShadowSettings shadowSettin
     float dx = scale * (1.0f / texDim.x);
     float dy = scale * (1.0f / texDim.y);
 
-    // Calculate directions for the filtering
-    uint4 u = uint4(screenUV, uint(screenUV.x) ^ uint(screenUV.y), uint(screenUV.x) + uint(screenUV.y));
-    float3 rand = normalize(PCG3DHash(u.xyz));
+    // Calculate a random per-pixel rotation for the filtering
+    uint2 pixelPos = uint2(screenUV * texDim);
+    uint3 hash = PCG3DHash(uint3(pixelPos, pixelPos.x ^ pixelPos.y));
+    float2 rand = float2(hash.xy & 0xFFFFu) / 65535.0f;
 
-    float2 dirA = normalize(rand.xy);
-    float2 dirB = normalize(float2(-dirA.y, dirA.x));
+    float2 dirA = normalize(rand * 2.0f - 1.0f);
+    float2 dirB = float2(-dirA.y, dirA.x);
 
     dirA *= dx;
     dirB *= dy;
@@ -110,7 +111,8 @@ float2 VogelDiskSample(int sampleIndex, int samplesCount, float phi)
 // This should be tuned for the visuals we want
 float AvgBlockersDepthToPenumbra(float shadowMapViewZ, float avgBlockersDepth)
 {
-    float penumbra = (shadowMapViewZ - avgBlockersDepth) / avgBlockersDepth;
+    // Reversed Z, greater depth = closer to the light, so blocker - receiver is the occlusion gap
+    float penumbra = (avgBlockersDepth - shadowMapViewZ) / max(1.0f - avgBlockersDepth, 1e-4f);
     penumbra *= penumbra;
     return saturate(80.0f * penumbra);
 }
@@ -125,10 +127,10 @@ float Penumbra(float gradientNoise, float2 shadowMapUV, float shadowMapViewZ, fl
         float2 sampleUV = VogelDiskSample(i, samplesCount, gradientNoise);
         sampleUV = shadowMapUV + penumbraFilterSize * sampleUV;
 
-        // _shadowCascadeRTs[shadowCascadeIndex].SampleCmpLevelZero(_shadowSampler, sc.xy, sc.z);
         float sampleDepth = _shadowCascadeRTs[shadowCascadeIndex].SampleLevel(_shadowPointClampSampler, sampleUV, 0).x;
 
-        if (sampleDepth < shadowMapViewZ)
+        // Reversed Z, blockers are closer to the light than the receiver and thus have greater depth
+        if (sampleDepth > shadowMapViewZ)
         {
             avgBlockersDepth += sampleDepth;
             blockersCount += 1.0f;
@@ -153,13 +155,12 @@ float FilterPCSS(float2 screenUV, float4 P, ShadowSettings shadowSettings)
 
     float4 shadowCoord = P / P.w;
     shadowCoord.xy = shadowCoord.xy * 0.5f + 0.5f;
-    shadowCoord.y = -shadowCoord.y;
+    shadowCoord.y = 1.0f - shadowCoord.y; // Same Y flip as TextureProj, keeps all UVs in [0, 1]
 
     const float tau = 6.28318;
     float gradientNoise = tau * InterleavedGradientNoise(screenUV * texDim);
 
     float shadow = 0.0f;
-    //if (shadowCoord.z > -1.0f && shadowCoord.z < 1.0f)
     {
         float penumbra = 1.0f - Penumbra(gradientNoise, shadowCoord.xy, shadowCoord.z, shadowSettings.penumbraFilterSize, 16, shadowSettings.cascadeIndex);
 
@@ -195,15 +196,16 @@ float GetShadowFactor(float2 screenUV, float4 shadowCoord, ShadowSettings shadow
 #endif
 }
 
+// Returns a 0-based cascade index, clamped to the last cascade for depths beyond its split
 uint GetShadowCascadeIndexFromDepth(float depth, uint numCascades)
 {
     uint cascadeIndex = 0;
-    for (int i = numCascades; i > 0; i--)
+    for (uint i = 1; i < numCascades; i++)
     {
+        // _cameras[i].eyePosition.w holds the split depth of cascade i - 1
         if (depth > _cameras[i].eyePosition.w)
         {
             cascadeIndex = i;
-            break;
         }
     }
     return cascadeIndex;

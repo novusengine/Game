@@ -54,14 +54,21 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
         lightColor *= light.color.a; // Intensity in alpha channel
         
         // Directional Light Shadows
-        if (shadowSettings.enableShadows)
+        if (shadowSettings.enableShadows && numCascades > 0)
         {
             shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
             Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera
-            
+
             float4 shadowPosition = mul(float4(pixelVertexData.worldPos, 1.0f), cascadeCamera.worldToClip);
-            
+
             float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
+
+            // Fade to unshadowed over the last 15% of the last cascade, beyond it there is no shadow data
+            float lastSplitDepth = _cameras[numCascades].eyePosition.w;
+            float fadeStartDepth = 0.85f * lastSplitDepth;
+            float fade = saturate((pixelVertexData.viewPos.z - fadeStartDepth) / (lastSplitDepth - fadeStartDepth));
+            shadowFactor = lerp(shadowFactor, 1.0f, fade);
+
             lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
         }
 

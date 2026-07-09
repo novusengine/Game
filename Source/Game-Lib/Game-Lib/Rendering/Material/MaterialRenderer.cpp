@@ -204,6 +204,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     Color patchEdgeColor;
                     Color vertexColor;
                     Color brushColor;
+                    vec4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, zw = UNUSED
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
@@ -235,6 +236,10 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->patchEdgeColor = terrainTools->GetPatchEdgeColor();
                 constants->vertexColor = terrainTools->GetVertexColor();
                 constants->brushColor = terrainTools->GetBrushColor();
+
+                f32 shadowFilterSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterSize"));
+                f32 shadowFilterPenumbraSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterPenumbraSize"));
+                constants->shadowFilterSettings = vec4(shadowFilterSize, shadowFilterPenumbraSize, 0.0f, 0.0f);
 
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
