@@ -11,8 +11,6 @@
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 
-#include <limits>
-#include <glm/gtc/matrix_transform.hpp>
 #include <entt/entt.hpp>
 
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 0, CVarFlags::EditCheckbox);
@@ -29,8 +27,6 @@ AutoCVar_Float CVAR_ShadowFilterPenumbraSize(CVarCategory::Client | CVarCategory
 AutoCVar_Float CVAR_ShadowDepthBiasConstantFactor(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant", "constant factor of depth bias to prevent shadow acne", -2.0f);
 AutoCVar_Float CVAR_ShadowDepthBiasClamp(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp", "clamp of depth bias to prevent shadow acne", 0.0f);
 AutoCVar_Float CVAR_ShadowDepthBiasSlopeFactor(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope", "slope factor of depth bias to prevent shadow acne", -5.0f);
-
-#define TIMESLICED_CASCADES 0
 
 ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
     : _renderer(renderer)
@@ -102,8 +98,6 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
 
     if (numCascades == 0)
         return;
-
-    const bool shadowEnabled = CVAR_ShadowEnabled.Get();
 
     renderGraph->AddPass<ShadowPassData>("Shadow Pass",
         [=, &resources](ShadowPassData& data, Renderer::RenderGraphBuilder& builder)

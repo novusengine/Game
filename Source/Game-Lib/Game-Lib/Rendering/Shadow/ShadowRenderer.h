@@ -33,15 +33,6 @@ private:
     void CreatePermanentResources(RenderResources& resources);
 
 private:
-    struct ShadowCascadeDebugInformation
-    {
-    public:
-        vec3 frustumCorners[8];
-        vec3 frustumPlanePos;
-        vec4 frustumPlanes[6];
-    };
-
-private:
     Renderer::Renderer* _renderer = nullptr;
     GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
@@ -50,16 +41,4 @@ private:
 
     Renderer::SamplerID _shadowCmpSampler;
     Renderer::SamplerID _shadowPointClampSampler;
-
-    Renderer::TextureArrayID _shadowDepthTextures;
-    u32 _numInitializedShadowDepthImages = 0;
-
-    mat4x4 _cascadeProjectionMatrices[Renderer::Settings::MAX_SHADOW_CASCADES];
-
-    ShadowCascadeDebugInformation _cascadeDebugInformation[Renderer::Settings::MAX_SHADOW_CASCADES];
-
-    vec3 _boundingBoxMin;
-    vec3 _boundingBoxMax;
-
-    u32 _currentCascade = 0;
 };

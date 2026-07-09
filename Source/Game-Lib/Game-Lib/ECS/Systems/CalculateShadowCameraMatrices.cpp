@@ -14,23 +14,24 @@
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
-#include <glm/gtx/euler_angles.hpp>
-#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtc/matrix_access.hpp>
 
 AutoCVar_Int CVAR_ShadowsStable(CVarCategory::Client | CVarCategory::Rendering, "shadowStable", "stable shadows", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ShadowsFreezeCascades(CVarCategory::Client | CVarCategory::Rendering, "shadowFreezeCascades", "freeze cascade cameras and culling planes for debugging", 0, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 0);
 AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.8f);
 
-AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side)", 4096);
+AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side), only applies to cascades created after it is set", 4096);
 
 namespace ECS::Systems
 {
-    inline vec4 EncodePlane(vec3 position, vec3 normal)
+    // Converts a Gribb-Hartmann clip plane row (inside if dot(n, p) + d >= 0) to the
+    // encoding the culling shaders expect: vec4(n, dot(n, pointOnPlane)) with normalized inward n
+    inline vec4 ExtractPlane(const vec4& row)
     {
-        vec3 normalizedNormal = glm::normalize(normal);
-        vec4 result = vec4(normalizedNormal, glm::dot(normalizedNormal, position));
-        return result;
+        f32 normalLength = glm::length(vec3(row));
+        return vec4(vec3(row) / normalLength, -row.w / normalLength);
     }
 
     void CalculateShadowCameraMatrices::Update(entt::registry& registry, f32 deltaTime)
@@ -47,29 +48,33 @@ namespace ECS::Systems
         bool stableShadows = CVAR_ShadowsStable.Get() == 1;
 
         // Initialize any new shadow cascades
-        if (numCascades != renderResources.shadowDepthCascades.size())
+        // Cascade count can shrink at runtime, we keep the excess cameras and depth images around unused since neither can shrink
+        u32 numCamerasNeeded = numCascades + 1; // Main camera + cascades
+        u32 numCameras = renderResources.cameras.Count();
+        if (numCamerasNeeded > numCameras)
         {
-            u32 numCameras = renderResources.cameras.Count();
-            u32 numCamerasToAdd = numCascades - numCameras;
-            renderResources.cameras.AddCount(numCamerasToAdd);
-
-            while (numCascades > renderResources.shadowDepthCascades.size())
-            {
-                u32 cascadeIndex = static_cast<u32>(renderResources.shadowDepthCascades.size());
-
-                // Shadow depth rendertarget
-                Renderer::DepthImageDesc shadowDepthDesc;
-                shadowDepthDesc.dimensions = vec2(cascadeTextureSize, cascadeTextureSize);
-                shadowDepthDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
-                shadowDepthDesc.format = Renderer::DepthImageFormat::D32_FLOAT;
-                shadowDepthDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
-                shadowDepthDesc.depthClearValue = 0.0f;
-                shadowDepthDesc.debugName = "ShadowDepthCascade" + std::to_string(cascadeIndex);
-
-                Renderer::DepthImageID cascadeDepthImage = renderer->CreateDepthImage(shadowDepthDesc);
-                renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
-            }
+            renderResources.cameras.AddCount(numCamerasNeeded - numCameras);
         }
+
+        while (renderResources.shadowDepthCascades.size() < numCascades)
+        {
+            u32 cascadeIndex = static_cast<u32>(renderResources.shadowDepthCascades.size());
+
+            // Shadow depth rendertarget
+            Renderer::DepthImageDesc shadowDepthDesc;
+            shadowDepthDesc.dimensions = vec2(cascadeTextureSize, cascadeTextureSize);
+            shadowDepthDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
+            shadowDepthDesc.format = Renderer::DepthImageFormat::D32_FLOAT;
+            shadowDepthDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
+            shadowDepthDesc.depthClearValue = 0.0f;
+            shadowDepthDesc.debugName = "ShadowDepthCascade" + std::to_string(cascadeIndex);
+
+            Renderer::DepthImageID cascadeDepthImage = renderer->CreateDepthImage(shadowDepthDesc);
+            renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
+        }
+
+        if (CVAR_ShadowsFreezeCascades.Get())
+            return;
 
         entt::registry::context& ctx = registry.ctx();
         auto& dayNightCycle = ctx.get<Singletons::DayNightCycle>();
@@ -212,8 +217,6 @@ namespace ECS::Systems
                 maxExtents.y *= scale;
             }
 
-            vec3 cascadeExtents = maxExtents - minExtents;
-
             // Get postion of the shadow camera
             vec3 shadowCameraPos = frustumCenter + lightDirection * -minExtents.z;
 
@@ -257,35 +260,28 @@ namespace ECS::Systems
             f32 splitDepth = (farClip - (nearClip + splitDist * clipRange));// *-1.0f;
             cascadeCamera.eyePosition = vec4(shadowCameraPos, splitDepth); // w holds split depth
 
-            vec3 scale;
-            quat rotation;
-            vec3 translation;
-            vec3 skew;
-            vec4 perspective;
-            glm::decompose(viewMatrix, scale, rotation, translation, skew, perspective);
-            vec3 eulerAngles = glm::eulerAngles(rotation);
+            // Extract world-space frustum planes from the view-projection matrix (Gribb-Hartmann)
+            const mat4x4& m = cascadeCamera.worldToClip;
+            vec4 row0 = glm::row(m, 0);
+            vec4 row1 = glm::row(m, 1);
+            vec4 row2 = glm::row(m, 2);
+            vec4 row3 = glm::row(m, 3);
 
-            f32 pitch = eulerAngles.x;
-            f32 yaw = eulerAngles.y;
-            f32 roll = eulerAngles.z;
+            cascadeCamera.frustum[(size_t)FrustumPlane::Left] = ExtractPlane(row3 + row0);
+            cascadeCamera.frustum[(size_t)FrustumPlane::Right] = ExtractPlane(row3 - row0);
+            cascadeCamera.frustum[(size_t)FrustumPlane::Bottom] = ExtractPlane(row3 + row1);
+            cascadeCamera.frustum[(size_t)FrustumPlane::Top] = ExtractPlane(row3 - row1);
+            cascadeCamera.frustum[(size_t)FrustumPlane::Near] = ExtractPlane(row3 - row2); // Reversed Z, depth 1 is near
+            cascadeCamera.frustum[(size_t)FrustumPlane::Far] = ExtractPlane(row2);
 
-            cascadeCamera.eyeRotation = vec4(roll, pitch, yaw, 0.0f); // Is this order correct?
-
-            // Calculate frustum planes
-            glm::vec3 front = glm::vec3(0, 0, 1);
-            glm::vec3 right = glm::vec3(1, 0, 0);
-            glm::vec3 up = glm::vec3(0, 1, 0);
-
-            front = vec3(viewMatrix * vec4(front, 0.0f));
-            right = vec3(viewMatrix * vec4(right, 0.0f));
-            up = vec3(viewMatrix * vec4(up, 0.0f));
-
-            cascadeCamera.frustum[(size_t)FrustumPlane::Near] = EncodePlane(shadowCameraPos + front * nearPlane, front);
-            cascadeCamera.frustum[(size_t)FrustumPlane::Far] = EncodePlane(shadowCameraPos + front * farPlane , -front);
-            cascadeCamera.frustum[(size_t)FrustumPlane::Right] = EncodePlane(shadowCameraPos - right * cascadeExtents.x, right);
-            cascadeCamera.frustum[(size_t)FrustumPlane::Left] = EncodePlane(shadowCameraPos + right * cascadeExtents.x, -right);
-            cascadeCamera.frustum[(size_t)FrustumPlane::Top] = EncodePlane(shadowCameraPos + up * cascadeExtents.z, -up);
-            cascadeCamera.frustum[(size_t)FrustumPlane::Bottom] = EncodePlane(shadowCameraPos - up * cascadeExtents.z, up);
+#if NC_DEBUG
+            for (u32 j = 0; j < 6; j++)
+            {
+                const vec4& plane = cascadeCamera.frustum[j];
+                f32 distance = glm::dot(vec3(plane), frustumCenter) - plane.w;
+                NC_ASSERT(distance > 0.0f, "CalculateShadowCameraMatrices : Cascade frustum plane {0} does not contain the frustum center", j);
+            }
+#endif
             renderResources.cameras.SetDirtyElement(i+1);
 
             lastSplitDist = cascadeSplits[i];
