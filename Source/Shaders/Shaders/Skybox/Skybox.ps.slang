@@ -68,8 +68,13 @@ PSOutput main(VertexOutput input) : SV_Target
     {
         // Same NDC convention as ScreenToView in Culling.inc.slang
         float2 ndc = float2(input.uv.x, 1.0f - input.uv.y) * 2.0f - 1.0f;
-        float4 nearPoint = mul(float4(ndc, 1.0f, 1.0f), _cameras[0].clipToWorld); // Reversed Z, depth 1 is the near plane
-        float3 viewDir = normalize((nearPoint.xyz / nearPoint.w) - _cameras[0].eyePosition.xyz);
+
+        // Build the ray in view space (camera at origin) and rotate it to world as a direction,
+        // going through clipToWorld instead subtracts two huge world positions and the
+        // cancellation noise makes the disc shimmer and facet
+        float4 viewPos = mul(float4(ndc, 1.0f, 1.0f), _cameras[0].clipToView); // Reversed Z, depth 1 is the near plane
+        float3 viewRay = normalize(viewPos.xyz / viewPos.w);
+        float3 viewDir = normalize(mul(float4(viewRay, 0.0f), _cameras[0].viewToWorld).xyz);
 
         float cosSun = dot(viewDir, _skybandColors.sunDirection.xyz);
 
