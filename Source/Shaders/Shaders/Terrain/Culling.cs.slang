@@ -16,6 +16,7 @@ struct Constants
     uint bitMaskBufferSizePerView;
     uint currentBitmaskIndex;
     uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
+    uint cullMainView; // The late cascade dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice
 };
 
 struct HeightRange
@@ -176,6 +177,7 @@ void main(CSInput input)
     bitmaskInput.bitmaskOffset = 0;
 
     // Main camera view
+    if (_constants.cullMainView)
     {
         CullForCamera(drawInput, _cameras[0], bitmaskInput, _constants.debugDrawView == 0);
     }

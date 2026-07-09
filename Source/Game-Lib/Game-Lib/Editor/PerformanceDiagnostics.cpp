@@ -8,6 +8,7 @@
 #include <Game-Lib/Rendering/Model/ModelRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
+#include <Game-Lib/Rendering/Shadow/ShadowRenderer.h>
 #include <Game-Lib/Rendering/Debug/JoltDebugRenderer.h>
 #include <Game-Lib/Application/EnttRegistries.h>
 #include <Game-Lib/ECS/Singletons/EngineStats.h>
@@ -80,6 +81,31 @@ namespace Editor
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
             u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+
+            // SDSM reduced depth bounds
+            {
+                GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+                ShadowRenderer* shadowRenderer = gameRenderer->GetShadowRenderer();
+
+                f32 minDistance = 0.0f;
+                f32 maxDistance = 0.0f;
+                if (shadowRenderer && shadowRenderer->GetDepthBoundsViewDistances(gameRenderer->GetRenderResources(), minDistance, maxDistance))
+                {
+                    f32 shadowMaxDistance = static_cast<f32>(*CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowMaxDistance"_h));
+                    ImGui::Text("Visible Depth: %.1f - %.1f (Shadow Max: %.0f)", minDistance, maxDistance, shadowMaxDistance);
+
+                    f32 effectiveMin = 0.0f;
+                    f32 effectiveMax = 0.0f;
+                    if (shadowRenderer->GetEffectiveShadowRange(effectiveMin, effectiveMax))
+                    {
+                        ImGui::Text("Shadow Range: %.1f - %.1f (used by cascades)", effectiveMin, effectiveMax);
+                    }
+                }
+                else
+                {
+                    ImGui::Text("Visible Depth: - (no valid samples)");
+                }
+            }
 
             ImGui::Spacing();
 
@@ -598,7 +624,7 @@ namespace Editor
         u32 viewDrawCalls = 0;
         u32 viewDrawCallsSurvived = 0;
 
-        bool viewSupportsTerrainOcclusionCulling = true;
+        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Cascades draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
         bool viewRendersTerrainCulling = true;
@@ -707,7 +733,7 @@ namespace Editor
         u32 viewTriangles = 0;
         u32 viewTrianglesSurvived = 0;
 
-        bool viewSupportsTerrainOcclusionCulling = true;
+        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Cascades draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far

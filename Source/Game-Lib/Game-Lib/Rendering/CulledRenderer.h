@@ -225,6 +225,7 @@ protected:
         Renderer::DescriptorSetResource createIndirectAfterCullSet;
 
         u32 numCascades = 0;
+        bool cullMainView = true;
         bool occlusionCull = true;
         bool disableTwoStepCulling = false;
 
@@ -308,6 +309,7 @@ protected:
         u32 baseInstanceLookupOffset = 0; // Instanced only
         u32 drawCallDataSize = 0; // Instanced only
 
+        u32 firstViewIndex = 0; // 0 = main view first, 1 = cascades only
         u32 numCascades = 0;
 
         f32 biasConstantFactor = 0.0f;
@@ -318,6 +320,7 @@ protected:
         bool cullingEnabled = false;
     };
     void GeometryPass(GeometryPassParams& params);
+    void CascadeCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
 
     void SyncToGPU();
     void BindCullingResource(CullingResourcesBase& resources);

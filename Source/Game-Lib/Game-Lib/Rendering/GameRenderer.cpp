@@ -341,8 +341,6 @@ f32 GameRenderer::Render()
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
-    _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
-
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
@@ -408,6 +406,15 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCopyDepthPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
+
+    // Cascade block, runs after the main depth is complete so cascades can be fitted, culled and drawn the same frame
+    _shadowRenderer->AddDepthMinMaxPass(&renderGraph, _resources, _frameIndex);
+    _shadowRenderer->AddCascadeFitPass(&renderGraph, _resources, _frameIndex);
+    _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
+    _terrainRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
+    _terrainRenderer->AddCascadeGeometryPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddCascadeGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
 

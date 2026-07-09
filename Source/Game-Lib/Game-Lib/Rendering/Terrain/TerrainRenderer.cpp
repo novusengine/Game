@@ -3,6 +3,7 @@
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -127,11 +128,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
     CVarSystem* cvarSystem = CVarSystem::Get();
 
-    u32 numCascades = 0;
-    if (CVAR_TerrainCastShadow.Get() == 1)
-    {
-        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
-    }
+    const u32 numCascades = 0; // Occluders are main view only, cascades render in their own block late in the frame
 
     struct Data
     {
@@ -282,7 +279,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (_instanceDatas.Count() == 0)
         return;
 
-    u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+    const u32 numCascades = 0; // Main view only, cascades are culled in their own block late in the frame
 
     struct Data
     {
@@ -371,6 +368,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
                 u32 bitMaskBufferSizePerView;
                 u32 currentBitmaskIndex;
                 u32 debugDrawView;
+                u32 cullMainView;
             };
 
             vec2 viewportSize = _renderer->GetRenderSize();
@@ -384,6 +382,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
             cullConstants->currentBitmaskIndex = frameIndex;
             cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
+            cullConstants->cullMainView = true;
 
             commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
 
@@ -414,11 +413,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
     const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
     CVarSystem* cvarSystem = CVarSystem::Get();
-    u32 numCascades = 0;
-    if (CVAR_TerrainCastShadow.Get() == 1)
-    {
-        numCascades = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum");
-    }
+    const u32 numCascades = 0; // Main view only, cascades render in their own block late in the frame
 
     struct Data
     {
@@ -535,6 +530,256 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
                 }
 
                 if (cullingEnabled)
+                {
+                    u32 dstOffset = i * sizeof(u32);
+                    commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);
+                }
+
+                commandList.PopMarker();
+            }
+
+            // Finish by resetting the viewport, scissor and depth bias
+            vec2 renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+            commandList.SetDepthBias(0, 0, 0);
+        });
+}
+
+void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    ZoneScoped;
+
+    if (!CVAR_TerrainRendererEnabled.Get())
+        return;
+
+    if (_instanceDatas.Count() == 0)
+        return;
+
+    if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
+        return;
+
+    if (CVAR_TerrainCastShadow.Get() != 1)
+        return;
+
+    u32 numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
+    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    if (numCascades == 0)
+        return;
+
+    struct Data
+    {
+        Renderer::ImageResource depthPyramid;
+
+        Renderer::BufferMutableResource currentInstanceBitMaskBuffer;
+
+        Renderer::DescriptorSetResource debugSet;
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource cullingSet;
+    };
+
+    renderGraph->AddPass<Data>("Terrain Cascade Culling",
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            using BufferUsage = Renderer::BufferPassUsage;
+
+            data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE);
+            builder.Read(_cellHeightRanges.GetBuffer(), BufferUsage::COMPUTE);
+
+            data.currentInstanceBitMaskBuffer = builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE); // Both bitmask bindings are RW in the shader
+            builder.Write(_culledInstanceBuffer, BufferUsage::COMPUTE); // Not written by the cascade dispatch, but bound RW in the culling set
+
+            data.debugSet = builder.Use(_debugRenderer->GetDebugDescriptorSet());
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.cullingSet = builder.Use(_cullingPassDescriptorSet);
+
+            _debugRenderer->RegisterCullingPassBufferUsage(builder);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [this, frameIndex, numCascades](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCascadeCulling);
+
+            // Frustum-only cull of the cascade views into their bitmask slices, no occlusion culling for cascades
+            Renderer::ComputePipelineID pipeline = _cullingPipeline;
+            commandList.BeginPipeline(pipeline);
+
+            struct CullConstants
+            {
+                u32 viewportSizeX;
+                u32 viewportSizeY;
+                u32 numCascades;
+                u32 occlusionEnabled;
+                u32 bitMaskBufferSizePerView;
+                u32 currentBitmaskIndex;
+                u32 debugDrawView;
+                u32 cullMainView;
+            };
+
+            vec2 viewportSize = _renderer->GetRenderSize();
+
+            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
+
+            CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
+            cullConstants->viewportSizeX = u32(viewportSize.x);
+            cullConstants->viewportSizeY = u32(viewportSize.y);
+            cullConstants->numCascades = numCascades;
+            cullConstants->occlusionEnabled = false;
+            cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
+            cullConstants->currentBitmaskIndex = frameIndex;
+            cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
+            cullConstants->cullMainView = false;
+
+            commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
+
+            // _depthPyramid stays bound from the main culling pass, rebinding here would rewrite an already-bound set
+
+            commandList.BindDescriptorSet(data.debugSet, frameIndex);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.cullingSet, frameIndex);
+
+            commandList.Dispatch((cellCount + 31) / 32, 1, 1);
+
+            commandList.EndPipeline(pipeline);
+        });
+}
+
+void TerrainRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
+    ZoneScoped;
+
+    if (!CVAR_TerrainRendererEnabled.Get())
+        return;
+
+    if (_instanceDatas.Count() == 0)
+        return;
+
+    CVarSystem* cvarSystem = CVarSystem::Get();
+
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
+        return;
+
+    if (CVAR_TerrainCastShadow.Get() != 1)
+        return;
+
+    u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
+    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    if (numCascades == 0)
+        return;
+
+    struct Data
+    {
+        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
+
+        Renderer::BufferMutableResource culledInstanceBuffer;
+
+        Renderer::BufferMutableResource argumentBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource fillSet;
+        Renderer::DescriptorSetResource geometryPassSet;
+    };
+
+    renderGraph->AddPass<Data>("Terrain Cascade Geometry",
+        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            using BufferUsage = Renderer::BufferPassUsage;
+
+            for (u32 i = 1; i < numCascades + 1; i++)
+            {
+                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            }
+
+            builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer, BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_chunkDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
+
+            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.drawCountReadBackBuffer = builder.Write(_drawCountReadBackBuffer, BufferUsage::TRANSFER);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.fillSet = builder.Use(_geometryFillPassDescriptorSet);
+            data.geometryPassSet = builder.Use(resources.terrainDescriptorSet);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [this, &resources, frameIndex, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCascadeGeometry);
+
+            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
+
+            for (u32 i = 1; i < numCascades + 1; i++)
+            {
+                std::string markerName = "Cascade " + std::to_string(i - 1);
+                commandList.PushMarker(markerName, Color::White);
+
+                // Reset the counters
+                {
+                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                    commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
+                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                }
+
+                if (CVAR_TerrainGeometryEnabled.Get())
+                {
+                    // Cascades draw their full surviving set in one phase, occluders no longer pre-draw into them
+                    FillDrawCallsParams fillParams;
+                    fillParams.passName = "Cascade Geometry";
+                    fillParams.cellCount = cellCount;
+                    fillParams.viewIndex = i;
+                    fillParams.diffAgainstPrev = false;
+                    fillParams.currentBitmaskIndex = frameIndex;
+                    fillParams.fillSet = data.fillSet;
+
+                    FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
+                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
+                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
+
+                    if (i == 1)
+                    {
+                        uvec2 shadowDepthDimensions = _renderer->GetImageDimensions(resources.shadowDepthCascades[0]);
+
+                        commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
+                        commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
+
+                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
+                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
+                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
+                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
+                    }
+
+                    commandList.PushMarker("Draw", Color::White);
+
+                    DrawParams drawParams;
+                    drawParams.shadowPass = true;
+                    drawParams.viewIndex = i;
+                    drawParams.cullingEnabled = true;
+                    drawParams.depth = data.depth[i];
+                    drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
+                    drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
+
+                    drawParams.globalDescriptorSet = data.globalSet;
+                    drawParams.drawDescriptorSet = data.geometryPassSet;
+
+                    Draw(resources, frameIndex, graphResources, commandList, drawParams);
+
+                    commandList.PopMarker();
+                }
+
+                // Copy drawn count
                 {
                     u32 dstOffset = i * sizeof(u32);
                     commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);

@@ -22,11 +22,24 @@ AutoCVar_Int CVAR_ShadowsFreezeCascades(CVarCategory::Client | CVarCategory::Ren
 AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
 AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.8f);
 AutoCVar_Float CVAR_ShadowMaxDistance(CVarCategory::Client | CVarCategory::Rendering, "shadowMaxDistance", "distance the cascades are distributed over, shadows fade out at the end of it", 1000.0f);
+AutoCVar_Float CVAR_ShadowCasterMargin(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin", "extends cascade culling toward the sun so far-away casters with long shadows are not culled, depth clamp pancakes them onto the near plane", 2500.0f);
+AutoCVar_Float CVAR_ShadowSunUpdateInterval(CVarCategory::Client | CVarCategory::Rendering, "shadowSunUpdateInterval", "game seconds between shadow sun direction updates, a continuously rotating sun re-renders every shadow texel each frame and shimmers", 120.0f);
 
 AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side), only applies to cascades created after it is set", 4096);
 
 namespace ECS::Systems
 {
+    // The shadow sun steps in discrete intervals, the visual sun stays smooth. A continuously
+    // rotating light invalidates the whole texel grid every frame, which snapping cannot hide
+    f32 GetShadowTimeOfDay(f32 timeOfDay)
+    {
+        f32 interval = CVAR_ShadowSunUpdateInterval.GetFloat();
+        if (interval <= 0.0f)
+            return timeOfDay;
+
+        return glm::floor(timeOfDay / interval) * interval;
+    }
+
     // Converts a Gribb-Hartmann clip plane row (inside if dot(n, p) + d >= 0) to the
     // encoding the culling shaders expect: vec4(n, dot(n, pointOnPlane)) with normalized inward n
     inline vec4 ExtractPlane(const vec4& row)
@@ -74,14 +87,36 @@ namespace ECS::Systems
             renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
         }
 
+        CVarSystem* cvarSystem = CVarSystem::Get();
+
+        // Master toggle, no shadow work at all while disabled (resource growth above stays so enabling works at runtime)
+        if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
+            return;
+
+        const bool useSDSM = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowUseSDSM"_h) != 0;
+        const bool validateParity = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMValidateParity"_h) != 0;
+
+        // The GPU fit pass owns the cascade cameras while SDSM is on, the CPU copies go stale.
+        // On toggle-off force a full re-upload (the loop below would normally re-dirty every frame,
+        // but not while frozen)
+        static bool previousUseSDSM = useSDSM;
+        if (previousUseSDSM && !useSDSM)
+        {
+            renderResources.cameras.SetDirtyElements(1, numCascades);
+        }
+        previousUseSDSM = useSDSM;
+
+        if (useSDSM && !validateParity)
+            return;
+
         if (CVAR_ShadowsFreezeCascades.Get())
             return;
 
         entt::registry::context& ctx = registry.ctx();
         auto& dayNightCycle = ctx.get<Singletons::DayNightCycle>();
 
-        // Get light settings
-        vec3 lightDirection = UpdateAreaLights::GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
+        // Get light settings, the shadow sun steps in discrete intervals
+        vec3 lightDirection = UpdateAreaLights::GetLightDirection(GetShadowTimeOfDay(dayNightCycle.GetTimeInSecondsF32()));
 
         // Get active render camera
         auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
@@ -283,6 +318,10 @@ namespace ECS::Systems
             cascadeCamera.frustum[(size_t)FrustumPlane::Near] = ExtractPlane(row3 - row2); // Reversed Z, depth 1 is near
             cascadeCamera.frustum[(size_t)FrustumPlane::Far] = ExtractPlane(row2);
 
+            // The near plane sits at the shadow camera on the sun side. Casters beyond it still render
+            // correctly (depth clamp pancakes them), so culling must not reject them
+            cascadeCamera.frustum[(size_t)FrustumPlane::Near].w -= CVAR_ShadowCasterMargin.GetFloat();
+
 #if NC_DEBUG
             for (u32 j = 0; j < 6; j++)
             {
@@ -291,7 +330,10 @@ namespace ECS::Systems
                 NC_ASSERT(distance > 0.0f, "CalculateShadowCameraMatrices : Cascade frustum plane {0} does not contain the frustum center", j);
             }
 #endif
-            renderResources.cameras.SetDirtyElement(i+1);
+            if (!useSDSM) // In parity-validation mode the CPU result stays local for comparison, the GPU fit owns the upload
+            {
+                renderResources.cameras.SetDirtyElement(i+1);
+            }
 
             lastSplitDist = cascadeSplits[i];
         }

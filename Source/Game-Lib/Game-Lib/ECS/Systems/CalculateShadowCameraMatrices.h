@@ -4,6 +4,9 @@
 
 namespace ECS::Systems
 {
+    // Quantizes the time of day used for the shadow sun direction, see shadowSunUpdateInterval
+    f32 GetShadowTimeOfDay(f32 timeOfDay);
+
     class CalculateShadowCameraMatrices
     {
     public:

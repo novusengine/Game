@@ -59,7 +59,14 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
             shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
             Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera
 
-            float4 shadowPosition = mul(float4(pixelVertexData.worldPos, 1.0f), cascadeCamera.worldToClip);
+            // Normal-offset bias: push the receiver along its surface normal by a fraction of the
+            // cascade texel size, robust against acne on hard angles where slope bias fails
+            float2 shadowTexDim;
+            _shadowCascadeRTs[shadowSettings.cascadeIndex].GetDimensions(shadowTexDim.x, shadowTexDim.y);
+            float texelWorldSize = 2.0f / (cascadeCamera.viewToClip[0][0] * shadowTexDim.x);
+            float3 offsetWorldPos = pixelVertexData.worldPos + pixelVertexData.worldNormal * (texelWorldSize * shadowSettings.normalOffset);
+
+            float4 shadowPosition = mul(float4(offsetWorldPos, 1.0f), cascadeCamera.worldToClip);
 
             float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
 

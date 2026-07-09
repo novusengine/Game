@@ -24,6 +24,7 @@ struct Constants
     uint numCascades;
     uint bitMaskBufferUintsPerView;
     uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
+    uint cullMainView; // The late cascade dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice and the instance lookup
 };
 
 struct InstanceRef
@@ -406,6 +407,7 @@ void main(CSInput input)
     cullOutput.instanceLookupTable = _culledInstanceLookupTable;
     
     // Cull Main Camera
+    if (_constants.cullMainView)
     {
         CullForCamera(drawInput,
             _cameras[0],

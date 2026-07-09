@@ -393,6 +393,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 numCascades;
                     u32 bitMaskBufferUintsPerView;
                     u32 debugDrawView;
+                    u32 cullMainView;
                 };
                 CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
                 cullConstants->viewportSizeX = u32(viewportSize.x);
@@ -414,6 +415,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 cullConstants->numCascades = params.numCascades;
                 cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
                 cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
+                cullConstants->cullMainView = params.cullMainView;
                 params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
 
                 params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
@@ -561,13 +563,88 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     }
 }
 
+void CulledRenderer::CascadeCullingPass(CullingPassParams& params)
+{
+    NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : CascadeCullingPass params provided an invalid drawCallDataSize");
+    NC_ASSERT(params.cullingResources->IsInstanced(), "CulledRenderer : CascadeCullingPass only supports instanced culling resources");
+
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
+    u32 numInstances = params.cullingResources->GetNumInstances();
+
+    if (numDrawCalls == 0 || numInstances == 0 || params.numCascades == 0)
+        return;
+
+    // Frustum-only cull of the cascade views into their bitmask slices. No counter resets (the
+    // per-cascade fill in the geometry pass resets and rebuilds the shared draw sets), no occlusion
+    std::string debugName = params.passName + " Cascade Culling";
+    params.commandList->PushMarker(debugName, Color::Yellow);
+
+    Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[1]; // Cascades require the bitmask permutation
+    params.commandList->BeginPipeline(pipeline);
+
+    vec2 viewportSize = _renderer->GetRenderSize();
+
+    struct CullConstants
+    {
+        u32 viewportSizeX;
+        u32 viewportSizeY;
+        u32 numTotalInstances;
+        u32 occlusionCull;
+        u32 instanceCountOffset;
+        u32 drawCallSize;
+        u32 baseInstanceLookupOffset;
+        u32 modelIDOffset;
+        u32 drawCallDataSize;
+        u32 cullingDataIsWorldspace;
+        u32 debugDrawColliders;
+        u32 currentBitmaskIndex;
+        u32 numCascades;
+        u32 bitMaskBufferUintsPerView;
+        u32 debugDrawView;
+        u32 cullMainView;
+    };
+    CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
+    cullConstants->viewportSizeX = u32(viewportSize.x);
+    cullConstants->viewportSizeY = u32(viewportSize.y);
+    cullConstants->numTotalInstances = numInstances;
+    cullConstants->occlusionCull = false;
+
+    u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, Renderer::IndexedIndirectDraw::instanceCount) : offsetof(Renderer::IndirectDraw, Renderer::IndirectDraw::instanceCount);
+    cullConstants->instanceCountOffset = instanceCountOffset;
+    cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
+
+    cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+    cullConstants->modelIDOffset = params.modelIDOffset;
+    cullConstants->drawCallDataSize = params.drawCallDataSize;
+
+    cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
+    cullConstants->debugDrawColliders = false;
+    cullConstants->currentBitmaskIndex = params.frameIndex;
+    cullConstants->numCascades = params.numCascades;
+    cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
+    cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
+    cullConstants->cullMainView = false;
+    params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
+
+    // _depthPyramid stays bound from the main culling pass, rebinding here would rewrite an already-bound set
+
+    params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
+    params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+    params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
+
+    params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+
+    params.commandList->EndPipeline(pipeline);
+    params.commandList->PopMarker();
+}
+
 void CulledRenderer::GeometryPass(GeometryPassParams& params)
 {
     NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
 
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
 
-    for (u32 i = 0; i < params.numCascades + 1; i++)
+    for (u32 i = params.firstViewIndex; i < params.numCascades + 1; i++)
     {
         std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
         params.commandList->PushMarker(markerName, Color::PastelYellow);

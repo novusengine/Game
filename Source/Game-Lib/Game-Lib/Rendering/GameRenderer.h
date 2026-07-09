@@ -74,6 +74,7 @@ public:
     LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }
     MaterialRenderer* GetMaterialRenderer() { return _materialRenderer; }
     ModelRenderer* GetModelRenderer() { return _modelRenderer; }
+    ShadowRenderer* GetShadowRenderer() { return _shadowRenderer; }
     TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
     TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
     SkyboxRenderer* GetSkyboxRenderer() { return _skyboxRenderer; }

@@ -10,6 +10,7 @@ struct ShadowSettings
     float filterSize;
     float penumbraFilterSize;
     float strength; // Driven by sun elevation, fades shadows out around dawn/dusk
+    float normalOffset; // Receiver offset along the surface normal in cascade texels
 
     uint cascadeIndex; // Filled in by ApplyLighting
 };
