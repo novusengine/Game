@@ -9,6 +9,7 @@ struct ShadowSettings
     bool enableShadows;
     float filterSize;
     float penumbraFilterSize;
+    float strength; // Driven by sun elevation, fades shadows out around dawn/dusk
 
     uint cascadeIndex; // Filled in by ApplyLighting
 };

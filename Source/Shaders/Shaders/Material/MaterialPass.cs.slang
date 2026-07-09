@@ -28,7 +28,7 @@ struct Constants
     float4 patchEdgeColor;
     float4 vertexColor;
     float4 brushColor;
-    float4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, zw = UNUSED
+    float4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, z = Shadow Strength, w = UNUSED
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -141,6 +141,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     shadowSettings.enableShadows = _constants.lightInfo.w == 1;
     shadowSettings.filterSize = _constants.shadowFilterSettings.x;
     shadowSettings.penumbraFilterSize = _constants.shadowFilterSettings.y;
+    shadowSettings.strength = _constants.shadowFilterSettings.z;
 
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
@@ -286,6 +287,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     shadowSettings.enableShadows = _constants.lightInfo.w == 1;
     shadowSettings.filterSize = _constants.shadowFilterSettings.x;
     shadowSettings.penumbraFilterSize = _constants.shadowFilterSettings.y;
+    shadowSettings.strength = _constants.shadowFilterSettings.z;
 
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);

@@ -69,6 +69,9 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
             float fade = saturate((pixelVertexData.viewPos.z - fadeStartDepth) / (lastSplitDepth - fadeStartDepth));
             shadowFactor = lerp(shadowFactor, 1.0f, fade);
 
+            // Sun elevation strength, fades shadows out around dawn/dusk
+            shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
+
             lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
         }
 

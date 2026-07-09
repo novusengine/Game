@@ -21,6 +21,7 @@ AutoCVar_Int CVAR_ShadowsFreezeCascades(CVarCategory::Client | CVarCategory::Ren
 
 AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
 AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.8f);
+AutoCVar_Float CVAR_ShadowMaxDistance(CVarCategory::Client | CVarCategory::Rendering, "shadowMaxDistance", "distance the cascades are distributed over, shadows fade out at the end of it", 1000.0f);
 
 AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side), only applies to cascades created after it is set", 4096);
 
@@ -101,8 +102,11 @@ namespace ECS::Systems
 
         f32 clipRange = farClip - nearClip;
 
-        f32 minZ = nearClip;
-        f32 maxZ = nearClip + clipRange;
+        // Distribute the cascades up to shadowMaxDistance instead of the full view distance.
+        // The log split is computed from at least 1.0, a tiny near plane makes the log terms
+        // vanish and degenerates the distribution to its uniform part
+        f32 minZ = Math::Max(nearClip, 1.0f);
+        f32 maxZ = Math::Min(nearClip + clipRange, CVAR_ShadowMaxDistance.GetFloat());
 
         f32 range = maxZ - minZ;
         f32 ratio = maxZ / minZ;
@@ -170,8 +174,13 @@ namespace ECS::Systems
             vec3 maxExtents;
             if (stableShadows)
             {
-                // This needs to be constant for it to be stable
+                // This needs to be constant for it to be stable, fall back to Z when the light is
+                // near vertical or lookAt degenerates (sun straight above at noon)
                 upDir = vec3(0.0f, 1.0f, 0.0f);
+                if (glm::abs(lightDirection.y) > 0.99f)
+                {
+                    upDir = vec3(0.0f, 0.0f, 1.0f);
+                }
 
                 // Calculate the radius of a bounding sphere surrounding the frustum corners
                 f32 sphereRadius = 0.0f;
@@ -188,9 +197,9 @@ namespace ECS::Systems
             }
             else
             {
-                // Create a temporary view matrix for the light
+                // Create a temporary view matrix for the light, looking along the direction the light travels
                 vec3 lightCameraPos = frustumCenter;
-                vec3 lookAt = frustumCenter - lightDirection;
+                vec3 lookAt = frustumCenter + lightDirection;
                 mat4x4 lightView = glm::lookAt(lightCameraPos, lookAt, upDir);
 
                 // Calculate an AABB around the frustum corners
@@ -217,8 +226,8 @@ namespace ECS::Systems
                 maxExtents.y *= scale;
             }
 
-            // Get postion of the shadow camera
-            vec3 shadowCameraPos = frustumCenter + lightDirection * -minExtents.z;
+            // Get postion of the shadow camera, minExtents.z is negative so this places it on the sun side
+            vec3 shadowCameraPos = frustumCenter + lightDirection * minExtents.z;
 
             // Store the far and near planes
             f32 farPlane = maxExtents.z;

@@ -204,7 +204,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     Color patchEdgeColor;
                     Color vertexColor;
                     Color brushColor;
-                    vec4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, zw = UNUSED
+                    vec4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, z = Shadow Strength, w = UNUSED
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
@@ -214,7 +214,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 CVarSystem* cvarSystem = CVarSystem::Get();
                 const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
-                const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"));
+                const f32 shadowStrength = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"));
+                const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) && shadowStrength > 0.0f;
                 constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), 0, numCascades, shadowEnabled);
 
                 constants->tileInfo = uvec4(_lightRenderer->CalculateNumTiles2D(outputSize), 0, 0);
@@ -239,7 +240,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
                 f32 shadowFilterSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterSize"));
                 f32 shadowFilterPenumbraSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterPenumbraSize"));
-                constants->shadowFilterSettings = vec4(shadowFilterSize, shadowFilterPenumbraSize, 0.0f, 0.0f);
+                constants->shadowFilterSettings = vec4(shadowFilterSize, shadowFilterPenumbraSize, shadowStrength, 0.0f);
 
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }

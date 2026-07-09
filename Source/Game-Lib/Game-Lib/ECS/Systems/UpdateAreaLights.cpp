@@ -328,7 +328,12 @@ namespace ECS::Systems
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
         skyboxRenderer->SetSunDirection(-direction); // direction is the direction light travels, the sun sits opposite
 
-        *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);     
+        // Fade shadows out as the sun approaches the horizon, below it the cascades would project the underside of the world
+        f32 sunElevationSin = -direction.y; // Positive while the sun is above the horizon
+        f32 shadowStrength = glm::clamp(sunElevationSin / 0.1f, 0.0f, 1.0f);
+        *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"_h) = shadowStrength;
+
+        *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin"_h) = areaLightInfo.finalColorData.fogEnd * areaLightInfo.finalColorData.fogScaler;
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h) = areaLightInfo.finalColorData.fogEnd;
     }
@@ -350,7 +355,7 @@ namespace ECS::Systems
         if (CVAR_SunDebugFullRotation.Get())
         {
             // Full rotation per day, midnight (progress 0) puts the sun straight down, noon straight up
-            phiValue = glm::pi<f32>() + progressDayAndNight * glm::two_pi<f32>();
+            phiValue = progressDayAndNight * glm::two_pi<f32>();
         }
         else
         {
@@ -386,7 +391,7 @@ namespace ECS::Systems
         f32 lightDirZ = sinPhi * sinTheta;
         f32 lightDirY = cosPhi;
 
-        // Can also try (X, Z, -Y)
-        return -vec3(lightDirX, lightDirY, lightDirZ);
+        // Direction the light travels (sun to ground), the authored phi table points below the horizon during the day
+        return vec3(lightDirX, lightDirY, lightDirZ);
     }
 }

@@ -90,7 +90,11 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         const bool debugOrdered = false;
 
         params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+        params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0); // CreateIndirect accumulates the surviving counts, reset or the readback stats carry over from last frame
+        params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
         params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+        params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+        params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
         if (params.disableTwoStepCulling)
         {
