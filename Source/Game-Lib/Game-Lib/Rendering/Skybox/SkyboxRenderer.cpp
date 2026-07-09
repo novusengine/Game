@@ -6,10 +6,14 @@
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 
 #include <entt/entt.hpp>
+
+AutoCVar_Int CVAR_SkyboxDrawSun(CVarCategory::Client | CVarCategory::Rendering, "skyboxDrawSun", "draw a sun disc in the skybox at the directional light's position", 1, CVarFlags::EditCheckbox);
 
 SkyboxRenderer::SkyboxRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
@@ -73,6 +77,7 @@ void SkyboxRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderRes
             commandList.BindDescriptorSet(data.globalSet, frameIndex);
 
             // Skyband Color Push Constant
+            _skybandColors.sunDirection.w = static_cast<f32>(CVAR_SkyboxDrawSun.Get());
             commandList.PushConstant(&_skybandColors, 0, sizeof(SkybandColors));
 
             // NumVertices hardcoded as we use a Fullscreen Triangle (Check FullscreenTriangle.vs for more information)
@@ -90,6 +95,12 @@ void SkyboxRenderer::SetSkybandColors(const vec3& skyTopColor, const vec3& skyMi
     _skybandColors.bottom = vec4(skyBottomColor, 0.0f);
     _skybandColors.aboveHorizon = vec4(skyAboveHorizonColor, 0.0f);
     _skybandColors.horizon = vec4(skyHorizonColor, 0.0f);
+}
+
+void SkyboxRenderer::SetSunDirection(const vec3& directionToSun)
+{
+    f32 enabled = _skybandColors.sunDirection.w;
+    _skybandColors.sunDirection = vec4(glm::normalize(directionToSun), enabled);
 }
 
 void SkyboxRenderer::CreatePermanentResources()
