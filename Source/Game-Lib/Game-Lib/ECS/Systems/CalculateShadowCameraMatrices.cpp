@@ -19,7 +19,7 @@
 AutoCVar_Int CVAR_ShadowsStable(CVarCategory::Client | CVarCategory::Rendering, "shadowStable", "stable shadows", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ShadowsFreezeCascades(CVarCategory::Client | CVarCategory::Rendering, "shadowFreezeCascades", "freeze cascade cameras and culling planes for debugging", 0, CVarFlags::EditCheckbox);
 
-AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 0);
+AutoCVar_Int CVAR_ShadowCascadeNum(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum", "number of shadow cascades", 4);
 AutoCVar_Float CVAR_ShadowCascadeSplitLambda(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSplitLambda", "split lambda for cascades, between 0.0f and 1.0f", 0.8f);
 
 AutoCVar_Int CVAR_ShadowCascadeTextureSize(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeSize", "size of biggest cascade (per side), only applies to cascades created after it is set", 4096);
