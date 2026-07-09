@@ -5,6 +5,9 @@ Layer 1100 sits above the dev top bar (1000) so the window draws over the bar
 and open dropdowns. Speed control is +/- step buttons rather than a slider:
 the Slider widget's inner-panel anchoring doesn't compose with non-default
 anchors on the slider itself, follow-up once NumericInput exists.
+
+Speed steps are x10 per click: the day is 86400 real seconds, so additive
+steps around 1x are imperceptible. 0x (paused) sits below 1x on the way down.
 ]]
 
 local EditorButton = require("@src/API/UI/EditorButton")
@@ -20,7 +23,7 @@ local ROW_H         = 20
 local SIDE_PAD      = 6
 local ROW3_PAD      = 5
 local BTN_TEXT_TPL  = "DevToolsText"
-local SPEED_STEP    = 0.25
+local SPEED_FACTOR  = 10.0
 local LAYER         = 1100
 
 local WINDOW_BG_COLOR  = vector.create(0.10, 0.10, 0.12)
@@ -53,7 +56,7 @@ local function FormatTime(seconds)
 end
 
 local function FormatSpeed(speed)
-    return string.format("Speed: %.2fx", speed)
+    return string.format("Speed: %gx", speed)
 end
 
 local canvas = UI.GetCanvas("ClockEditor", 0, 0, 1920, 1080, false)
@@ -123,7 +126,7 @@ speedUpBtn.text:SetPosX(1)
 
 -- Row 3: Speed readout (left) and HH:MM:SS readout (right).
 local row3Y = row2Y - ROW_H - ROW3_PAD
-local speedText = windowPanel:NewText("Speed: 1.00x", SIDE_PAD, row3Y, 1, BTN_TEXT_TPL)
+local speedText = windowPanel:NewText("Speed: 1x", SIDE_PAD, row3Y, 1, BTN_TEXT_TPL)
 speedText:SetAnchor(0.0, 1.0)
 speedText:SetRelativePoint(0.0, 1.0)
 
@@ -144,11 +147,16 @@ resetSpeedBtn:SetOnMouseUp(function()
     RefreshSpeedText()
 end)
 speedDownBtn:SetOnMouseUp(function()
-    Time.SetSpeedModifier(math.max(0.0, Time.GetSpeedModifier() - SPEED_STEP))
+    local speed = Time.GetSpeedModifier() / SPEED_FACTOR
+    if speed < 1.0 then
+        speed = 0.0 -- Pause instead of crawling below 1x
+    end
+    Time.SetSpeedModifier(speed)
     RefreshSpeedText()
 end)
 speedUpBtn:SetOnMouseUp(function()
-    Time.SetSpeedModifier(Time.GetSpeedModifier() + SPEED_STEP)
+    local speed = math.max(1.0, Time.GetSpeedModifier() * SPEED_FACTOR)
+    Time.SetSpeedModifier(math.min(speed, Time.SecondsPerDay)) -- Cap at a full day per real second
     RefreshSpeedText()
 end)
 

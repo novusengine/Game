@@ -17,6 +17,9 @@
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
+#include <glm/gtc/constants.hpp>
+
+AutoCVar_Int CVAR_SunDebugFullRotation(CVarCategory::Client | CVarCategory::Rendering, "sunDebugFullRotation", "debug: sun does a full rotation per day instead of the authored wobble", 0, CVarFlags::EditCheckbox);
 
 namespace ECS::Systems
 {
@@ -342,24 +345,33 @@ namespace ECS::Systems
         };
 
         f32 progressDayAndNight = timeOfDay / 86400.0f;
-        u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
-        u32 nextPhiIndex = 0;
 
-        if (currentPhiIndex < 3)
-            nextPhiIndex = currentPhiIndex + 1;
-
-        // Lerp between the current value of phi and the next value of phi
+        if (CVAR_SunDebugFullRotation.Get())
         {
-            f32 currentTimestamp = currentPhiIndex * 0.25f;
-            f32 nextTimestamp = nextPhiIndex * 0.25f;
+            // Full rotation per day, midnight (progress 0) puts the sun straight down, noon straight up
+            phiValue = glm::pi<f32>() + progressDayAndNight * glm::two_pi<f32>();
+        }
+        else
+        {
+            u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
+            u32 nextPhiIndex = 0;
 
-            f32 transitionTime = 0.25f;
-            f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
+            if (currentPhiIndex < 3)
+                nextPhiIndex = currentPhiIndex + 1;
 
-            f32 currentPhiValue = phiTable[currentPhiIndex];
-            f32 nextPhiValue = phiTable[nextPhiIndex];
+            // Lerp between the current value of phi and the next value of phi
+            {
+                f32 currentTimestamp = currentPhiIndex * 0.25f;
+                f32 nextTimestamp = nextPhiIndex * 0.25f;
 
-            phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
+                f32 transitionTime = 0.25f;
+                f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
+
+                f32 currentPhiValue = phiTable[currentPhiIndex];
+                f32 nextPhiValue = phiTable[nextPhiIndex];
+
+                phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
+            }
         }
 
         // Convert from Spherical Position to Cartesian coordinates
