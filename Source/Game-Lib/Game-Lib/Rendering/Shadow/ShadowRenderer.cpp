@@ -43,6 +43,8 @@ AutoCVar_Int CVAR_ShadowSDSMUseDepthBounds(CVarCategory::Client | CVarCategory::
 AutoCVar_Float CVAR_ShadowSDSMQuantizeStep(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMQuantizeStep", "SDSM bounds are quantized outward to this step to keep stable snapping effective", 8.0f);
 AutoCVar_Float CVAR_ShadowSDSMShrinkDelay(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMShrinkDelay", "seconds the visible range must stay smaller before the SDSM bounds shrink to it in one jump, expansion is instant", 2.5f);
 AutoCVar_Int CVAR_ShadowSDSMValidateParity(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMValidateParity", "compare GPU-fitted cascade cameras against the CPU math and log the max delta", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ShadowSDSMUseXYBounds(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMUseXYBounds", "fit cascades to the light-space footprint of visible samples: 0 = off, 1 = diagnostics only, 2 = drive the cameras", 2);
+AutoCVar_Float CVAR_ShadowSDSMXYMarginTexels(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMXYMarginTexels", "filter-kernel margin in texels added to the fitted XY bounds, the normal offset bias is added on top", 4.0f);
 
 ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
     : _renderer(renderer)
@@ -51,7 +53,9 @@ ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
     , _depthMinMaxDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
-    , _cascadeFitDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _cascadeFitRangeDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _cascadeXYReduceDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _cascadeFitCamerasDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     CreatePermanentResources(resources);
 }
@@ -91,12 +95,12 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         }
         _renderer->UnmapBuffer(_cascadeCamerasReadBackBuffer);
 
-        f32* stateData = static_cast<f32*>(_renderer->MapBuffer(_sdsmStateReadBackBuffer));
-        if (stateData != nullptr)
+        f32* sdsmData = static_cast<f32*>(_renderer->MapBuffer(_sdsmDataReadBackBuffer));
+        if (sdsmData != nullptr)
         {
-            memcpy(_sdsmStateReadBack, stateData, sizeof(f32) * 8);
+            memcpy(_sdsmDataReadBack, sdsmData, sizeof(f32) * SDSM_DATA_FLOAT_COUNT);
         }
-        _renderer->UnmapBuffer(_sdsmStateReadBackBuffer);
+        _renderer->UnmapBuffer(_sdsmDataReadBackBuffer);
     }
 
     auto GetCascadeCamera = [&](u32 cascadeIndex) -> const Camera&
@@ -227,12 +231,17 @@ void ShadowRenderer::AddCascadeFitPass(Renderer::RenderGraph* renderGraph, Rende
 {
     struct Data
     {
+        Renderer::DepthImageResource depth;
+
         Renderer::BufferMutableResource cameras;
-        Renderer::BufferMutableResource sdsmStateBuffer;
-        Renderer::BufferMutableResource sdsmStateReadBackBuffer;
+        Renderer::BufferMutableResource sdsmDataBuffer;
+        Renderer::BufferMutableResource cascadeBoundsBuffer;
+        Renderer::BufferMutableResource sdsmDataReadBackBuffer;
         Renderer::BufferMutableResource cascadeCamerasReadBackBuffer;
 
-        Renderer::DescriptorSetResource passSet;
+        Renderer::DescriptorSetResource rangeSet;
+        Renderer::DescriptorSetResource reduceSet;
+        Renderer::DescriptorSetResource camerasSet;
     };
 
     CVarSystem* cvarSystem = CVarSystem::Get();
@@ -256,13 +265,18 @@ void ShadowRenderer::AddCascadeFitPass(Renderer::RenderGraph* renderGraph, Rende
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
+            data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
+
             data.cameras = builder.Write(resources.cameras.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             builder.Read(_depthMinMaxBuffer, BufferUsage::COMPUTE);
-            data.sdsmStateBuffer = builder.Write(_sdsmStateBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.sdsmStateReadBackBuffer = builder.Write(_sdsmStateReadBackBuffer, BufferUsage::TRANSFER);
+            data.sdsmDataBuffer = builder.Write(_sdsmDataBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            data.cascadeBoundsBuffer = builder.Write(_cascadeBoundsBuffer, BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+            data.sdsmDataReadBackBuffer = builder.Write(_sdsmDataReadBackBuffer, BufferUsage::TRANSFER);
             data.cascadeCamerasReadBackBuffer = builder.Write(_cascadeCamerasReadBackBuffer, BufferUsage::TRANSFER);
 
-            data.passSet = builder.Use(_cascadeFitDescriptorSet);
+            data.rangeSet = builder.Use(_cascadeFitRangeDescriptorSet);
+            data.reduceSet = builder.Use(_cascadeXYReduceDescriptorSet);
+            data.camerasSet = builder.Use(_cascadeFitCamerasDescriptorSet);
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
@@ -283,6 +297,8 @@ void ShadowRenderer::AddCascadeFitPass(Renderer::RenderGraph* renderGraph, Rende
                 f32 deltaTime;
                 u32 useDepthBounds;
                 f32 casterMargin;
+                u32 useXYBounds;
+                f32 xyMarginTexels;
             };
 
             CascadeFitConstants* constants = graphResources.FrameNew<CascadeFitConstants>();
@@ -298,35 +314,91 @@ void ShadowRenderer::AddCascadeFitPass(Renderer::RenderGraph* renderGraph, Rende
             constants->useDepthBounds = CVAR_ShadowSDSMUseDepthBounds.Get();
             constants->casterMargin = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin"));
 
-            commandList.BeginPipeline(_cascadeFitPipeline);
+            // The XY path presumes the stable up rule and depth bounds, and parity compares
+            // against the legacy CPU math which it intentionally diverges from
+            u32 useXYBounds = static_cast<u32>(Math::Max(CVAR_ShadowSDSMUseXYBounds.Get(), 0));
+            if (CVAR_ShadowSDSMValidateParity.Get() || !constants->useDepthBounds || !constants->stableShadows)
+            {
+                useXYBounds = Math::Min(useXYBounds, 1u);
+            }
+            constants->useXYBounds = useXYBounds;
+            constants->xyMarginTexels = CVAR_ShadowSDSMXYMarginTexels.GetFloat() + CVAR_ShadowNormalOffsetBias.GetFloat();
 
+            // Reset the light-space bounds to the encoded sentinels
+            commandList.FillBuffer(data.cascadeBoundsBuffer, 0, sizeof(u32) * 24, 0xFFFFFFFF);
+            commandList.FillBuffer(data.cascadeBoundsBuffer, sizeof(u32) * 24, sizeof(u32) * 24, 0);
+            commandList.BufferBarrier(data.cascadeBoundsBuffer, Renderer::BufferPassUsage::TRANSFER);
+
+            // Range: reduced depth bounds -> working range + split distances
+            commandList.BeginPipeline(_cascadeFitRangePipeline);
             commandList.PushConstant(constants, 0, sizeof(CascadeFitConstants));
 
-            data.passSet.Bind("_rwCameras"_h, data.cameras);
-            commandList.BindDescriptorSet(data.passSet, frameIndex);
+            data.rangeSet.Bind("_srcCameras"_h, data.cameras);
+            commandList.BindDescriptorSet(data.rangeSet, frameIndex);
 
             commandList.Dispatch(1, 1, 1);
+            commandList.EndPipeline(_cascadeFitRangePipeline);
 
-            commandList.EndPipeline(_cascadeFitPipeline);
+            commandList.BufferBarrier(data.sdsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+
+            // XY reduce: light-space AABB of the visible samples per cascade
+            if (useXYBounds >= 1)
+            {
+                commandList.BeginPipeline(_cascadeXYReducePipeline);
+                commandList.PushConstant(constants, 0, sizeof(CascadeFitConstants));
+
+                data.reduceSet.Bind("_depth"_h, data.depth);
+                data.reduceSet.Bind("_srcCameras"_h, data.cameras);
+                commandList.BindDescriptorSet(data.reduceSet, frameIndex);
+
+                uvec2 depthDimensions = graphResources.GetImageDimensions(data.depth);
+                commandList.Dispatch((depthDimensions.x + 15) / 16, (depthDimensions.y + 15) / 16, 1);
+
+                commandList.EndPipeline(_cascadeXYReducePipeline);
+
+                commandList.BufferBarrier(data.cascadeBoundsBuffer, Renderer::BufferPassUsage::COMPUTE);
+            }
+
+            // Cameras: build the cascade cameras from the splits
+            commandList.BeginPipeline(_cascadeFitCamerasPipeline);
+            commandList.PushConstant(constants, 0, sizeof(CascadeFitConstants));
+
+            data.camerasSet.Bind("_rwCameras"_h, data.cameras);
+            commandList.BindDescriptorSet(data.camerasSet, frameIndex);
+
+            commandList.Dispatch(1, 1, 1);
+            commandList.EndPipeline(_cascadeFitCamerasPipeline);
 
             commandList.BufferBarrier(data.cameras, Renderer::BufferPassUsage::COMPUTE);
-            commandList.BufferBarrier(data.sdsmStateBuffer, Renderer::BufferPassUsage::COMPUTE);
+            commandList.BufferBarrier(data.sdsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Readbacks for the debug tooling, element 0 of the cameras buffer is the main camera
             commandList.CopyBuffer(data.cascadeCamerasReadBackBuffer, 0, data.cameras, sizeof(Camera), sizeof(Camera) * numCascades);
-            commandList.CopyBuffer(data.sdsmStateReadBackBuffer, 0, data.sdsmStateBuffer, 0, sizeof(f32) * 8);
+            commandList.CopyBuffer(data.sdsmDataReadBackBuffer, 0, data.sdsmDataBuffer, 0, sizeof(f32) * SDSM_DATA_FLOAT_COUNT);
         });
 }
 
 bool ShadowRenderer::GetEffectiveShadowRange(f32& outMinDistance, f32& outMaxDistance) const
 {
-    f32 usedMin = _sdsmStateReadBack[2];
-    f32 usedMax = _sdsmStateReadBack[3];
+    f32 usedMin = _sdsmDataReadBack[2];
+    f32 usedMax = _sdsmDataReadBack[3];
     if (usedMax <= usedMin) // Not fitted yet
         return false;
 
     outMinDistance = usedMin;
     outMaxDistance = usedMax;
+    return true;
+}
+
+bool ShadowRenderer::GetCascadeFittedBounds(u32 cascadeIndex, vec3& outExtents, bool& outValid) const
+{
+    if (CVAR_ShadowSDSMUseXYBounds.Get() < 1 || cascadeIndex >= Renderer::Settings::MAX_SHADOW_CASCADES)
+        return false;
+
+    // cascadeDiag lives after SDSMState (8) + splitDist (8) + splitDepth (8) + cascadeStable (32)
+    const f32* diag = &_sdsmDataReadBack[56 + cascadeIndex * 4];
+    outExtents = vec3(diag[0], diag[1], diag[2]);
+    outValid = diag[3] > 0.5f;
     return true;
 }
 
@@ -449,35 +521,68 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
     // SDSM cascade fitting
     {
         Renderer::ComputePipelineDesc pipelineDesc;
-        pipelineDesc.debugName = "Shadow Cascade Fit";
+        pipelineDesc.debugName = "Shadow Cascade Fit Range";
 
         Renderer::ComputeShaderDesc shaderDesc;
-        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Shadows/CascadeFit.cs"_h, "Shadows/CascadeFit.cs");
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Shadows/CascadeFitRange.cs"_h, "Shadows/CascadeFitRange.cs");
         pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
-        _cascadeFitPipeline = _renderer->CreatePipeline(pipelineDesc);
+        _cascadeFitRangePipeline = _renderer->CreatePipeline(pipelineDesc);
 
-        _cascadeFitDescriptorSet.RegisterPipeline(_renderer, _cascadeFitPipeline);
-        _cascadeFitDescriptorSet.Init(_renderer);
+        _cascadeFitRangeDescriptorSet.RegisterPipeline(_renderer, _cascadeFitRangePipeline);
+        _cascadeFitRangeDescriptorSet.Init(_renderer);
+
+        pipelineDesc.debugName = "Shadow Cascade XY Reduce";
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Shadows/CascadeXYReduce.cs"_h, "Shadows/CascadeXYReduce.cs");
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _cascadeXYReducePipeline = _renderer->CreatePipeline(pipelineDesc);
+
+        _cascadeXYReduceDescriptorSet.RegisterPipeline(_renderer, _cascadeXYReducePipeline);
+        _cascadeXYReduceDescriptorSet.Init(_renderer);
+
+        pipelineDesc.debugName = "Shadow Cascade Fit Cameras";
+        shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Shadows/CascadeFitCameras.cs"_h, "Shadows/CascadeFitCameras.cs");
+        pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+
+        _cascadeFitCamerasPipeline = _renderer->CreatePipeline(pipelineDesc);
+
+        _cascadeFitCamerasDescriptorSet.RegisterPipeline(_renderer, _cascadeFitCamerasPipeline);
+        _cascadeFitCamerasDescriptorSet.Init(_renderer);
 
         Renderer::BufferDesc bufferDesc;
-        bufferDesc.name = "ShadowSDSMState";
-        bufferDesc.size = sizeof(f32) * 8;
+        bufferDesc.name = "ShadowSDSMData";
+        bufferDesc.size = sizeof(f32) * SDSM_DATA_FLOAT_COUNT;
         bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::TRANSFER_SOURCE;
 
-        _sdsmStateBuffer = _renderer->CreateAndFillBuffer(_sdsmStateBuffer, bufferDesc, [](void* mappedMemory, size_t size)
+        _sdsmDataBuffer = _renderer->CreateAndFillBuffer(_sdsmDataBuffer, bufferDesc, [](void* mappedMemory, size_t size)
         {
             memset(mappedMemory, 0, size); // smoothedMax <= smoothedMin marks the state uninitialized
         });
 
-        _cascadeFitDescriptorSet.Bind("_depthMinMax"_h, _depthMinMaxBuffer);
-        _cascadeFitDescriptorSet.Bind("_sdsmState"_h, _sdsmStateBuffer);
-        // _rwCameras is bound per frame in AddCascadeFitPass, the cameras buffer can be recreated on growth
+        Renderer::BufferDesc boundsDesc;
+        boundsDesc.name = "ShadowCascadeBounds";
+        boundsDesc.size = sizeof(u32) * 48; // Encoded light-space mins [0..23] and maxs [24..47], 3 axes per cascade
+        boundsDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+        _cascadeBoundsBuffer = _renderer->CreateAndFillBuffer(_cascadeBoundsBuffer, boundsDesc, [](void* mappedMemory, size_t size)
+        {
+            u32* values = static_cast<u32*>(mappedMemory);
+            for (u32 i = 0; i < 24; i++) values[i] = 0xFFFFFFFF;
+            for (u32 i = 24; i < 48; i++) values[i] = 0;
+        });
 
-        bufferDesc.name = "ShadowSDSMStateReadBack";
+        _cascadeFitRangeDescriptorSet.Bind("_sdsmData"_h, _sdsmDataBuffer);
+        _cascadeFitRangeDescriptorSet.Bind("_depthMinMax"_h, _depthMinMaxBuffer);
+        _cascadeXYReduceDescriptorSet.Bind("_sdsmData"_h, _sdsmDataBuffer);
+        _cascadeXYReduceDescriptorSet.Bind("_cascadeBounds"_h, _cascadeBoundsBuffer);
+        _cascadeFitCamerasDescriptorSet.Bind("_sdsmData"_h, _sdsmDataBuffer);
+        _cascadeFitCamerasDescriptorSet.Bind("_cascadeBounds"_h, _cascadeBoundsBuffer);
+        // _srcCameras / _rwCameras / _depth are bound per frame in AddCascadeFitPass, those resources can be recreated
+
+        bufferDesc.name = "ShadowSDSMDataReadBack";
         bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
         bufferDesc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
-        _sdsmStateReadBackBuffer = _renderer->CreateBuffer(_sdsmStateReadBackBuffer, bufferDesc);
+        _sdsmDataReadBackBuffer = _renderer->CreateBuffer(_sdsmDataReadBackBuffer, bufferDesc);
 
         bufferDesc.name = "ShadowCascadeCamerasReadBack";
         bufferDesc.size = sizeof(Camera) * Renderer::Settings::MAX_SHADOW_CASCADES;

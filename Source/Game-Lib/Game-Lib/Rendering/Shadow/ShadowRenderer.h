@@ -41,6 +41,9 @@ public:
     // Effective cascade range after hysteresis and quantization, false while SDSM has not fitted yet
     bool GetEffectiveShadowRange(f32& outMinDistance, f32& outMaxDistance) const;
 
+    // Fitted light-space extents per cascade, false while the XY reduction is not running
+    bool GetCascadeFittedBounds(u32 cascadeIndex, vec3& outExtents, bool& outValid) const;
+
 private:
     void CreatePermanentResources(RenderResources& resources);
 
@@ -60,13 +63,20 @@ private:
     Renderer::BufferID _depthMinMaxReadBackBuffer;
     u32 _depthMinMaxReadBack[2] = { 0xFFFFFFFF, 0 };
 
-    Renderer::ComputePipelineID _cascadeFitPipeline;
-    Renderer::DescriptorSet _cascadeFitDescriptorSet;
-    Renderer::BufferID _sdsmStateBuffer;
-    Renderer::BufferID _sdsmStateReadBackBuffer;
+    static constexpr u32 SDSM_DATA_FLOAT_COUNT = 8 + 8 + 8 + 4 * Renderer::Settings::MAX_SHADOW_CASCADES * 2; // SDSMState + splitDist + splitDepth + cascadeStable + cascadeDiag
+
+    Renderer::ComputePipelineID _cascadeFitRangePipeline;
+    Renderer::ComputePipelineID _cascadeXYReducePipeline;
+    Renderer::ComputePipelineID _cascadeFitCamerasPipeline;
+    Renderer::DescriptorSet _cascadeFitRangeDescriptorSet;
+    Renderer::DescriptorSet _cascadeXYReduceDescriptorSet;
+    Renderer::DescriptorSet _cascadeFitCamerasDescriptorSet;
+    Renderer::BufferID _sdsmDataBuffer;
+    Renderer::BufferID _cascadeBoundsBuffer;
+    Renderer::BufferID _sdsmDataReadBackBuffer;
     Renderer::BufferID _cascadeCamerasReadBackBuffer;
     Camera _readBackCascadeCameras[Renderer::Settings::MAX_SHADOW_CASCADES];
-    f32 _sdsmStateReadBack[8] = { 0.0f };
+    f32 _sdsmDataReadBack[SDSM_DATA_FLOAT_COUNT] = { 0.0f };
 
     f32 _lastDeltaTime = 0.0f;
 };

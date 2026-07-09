@@ -100,6 +100,23 @@ namespace Editor
                     {
                         ImGui::Text("Shadow Range: %.1f - %.1f (used by cascades)", effectiveMin, effectiveMax);
                     }
+
+                    for (u32 i = 0; i < numCascades; i++)
+                    {
+                        vec3 extents = vec3(0.0f);
+                        bool valid = false;
+                        if (!shadowRenderer->GetCascadeFittedBounds(i, extents, valid))
+                            break;
+
+                        if (valid)
+                        {
+                            ImGui::Text("C%u: %.1f x %.1f x %.1f", i, extents.x, extents.y, extents.z);
+                        }
+                        else
+                        {
+                            ImGui::Text("C%u: empty", i);
+                        }
+                    }
                 }
                 else
                 {

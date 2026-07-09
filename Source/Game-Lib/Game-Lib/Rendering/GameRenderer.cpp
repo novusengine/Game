@@ -407,7 +407,8 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
-    // Cascade block, runs after the main depth is complete so cascades can be fitted, culled and drawn the same frame
+    // Cascade block, runs after the main depth is complete so the cascades can be fitted to the
+    // visible samples (SDSM: depth range + per-cascade light-space bounds), culled and drawn the same frame
     _shadowRenderer->AddDepthMinMaxPass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddCascadeFitPass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
