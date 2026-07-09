@@ -2655,6 +2655,13 @@ void ModelRenderer::CreateModelPipelines()
     // Shadows
     {
         Renderer::GraphicsPipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Model Draw Shadow";
+
+        // Depth state
+        pipelineDesc.states.depthStencilState.depthEnable = true;
+        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
+        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
+
         // Rasterizer state
         pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         pipelineDesc.states.rasterizerState.depthBiasEnabled = true;

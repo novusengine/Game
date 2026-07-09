@@ -1199,7 +1199,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     commandList.BeginRenderPass(renderPassDesc);
 
     // Set pipeline
-    Renderer::GraphicsPipelineID pipeline = _drawPipeline;
+    Renderer::GraphicsPipelineID pipeline = params.shadowPass ? _drawShadowPipeline : _drawPipeline;
     commandList.BeginPipeline(pipeline);
 
     // Set index buffer
