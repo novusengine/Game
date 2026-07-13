@@ -319,7 +319,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetTemplate);
-                GameDefine::Database::ItemTemplate::Write(buffer, itemTemplate);
+                GameDefine::Database::ItemTemplate::Write(buffer.get(), itemTemplate);
             });
 
             return result;
@@ -348,7 +348,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetArmorTemplate);
-                GameDefine::Database::ItemArmorTemplate::Write(buffer, itemArmorTemplate);
+                GameDefine::Database::ItemArmorTemplate::Write(buffer.get(), itemArmorTemplate);
             });
 
             return result;
@@ -367,7 +367,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetWeaponTemplate);
-                GameDefine::Database::ItemWeaponTemplate::Write(buffer, itemWeaponTemplate);
+                GameDefine::Database::ItemWeaponTemplate::Write(buffer.get(), itemWeaponTemplate);
             });
 
             return result;
@@ -385,7 +385,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::ItemSetShieldTemplate);
-                GameDefine::Database::ItemShieldTemplate::Write(buffer, itemShieldTemplate);
+                GameDefine::Database::ItemShieldTemplate::Write(buffer.get(), itemShieldTemplate);
             });
 
             return result;
@@ -460,7 +460,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::MapAdd);
-                GameDefine::Database::Map::Write(buffer, mapTemplate);
+                GameDefine::Database::Map::Write(buffer.get(), mapTemplate);
             });
 
             return result;
@@ -577,7 +577,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellSet);
-                GameDefine::Database::Spell::Write(buffer, spellDefinition);
+                GameDefine::Database::Spell::Write(buffer.get(), spellDefinition);
             });
 
             return result;
@@ -603,7 +603,7 @@ namespace ECS::Util::MessageBuilder
                 };
 
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::SpellEffectSet);
-                GameDefine::Database::SpellEffect::Write(buffer, spellEffectsDefinition);
+                GameDefine::Database::SpellEffect::Write(buffer.get(), spellEffectsDefinition);
             });
 
             return result;
@@ -645,6 +645,42 @@ namespace ECS::Util::MessageBuilder
             bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
             {
                 buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureRemoveScript);
+            });
+
+            return result;
+        }
+        bool BuildCreatureMove(std::shared_ptr<Bytebuffer>& buffer)
+        {
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureMove);
+            });
+
+            return result;
+        }
+        bool BuildCreatureFollow(std::shared_ptr<Bytebuffer>& buffer)
+        {
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureFollow);
+            });
+
+            return result;
+        }
+        bool BuildCreatureWander(std::shared_ptr<Bytebuffer>& buffer)
+        {
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureWander);
+            });
+
+            return result;
+        }
+        bool BuildCreatureStop(std::shared_ptr<Bytebuffer>& buffer)
+        {
+            bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::CreatureStop);
             });
 
             return result;

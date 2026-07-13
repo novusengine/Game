@@ -18,6 +18,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/JoltStream.h"
@@ -30,6 +31,8 @@
 
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
+
+#include <Filesystem/PactStorage.h>
 
 #include <MetaGen/EnumTraits.h>
 #include <MetaGen/Game/Lua/Lua.h>
@@ -55,9 +58,10 @@ TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* mode
     , _modelLoader(modelLoader)
     , _liquidLoader(liquidLoader)
     , _requests()
-    , _loadedChunkRequests()
     , _pendingWorkRequests()
 {
+    ZoneScoped;
+
     _chunkIDToLoadedID.reserve(4096);
     _chunkIDToBodyID.reserve(4096);
     _chunkIDToChunkInfo.reserve(4096);
@@ -78,6 +82,9 @@ void TerrainLoader::Clear()
 {
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+
+    if (!_currentMapInternalName.empty())
+        joltState.LogPhysicsTelemetrySummary("Before TerrainLoader::Clear");
     
     LoadRequestInternal loadRequest;
     while (_requests.try_dequeue(loadRequest)) { }
@@ -102,27 +109,15 @@ void TerrainLoader::Clear()
     
     _numChunksToLoad = 0;
     _numChunksLoaded = 0;
+    _numChunksFailed = 0;
     _requestedChunkHashes.clear();
-    
-    IOLoadRequest loadResult;
-    while (_loadedChunkRequests.try_dequeue(loadResult)) { }
     
     WorkRequest workRequest;
     while (_pendingWorkRequests.try_dequeue(workRequest)) { }
     
     _chunkIDToLoadedID.clear();
     _chunkIDToBodyID.clear();
-    
-    for (auto& pair : _chunkIDToChunkInfo)
-    {
-        auto& chunkInfo = pair.second;
 
-        chunkInfo.chunk = nullptr;
-
-        if (chunkInfo.data)
-            chunkInfo.data.reset();
-    }
-    
     _chunkIDToChunkInfo.clear();
     
     ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
@@ -216,10 +211,11 @@ void TerrainLoader::Update(f32 deltaTime)
         _chunkIDToLoadedID.reserve(_chunkIDToLoadedID.size() + maxChunkLoadsThisTick);
         _chunkIDToBodyID.reserve(_chunkIDToBodyID.size() + maxChunkLoadsThisTick);
 
-        enki::TaskSet loadChunksTask(maxChunkLoadsThisTick, [this, &bodyInterface, &reserveOffsets, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
+        enki::TaskSet loadChunksTask(maxChunkLoadsThisTick, [this, &bodyInterface, &joltState, &reserveOffsets, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
         {
             ZoneScopedN("Load Chunk Task");
-            u32 numSuccessfulLoads = 0;
+            u32 numProcessedLoads = 0;
+            u32 numFailedLoads = 0;
 
             WorkRequest workRequest;
             for (u32 i = range.start; i < range.end; i++)
@@ -228,23 +224,40 @@ void TerrainLoader::Update(f32 deltaTime)
                     break;
 
                 ZoneScopedN("Load Chunk Worker");
+                numProcessedLoads++;
 
                 if (!_requestedChunkHashes.contains(workRequest.chunkHash))
                     continue;
 
+                workRequest.fileHandle = std::make_shared<PACT::PactFileHandle>();
+                {
+                    std::scoped_lock lock(_pactReadMutex);
+                    if (ServiceLocator::GetPactStorage()->ReadFile(workRequest.fileHash, *workRequest.fileHandle) != PACT::PactReadResult::Success)
+                    {
+                        NC_LOG_ERROR("TerrainLoader : Failed to read chunk asset {0}", workRequest.fileHash);
+                        numFailedLoads++;
+                        continue;
+                    }
+                }
+
+                workRequest.buffer = std::make_shared<Bytebuffer>(const_cast<void*>(workRequest.fileHandle->GetData()), workRequest.fileHandle->GetSize());
+                workRequest.buffer->writtenData = workRequest.fileHandle->GetSize();
+
                 u32 chunkX = workRequest.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
                 u32 chunkY = workRequest.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
-                Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(workRequest.data->GetDataPointer());
+                Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(const_cast<void*>(workRequest.fileHandle->GetData()));
                 if (chunk->header.type != FileHeader::Type::MapChunk)
                 {
                     NC_LOG_ERROR("TerrainLoader : Invalid Chunk Header");
+                    numFailedLoads++;
                     continue;
                 }
 
                 if (chunk->header.version != Map::Chunk::CURRENT_VERSION)
                 {
                     NC_LOG_ERROR("TerrainLoader : Invalid Chunk Version. Expected {0} but got {1}", Map::Chunk::CURRENT_VERSION, chunk->header.version);
+                    numFailedLoads++;
                     continue;
                 }
 
@@ -259,7 +272,7 @@ void TerrainLoader::Update(f32 deltaTime)
 
                     {
                         ZoneScopedN("Read Shape");
-                        Bytebuffer physicsBuffer = Bytebuffer(chunk->physicsHeader.GetPhysicsData(workRequest.data), numPhysicsBytes);
+                        Bytebuffer physicsBuffer = Bytebuffer(chunk->physicsHeader.GetPhysicsData(workRequest.buffer), numPhysicsBytes);
                         physicsBuffer.SkipWrite(numPhysicsBytes);
 
                         JoltStreamIn streamIn(&physicsBuffer);
@@ -281,6 +294,7 @@ void TerrainLoader::Update(f32 deltaTime)
 
                         // Create the actual rigid body
                         body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+                        joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::TerrainChunk, body != nullptr);
                     }
 
                     if (body)
@@ -307,7 +321,7 @@ void TerrainLoader::Update(f32 deltaTime)
                     
                     {
                         std::scoped_lock lock(_chunkLoadingMutex);
-                        _chunkIDToChunkInfo[workRequest.chunkID] = { .chunk = chunk, .data = workRequest.data };
+                        _chunkIDToChunkInfo[workRequest.chunkID] = { .chunk = chunk, .buffer = workRequest.buffer, .fileHandle = std::move(workRequest.fileHandle) };
                         _chunkIDToLoadedID[workRequest.chunkID] = chunkDataID;
 
                         if (physicsBodyID != JPH::BodyID::cInvalidBodyID)
@@ -320,7 +334,7 @@ void TerrainLoader::Update(f32 deltaTime)
                         u32 numPlacements = chunk->placementHeader.numPlacements;
                         for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
                         {
-                            auto* placement = chunk->placementHeader.GetPlacement(workRequest.data, placementIndex);
+                            auto* placement = chunk->placementHeader.GetPlacement(workRequest.buffer, placementIndex);
                             _modelLoader->LoadPlacement(*placement);
                         }
                     }
@@ -338,15 +352,15 @@ void TerrainLoader::Update(f32 deltaTime)
                         if (numLiquidHeaders == 256)
                         {
                             ZoneScopedN("Load Chunk Liquid");
-                            _liquidLoader->LoadFromChunk(chunkX, chunkY, workRequest.data, chunk->liquidHeader);
+                            _liquidLoader->LoadFromChunk(chunkX, chunkY, workRequest.buffer, chunk->liquidHeader);
                         }
                     }
                 }
 
-                numSuccessfulLoads++;
             }
 
-            _numChunksLoaded += numSuccessfulLoads;
+            _numChunksLoaded += numProcessedLoads;
+            _numChunksFailed += numFailedLoads;
         });
 
         taskScheduler->AddTaskSetToPipe(&loadChunksTask);
@@ -362,7 +376,8 @@ void TerrainLoader::Update(f32 deltaTime)
                 joltState.physicsSystem.OptimizeBroadPhase();
             }
 
-            NC_LOG_INFO("TerrainLoader : Loaded {0}/{1} chunks", numChunksLoadedAfter, numChunksLoadedAfter);
+            const u32 numFailedChunks = _numChunksFailed;
+            NC_LOG_INFO("TerrainLoader : Loaded {0}/{1} chunks ({2} failed)", numChunksLoadedAfter - numFailedChunks, numChunksLoadedAfter, numFailedChunks);
         }
     }
 }
@@ -389,11 +404,6 @@ f32 TerrainLoader::GetLoadingProgress() const
 
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 {
-    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
-
-    std::string mapName = request.mapName;
-    fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
-
     assert(request.loadType == LoadType::Partial);
     assert(request.mapName.size() > 0);
     assert(request.chunkGridStartPos.x <= request.chunkGridEndPos.x);
@@ -401,112 +411,55 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
 
     u32 gridWidth = (request.chunkGridEndPos.x - request.chunkGridStartPos.x) + 1;
     u32 gridHeight = (request.chunkGridEndPos.y - request.chunkGridStartPos.y) + 1;
-
-    u32 startChunkNum = request.chunkGridStartPos.x + (request.chunkGridStartPos.y * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
     u32 chunksToLoad = gridHeight * gridWidth;
 
-    std::atomic<u32> numExistingChunks = 0;
-    enki::TaskSet countValidChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
+    struct PartialChunk
     {
-        u32 localNumExistingChunks = 0;
+        u32 x;
+        u32 y;
+        u64 hash;
+        PACT::PactFileHandle file;
+    };
 
-        std::string chunkLocalPathStr = "";
-        chunkLocalPathStr.reserve(128);
-
-        for (u32 i = range.start; i < range.end; i++)
-        {
-            u32 chunkX = request.chunkGridStartPos.x + (i % gridWidth);
-            u32 chunkY = request.chunkGridStartPos.y + (i / gridHeight);
-
-            chunkLocalPathStr.clear();
-            chunkLocalPathStr += mapName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk";
-
-            fs::path chunkLocalPath = chunkLocalPathStr;
-            fs::path chunkPath = absoluteMapPath / chunkLocalPath;
-
-            if (!fs::exists(chunkPath))
-                continue;
-
-            localNumExistingChunks++;
-        }
-
-        numExistingChunks.fetch_add(localNumExistingChunks);
-    });
-
-    NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
-    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
-    taskScheduler->WaitforTask(&countValidChunksTask);
-    NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
-
-    u32 numChunksToLoad = numExistingChunks.load();
-    if (numChunksToLoad == 0)
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+    std::vector<PartialChunk> chunks;
+    chunks.reserve(chunksToLoad);
+    for (u32 i = 0; i < chunksToLoad; i++)
     {
-        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
-        return;
+        u32 chunkX = request.chunkGridStartPos.x + (i % gridWidth);
+        u32 chunkY = request.chunkGridStartPos.y + (i / gridHeight);
+        std::string chunkPath = Util::AssetPath::Map(request.mapName + "/" + request.mapName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk");
+        PartialChunk& chunk = chunks.emplace_back(chunkX, chunkY, Util::AssetPath::Hash(chunkPath));
+        if (pactStorage->ReadFile(chunk.hash, chunk.file) != PACT::PactReadResult::Success)
+            chunks.pop_back();
     }
 
+    if (chunks.empty())
+        return;
+
     TerrainReserveOffsets reserveOffsets;
-    _terrainRenderer->AllocateChunks(numChunksToLoad, reserveOffsets);
-
-    enki::TaskSet loadChunksTask(chunksToLoad, [&, startChunkNum](enki::TaskSetPartition range, uint32_t threadNum)
+    _terrainRenderer->AllocateChunks(static_cast<u32>(chunks.size()), reserveOffsets);
+    for (u32 i = 0; i < chunks.size(); i++)
     {
-        std::string chunkLocalPathStr = "";
-        chunkLocalPathStr.reserve(128);
+        const PartialChunk& partialChunk = chunks[i];
+        const auto* chunk = reinterpret_cast<const Map::Chunk*>(partialChunk.file.GetData());
+        _terrainRenderer->AddChunk(static_cast<u32>(partialChunk.hash), chunk, ivec2(partialChunk.x, partialChunk.y),
+            reserveOffsets.chunkDataStartOffset + i,
+            reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS),
+            reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES));
 
-        for (u32 i = range.start; i < range.end; i++)
+        for (u32 placementIndex = 0; placementIndex < chunk->placementHeader.numPlacements; placementIndex++)
         {
-            u32 chunkX = request.chunkGridStartPos.x + (i % gridWidth);
-            u32 chunkY = request.chunkGridStartPos.y + (i / gridHeight);
-
-            chunkLocalPathStr.clear();
-            chunkLocalPathStr += mapName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk";
-
-            fs::path chunkLocalPath = chunkLocalPathStr;
-            fs::path chunkPath = absoluteMapPath / chunkLocalPath;
-
-            if (!fs::exists(chunkPath))
-                continue;
-
-            std::string chunkPathStr = chunkPath.string();
-
-            FileReader reader(chunkPathStr);
-            if (reader.Open())
-            {
-                size_t bufferSize = reader.Length();
-
-                std::shared_ptr<Bytebuffer> chunkBuffer = Bytebuffer::BorrowRuntime(bufferSize);
-                reader.Read(chunkBuffer.get(), bufferSize);
-
-                u32 chunkHash = StringUtils::fnv1a_32(chunkPathStr.c_str(), chunkPathStr.size());
-                Map::Chunk* chunk = reinterpret_cast<Map::Chunk*>(chunkBuffer->GetDataPointer());
-
-                u32 chunkDataIndex = reserveOffsets.chunkDataStartOffset + i;
-                u32 cellDataStartIndex = reserveOffsets.cellDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS);
-                u32 vertexDataStartIndex = reserveOffsets.vertexDataStartOffset + (i * Terrain::CHUNK_NUM_CELLS * Terrain::CELL_NUM_VERTICES);
-
-                u32 chunkDataID = _terrainRenderer->AddChunk(chunkHash, chunk, ivec2(chunkX, chunkY), chunkDataIndex, cellDataStartIndex, vertexDataStartIndex);
-
-                u32 numPlacements = chunk->placementHeader.numPlacements;
-                for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
-                {
-                    u64 placementDataOffset = chunk->placementHeader.dataOffset + (placementIndex * sizeof(Terrain::Placement));
-                    auto* placement = reinterpret_cast<Terrain::Placement*>(&chunkBuffer->GetDataPointer()[placementDataOffset]);
-                    _modelLoader->LoadPlacement(*placement);
-                }
-            }
+            u64 placementDataOffset = chunk->placementHeader.dataOffset + (placementIndex * sizeof(Terrain::Placement));
+            const auto* placement = reinterpret_cast<const Terrain::Placement*>(static_cast<const u8*>(partialChunk.file.GetData()) + placementDataOffset);
+            _modelLoader->LoadPlacement(*placement);
         }
-    });
-
-    NC_LOG_INFO("TerrainLoader : Started Chunk Loading");
-    taskScheduler->AddTaskSetToPipe(&loadChunksTask);
-    taskScheduler->WaitforTask(&loadChunksTask);
-    NC_LOG_INFO("TerrainLoader : Finished Chunk Loading");
+    }
 }
 
 bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 {
     ZoneScoped;
-    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
 
     assert(request.loadType == LoadType::Full);
     assert(request.mapName.size() > 0);
@@ -517,82 +470,76 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         return false;
     }
 
-    fs::path absoluteMapPath = fs::absolute("Data/Map/" + mapName);
-    if (!fs::is_directory(absoluteMapPath))
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+
+    std::string mapHeaderPath = Util::AssetPath::Map(mapName + "/" + mapName + Map::HEADER_FILE_EXTENSION);
+
+    PACT::PactFileHandle fileHandle;
+    if (pactStorage->ReadFile(mapHeaderPath, fileHandle) != PACT::PactReadResult::Success)
+        return false;
+
+    Map::MapHeader mapHeader;
+    std::shared_ptr<Bytebuffer> mapHeaderBuffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
+    mapHeaderBuffer->writtenData = fileHandle.GetSize();
+
+    if (!Map::MapHeader::Read(mapHeaderBuffer, mapHeader))
+        return false;
+
+    u32 numChunks = static_cast<u32>(mapHeader.chunkHashes.size());
+    if (numChunks == 0)
     {
-        NC_LOG_ERROR("TerrainLoader : Failed to find '{0}' folder", absoluteMapPath.string());
+        NC_LOG_ERROR("TerrainLoader : Map '{0}' has no chunks", request.mapName);
         return false;
     }
-
-    std::vector<fs::path> paths;
-    fs::directory_iterator dirpos{ absoluteMapPath };
-    std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
-
-    u32 numPaths = static_cast<u32>(paths.size());
-    std::atomic<u32> numExistingChunks = 0;
-
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-
-    i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-    auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
-    JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-
-    enki::TaskSet countValidChunksTask(numPaths, [&](enki::TaskSetPartition range, uint32_t threadNum)
-    {
-        for (u32 i = range.start; i < range.end; i++)
-        {
-            const fs::path& path = paths[i];
-
-            if (path.extension() != ".chunk")
-                continue;
-
-            numExistingChunks++;
-        }
-    });
-
-    enki::TaskSet loadChunksTask(numPaths, [&, physicsEnabled](enki::TaskSetPartition range, uint32_t threadNum)
-    {
-        for (u32 i = range.start; i < range.end; i++)
-        {
-            const fs::path& path = paths[i];
-
-            if (path.extension() != ".chunk")
-                continue;
-
-            std::string pathStr = path.string();
-
-            std::vector<std::string> splitStrings = StringUtils::SplitString(pathStr, '_');
-            u32 numSplitStrings = static_cast<u32>(splitStrings.size());
-
-            u16 chunkX = std::stoi(splitStrings[numSplitStrings - 2]);
-            u16 chunkY = std::stoi(splitStrings[numSplitStrings - 1].substr(0, 2));
-            u32 chunkHash = StringUtils::fnv1a_32(pathStr.c_str(), pathStr.size());
-
-            IOLoadRequest loadRequest;
-            loadRequest.userdata = chunkHash | (static_cast<u64>(chunkX) << 32) | (static_cast<u64>(chunkY) << 48);
-            loadRequest.path = std::move(pathStr);
-
-            _loadedChunkRequests.enqueue(loadRequest);
-        }
-
-        return true;
-    });
 
     NC_LOG_INFO("TerrainLoader : Started Preparing Chunk Loading");
-    taskScheduler->AddTaskSetToPipe(&countValidChunksTask);
-    taskScheduler->WaitforTask(&countValidChunksTask);
+
+    std::vector<WorkRequest> workRequests;
+    workRequests.reserve(numChunks);
+
+    u32 numChunksToLoad = 0;
+    for (u32 i = 0; i < numChunks; i++)
+    {
+        u64 hash = mapHeader.chunkHashes[i];
+
+        if (!pactStorage->FileExists(hash))
+            continue;
+
+        const std::string* chunkPath = pactStorage->GetFilePath(hash);
+        if (!chunkPath)
+            continue;
+
+        std::string path = *chunkPath;
+        std::vector<std::string> splitStrings = StringUtils::SplitString(path, '_');
+        u32 numSplitStrings = static_cast<u32>(splitStrings.size());
+
+        u16 chunkX = std::stoi(splitStrings[numSplitStrings - 2]);
+        u16 chunkY = std::stoi(splitStrings[numSplitStrings - 1].substr(0, 2));
+        u32 chunkID = chunkX + (chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
+        u32 chunkHash = StringUtils::fnv1a_32(path.c_str(), path.size());
+
+        WorkRequest& workRequest = workRequests.emplace_back();
+        workRequest.chunkID = chunkID;
+        workRequest.chunkHash = chunkHash;
+        workRequest.fileHash = hash;
+
+        numChunksToLoad++;
+    }
+
     NC_LOG_INFO("TerrainLoader : Finished Preparing Chunk Loading");
 
-    u32 numChunksToLoad = numExistingChunks.load();
     if (numChunksToLoad == 0)
     {
-        NC_LOG_ERROR("TerrainLoader : Failed to prepare chunks for map '{0}'", request.mapName);
+        NC_LOG_ERROR("TerrainLoader : Map '{0}' could not prepare chunks", request.mapName);
         return false;
     }
+
+    auto* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     Clear();
 
     _currentMapInternalName = mapName;
+    registry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapName);
     NotifyCurrentMapChanged();
     _numChunksToLoad = numChunksToLoad;
 
@@ -603,26 +550,19 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     NC_LOG_INFO("TerrainLoader : Started Chunk Queueing");
 
-    taskScheduler->AddTaskSetToPipe(&loadChunksTask);
-    taskScheduler->WaitforTask(&loadChunksTask);
-
-    std::vector<IOLoadRequest> loadRequests(numExistingChunks);
-    bool dequeueResult = _loadedChunkRequests.try_dequeue_bulk(loadRequests.data(), numExistingChunks);
-    NC_ASSERT(dequeueResult, "Failed to dequeue all loaded chunks");
-
     auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
     vec3 cameraPos = registry->get<ECS::Components::Transform>(activeCamera.entity).GetWorldPosition();
 
     vec2 playerChunkGlobalPos = Util::Map::WorldPositionToChunkGlobalPos(cameraPos);
     vec2 playerChunkPos = Util::Map::GetChunkIndicesFromAdtPosition(playerChunkGlobalPos);
 
-    std::sort(loadRequests.begin(), loadRequests.end(), [&playerChunkPos](const IOLoadRequest& a, const IOLoadRequest& b)
+    std::sort(workRequests.begin(), workRequests.end(), [&playerChunkPos](const WorkRequest& a, const WorkRequest& b)
     {
-        u32 aChunkX = (a.userdata >> 32) & 0xFFFF;
-        u32 aChunkY = (a.userdata >> 48) & 0xFFFF;
+        u32 aChunkX = a.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        u32 aChunkY = a.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
-        u32 bChunkX = (b.userdata >> 32) & 0xFFFF;
-        u32 bChunkY = (b.userdata >> 48) & 0xFFFF;
+        u32 bChunkX = b.chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+        u32 bChunkY = b.chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
 
         vec2 aChunkPos = vec2(aChunkX, aChunkY);
         vec2 bChunkPos = vec2(bChunkX, bChunkY);
@@ -633,54 +573,14 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         return distA < distB;
     });
 
-    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
-    for (IOLoadRequest& loadRequest : loadRequests)
+    for (WorkRequest& workRequest : workRequests)
     {
-        u32 chunkHash = loadRequest.userdata & 0xFFFFFFFF;
-
-        u32 chunkX = (loadRequest.userdata >> 32) & 0xFFFF;
-        u32 chunkY = (loadRequest.userdata >> 48) & 0xFFFF;
-        u32 chunkID = chunkX + (chunkY * Terrain::CHUNK_NUM_PER_MAP_STRIDE);
-
-        loadRequest.userdata &= 0xFFFFFFFF;
-        loadRequest.userdata |= static_cast<u64>(chunkID) << 32;
-        loadRequest.callback = std::bind(&TerrainLoader::IOLoadCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-
-        _requestedChunkHashes.insert(chunkHash);
-
-        ioLoader->RequestLoad(loadRequest);
+        _requestedChunkHashes.insert(workRequest.chunkHash);
+        _pendingWorkRequests.enqueue(std::move(workRequest));
     }
     
     NC_LOG_INFO("TerrainLoader : Finished Chunk Queueing");
 
     _terrainRenderer->Reserve(numChunksToLoad);
     return true;
-}
-
-void TerrainLoader::IOLoadCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata)
-{
-    ZoneScoped;
-    u32 chunkID = (userdata >> 32) & 0xFFFFFFFF;
-    u32 chunkHash = userdata & 0xFFFFFFFF;
-
-    if (!_requestedChunkHashes.contains(chunkHash))
-        return;
-
-    if (result)
-    {
-        WorkRequest workRequest =
-        {
-            .chunkID = chunkID,
-            .chunkHash = chunkHash,
-            .data = std::move(buffer)
-        };
-
-        _pendingWorkRequests.enqueue(workRequest);
-
-        //NC_LOG_INFO("TerrainLoader : Loaded ({0}, {1})", chunkID, path);
-    }
-    else
-    {
-        NC_LOG_WARNING("TerrainLoader : Failed to Load ({0}, {1})", chunkID, path)
-    }
 }

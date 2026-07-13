@@ -31,6 +31,7 @@ namespace Scripting
         static i32 Login(Zenith* zenith);
         static i32 Logout(Zenith* zenith);
         static i32 Disconnect(Zenith* zenith);
+        static i32 ExitGame(Zenith* zenith);
         static i32 GetCharacterList(Zenith* zenith);
         static i32 SelectCharacter(Zenith* zenith);
         static i32 GetMapName(Zenith* zenith);
@@ -53,6 +54,7 @@ namespace Scripting
         { "Login",                  GlobalHandler::Login },
         { "Logout",                 GlobalHandler::Logout },
         { "Disconnect",             GlobalHandler::Disconnect },
+        { "ExitGame",               GlobalHandler::ExitGame },
         { "GetCharacterList",       GlobalHandler::GetCharacterList },
         { "SelectCharacter",        GlobalHandler::SelectCharacter },
         { "GetMapName",             GlobalHandler::GetMapName }

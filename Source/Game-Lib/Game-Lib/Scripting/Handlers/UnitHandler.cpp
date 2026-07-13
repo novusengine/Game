@@ -2,18 +2,16 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
 #include "Game-Lib/ECS/Components/AttachmentData.h"
-#include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Components/AABB.h"
-#include "Game-Lib/ECS/Components/UI/TextTemplate.h"
-#include "Game-Lib/ECS/Components/UI/Widget.h"
-#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/CharacterControllerSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
+#include "Game-Lib/ECS/Systems/CharacterControllerInput.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -21,6 +19,8 @@
 #include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/UnitUtil.h"
+
+#include <Gameplay/ECS/Components/UnitFields.h>
 
 #include <MetaGen/Game/Lua/Lua.h>
 #include <MetaGen/Shared/Unit/Unit.h>
@@ -31,6 +31,7 @@
 #include <entt/entt.hpp>
 
 #include <format>
+#include <unordered_set>
 
 namespace Scripting::Unit
 {
@@ -75,6 +76,7 @@ namespace Scripting::Unit
         {
             vec3 minBounds = vec3(-1000000.0f);
             vec3 maxBounds = vec3(1000000.0f);
+            std::unordered_set<entt::id_type> replayedUnitIDs;
 
             networkState.networkVisTree->Search(&minBounds.x, &maxBounds.x, [&](const ObjectGUID objectGUID)
             {
@@ -82,8 +84,12 @@ namespace Scripting::Unit
                 if (!::ECS::Util::Network::GetEntityIDFromObjectGUID(networkState, objectGUID, entity))
                     return true;
 
+                const entt::id_type unitID = entt::to_integral(entity);
+                if (!replayedUnitIDs.insert(unitID).second)
+                    return true;
+
                 zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
-                    .unitID = entt::to_integral(entity)
+                    .unitID = unitID
                 });
 
                 return true;
@@ -118,6 +124,26 @@ namespace Scripting::Unit
             localID = entt::to_integral(characterSingleton.moverEntity);
 
         zenith->Push(localID);
+        return 1;
+    }
+
+    i32 UnitHandler::GetHovered(Zenith* zenith)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        entt::id_type unitID = std::numeric_limits<entt::id_type>().max();
+        const auto* controllerState = registry->ctx().find<ECS::Singletons::CharacterControllerSingleton>();
+        if (controllerState
+            && registry->valid(controllerState->hoveredEntity)
+            && registry->all_of<ECS::Components::Unit>(controllerState->hoveredEntity))
+            unitID = entt::to_integral(controllerState->hoveredEntity);
+
+        zenith->Push(unitID);
+        return 1;
+    }
+
+    i32 UnitHandler::ClearTarget(Zenith* zenith)
+    {
+        zenith->Push(ECS::Systems::CharacterControllerInput::ClearTarget());
         return 1;
     }
 
@@ -157,15 +183,38 @@ namespace Scripting::Unit
         {
             if (auto* unitPowersComponent = registry->try_get<ECS::Components::UnitPowersComponent>(entityID))
             {
-                auto& healthPower = ::Util::Unit::GetPower(*unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
-                currentHealth = healthPower.current;
-                maxHealth = healthPower.max;
+                if (::Util::Unit::HasPower(*unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health))
+                {
+                    auto& healthPower = ::Util::Unit::GetPower(*unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum::Health);
+                    currentHealth = healthPower.current;
+                    maxHealth = healthPower.max;
+                }
             }
         }
 
         zenith->Push(currentHealth);
         zenith->Push(maxHealth);
         return 2;
+    }
+
+    i32 UnitHandler::GetLevel(Zenith* zenith)
+    {
+        u32 unitID = zenith->CheckVal<u32>(1);
+        entt::entity entityID = entt::entity(unitID);
+
+        u16 level = 0;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        if (registry->valid(entityID))
+        {
+            if (auto* unitFields = registry->try_get<ECS::Components::UnitFields>(entityID))
+            {
+                level = unitFields->fields.GetField<u16>(MetaGen::Shared::NetField::UnitNetFieldEnum::LevelRaceGenderClassPacked);
+            }
+        }
+
+        zenith->Push(level);
+        return 1;
     }
 
     i32 UnitHandler::GetClass(Zenith* zenith)
@@ -334,20 +383,6 @@ namespace Scripting::Unit
         return 1;
     }
 
-    f32 GetNameFontSize(f32 distance)
-    {
-        const u32 maxSize = 14; // size when right in front
-        const u32 minSize = 6; // never below this
-        const f32 maxDistance = 80.0f * 80.0f; // beyond this, always min size
-
-        f32 t = glm::clamp(distance / maxDistance, 0.0f, 1.0f);
-
-        f32 curve = glm::pow(t, 5.0f);
-        f32 size = maxSize - (maxSize - minSize) * curve;
-
-        return size;
-    }
-
     i32 UnitHandler::SetWidgetToNamePos(Zenith* zenith)
     {
         auto* widget = zenith->GetUserData<UI::Widget>(1);
@@ -357,72 +392,49 @@ namespace Scripting::Unit
         }
 
         u32 unitID = zenith->CheckVal<u32>(2);
+        auto pushFailure = [zenith]() -> i32
+        {
+            zenith->Push(0);
+            return 1;
+        };
+
         if (unitID == std::numeric_limits<u32>().max())
-            return 0;
+            return pushFailure();
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::entity entityID = entt::entity(unitID);
 
         if (!registry->valid(entityID) || !registry->all_of<ECS::Components::AttachmentData>(entityID))
-            return 0;
+            return pushFailure();
 
         auto& model = registry->get<ECS::Components::Model>(entityID);
         if (!model.flags.loaded || !model.flags.visible || model.opacity == 0)
-            return 0;
+            return pushFailure();
 
-        auto& activeCameraSingleton = registry->ctx().get<ECS::Singletons::ActiveCamera>();
-        if (activeCameraSingleton.entity == entt::null)
-            return 0;
-
-        if (!registry->all_of<ECS::Components::DirtyTransform>(activeCameraSingleton.entity) && !registry->all_of<ECS::Components::DirtyTransform>(entityID))
-        {
-            zenith->Push(2);
-            return 1;
-        }
-
-        auto& cameraTransform = registry->get<ECS::Components::Transform>(activeCameraSingleton.entity);
         const auto& transform = registry->get<ECS::Components::Transform>(entityID);
-
-        vec3 forwardDir = cameraTransform.GetLocalForward();
-        vec3 cameraPosition = cameraTransform.GetWorldPosition();
-        vec3 unitPosition = transform.GetWorldPosition();
-        vec3 cameraToUnitDir = glm::normalize(unitPosition - cameraPosition);
-
-        // If the unit is behind the camera, we don't want to set the widget position
-        if (glm::dot(forwardDir, cameraToUnitDir) < 0.0f)
-            return 0;
-
-        // Update Font Size based on distance to camera
-        bool isTextWidget = widget->type == Scripting::UI::WidgetType::Text;
-        if (isTextWidget)
-        {
-            f32 distanceToCamera = glm::distance2(cameraPosition, unitPosition);
-            if (distanceToCamera > (100.0f * 100.0f))
-                return 0;
-
-            entt::registry* uiRegistry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-            auto& textTemplate = uiRegistry->get<ECS::Components::UI::TextTemplate>(widget->entity);
-            textTemplate.size = GetNameFontSize(distanceToCamera);
-
-            uiRegistry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-            ECS::Util::UI::RefreshClipper(uiRegistry, widget->entity);
-        }
-
-        vec3 position = unitPosition;
+        vec3 position = transform.GetWorldPosition();
 
         auto* animationData = registry->try_get<ECS::Components::AnimationData>(entityID);
         auto& attachmentData = registry->get<ECS::Components::AttachmentData>(entityID);
+        bool hasNameAttachmentPosition = false;
         if (animationData && Util::Attachment::EnableAttachment(entityID, model, attachmentData, *animationData, Attachment::Defines::Type::PlayerName))
         {
             const mat4x4* mat = Util::Attachment::GetAttachmentMatrix(model, *animationData, attachmentData, Attachment::Defines::Type::PlayerName);
-            position += vec3((*mat)[3]);
+            auto attachmentIt = attachmentData.attachmentToInstance.find(Attachment::Defines::Type::PlayerName);
+            if (mat && attachmentIt != attachmentData.attachmentToInstance.end() && registry->valid(attachmentIt->second.entity))
+            {
+                const auto& attachmentTransform = registry->get<ECS::Components::Transform>(attachmentIt->second.entity);
+                position = attachmentTransform.GetWorldPosition();
+                hasNameAttachmentPosition = true;
+            }
         }
-        else
+
+        if (!hasNameAttachmentPosition)
         {
             auto& aabb = registry->get<ECS::Components::AABB>(entityID);
 
-            vec3 centerPos = aabb.centerPos * model.scale;
-            vec3 extents = aabb.extents * model.scale;
+            vec3 centerPos = transform.GetWorldRotation() * (aabb.centerPos * transform.GetLocalScale());
+            vec3 extents = aabb.extents * transform.GetLocalScale();
 
             position += centerPos;
             position.y += extents.y * 1.25f; // Above head

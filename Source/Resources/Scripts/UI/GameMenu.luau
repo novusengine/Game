@@ -208,6 +208,9 @@ local function CreateGameMenu(stack)
     });
     exitButton:SetAnchor(0.5, 1.0);
     exitButton:SetRelativePoint(0.5, 0.5);
+    exitButton:SetOnMouseUp(function(eventID, widget, ...)
+        ExitGame();
+    end)
 
     local returnButton = UIButton.NewButton(panel, 0, -415, 250, 40, 0, {
         text = "Return to Game"

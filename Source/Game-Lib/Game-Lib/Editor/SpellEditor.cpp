@@ -16,6 +16,7 @@
 
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>
+#include <Filesystem/PactStorage.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -73,10 +74,16 @@ namespace Editor
             auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
             const auto& icon = iconStorage->Get<MetaGen::Shared::ClientDB::IconRecord>(iconID);
 
-            Renderer::TextureDesc textureDesc;
-            textureDesc.path = iconStorage->GetString(icon.texture);
+            u64 textureHash = iconStorage->GetStringHash(icon.texture);
+            PACT::PactFileHandle fileHandle;
+            if (ServiceLocator::GetPactStorage()->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+                return 0;
 
-            Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
+            Renderer::DataTextureDesc textureDesc;
+            textureDesc.hash = textureHash;
+            textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+            textureDesc.size = fileHandle.GetSize();
+            Renderer::TextureID textureID = renderer->LoadDataTexture(textureDesc);
             images[iconID] = renderer->GetImguiTextureID(textureID);
         }
 

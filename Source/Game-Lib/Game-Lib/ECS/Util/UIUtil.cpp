@@ -1062,14 +1062,20 @@ namespace ECS::Util
 
             transform.SetIgnoreParent(true);
 
-            if (widgetComp.worldTransformIndex == std::numeric_limits<u32>().max())
+            const bool needsWorldTransform = widgetComp.worldTransformIndex == std::numeric_limits<u32>().max();
+            if (needsWorldTransform)
                 widgetComp.worldTransformIndex = canvasRenderer->ReserveWorldTransform();
 
             canvasRenderer->UpdateWorldTransform(widgetComp.worldTransformIndex, pos);
 
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
-            registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
+            // The world-position buffer is updated independently. Widget data and descendant indexes
+            // only need rebuilding when this widget first becomes a 3D-anchored subtree.
+            if (needsWorldTransform)
+            {
+                registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
+                registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
+                registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
+            }
         }
 
         void ClearPos3D(Scripting::UI::Widget* widget)

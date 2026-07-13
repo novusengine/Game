@@ -37,7 +37,7 @@ local function RegisterTemplates()
     
     UI.RegisterPanelTemplate("GameTooltipBackgroundPanel",
     {
-        background = "Data/Texture/interface/tooltips/ui-tooltip-background.dds",
+        background = "texture/interface/tooltips/ui-tooltip-background.dds",
         color = vector.create(11.5/255.0, 22.25/255.0, 33.0/255.0),
         cornerRadius = 3.0
     });

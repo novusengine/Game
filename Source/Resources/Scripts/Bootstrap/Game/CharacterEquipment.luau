@@ -168,7 +168,7 @@ local SLOT_CONFIG : SlotConfig =
 local function RegisterTemplates()
     UI.RegisterPanelTemplate(UI_CONSTANTS.MAIN_PANEL_TEMPLATE,
     {
-        background = "Data/Texture/interface/framegeneral/ui-background-marble.dds",
+        background = "texture/interface/framegeneral/ui-background-marble.dds",
         --color = vector.create(100.0/255.0, 100.0/255.0, 100.0/255.0),
         cornerRadius = 5.0
     });
@@ -181,7 +181,7 @@ local function RegisterTemplates()
 
     UI.RegisterPanelTemplate(UI_CONSTANTS.STAT_INFO_PANEL_TEMPLATE,
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 3.0
     });
 
@@ -327,7 +327,7 @@ local function OnBagEvent(container : Bag, eventID : Bag.Event, ... : number)
                 uiBagSlot.itemSlot.panel:SetForeground("")
                 bag.panel:SetVisible(false)
             else
-                uiBagSlot.itemSlot.panel:SetForeground("Data/Texture/interface/fullscreentextures/outofcontrol.dds")
+                uiBagSlot.itemSlot.panel:SetForeground("texture/interface/fullscreentextures/outofcontrol.dds")
                 bag.panel:SetVisible(true)
             end
         end

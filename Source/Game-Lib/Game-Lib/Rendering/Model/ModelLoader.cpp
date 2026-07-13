@@ -1,4 +1,5 @@
 #include "ModelLoader.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "ModelRenderer.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
@@ -28,12 +29,16 @@
 #include <FileFormat/Novus/Map/Map.h>
 #include <FileFormat/Novus/Map/MapChunk.h>
 
+#include <Filesystem/PactStorage.h>
+
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
 
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
+
+#include <xxhash/xxhash64.h>
 
 #include <tracy/Tracy.hpp>
 
@@ -52,12 +57,14 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRende
     : _terrainLoader(nullptr)
     , _modelRenderer(modelRenderer)
     , _lightRenderer(lightRenderer)
-    , _pendingLoadRequests(MAX_PENDING_LOADS_PER_FRAME)
-    , _internalLoadRequests(MAX_INTERNAL_LOADS_PER_FRAME)
+    , _pendingLoadRequests(MAX_MAP_LOADS_PER_FRAME)
+    , _internalLoadRequests(MAX_MAP_LOADS_PER_FRAME)
     , _discoveredModels()
 {
-    _pendingLoadRequestsVector.resize(MAX_PENDING_LOADS_PER_FRAME);
-    _internalLoadRequestsVector.resize(MAX_INTERNAL_LOADS_PER_FRAME);
+    ZoneScoped;
+
+    _pendingLoadRequestsVector.resize(MAX_MAP_LOADS_PER_FRAME);
+    _internalLoadRequestsVector.resize(MAX_MAP_LOADS_PER_FRAME);
 
     _createdEntities.reserve(16384);
     _modelHashToJoltShape.reserve(16384);
@@ -69,70 +76,7 @@ ModelLoader::ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRende
 
 void ModelLoader::Init()
 {
-    ZoneScopedN("ModelLoader::Init");
-
-    NC_LOG_INFO("ModelLoader : Scanning for models");
-
-    static const fs::path fileExtension = ".complexmodel";
-
-    if (!fs::exists(complexModelPath))
-    {
-        fs::create_directories(complexModelPath);
-    }
-
-    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
-    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
-
-    // Then create a multithreaded job to loop over the paths
-    _numDiscoveredModelsToLoad = 0;
-
-    fs::path absolutePath = std::filesystem::absolute(complexModelPath).make_preferred();
-    std::string absolutePathStr = absolutePath.string();
-    size_t subStrIndex = absolutePathStr.length() + 1; // + 1 here for folder seperator
-
-    // First recursively iterate the directory and find all paths
-    std::vector<fs::path> paths;
-    std::filesystem::recursive_directory_iterator dirpos { absolutePath };
-    std::copy(begin(dirpos), end(dirpos), std::back_inserter(paths));
-
-    u32 numPaths = static_cast<u32>(paths.size());
-    NC_LOG_INFO("ModelLoader : Processing {0} scanned model paths", numPaths);
-
-    {
-        ZoneScopedN("ModelLoader::DiscoverModels");
-
-        enki::TaskSet discoverModelsTask(numPaths, [&, this, paths, subStrIndex](enki::TaskSetPartition range, u32 threadNum)
-        {
-            u32 numDiscoveredModelsToLoad = 0;
-
-            IOLoadRequest loadRequest;
-            loadRequest.callback = std::bind(&ModelLoader::HandleDiscoverModelCallback, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-
-            for (u32 i = range.start; i < range.end; i++)
-            {
-                const fs::path& path = paths[i];
-                
-                if (!path.has_extension() || path.extension().compare(fileExtension) != 0)
-                    continue;
-
-                std::string pathStr = path.string();
-                std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
-                loadRequest.path = std::move(pathStr);
-
-                std::string modelPath = loadRequest.path.substr(subStrIndex);
-                loadRequest.userdata = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
-
-                ioLoader->RequestLoad(loadRequest);
-                numDiscoveredModelsToLoad++;
-            }
-
-            _numDiscoveredModelsToLoad += numDiscoveredModelsToLoad;
-        });
-
-        // Execute the multithreaded job
-        taskScheduler->AddTaskSetToPipe(&discoverModelsTask);
-        taskScheduler->WaitforTask(&discoverModelsTask);
-    }
+    ZoneScoped;
 }
 
 void ModelLoader::Clear()
@@ -207,7 +151,7 @@ void ModelLoader::Clear()
     _lightRenderer->Clear();
 
     auto& tSystem = ECS::TransformSystem::Get(*registry);
-    tSystem.ProcessMovedEntities([](entt::entity entity) { });
+    tSystem.ProcessMovedEntities([](entt::entity entity) {});
 
     registry->destroy(_createdEntities.begin(), _createdEntities.end());
     _createdEntities.clear();
@@ -216,128 +160,16 @@ void ModelLoader::Clear()
 void ModelLoader::Update(f32 deltaTime)
 {
     ZoneScopedN("ModelLoader::Update");
-    
-    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
-    u32 numPendingWorkRequests = static_cast<u32>(_discoveredModelPendingWorkRequests.size_approx());
 
-    if (numPendingWorkRequests > 0)
-    {
-        ZoneScopedN("Discover Models");
-        u32 maxModelDiscoveryThisTick = glm::min(numPendingWorkRequests, 50u);
-
-        std::atomic<u32> numModelsDiscoveredThisTick = 0;
-        enki::TaskSet loadDiscoveredModelTask(maxModelDiscoveryThisTick, [&](enki::TaskSetPartition range, uint32_t threadNum)
-        {
-            ZoneScopedN("Discover Task");
-            u32 numRequestsCompleted = 0;
-
-            fs::path absolutePath = std::filesystem::absolute(complexModelPath).make_preferred();
-
-            WorkRequest workRequest;
-            for (u32 i = range.start; i < range.end; i++)
-            //for (u32 i = 0; i < maxModelDiscoveryThisTick; i++)
-            {
-                if (!_discoveredModelPendingWorkRequests.try_dequeue(workRequest))
-                    break;
-
-                ZoneScopedN("Discover Work");
-                numRequestsCompleted++;
-
-                size_t fileSize = workRequest.data->writtenData;
-                constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
-                
-                if (fileSize < HEADER_SIZE)
-                {
-                    NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", workRequest.path);
-
-                    std::scoped_lock lock(_modelHashMutex);
-                    _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
-
-                    continue;
-                }
-                
-                // Extract the Model from the file and store it as a DiscoveredModel
-                fs::path modelPath = std::move(workRequest.path);
-                fs::path relativePath = fs::relative(modelPath, absolutePath);
-                std::string pathStr = relativePath.string();
-                std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
-
-                DiscoveredModel discoveredModel =
-                {
-                    .name = std::move(pathStr),
-                    .modelHash = workRequest.modelHash,
-                    .hasShape = false,
-                    .model = nullptr
-                };
-
-                {
-                    ZoneScopedN("Read Model");
-
-                    Model::ComplexModel* model = new Model::ComplexModel();
-                    if (!Model::ComplexModel::Read(workRequest.data, *model))
-                    {
-                        NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", discoveredModel.name);
-                        delete model;
-
-                        std::scoped_lock lock(_modelHashMutex);
-                        _modelHashToLoadState[workRequest.modelHash] = LoadState::Failed;
-
-                        continue;
-                    }
-
-                    discoveredModel.model = model;
-                    _discoveredModels.enqueue(discoveredModel);
-                }
-            }
-
-            numModelsDiscoveredThisTick += numRequestsCompleted;
-        });
-        
-        taskScheduler->AddTaskSetToPipe(&loadDiscoveredModelTask);
-        taskScheduler->WaitforTask(&loadDiscoveredModelTask);
-
-        _numDiscoveredModelsLoaded += numModelsDiscoveredThisTick;
-        _modelHashToLoadState.reserve(_modelHashToLoadState.size() + numModelsDiscoveredThisTick);
-        _modelHashToLoadingMutex.reserve(_modelHashToLoadingMutex.size() + numModelsDiscoveredThisTick);
-        _modelHashToDiscoveredModel.reserve(_modelHashToDiscoveredModel.size() + numModelsDiscoveredThisTick);
-
-        {
-            ZoneScopedN("Process Discovered Models");
-
-            DiscoveredModel discoveredModel;
-            while (_discoveredModels.try_dequeue(discoveredModel))
-            {
-                if (_modelHashToDiscoveredModel.contains(discoveredModel.modelHash))
-                {
-                    const DiscoveredModel& existingDiscoveredModel = _modelHashToDiscoveredModel[discoveredModel.modelHash];
-                    NC_LOG_ERROR("ModelLoader : Found duplicate model hash ({0}) for Paths (\"{1}\") - (\"{2}\")", discoveredModel.modelHash, existingDiscoveredModel.name, discoveredModel.name);
-                }
-
-                _modelHashToLoadState[discoveredModel.modelHash] = LoadState::NotLoaded;
-                _modelHashToLoadingMutex[discoveredModel.modelHash] = new std::mutex();
-                _modelHashToDiscoveredModel[discoveredModel.modelHash] = std::move(discoveredModel);
-            }
-        }
-    }
-
-    // Ensure All Discovered Models are loaded before we proceed
-    if (_numDiscoveredModelsLoaded < _numDiscoveredModelsToLoad)
-        return;
-
-    bool discoveredModelsComplete = _discoveredModelsComplete;
-    if (!discoveredModelsComplete)
-    {
-        ECS::Util::EventUtil::PushEvent(ECS::Components::DiscoveredModelsCompleteEvent{});
-        _discoveredModelsComplete = true;
-    }
-    
     if (_terrainLoader->IsLoading())
         return;
 
+    enki::TaskScheduler* taskScheduler = ServiceLocator::GetTaskScheduler();
     u32 numTerrainLoadRequests = static_cast<u32>(_pendingTerrainLoadRequests.size_approx());
     moodycamel::ConcurrentQueue<LoadRequestInternal>* workQueue = numTerrainLoadRequests > 0 ? &_pendingTerrainLoadRequests : &_pendingLoadRequests;
+    const u32 maxLoadsThisFrame = _terrainLoading ? MAX_MAP_LOADS_PER_FRAME : MAX_GAMEPLAY_LOADS_PER_FRAME;
 
-    u32 numDequeuedLoadRequests = static_cast<u32>(workQueue->try_dequeue_bulk(_pendingLoadRequestsVector.data(), MAX_PENDING_LOADS_PER_FRAME));
+    u32 numDequeuedLoadRequests = static_cast<u32>(workQueue->try_dequeue_bulk(_pendingLoadRequestsVector.data(), maxLoadsThisFrame));
     if (numDequeuedLoadRequests > 0)
     {
         if (numTerrainLoadRequests > 0)
@@ -353,20 +185,73 @@ void ModelLoader::Update(f32 deltaTime)
             {
                 const LoadRequestInternal& loadRequest = _pendingLoadRequestsVector[i];
                 if (!_modelHashToDiscoveredModel.contains(loadRequest.modelHash))
-                    continue;
+                {
+                    auto* pactStorage = ServiceLocator::GetPactStorage();
 
-                DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
-                bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
+                    PACT::PactFileHandle fileHandle;
+                    if (pactStorage->ReadFile(loadRequest.modelHash, fileHandle) != PACT::PactReadResult::Success)
+                        continue;
 
-                reserveInfo.numModels += 1 * isSupported;
-                reserveInfo.numVertices += discoveredModel.model->modelHeader.numVertices * isSupported;
-                reserveInfo.numIndices += discoveredModel.model->modelHeader.numIndices * isSupported;
-                reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * isSupported;
-                reserveInfo.numDecorationSets += discoveredModel.model->modelHeader.numDecorationSets * isSupported;
-                reserveInfo.numDecorations += discoveredModel.model->modelHeader.numDecorations * isSupported;
+                    const std::string* modelPath = pactStorage->GetFilePath(loadRequest.modelHash);
 
-                reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
-                reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                    size_t fileSize = fileHandle.GetSize();
+                    constexpr u32 HEADER_SIZE = sizeof(FileHeader) + sizeof(Model::ComplexModel::ModelHeader);
+
+                    if (fileSize < HEADER_SIZE)
+                    {
+                        NC_LOG_ERROR("ModelLoader : Tried to open model file ({0}) but it was smaller than sizeof(FileHeader) + sizeof(ModelHeader)", *modelPath);
+
+                        std::scoped_lock lock(_modelHashMutex);
+                        _modelHashToLoadState[loadRequest.modelHash] = LoadState::Failed;
+
+                        continue;
+                    }
+
+                    DiscoveredModel newDiscoveredModel =
+                    {
+                        .name = *modelPath,
+                        .modelHash = loadRequest.modelHash,
+                        .hasShape = false,
+                        .model = nullptr
+                    };
+
+                    {
+                        ZoneScopedN("Read Model");
+
+                        Model::ComplexModel* model = new Model::ComplexModel();
+                        std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
+                        buffer->writtenData = fileHandle.GetSize();
+
+                        if (!Model::ComplexModel::Read(buffer, *model))
+                        {
+                            NC_LOG_ERROR("ModelLoader : Failed to read the Model for file ({0})", newDiscoveredModel.name);
+                            delete model;
+
+                            std::scoped_lock lock(_modelHashMutex);
+                            _modelHashToLoadState[loadRequest.modelHash] = LoadState::Failed;
+
+                            continue;
+                        }
+
+                        newDiscoveredModel.model = model;
+                        _modelHashToLoadState[newDiscoveredModel.modelHash] = LoadState::NotLoaded;
+                        _modelHashToLoadingMutex[newDiscoveredModel.modelHash] = new std::mutex();
+                        _modelHashToDiscoveredModel[newDiscoveredModel.modelHash] = std::move(newDiscoveredModel);
+                    }
+
+                    DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[loadRequest.modelHash];
+                    bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
+
+                    reserveInfo.numModels += 1 * isSupported;
+                    reserveInfo.numVertices += discoveredModel.model->modelHeader.numVertices * isSupported;
+                    reserveInfo.numIndices += discoveredModel.model->modelHeader.numIndices * isSupported;
+                    reserveInfo.numTextureUnits += discoveredModel.model->modelHeader.numTextureUnits * isSupported;
+                    reserveInfo.numDecorationSets += discoveredModel.model->modelHeader.numDecorationSets * isSupported;
+                    reserveInfo.numDecorations += discoveredModel.model->modelHeader.numDecorations * isSupported;
+
+                    reserveInfo.numOpaqueDrawcalls += discoveredModel.model->modelHeader.numOpaqueRenderBatches * isSupported;
+                    reserveInfo.numTransparentDrawcalls += discoveredModel.model->modelHeader.numTransparentRenderBatches * isSupported;
+                }
             }
         }
 
@@ -431,7 +316,7 @@ void ModelLoader::Update(f32 deltaTime)
         //taskScheduler->WaitforTask(&loadModelsTask);
     }
 
-    u32 numDequeuedInternalRequests = static_cast<u32>(_internalLoadRequests.try_dequeue_bulk(_internalLoadRequestsVector.data(), MAX_INTERNAL_LOADS_PER_FRAME));
+    u32 numDequeuedInternalRequests = static_cast<u32>(_internalLoadRequests.try_dequeue_bulk(_internalLoadRequestsVector.data(), maxLoadsThisFrame));
     if (numDequeuedInternalRequests > 0)
     {
         ZoneScopedN("Pending Load Instance Requests");
@@ -446,7 +331,7 @@ void ModelLoader::Update(f32 deltaTime)
                 ZoneScopedN("Reserve Info Work");
                 const LoadRequestInternal& loadRequest = _internalLoadRequestsVector[i];
 
-                u32 modelHash = loadRequest.modelHash;
+                u64 modelHash = loadRequest.modelHash;
                 const DiscoveredModel& discoveredModel = _modelHashToDiscoveredModel[modelHash];
                 bool isSupported = discoveredModel.model->modelHeader.numVertices > 0;
                 bool hasDisplayID = loadRequest.type == LoadRequestType::DisplayID;
@@ -550,7 +435,7 @@ void ModelLoader::Update(f32 deltaTime)
                     }
                 }
             }
-                
+
             //});
 
             //taskScheduler->AddTaskSetToPipe(&loadModelInstancesTask);
@@ -564,7 +449,7 @@ void ModelLoader::Update(f32 deltaTime)
             _createdEntities.resize(createdEntitiesOffset + numCreated);
         }
     }
-    
+
     size_t unloadRequests = _unloadRequests.size_approx();
     if (unloadRequests)
     {
@@ -591,7 +476,7 @@ void ModelLoader::Update(f32 deltaTime)
                 }
 
                 JPH::BodyID bodyID = static_cast<JPH::BodyID>(_instanceIDToBodyID[unloadRequest.instanceID]);
-                
+
                 bodyInterface.RemoveBody(bodyID);
                 bodyInterface.DestroyBody(bodyID);
 
@@ -630,7 +515,7 @@ void ModelLoader::Update(f32 deltaTime)
                 model.flags.loaded = false;
 
                 rollback = loadRequest.extraData2 != std::numeric_limits<u64>().max();
-                model.modelHash = static_cast<u32>(loadRequest.extraData2);
+                model.modelHash = loadRequest.extraData2;
             }
 
             ECS::Components::ModelLoadedEvent modelLoadedEvent = {};
@@ -641,13 +526,17 @@ void ModelLoader::Update(f32 deltaTime)
             ECS::Util::EventUtil::PushEventTo(*registry, loadRequest.entity, std::move(modelLoadedEvent));
         }
     }
-    
+
 
     if (_terrainLoading && _numTerrainModelsLoaded == _numTerrainModelsToLoad)
     {
         SetTerrainLoading(false);
 
         u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+        joltState.LogPhysicsTelemetrySummary("Map Loaded");
+
         ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
     }
 }
@@ -724,11 +613,12 @@ void ModelLoader::LoadDecoration(u32 instanceID, const Model::ComplexModel::Deco
     _pendingTerrainLoadRequests.enqueue(loadRequest);
 }
 
-bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u32 modelNameHash)
+bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model& model, u64 modelNameHash)
 {
     ZoneScopedN("ModelLoader::LoadModelForEntity");
 
-    if (!_modelHashToDiscoveredModel.contains(modelNameHash))
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+    if (!pactStorage->FileExists(modelNameHash))
         return false;
 
     LoadRequestInternal loadRequest;
@@ -745,7 +635,7 @@ bool ModelLoader::LoadModelForEntity(entt::entity entity, ECS::Components::Model
     return true;
 }
 
-bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u32 modelHash, u8 modelVariant)
+bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::Model& model, Database::Unit::DisplayInfoType displayInfoType, u32 displayID, u64 modelHash, u8 modelVariant)
 {
     ZoneScopedN("ModelLoader::LoadDisplayIDForEntity");
 
@@ -757,7 +647,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
     u32 extendedDisplayInfoID = 0;
     bool isDynamicModel = false;
 
-    if (modelHash == std::numeric_limits<u32>().max())
+    if (modelHash == std::numeric_limits<u64>().max())
     {
         switch (displayInfoType)
         {
@@ -794,7 +684,7 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
                     return false;
 
                 const auto& itemDisplayInfo = itemDisplayInfoStorage->Get<MetaGen::Shared::ClientDB::ItemDisplayInfoRecord>(displayID);
-                u32 itemModelHash = std::numeric_limits<u32>().max();
+                u64 itemModelHash = std::numeric_limits<u64>().max();
                 u32 modelResourcesID = itemDisplayInfo.modelResourcesID[0];
 
                 // TODO : This is a hack to bypass a lookup table for now. A lookup table is needed so that we can go from modelResourcesID -> List<ModelFileData>
@@ -815,7 +705,8 @@ bool ModelLoader::LoadDisplayIDForEntity(entt::entity entity, ECS::Components::M
         }
     }
 
-    if (!_modelHashToDiscoveredModel.contains(modelHash))
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+    if (!pactStorage->FileExists(modelHash))
         return false;
 
     LoadRequestInternal loadRequest;
@@ -848,7 +739,7 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
     };
 
     model.flags.loaded = false;
-    model.modelHash = std::numeric_limits<u32>().max();
+    model.modelHash = std::numeric_limits<u64>().max();
 
     _unloadRequests.enqueue(unloadRequest);
 }
@@ -1031,7 +922,7 @@ void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Re
     _modelRenderer->RequestChangeHairTexture(model.instanceID, textureID);
 }
 
-const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
+const Model::ComplexModel* ModelLoader::GetModelInfo(u64 modelHash)
 {
     ZoneScopedN("ModelLoader::GetModelInfo");
 
@@ -1042,12 +933,11 @@ const Model::ComplexModel* ModelLoader::GetModelInfo(u32 modelHash)
     return discoveredModel.model;
 }
 
-u32 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
+u64 ModelLoader::GetModelHashFromModelPath(const std::string& modelPath)
 {
     ZoneScopedN("ModelLoader::GetModelHashFromModelPath");
 
-    u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
-    return modelHash;
+    return Util::AssetPath::Hash(modelPath);
 }
 
 bool ModelLoader::GetModelIDFromInstanceID(u32 instanceID, u32& modelID)
@@ -1083,13 +973,13 @@ bool ModelLoader::GetBodyIDFromInstanceID(u32 instanceID, u32& bodyID)
     return true;
 }
 
-bool ModelLoader::ContainsDiscoveredModel(u32 modelHash)
+bool ModelLoader::ContainsDiscoveredModel(u64 modelHash)
 {
     ZoneScopedN("ModelLoader::ContainsDiscoveredModel");
     return _modelHashToDiscoveredModel.contains(modelHash);
 }
 
-ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u32 modelHash)
+ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u64 modelHash)
 {
     ZoneScopedN("ModelLoader::GetDiscoveredModel");
 
@@ -1097,7 +987,7 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModel(u32 modelHash)
     {
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelHash {0}", modelHash);
     }
-    
+
     return _modelHashToDiscoveredModel[modelHash];
 }
 
@@ -1110,7 +1000,7 @@ ModelLoader::DiscoveredModel& ModelLoader::GetDiscoveredModelFromModelID(u32 mod
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelID {0}", modelID);
     }
 
-    u32 modelHash = _modelIDToModelHash[modelID];
+    u64 modelHash = _modelIDToModelHash[modelID];
     if (!_modelHashToDiscoveredModel.contains(modelHash))
     {
         NC_LOG_CRITICAL("ModelLoader : Tried to access DiscoveredModel of invalid ModelHash {0}", modelHash);
@@ -1227,7 +1117,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
     if (discoveredModel.hasShape)
     {
         i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-    
+
         if (physicsEnabled)
         {
             ZoneScopedN("Add Physics Shape");
@@ -1235,24 +1125,25 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
             JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-    
+
             const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
-    
+
             // TODO: We need to scale the shape
-    
+
             auto& transform = registry->get<ECS::Components::Transform>(entityID);
             vec3 position = transform.GetWorldPosition();
             const quat& rotation = transform.GetWorldRotation();
-    
+
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
             JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3::sReplicate(request.scale)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Static, Jolt::Layers::NON_MOVING);
-    
+
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::StaticPlacement, body != nullptr);
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-    
+
                 // Store the entity ID in the body so we can look it up later
                 body->SetUserData(static_cast<JPH::uint64>(entityID));
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
@@ -1354,7 +1245,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
             const quat& rotation = transform.GetWorldRotation();
 
             // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3(2.0f, 1.0f, 0.5f)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Kinematic, Jolt::Layers::NON_MOVING);
+            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3(2.0f, 1.0f, 0.5f)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Kinematic, Jolt::Layers::MOVING);
             bodySettings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
             bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
             bodySettings.mMassPropertiesOverride.mMass = 1000.0f;
@@ -1362,6 +1253,7 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::DynamicInstance, body != nullptr);
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
@@ -1390,24 +1282,4 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
     {
         _modelRenderer->AddAnimationInstance(instanceID);
     }
-}
-
-void ModelLoader::HandleDiscoverModelCallback(bool result, std::shared_ptr<Bytebuffer> buffer, const std::string& path, u64 userdata)
-{
-    ZoneScopedN("ModelLoader::HandleDiscoverModelCallback");
-
-    if (!result)
-    {
-        NC_LOG_WARNING("ModelLoader : Failed to Load ({0})", path);
-        return;
-    }
-
-    WorkRequest workRequest =
-    {
-        .path = path,
-        .modelHash = static_cast<u32>(userdata),
-        .data = std::move(buffer)
-    };
-
-    _discoveredModelPendingWorkRequests.enqueue(workRequest);
 }

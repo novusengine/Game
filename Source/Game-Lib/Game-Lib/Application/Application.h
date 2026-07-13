@@ -6,12 +6,14 @@
 
 #include <json/json.hpp>
 
+#include <atomic>
+
+
 namespace Editor
 {
     class EditorHandler;
 }
 class InputManager;
-class IOLoader;
 class GameRenderer;
 class ModelLoader;
 
@@ -27,6 +29,10 @@ namespace Scripting
 {
     class LuaManager;
 }
+namespace Util
+{
+    class AssetWriter;
+}
 
 class Application
 {
@@ -36,6 +42,7 @@ public:
 
     void Start(bool startInSeparateThread);
     void Stop();
+    void RequestExit();
 
     void PassMessage(MessageInbound& message);
     bool TryGetMessageOutbound(MessageOutbound& message);
@@ -45,7 +52,6 @@ public:
 
 private:
     void Run();
-    void IOLoadThread();
 
     bool Init();
     bool Render(f32 deltaTime, f32& timeSpentWaiting);
@@ -56,7 +62,8 @@ private:
     void Cleanup();
 
 private:
-    bool _isRunning = false;
+    std::atomic_bool _isRunning = false;
+    std::atomic_bool _exitRequested = false;
 
     InputManager* _inputManager = nullptr;
     GameRenderer* _gameRenderer = nullptr;
@@ -68,6 +75,7 @@ private:
 
     ECS::Scheduler* _ecsScheduler = nullptr;
     Scripting::LuaManager* _luaManager = nullptr;
+    Util::AssetWriter* _assetWriter = nullptr;
 
     nlohmann::json _cvarJson;
 

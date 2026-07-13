@@ -41,8 +41,8 @@ namespace Editor
         EditMode _editMode = EditMode::None;
         bool _editWindowOpen = false;
 
-        u32 _selectedDBHash = 0;
-        u32 _previousSelectedDBHash = 0;
+        u64 _selectedDBHash = 0;
+        u64 _previousSelectedDBHash = 0;
 
         std::string _newDatabaseName = "";
         std::vector<ClientDB::FieldInfo> _newDatabaseFields;

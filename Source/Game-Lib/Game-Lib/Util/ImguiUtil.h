@@ -43,6 +43,8 @@ namespace Util
         // Int types
         bool Inspect(const char* name, i32& value, f32 speed);
         bool Inspect(const char* name, const i32& value, f32 speed);
+        bool Inspect(const char* name, i64& value, f32 speed);
+        bool Inspect(const char* name, const i64& value, f32 speed);
         bool Inspect(const char* name, ivec2& value, f32 speed);
         bool Inspect(const char* name, const ivec2& value, f32 speed);
         bool Inspect(const char* name, ivec3& value, f32 speed);
@@ -53,6 +55,8 @@ namespace Util
         // Unsigned int types
         bool Inspect(const char* name, u32& value, f32 speed);
         bool Inspect(const char* name, const u32& value, f32 speed);
+        bool Inspect(const char* name, u64& value, f32 speed);
+        bool Inspect(const char* name, const u64& value, f32 speed);
         bool Inspect(const char* name, uvec2& value, f32 speed);
         bool Inspect(const char* name, const uvec2& value, f32 speed);
         bool Inspect(const char* name, uvec3& value, f32 speed);

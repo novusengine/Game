@@ -6,7 +6,7 @@ local UIStack = require("@src/API/UI/UIStack")
 local function RegisterTemplates()
     UI.RegisterPanelTemplate("LoginBackgroundPanel",
     {
-        background = "Data/Texture/interface/glues/models/ui_mainmenu_lowbandwidth/ui_mainmenu_pandaria_low_01.dds",
+        background = "texture/interface/glues/models/ui_mainmenu_lowbandwidth/ui_mainmenu_pandaria_low_01.dds",
     });
 
     UI.RegisterTextTemplate("LoginText",
@@ -166,6 +166,9 @@ local function CreateLoginScreen(stack)
     });
     quitButton:SetAnchor(1.0, 0.0);
     quitButton:SetRelativePoint(1.0, 0.0);
+    quitButton:SetOnMouseUp(function(eventID, widget, ...)
+        ExitGame();
+    end)
 
     -- Login handlers
     accountNameInputBox:SetOnSubmit(function(table)

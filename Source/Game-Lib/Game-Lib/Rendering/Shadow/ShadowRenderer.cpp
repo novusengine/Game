@@ -39,6 +39,7 @@ ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
 {
+    ZoneScoped;
     CreatePermanentResources(resources);
 }
 
@@ -134,6 +135,8 @@ void ShadowRenderer::AddShadowPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
 {
+    ZoneScoped;
+
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.enabled = true;
     samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;

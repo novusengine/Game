@@ -50,9 +50,23 @@ VertexOutput main(VertexInput input)
 
         // 3D-anchored: transform the world position to clip space (camera-projected).
         float4 clipPos = mul(float4(worldPos, 1.0), _cameras[0].worldToClip);
-        clipPos.xyz /= clipPos.w; // Perform perspective division.
+        if (clipPos.w <= 0.0f)
+        {
+            // Keep world widgets behind the camera outside the clip volume without CPU visibility churn.
+            finalPos = float4(2.0, 2.0, 0.0, 1.0);
+        }
+        else
+        {
+            clipPos.xyz /= clipPos.w; // Perform perspective division.
 
-        finalPos = float4(clipPos.xy + position, 0.0, 1.0);
+            // World names are authored in screen space, so distance does not otherwise affect their
+            // apparent size. Scale them down explicitly to keep distant units from dominating the view.
+            float distanceToCamera = length(worldPos - _cameras[0].eyePosition.xyz);
+            float distanceFactor = smoothstep(15.0f, 140.0f, distanceToCamera);
+            float screenScale = lerp(1.0f, 0.30f, distanceFactor);
+
+            finalPos = float4(clipPos.xy + (position * screenScale), 0.0, 1.0);
+        }
     }
     else
     {

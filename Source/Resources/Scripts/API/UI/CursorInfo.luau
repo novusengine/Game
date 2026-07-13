@@ -36,7 +36,7 @@ local function SetItem(cursorInfoModule : CursorInfoModule, itemID : number)
 
     local itemTemplate = Item.GetItemInfo(itemID)
 
-    local defaultIcon = { texture = "Data/Texture/interface/icons/inv_misc_questionmark.dds" }
+    local defaultIcon = { texture = "texture/interface/icons/inv_misc_questionmark.dds" }
     local itemIcon = if itemTemplate then Item.GetIconInfo(itemTemplate.IconID) else defaultIcon
 
     cursorInfoModule.cursorPanel:SetBackground(itemIcon.Texture)
@@ -111,16 +111,11 @@ function cursorInfoAPI.ClearHand(self : CursorInfoModule)
 end
 
 cursorInfoAPI.cursorPanel:SetEnabled(false)
+-- This panel is a visual overlay on the cursor canvas. It must never take part
+-- in hit testing, otherwise it consumes the click intended for the destination
+-- item slot and clears the held item before the slot can commit the swap.
+cursorInfoAPI.cursorPanel:SetInteractable(false)
 cursorInfoAPI.cursorPanel:SetAnchor(0.0, 0.0)
 cursorInfoAPI.cursorPanel:SetRelativePoint(0.05, 0.95)
-cursorInfoAPI.cursorPanel:SetOnMouseUp(function(event, widget)
-    if cursorInfoAPI:HasItemInHand() then
-        local itemID = cursorInfoAPI.cursorInfo.itemSlot.itemID
-        cursorInfoAPI.cursorInfo.itemSlot:SetItem(itemID) -- Used to clear the foreground
-    end
-
-    cursorInfoAPI:ClearHand()
-    SetCursor("point")
-end)
 
 return cursorInfoAPI

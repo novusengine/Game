@@ -63,8 +63,11 @@ public:
 
     void ReloadShaders(bool forceRecompileAll);
 
-    bool AddCursor(u32 nameHash, const std::string& path);
-    bool SetCursor(u32 nameHash, u32 imguiMouseCursor = 0);
+    bool AddCursor(u64 nameHash, u64 pathHash);
+    bool SetCursor(u64 nameHash, u32 imguiMouseCursor = 0);
+    void HandleCursorPosition(f64 x, f64 y);
+    void RestoreCursorPosition(const vec2& position);
+    void CancelCursorRestore();
 
     Renderer::Renderer* GetRenderer() { return _renderer; }
 
@@ -127,6 +130,9 @@ private:
 
     u8 _frameIndex = 0;
     vec2 _lastWindowSize = vec2(1, 1);
+    vec2 _cursorRestorePosition = vec2(0.0f);
+    f64 _cursorRestoreDeadline = 0.0;
+    bool _cursorRestorePending = false;
     RenderResources _resources;
 
     Renderer::ComputePipelineID _allDescriptorSetComputePipeline;
@@ -162,7 +168,7 @@ private:
     std::vector<ImGuiTheme> _imguiThemes;
     robin_hood::unordered_map<u32, u32> _themeNameHashToIndex;
 
-    robin_hood::unordered_map<u32, Cursor> _nameHashToCursor;
+    robin_hood::unordered_map<u64, Cursor> _nameHashToCursor;
 
     robin_hood::unordered_map<u32, std::shared_ptr<Bytebuffer>> _shaderPackBuffers;
     robin_hood::unordered_map<u32, Renderer::ShaderEntry> _shaderNameHashToShaderEntry;

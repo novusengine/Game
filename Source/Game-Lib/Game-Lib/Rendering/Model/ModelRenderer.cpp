@@ -20,10 +20,13 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/Map/MapChunk.h>
+
+#include <Filesystem/PactStorage.h>
 
 #include <Input/InputManager.h>
 
@@ -59,6 +62,8 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
 {
+    ZoneScoped;
+
     CreatePermanentResources();
 
     if (CVAR_ModelValidateTransfers.Get())
@@ -126,27 +131,34 @@ void ModelRenderer::Update(f32 deltaTime)
     if (numTextureLoads > 0)
     {
         ZoneScopedN("Texture Load Requests");
-    
+
+        auto* pactStorage = ServiceLocator::GetPactStorage();
+
         auto& textureSingleton = dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
-    
-        Renderer::TextureDesc textureDesc;
-        textureDesc.path.reserve(128);
-    
+
+        //Renderer::TextureDesc textureDesc;
+        //textureDesc.path.reserve(128);
+
+        Renderer::DataTextureDesc textureDesc;
+
         {
             ZoneScopedN("Texture Loading");
-    
+
             for (u32 i = 0; i < numTextureLoads; i++)
             {
                 ZoneScopedN("Texture Load");
                 const TextureLoadRequest& textureLoad = _textureLoadWork[i];
                 TextureUnit& textureUnit = _textureUnits[textureLoad.textureUnitOffset];
     
-                if (!textureSingleton.textureHashToPath.contains(textureLoad.textureHash))
+                PACT::PactFileHandle fileHandle;
+                if (pactStorage->ReadFile(textureLoad.textureHash, fileHandle) != PACT::PactReadResult::Success)
                     continue;
+
+                textureDesc.hash = textureLoad.textureHash;
+                textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+                textureDesc.size = fileHandle.GetSize();
     
-                textureDesc.path = textureSingleton.textureHashToPath[textureLoad.textureHash];
-    
-                Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
+                Renderer::TextureID textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
                 NC_ASSERT(textureUnit.textureIds[textureLoad.textureIndex] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
     
                 _dirtyTextureUnitOffsets.insert(textureLoad.textureUnitOffset);
@@ -381,9 +393,32 @@ void ModelRenderer::Clear()
     while (_textureLoadRequests.try_dequeue(textureLoadRequest)) {}
     _dirtyTextureUnitOffsets.clear();
 
+    ChangeGroupRequest changeGroupRequest;
+    while (_changeGroupRequests.try_dequeue(changeGroupRequest)) {}
+
+    ChangeSkinTextureRequest changeSkinTextureRequest;
+    while (_changeSkinTextureRequests.try_dequeue(changeSkinTextureRequest)) {}
+
+    ChangeHairTextureRequest changeHairTextureRequest;
+    while (_changeHairTextureRequests.try_dequeue(changeHairTextureRequest)) {}
+
+    ChangeVisibilityRequest changeVisibilityRequest;
+    while (_changeVisibilityRequests.try_dequeue(changeVisibilityRequest)) {}
+
+    ChangeTransparencyRequest changeTransparencyRequest;
+    while (_changeTransparencyRequests.try_dequeue(changeTransparencyRequest)) {}
+
+    ChangeHighlightRequest changeHighlightRequest;
+    while (_changeHighlightRequests.try_dequeue(changeHighlightRequest)) {}
+
+    ChangeSkyboxRequest changeSkyboxRequest;
+    while (_changeSkyboxRequests.try_dequeue(changeSkyboxRequest)) {}
+
     _renderer->UnloadTexturesInArray(_textures, 1);
 
+    _instancesDirty = true;
     SyncToGPU();
+    _instancesDirty = false;
 }
 
 void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -1207,13 +1242,17 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 Renderer::TextureID ModelRenderer::LoadTexture(const std::string& path, u32& arrayIndex)
 {
     ZoneScopedN("ModelRenderer::LoadTexture");
-    
-    Renderer::TextureDesc textureDesc = 
-    {
-        .path = path,
-    };
 
-    return _renderer->LoadTextureIntoArray(textureDesc, _textures, arrayIndex);
+    u64 textureHash = Util::AssetPath::Hash(path);
+    PACT::PactFileHandle fileHandle;
+    if (ServiceLocator::GetPactStorage()->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+        return Renderer::TextureID::Invalid();
+
+    Renderer::DataTextureDesc textureDesc;
+    textureDesc.hash = textureHash;
+    textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+    textureDesc.size = fileHandle.GetSize();
+    return _renderer->LoadDataTextureIntoArray(textureDesc, _textures, arrayIndex);
 }
 
 u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
@@ -1373,7 +1412,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
                         continue;
 
                     const Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
-                    if (cTexture.type == Model::ComplexModel::Texture::Type::None && cTexture.textureHash != std::numeric_limits<u32>().max())
+                    if (cTexture.type == Model::ComplexModel::Texture::Type::None && cTexture.textureHash != std::numeric_limits<u64>().max())
                     {
                         TextureLoadRequest textureLoadRequest =
                         {
@@ -1500,7 +1539,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelOffsets.modelIndex;
 }
 
-u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u64 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet)
 {
     // Add Instance matrix
     mat4x4 rotationMatrix = glm::toMat4(rotation);
@@ -1752,6 +1791,19 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
     ECS::Components::UnitCustomization* unitCustomization = nullptr;
 
     ModelManifest& manifest = _modelManifests[modelID];
+    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
+    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
+    {
+        bool wasDynamicModel = instanceManifest.isDynamic;
+
+        // Remove old dynamic displayInfoManifest if it exists
+        if (wasDynamicModel)
+        {
+            std::scoped_lock lock(_displayInfoManifestsMutex);
+            if (_uniqueDisplayInfoManifests.contains(instanceManifest.displayInfoPacked))
+                _uniqueDisplayInfoManifests.erase(instanceManifest.displayInfoPacked);
+        }
+    }
 
     auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((displayInfoPacked >> 32) & 0x7);
     u32 displayID = displayInfoPacked & 0xFFFFFFFF;
@@ -1860,8 +1912,8 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
         if (creatureDisplayInfoExtra)
         {
-            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
-            isPrebaked = textureSingleton.textureHashToPath.contains(bakedTextureHash);
+            u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+            isPrebaked = ServiceLocator::GetPactStorage()->FileExists(bakedTextureHash);
             useCustomSkin = !isPrebaked;
 
             unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->raceID);
@@ -1938,7 +1990,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         continue;
 
                     Model::ComplexModel::Texture& cTexture = model->textures[textureIndex];
-                    u32 textureHash = cTexture.textureHash;
+                    u64 textureHash = cTexture.textureHash;
 
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                     {
@@ -1948,7 +2000,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (isPrebaked)
                         {
-                            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+                            u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
                             textureHash = bakedTextureHash;
                         }
                         else if (useCustomSkin)
@@ -1977,7 +2029,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                                 {
                                     if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
                                     {
-                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        const std::vector<u64>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
                                         textureHash = textureHashes[0];
                                     }
                                 }
@@ -1999,7 +2051,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                                 {
                                     if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
                                     {
-                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        const std::vector<u64>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
                                         textureHash = textureHashes[0];
                                     }
                                 }
@@ -2032,8 +2084,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[0];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin2)
@@ -2041,8 +2092,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[1];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin3)
@@ -2050,12 +2100,11 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[2];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
 
-                    if (textureHash != std::numeric_limits<u32>().max())
+                    if (textureHash != std::numeric_limits<u64>().max())
                     {
                         TextureLoadRequest textureLoadRequest =
                         {
@@ -2101,19 +2150,6 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
         displayInfoManifests->insert({ displayInfoKey, std::move(displayInfoManifest) });
     }
 
-    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
-    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
-    {
-        bool wasDynamicModel = (instanceManifest.displayInfoPacked >> 63) & 0x1;
-
-        // Remove old dynamic displayInfoManifest if it exists
-        if (wasDynamicModel)
-        {
-            std::scoped_lock lock(_displayInfoManifestsMutex);
-            if (_uniqueDisplayInfoManifests.contains(instanceManifest.displayInfoPacked))
-                _uniqueDisplayInfoManifests.erase(instanceManifest.displayInfoPacked);
-        }
-    }
     instanceManifest.displayInfoPacked = displayInfoKey;
     instanceManifest.isDynamic = isDynamicModel;
 }
@@ -2456,6 +2492,7 @@ bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 local
 void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
+
     CreateModelPipelines();
 
     RenderResources& resources = _gameRenderer->GetRenderResources();
@@ -2476,10 +2513,22 @@ void ModelRenderer::CreatePermanentResources()
     u32 arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
-    Renderer::TextureDesc debugTextureDesc;
-    debugTextureDesc.path = "Data/Texture/spells/frankcube.dds";
 
-    _renderer->LoadTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
+    u64 debugTextureHash = Util::AssetPath::Hash("texture/spells/frankcube.dds");
+    PACT::PactFileHandle fileHandle;
+    if (ServiceLocator::GetPactStorage()->ReadFile(debugTextureHash, fileHandle) == PACT::PactReadResult::Success)
+    {
+        Renderer::DataTextureDesc debugTextureDesc;
+        debugTextureDesc.hash = debugTextureHash;
+        debugTextureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+        debugTextureDesc.size = fileHandle.GetSize();
+
+        _renderer->LoadDataTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
+    }
+    else
+    {
+        NC_LOG_ERROR("[ModelRenderer] : Failed to load Debug Texture");
+    }
 
     _textureLoadWork.resize(256);
     _dirtyTextureUnitOffsets.reserve(256);
@@ -2504,6 +2553,8 @@ void ModelRenderer::CreatePermanentResources()
         samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+        //samplerDesc.minLOD = 0;
+        //samplerDesc.maxLOD = 0;
 
         Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
         _samplers.push_back(samplerID);

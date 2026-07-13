@@ -164,15 +164,16 @@ namespace ECS::Systems
         if (settings.captureMouseHasMoved)
         {
             vec2 deltaPosition = settings.prevMousePosition - position;
+            const f32 mouseSensitivity = ECS::Util::CameraUtil::GetMouseSensitivity();
 
-            camera.yaw += -deltaPosition.x * settings.mouseSensitivity;
+            camera.yaw += -deltaPosition.x * mouseSensitivity;
 
             if (camera.yaw > 360)
                 camera.yaw -= 360;
             else if (camera.yaw < 0)
                 camera.yaw += 360;
 
-            camera.pitch = Math::Clamp(camera.pitch - (deltaPosition.y * settings.mouseSensitivity), -89.0f, 89.0f);
+            camera.pitch = Math::Clamp(camera.pitch - (deltaPosition.y * mouseSensitivity), -89.0f, 89.0f);
             camera.dirtyView = true;
         }
         else

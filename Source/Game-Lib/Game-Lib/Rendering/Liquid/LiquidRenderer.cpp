@@ -6,10 +6,12 @@
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
+#include <Filesystem/PactStorage.h>
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
@@ -36,6 +38,8 @@ LiquidRenderer::LiquidRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _debugRenderer(debugRenderer)
     , _copyDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
+
     if (CVAR_LiquidValidateTransfers.Get())
     {
         _vertices.SetValidation(true);
@@ -504,6 +508,8 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
 
 void LiquidRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     CreatePipelines();
 
     CullingResourcesIndexed<DrawCallData>::InitParams initParams;
@@ -598,15 +604,21 @@ void LiquidRenderer::CreatePermanentResources()
         for (u32 i = 0; i < numFramesForBaseTexture; i++)
         {
             i32 length = StringUtils::FormatString(textureNameBuffer, 512, baseTexture.c_str(), i + 1);
-            std::string texturePath = "Data/Texture/" + std::string(textureNameBuffer, length);
+            std::string texturePath(textureNameBuffer, length);
+            u64 textureHash = Util::AssetPath::Hash(texturePath);
 
-            Renderer::TextureDesc textureDesc =
-            {
-                .path = std::move(texturePath)
-            };
+            auto* pactStorage = ServiceLocator::GetPactStorage();
+            PACT::PactFileHandle fileHandle;
+            if (pactStorage->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+                continue;
+
+            Renderer::DataTextureDesc textureDesc;
+            textureDesc.hash = textureHash;
+            textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+            textureDesc.size = fileHandle.GetSize();
 
             u32 index;
-            _renderer->LoadTextureIntoArray(textureDesc, _textures, index);
+            _renderer->LoadDataTextureIntoArray(textureDesc, _textures, index);
 
             if (i == 0)
                 baseTextureIndex = static_cast<u16>(index);

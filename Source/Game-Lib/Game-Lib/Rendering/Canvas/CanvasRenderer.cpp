@@ -18,6 +18,9 @@
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
+
+#include <Filesystem/PactStorage.h>
 
 #include <Scripting/Zenith.h>
 
@@ -30,6 +33,7 @@
 
 #include <entt/entt.hpp>
 #include <utfcpp/utf8.h>
+#include <xxhash/xxhash64.h>
 
 #include <algorithm>
 #include <cstring>
@@ -40,6 +44,44 @@ void CanvasRenderer::Clear()
 {
     _vertices.Clear();
     _widgetDrawDatas.Clear();
+    _widgetWorldPositions.Clear();
+    _widgetLocalMatrices.Clear();
+    _widgetParentSlots.Clear();
+    _widgetClipRects.Clear();
+    _widgetMaskInfo.Clear();
+
+    // Recreate the reserved index-zero entries expected by widget draw data.
+    _widgetWorldPositions.Add(vec4(0, 0, 0, 1));
+    _widgetLocalMatrices.Add(mat4x4(1.0f));
+    _widgetParentSlots.Add(std::numeric_limits<u32>().max());
+    _widgetClipRects.Add(vec4(0.0f, 0.0f, 1.0f, 1.0f));
+
+    hvec2 maskMin(0.0f, 0.0f);
+    hvec2 maskMax(1.0f, 1.0f);
+    u32 maskMinPacked = 0;
+    u32 maskMaxPacked = 0;
+    std::memcpy(&maskMinPacked, &maskMin, sizeof(u32));
+    std::memcpy(&maskMaxPacked, &maskMax, sizeof(u32));
+    _widgetMaskInfo.Add(uvec4(maskMinPacked, maskMaxPacked, 0u, 0u));
+
+    _mainBucket.drawCount = 0;
+    _mainBucket.slotOwners.clear();
+
+    for (auto& pair : _rtBuckets)
+    {
+        auto& bucket = pair.second;
+        if (bucket.finalSortedArgs != Renderer::BufferID::Invalid())
+            _renderer->QueueDestroyBuffer(bucket.finalSortedArgs);
+        if (bucket.finalCount != Renderer::BufferID::Invalid())
+            _renderer->QueueDestroyBuffer(bucket.finalCount);
+    }
+    _rtBuckets.clear();
+
+    _canvasOrderByEntity.clear();
+    _siblingScratch.clear();
+    _sortScratch.clear();
+    _uploadScratch.clear();
+
     _textureNameHashToIndex.clear();
     _textureIDToIndex.clear();
 
@@ -52,6 +94,7 @@ CanvasRenderer::CanvasRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _debugRenderer(debugRenderer)
     , _widgetDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -164,6 +207,15 @@ void CanvasRenderer::Update(f32 deltaTime)
             widget.gpuMatrixSlot = -1;
         }
 
+        // Descendants inherit their anchor index, but only the widget explicitly passed to SetPos3D
+        // owns it (and ignores its parent). Release the slot once when that root is destroyed.
+        auto& transform = uiRegistry->get<ECS::Components::Transform2D>(entity);
+        if (transform.GetIgnoreParent() && widget.worldTransformIndex != std::numeric_limits<u32>().max())
+        {
+            ReleaseWorldTransform(widget.worldTransformIndex);
+            widget.worldTransformIndex = std::numeric_limits<u32>().max();
+        }
+
         if (widget.scriptWidget != nullptr)
         {
             delete widget.scriptWidget;
@@ -181,7 +233,11 @@ void CanvasRenderer::Update(f32 deltaTime)
         transformSystem2D.IterateChildrenRecursiveBreadth(entity, [&](entt::entity childEntity)
         {
             auto& childWidget = uiRegistry->get<Widget>(childEntity);
-            childWidget.worldTransformIndex = widget.worldTransformIndex;
+            if (childWidget.worldTransformIndex != widget.worldTransformIndex)
+            {
+                childWidget.worldTransformIndex = widget.worldTransformIndex;
+                uiRegistry->emplace_or_replace<DirtyWidgetData>(childEntity);
+            }
         });
     });
     uiRegistry->clear<DirtyWidgetWorldTransformIndex>();
@@ -341,8 +397,12 @@ void CanvasRenderer::Update(f32 deltaTime)
             if (canvasComponent.renderTexture != Renderer::TextureID::Invalid())
                 canvasSize = uiRegistry->get<ECS::Components::Transform2D>(widget.scriptWidget->canvasEntity).GetSize();
 
+            // UpdateTextVertices may recalculate numCharsNonWhitespace and clear sizeChanged.
+            // Preserve the previous rendered state so UpdateTextData can detect bucket membership
+            // transitions such as an empty input field receiving its first visible character.
+            const bool wasDrawable = text.numCharsNonWhitespace > 0;
             UpdateTextVertices(widget, transform, text, textTemplate, canvasSize);
-            UpdateTextData(entity, text, textTemplate);
+            UpdateTextData(entity, text, textTemplate, wasDrawable);
         }
     });
 
@@ -670,6 +730,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
 
 void CanvasRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     CreatePipelines();
     InitDescriptorSets();
 
@@ -1100,12 +1162,10 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     _widgetDrawDatas.SetDirtyElement(panel.gpuDataIndex);
 }
 
-void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Components::UI::TextTemplate& textTemplate)
+void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Components::UI::TextTemplate& textTemplate, bool wasDrawable)
 {
     ZoneScoped;
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-
-    bool wasDrawable = text.numCharsNonWhitespace > 0;
 
     if (text.sizeChanged)
     {
@@ -1321,7 +1381,7 @@ u32 CanvasRenderer::LoadTextureByPath(std::string_view path)
 
 u32 CanvasRenderer::LoadTexture(std::string_view path)
 {
-    u32 textureNameHash = StringUtils::fnv1a_32(path.data(), path.size());
+    u64 textureNameHash = Util::AssetPath::Hash(path);
 
     if (_textureNameHashToIndex.contains(textureNameHash))
     {
@@ -1329,12 +1389,20 @@ u32 CanvasRenderer::LoadTexture(std::string_view path)
         return _textureNameHashToIndex[textureNameHash];
     }
 
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+
+    PACT::PactFileHandle fileHandle;
+    if (pactStorage->ReadFile(textureNameHash, fileHandle) != PACT::PactReadResult::Success)
+        return 0;
+
     // Load texture
-    Renderer::TextureDesc desc;
-    desc.path = path;
+    Renderer::DataTextureDesc textureDesc;
+    textureDesc.hash = textureNameHash;
+    textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+    textureDesc.size = fileHandle.GetSize();
 
     u32 textureIndex;
-    _renderer->LoadTextureIntoArray(desc, _textures, textureIndex);
+    _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureIndex);
 
     _textureNameHashToIndex[textureNameHash] = textureIndex;
     return textureIndex;

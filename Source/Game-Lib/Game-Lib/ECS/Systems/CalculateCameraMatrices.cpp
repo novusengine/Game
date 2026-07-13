@@ -12,8 +12,6 @@
 
 #include <MetaGen/Game/Lua/Lua.h>
 
-#include <Renderer/RenderSettings.h>
-
 #include <Scripting/LuaManager.h>
 
 #include <entt/entt.hpp>
@@ -52,7 +50,10 @@ namespace ECS::Systems
             }
 
             vec2 renderSize = gameRenderer->GetRenderer()->GetRenderSize();
-            camera.aspectRatio = static_cast<f32>(Renderer::Settings::SCREEN_WIDTH) / static_cast<f32>(Renderer::Settings::SCREEN_HEIGHT);
+            if (renderSize.x <= 0.0f || renderSize.y <= 0.0f)
+                return;
+
+            camera.aspectRatio = renderSize.x / renderSize.y;
 
             {
                 f32 fov = glm::radians(camera.fov) * 0.6f;

@@ -55,6 +55,7 @@ namespace Scripting::UI
         static i32 GetCanvas(Zenith* zenith);
         static i32 GetMousePos(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
+        static i32 IsSmoothUnitFrameBarsEnabled(Zenith* zenith);
 
         // Utils
         static i32 PixelsToTexCoord(Zenith* zenith);
@@ -108,6 +109,7 @@ namespace Scripting::UI
 
         // Utils
         { "GetTextureSize", UIHandler::GetTextureSize },
+        { "IsSmoothUnitFrameBarsEnabled", UIHandler::IsSmoothUnitFrameBarsEnabled },
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
         { "CalculateTextSize", UIHandler::CalculateTextSize },
         { "WrapText", UIHandler::WrapText },

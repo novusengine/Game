@@ -38,6 +38,7 @@ EffectRenderer::EffectRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -156,6 +157,7 @@ void EffectRenderer::AddSSAOPass(Renderer::RenderGraph* renderGraph, RenderResou
 
 void EffectRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
     /*_cacaoSettings = new FfxCacaoSettings();
     memcpy(_cacaoSettings, &FFX_CACAO_DEFAULT_SETTINGS, sizeof(FfxCacaoSettings));
     _cacaoSettings->generateNormals = false;*/

@@ -49,13 +49,13 @@ function templatesAPI.RegisterTemplates()
     -- Dialog Box
     UI.RegisterPanelTemplate("DialogBox",
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 0.0,
     });
 
     UI.RegisterPanelTemplate("DialogBoxRound",
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 2.0,
     });
 
@@ -65,7 +65,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DialogBoxHeader",
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-header.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-header.dds",
         cornerRadius = 0.0,
         texCoords = Box.new(headerMinX, headerMinY, headerMaxX, headerMaxY),
     });
@@ -89,7 +89,7 @@ function templatesAPI.RegisterTemplates()
     -- Button
     UI.RegisterPanelTemplate("DefaultButtonPanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-button-up.dds",
+        background = "texture/interface/buttons/ui-panel-button-up.dds",
         cornerRadius = 0.0,
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
@@ -102,17 +102,17 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultButtonDownPanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-button-down.dds",
+        background = "texture/interface/buttons/ui-panel-button-down.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultButtonHoveredPanel",
     {
-        foreground = "Data/Texture/interface/buttons/ui-panel-button-highlight.dds",
+        foreground = "texture/interface/buttons/ui-panel-button-highlight.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultButtonDisabledPanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
+        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
     UI.RegisterTextTemplate("DefaultDebugText",
@@ -148,7 +148,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultButtonMinimizePanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-up.dds",
+        background = "texture/interface/buttons/ui-panel-minimizebutton-up.dds",
         cornerRadius = 0.0,
         texCoords = Box.new(minimizeButtonMinX, minimizeButtonMinY, minimizeButtonMaxX, minimizeButtonMaxY),
 
@@ -160,17 +160,17 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultButtonMinimizeDownPanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-down.dds",
+        background = "texture/interface/buttons/ui-panel-minimizebutton-down.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultButtonMinimizeHoveredPanel",
     {
-        foreground = "Data/Texture/interface/buttons/ui-panel-minimizebutton-highlight.dds",
+        foreground = "texture/interface/buttons/ui-panel-minimizebutton-highlight.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel",
     {
-        background = "Data/Texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
+        background = "texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
     });
 
     -- Slider
@@ -182,14 +182,14 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultSliderBackground",
     {
-        background = "Data/Texture/interface/buttons/ui-quickslot.dds",
+        background = "texture/interface/buttons/ui-quickslot.dds",
         texCoords = Box.new(sliderMinX, sliderMinY, sliderMaxX, sliderMaxY),
         nineSliceCoords = Box.new(sliderNineSliceMinX, sliderNineSliceMinY, sliderNineSliceMaxX, sliderNineSliceMaxY),
     });
 
     UI.RegisterPanelTemplate("DefaultSliderFill",
     {
-        background = "Data/Texture/interface/buttons/bluegrad64_faded.dds",
+        background = "texture/interface/buttons/bluegrad64_faded.dds",
         cornerRadius = 2.0,
     });
 
@@ -202,14 +202,14 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultCheckboxBackground",
     {
-        background = "Data/Texture/interface/common/common-checkbox-background.dds",
+        background = "texture/interface/common/common-checkbox-background.dds",
         texCoords = Box.new(checkboxMinX, checkboxMinY, checkboxMaxX, checkboxMaxY),
         nineSliceCoords = Box.new(checkboxNineSliceMinX, checkboxSliceMinY, checkboxNineSliceMaxX, checkboxSliceMaxY),
     });
 
     UI.RegisterPanelTemplate("DefaultCheckboxFill",
     {
-        background = "Data/Texture/interface/buttons/ui-checkbox-check.dds",
+        background = "texture/interface/buttons/ui-checkbox-check.dds",
         cornerRadius = 2.0,
 
         onUninteractableTemplate = "DefaultCheckboxDisabledFill",
@@ -217,18 +217,18 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultCheckboxHoveredPanel",
     {
-        foreground = "Data/Texture/interface/buttons/checkbuttonhilight.dds",
+        foreground = "texture/interface/buttons/checkbuttonhilight.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultCheckboxDisabledFill",
     {
-        background = "Data/Texture/interface/buttons/ui-checkbox-check-disabled.dds",
+        background = "texture/interface/buttons/ui-checkbox-check-disabled.dds",
     });
 
     -- ComboBox
     UI.RegisterPanelTemplate("DefaultComboBoxPanel", 
     {
-        background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
+        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
         nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
     
@@ -237,7 +237,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultComboBoxHoveredPanel", 
     {
-        background = "Data/Texture/interface/buttons/ui-panel-button-disabled.dds",
+        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
     });
 
     local comboBoxIconMinX, comboBoxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
@@ -245,7 +245,7 @@ function templatesAPI.RegisterTemplates()
     
     UI.RegisterPanelTemplate("DefaultComboBoxPrevPanel", 
     {
-        background = "Data/Texture/interface/glues/common/glue-leftarrow-button-up.dds",
+        background = "texture/interface/glues/common/glue-leftarrow-button-up.dds",
         texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
 
         onClickTemplate = "DefaultComboBoxPrevDownPanel",
@@ -255,12 +255,12 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultComboBoxPrevDownPanel", 
     {
-        background = "Data/Texture/interface/glues/common/glue-leftarrow-button-down.dds",
+        background = "texture/interface/glues/common/glue-leftarrow-button-down.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultComboBoxPrevHoveredPanel", 
     {
-        foreground = "Data/Texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
+        foreground = "texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultComboBoxDisabledPanel", 
@@ -270,7 +270,7 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultComboBoxNextPanel", 
     {
-        background = "Data/Texture/interface/glues/common/glue-rightarrow-button-up.dds",
+        background = "texture/interface/glues/common/glue-rightarrow-button-up.dds",
         texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
 
         onClickTemplate = "DefaultComboBoxNextDownPanel",
@@ -280,33 +280,33 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultComboBoxNextDownPanel", 
     {
-        background = "Data/Texture/interface/glues/common/glue-rightarrow-button-down.dds",
+        background = "texture/interface/glues/common/glue-rightarrow-button-down.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultComboBoxNextHoveredPanel", 
     {
-        foreground = "Data/Texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
+        foreground = "texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
     });
 
     -- Loading Screen
     UI.RegisterPanelTemplate("DefaultLoadingScreen",
     {
-        background = "Data/Texture/interface/glues/loading.dds",
+        background = "texture/interface/glues/loading.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultLoadingBarFrame",
     {
-        background = "Data/Texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
+        background = "texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultLoadingBarBackground",
     {
-        background = "Data/Texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",
+        background = "texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",
     });
 
     UI.RegisterPanelTemplate("DefaultLoadingBarFill",
     {
-        background = "Data/Texture/interface/glues/loadingbar/loading-barfill.dds",
+        background = "texture/interface/glues/loadingbar/loading-barfill.dds",
     });
 
     -- Menu Panel

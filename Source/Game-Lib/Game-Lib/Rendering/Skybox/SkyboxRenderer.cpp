@@ -16,6 +16,7 @@ SkyboxRenderer::SkyboxRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _gameRenderer(gameRenderer)
     //, _debugRenderer(debugRenderer)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -94,6 +95,8 @@ void SkyboxRenderer::SetSkybandColors(const vec3& skyTopColor, const vec3& skyMi
 
 void SkyboxRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
 
     // Shaders

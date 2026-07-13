@@ -14,11 +14,14 @@ PixelQuery::PixelQuery(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
     , _gameRenderer(gameRenderer)
     , _queryDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
 void PixelQuery::CreatePermanentResources()
 {
+    ZoneScoped;
+
     Renderer::BufferDesc desc;
     desc.name = "PixelQueryResultBuffer";
     desc.size = sizeof(PixelQuery::PixelData) * MaxQueryRequestPerFrame;

@@ -15,6 +15,5 @@ namespace ECS
         void Init(EnttRegistries& registries);
         void Update(EnttRegistries& registries, f32 deltaTime);
 
-    private:
     };
 }

@@ -7,7 +7,7 @@ local MenuBar = require("@src/API/UI/MenuBar")
 local EditorRegistry = require("@src/API/UI/EditorRegistry")
 
 -- TODO: query ImGui::GetFrameHeight() instead of hardcoding 11.
-local IMGUI_MENU_BAR_HEIGHT = 11
+local IMGUI_MENU_BAR_HEIGHT = 50
 local BAR_LAYER = 1000
 local BAR_HEIGHT = 22
 local CANVAS_W = 1920
@@ -30,6 +30,7 @@ local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_
             { label = "Hierarchy", enabled = true, onClick = function() EditorRegistry.Toggle("Hierarchy") end },
             { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
             { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
+            { label = "Console Variables", enabled = true, onClick = function() EditorRegistry.Toggle("CVarEditor") end },
         }},
         { label = "Editor", items = {
             { label = "(none)", enabled = false },

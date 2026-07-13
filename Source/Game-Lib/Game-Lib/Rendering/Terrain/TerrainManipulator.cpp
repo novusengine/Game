@@ -17,6 +17,8 @@ TerrainManipulator::TerrainManipulator(TerrainRenderer& terrainRenderer, DebugRe
     : _terrainRenderer(terrainRenderer)
     , _debugRenderer(debugRenderer)
 {
+    ZoneScoped;
+
     InputManager* inputManager = ServiceLocator::GetInputManager();
     KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
 

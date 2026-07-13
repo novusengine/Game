@@ -5,6 +5,7 @@
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
@@ -17,11 +18,41 @@
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
 namespace fs = std::filesystem;
+
+namespace
+{
+    bool CanDeleteClientDBAsset(ClientDBHash hash, const std::string& dbName)
+    {
+        if (IsBuiltinClientDBHash(hash))
+            return false;
+
+        const std::string virtualPath = GetClientDBVirtualPath(dbName);
+        if (!ServiceLocator::GetPactStorage()->FileExists(static_cast<u64>(hash)))
+            return true;
+
+        fs::path overlayPath;
+        Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
+        return assetWriter->ResolvePath(virtualPath, Util::AssetWriteTarget::PactOverlay, overlayPath)
+            && fs::exists(overlayPath);
+    }
+
+    bool DeleteClientDBAsset(ClientDBHash hash, const std::string& dbName)
+    {
+        if (!CanDeleteClientDBAsset(hash, dbName))
+            return false;
+
+        if (!ServiceLocator::GetPactStorage()->FileExists(static_cast<u64>(hash)))
+            return true;
+
+        return ServiceLocator::GetAssetWriter()->Delete(GetClientDBVirtualPath(dbName), Util::AssetWriteTarget::PactOverlay);
+    }
+}
 
 namespace Editor
 {
@@ -30,7 +61,7 @@ namespace Editor
     {
     }
 
-    void DrawDBItem(const ClientDBHash hash, const ClientDB::Data* db, const std::string& name, std::string& filter, u32& selectedDBHash)
+    void DrawDBItem(const ClientDBHash hash, const ClientDB::Data* db, const std::string& name, std::string& filter, u64& selectedDBHash)
     {
         bool hasFilter = filter.length() > 0;
         if (hasFilter)
@@ -42,8 +73,8 @@ namespace Editor
                 return;
         }
 
-        u32 dbHashAsInteger = static_cast<u32>(hash);
-        ImGui::PushID(dbHashAsInteger);
+        u64 dbHashAsInteger = static_cast<u64>(hash);
+        ImGui::PushID(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(dbHashAsInteger)));
         {
             ImGui::BeginGroup(); // Start group for the whole row
             {
@@ -161,11 +192,17 @@ namespace Editor
             if (ImGui::Button("Delete Database", ImVec2(buttonWidth, 0.0f)))
             {
                 ClientDBHash hash = static_cast<ClientDBHash>(_selectedDBHash);
-                clientDBSingleton.Remove(hash);
-
-                _selectedDBHash = 0;
-                _previousSelectedDBHash = 0;
-                _editMode = EditMode::None;
+                const std::string dbName = clientDBSingleton.GetDBName(hash);
+                if (DeleteClientDBAsset(hash, dbName) && clientDBSingleton.Remove(hash))
+                {
+                    _selectedDBHash = 0;
+                    _previousSelectedDBHash = 0;
+                    _editMode = EditMode::None;
+                }
+                else
+                {
+                    NC_LOG_WARNING("CDBEditor : Database '{0}' is built-in or does not belong to the writable staging overlay and cannot be deleted.", dbName);
+                }
             }
 
             if (ImGui::Button("Edit Header", ImVec2(buttonWidth, 0.0f)))
@@ -356,6 +393,10 @@ namespace Editor
                         {
                             errorMessage = "Database name can only contain alphanumeric characters.\n";
                         }
+                        else if (HasClientDBRecordSuffix(_newDatabaseName))
+                        {
+                            errorMessage = "Database names must not use the generated Record suffix.\n";
+                        }
                     }
                 }
 
@@ -393,8 +434,7 @@ namespace Editor
                 // If validation passes, proceed
                 if (errorMessage.empty())
                 {
-                    u32 newDatabaseNameHash = StringUtils::fnv1a_32(_newDatabaseName.c_str(), _newDatabaseName.size());
-                    ClientDBHash dbHash = static_cast<ClientDBHash>(newDatabaseNameHash);
+                    ClientDBHash dbHash = GetClientDBHash(_newDatabaseName);
 
                     if (clientDBSingleton.Has(dbHash))
                     {
@@ -637,6 +677,10 @@ namespace Editor
                         {
                             errorMessage = "Database name can only contain alphanumeric characters.\n";
                         }
+                        else if (HasClientDBRecordSuffix(_editDatabaseName))
+                        {
+                            errorMessage = "Database names must not use the generated Record suffix.\n";
+                        }
                     }
                 }
 
@@ -682,18 +726,19 @@ namespace Editor
                 {
                     bool preservedName = _editDatabaseName == _editOriginalDatabaseName;
 
-                    u32 newDatabaseNameHash = StringUtils::fnv1a_32(_editDatabaseName.c_str(), _editDatabaseName.size());
-                    ClientDBHash dbHash = static_cast<ClientDBHash>(newDatabaseNameHash);
+                    ClientDBHash dbHash = GetClientDBHash(_editDatabaseName);
+                    ClientDBHash originalDBHash = GetClientDBHash(_editOriginalDatabaseName);
 
                     if (!preservedName && clientDBSingleton.Has(dbHash))
                     {
                         errorMessage = "A Database with that name already exists.";
                     }
+                    else if (!preservedName && !CanDeleteClientDBAsset(originalDBHash, _editOriginalDatabaseName))
+                    {
+                        errorMessage = "Built-in databases and databases outside the staging overlay cannot be renamed.";
+                    }
                     else
                     {
-                        u32 originalDatabaseNameHash = StringUtils::fnv1a_32(_editOriginalDatabaseName.c_str(), _editOriginalDatabaseName.size());
-                        ClientDBHash originalDBHash = static_cast<ClientDBHash>(originalDatabaseNameHash);
-
                         struct FieldMapping
                         {
                         public:
@@ -1153,18 +1198,31 @@ namespace Editor
                             newStorage->Compact();
                         }
 
+                        bool canCommitChanges = true;
                         if (!preservedName)
                         {
-                            clientDBSingleton.Remove(originalDBHash);
-                            clientDBSingleton.Register(dbHash, _editDatabaseName);
+                            if (!DeleteClientDBAsset(originalDBHash, _editOriginalDatabaseName))
+                            {
+                                delete newStorage;
+                                errorMessage = "Failed to delete the original database from the staging overlay.";
+                                canCommitChanges = false;
+                            }
+                            else
+                            {
+                                clientDBSingleton.Remove(originalDBHash);
+                                clientDBSingleton.Register(dbHash, _editDatabaseName);
+                            }
                         }
 
-                        clientDBSingleton.Replace(dbHash, newStorage);
-                        newStorage->MarkDirty();
+                        if (canCommitChanges)
+                        {
+                            clientDBSingleton.Replace(dbHash, newStorage);
+                            newStorage->MarkDirty();
 
-                        _editMode = EditMode::None;
-                        draggedFieldIndex = -1;
-                        errorMessage = "";
+                            _editMode = EditMode::None;
+                            draggedFieldIndex = -1;
+                            errorMessage = "";
+                        }
                     }
                 }
             }

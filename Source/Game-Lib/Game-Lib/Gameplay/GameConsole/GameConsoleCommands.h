@@ -56,4 +56,8 @@ public:
     static bool HandleSpellSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::SpellSyncAllCommand& command);
     static bool HandleCreatureAddScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureAddScriptCommand& command);
     static bool HandleCreatureRemoveScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureRemoveScriptCommand& command);
+    static bool HandleCreatureMove(GameConsole* gameConsole, MetaGen::Game::Command::CreatureMoveCommand& command);
+    static bool HandleCreatureFollow(GameConsole* gameConsole, MetaGen::Game::Command::CreatureFollowCommand& command);
+    static bool HandleCreatureWander(GameConsole* gameConsole, MetaGen::Game::Command::CreatureWanderCommand& command);
+    static bool HandleCreatureStop(GameConsole* gameConsole, MetaGen::Game::Command::CreatureStopCommand& command);
 };

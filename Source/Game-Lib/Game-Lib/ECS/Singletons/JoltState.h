@@ -1,6 +1,7 @@
 #pragma once
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
+#include "Game-Lib/Util/JoltMemoryTelemetry.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/Types.h>
@@ -15,16 +16,22 @@
 
 #include <entt/entt.hpp>
 
+#include <array>
+#include <atomic>
+#include <cstddef>
+#include <string>
 #include <thread>
 
 namespace Jolt
 {
     namespace Settings
     {
-        static constexpr u32 maxBodies = 65536 * 100;
+        // Biggest continent map currently attempts ~123k resident static physics bodies.
+        // Keep this independent from pair/contact budgets, which depend on active collision density.
+        static constexpr u32 maxBodies = 196608;
         static constexpr u32 numBodyMutexes = 0;
-        static constexpr u32 maxBodyPairs = 65536 * 100;
-        static constexpr u32 maxContactConstraints = 10240 * 10;
+        static constexpr u32 maxBodyPairs = 8192;
+        static constexpr u32 maxContactConstraints = 10240;
     }
 
     namespace Layers
@@ -159,10 +166,29 @@ namespace Jolt
 
 namespace ECS::Singletons
 {
+    enum class JoltBodyTelemetrySource : u8
+    {
+        TerrainChunk,
+        StaticPlacement,
+        DynamicInstance,
+        StaticMeshComponent,
+        KinematicMeshComponent,
+        DynamicMeshComponent,
+        Count
+    };
+
+    struct JoltBodyTelemetryCounter
+    {
+    public:
+        std::atomic<u64> attempts = 0;
+        std::atomic<u64> created = 0;
+        std::atomic<u64> failed = 0;
+    };
+
     struct JoltState
     {
     public:
-        JoltState() : allocator(1000u * 1024u * 1024u), scheduler(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, std::thread::hardware_concurrency() - 1) { }
+        JoltState() : allocator(64u * 1024u * 1024u), scheduler(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, std::thread::hardware_concurrency() - 1) { }
         
         JPH::PhysicsSystem physicsSystem;
         JPH::TempAllocatorImpl allocator;
@@ -177,5 +203,131 @@ namespace ECS::Singletons
         // Should run at 30Hz but we're running at 60Hz for now
         static constexpr f32 FixedDeltaTime = 1.0f / 60.0f;
         f32 updateTimer = 0.0f;
+
+        std::string telemetryMapName = "NoMap";
+        std::array<JoltBodyTelemetryCounter, static_cast<std::size_t>(JoltBodyTelemetrySource::Count)> bodyTelemetryCounters;
+        std::atomic<u64> peakNumBodies = 0;
+
+        static const char* GetTelemetrySourceName(JoltBodyTelemetrySource source)
+        {
+            switch (source)
+            {
+                case JoltBodyTelemetrySource::TerrainChunk: return "TerrainChunk";
+                case JoltBodyTelemetrySource::StaticPlacement: return "StaticPlacement";
+                case JoltBodyTelemetrySource::DynamicInstance: return "DynamicInstance";
+                case JoltBodyTelemetrySource::StaticMeshComponent: return "StaticMeshComponent";
+                case JoltBodyTelemetrySource::KinematicMeshComponent: return "KinematicMeshComponent";
+                case JoltBodyTelemetrySource::DynamicMeshComponent: return "DynamicMeshComponent";
+                default: return "Unknown";
+            }
+        }
+
+        void ResetPhysicsTelemetry(const std::string& mapName)
+        {
+            telemetryMapName = mapName.empty() ? "NoMap" : mapName;
+            peakNumBodies.store(physicsSystem.GetNumBodies(), std::memory_order_relaxed);
+
+            for (JoltBodyTelemetryCounter& counter : bodyTelemetryCounters)
+            {
+                counter.attempts.store(0, std::memory_order_relaxed);
+                counter.created.store(0, std::memory_order_relaxed);
+                counter.failed.store(0, std::memory_order_relaxed);
+            }
+
+            if (!::Util::JoltMemoryTelemetry::IsEnabled())
+                return;
+
+            NC_LOG_INFO("JoltTelemetry : Started capture for '{0}' (maxBodies={1}, numBodyMutexes={2}, maxBodyPairs={3}, maxContactConstraints={4})",
+                telemetryMapName,
+                Jolt::Settings::maxBodies,
+                Jolt::Settings::numBodyMutexes,
+                Jolt::Settings::maxBodyPairs,
+                Jolt::Settings::maxContactConstraints);
+        }
+
+        void RefreshPhysicsTelemetryHighWater()
+        {
+            if (!::Util::JoltMemoryTelemetry::IsEnabled())
+                return;
+
+            u64 numBodies = physicsSystem.GetNumBodies();
+            u64 previousPeak = peakNumBodies.load(std::memory_order_relaxed);
+            while (numBodies > previousPeak && !peakNumBodies.compare_exchange_weak(previousPeak, numBodies, std::memory_order_relaxed))
+            {
+            }
+        }
+
+        void RecordBodyCreate(JoltBodyTelemetrySource source, bool success)
+        {
+            if (!::Util::JoltMemoryTelemetry::IsEnabled())
+                return;
+
+            JoltBodyTelemetryCounter& counter = bodyTelemetryCounters[static_cast<std::size_t>(source)];
+            counter.attempts.fetch_add(1, std::memory_order_relaxed);
+
+            if (success)
+            {
+                counter.created.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
+
+            u64 failed = counter.failed.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (failed <= 8 || failed % 1000 == 0)
+            {
+                NC_LOG_ERROR("JoltTelemetry : CreateBody failed for {0} on '{1}' ({2} failures for this source, {3}/{4} bodies currently allocated)",
+                    GetTelemetrySourceName(source),
+                    telemetryMapName,
+                    failed,
+                    physicsSystem.GetNumBodies(),
+                    physicsSystem.GetMaxBodies());
+            }
+        }
+
+        void LogPhysicsTelemetrySummary(const char* reason)
+        {
+            if (!::Util::JoltMemoryTelemetry::IsEnabled())
+                return;
+
+            RefreshPhysicsTelemetryHighWater();
+
+            JPH::PhysicsSystem::BodyStats stats = physicsSystem.GetBodyStats();
+            ::Util::JoltMemoryTelemetry::Stats memoryStats = ::Util::JoltMemoryTelemetry::GetStats();
+            NC_LOG_INFO("JoltTelemetry : Summary ({0}) map='{1}' bodies={2}/{3} peak={4} static={5} kinematic={6} activeKinematic={7} dynamic={8} activeDynamic={9} soft={10} activeSoft={11} joltHeap={12}MiB peakJoltHeap={13}MiB liveJoltAllocs={14} tempAllocator={15}MiB tempUsage={16}MiB",
+                reason,
+                telemetryMapName,
+                stats.mNumBodies,
+                stats.mMaxBodies,
+                peakNumBodies.load(std::memory_order_relaxed),
+                stats.mNumBodiesStatic,
+                stats.mNumBodiesKinematic,
+                stats.mNumActiveBodiesKinematic,
+                stats.mNumBodiesDynamic,
+                stats.mNumActiveBodiesDynamic,
+                stats.mNumSoftBodies,
+                stats.mNumActiveSoftBodies,
+                memoryStats.currentBytes / (1024ull * 1024ull),
+                memoryStats.peakBytes / (1024ull * 1024ull),
+                memoryStats.liveAllocations,
+                allocator.GetSize() / (1024ull * 1024ull),
+                allocator.GetUsage() / (1024ull * 1024ull));
+
+            for (std::size_t i = 0; i < static_cast<std::size_t>(JoltBodyTelemetrySource::Count); i++)
+            {
+                JoltBodyTelemetrySource source = static_cast<JoltBodyTelemetrySource>(i);
+                const JoltBodyTelemetryCounter& counter = bodyTelemetryCounters[i];
+                u64 attempts = counter.attempts.load(std::memory_order_relaxed);
+                u64 created = counter.created.load(std::memory_order_relaxed);
+                u64 failed = counter.failed.load(std::memory_order_relaxed);
+
+                if (attempts == 0 && created == 0 && failed == 0)
+                    continue;
+
+                NC_LOG_INFO("JoltTelemetry : Source {0}: attempts={1}, created={2}, failed={3}",
+                    GetTelemetrySourceName(source),
+                    attempts,
+                    created,
+                    failed);
+            }
+        }
     };
 }

@@ -22,6 +22,7 @@ EditorRenderer::EditorRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _gameRenderer(gameRenderer)
     //, _debugRenderer(debugRenderer)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -103,6 +104,8 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
 
 void EditorRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
 
     // Shaders

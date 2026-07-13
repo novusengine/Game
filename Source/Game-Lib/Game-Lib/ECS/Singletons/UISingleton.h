@@ -7,7 +7,6 @@
 
 #include <robinhood/robinhood.h>
 #include <entt/entt.hpp>
-#include <map>
 
 namespace Scripting::UI
 {
@@ -16,6 +15,55 @@ namespace Scripting::UI
 
 namespace ECS::Singletons
 {
+    enum class UIInputEventKind : u8
+    {
+        None,
+        Press,
+        Release,
+        Wheel
+    };
+
+    enum class UIInputDebugResult : u8
+    {
+        Accepted,
+        Considered,
+        OutsideBounds,
+        Clipped,
+        Hidden,
+        NotInteractable,
+        MissingBounds
+    };
+
+    struct UIInputCandidate
+    {
+        entt::entity entity = entt::null;
+        vec2 min = vec2(0.0f);
+        vec2 max = vec2(0.0f);
+        u32 sortKey = 0;
+        f32 distanceToMouse = 0.0f;
+    };
+
+    struct UIInputDebugRecord
+    {
+        entt::entity entity = entt::null;
+        vec2 min = vec2(0.0f);
+        vec2 max = vec2(0.0f);
+        UIInputDebugResult result = UIInputDebugResult::Considered;
+        u32 sortKey = 0;
+        u32 rank = 0;
+    };
+
+    struct UIInputDebugSnapshot
+    {
+        static constexpr u32 MAX_RECORDS = 4096;
+
+        std::vector<UIInputDebugRecord> records;
+        UIInputEventKind eventKind = UIInputEventKind::None;
+        vec2 mousePosition = vec2(0.0f);
+        bool consumedWithoutAcceptedElement = false;
+        u32 truncated = 0;
+    };
+
     struct UISingleton
     {
     public:
@@ -36,7 +84,8 @@ namespace ECS::Singletons
         robin_hood::unordered_set<entt::entity> clipSourceEntities;
 
         // Input handling
-        std::map<u64, entt::entity> allHoveredEntities;
+        std::vector<UIInputCandidate> allHoveredEntities;
+        UIInputDebugSnapshot inputDebugSnapshot;
         vec2 lastClickPosition = vec2(-1.0f, -1.0f);
         entt::entity clickedEntity = entt::null;
         entt::entity hoveredEntity = entt::null;

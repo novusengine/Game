@@ -23,6 +23,7 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Util/JoltMemoryTelemetry.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -30,6 +31,8 @@
 #include <Base/Memory/FileReader.h>
 
 #include <FileFormat/Novus/ShaderPack/ShaderPack.h>
+
+#include <Filesystem/PactStorage.h>
 
 #include <Input/InputManager.h>
 
@@ -50,9 +53,11 @@
 
 #include <gli/gli.hpp>
 #include <GLFW/glfw3.h>
+#include <glm/geometric.hpp>
 #include "RenderUtils.h"
 
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
+AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
 
 enum GlfwClientApi
 {
@@ -102,7 +107,7 @@ void MouseCallback(GLFWwindow* window, i32 button, i32 action, i32 modifiers)
 
 void CursorPositionCallback(GLFWwindow* window, f64 x, f64 y)
 {
-    ServiceLocator::GetInputManager()->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
+    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y);
 }
 
 void ScrollCallback(GLFWwindow* window, f64 x, f64 y)
@@ -118,9 +123,10 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
 
 GameRenderer::GameRenderer(InputManager* inputManager)
 {
+    NC_LOG_INFO("GameRenderer : Initializing");
     ServiceLocator::SetGameRenderer(this);
 
-    JPH::RegisterDefaultAllocator();
+    Util::JoltMemoryTelemetry::RegisterAllocator();
 
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
@@ -185,6 +191,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
+    NC_LOG_INFO("GameRenderer : Initialized");
 }
 
 GameRenderer::~GameRenderer()
@@ -468,13 +475,18 @@ void GameRenderer::ReloadShaders(bool forceRecompileAll)
     _renderer->ReloadShaders(forceRecompileAll);
 }
 
-bool GameRenderer::AddCursor(u32 nameHash, const std::string& path)
+bool GameRenderer::AddCursor(u64 nameHash, u64 pathHash)
 {
     if (_nameHashToCursor.contains(nameHash))
         return false;
 
-    gli::texture texture = gli::load(path);
+    auto* pactStorage = ServiceLocator::GetPactStorage();
 
+    PACT::PactFileHandle fileHandle;
+    if (pactStorage->ReadFile(pathHash, fileHandle) != PACT::PactReadResult::Success)
+        return false;
+
+    gli::texture texture = gli::load(static_cast<const char*>(fileHandle.GetData()), fileHandle.GetSize());
     if (texture.empty())
         return false;
 
@@ -490,7 +502,7 @@ bool GameRenderer::AddCursor(u32 nameHash, const std::string& path)
     return true;
 }
 
-bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
+bool GameRenderer::SetCursor(u64 nameHash, u32 imguiMouseCursor /*= 0*/)
 {
     if (!_nameHashToCursor.contains(nameHash))
         return false;
@@ -503,6 +515,60 @@ bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
     ImGui_ImplGlfw_Data* glfwImguiData = reinterpret_cast<ImGui_ImplGlfw_Data*>(io.BackendPlatformUserData);
     glfwImguiData->MouseCursors[imguiMouseCursor] = cursor.cursor;
     return true;
+}
+
+void GameRenderer::HandleCursorPosition(f64 x, f64 y)
+{
+    InputManager* inputManager = ServiceLocator::GetInputManager();
+    if (inputManager->IsCursorVirtual())
+    {
+        // Disabled GLFW cursors report an unlimited virtual position. Dispatch it to camera
+        // controls, but keep the last physical position for UI and click picking.
+        const vec2 physicalPosition = inputManager->GetMousePosition();
+        inputManager->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
+        inputManager->SetMousePosition(physicalPosition.x, physicalPosition.y);
+        return;
+    }
+
+    const vec2 position(static_cast<f32>(x), static_cast<f32>(y));
+    if (_cursorRestorePending)
+    {
+        if (glfwGetTime() <= _cursorRestoreDeadline)
+        {
+            // GLFW's disabled cursor implementation emits an exact window-center event when it
+            // performs its internal warp. Reject that synthetic position, but allow genuine
+            // post-release movement immediately instead of freezing the cursor for the guard.
+            i32 windowWidth;
+            i32 windowHeight;
+            glfwGetWindowSize(_window->GetWindow(), &windowWidth, &windowHeight);
+            const vec2 windowCenter(static_cast<f32>(windowWidth) * 0.5f, static_cast<f32>(windowHeight) * 0.5f);
+            const bool restoredToCenter = glm::distance(_cursorRestorePosition, windowCenter) <= 0.5f;
+            if (!restoredToCenter && glm::distance(position, windowCenter) <= 0.5f)
+                return;
+        }
+        else
+        {
+            _cursorRestorePending = false;
+        }
+    }
+
+    inputManager->MousePositionHandler(position.x, position.y);
+}
+
+void GameRenderer::RestoreCursorPosition(const vec2& position)
+{
+    _cursorRestorePosition = position;
+    const f64 guardPeriod = static_cast<f64>(glm::max(CVAR_CursorRestoreGuardPeriod.GetFloat(), 0.0f)) / 1000.0;
+    _cursorRestoreDeadline = glfwGetTime() + guardPeriod;
+    _cursorRestorePending = true;
+
+    glfwSetCursorPos(_window->GetWindow(), static_cast<f64>(position.x), static_cast<f64>(position.y));
+    ServiceLocator::GetInputManager()->SetMousePosition(position.x, position.y);
+}
+
+void GameRenderer::CancelCursorRestore()
+{
+    _cursorRestorePending = false;
 }
 
 const Renderer::ShaderEntry* GameRenderer::GetShaderEntry(u32 shaderNameHash, const std::string& debugName)

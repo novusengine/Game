@@ -249,6 +249,8 @@ declare class Panel extends Widget
     function SetTexCoords(self, minX : number, minY : number, maxX : number, maxY : number) : ()
     function SetColor(self, color : vec3, alpha : number?) : ()
     function SetAlpha(self, alpha : number) : ()    
+    function SetBorderColor(self, color : vec3) : ()
+    function SetBorderSize(self, size : number) : ()
 end
 
 declare class TextWidget extends Widget
@@ -317,6 +319,7 @@ declare UI :
     GetCanvas : ((name : string, pos : vec2, size : vec2, isRenderTexture : boolean?) -> Canvas),
     GetMousePos : (() -> vec2),
     GetTextureSize : ((path : string) -> vec2),
+    IsSmoothUnitFrameBarsEnabled : (() -> boolean),
 
     PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
     CalculateTextSize : ((text : string, template : string) -> vec2),
@@ -350,14 +353,18 @@ declare Box :
 declare Unit :
 {
     GetLocal            : (() -> number),
+    GetHovered          : (() -> number),
     GetName             : ((unitID : number) -> string),
     GetHealth           : ((unitID : number) -> (number, number)),
+    GetLevel            : ((unitID : number) -> number),
+    GetClass            : ((unitID : number) -> number),
     GetResourceType     : ((unitID : number) -> PowerTypeEnum),
     GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
     GetStat             : ((unitID : number, statType : number) -> (number, number)),
     GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),
+    ClearTarget         : (() -> boolean),
 
-    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> ()),
+    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> number),
 }
 
 declare class AuraInfo
@@ -491,7 +498,7 @@ declare Spell :
 
 declare Container :
 {
-    RequestSwapSlots : ((containerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
+    RequestSwapSlots : ((srcContainerIndex : number, destContainerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
     GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
 }
 

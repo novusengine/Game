@@ -585,6 +585,40 @@ namespace Util
             return false;
         }
 
+        bool Inspect(const char* name, i64& value, f32 speed)
+        {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", name);
+
+            ImGui::PushID(name);
+            bool isDirty = false;
+
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+            isDirty |= ImGui::DragScalar("##value", ImGuiDataType_S64, &value);
+            ImGui::PopItemWidth();
+
+            ImGui::PopID();
+
+            return isDirty;
+        }
+
+        bool Inspect(const char* name, const i64& value, f32 speed)
+        {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", name);
+
+            ImGui::PushID(name);
+            bool isDirty = false;
+
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputScalar("##value", ImGuiDataType_S64, const_cast<i64*>(&value), nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopItemWidth();
+
+            ImGui::PopID();
+
+            return false;
+        }
+
         bool Inspect(const char* name, ivec2& value, f32 speed)
         {
             ImGui::AlignTextToFramePadding();
@@ -716,6 +750,39 @@ namespace Util
 
             ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
             ImGui::InputScalar("##value", ImGuiDataType_U32, const_cast<u32*>(&value), nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopItemWidth();
+
+            ImGui::PopID();
+
+            return false;
+        }
+
+        bool Inspect(const char* name, u64& value, f32 speed)
+        {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", name);
+
+            ImGui::PushID(name);
+            bool isDirty = false;
+
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+            isDirty |= ImGui::DragScalar("##value", ImGuiDataType_U64, &value);
+            ImGui::PopItemWidth();
+
+            ImGui::PopID();
+
+            return isDirty;
+        }
+
+        bool Inspect(const char* name, const u64& value, f32 speed)
+        {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("%s", name);
+
+            ImGui::PushID(name);
+
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::InputScalar("##value", ImGuiDataType_U64, const_cast<u64*>(&value), nullptr, nullptr, nullptr, ImGuiInputTextFlags_ReadOnly);
             ImGui::PopItemWidth();
 
             ImGui::PopID();

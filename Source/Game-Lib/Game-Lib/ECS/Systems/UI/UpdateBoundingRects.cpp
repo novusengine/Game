@@ -1,6 +1,7 @@
 #include "UpdateBoundingRects.h"
 
 #include "Game-Lib/ECS/Components/UI/BoundingRect.h"
+#include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/Clipper.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
@@ -34,6 +35,18 @@ namespace ECS::Systems::UI
             // Every chain participant re-uploads its matrix on move -- including rect-less containers, whose
             // slot anchors their children's GPU chain. The transform pass early-outs for canvas/3D widgets.
             registry.get_or_emplace<Components::UI::DirtyWidgetTransform>(entity);
+
+            // Canvases do not own GPU matrix slots: top-level widgets bake the
+            // canvas world transform into their root matrix. Consequently a
+            // moved canvas must invalidate its direct children even though an
+            // ordinary moved widget does not need descendant propagation.
+            if (registry.all_of<Components::UI::Canvas>(entity))
+            {
+                transform2DSystem.IterateChildren(entity, [&registry](entt::entity childEntity)
+                {
+                    registry.get_or_emplace<Components::UI::DirtyWidgetTransform>(childEntity);
+                });
+            }
 
             auto& transform = registry.get<Components::Transform2D>(entity);
 

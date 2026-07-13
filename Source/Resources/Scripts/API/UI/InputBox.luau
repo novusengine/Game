@@ -29,19 +29,23 @@ local function RefreshText(inputBoxTable)
 
     local cursorPos = inputBoxTable.cursorPos;
 
-    local displayText = text;
+    local isShowingPlaceholder = text == ""
+        and not inputBoxTable.isFocused
+        and inputBoxTable.placeholderText ~= "";
+    local displayText = if isShowingPlaceholder then inputBoxTable.placeholderText else text;
     local cursorCharPos = cursorPos;
 
     -- Calculate the total width of the text
-    local totalTextWidth, _ = UI.CalculateTextSize(text, inputBoxTable.textTemplate);
+    local totalTextWidth, _ = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate);
 
     -- Initialize variables for text clipping
     local startCharPos = 0;
     local endCharPos = utf8.len(text);
-    local maxVisibleWidth = inputBoxTable.inputBoxWidth;
+    local textInsetX = inputBoxTable.textInsetX or 0;
+    local maxVisibleWidth = inputBoxTable.inputBoxWidth - textInsetX * 2;
 
     -- Handle text clipping based on pixel width
-    if totalTextWidth > maxVisibleWidth then
+    if totalTextWidth > maxVisibleWidth and not isShowingPlaceholder then
         -- Build an array of character widths and cumulative widths
         inputBoxTable.charWidths = {};
         local cumulativeWidths = {};
@@ -100,7 +104,7 @@ local function RefreshText(inputBoxTable)
     end
 
     -- If secure is true, replace displayText with asterisks
-    if inputBoxTable.secure then
+    if inputBoxTable.secure and not isShowingPlaceholder then
         local len = utf8.len(displayText);
         displayText = string.rep("*", len);
     end
@@ -116,7 +120,7 @@ local function RefreshText(inputBoxTable)
     local buttonTextRelativePointX = inputBoxTable.buttonTextRelativePointX or 0.5; -- default to center alignment
 
     -- Calculate textStartX based on alignment
-    local textStartX = (inputBoxTable.inputBoxWidth - displayTextWidth) * buttonTextRelativePointX;
+    local textStartX = textInsetX + (maxVisibleWidth - displayTextWidth) * buttonTextRelativePointX;
     inputBoxTable.textStartX = textStartX;
 
     -- Build an array of character positions for the displayed text
@@ -133,7 +137,8 @@ local function RefreshText(inputBoxTable)
     -- Add the end position
     table.insert(inputBoxTable.charPositions, cumulativeWidth);
 
-    -- Now insert cursor if blinking state is true
+    -- Keep the caret in the same widget. Inputs that need vertical centering use a fixed,
+    -- bottom-anchored baseline so the taller caret glyph cannot move the text.
     if inputBoxTable.cursorBlinkState then
         local cursorBytePosInDisplayText = GetBytePositionFromCharacterPosition(displayText, cursorCharPos);
         local textBeforeCursor = displayText:sub(1, cursorBytePosInDisplayText - 1);
@@ -142,6 +147,7 @@ local function RefreshText(inputBoxTable)
     end
 
     inputBoxTable.button:SetText(displayText);
+    inputBoxTable.button.text:SetAlpha(isShowingPlaceholder and 0.55 or 1.0);
 end
 
 local function SetupInputBoxMethods(inputBoxTable)
@@ -163,6 +169,21 @@ local function SetupInputBoxMethods(inputBoxTable)
 
     inputBoxTable.SetOnTab = function(table, func)
         inputBoxTable.onTab = func;
+    end
+
+    inputBoxTable.SetOnFocusBegin = function(table, func)
+        inputBoxTable.onFocusBegin = func;
+    end
+
+    inputBoxTable.SetTextVerticallyCentered = function(table)
+        local _, lineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
+        local y = math.floor((inputBoxTable.button.panel:GetHeight() - lineHeight) * 0.5);
+        inputBoxTable.textInsetX = 5;
+        inputBoxTable.buttonTextRelativePointX = 0.0;
+        inputBoxTable.button.text:SetAnchor(0.0, 0.0);
+        inputBoxTable.button.text:SetRelativePoint(0.0, 0.0);
+        inputBoxTable.button.text:SetPos(5, y);
+        RefreshText(inputBoxTable);
     end
 
     inputBoxTable.Focus = function(table)
@@ -381,12 +402,15 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     local defaultTextFontSize = inputBoxTemplateTable["defaultTextFontSize"];
 
     inputBoxTable.text = defaultText;
+    inputBoxTable.placeholderText = inputBoxTemplateTable["placeholderText"] or "";
+    inputBoxTable.isFocused = false;
 
     inputBoxTable.timer = 0.0;
     inputBoxTable.cursorBlinkState = false;
     inputBoxTable.cursorPos = utf8.len(defaultText);
     inputBoxTable.onSubmit = nil;
     inputBoxTable.onTab = nil;
+    inputBoxTable.onFocusBegin = nil;
 
     -- Store input box width for alignment calculations
     inputBoxTable.inputBoxWidth = sizeX;
@@ -406,12 +430,14 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
         inputBoxTable.button:SetFontSize(defaultTextFontSize);
     end
     inputBoxTable.button:SetFocusable(true);
-    
-    local buttonText = inputBoxTable.button.text;
-    buttonText:SetAnchor(0.0, 0.0);
-    buttonText:SetRelativePoint(0.0, 0.0);
-    buttonText:SetPos(5, 5);
 
+    local buttonText = inputBoxTable.button.text;
+
+    local _, lineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
+    local y = math.floor((inputBoxTable.button.panel:GetHeight() - lineHeight) * 0.5);
+    inputBoxTable.button.text:SetAnchor(0.0, 0.0);
+    inputBoxTable.button.text:SetRelativePoint(0.0, 0.0);
+    inputBoxTable.button.text:SetPos(5, y);
     inputBoxTable.buttonTextRelativePointX = buttonText:GetRelativePoint();
 
     inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
@@ -452,11 +478,17 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     end)
 
     inputBoxTable.button:SetOnFocusBegin(function(eventID, widget)
+        inputBoxTable.isFocused = true;
         inputBoxTable.timer = 1.0;
         inputBoxTable.cursorBlinkState = false;
+        RefreshText(inputBoxTable);
+        if inputBoxTable.onFocusBegin ~= nil then
+            inputBoxTable.onFocusBegin(inputBoxTable);
+        end
     end);
 
     inputBoxTable.button:SetOnFocusEnd(function(eventID, widget)
+        inputBoxTable.isFocused = false;
         inputBoxTable.cursorBlinkState = false;
 
         RefreshText(inputBoxTable);

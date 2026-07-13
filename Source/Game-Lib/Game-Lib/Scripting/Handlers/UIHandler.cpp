@@ -16,8 +16,12 @@
 #include "Game-Lib/Scripting/UI/Text.h"
 #include "Game-Lib/UI/Box.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
+#include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/StringUtils.h>
+
+#include <Filesystem/PactStorage.h>
 
 #include <Input/InputManager.h>
 #include <Input/KeybindGroup.h>
@@ -26,6 +30,16 @@
 
 #include <entt/entt.hpp>
 #include <lualib.h>
+
+namespace
+{
+    AutoCVar_Int CVAR_SmoothUnitFrameBars(
+        CVarCategory::Client,
+        "smoothUnitFrameBars",
+        "Smoothly interpolates unit frame health and resource bar fills",
+        1,
+        CVarFlags::EditCheckbox);
+}
 
 namespace Scripting::UI
 {
@@ -550,16 +564,38 @@ namespace Scripting::UI
         }
         else
         {
-            Renderer::TextureDesc textureDesc;
-            textureDesc.path = texturePath;
-            Renderer::TextureID textureID = renderer->LoadTexture(textureDesc);
+            auto* pactStorage = ServiceLocator::GetPactStorage();
+            u64 textureNameHash = Util::AssetPath::Hash(texturePath);
 
-            Renderer::TextureBaseDesc baseDesc = renderer->GetDesc(textureID);
-            zenith->Push(baseDesc.width);
-            zenith->Push(baseDesc.height);
+            PACT::PactFileHandle fileHandle;
+            if (pactStorage->ReadFile(textureNameHash, fileHandle) == PACT::PactReadResult::Success)
+            {
+                Renderer::DataTextureDesc textureDesc;
+                textureDesc.hash = textureNameHash;
+                textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+                textureDesc.size = fileHandle.GetSize();
+
+                Renderer::TextureID textureID = renderer->LoadDataTexture(textureDesc);
+
+                Renderer::TextureBaseDesc baseDesc = renderer->GetDesc(textureID);
+                zenith->Push(baseDesc.width);
+                zenith->Push(baseDesc.height);
+            }
+            else
+            {
+                zenith->Push();
+                zenith->Push();
+            }
+
         }
 
         return 2;
+    }
+
+    i32 UIHandler::IsSmoothUnitFrameBarsEnabled(Zenith* zenith)
+    {
+        zenith->Push(CVAR_SmoothUnitFrameBars.Get() != 0);
+        return 1;
     }
 
     i32 UIHandler::PixelsToTexCoord(Zenith* zenith)

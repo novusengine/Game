@@ -86,7 +86,7 @@ private:
     void UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, const vec2& canvasSize);
 
     void UpdatePanelData(entt::entity entity, ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
-    void UpdateTextData(entt::entity entity, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate);
+    void UpdateTextData(entt::entity entity, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, bool wasDrawable);
 
     vec2 PixelPosToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
     vec2 PixelSizeToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
@@ -156,7 +156,7 @@ private:
     Renderer::Font* _font;
     Renderer::SamplerID _sampler;
     Renderer::TextureArrayID _textures;
-    robin_hood::unordered_map<u32, u32> _textureNameHashToIndex;
+    robin_hood::unordered_map<u64, u32> _textureNameHashToIndex;
     robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToIndex;
 
     Renderer::TextureArrayID _fontTextures;

@@ -229,7 +229,7 @@ namespace Editor
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
                             auto& model = registry.get<ECS::Components::Model>(skybox.entity);
-                            u32 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
+                            u64 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
                             if (!modelLoader->LoadModelForEntity(skybox.entity, model, modelHash))
                             {
                                 std::string pathStr = skyboxPath.string();

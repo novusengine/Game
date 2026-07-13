@@ -27,6 +27,7 @@
 #include "Game-Lib/ECS/Systems/UpdateSkyboxes.h"
 #include "Game-Lib/ECS/Systems/UpdateAABBs.h"
 #include "Game-Lib/ECS/Systems/CharacterController.h"
+#include "Game-Lib/ECS/Systems/CharacterControllerInput.h"
 #include "Game-Lib/ECS/Systems/Editor/EditorTools.h"
 #include "Game-Lib/ECS/Systems/UI/HandleInput.h"
 #include "Game-Lib/ECS/Systems/UI/UpdateBoundingRects.h"
@@ -49,6 +50,7 @@ namespace ECS
 
     void Scheduler::Init(EnttRegistries& registries)
     {
+        NC_LOG_INFO("ECS Scheduler : Initializing");
         entt::registry& gameRegistry = *registries.gameRegistry;
 
         Systems::NetworkConnection::Init(gameRegistry);
@@ -75,6 +77,7 @@ namespace ECS
         entt::registry& uiRegistry = *registries.uiRegistry;
 
         Systems::UI::HandleInput::Init(uiRegistry);
+        NC_LOG_INFO("ECS Scheduler : Initialized");
     }
 
     void Scheduler::Update(EnttRegistries& registries, f32 deltaTime)
@@ -100,10 +103,12 @@ namespace ECS
         Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
         Systems::Animation::Update(gameRegistry, clampedDeltaTime);
         Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
+        Systems::CharacterControllerInput::UpdateAutoAttack(gameRegistry, clampedDeltaTime);
         Systems::UpdateUnitEntities::Update(gameRegistry, clampedDeltaTime);
         Systems::FreeflyingCamera::Update(gameRegistry, clampedDeltaTime);
         Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);
         Systems::CalculateCameraMatrices::Update(gameRegistry, clampedDeltaTime);
+        Systems::CharacterControllerInput::UpdateHoveredUnit(gameRegistry, clampedDeltaTime);
         Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);

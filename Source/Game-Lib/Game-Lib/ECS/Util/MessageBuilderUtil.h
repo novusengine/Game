@@ -113,6 +113,10 @@ namespace ECS
             bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureMove(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureFollow(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureWander(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureStop(std::shared_ptr<Bytebuffer>& buffer);
         }
     }
 }

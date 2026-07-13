@@ -11,16 +11,14 @@
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
-#include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
-#include "Game-Lib/ECS/Singletons/JoltState.h"
-#include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/UnitCustomizationSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/TextureSingleton.h"
+#include "Game-Lib/ECS/Util/RemoteUnitPresentation.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Database/TextureUtil.h"
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
@@ -38,8 +36,8 @@
 
 #include <entt/entt.hpp>
 #include <Jolt/Jolt.h>
-#include <Jolt/Physics/Collision/CastResult.h>
-#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Body/Body.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 
 #include <tracy/tracy.hpp>
 
@@ -99,8 +97,6 @@ namespace ECS::Systems
 
         TransformSystem& transformSystem = TransformSystem::Get(registry);
         auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
-        auto& joltState = registry.ctx().get<Singletons::JoltState>();
-        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
 
         entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
@@ -132,7 +128,7 @@ namespace ECS::Systems
 
                 if (modelLoadedEvent.flags.loaded)
                 {
-                    if (model.modelHash == std::numeric_limits<u32>().max())
+                    if (model.modelHash == std::numeric_limits<u64>().max())
                     {
                         NC_LOG_INFO("Entity \"{0}\" Loaded Model with Invalid ModelHash", name ? name->name : "Unknown");
                         return;
@@ -151,8 +147,8 @@ namespace ECS::Systems
                         {
                             if (auto* displayInfoExtraRow = creatureDisplayInfoExtraStorage->TryGet<MetaGen::Shared::ClientDB::CreatureDisplayInfoExtraRecord>(displayInfoRow->extendedDisplayInfoID))
                             {
-                                u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(displayInfoExtraRow->bakedTexture);
-                                unitCustomization->flags.useCustomSkin = !textureSingleton.textureHashToPath.contains(bakedTextureHash);
+                                u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(displayInfoExtraRow->bakedTexture);
+                                unitCustomization->flags.useCustomSkin = bakedTextureHash == 0;
 
                                 displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->raceID);
                                 displayInfo.gender = static_cast<GameDefine::UnitGender>(displayInfoExtraRow->gender);
@@ -227,23 +223,6 @@ namespace ECS::Systems
                             registry.get_or_emplace<Components::UnitVisualEquipmentDirty>(entity);
                     }
 
-                    if (auto* unit = registry.try_get<Components::Unit>(entity))
-                    {
-                        auto& transform = registry.get<Components::Transform>(entity);
-
-                        vec3 position = transform.GetWorldPosition();
-                        vec3 scale = transform.GetLocalScale();
-
-                        vec3 min = position - (scale * 0.5f);
-                        vec3 max = position + (scale * 0.5f);
-                        if (auto* aabb = registry.try_get<Components::AABB>(entity))
-                        {
-                            min = position + (aabb->centerPos - aabb->extents);
-                            max = position + (aabb->centerPos + aabb->extents);
-                        }
-
-                        networkState.networkVisTree->Insert(&min.x, &max.x, unit->networkID);
-                    }
                 }
                 else
                 {
@@ -255,41 +234,7 @@ namespace ECS::Systems
             registry.clear<Components::ModelLoadedEvent>();
         }
 
-        auto unitMovementOverTimeView = registry.view<Components::Transform, Components::Unit, Components::UnitMovementOverTime>();
-        unitMovementOverTimeView.each([&](entt::entity entity, Components::Transform& transform, Components::Unit& unit, Components::UnitMovementOverTime& unitMovementOverTime)
-        {
-            if (unitMovementOverTime.time == 1.0f)
-               return;
-
-            unitMovementOverTime.time += 10.0f * deltaTime;
-            unitMovementOverTime.time = glm::min(unitMovementOverTime.time, 1.0f);
-
-            f32 progress = unitMovementOverTime.time;
-            vec3 startPos = unitMovementOverTime.startPos;
-            vec3 endPos = unitMovementOverTime.endPos;
-            vec3 newPosition = glm::mix(startPos, endPos, progress);
-
-            transformSystem.SetWorldPosition(entity, newPosition);
-
-            f32 scale = transform.GetLocalScale().x;
-            vec3 min = newPosition - (scale * 0.5f);
-            vec3 max = newPosition + (scale * 0.5f);
-            if (auto* aabb = registry.try_get<Components::AABB>(entity))
-            {
-                min = newPosition + (aabb->centerPos - aabb->extents);
-                max = newPosition + (aabb->centerPos + aabb->extents);
-            }
-            networkState.networkVisTree->Remove(unit.networkID);
-            networkState.networkVisTree->Insert(&min.x, &max.x, unit.networkID);
-
-            if (unit.bodyID == std::numeric_limits<u32>().max())
-                return;
-
-            JPH::BodyID bodyID = JPH::BodyID(unit.bodyID);
-            quat rotation = transform.GetWorldRotation();
-
-            joltState.physicsSystem.GetBodyInterface().SetPositionAndRotation(bodyID, JPH::Vec3(newPosition.x, newPosition.y, newPosition.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EActivation::DontActivate);
-        });
+        Util::RemoteUnitPresentation::Update(registry, deltaTime);
 
         auto unitView = registry.view<Components::Unit, Components::Model, Components::AnimationData, Components::MovementInfo>();
         unitView.each([&](entt::entity entity, Components::Unit& unit, Components::Model& model, Components::AnimationData& animationData, Components::MovementInfo& movementInfo)
@@ -308,7 +253,7 @@ namespace ECS::Systems
                 {
                     for (auto& pair : attachmentData->attachmentToInstance)
                     {
-                        Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second, model.scale);
+                        ::Util::Attachment::CalculateAttachmentMatrix(modelInfo, animationData, pair.first, pair.second);
                     }
                 }
             }

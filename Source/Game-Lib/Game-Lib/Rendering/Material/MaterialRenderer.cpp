@@ -35,6 +35,7 @@ MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* g
     , _preEffectsPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -283,6 +284,8 @@ bool MaterialRenderer::SetDirectionalLight(u32 index, const vec3& direction, con
 
 void MaterialRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     // Create Pre-Effects Pipeline
     Renderer::ComputeShaderDesc shaderDesc;
     shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/PreEffectsPass.cs"_h, "Material/PreEffectsPass.cs");

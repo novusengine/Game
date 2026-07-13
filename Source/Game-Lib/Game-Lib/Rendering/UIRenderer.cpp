@@ -16,6 +16,7 @@
 UIRenderer::UIRenderer(Renderer::Renderer* renderer) 
     : _renderer(renderer)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 

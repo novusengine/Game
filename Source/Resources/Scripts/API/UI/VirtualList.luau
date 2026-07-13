@@ -83,7 +83,8 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
         end
     end
 
-    function self:SetItems(items)
+    function self:SetItems(items, preserveScroll)
+        local previousScrollPosY = preserveScroll and (self.scrollBox.scrollPosY or 0) or 0
         for index0, row in self.realized do
             self.realized[index0] = nil
             table.insert(self.recyclable, row)
@@ -92,7 +93,15 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
         self.lastFirst = nil -- force Rebind past the membership guard
         -- SetContentHeight resets the scroll to the top (autoScrollToStart), so Rebind starts at 0.
         self.scrollBox:SetContentHeight(math.max(self.viewportH, #self.items * self.rowHeight + 2))
-        self:Rebind()
+
+        local maxScrollPosY = math.max(0, self.scrollBox.content:GetHeight() - self.scrollBox.scrollBox:GetHeight())
+        if preserveScroll and maxScrollPosY > 0 then
+            self.scrollBox.scrollPosY = math.clamp(previousScrollPosY, 0, maxScrollPosY)
+            -- A zero-delta scroll reapplies content/handle positions and invokes Rebind.
+            self.scrollBox:Scroll(nil, 0, 0)
+        else
+            self:Rebind()
+        end
         -- Rows left over (list shorter than the pool) hold stale content; park them off-viewport.
         for _, row in self.recyclable do
             row:SetPosY(OFFSCREEN_Y)

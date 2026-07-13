@@ -35,6 +35,7 @@ JoltDebugRenderer::JoltDebugRenderer(Renderer::Renderer* renderer, GameRenderer*
     : CulledRenderer(renderer, gameRenderer, debugRenderer)
     , _gameRenderer(gameRenderer)
 {
+    ZoneScoped;
 #ifdef JPH_DEBUG_RENDERER
     // Initialize base class
     DebugRenderer::Initialize();
@@ -880,6 +881,7 @@ void JoltDebugRenderer::Draw(const RenderResources& resources, u8 frameIndex, Re
 
 void JoltDebugRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
     CreatePipelines();
 
     _instances.SetDebugName("JoltInstances");

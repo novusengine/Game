@@ -429,7 +429,7 @@ function bagAPI:HandleCursorCommit(slotIndex : number) : boolean
             return false
         end
 
-        uiBagSlot.itemSlot.panel:SetForeground("Data/Texture/interface/fullscreentextures/outofcontrol.dds")
+        uiBagSlot.itemSlot.panel:SetForeground("texture/interface/fullscreentextures/outofcontrol.dds")
         CursorInfo:GiveItem(uiBagSlot.itemSlot)
     end
 
@@ -439,7 +439,7 @@ end
 local function RegisterTemplates()
     UI.RegisterPanelTemplate("BagBackgroundPanel",
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 5.0,
     });
 end

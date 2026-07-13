@@ -10,6 +10,7 @@ namespace ECS::Systems
     {
     public:
         static void Init(entt::registry& registry);
+        static void ResetForNewWorld(entt::registry& registry);
         static void Update(entt::registry& registry, f32 deltaTime);
 
         static void CapturedMouseMoved(entt::registry& registry, const vec2& position);

@@ -54,6 +54,10 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
     RegisterCommand(GameConsoleCommands::HandleCheatPathGenerate);
+    RegisterCommand(GameConsoleCommands::HandleCreatureMove);
+    RegisterCommand(GameConsoleCommands::HandleCreatureFollow);
+    RegisterCommand(GameConsoleCommands::HandleCreatureWander);
+    RegisterCommand(GameConsoleCommands::HandleCreatureStop);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

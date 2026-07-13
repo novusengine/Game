@@ -17,13 +17,16 @@ namespace Scripting::Unit
 
     public: // Registered Functions
         static i32 GetLocal(Zenith* zenith);
+        static i32 GetHovered(Zenith* zenith);
         static i32 GetName(Zenith* zenith);
         static i32 GetHealth(Zenith* zenith);
+        static i32 GetLevel(Zenith* zenith);
         static i32 GetClass(Zenith* zenith);
         static i32 GetResourceType(Zenith* zenith);
         static i32 GetResource(Zenith* zenith);
         static i32 GetStat(Zenith* zenith);
         static i32 GetAuras(Zenith* zenith);
+        static i32 ClearTarget(Zenith* zenith);
 
         static i32 SetWidgetToNamePos(Zenith* zenith);
     };
@@ -31,13 +34,16 @@ namespace Scripting::Unit
     static LuaRegister<> unitGlobalMethods[] =
     {
         { "GetLocal", UnitHandler::GetLocal },
+        { "GetHovered", UnitHandler::GetHovered },
         { "GetName", UnitHandler::GetName },
         { "GetHealth", UnitHandler::GetHealth },
+        { "GetLevel", UnitHandler::GetLevel },
         { "GetClass", UnitHandler::GetClass },
         { "GetResourceType", UnitHandler::GetResourceType },
         { "GetResource", UnitHandler::GetResource },
         { "GetStat", UnitHandler::GetStat },
         { "GetAuras", UnitHandler::GetAuras },
+        { "ClearTarget", UnitHandler::ClearTarget },
 
         { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }
     };

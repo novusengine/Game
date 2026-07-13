@@ -1220,3 +1220,71 @@ bool GameConsoleCommands::HandleCreatureRemoveScript(GameConsole* gameConsole, M
     networkState.client->Send(buffer);
     return true;
 }
+
+bool GameConsoleCommands::HandleCreatureMove(GameConsole* gameConsole, MetaGen::Game::Command::CreatureMoveCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureMove(buffer))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureFollow(GameConsole* gameConsole, MetaGen::Game::Command::CreatureFollowCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureFollow(buffer))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureWander(GameConsole* gameConsole, MetaGen::Game::Command::CreatureWanderCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureWander(buffer))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}
+
+bool GameConsoleCommands::HandleCreatureStop(GameConsole* gameConsole, MetaGen::Game::Command::CreatureStopCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    ECS::Singletons::NetworkState& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<32>();
+
+    if (!ECS::Util::MessageBuilder::Cheat::BuildCreatureStop(buffer))
+        return false;
+
+    networkState.client->Send(buffer);
+    return true;
+}

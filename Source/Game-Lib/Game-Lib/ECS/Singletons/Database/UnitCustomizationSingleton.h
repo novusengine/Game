@@ -22,10 +22,10 @@ namespace ECS
             robin_hood::unordered_map<::Database::Unit::TextureSectionType, u32> unitTextureSectionTypeToID;
             robin_hood::unordered_map<u32, std::vector<u32>> unitBaseCustomizationKeyToChoiceIDList;
 
-            robin_hood::unordered_map<u32, u32> unitCustomizationKeyToTextureHash;
+            robin_hood::unordered_map<u32, u64> unitCustomizationKeyToTextureHash;
             robin_hood::unordered_map<u32, Renderer::TextureID> unitCustomizationKeyToTextureID;
             robin_hood::unordered_map<u32, Renderer::TextureID> customizationMaterialIDToTextureID;
-            robin_hood::unordered_map<u32, Renderer::TextureID> itemTextureHashToTextureID;
+            robin_hood::unordered_map<u64, Renderer::TextureID> itemTextureHashToTextureID;
 
             robin_hood::unordered_map<u32, u16> geosetIDToGeosetKey;
 
@@ -34,9 +34,9 @@ namespace ECS
             robin_hood::unordered_map<u32, u32> choiceIDToTextureSectionID1;
             robin_hood::unordered_map<u32, u32> choiceIDToTextureSectionID2;
             robin_hood::unordered_map<u32, u32> choiceIDToTextureSectionID3;
-            robin_hood::unordered_map<u32, u32> choiceIDToTextureHash1;
-            robin_hood::unordered_map<u32, u32> choiceIDToTextureHash2;
-            robin_hood::unordered_map<u32, u32> choiceIDToTextureHash3;
+            robin_hood::unordered_map<u32, u64> choiceIDToTextureHash1;
+            robin_hood::unordered_map<u32, u64> choiceIDToTextureHash2;
+            robin_hood::unordered_map<u32, u64> choiceIDToTextureHash3;
         };
     }
 }

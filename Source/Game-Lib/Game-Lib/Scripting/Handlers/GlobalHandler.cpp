@@ -1,4 +1,5 @@
 #include "GlobalHandler.h"
+#include "Game-Lib/Application/Application.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
@@ -13,6 +14,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/Database/Item.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/UnitUtil.h"
 
 #include <MetaGen/Game/Lua/Lua.h>
@@ -25,6 +27,7 @@
 
 #include <entt/entt.hpp>
 #include <lualib.h>
+#include <xxhash/xxhash64.h>
 
 namespace Scripting
 {
@@ -73,11 +76,11 @@ namespace Scripting
             return 1;
         }
 
-        u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
-        std::string path = cursorPath;
+        u64 cursorNameHash = XXHash64::hash(cursorName, strlen(cursorName), 0);
+        u64 cursorPathHash = Util::AssetPath::Hash(cursorPath);
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        bool result = gameRenderer->AddCursor(hash, path);
+        bool result = gameRenderer->AddCursor(cursorNameHash, cursorPathHash);
 
         zenith->Push(result);
         return 1;
@@ -92,10 +95,10 @@ namespace Scripting
             return 1;
         }
 
-        u32 hash = StringUtils::fnv1a_32(cursorName, strlen(cursorName));
+        u64 cursorNameHash = XXHash64::hash(cursorName, strlen(cursorName), 0);
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        bool result = gameRenderer->SetCursor(hash);
+        bool result = gameRenderer->SetCursor(cursorNameHash);
 
         zenith->Push(result);
         return 1;
@@ -331,6 +334,11 @@ namespace Scripting
 
         zenith->Push(true);
         return 1;
+    }
+    i32 GlobalHandler::ExitGame(Zenith*)
+    {
+        ServiceLocator::GetApplication()->RequestExit();
+        return 0;
     }
     i32 GlobalHandler::GetCharacterList(Zenith* zenith)
     {

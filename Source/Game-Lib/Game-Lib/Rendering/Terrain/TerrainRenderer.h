@@ -53,8 +53,8 @@ public:
     void Reserve(u32 numChunks);
     void AllocateChunks(u32 numChunks, TerrainReserveOffsets& reserveOffsets);
 
-    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos);
-    u32 AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
+    u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos);
+    u32 AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset);
 
     void RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
@@ -203,6 +203,7 @@ private:
     robin_hood::unordered_map<u32, u32> _packedChunkCellIDToGlobalCellID;
 
     std::shared_mutex _addChunkMutex; // Unique lock for operations that can reallocate, shared_lock if it only reads/modifies existing data
+    std::mutex _addChunkTextureMutex;
 
     friend class TerrainManipulator;
 };

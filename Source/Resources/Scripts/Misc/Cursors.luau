@@ -1,77 +1,79 @@
+local CursorInfo = require("@src/API/UI/CursorInfo")
+
 local Cursors =
 {
-    { "architect", "Data/Texture/interface/cursor/architect.dds" },
-    { "argusteleporter", "Data/Texture/interface/cursor/argusteleporter.dds" },
-    { "attack", "Data/Texture/interface/cursor/attack.dds" },
-    { "unableattack", "Data/Texture/interface/cursor/unableattack.dds" },
-    { "buy", "Data/Texture/interface/cursor/buy.dds" },
-    { "unablebuy", "Data/Texture/interface/cursor/unablebuy.dds" },
-    { "cast", "Data/Texture/interface/cursor/cast.dds" },
-    { "unablecast", "Data/Texture/interface/cursor/unablecast.dds" },
-    { "crosshairs", "Data/Texture/interface/cursor/crosshairs.dds" },
-    { "unablecrosshairs", "Data/Texture/interface/cursor/unablecrosshairs.dds" },
-    { "directions", "Data/Texture/interface/cursor/directions.dds" },
-    { "unabledirections", "Data/Texture/interface/cursor/unabledirections.dds" },
-    { "driver", "Data/Texture/interface/cursor/driver.dds" },
-    { "engineerskin", "Data/Texture/interface/cursor/engineerskin.dds" },
-    { "unableengineerskin", "Data/Texture/interface/cursor/unableengineerskin.dds" },
-    { "gatherherbs", "Data/Texture/interface/cursor/gatherherbs.dds" },
-    { "unablegatherherbs", "Data/Texture/interface/cursor/unablegatherherbs.dds" },
-    { "gunner", "Data/Texture/interface/cursor/gunner.dds" },
-    { "unablegunner", "Data/Texture/interface/cursor/unablegunner.dds" },
-    { "innkeeper", "Data/Texture/interface/cursor/innkeeper.dds" },
-    { "unableinnkeeper", "Data/Texture/interface/cursor/unableinnkeeper.dds" },
-    { "inspect", "Data/Texture/interface/cursor/inspect.dds" },
-    { "unableinspect", "Data/Texture/interface/cursor/unableinspect.dds" },
-    { "interact", "Data/Texture/interface/cursor/interact.dds" },
-    { "unableinteract", "Data/Texture/interface/cursor/unableinteract.dds" },
-    { "lootall", "Data/Texture/interface/cursor/lootall.dds" },
-    { "unablelootall", "Data/Texture/interface/cursor/unablelootall.dds" },
-    { "mail", "Data/Texture/interface/cursor/mail.dds" },
-    { "unablemail", "Data/Texture/interface/cursor/unablemail.dds" },
-    { "mine", "Data/Texture/interface/cursor/mine.dds" },
-    { "unablemine", "Data/Texture/interface/cursor/unablemine.dds" },
-    { "missions", "Data/Texture/interface/cursor/missions.dds" },
-    { "unablemissions", "Data/Texture/interface/cursor/unablemissions.dds" },
-    { "openhand", "Data/Texture/interface/cursor/openhand.dds" },
-    { "unableopenhand", "Data/Texture/interface/cursor/unableopenhand.dds" },
-    { "openhandglow", "Data/Texture/interface/cursor/openhandglow.dds" },
-    { "unableopenhandglow", "Data/Texture/interface/cursor/unableopenhandglow.dds" },
-    { "picklock", "Data/Texture/interface/cursor/picklock.dds" },
-    { "unablepicklock", "Data/Texture/interface/cursor/unablepicklock.dds" },
-    { "unablepickup", "Data/Texture/interface/cursor/unablepickup.dds" },
-    { "point", "Data/Texture/interface/cursor/point.dds" },
-    { "unablepoint", "Data/Texture/interface/cursor/unablepoint.dds" },
-    { "pvp", "Data/Texture/interface/cursor/pvp.dds" },
-    { "unablepvp", "Data/Texture/interface/cursor/unablepvp.dds" },
-    { "quest", "Data/Texture/interface/cursor/quest.dds" },
-    { "unablequest", "Data/Texture/interface/cursor/unablequest.dds" },
-    { "questinteract", "Data/Texture/interface/cursor/questinteract.dds" },
-    { "unablequestinteract", "Data/Texture/interface/cursor/unablequestinteract.dds" },
-    { "questrepeatable", "Data/Texture/interface/cursor/questrepeatable.dds" },
-    { "unablequestrepeatable", "Data/Texture/interface/cursor/unablequestrepeatable.dds" },
-    { "questturnin", "Data/Texture/interface/cursor/questturnin.dds" },
-    { "unablequestturnin", "Data/Texture/interface/cursor/unablequestturnin.dds" },
-    { "reforge", "Data/Texture/interface/cursor/reforge.dds" },
-    { "unablereforge", "Data/Texture/interface/cursor/unablereforge.dds" },
-    { "repair", "Data/Texture/interface/cursor/repair.dds" },
-    { "unablerepair", "Data/Texture/interface/cursor/unablerepair.dds" },
-    { "repairnpc", "Data/Texture/interface/cursor/repairnpc.dds" },
-    { "unablerepairnpc", "Data/Texture/interface/cursor/unablerepairnpc.dds" },
-    { "skin", "Data/Texture/interface/cursor/skin.dds" },
-    { "unableskin", "Data/Texture/interface/cursor/unableskin.dds" },
-    { "speak", "Data/Texture/interface/cursor/speak.dds" },
-    { "unablespeak", "Data/Texture/interface/cursor/unablespeak.dds" },
-    { "taxi", "Data/Texture/interface/cursor/taxi.dds" },
-    { "unabletaxi", "Data/Texture/interface/cursor/unabletaxi.dds" },
-    { "trainer", "Data/Texture/interface/cursor/trainer.dds" },
-    { "unabletrainer", "Data/Texture/interface/cursor/unabletrainer.dds" },
-    { "transmogrify", "Data/Texture/interface/cursor/transmogrify.dds" },
-    { "unabletransmogrify", "Data/Texture/interface/cursor/unabletransmogrify.dds" },
-    { "move", "Data/Texture/interface/cursor/ui-cursor-move.dds" },
-    { "unablemove", "Data/Texture/interface/cursor/unableui-cursor-move.dds" },
-    { "item", "Data/Texture/interface/cursor/item.dds" },
-    { "unableitem", "Data/Texture/interface/cursor/unableitem.dds" }
+    { "architect", "texture/interface/cursor/architect.dds" },
+    { "argusteleporter", "texture/interface/cursor/argusteleporter.dds" },
+    { "attack", "texture/interface/cursor/attack.dds" },
+    { "unableattack", "texture/interface/cursor/unableattack.dds" },
+    { "buy", "texture/interface/cursor/buy.dds" },
+    { "unablebuy", "texture/interface/cursor/unablebuy.dds" },
+    { "cast", "texture/interface/cursor/cast.dds" },
+    { "unablecast", "texture/interface/cursor/unablecast.dds" },
+    { "crosshairs", "texture/interface/cursor/crosshairs.dds" },
+    { "unablecrosshairs", "texture/interface/cursor/unablecrosshairs.dds" },
+    { "directions", "texture/interface/cursor/directions.dds" },
+    { "unabledirections", "texture/interface/cursor/unabledirections.dds" },
+    { "driver", "texture/interface/cursor/driver.dds" },
+    { "engineerskin", "texture/interface/cursor/engineerskin.dds" },
+    { "unableengineerskin", "texture/interface/cursor/unableengineerskin.dds" },
+    { "gatherherbs", "texture/interface/cursor/gatherherbs.dds" },
+    { "unablegatherherbs", "texture/interface/cursor/unablegatherherbs.dds" },
+    { "gunner", "texture/interface/cursor/gunner.dds" },
+    { "unablegunner", "texture/interface/cursor/unablegunner.dds" },
+    { "innkeeper", "texture/interface/cursor/innkeeper.dds" },
+    { "unableinnkeeper", "texture/interface/cursor/unableinnkeeper.dds" },
+    { "inspect", "texture/interface/cursor/inspect.dds" },
+    { "unableinspect", "texture/interface/cursor/unableinspect.dds" },
+    { "interact", "texture/interface/cursor/interact.dds" },
+    { "unableinteract", "texture/interface/cursor/unableinteract.dds" },
+    { "lootall", "texture/interface/cursor/lootall.dds" },
+    { "unablelootall", "texture/interface/cursor/unablelootall.dds" },
+    { "mail", "texture/interface/cursor/mail.dds" },
+    { "unablemail", "texture/interface/cursor/unablemail.dds" },
+    { "mine", "texture/interface/cursor/mine.dds" },
+    { "unablemine", "texture/interface/cursor/unablemine.dds" },
+    { "missions", "texture/interface/cursor/missions.dds" },
+    { "unablemissions", "texture/interface/cursor/unablemissions.dds" },
+    { "openhand", "texture/interface/cursor/openhand.dds" },
+    { "unableopenhand", "texture/interface/cursor/unableopenhand.dds" },
+    { "openhandglow", "texture/interface/cursor/openhandglow.dds" },
+    { "unableopenhandglow", "texture/interface/cursor/unableopenhandglow.dds" },
+    { "picklock", "texture/interface/cursor/picklock.dds" },
+    { "unablepicklock", "texture/interface/cursor/unablepicklock.dds" },
+    { "unablepickup", "texture/interface/cursor/unablepickup.dds" },
+    { "point", "texture/interface/cursor/point.dds" },
+    { "unablepoint", "texture/interface/cursor/unablepoint.dds" },
+    { "pvp", "texture/interface/cursor/pvp.dds" },
+    { "unablepvp", "texture/interface/cursor/unablepvp.dds" },
+    { "quest", "texture/interface/cursor/quest.dds" },
+    { "unablequest", "texture/interface/cursor/unablequest.dds" },
+    { "questinteract", "texture/interface/cursor/questinteract.dds" },
+    { "unablequestinteract", "texture/interface/cursor/unablequestinteract.dds" },
+    { "questrepeatable", "texture/interface/cursor/questrepeatable.dds" },
+    { "unablequestrepeatable", "texture/interface/cursor/unablequestrepeatable.dds" },
+    { "questturnin", "texture/interface/cursor/questturnin.dds" },
+    { "unablequestturnin", "texture/interface/cursor/unablequestturnin.dds" },
+    { "reforge", "texture/interface/cursor/reforge.dds" },
+    { "unablereforge", "texture/interface/cursor/unablereforge.dds" },
+    { "repair", "texture/interface/cursor/repair.dds" },
+    { "unablerepair", "texture/interface/cursor/unablerepair.dds" },
+    { "repairnpc", "texture/interface/cursor/repairnpc.dds" },
+    { "unablerepairnpc", "texture/interface/cursor/unablerepairnpc.dds" },
+    { "skin", "texture/interface/cursor/skin.dds" },
+    { "unableskin", "texture/interface/cursor/unableskin.dds" },
+    { "speak", "texture/interface/cursor/speak.dds" },
+    { "unablespeak", "texture/interface/cursor/unablespeak.dds" },
+    { "taxi", "texture/interface/cursor/taxi.dds" },
+    { "unabletaxi", "texture/interface/cursor/unabletaxi.dds" },
+    { "trainer", "texture/interface/cursor/trainer.dds" },
+    { "unabletrainer", "texture/interface/cursor/unabletrainer.dds" },
+    { "transmogrify", "texture/interface/cursor/transmogrify.dds" },
+    { "unabletransmogrify", "texture/interface/cursor/unabletransmogrify.dds" },
+    { "move", "texture/interface/cursor/ui-cursor-move.dds" },
+    { "unablemove", "texture/interface/cursor/unableui-cursor-move.dds" },
+    { "item", "texture/interface/cursor/item.dds" },
+    { "unableitem", "texture/interface/cursor/unableitem.dds" }
 }
 
 local function RegisterCursors()
@@ -89,4 +91,29 @@ local function OnGameLoaded(eventID : number, data : any)
     SetCursor("point")
 end
 
+local currentWorldCursor = "point"
+local function OnGameUpdated(eventID : number, data : any)
+    if CursorInfo:HasItemInHand() then
+        currentWorldCursor = ""
+        return
+    end
+
+    local hoveredUnit = Unit.GetHovered()
+    local isLivingUnit = false
+    if hoveredUnit ~= INVALID_UNIT_ID then
+        local health = Unit.GetHealth(hoveredUnit)
+        isLivingUnit = health > 0
+    end
+
+    local desiredCursor = if isLivingUnit then "attack" else "point"
+    if desiredCursor == currentWorldCursor then
+        return
+    end
+
+    if SetCursor(desiredCursor) then
+        currentWorldCursor = desiredCursor
+    end
+end
+
 RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Updated, OnGameUpdated)

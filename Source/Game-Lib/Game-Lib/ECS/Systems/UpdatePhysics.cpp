@@ -55,6 +55,9 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::StaticMeshComponent, body != nullptr);
+            if (!body)
+                return;
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
 
@@ -85,6 +88,9 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::KinematicMeshComponent, body != nullptr);
+            if (!body)
+                return;
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
 
@@ -122,6 +128,10 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::DynamicMeshComponent, body != nullptr);
+            if (!body)
+                return;
+
             body->GetMotionProperties()->SetAngularDamping(0.8f);
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
@@ -142,6 +152,7 @@ namespace ECS::Systems
         joltState.physicsSystem.Init(Jolt::Settings::maxBodies, Jolt::Settings::numBodyMutexes, Jolt::Settings::maxBodyPairs, Jolt::Settings::maxContactConstraints, joltState.broadPhaseLayerInterface, joltState.objectVSBroadPhaseLayerFilter, joltState.objectVSObjectLayerFilter);
         joltState.physicsSystem.SetBodyActivationListener(&joltState.bodyActivationListener);
         joltState.physicsSystem.SetContactListener(&joltState.contactListener);
+        joltState.ResetPhysicsTelemetry("Startup");
 
         // Setup StaticMesh Sink
         {
@@ -210,6 +221,7 @@ namespace ECS::Systems
         // Step the world
         {
             joltState.physicsSystem.Update(joltState.FixedDeltaTime, 4, &joltState.allocator, &joltState.scheduler);
+            joltState.RefreshPhysicsTelemetryHighWater();
         }
     }
 }

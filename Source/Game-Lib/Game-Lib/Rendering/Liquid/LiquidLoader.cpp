@@ -9,7 +9,7 @@ LiquidLoader::LiquidLoader(LiquidRenderer* liquidRenderer)
 
 void LiquidLoader::Init()
 {
-
+    ZoneScoped;
 }
 
 void LiquidLoader::Clear()

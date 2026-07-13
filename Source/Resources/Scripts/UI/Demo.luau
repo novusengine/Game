@@ -928,7 +928,7 @@ local function CreateClippingDemo()
 
     clippingParent:SetClipChildren(true);
     clippingParent:SetClipRect(0, 0, 1, 1);
-    clippingParent:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
+    clippingParent:SetClipMaskTexture("texture/interface/masks/circlemaskscalable.dds");
 
     --clippingParent:SetClipMaskTexture(nil);
     --clippingParent:SetClipChildren(false);
@@ -940,7 +940,7 @@ local function CreateClippingDemo()
     -- Create a text
     local clippingText = clippingParent:NewText("Test text", 100, 30, 0, "DefaultButtonText");
     --clippingText:SetClipRect(0, 0, 1, 0.3);
-    --clippingText:SetClipMaskTexture("Data/Texture/interface/masks/circlemaskscalable.dds");
+    --clippingText:SetClipMaskTexture("texture/interface/masks/circlemaskscalable.dds");
 end
 
 local function OnGameLoaded(eventID : number, data : any)

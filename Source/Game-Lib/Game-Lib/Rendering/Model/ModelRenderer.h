@@ -201,7 +201,7 @@ public:
     public:
         u32 textureUnitOffset = 0;
         u32 textureIndex = 0;
-        u32 textureHash = 0;
+        u64 textureHash = 0;
     };
 
     struct ChangeGroupRequest
@@ -319,7 +319,7 @@ public:
     Renderer::TextureID LoadTexture(const std::string& path, u32& arrayIndex);
 
     u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);
+    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u64 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
     void RemoveInstance(u32 instanceID);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
