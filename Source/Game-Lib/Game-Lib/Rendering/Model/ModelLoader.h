@@ -1,6 +1,7 @@
 #pragma once
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/Gameplay/Database/Unit.h"
+#include "Game-Lib/Rendering/Model/ModelLoadTypes.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
@@ -18,7 +19,8 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <robinhood/robinhood.h>
-#include <type_safe/strong_typedef.hpp>
+
+#include <deque>
 
 namespace ECS::Components
 {
@@ -28,6 +30,7 @@ namespace ECS::Components
 class TerrainLoader;
 class LightRenderer;
 class ModelRenderer;
+struct ActiveModelPrepareJob;
 class ModelLoader
 {
 public:
@@ -72,6 +75,7 @@ private:
     struct LoadRequestInternal
     {
     public:
+        ModelLoading::ModelLoadRequestID requestID = ModelLoading::INVALID_MODEL_LOAD_REQUEST_ID;
         LoadRequestType type = LoadRequestType::Invalid;
         entt::entity entity = entt::null;
 
@@ -88,9 +92,17 @@ private:
     struct LoadRequestResultInternal
     {
     public:
-        u32 loadRequestIndex = std::numeric_limits<u32>().max();
+        ModelLoading::ModelLoadRequestID requestID = ModelLoading::INVALID_MODEL_LOAD_REQUEST_ID;
+        LoadRequestInternal request;
         bool success = false;
         bool isStatic = false;
+    };
+
+    struct ModelAssetRecord
+    {
+    public:
+        LoadState loadState = LoadState::NotLoaded;
+        std::vector<LoadRequestInternal> waitingRequests;
     };
 
     struct WorkRequest
@@ -105,6 +117,7 @@ public:
     ModelLoader(ModelRenderer* modelRenderer, LightRenderer* lightRenderer);
 
     void Init();
+    void Shutdown();
     void Clear();
     void Update(f32 deltaTime);
 
@@ -164,6 +177,15 @@ public:
 
 private:
     bool LoadRequest(DiscoveredModel& discoveredModel);
+    bool CommitPreparedModel(DiscoveredModel& discoveredModel, const ModelLoading::PreparedRenderModel& preparedModel);
+    void ConsumePreparedModels();
+    void ReapCompletedPrepareJobs();
+    void DispatchAsyncLoadRequests(moodycamel::ConcurrentQueue<LoadRequestInternal>& workQueue, u32 numRequests);
+    void CancelAndDrainPrepareJobs();
+    void CompletePreparedRequest(const LoadRequestInternal& request, bool success);
+    bool IsCurrentEntityRequest(const LoadRequestInternal& request) const;
+    ModelLoading::ModelLoadRequestID GetNextLoadRequestID();
+    void EnqueueLoadResult(const LoadRequestInternal& request, bool success, bool isStatic);
     void AddStaticInstance(entt::entity entityID, const LoadRequestInternal& request);
     void AddDynamicInstance(entt::entity entityID, const LoadRequestInternal& request);
 
@@ -178,7 +200,9 @@ private:
 
     moodycamel::ConcurrentQueue<WorkRequest> _discoveredModelPendingWorkRequests;
 
-    moodycamel::ConcurrentQueue<LoadRequestResultInternal> _loadRequestResults;
+    moodycamel::ConcurrentQueue<LoadRequestResultInternal> _loadRequestResults; // Results carry stable IDs and owned request snapshots.
+    moodycamel::ConcurrentQueue<ModelLoading::PreparedModelResult> _preparedModelResults; // Worker-produced, game-thread-consumed.
+    std::deque<ModelLoading::PreparedModelResult> _pendingPreparedModelCommits; // Game-thread-only commit backlog.
     std::vector<LoadRequestInternal> _pendingLoadRequestsVector;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingTerrainLoadRequests;
     moodycamel::ConcurrentQueue<LoadRequestInternal> _pendingLoadRequests;
@@ -188,17 +212,16 @@ private:
     moodycamel::ConcurrentQueue<UnloadRequest> _unloadRequests;
     moodycamel::ConcurrentQueue<DiscoveredModel> _discoveredModels;
 
-    robin_hood::unordered_map<u64, LoadState> _modelHashToLoadState;
+    robin_hood::unordered_map<u64, ModelAssetRecord> _modelAssets; // Game-thread-owned content state.
     robin_hood::unordered_map<u64, u32> _modelHashToModelID;
     robin_hood::unordered_map<u64, JPH::ShapeRefC> _modelHashToJoltShape;
     robin_hood::unordered_map<u64, DiscoveredModel> _modelHashToDiscoveredModel;
-    robin_hood::unordered_map<u64, std::mutex*> _modelHashToLoadingMutex;
 
     robin_hood::unordered_map<u32, u32> _uniqueIDToinstanceID;
     robin_hood::unordered_map<u32, u32> _instanceIDToModelID;
     robin_hood::unordered_map<u32, u32> _instanceIDToBodyID;
     robin_hood::unordered_map<u32, entt::entity> _instanceIDToEntityID;
-    std::mutex _modelHashMutex;
+    robin_hood::unordered_map<u32, ModelLoading::ModelLoadRequestID> _entityToLatestRequestID;
     std::mutex _instanceIDToModelIDMutex;
     std::mutex _transformSystemMutex;
     std::mutex _physicsSystemMutex;
@@ -208,4 +231,7 @@ private:
     robin_hood::unordered_map<u32, ECS::Components::AABB> _modelIDToAABB;
 
     std::vector<entt::entity> _createdEntities;
+    std::vector<std::unique_ptr<ActiveModelPrepareJob>> _activeModelPrepareJobs; // Game-thread-owned task lifetimes.
+    std::atomic<ModelLoading::ModelLoadRequestID> _nextLoadRequestID = 1;
+    u64 _loaderEpoch = 1;
 };

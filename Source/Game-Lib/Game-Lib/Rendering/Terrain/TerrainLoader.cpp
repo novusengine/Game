@@ -47,11 +47,14 @@
 
 #include <entt/entt.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <vector>
 
 namespace fs = std::filesystem;
+
+AutoCVar_Int CVAR_TerrainChunkLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "terrainChunkLoadsPerFrame", "maximum terrain chunks prepared and committed per frame", 8, CVarFlags::None);
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader)
     : _terrainRenderer(terrainRenderer)
@@ -76,6 +79,15 @@ static void NotifyCurrentMapChanged()
     auto* handler = luaManager->GetLuaHandler<Scripting::Map::MapHandler>(static_cast<u16>(MetaGen::Game::Lua::LuaHandlerTypeEnum::Map));
     if (handler)
         handler->OnCurrentMapChanged(zenith);
+}
+
+void TerrainLoader::Shutdown()
+{
+    ZoneScopedN("TerrainLoader::Shutdown");
+
+    // Chunk tasks are frame-local and waited in Update. Clear drains queued work and
+    // releases the loaded chunk records that retain PACT file handles.
+    Clear();
 }
 
 void TerrainLoader::Clear()
@@ -194,6 +206,7 @@ void TerrainLoader::Update(f32 deltaTime)
     u32 numChunksLoadedBefore = _numChunksLoaded;
 
     u32 numPendingRequests = static_cast<u32>(_pendingWorkRequests.size_approx());
+    TracyPlot("Terrain Chunk Load Backlog", static_cast<i64>(numPendingRequests));
     if (numPendingRequests > 0)
     {
         ZoneScopedN("PendingWork");
@@ -204,7 +217,9 @@ void TerrainLoader::Update(f32 deltaTime)
         auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
         JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
 
-        u32 maxChunkLoadsThisTick = glm::min(numPendingRequests, 64u);
+        const u32 configuredChunkLoadsPerFrame = static_cast<u32>(std::max(1, CVAR_TerrainChunkLoadsPerFrame.Get()));
+        u32 maxChunkLoadsThisTick = glm::min(numPendingRequests, configuredChunkLoadsPerFrame);
+        TracyPlot("Terrain Chunks Loaded This Frame", static_cast<i64>(maxChunkLoadsThisTick));
 
         TerrainReserveOffsets reserveOffsets;
         _terrainRenderer->AllocateChunks(maxChunkLoadsThisTick, reserveOffsets);
@@ -230,14 +245,11 @@ void TerrainLoader::Update(f32 deltaTime)
                     continue;
 
                 workRequest.fileHandle = std::make_shared<PACT::PactFileHandle>();
+                if (ServiceLocator::GetPactStorage()->ReadFile(workRequest.fileHash, *workRequest.fileHandle) != PACT::PactReadResult::Success)
                 {
-                    std::scoped_lock lock(_pactReadMutex);
-                    if (ServiceLocator::GetPactStorage()->ReadFile(workRequest.fileHash, *workRequest.fileHandle) != PACT::PactReadResult::Success)
-                    {
-                        NC_LOG_ERROR("TerrainLoader : Failed to read chunk asset {0}", workRequest.fileHash);
-                        numFailedLoads++;
-                        continue;
-                    }
+                    NC_LOG_ERROR("TerrainLoader : Failed to read chunk asset {0}", workRequest.fileHash);
+                    numFailedLoads++;
+                    continue;
                 }
 
                 workRequest.buffer = std::make_shared<Bytebuffer>(const_cast<void*>(workRequest.fileHandle->GetData()), workRequest.fileHandle->GetSize());

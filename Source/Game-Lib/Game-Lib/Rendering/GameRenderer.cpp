@@ -107,6 +107,7 @@ void MouseCallback(GLFWwindow* window, i32 button, i32 action, i32 modifiers)
 
 void CursorPositionCallback(GLFWwindow* window, f64 x, f64 y)
 {
+    ZoneScopedN("Game Cursor Position Callback");
     ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y);
 }
 

@@ -71,6 +71,7 @@ private:
 public:
     TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader);
     
+    void Shutdown();
     void Clear();
     void Update(f32 deltaTime);
 
@@ -105,5 +106,4 @@ private:
     robin_hood::unordered_map<u32, ChunkInfo> _chunkIDToChunkInfo;
 
     std::mutex _chunkLoadingMutex;
-    std::mutex _pactReadMutex;
 };

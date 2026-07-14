@@ -21,6 +21,8 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Scripting/Handlers/GlobalHandler.h"
 #include "Game-Lib/Scripting/Handlers/EventHandler.h"
 #include "Game-Lib/Scripting/Handlers/DatabaseHandler.h"
@@ -185,6 +187,15 @@ void Application::Cleanup()
             && enttRegistries->dbRegistry
             && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
             SaveCDB();
+    }
+
+    if (_gameRenderer)
+    {
+        if (_gameRenderer->GetTerrainLoader())
+            _gameRenderer->GetTerrainLoader()->Shutdown();
+
+        if (_gameRenderer->GetModelLoader())
+            _gameRenderer->GetModelLoader()->Shutdown();
     }
 
     auto* pactStorage = ServiceLocator::GetPactStorage();
