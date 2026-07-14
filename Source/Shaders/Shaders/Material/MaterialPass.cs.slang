@@ -1,4 +1,4 @@
-permutation DEBUG_ID = [0, 1, 2, 3, 4];
+permutation DEBUG_ID = [0, 1, 2, 3, 4, 5];
 permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
 permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 
@@ -29,6 +29,7 @@ struct Constants
     float4 vertexColor;
     float4 brushColor;
     float4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, z = Shadow Strength, w = Normal Offset Bias
+    float4 svsmSettings; // x = Constant Bias (world meters)
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -143,6 +144,7 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     shadowSettings.penumbraFilterSize = _constants.shadowFilterSettings.y;
     shadowSettings.strength = _constants.shadowFilterSettings.z;
     shadowSettings.normalOffset = _constants.shadowFilterSettings.w;
+    shadowSettings.svsmConstantBias = _constants.svsmSettings.x;
 
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
@@ -290,6 +292,7 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     shadowSettings.penumbraFilterSize = _constants.shadowFilterSettings.y;
     shadowSettings.strength = _constants.shadowFilterSettings.z;
     shadowSettings.normalOffset = _constants.shadowFilterSettings.w;
+    shadowSettings.svsmConstantBias = _constants.svsmSettings.x;
 
     // Apply lighting
     color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
@@ -343,6 +346,11 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
     uint cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
     _resolvedColor[pixelPos] = float4(CascadeIDToColor(cascadeIndex), 1);
+    return;
+#elif DEBUG_ID == 5 // SVSM compare margin
+    PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
+    float3 debugColor = GetSVSMDebugColor(pixelVertexData.worldPos, pixelVertexData.worldNormal, _constants.shadowFilterSettings.w, _constants.svsmSettings.x);
+    _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #endif
 

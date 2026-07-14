@@ -80,7 +80,10 @@ namespace Editor
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-            u32 numCascades = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+            // Under SVSM the shadow views are clipmaps instead of cascades
+            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+            u32 numCascades = useSVSM ? *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h)
+                                      : *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
 
             // SDSM reduced depth bounds
             {
@@ -121,6 +124,80 @@ namespace Editor
                 else
                 {
                     ImGui::Text("Visible Depth: - (no valid samples)");
+                }
+
+                // SVSM page table state, one frame old
+                if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1 && shadowRenderer)
+                {
+                    u32 freePages = 0;
+                    u32 totalPages = 0;
+                    u32 overflow = 0;
+                    u32 invalidationCause = 0;
+                    shadowRenderer->GetSVSMGlobalStats(freePages, totalPages, overflow, invalidationCause);
+
+                    ImGui::Spacing();
+                    ImGui::Text("SVSM Pool: %u / %u pages used", totalPages - glm::min(freePages, totalPages), totalPages);
+                    if (overflow > 0)
+                    {
+                        ImGui::Text("SVSM Overflow: %u page requests dropped", overflow);
+                    }
+
+                    u32 dynamicLive = 0;
+                    u32 dynamicTotal = 0;
+                    u32 dynamicOverflow = 0;
+                    shadowRenderer->GetSVSMDynamicStats(dynamicLive, dynamicTotal, dynamicOverflow);
+
+                    u32 dynamicCasters = 0;
+                    u32 animatedCasters = 0;
+                    u32 droppedAABBs = 0;
+                    shadowRenderer->GetSVSMCasterStats(dynamicCasters, animatedCasters, droppedAABBs);
+                    if (dynamicLive > 0 || dynamicOverflow > 0 || dynamicCasters > 0 || animatedCasters > 0)
+                    {
+                        ImGui::Text("SVSM Dynamic: %u / %u pages live%s | casters: %u dynamic + %u animated", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, animatedCasters);
+                        if (droppedAABBs > 0)
+                        {
+                            ImGui::Text("SVSM Dynamic: %u caster AABBs dropped!", droppedAABBs);
+                        }
+
+                        // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
+                        // frame old. A bouncing count here = the fill/cull chain loses casters
+                        if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
+                        {
+                            u32 numClipmapViews = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
+                            std::string dynDraws = "SVSM Dyn instances:";
+                            for (u32 view = 1; view <= numClipmapViews && view < Renderer::Settings::MAX_VIEWS; view++)
+                            {
+                                dynDraws += " " + std::to_string(svsmModelRenderer->GetNumSVSMDynamicInstances(view));
+                            }
+                            ImGui::Text("%s", dynDraws.c_str());
+                        }
+                    }
+
+                    i32 renderBudget = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmRenderBudget"_h);
+                    if (renderBudget > 0)
+                    {
+                        ImGui::Text("SVSM Budget: %u requested / %d allowed", shadowRenderer->GetSVSMBudgetUsed(), renderBudget);
+                    }
+
+                    if (invalidationCause != 0)
+                    {
+                        std::string causes;
+                        if (invalidationCause & 1) causes += "sun step ";
+                        if (invalidationCause & 2) causes += "z range ";
+                        if (invalidationCause & 4) causes += "manual ";
+                        if (invalidationCause & 8) causes += "aabb overflow ";
+                        ImGui::Text("SVSM Invalidation: %s", causes.c_str());
+                    }
+
+                    u32 numClipmaps = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
+                    for (u32 i = 0; i < numClipmaps; i++)
+                    {
+                        ShadowRenderer::SVSMClipmapStats stats;
+                        if (!shadowRenderer->GetSVSMClipmapStats(i, stats))
+                            break;
+
+                        ImGui::Text("P%u (%.0fm): %u marked, %u resident, %u dirty, %u inv, %u evict, %u dyn, %u defer", i, stats.extent, stats.marked, stats.resident, stats.dirty, stats.invalidated, stats.evicted, stats.dynamicLive, stats.deferred);
+                    }
                 }
             }
 
@@ -523,6 +600,29 @@ namespace Editor
             if (frameTimeQueries.size() > 0)
             {
                 ImGui::Text("Render Passes (GPU)");
+
+                // Copy the pass list as "name;ms" lines. Semicolon separator so a comma decimal
+                // separator can never collide with it
+                const char* copyLabel = "Copy CSV";
+                ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - ImGui::CalcTextSize(copyLabel).x - ImGui::GetStyle().FramePadding.x * 2.0f);
+                if (ImGui::SmallButton(copyLabel))
+                {
+                    std::string csv = "Pass;Milliseconds\n";
+                    for (u32 i = 0; i < frameTimeQueries.size(); i++)
+                    {
+                        const std::string& name = renderer->GetTimeQueryName(frameTimeQueries[i]);
+
+                        f32 averageMS = 0.0f;
+                        if (stats.AverageNamed(name, 240, averageMS))
+                        {
+                            char line[256];
+                            snprintf(line, sizeof(line), "%s;%.3f\n", name.c_str(), averageMS);
+                            csv += line;
+                        }
+                    }
+                    ImGui::SetClipboardText(csv.c_str());
+                }
+
                 if (ImGui::BeginTable("passtimes", 2, flags))
                 {
                     for (u32 i = 0; i < frameTimeQueries.size(); i++)
@@ -617,7 +717,8 @@ namespace Editor
         std::string viewName = "Main View Instances";
         if (viewID > 0)
         {
-            viewName = "Shadow Cascade " + std::to_string(viewID - 1) + " Drawcalls";
+            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+            viewName = (useSVSM ? "Clipmap " : "Shadow Cascade ") + std::to_string(viewID - 1) + " Drawcalls";
         }
 
         if (!_drawCallStatsOnlyForMainView)
@@ -637,7 +738,7 @@ namespace Editor
             ImGui::Text("%s", rightHeaderText.c_str());
             ImGui::Separator();
         }
-        
+
         u32 viewDrawCalls = 0;
         u32 viewDrawCallsSurvived = 0;
 
@@ -726,7 +827,8 @@ namespace Editor
         std::string viewName = "Main View Triangles";
         if (viewID > 0)
         {
-            viewName = "Shadow Cascade " + std::to_string(viewID - 1) + " Triangles";
+            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+            viewName = (useSVSM ? "Clipmap " : "Shadow Cascade ") + std::to_string(viewID - 1) + " Triangles";
         }
 
         if (!_drawCallStatsOnlyForMainView)

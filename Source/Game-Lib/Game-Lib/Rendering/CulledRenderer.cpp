@@ -10,6 +10,7 @@ AutoCVar_Int CVAR_ShadowDebugCullingView(CVarCategory::Client | CVarCategory::Re
 
 bool CulledRenderer::_pipelinesCreated = false;
 Renderer::ComputePipelineID CulledRenderer::_fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+Renderer::ComputePipelineID CulledRenderer::_fillInstancedDrawCallsFilteredPipeline[2]; // Same, with the SVSM dynamic-mask filter
 Renderer::ComputePipelineID CulledRenderer::_fillDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
 Renderer::ComputePipelineID CulledRenderer::_createIndirectAfterCullingPipeline[2]; // [0] = non-indexed, [1] = indexed
 Renderer::ComputePipelineID CulledRenderer::_createIndirectAfterCullingOrderedPipeline[2]; // [0] = non-indexed, [1] = indexed
@@ -40,6 +41,11 @@ void CulledRenderer::InitCullingResources(CullingResourcesBase& cullingResources
 
     Renderer::DescriptorSet& geometryFillDescriptorSet = cullingResources.GetGeometryFillDescriptorSet();
     geometryFillDescriptorSet.RegisterPipeline(_renderer, fillPipeline);
+    if (isInstanced)
+    {
+        // SVSM caster-split fills, only ever dispatched for resources that bind the dynamic mask
+        geometryFillDescriptorSet.RegisterPipeline(_renderer, _fillInstancedDrawCallsFilteredPipeline[isIndexed]);
+    }
     geometryFillDescriptorSet.Init(_renderer);
 }
 
@@ -638,25 +644,148 @@ void CulledRenderer::CascadeCullingPass(CullingPassParams& params)
     params.commandList->PopMarker();
 }
 
+// Rebuilds the shared instance counts/lookup/argument buffers from a view's bitmask slice.
+// filtered selects the SVSM caster-split fill variant, keepDynamic its instance class
+void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic)
+{
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
+    const u32 numInstances = params.cullingResources->GetNumInstances();
+
+    // Reset the counters and per-drawcall instance counts
+    params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+    params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
+    params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
+    params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+    params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+
+    // Fill the instances visible in this view
+    {
+        std::string debugName = params.passName + " Instanced Geometry Fill";
+        params.commandList->PushMarker(debugName, Color::White);
+
+        Renderer::ComputePipelineID pipeline = filtered ? _fillInstancedDrawCallsFilteredPipeline[params.cullingResources->IsIndexed()]
+                                                        : _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
+        params.commandList->BeginPipeline(pipeline);
+
+        struct FillDrawCallConstants
+        {
+            u32 numTotalInstances;
+            u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+            u32 drawCallDataSize;
+            u32 currentBitmaskIndex;
+            u32 bitmaskOffset;
+            u32 keepDynamic;
+        };
+
+        FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
+        fillConstants->numTotalInstances = numInstances;
+        fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+        fillConstants->drawCallDataSize = params.drawCallDataSize;
+        fillConstants->currentBitmaskIndex = params.frameIndex;
+        fillConstants->bitmaskOffset = viewIndex * params.cullingResources->GetBitMaskBufferUintsPerView();
+        fillConstants->keepDynamic = keepDynamic;
+        params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
+
+        params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
+
+        params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+
+        params.commandList->EndPipeline(pipeline);
+        params.commandList->PopMarker();
+    }
+
+    params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
+
+    params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
+    params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+
+    // Create indirect argument buffer
+    {
+        std::string debugName = params.passName + " Create Indirect";
+        params.commandList->PushMarker(debugName, Color::Yellow);
+
+        Renderer::ComputePipelineID pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
+        params.commandList->BeginPipeline(pipeline);
+
+        struct CreateIndirectConstants
+        {
+            u32 numTotalDrawCalls;
+            u32 baseInstanceLookupOffset;
+            u32 drawCallDataSize;
+        };
+        CreateIndirectConstants* createIndirectConstants = params.graphResources->FrameNew<CreateIndirectConstants>();
+
+        createIndirectConstants->numTotalDrawCalls = numDrawCalls;
+        createIndirectConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+        createIndirectConstants->drawCallDataSize = params.drawCallDataSize;
+        params.commandList->PushConstant(createIndirectConstants, 0, sizeof(CreateIndirectConstants));
+
+        params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
+
+        params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
+
+        params.commandList->EndPipeline(pipeline);
+        params.commandList->PopMarker();
+    }
+
+    params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
+    params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+    params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+    params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
 void CulledRenderer::GeometryPass(GeometryPassParams& params)
 {
     NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : GeometryPass got params with invalid drawCallback");
 
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
 
+    // svsmProfileGeometry: per-view fill/draw GPU timings, they surface in the perf editor's
+    // render pass list. Off by default, queries around tiny dispatches serialize slightly
+    const bool profileSVSM = params.svsmPass && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry"_h) != 0;
+    auto Profiled = [&](const char* stageName, u32 viewIndex, auto&& work)
+    {
+        if (!profileSVSM)
+        {
+            work();
+            return;
+        }
+
+        Renderer::TimeQueryDesc timeQueryDesc;
+        timeQueryDesc.name = "SVSM " + std::string(stageName) + " v" + std::to_string(viewIndex);
+        Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
+        params.commandList->BeginTimeQuery(timeQuery);
+        work();
+        params.commandList->EndTimeQuery(timeQuery);
+    };
+
     for (u32 i = params.firstViewIndex; i < params.numCascades + 1; i++)
     {
-        std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
+        std::string markerName = (i == 0) ? "Main" : (params.svsmPass ? "Clipmap " : "Cascade ") + std::to_string(i - 1);
         params.commandList->PushMarker(markerName, Color::PastelYellow);
 
         if (i == 1)
         {
-            uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
+            if (params.svsmPass)
+            {
+                // The viewport spans the virtual texture so SV_Position.xy is the virtual texel.
+                // No depth bias: there is no depth attachment for it to apply to
+                params.commandList->SetViewport(0, 0, static_cast<f32>(params.svsmExtent.x), static_cast<f32>(params.svsmExtent.y), 0.0f, 1.0f);
+                params.commandList->SetScissorRect(0, params.svsmExtent.x, 0, params.svsmExtent.y);
+            }
+            else
+            {
+                uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
 
-            params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-            params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
+                params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
+                params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
 
-            params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
+                params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
+            }
         }
 
         // Reset the counters
@@ -708,90 +837,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             // The main view (i == 0) consumes the culling pass's output directly, cascades rebuild the
             // shared instance counts/lookup/argument buffers from their bitmask slice before drawing
-            const u32 numInstances = params.cullingResources->GetNumInstances();
-
-            // Reset the counters and per-drawcall instance counts
-            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
-            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-            params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
-            params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
-            params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
-            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
-            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-
-            // Fill the instances visible in this cascade
-            {
-                std::string debugName = params.passName + " Instanced Geometry Fill";
-                params.commandList->PushMarker(debugName, Color::White);
-
-                Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
-                params.commandList->BeginPipeline(pipeline);
-
-                struct FillDrawCallConstants
-                {
-                    u32 numTotalInstances;
-                    u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
-                    u32 drawCallDataSize;
-                    u32 currentBitmaskIndex;
-                    u32 bitmaskOffset;
-                };
-
-                FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
-                fillConstants->numTotalInstances = numInstances;
-                fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-                fillConstants->drawCallDataSize = params.drawCallDataSize;
-                fillConstants->currentBitmaskIndex = params.frameIndex;
-                fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
-                params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-                params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
-
-                params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
-
-                params.commandList->EndPipeline(pipeline);
-                params.commandList->PopMarker();
-            }
-
-            params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
-            params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-
-            // Create indirect argument buffer
-            {
-                std::string debugName = params.passName + " Create Indirect";
-                params.commandList->PushMarker(debugName, Color::Yellow);
-
-                Renderer::ComputePipelineID pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
-                params.commandList->BeginPipeline(pipeline);
-
-                struct CreateIndirectConstants
-                {
-                    u32 numTotalDrawCalls;
-                    u32 baseInstanceLookupOffset;
-                    u32 drawCallDataSize;
-                };
-                CreateIndirectConstants* createIndirectConstants = params.graphResources->FrameNew<CreateIndirectConstants>();
-
-                createIndirectConstants->numTotalDrawCalls = numDrawCalls;
-                createIndirectConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-                createIndirectConstants->drawCallDataSize = params.drawCallDataSize;
-                params.commandList->PushConstant(createIndirectConstants, 0, sizeof(CreateIndirectConstants));
-
-                params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
-
-                params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
-
-                params.commandList->EndPipeline(pipeline);
-                params.commandList->PopMarker();
-            }
-
-            params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
-            params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
-            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
-            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+            Profiled("Fill", i, [&] { RunInstancedGeometryFill(params, i, params.svsmSplitFills, false); });
         }
 
         if (!params.cullingEnabled)
@@ -811,6 +857,8 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             DrawParams drawParams;
             drawParams.cullingEnabled = params.cullingEnabled;
             drawParams.shadowPass = i > 0;
+            drawParams.svsmPass = params.svsmPass;
+            drawParams.svsmExtent = params.svsmExtent;
             drawParams.viewIndex = i;
             drawParams.cullingResources = params.cullingResources;
             drawParams.rt0 = params.rt0;
@@ -848,7 +896,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             }
 
 
-            params.drawCallback(drawParams);
+            Profiled("Draw", i, [&] { params.drawCallback(drawParams); });
         }
 
         // Copy from our draw count buffer to the readback buffer
@@ -857,6 +905,37 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
         if (params.enableDrawing)
         {
+            params.commandList->PopMarker();
+        }
+
+        // SVSM caster split: rebuild the shared buffers with only dynamic instances and draw them
+        // into the dynamic pool. Runs after the static readback copies so the perf stats show the
+        // static (dominant) counts. Views without recent live dynamic pages skip the whole phase
+        if (params.svsmSplitFills && params.enableDrawing && i > 0 && params.svsmDynamicViewActive[i])
+        {
+            params.commandList->PushMarker("Dynamic", Color::PastelOrange);
+
+            Profiled("DynFill", i, [&] { RunInstancedGeometryFill(params, i, true, true); });
+
+            DrawParams drawParams;
+            drawParams.cullingEnabled = params.cullingEnabled;
+            drawParams.shadowPass = true;
+            drawParams.svsmPass = params.svsmPass;
+            drawParams.svsmDynamicPass = true;
+            drawParams.svsmExtent = params.svsmExtent;
+            drawParams.viewIndex = i;
+            drawParams.cullingResources = params.cullingResources;
+            drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+            drawParams.drawCountBuffer = params.culledDrawCallCountBuffer;
+            drawParams.drawCountIndex = 0;
+            drawParams.numMaxDrawCalls = params.cullingResources->GetDrawCallCount();
+
+            Profiled("DynDraw", i, [&] { params.drawCallbackDynamic(drawParams); });
+
+            // Dynamic surviving-count readback: the fill wrote this view's dynamic instance count
+            // to drawCountBuffer, snapshot it so missing dynamic draws are visible in the perf editor
+            params.commandList->CopyBuffer(params.svsmDynamicDrawCountReadBackBuffer, sizeof(u32) * i, params.drawCountBuffer, 0, sizeof(u32));
+
             params.commandList->PopMarker();
         }
 
@@ -910,18 +989,29 @@ void CulledRenderer::CreatePipelines()
 
         for (u32 i = 0; i < 2; i++)
         {
-            std::vector<Renderer::PermutationField> permutationFields =
+            for (u32 filtered = 0; filtered < 2; filtered++)
             {
-                { "IS_INDEXED", std::to_string(i) }
-            };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillInstancedDrawCallsFromBitmask.cs", permutationFields);
+                std::vector<Renderer::PermutationField> permutationFields =
+                {
+                    { "IS_INDEXED", std::to_string(i) },
+                    { "DYNAMIC_FILTER", std::to_string(filtered) }
+                };
+                u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Utils/FillInstancedDrawCallsFromBitmask.cs", permutationFields);
 
-            Renderer::ComputeShaderDesc shaderDesc;
-            shaderDesc.shaderEntry = shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/FillInstancedDrawCallsFromBitmask.cs");
+                Renderer::ComputeShaderDesc shaderDesc;
+                shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Utils/FillInstancedDrawCallsFromBitmask.cs");
 
-            pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+                pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
 
-            _fillInstancedDrawCallsFromBitmaskPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+                if (filtered == 0)
+                {
+                    _fillInstancedDrawCallsFromBitmaskPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+                }
+                else
+                {
+                    _fillInstancedDrawCallsFilteredPipeline[i] = _renderer->CreatePipeline(pipelineDesc);
+                }
+            }
         }
     }
     {

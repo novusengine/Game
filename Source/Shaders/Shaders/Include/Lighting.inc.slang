@@ -28,6 +28,7 @@ DirectionalLight LoadDirectionalLight(uint index)
 float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
 {
     uint numDirectionalLights = lightInfo.x;
+    uint shadowTechnique = lightInfo.y; // 0 = cascaded shadow maps, 1 = sparse virtual shadow maps
     uint numCascades = lightInfo.z;
 
     float3 ambientColor = float3(0.0f, 0.0f, 0.0f);
@@ -54,7 +55,18 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
         lightColor *= light.color.a; // Intensity in alpha channel
         
         // Directional Light Shadows
-        if (shadowSettings.enableShadows && numCascades > 0)
+        if (shadowSettings.enableShadows && shadowTechnique == 1)
+        {
+            // Sparse virtual shadow maps: clipmap selection, page walk and far fade all live in
+            // GetSVSMShadowFactor
+            float shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
+
+            // Sun elevation strength, fades shadows out around dawn/dusk
+            shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
+
+            lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
+        }
+        else if (shadowSettings.enableShadows && numCascades > 0)
         {
             shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
             Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera

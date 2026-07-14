@@ -8,6 +8,7 @@
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
+#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
 #include "Game-Lib/Util/PhysicsUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -19,7 +20,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_VisibilityBufferDebugID(CVarCategory::Client | CVarCategory::Rendering, "visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade", 0);
+AutoCVar_Int CVAR_VisibilityBufferDebugID(CVarCategory::Client | CVarCategory::Rendering, "visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade, 5 - SVSM Compare Margin", 0);
 AutoCVar_ShowFlag CVAR_DrawTerrainWireframe(CVarCategory::Client | CVarCategory::Rendering, "drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
 AutoCVar_ShowFlag CVAR_EnableFog(CVarCategory::Client | CVarCategory::Rendering, "enableFog", "Toggle fog", ShowFlag::DISABLED);
 AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, "fogColor", "Change fog color", vec4(0.33f, 0.2f, 0.38f, 1.0f), CVarFlags::None);
@@ -128,6 +129,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
         Renderer::ImageResource ambientOcclusion;
 
+        Renderer::ImageResource svsmPagePool;
+        Renderer::ImageResource svsmDynamicPagePool;
+
         Renderer::DescriptorSetResource debugSet;
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource lightSet;
@@ -136,7 +140,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::DescriptorSetResource materialSet;
     };
 
-    const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 4);
+    const i32 visibilityBufferDebugID = Math::Clamp(CVAR_VisibilityBufferDebugID.Get(), 0, 5);
 
     renderGraph->AddPass<MaterialPassData>("Material Pass",
         [this, &resources](MaterialPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
@@ -151,6 +155,16 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
             builder.Read(_directionalLights.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+
+            // SVSM sampling reads the page pools the geometry passes wrote this frame, the graph
+            // needs the dependencies declared for the barriers. The pool bindings must always be
+            // valid, a placeholder stands in until the real pools are lazily created
+            ShadowRenderer* shadowRenderer = _gameRenderer->GetShadowRenderer();
+            data.svsmPagePool = builder.Read(shadowRenderer->GetSVSMPagePoolOrPlaceholder(), Renderer::PipelineType::COMPUTE);
+            data.svsmDynamicPagePool = builder.Read(shadowRenderer->GetSVSMDynamicPagePoolOrPlaceholder(), Renderer::PipelineType::COMPUTE);
+            builder.Read(shadowRenderer->GetSVSMDataBuffer(), Renderer::BufferPassUsage::COMPUTE);
+            builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), Renderer::BufferPassUsage::COMPUTE);
+            builder.Read(shadowRenderer->GetSVSMDynamicPageTableBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
             data.debugSet = builder.Use(resources.debugDescriptorSet);
             data.globalSet = builder.Use(resources.globalDescriptorSet);
@@ -180,13 +194,43 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
 
             data.materialSet.Bind("_ambientOcclusion", data.ambientOcclusion);
 
-            // Bind descriptorset
-            commandList.BindDescriptorSet(data.debugSet, frameIndex);
-            commandList.BindDescriptorSet(data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(data.lightSet, frameIndex);
-            commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-            commandList.BindDescriptorSet(data.modelSet, frameIndex);
-            commandList.BindDescriptorSet(data.materialSet, frameIndex);
+            data.lightSet.Bind("_svsmPagePool"_h, data.svsmPagePool);
+            data.lightSet.Bind("_svsmDynamicPagePool"_h, data.svsmDynamicPagePool);
+
+            // The debug permutations dead-strip descriptor set usage, so each variant binds
+            // exactly what it statically references or the set-usage validation fires
+            switch (visibilityBufferDebugID)
+            {
+                case 1: // TypeID, pure math on the visibility buffer
+                case 3: // TriangleID
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    break;
+                case 2: // ObjectID reads terrain instance data
+                    commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    break;
+                case 4: // CascadeID reconstructs vertex data and reads the cascade cameras
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    break;
+                case 5: // SVSM compare margin reconstructs vertex data and samples the virtual shadow map
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.lightSet, frameIndex);
+                    commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    break;
+                default: // Full shading
+                    commandList.BindDescriptorSet(data.debugSet, frameIndex);
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.lightSet, frameIndex);
+                    commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    break;
+            }
 
             //if (CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED)
             {
@@ -205,6 +249,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     Color vertexColor;
                     Color brushColor;
                     vec4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, z = Shadow Strength, w = Normal Offset Bias
+                    vec4 svsmSettings; // x = Constant Bias (world meters)
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
@@ -215,8 +260,12 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 CVarSystem* cvarSystem = CVarSystem::Get();
                 const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
                 const f32 shadowStrength = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"));
+                // lightInfo.y selects the shadow technique: 0 = cascades, 1 = sparse virtual shadow maps
+                ShadowRenderer* shadowRenderer = _gameRenderer->GetShadowRenderer();
+                const bool useSVSM = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique") == 1
+                    && shadowRenderer != nullptr && shadowRenderer->GetSVSMPagePool() != Renderer::ImageID::Invalid();
                 const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) && shadowStrength > 0.0f;
-                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), 0, numCascades, shadowEnabled);
+                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), useSVSM ? 1 : 0, numCascades, shadowEnabled);
 
                 constants->tileInfo = uvec4(_lightRenderer->CalculateNumTiles2D(outputSize), 0, 0);
 
@@ -242,6 +291,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 f32 shadowFilterPenumbraSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterPenumbraSize"));
                 f32 shadowNormalOffsetBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias"));
                 constants->shadowFilterSettings = vec4(shadowFilterSize, shadowFilterPenumbraSize, shadowStrength, shadowNormalOffsetBias);
+
+                f32 svsmConstantBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias"));
+                constants->svsmSettings = vec4(svsmConstantBias, 0.0f, 0.0f, 0.0f);
 
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }

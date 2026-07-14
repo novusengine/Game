@@ -3,6 +3,7 @@
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Components/DisplayInfo.h"
 #include "Game-Lib/ECS/Components/Model.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
@@ -59,7 +60,12 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
+    , _svsmDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _svsmDynamicDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    _dynamicInstanceMask.SetDebugName("ModelDynamicInstanceMask");
+    _dynamicInstanceMask.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+
     CreatePermanentResources();
 
     if (CVAR_ModelValidateTransfers.Get())
@@ -109,7 +115,130 @@ void ModelRenderer::Update(f32 deltaTime)
 
             matrix = transform.GetMatrix();
             _instanceMatrices.SetDirtyElement(instanceID);
+
+            // Moved this frame -> dynamic shadow caster this frame
+            _dynamicInstanceQueue.enqueue(instanceID);
         });
+    }
+
+    // Animated doodads (static position, moving geometry) within svsmAnimatedCasterRange of the
+    // camera are classified as dynamic shadow casters so their shadows move every frame; beyond
+    // the range they stay static with their pose baked, where coarse rings can't resolve the
+    // motion anyway. Range transitions re-bake the static pages under the instance
+    {
+        ZoneScopedN("Animated Shadow Casters");
+
+        _animatedCasterFrame++;
+        _animatedCasterAABBs.clear();
+
+        CVarSystem* cvarSystem = CVarSystem::Get();
+        const bool svsmActive = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+        const f32 range = svsmActive ? static_cast<f32>(glm::max(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange"_h), 0.0)) : 0.0f;
+        const bool split = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit"_h) == 1;
+
+        u32 modelID;
+        while (_uninstancedAnimatedModelQueue.try_dequeue(modelID))
+        {
+            _animatedModelLastPushFrame[modelID] = _animatedCasterFrame;
+        }
+
+        vec3 cameraPos = vec3(0.0f);
+        bool hasCamera = false;
+        if (auto* activeCamera = gameRegistry->ctx().find<ECS::Singletons::ActiveCamera>())
+        {
+            if (activeCamera->entity != entt::null && gameRegistry->all_of<ECS::Components::Transform>(activeCamera->entity))
+            {
+                cameraPos = gameRegistry->get<ECS::Components::Transform>(activeCamera->entity).GetWorldPosition();
+                hasCamera = true;
+            }
+        }
+
+        robin_hood::unordered_set<u32> newSet;
+        if (range > 0.0f && hasCamera)
+        {
+            // A model stays "animated" for a grace period after its last bone push so a brief
+            // animation pause doesn't mass-invalidate and re-invalidate everything in range
+            constexpr u64 animatedGraceFrames = 30;
+            const f32 enterDistSq = range * range;
+            const f32 leaveDist = range * 1.15f; // Hysteresis against camera jitter at the boundary
+            const f32 leaveDistSq = leaveDist * leaveDist;
+
+            for (auto it = _animatedModelLastPushFrame.begin(); it != _animatedModelLastPushFrame.end();)
+            {
+                if (_animatedCasterFrame - it->second > animatedGraceFrames)
+                {
+                    it = _animatedModelLastPushFrame.erase(it);
+                    continue;
+                }
+
+                u32 animatedModelID = it->first;
+                std::scoped_lock lock(*_modelManifestsInstancesMutexes[animatedModelID]);
+                for (u32 instanceID : _modelManifests[animatedModelID].instances)
+                {
+                    vec3 toCamera = vec3(_instanceMatrices[instanceID][3]) - cameraPos;
+                    f32 distSq = glm::dot(toCamera, toCamera);
+                    f32 limitSq = _animatedCasterInstances.contains(instanceID) ? leaveDistSq : enterDistSq;
+                    if (distSq < limitSq)
+                    {
+                        newSet.insert(instanceID);
+                    }
+                }
+                ++it;
+            }
+        }
+
+        // Entering instances: their baked pose must come out of the static pages
+        for (u32 instanceID : newSet)
+        {
+            if (!_animatedCasterInstances.contains(instanceID))
+            {
+                QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
+            }
+        }
+
+        // Leaving instances (or animation stopped, or range/technique turned off): their final
+        // pose must bake back in. Instances despawned while in the set already invalidated via
+        // RemoveInstance; a recycled ID here costs one spurious page refresh at worst
+        for (u32 instanceID : _animatedCasterInstances)
+        {
+            if (!newSet.contains(instanceID))
+            {
+                QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
+            }
+        }
+
+        for (u32 instanceID : newSet)
+        {
+            if (split)
+            {
+                // Dynamic-class: excluded from static pages via the instance mask, rendered into
+                // the transient dynamic pool over the AABBs collected here
+                _dynamicInstanceQueue.enqueue(instanceID);
+
+                vec3 aabbMin, aabbMax;
+                ComputeInstanceShadowAABB(instanceID, _instanceMatrices[instanceID], aabbMin, aabbMax);
+                _animatedCasterAABBs.push_back(vec4(aabbMin, 0.0f));
+                _animatedCasterAABBs.push_back(vec4(aabbMax, 0.0f));
+            }
+            else
+            {
+                // Split off: v1-style per-frame static invalidation, range-bounded
+                QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
+            }
+        }
+
+        _animatedCasterInstances = std::move(newSet);
+    }
+
+    {
+        ZoneScopedN("SVSM Dynamic Draw Count ReadBack");
+
+        u32* counts = static_cast<u32*>(_renderer->MapBuffer(_svsmDynamicDrawCountReadBackBuffer));
+        if (counts != nullptr)
+        {
+            memcpy(_numSvsmDynamicInstances, counts, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
+        }
+        _renderer->UnmapBuffer(_svsmDynamicDrawCountReadBackBuffer);
     }
 
     {
@@ -381,6 +510,13 @@ void ModelRenderer::Clear()
     TextureLoadRequest textureLoadRequest;
     while (_textureLoadRequests.try_dequeue(textureLoadRequest)) {}
     _dirtyTextureUnitOffsets.clear();
+
+    // Queued modelIDs/instanceIDs are invalid after a clear
+    u32 drainedID;
+    while (_uninstancedAnimatedModelQueue.try_dequeue(drainedID)) {}
+    _animatedModelLastPushFrame.clear();
+    _animatedCasterInstances.clear();
+    _animatedCasterAABBs.clear();
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 
@@ -769,8 +905,19 @@ void ModelRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, Re
     if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
-    u32 numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    // Under SVSM the same per-view culling runs against the clipmap cameras, which need no
+    // cascade depth images
+    const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+    u32 numCascades;
+    if (useSVSM)
+    {
+        numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    }
+    else
+    {
+        numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
+        numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    }
     if (numCascades == 0)
         return;
 
@@ -859,6 +1006,10 @@ void ModelRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, R
         return;
 
     if (CVAR_ModelsCastShadow.Get() != 1)
+        return;
+
+    // SVSM renders pages through AddSVSMGeometryPass instead
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1)
         return;
 
     if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
@@ -977,6 +1128,200 @@ void ModelRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, R
             params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
             params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
             params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
+
+            params.enableDrawing = CVAR_ModelDrawGeometry.Get();
+            params.cullingEnabled = true;
+
+            GeometryPass(params);
+        });
+}
+
+void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer)
+{
+    ZoneScoped;
+
+    if (!CVAR_ModelRendererEnabled.Get())
+        return;
+
+    if (!CVAR_ModelCullingEnabled.Get()) // Clipmaps are driven by the culled bitmask slices
+        return;
+
+    CVarSystem* cvarSystem = CVarSystem::Get();
+
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
+        return;
+
+    if (CVAR_ModelsCastShadow.Get() != 1)
+        return;
+
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) != 1)
+        return;
+
+    if (shadowRenderer->GetSVSMPagePool() == Renderer::ImageID::Invalid())
+        return;
+
+    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
+        return;
+
+    const u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    const u32 virtualSize = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmVirtualSize"_h));
+
+    // No dynamic casters this frame -> skip the dynamic fills/draws outright. The instance mask
+    // is all zero then, so the unfiltered static fill is equivalent to the filtered one
+    const bool splitFills = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit"_h) == 1
+        && shadowRenderer->GetSVSMDynamicPagePool() != Renderer::ImageID::Invalid()
+        && shadowRenderer->HasSVSMDynamicCasters();
+
+    struct Data
+    {
+        Renderer::ImageMutableResource pagePool;
+        Renderer::ImageMutableResource dynamicPagePool;
+        Renderer::BufferResource svsmData;
+        Renderer::BufferResource pageTable;
+        Renderer::BufferResource dynamicPageTable;
+
+        Renderer::BufferMutableResource drawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallsBuffer;
+        Renderer::BufferMutableResource culledDrawCallCountBuffer;
+
+        Renderer::BufferMutableResource culledInstanceCountsBuffer;
+
+        Renderer::BufferMutableResource drawCountBuffer;
+        Renderer::BufferMutableResource triangleCountBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+        Renderer::BufferMutableResource triangleCountReadBackBuffer;
+
+        Renderer::BufferMutableResource svsmDynamicDrawCountReadBackBuffer;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource modelSet;
+        Renderer::DescriptorSetResource fillSet;
+        Renderer::DescriptorSetResource createIndirectSet;
+        Renderer::DescriptorSetResource drawSet;
+        Renderer::DescriptorSetResource svsmSet;
+        Renderer::DescriptorSetResource svsmDynamicSet;
+    };
+
+    renderGraph->AddPass<Data>("Model (O) SVSM Geometry",
+        [this, &resources, frameIndex, shadowRenderer, splitFills](Data& data, Renderer::RenderGraphBuilder& builder)
+        {
+            using BufferUsage = Renderer::BufferPassUsage;
+
+            data.pagePool = builder.Write(shadowRenderer->GetSVSMPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
+            data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
+            if (splitFills)
+            {
+                data.dynamicPagePool = builder.Write(shadowRenderer->GetSVSMDynamicPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.dynamicPageTable = builder.Read(shadowRenderer->GetSVSMDynamicPageTableBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_dynamicInstanceMask.GetBuffer(), BufferUsage::COMPUTE);
+                data.svsmDynamicDrawCountReadBackBuffer = builder.Write(_svsmDynamicDrawCountReadBackBuffer, BufferUsage::TRANSFER);
+                data.svsmDynamicSet = builder.Use(_svsmDynamicDrawDescriptorSet);
+            }
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_textureDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            GeometryPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            data.culledInstanceCountsBuffer = builder.Write(_opaqueCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
+
+            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
+            data.fillSet = builder.Use(_opaqueCullingResources.GetGeometryFillDescriptorSet());
+            data.createIndirectSet = builder.Use(_opaqueCullingResources.GetCreateIndirectAfterCullDescriptorSet());
+            data.svsmSet = builder.Use(_svsmDrawDescriptorSet);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [this, &resources, frameIndex, numClipmaps, virtualSize, splitFills, shadowRenderer](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, ModelSVSMGeometry);
+
+            // _svsmData and the page tables are bound once at init through BindSVSMBuffers, only
+            // the lazily created pools bind per frame (image binds write the descriptor immediately)
+            data.svsmSet.Bind("_pagePool"_h, data.pagePool);
+            if (splitFills)
+            {
+                data.svsmDynamicSet.Bind("_pagePool"_h, data.dynamicPagePool);
+            }
+
+            CulledRenderer::GeometryPassParams params;
+            params.passName = "Opaque";
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.cullingResources = &_opaqueCullingResources;
+
+            params.frameIndex = frameIndex;
+
+            params.drawCallsBuffer = data.drawCallsBuffer;
+            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
+            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
+            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
+
+            params.drawCountBuffer = data.drawCountBuffer;
+            params.triangleCountBuffer = data.triangleCountBuffer;
+            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
+            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
+
+            params.globalDescriptorSet = data.globalSet;
+            params.fillDescriptorSet = data.fillSet;
+            params.createIndirectDescriptorSet = data.createIndirectSet;
+            params.drawDescriptorSet = data.drawSet;
+
+            params.drawCallback = [&](DrawParams& drawParams)
+            {
+                drawParams.descriptorSets = {
+                    &data.globalSet,
+                    &data.modelSet,
+                    &data.svsmSet
+                };
+                Draw(resources, frameIndex, graphResources, commandList, drawParams);
+            };
+
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.drawCallDataSize = sizeof(DrawCallData);
+
+            params.firstViewIndex = 1;
+            params.numCascades = numClipmaps;
+
+            params.svsmPass = true;
+            params.svsmExtent = uvec2(virtualSize, virtualSize);
+
+            params.svsmSplitFills = splitFills;
+            if (splitFills)
+            {
+                // Rings with no live dynamic pages the last two frames skip their dynamic phase,
+                // a caster entering a fresh ring renders at most one frame late
+                for (u32 view = 1; view <= numClipmaps; view++)
+                {
+                    params.svsmDynamicViewActive[view] = shadowRenderer->GetSVSMDynamicViewActive(view - 1);
+                }
+
+                params.svsmDynamicDrawCountReadBackBuffer = data.svsmDynamicDrawCountReadBackBuffer;
+                params.drawCallbackDynamic = [&](DrawParams& drawParams)
+                {
+                    drawParams.descriptorSets = {
+                        &data.globalSet,
+                        &data.modelSet,
+                        &data.svsmDynamicSet
+                    };
+                    Draw(resources, frameIndex, graphResources, commandList, drawParams);
+                };
+            }
 
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = true;
@@ -1792,6 +2137,59 @@ u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u32 
     return instanceIndex;
 }
 
+void ModelRenderer::ComputeInstanceShadowAABB(u32 instanceID, const mat4x4& transformMatrix, vec3& outMin, vec3& outMax)
+{
+    const InstanceData& instanceData = _instanceDatas[instanceID];
+    const Model::ComplexModel::CullingData& cullingData = _cullingDatas[instanceData.modelID];
+
+    vec3 center = vec3(transformMatrix * vec4(vec3(cullingData.center), 1.0f));
+    mat3x3 absRotation = mat3x3(transformMatrix);
+    absRotation[0] = glm::abs(absRotation[0]);
+    absRotation[1] = glm::abs(absRotation[1]);
+    absRotation[2] = glm::abs(absRotation[2]);
+    vec3 extents = absRotation * vec3(cullingData.extents);
+
+    outMin = center - extents;
+    outMax = center + extents;
+}
+
+void ModelRenderer::QueueShadowInvalidation(u32 instanceID, const mat4x4& transformMatrix)
+{
+    vec3 aabbMin, aabbMax;
+    ComputeInstanceShadowAABB(instanceID, transformMatrix, aabbMin, aabbMax);
+
+    ShadowInvalidation invalidation;
+    invalidation.min = vec4(aabbMin, 0.0f);
+    invalidation.max = vec4(aabbMax, 0.0f);
+    _shadowInvalidationQueue.enqueue(invalidation);
+}
+
+void ModelRenderer::BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer, Renderer::BufferID dynamicPageTableBuffer)
+{
+    _svsmDrawDescriptorSet.Bind("_svsmData"_h, svsmDataBuffer);
+    _svsmDrawDescriptorSet.Bind("_pageTable"_h, pageTableBuffer);
+    _svsmDynamicDrawDescriptorSet.Bind("_svsmData"_h, svsmDataBuffer);
+    _svsmDynamicDrawDescriptorSet.Bind("_pageTable"_h, dynamicPageTableBuffer);
+}
+
+u32 ModelRenderer::DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs)
+{
+    u32 numDrained = 0;
+
+    ShadowInvalidation invalidation;
+    while (_shadowInvalidationQueue.try_dequeue(invalidation))
+    {
+        if (numDrained < maxPairs)
+        {
+            outMinMaxPairs.push_back(invalidation.min);
+            outMinMaxPairs.push_back(invalidation.max);
+        }
+        numDrained++; // Keeps draining past the cap so the queue can't grow unbounded
+    }
+
+    return numDrained;
+}
+
 u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
     InstanceOffsets instanceOffsets;
@@ -1847,6 +2245,9 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
         RequestChangeSkybox(instanceOffsets.instanceIndex, true);
     }
 
+    // A spawned static caster must invalidate the cached static shadow pages under it
+    QueueShadowInvalidation(instanceOffsets.instanceIndex, transformMatrix);
+
     _instancesDirty = true;
 
     return instanceOffsets.instanceIndex;
@@ -1856,6 +2257,9 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
 {
     InstanceData& instanceData = _instanceDatas[instanceID];
     ModelManifest& manifest = _modelManifests[instanceData.modelID];
+
+    // Capture the shadow footprint before the instance data dies, its baked static shadow must go
+    QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
 
     // TODO: We need to change _animatedVerticesIndex so we can free up between instanceData.animatedVertexOffset + manifest.numVertices
 
@@ -1892,6 +2296,10 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
 void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
     InstanceData& instanceData = _instanceDatas[instanceID];
+
+    // The old shadow footprint's cached static pages must refresh, the new one queues below once
+    // the model ID is swapped
+    QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
 
     u32 oldModelID = instanceData.modelID;
     ModelManifest& oldManifest = _modelManifests[oldModelID];
@@ -1940,6 +2348,9 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         mat4x4& instanceMatrix = _instanceMatrices[instanceID];
         instanceMatrix = transformMatrix;
     }
+
+    // New model + transform in place, refresh the new shadow footprint too
+    QueueShadowInvalidation(instanceID, transformMatrix);
 
     InstanceManifest& instanceManifest = _instanceManifests[instanceID];
     instanceManifest.modelID = modelID;
@@ -2526,6 +2937,10 @@ bool ModelRenderer::SetUninstancedBoneMatricesAsDirty(u32 modelID, u32 boneMatri
     if (endGlobalBoneIndex > boneMatrixOffset + modelManifest.numBones)
         return false;
 
+    // This model's shared animation advanced, Update classifies its in-range placements as
+    // dynamic shadow casters
+    _uninstancedAnimatedModelQueue.enqueue(modelID);
+
     if (count == 1)
     {
         _boneMatrices[globalBoneIndex] = *boneMatrixArray;
@@ -2652,6 +3067,10 @@ bool ModelRenderer::SetBoneMatricesAsDirty(u32 instanceID, u32 localBoneIndex, u
         _boneMatrices.SetDirtyElements(globalBoneIndex, count);
     }
 
+    // Pushed bone matrices this frame -> dynamic shadow caster this frame. The static-baked
+    // animation path (SetUninstancedBoneMatricesAsDirty) intentionally does not do this
+    _dynamicInstanceQueue.enqueue(instanceID);
+
     return true;
 }
 
@@ -2699,6 +3118,13 @@ void ModelRenderer::CreatePermanentResources()
     CreateModelPipelines();
 
     RenderResources& resources = _gameRenderer->GetRenderResources();
+
+    Renderer::BufferDesc svsmDynamicCountDesc;
+    svsmDynamicCountDesc.name = "ModelSVSMDynamicDrawCountRBBuffer";
+    svsmDynamicCountDesc.size = sizeof(u32) * Renderer::Settings::MAX_VIEWS;
+    svsmDynamicCountDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+    svsmDynamicCountDesc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
+    _svsmDynamicDrawCountReadBackBuffer = _renderer->CreateBuffer(_svsmDynamicDrawCountReadBackBuffer, svsmDynamicCountDesc);
 
     Renderer::TextureArrayDesc textureArrayDesc;
     textureArrayDesc.size = Renderer::Settings::MAX_TEXTURES;
@@ -2931,6 +3357,50 @@ void ModelRenderer::CreateModelPipelines()
         // Draw
         _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
+    // SVSM pages: attachment-less, the pixel shader keeps the alpha-key discard and writes depth
+    // into the page pool with image atomics. Depth clamp stays on so pancaked casters rasterize
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Model Draw SVSM";
+
+        // Rasterizer state, no depth or color attachments
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
+
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        std::vector<Renderer::PermutationField> vertexPermutationFields =
+        {
+            { "EDITOR_PASS", "0" },
+            { "SHADOW_PASS", "1"}
+        };
+        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
+        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
+        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+
+        for (u32 dynamic = 0; dynamic < 2; dynamic++)
+        {
+            std::vector<Renderer::PermutationField> pixelPermutationFields =
+            {
+                { "SVSM_DYNAMIC", std::to_string(dynamic) }
+            };
+            u32 pixelShaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/DrawSVSM.ps", pixelPermutationFields);
+
+            Renderer::PixelShaderDesc pixelShaderDesc;
+            pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(pixelShaderEntryNameHash, "Model/DrawSVSM.ps");
+            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+
+            if (dynamic == 0)
+            {
+                pipelineDesc.debugName = "Model Draw SVSM";
+                _drawSVSMPipeline = _renderer->CreatePipeline(pipelineDesc);
+            }
+            else
+            {
+                pipelineDesc.debugName = "Model Draw SVSM Dynamic";
+                _drawSVSMDynamicPipeline = _renderer->CreatePipeline(pipelineDesc);
+            }
+        }
+    }
     // Transparencies
     {
         Renderer::GraphicsPipelineDesc pipelineDesc;
@@ -3091,6 +3561,15 @@ void ModelRenderer::InitDescriptorSets()
         Renderer::DescriptorSet& geometryPassDescriptorSet = _transparentSkyboxCullingResources.GetGeometryPassDescriptorSet();
         geometryPassDescriptorSet.RegisterPipeline(_renderer, _drawSkyboxTransparentPipeline);
         geometryPassDescriptorSet.Init(_renderer);
+    }
+
+    // SVSM page render
+    {
+        _svsmDrawDescriptorSet.RegisterPipeline(_renderer, _drawSVSMPipeline);
+        _svsmDrawDescriptorSet.Init(_renderer);
+
+        _svsmDynamicDrawDescriptorSet.RegisterPipeline(_renderer, _drawSVSMDynamicPipeline);
+        _svsmDynamicDrawDescriptorSet.Init(_renderer);
     }
 }
 
@@ -3610,6 +4089,53 @@ void ModelRenderer::SyncToGPU()
     BindCullingResource(_transparentCullingResources);
     BindCullingResource(_opaqueSkyboxCullingResources);
     BindCullingResource(_transparentSkyboxCullingResources);
+
+    // Rebuild the SVSM dynamic instance mask from this frame's producers (moved + bone-pushed).
+    // Runs after every ECS system, so ordering between the producers doesn't matter
+    {
+        ZoneScopedN("Sync Dynamic Instance Mask");
+
+        u32 wordsNeeded = (static_cast<u32>(_instanceDatas.Capacity()) + 31) / 32;
+        u32 wordCount = static_cast<u32>(_dynamicInstanceMask.Count());
+        if (wordsNeeded > wordCount)
+        {
+            _dynamicInstanceMask.AddCount(wordsNeeded - wordCount);
+            for (u32 i = wordCount; i < wordsNeeded; i++)
+            {
+                _dynamicInstanceMask[i] = 0;
+            }
+        }
+
+        // Clear last frame's bits, then set this frame's. The bit test doubles as dedupe
+        for (u32 instanceID : _dynamicInstanceIDs)
+        {
+            u32 word = instanceID / 32;
+            _dynamicInstanceMask[word] &= ~(1u << (instanceID & 31));
+            _dynamicInstanceMask.SetDirtyElement(word);
+        }
+        _dynamicInstanceIDs.clear();
+
+        u32 instanceID;
+        while (_dynamicInstanceQueue.try_dequeue(instanceID))
+        {
+            u32 word = instanceID / 32;
+            if (word >= wordsNeeded)
+                continue;
+
+            u32 bit = 1u << (instanceID & 31);
+            if ((_dynamicInstanceMask[word] & bit) == 0)
+            {
+                _dynamicInstanceMask[word] |= bit;
+                _dynamicInstanceMask.SetDirtyElement(word);
+                _dynamicInstanceIDs.push_back(instanceID);
+            }
+        }
+
+        if (_dynamicInstanceMask.SyncToGPU(_renderer))
+        {
+            _opaqueCullingResources.GetGeometryFillDescriptorSet().Bind("_dynamicInstanceMask"_h, _dynamicInstanceMask.GetBuffer());
+        }
+    }
 }
 
 void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)
@@ -3618,18 +4144,28 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     graphResources.InitializeRenderPassDesc(renderPassDesc);
 
     // Render targets
-    if (!params.shadowPass)
+    if (params.svsmPass)
     {
-        renderPassDesc.renderTargets[0] = params.rt0;
-        if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-        {
-            renderPassDesc.renderTargets[1] = params.rt1;
-        }
+        // Attachment-less: with no render targets BeginRenderPass has no extent fallback,
+        // the render area must be explicit or it collapses to zero
+        renderPassDesc.extent = params.svsmExtent;
     }
-    renderPassDesc.depthStencil = params.depth;
+    else
+    {
+        if (!params.shadowPass)
+        {
+            renderPassDesc.renderTargets[0] = params.rt0;
+            if (params.rt1 != Renderer::ImageMutableResource::Invalid())
+            {
+                renderPassDesc.renderTargets[1] = params.rt1;
+            }
+        }
+        renderPassDesc.depthStencil = params.depth;
+    }
     commandList.BeginRenderPass(renderPassDesc);
 
-    Renderer::GraphicsPipelineID pipeline = params.shadowPass ? _drawShadowPipeline : _drawPipeline;
+    Renderer::GraphicsPipelineID pipeline = params.svsmPass ? (params.svsmDynamicPass ? _drawSVSMDynamicPipeline : _drawSVSMPipeline)
+                                                            : (params.shadowPass ? _drawShadowPipeline : _drawPipeline);
     commandList.BeginPipeline(pipeline);
 
     struct PushConstants

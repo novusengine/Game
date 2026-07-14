@@ -61,9 +61,20 @@ namespace ECS::Systems
         i32 cascadeTextureSize = CVAR_ShadowCascadeTextureSize.Get();
         bool stableShadows = CVAR_ShadowsStable.Get() == 1;
 
+        CVarSystem* cvarSystem = CVarSystem::Get();
+        const bool useSVSM = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+
         // Initialize any new shadow cascades
-        // Cascade count can shrink at runtime, we keep the excess cameras and depth images around unused since neither can shrink
-        u32 numCamerasNeeded = numCascades + 1; // Main camera + cascades
+        // Cascade count can shrink at runtime, we keep the excess cameras and depth images around unused since neither can shrink.
+        // SVSM clipmaps reuse the same camera slots but need no cascade depth images
+        u32 numViews = numCascades;
+        if (useSVSM)
+        {
+            u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+            numViews = glm::max(numCascades, numClipmaps);
+        }
+
+        u32 numCamerasNeeded = numViews + 1; // Main camera + cascades/clipmaps
         u32 numCameras = renderResources.cameras.Count();
         if (numCamerasNeeded > numCameras)
         {
@@ -87,8 +98,6 @@ namespace ECS::Systems
             renderResources.shadowDepthCascades.push_back(cascadeDepthImage);
         }
 
-        CVarSystem* cvarSystem = CVarSystem::Get();
-
         // Master toggle, no shadow work at all while disabled (resource growth above stays so enabling works at runtime)
         if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
             return;
@@ -96,17 +105,18 @@ namespace ECS::Systems
         const bool useSDSM = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowUseSDSM"_h) != 0;
         const bool validateParity = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowSDSMValidateParity"_h) != 0;
 
-        // The GPU fit pass owns the cascade cameras while SDSM is on, the CPU copies go stale.
-        // On toggle-off force a full re-upload (the loop below would normally re-dirty every frame,
-        // but not while frozen)
-        static bool previousUseSDSM = useSDSM;
-        if (previousUseSDSM && !useSDSM)
+        // A GPU pass owns the cascade camera slots while SDSM or SVSM is on, the CPU copies go
+        // stale. On toggle back to CPU ownership force a full re-upload (the loop below would
+        // normally re-dirty every frame, but not while frozen)
+        const bool gpuOwnsCameras = useSVSM || (useSDSM && !validateParity);
+        static bool previousGpuOwnsCameras = gpuOwnsCameras;
+        if (previousGpuOwnsCameras && !gpuOwnsCameras)
         {
-            renderResources.cameras.SetDirtyElements(1, numCascades);
+            renderResources.cameras.SetDirtyElements(1, renderResources.cameras.Count() - 1);
         }
-        previousUseSDSM = useSDSM;
+        previousGpuOwnsCameras = gpuOwnsCameras;
 
-        if (useSDSM && !validateParity)
+        if (gpuOwnsCameras)
             return;
 
         if (CVAR_ShadowsFreezeCascades.Get())

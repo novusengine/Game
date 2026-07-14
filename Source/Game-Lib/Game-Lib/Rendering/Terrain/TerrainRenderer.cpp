@@ -43,6 +43,7 @@ TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, GameRenderer* gam
     , _resetIndirectDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _cullingPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _geometryFillPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _svsmDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     if (CVAR_TerrainValidateTransfers.Get())
     {
@@ -562,8 +563,19 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
     if (CVAR_TerrainCastShadow.Get() != 1)
         return;
 
-    u32 numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    // Under SVSM the same per-view culling runs against the clipmap cameras, which need no
+    // cascade depth images
+    const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
+    u32 numCascades;
+    if (useSVSM)
+    {
+        numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    }
+    else
+    {
+        numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
+        numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
+    }
     if (numCascades == 0)
         return;
 
@@ -665,6 +677,10 @@ void TerrainRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph,
         return;
 
     if (CVAR_TerrainCastShadow.Get() != 1)
+        return;
+
+    // SVSM renders pages through AddSVSMGeometryPass instead
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1)
         return;
 
     u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
@@ -794,6 +810,183 @@ void TerrainRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph,
             commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
             commandList.SetDepthBias(0, 0, 0);
         });
+}
+
+void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer)
+{
+    ZoneScoped;
+
+    if (!CVAR_TerrainRendererEnabled.Get())
+        return;
+
+    if (_instanceDatas.Count() == 0)
+        return;
+
+    CVarSystem* cvarSystem = CVarSystem::Get();
+
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
+        return;
+
+    if (CVAR_TerrainCastShadow.Get() != 1)
+        return;
+
+    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) != 1)
+        return;
+
+    if (shadowRenderer->GetSVSMPagePool() == Renderer::ImageID::Invalid())
+        return;
+
+    const u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    const u32 virtualSize = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmVirtualSize"_h));
+
+    struct Data
+    {
+        Renderer::ImageMutableResource pagePool;
+        Renderer::BufferResource svsmData;
+        Renderer::BufferResource pageTable;
+
+        Renderer::BufferMutableResource culledInstanceBuffer;
+
+        Renderer::BufferMutableResource argumentBuffer;
+        Renderer::BufferMutableResource drawCountReadBackBuffer;
+
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource fillSet;
+        Renderer::DescriptorSetResource geometryPassSet;
+        Renderer::DescriptorSetResource svsmSet;
+    };
+
+    renderGraph->AddPass<Data>("Terrain SVSM Geometry",
+        [this, &resources, frameIndex, shadowRenderer](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        {
+            using BufferUsage = Renderer::BufferPassUsage;
+
+            data.pagePool = builder.Write(shadowRenderer->GetSVSMPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+            data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
+            data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
+
+            builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+            data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer, BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+
+            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_chunkDatas.GetBuffer(), BufferUsage::GRAPHICS);
+            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
+
+            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            data.drawCountReadBackBuffer = builder.Write(_drawCountReadBackBuffer, BufferUsage::TRANSFER);
+
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.fillSet = builder.Use(_geometryFillPassDescriptorSet);
+            data.geometryPassSet = builder.Use(resources.terrainDescriptorSet);
+            data.svsmSet = builder.Use(_svsmDrawDescriptorSet);
+
+            return true; // Return true from setup to enable this pass, return false to disable it
+        },
+        [this, &resources, frameIndex, numClipmaps, virtualSize](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainSVSMGeometry);
+
+            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
+
+            // svsmProfileGeometry: per-view fill/draw GPU timings for the perf editor's render pass list
+            const bool profileSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry"_h) != 0;
+            auto Profiled = [&](const char* stageName, u32 viewIndex, auto&& work)
+            {
+                if (!profileSVSM)
+                {
+                    work();
+                    return;
+                }
+
+                Renderer::TimeQueryDesc timeQueryDesc;
+                timeQueryDesc.name = "Terrain SVSM " + std::string(stageName) + " v" + std::to_string(viewIndex);
+                Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
+                commandList.BeginTimeQuery(timeQuery);
+                work();
+                commandList.EndTimeQuery(timeQuery);
+            };
+
+            // _svsmData/_pageTable are bound once at init through BindSVSMBuffers, only the lazily
+            // created pool binds per frame (image binds write the descriptor immediately)
+            data.svsmSet.Bind("_pagePool"_h, data.pagePool);
+
+            for (u32 i = 1; i < numClipmaps + 1; i++)
+            {
+                std::string markerName = "Clipmap " + std::to_string(i - 1);
+                commandList.PushMarker(markerName, Color::White);
+
+                // Reset the counters
+                {
+                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                    commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
+                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                }
+
+                if (CVAR_TerrainGeometryEnabled.Get())
+                {
+                    FillDrawCallsParams fillParams;
+                    fillParams.passName = "SVSM Geometry";
+                    fillParams.cellCount = cellCount;
+                    fillParams.viewIndex = i;
+                    fillParams.diffAgainstPrev = false;
+                    fillParams.currentBitmaskIndex = frameIndex;
+                    fillParams.fillSet = data.fillSet;
+
+                    Profiled("Fill", i, [&] { FillDrawCalls(frameIndex, graphResources, commandList, fillParams); });
+                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
+                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
+
+                    if (i == 1)
+                    {
+                        // The viewport spans the virtual texture so SV_Position.xy is the virtual
+                        // texel. No depth bias: there is no depth attachment for it to apply to
+                        commandList.SetViewport(0, 0, static_cast<f32>(virtualSize), static_cast<f32>(virtualSize), 0.0f, 1.0f);
+                        commandList.SetScissorRect(0, virtualSize, 0, virtualSize);
+                    }
+
+                    commandList.PushMarker("Draw", Color::White);
+
+                    DrawParams drawParams;
+                    drawParams.shadowPass = true;
+                    drawParams.svsmPass = true;
+                    drawParams.viewIndex = i;
+                    drawParams.cullingEnabled = true;
+                    drawParams.svsmExtent = uvec2(virtualSize, virtualSize);
+                    drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
+                    drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
+
+                    drawParams.globalDescriptorSet = data.globalSet;
+                    drawParams.drawDescriptorSet = data.geometryPassSet;
+                    drawParams.svsmDescriptorSet = data.svsmSet;
+
+                    Profiled("Draw", i, [&] { Draw(resources, frameIndex, graphResources, commandList, drawParams); });
+
+                    commandList.PopMarker();
+                }
+
+                // Copy drawn count
+                {
+                    u32 dstOffset = i * sizeof(u32);
+                    commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);
+                }
+
+                commandList.PopMarker();
+            }
+
+            // Finish by resetting the viewport and scissor
+            vec2 renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+        });
+}
+
+void TerrainRenderer::BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer)
+{
+    _svsmDrawDescriptorSet.Bind("_svsmData"_h, svsmDataBuffer);
+    _svsmDrawDescriptorSet.Bind("_pageTable"_h, pageTableBuffer);
 }
 
 void TerrainRenderer::Clear()
@@ -1337,6 +1530,38 @@ void TerrainRenderer::CreatePipelines()
 
         _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
+    // Draw SVSM pages: attachment-less, the pixel shader writes depth into the page pool with
+    // image atomics. Depth clamp stays on so pancaked casters rasterize instead of clipping
+    {
+        Renderer::GraphicsPipelineDesc pipelineDesc;
+        pipelineDesc.debugName = "Terrain Draw SVSM";
+
+        // Shaders
+        Renderer::VertexShaderDesc vertexShaderDesc;
+        {
+            std::vector<Renderer::PermutationField> permutationFields =
+            {
+                { "EDITOR_PASS", "0" },
+                { "SHADOW_PASS", "1" }
+            };
+            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
+            vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
+            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        }
+
+        Renderer::PixelShaderDesc pixelShaderDesc;
+        {
+            pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Terrain/DrawSVSM.ps"_h, "Terrain/DrawSVSM.ps");
+            pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
+        }
+
+        // Rasterizer state, no depth or color attachments
+        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
+        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
+        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
+
+        _drawSVSMPipeline = _renderer->CreatePipeline(pipelineDesc);
+    }
 }
 
 void TerrainRenderer::InitDescriptorSets()
@@ -1352,6 +1577,9 @@ void TerrainRenderer::InitDescriptorSets()
 
     _geometryFillPassDescriptorSet.RegisterPipeline(_renderer, _fillDrawCallsPipeline);
     _geometryFillPassDescriptorSet.Init(_renderer);
+
+    _svsmDrawDescriptorSet.RegisterPipeline(_renderer, _drawSVSMPipeline);
+    _svsmDrawDescriptorSet.Init(_renderer);
 }
 
 void TerrainRenderer::SyncToGPU()
@@ -1438,15 +1666,24 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     graphResources.InitializeRenderPassDesc(renderPassDesc);
 
     // Render targets
-    if (!params.shadowPass)
+    if (params.svsmPass)
     {
-        renderPassDesc.renderTargets[0] = params.visibilityBuffer;
+        // Attachment-less: with no render targets BeginRenderPass has no extent fallback,
+        // the render area must be explicit or it collapses to zero
+        renderPassDesc.extent = params.svsmExtent;
     }
-    renderPassDesc.depthStencil = params.depth;
+    else
+    {
+        if (!params.shadowPass)
+        {
+            renderPassDesc.renderTargets[0] = params.visibilityBuffer;
+        }
+        renderPassDesc.depthStencil = params.depth;
+    }
     commandList.BeginRenderPass(renderPassDesc);
 
     // Set pipeline
-    Renderer::GraphicsPipelineID pipeline = params.shadowPass ? _drawShadowPipeline : _drawPipeline;
+    Renderer::GraphicsPipelineID pipeline = params.svsmPass ? _drawSVSMPipeline : (params.shadowPass ? _drawShadowPipeline : _drawPipeline);
     commandList.BeginPipeline(pipeline);
 
     // Set index buffer
@@ -1467,6 +1704,10 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     // Bind descriptorset
     commandList.BindDescriptorSet(params.globalDescriptorSet, frameIndex);
     commandList.BindDescriptorSet(params.drawDescriptorSet, frameIndex);
+    if (params.svsmPass)
+    {
+        commandList.BindDescriptorSet(params.svsmDescriptorSet, frameIndex);
+    }
 
     if (params.cullingEnabled)
     {

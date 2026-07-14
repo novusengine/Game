@@ -38,13 +38,16 @@ protected:
     public:
         bool cullingEnabled = false;
         bool shadowPass = false;
+        bool svsmPass = false;        // Attachment-less page render, needs an explicit render area
+        bool svsmDynamicPass = false; // Caster-split dynamic instances into the dynamic pool
         u32 viewIndex = 0;
 
         CullingResourcesBase* cullingResources;
-        
+
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
         Renderer::DepthImageMutableResource depth;
+        uvec2 svsmExtent = uvec2(0, 0);
 
         Renderer::BufferMutableResource argumentBuffer;
         Renderer::BufferMutableResource drawCountBuffer;
@@ -318,8 +321,19 @@ protected:
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool cullingEnabled = false;
+
+        bool svsmPass = false;         // SVSM page render: no depth targets, attachment-less draws into svsmExtent
+        uvec2 svsmExtent = uvec2(0, 0);
+
+        // SVSM caster split: per view, fill+draw static instances (drawCallback) then dynamic
+        // instances (drawCallbackDynamic), filtered by the dynamic instance mask
+        bool svsmSplitFills = false;
+        std::function<void(DrawParams&)> drawCallbackDynamic;
+        Renderer::BufferMutableResource svsmDynamicDrawCountReadBackBuffer; // Per-view dynamic surviving counts for the perf editor
+        bool svsmDynamicViewActive[Renderer::Settings::MAX_VIEWS] = { false }; // Views without recent live dynamic pages skip their dynamic fill+draw
     };
     void GeometryPass(GeometryPassParams& params);
+    void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic); // Shared-buffer rebuild from a view's bitmask slice
     void CascadeCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
 
     void SyncToGPU();
@@ -338,6 +352,7 @@ protected:
 
     static bool _pipelinesCreated;
     static Renderer::ComputePipelineID _fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
+    static Renderer::ComputePipelineID _fillInstancedDrawCallsFilteredPipeline[2]; // Same, with the SVSM dynamic-mask filter
     static Renderer::ComputePipelineID _fillDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
     static Renderer::ComputePipelineID _createIndirectAfterCullingPipeline[2]; // [0] = non-indexed, [1] = indexed
     static Renderer::ComputePipelineID _createIndirectAfterCullingOrderedPipeline[2]; // [0] = non-indexed, [1] = indexed

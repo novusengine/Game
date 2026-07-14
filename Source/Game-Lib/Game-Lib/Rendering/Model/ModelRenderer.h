@@ -19,6 +19,7 @@
 
 class DebugRenderer;
 class GameRenderer;
+class ShadowRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -349,6 +350,11 @@ public:
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
+
+    // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
+    // (they only reach the canonical descriptor copies at a later FlipFrame)
+    void BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer, Renderer::BufferID dynamicPageTableBuffer);
 
     void AddTransparencyCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -358,6 +364,12 @@ public:
     Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
     const std::vector<ModelManifest>& GetModelManifests() { return _modelManifests; }
 
+    // SVSM: appends world (min, max) pairs of spawned/despawned instances, returns pairs appended
+    u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs);
+
+    // SVSM: world (min, max) pairs of in-range animated shadow casters, rebuilt each Update
+    const std::vector<vec4>& GetAnimatedCasterAABBs() const { return _animatedCasterAABBs; }
+
     CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
     CullingResourcesIndexed<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
 
@@ -365,6 +377,7 @@ public:
     u32 GetNumDrawCalls() { return 0; }
     u32 GetNumOccluderDrawCalls() { return _numOccluderDrawCalls; }
     u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
+    u32 GetNumSVSMDynamicInstances(u32 viewID) { return _numSvsmDynamicInstances[viewID]; } // One frame old, view 0 unused
 
     // Triangle stats
     u32 GetNumTriangles() { return 0; }
@@ -387,6 +400,9 @@ private:
 
     void MakeInstanceTransparent(u32 instanceID, InstanceManifest& instanceManifest, ModelManifest& modelManifest);
     void MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanceManifest, bool skybox);
+
+    void ComputeInstanceShadowAABB(u32 instanceID, const mat4x4& transformMatrix, vec3& outMin, vec3& outMax);
+    void QueueShadowInvalidation(u32 instanceID, const mat4x4& transformMatrix);
 
     void CompactInstanceRefs();
     void SyncToGPU();
@@ -441,9 +457,43 @@ private:
 
     Renderer::GraphicsPipelineID _drawPipeline;
     Renderer::GraphicsPipelineID _drawShadowPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMDynamicPipeline;
     Renderer::GraphicsPipelineID _drawTransparentPipeline;
     Renderer::GraphicsPipelineID _drawSkyboxOpaquePipeline;
     Renderer::GraphicsPipelineID _drawSkyboxTransparentPipeline;
+
+    Renderer::DescriptorSet _svsmDrawDescriptorSet;
+    Renderer::DescriptorSet _svsmDynamicDrawDescriptorSet;
+
+    // SVSM static/dynamic caster split: instances that moved or pushed bone matrices this frame.
+    // Producers enqueue from any thread, SyncToGPU rebuilds the bit mask once per frame
+    moodycamel::ConcurrentQueue<u32> _dynamicInstanceQueue;
+    std::vector<u32> _dynamicInstanceIDs; // Last frame's live set, backs the incremental bit updates
+    Renderer::GPUVector<u32> _dynamicInstanceMask;
+
+    // Spawned/despawned/re-modeled instances must invalidate the cached static shadow pages under
+    // them, ShadowRenderer drains this each frame
+    struct ShadowInvalidation
+    {
+        vec4 min;
+        vec4 max;
+    };
+    moodycamel::ConcurrentQueue<ShadowInvalidation> _shadowInvalidationQueue;
+
+    // Per-view surviving dynamic-class instance counts of the SVSM dynamic fills, the instrument
+    // for diagnosing missing dynamic shadow draws
+    Renderer::BufferID _svsmDynamicDrawCountReadBackBuffer;
+    u32 _numSvsmDynamicInstances[Renderer::Settings::MAX_VIEWS] = { 0 };
+
+    // Animated doodads (windmills, flags, swaying vegetation) share one uninstanced bone stream
+    // per model; the queue signals which models advanced their animation this frame so Update can
+    // classify their placements within svsmAnimatedCasterRange as dynamic shadow casters
+    moodycamel::ConcurrentQueue<u32> _uninstancedAnimatedModelQueue;
+    robin_hood::unordered_map<u32, u64> _animatedModelLastPushFrame; // modelID -> last frame it pushed bones
+    robin_hood::unordered_set<u32> _animatedCasterInstances; // In-range animated instances, persists as last frame's set
+    std::vector<vec4> _animatedCasterAABBs; // World (min, max) pairs of the set, rebuilt each frame
+    u64 _animatedCasterFrame = 0;
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

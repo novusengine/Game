@@ -13,6 +13,7 @@
 
 class DebugRenderer;
 class GameRenderer;
+class ShadowRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -50,6 +51,11 @@ public:
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
+
+    // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
+    // (they only reach the canonical descriptor copies at a later FlipFrame)
+    void BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer);
 
     void Clear();
     void Reserve(u32 numChunks);
@@ -81,17 +87,20 @@ private:
     {
     public:
         bool shadowPass = false;
+        bool svsmPass = false; // Attachment-less page render, needs an explicit render area
         u32 viewIndex = 0;
         bool cullingEnabled = false;
 
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
+        uvec2 svsmExtent = uvec2(0, 0);
 
         Renderer::BufferResource instanceBuffer;
         Renderer::BufferResource argumentBuffer;
 
         Renderer::DescriptorSetResource globalDescriptorSet;
         Renderer::DescriptorSetResource drawDescriptorSet;
+        Renderer::DescriptorSetResource svsmDescriptorSet;
 
         u32 argumentsIndex = 0;
     };
@@ -158,6 +167,7 @@ private:
     Renderer::ComputePipelineID _cullingPipeline;
     Renderer::GraphicsPipelineID _drawPipeline;
     Renderer::GraphicsPipelineID _drawShadowPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMPipeline;
 
     Renderer::GPUVector<u16> _cellIndices;
     Renderer::GPUVector<TerrainVertex> _vertices;
@@ -190,6 +200,7 @@ private:
     Renderer::DescriptorSet _resetIndirectDescriptorSet;
     Renderer::DescriptorSet _cullingPassDescriptorSet;
     Renderer::DescriptorSet _geometryFillPassDescriptorSet;
+    Renderer::DescriptorSet _svsmDrawDescriptorSet;
 
     std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
     std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;
