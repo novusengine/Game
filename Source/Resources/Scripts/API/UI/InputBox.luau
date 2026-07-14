@@ -174,6 +174,9 @@ local function SetupInputBoxMethods(inputBoxTable)
     inputBoxTable.SetOnFocusBegin = function(table, func)
         inputBoxTable.onFocusBegin = func;
     end
+    inputBoxTable.SetOnFocusEnd = function(table, func)
+        inputBoxTable.onFocusEnd = func;
+    end
 
     inputBoxTable.SetTextVerticallyCentered = function(table)
         local _, lineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
@@ -411,6 +414,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     inputBoxTable.onSubmit = nil;
     inputBoxTable.onTab = nil;
     inputBoxTable.onFocusBegin = nil;
+    inputBoxTable.onFocusEnd = nil;
 
     -- Store input box width for alignment calculations
     inputBoxTable.inputBoxWidth = sizeX;
@@ -492,6 +496,9 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
         inputBoxTable.cursorBlinkState = false;
 
         RefreshText(inputBoxTable);
+        if inputBoxTable.onFocusEnd ~= nil then
+            inputBoxTable.onFocusEnd(inputBoxTable);
+        end
     end);
 
     inputBoxTable.button:SetOnFocusHeld(function(eventID, widget, deltaTime)

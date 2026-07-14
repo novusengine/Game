@@ -914,123 +914,104 @@ namespace ECS::Util
         
         std::string GenWrapText(const std::string& text, Renderer::Font* font, f32 fontSize, f32 borderSize, f32 maxWidth, u8 indents)
         {
-            // Early exit if entire text fits within maxWidth
-            f32 totalWidth = 0;
-            for (char c : text)
-            {
-                if (c == '\n')
-                {
-                    totalWidth = 0;
-                    continue;
-                }
-
-                totalWidth += font->CalculateCharWidth(c, fontSize, borderSize);
-                if (totalWidth > maxWidth) // Early break for large text
-                {
-                    break;
-                }
-            }
-            if (totalWidth <= maxWidth)
-            {
-                return text;
-            }
-
-            std::string wrappedText;
-            wrappedText.reserve(text.size() + text.size() / 4); // Pre-estimate with margin
-
             f32 currentLineWidth = 0;
             size_t wordStart = 0;
             f32 currentWordWidth = 0;
-            std::string buffer; // Batch write buffer
-            buffer.reserve(text.size() + text.size() / 4); // Reserve for buffer to minimize reallocations
+            bool lineHasContent = false;
+
+            std::string wrappedText;
+            wrappedText.reserve(text.size() + text.size() / 4);
 
             f32 indentWidth = font->CalculateCharWidth(' ', fontSize, borderSize);
+            auto beginWrappedLine = [&]()
+            {
+                wrappedText += '\n';
+                currentLineWidth = 0;
+
+                for (u8 j = 0; j < indents; ++j)
+                {
+                    wrappedText += ' ';
+                    currentLineWidth += indentWidth;
+                }
+
+                // The wrap indent is not message content. A word that is wider than the
+                // remaining line still needs to be split instead of repeatedly re-wrapped.
+                lineHasContent = false;
+            };
+
+            auto appendWord = [&](size_t wordEnd)
+            {
+                if (wordStart == wordEnd)
+                {
+                    return;
+                }
+
+                if (lineHasContent && currentLineWidth + currentWordWidth > maxWidth)
+                {
+                    beginWrappedLine();
+                }
+
+                wrappedText.append(text, wordStart, wordEnd - wordStart);
+                currentLineWidth += currentWordWidth;
+                currentWordWidth = 0;
+                lineHasContent = true;
+            };
 
             for (size_t i = 0; i < text.length(); ++i)
             {
                 char c = text[i];
 
-                if (!font->IsValidGlyph(c))
-                    continue;
-
                 if (c == ' ' || c == '\n')
                 {
-                    size_t wordLength = i - wordStart;
-
-                    // Line is longer than maxWidth, wrap it
-                    if (currentLineWidth + currentWordWidth > maxWidth)
-                    {
-                        buffer += '\n';
-                        currentLineWidth = 0;
-
-                        for(u8 j = 0; j < indents; ++j)
-                        {
-                            buffer += ' '; // Add indentation
-                            currentLineWidth += indentWidth;
-                        }
-                    }
-
-                    buffer.append(text, wordStart, wordLength);
-                    currentLineWidth += currentWordWidth;
+                    appendWord(i);
 
                     if (c == ' ')
                     {
-                        buffer += ' ';
+                        wrappedText += ' ';
                         currentLineWidth += indentWidth;
+                        lineHasContent = true;
                     }
-                    else // Newline
+                    else
                     {
-                        buffer += '\n';
+                        // Preserve server-provided line breaks without applying the wrap indent.
+                        // The indent only belongs on continuation lines introduced above.
+                        wrappedText += '\n';
                         currentLineWidth = 0;
-
-                        for (u8 j = 0; j < indents; ++j)
-                        {
-                            buffer += ' '; // Add indentation
-                            currentLineWidth += indentWidth;
-                        }
+                        lineHasContent = false;
                     }
 
                     wordStart = i + 1;
-                    currentWordWidth = 0;
                 }
                 else
                 {
-                    currentWordWidth += font->CalculateCharWidth(c, fontSize, borderSize);
+                    f32 charWidth = 0;
+                    if (font->IsValidGlyph(c))
+                    {
+                        charWidth = font->CalculateCharWidth(c, fontSize, borderSize);
+                    }
+                    currentWordWidth += charWidth;
 
-                    // Force break for long words
+                    // Keep ordinary words intact by first moving them to a fresh line. Only
+                    // split when the word itself is too wide to fit on that fresh line.
                     if (currentLineWidth + currentWordWidth > maxWidth)
                     {
-                        buffer.append(text, wordStart, i - wordStart);
-                        buffer += '\n';
-                        wordStart = i;
-                        currentWordWidth = font->CalculateCharWidth(c, fontSize, borderSize);
-                        currentLineWidth = currentWordWidth;
-
-                        for (u8 j = 0; j < indents; ++j)
+                        if (lineHasContent)
                         {
-                            buffer += ' '; // Add indentation
-                            currentLineWidth += indentWidth;
+                            beginWrappedLine();
+                        }
+
+                        if (currentLineWidth + currentWordWidth > maxWidth && i > wordStart)
+                        {
+                            wrappedText.append(text, wordStart, i - wordStart);
+                            beginWrappedLine();
+                            wordStart = i;
+                            currentWordWidth = charWidth;
                         }
                     }
                 }
             }
 
-            // Handle the last word if we are force breaking
-            if (wordStart < text.length())
-            {
-                if (currentLineWidth + currentWordWidth > maxWidth)
-                {
-                    buffer += '\n';
-
-                    for (u8 j = 0; j < indents; ++j)
-                    {
-                        buffer += ' '; // Add indentation
-                    }
-                }
-                buffer.append(text, wordStart, text.length() - wordStart);
-            }
-
-            wrappedText = std::move(buffer); // Efficient assignment
+            appendWord(text.length());
             return wrappedText;
         }
 
