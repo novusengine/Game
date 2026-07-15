@@ -962,7 +962,26 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                     drawParams.drawDescriptorSet = data.geometryPassSet;
                     drawParams.svsmDescriptorSet = data.svsmSet;
 
-                    Profiled("Draw", i, [&] { Draw(resources, frameIndex, graphResources, commandList, drawParams); });
+                    const bool svsmClipRects = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
+                    if (svsmClipRects)
+                    {
+                        // One draw per clip rect (new X columns, new Y rows, other): the vertex
+                        // shader clips fragments to the rect, so an L-shaped toroidal update
+                        // rasterizes two thin stripes instead of its whole-window bounding box
+                        Profiled("Draw", i, [&]
+                        {
+                            for (u32 rectIndex = 0; rectIndex < 3; rectIndex++)
+                            {
+                                drawParams.svsmRectIndex = rectIndex;
+                                Draw(resources, frameIndex, graphResources, commandList, drawParams);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        // svsmClipRects 0: single draw, rect index stays at the disabled sentinel
+                        Profiled("Draw", i, [&] { Draw(resources, frameIndex, graphResources, commandList, drawParams); });
+                    }
 
                     commandList.PopMarker();
                 }
@@ -1468,7 +1487,8 @@ void TerrainRenderer::CreatePipelines()
             std::vector<Renderer::PermutationField> permutationFields =
             {
                 { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "0" }
+                { "SHADOW_PASS", "0" },
+                { "SVSM_PASS", "0" }
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
             vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
@@ -1507,7 +1527,8 @@ void TerrainRenderer::CreatePipelines()
             std::vector<Renderer::PermutationField> permutationFields =
             {
                 { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "1" }
+                { "SHADOW_PASS", "1" },
+                { "SVSM_PASS", "0" }
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
             vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
@@ -1542,7 +1563,8 @@ void TerrainRenderer::CreatePipelines()
             std::vector<Renderer::PermutationField> permutationFields =
             {
                 { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "1" }
+                { "SHADOW_PASS", "1" },
+                { "SVSM_PASS", "1" }
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
             vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
@@ -1692,11 +1714,16 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     struct PushConstants
     {
         u32 viewIndex;
+        u32 svsmRectIndex;
     };
 
     PushConstants* constants = graphResources.FrameNew<PushConstants>();
     constants->viewIndex = params.viewIndex;
-    commandList.PushConstant(constants, 0, sizeof(PushConstants));
+    constants->svsmRectIndex = params.svsmRectIndex;
+
+    // Only the SVSM vertex permutation declares the rect index, the other pipelines' push range
+    // is a single uint
+    commandList.PushConstant(constants, 0, params.svsmPass ? sizeof(PushConstants) : sizeof(u32));
 
     // Bind descriptors
     params.drawDescriptorSet.Bind("_culledInstanceDatas"_h, params.instanceBuffer);

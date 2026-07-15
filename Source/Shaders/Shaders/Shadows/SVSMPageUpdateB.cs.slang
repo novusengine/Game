@@ -27,6 +27,13 @@ groupshared int gRectMinY;
 groupshared int gRectMaxX;
 groupshared int gRectMaxY;
 
+// Clip rects: dirty pages classified as newly-exposed X columns (0), Y rows (1) or other (2),
+// each of the three static draws clips its fragments to one of these
+groupshared int gClipRectMinX[3];
+groupshared int gClipRectMinY[3];
+groupshared int gClipRectMaxX[3];
+groupshared int gClipRectMaxY[3];
+
 struct CSInput
 {
     uint3 dispatchThreadID : SV_DispatchThreadID;
@@ -46,6 +53,13 @@ void main(CSInput input)
         gRectMinY = 0x7FFFFFFF;
         gRectMaxX = -1;
         gRectMaxY = -1;
+    }
+    if (input.groupIndex < 3)
+    {
+        gClipRectMinX[input.groupIndex] = 0x7FFFFFFF;
+        gClipRectMinY[input.groupIndex] = 0x7FFFFFFF;
+        gClipRectMaxX[input.groupIndex] = -1;
+        gClipRectMaxY[input.groupIndex] = -1;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -119,6 +133,19 @@ void main(CSInput input)
                 InterlockedMin(gRectMinY, localPage.y);
                 InterlockedMax(gRectMaxX, localPage.x);
                 InterlockedMax(gRectMaxY, localPage.y);
+
+                // Classify for the clip rects: a toroidal slide dirties an L whose bounding box
+                // covers most of the window, but its X and Y stripes are thin on their own
+                int2 absPage = anchor + localPage;
+                int2 prevAnchor = int2(_svsmData[0].prevAnchorPageMinX[clipmapIndex], _svsmData[0].prevAnchorPageMinY[clipmapIndex]);
+                bool exposedX = absPage.x < prevAnchor.x || absPage.x >= prevAnchor.x + int(pageTableSize);
+                bool exposedY = absPage.y < prevAnchor.y || absPage.y >= prevAnchor.y + int(pageTableSize);
+                uint clipRect = exposedX ? 0 : (exposedY ? 1 : 2);
+
+                InterlockedMin(gClipRectMinX[clipRect], localPage.x);
+                InterlockedMin(gClipRectMinY[clipRect], localPage.y);
+                InterlockedMax(gClipRectMaxX[clipRect], localPage.x);
+                InterlockedMax(gClipRectMaxY[clipRect], localPage.y);
             }
 
             _pageTable[entryIndex] = entry;
@@ -140,6 +167,17 @@ void main(CSInput input)
             InterlockedMin(_svsmData[0].dirtyRectMinY[clipmapIndex], gRectMinY);
             InterlockedMax(_svsmData[0].dirtyRectMaxX[clipmapIndex], gRectMaxX);
             InterlockedMax(_svsmData[0].dirtyRectMaxY[clipmapIndex], gRectMaxY);
+
+            for (uint r = 0; r < 3; r++)
+            {
+                if (gClipRectMaxX[r] >= 0)
+                {
+                    InterlockedMin(_svsmData[0].clipRectMinX[r * 8 + clipmapIndex], gClipRectMinX[r]);
+                    InterlockedMin(_svsmData[0].clipRectMinY[r * 8 + clipmapIndex], gClipRectMinY[r]);
+                    InterlockedMax(_svsmData[0].clipRectMaxX[r * 8 + clipmapIndex], gClipRectMaxX[r]);
+                    InterlockedMax(_svsmData[0].clipRectMaxY[r * 8 + clipmapIndex], gClipRectMaxY[r]);
+                }
+            }
         }
         if (gDeferredCount != 0)
         {

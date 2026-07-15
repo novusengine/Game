@@ -19,7 +19,8 @@ permutation SVSM_DYNAMIC = [0, 1]; // 1 = dynamic caster split pass, renders int
 
 struct Constants
 {
-    uint viewIndex; // 0 = main camera, clipmap k renders as view k + 1
+    uint viewIndex;     // 0 = main camera, clipmap k renders as view k + 1
+    uint svsmRectIndex; // Consumed by the vertex shader's clip rect, declared here so the push block matches
 };
 
 [[vk::push_constant]] Constants _constants;

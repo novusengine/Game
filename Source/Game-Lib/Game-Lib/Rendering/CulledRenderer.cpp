@@ -896,7 +896,27 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             }
 
 
-            Profiled("Draw", i, [&] { params.drawCallback(drawParams); });
+            const bool svsmClipRects = params.svsmPass && i > 0
+                && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
+            if (svsmClipRects)
+            {
+                // One draw per clip rect (new X columns, new Y rows, other): the vertex shader
+                // clips fragments to the rect, so an L-shaped toroidal update rasterizes two thin
+                // stripes instead of its whole-window bounding box
+                Profiled("Draw", i, [&]
+                {
+                    for (u32 rectIndex = 0; rectIndex < 3; rectIndex++)
+                    {
+                        drawParams.svsmRectIndex = rectIndex;
+                        params.drawCallback(drawParams);
+                    }
+                });
+            }
+            else
+            {
+                // svsmClipRects 0: single draw, rect index stays at the disabled sentinel
+                Profiled("Draw", i, [&] { params.drawCallback(drawParams); });
+            }
         }
 
         // Copy from our draw count buffer to the readback buffer

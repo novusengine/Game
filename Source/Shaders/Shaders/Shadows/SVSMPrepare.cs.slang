@@ -97,6 +97,14 @@ void main()
         _svsmData[0].dynamicRectMaxX[k] = -1;
         _svsmData[0].dynamicRectMaxY[k] = -1;
 
+        for (uint r = 0; r < 3; r++)
+        {
+            _svsmData[0].clipRectMinX[r * 8 + k] = int(pageTableSize);
+            _svsmData[0].clipRectMinY[r * 8 + k] = int(pageTableSize);
+            _svsmData[0].clipRectMaxX[r * 8 + k] = -1;
+            _svsmData[0].clipRectMaxY[r * 8 + k] = -1;
+        }
+
         if (k >= _constants.numClipmaps)
         {
             _svsmData[0].clipmapInvalidate[k] = 0;

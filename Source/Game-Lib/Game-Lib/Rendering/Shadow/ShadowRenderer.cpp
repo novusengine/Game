@@ -71,6 +71,7 @@ AutoCVar_Int CVAR_SVSMDebugShowPool(CVarCategory::Client | CVarCategory::Renderi
 AutoCVar_Float CVAR_SVSMZHalfRange(CVarCategory::Client | CVarCategory::Rendering, "svsmZHalfRange", "half depth range of the clipmap windows around the camera in light space, changes invalidate all pages", 2048.0f);
 AutoCVar_Float CVAR_SVSMConstantBias(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias", "SVSM compare bias toward the sun in world meters, the software depth path has no hardware bias", 0.15f);
 AutoCVar_Int CVAR_SVSMProfileGeometry(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry", "debug: per-view fill/draw GPU time queries in the SVSM geometry passes, shown in the render pass list", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_SVSMClipRects(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects", "clip the static page draws to the classified dirty rects (3 draws per view), 0 reverts to one unclipped draw for A/B", 1, CVarFlags::EditCheckbox);
 
 // u32 indices into the flat SVSMData readback, mirrors Shadows/SVSM.inc.slang
 namespace SVSMDataOffsets

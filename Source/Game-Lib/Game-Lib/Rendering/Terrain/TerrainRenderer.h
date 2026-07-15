@@ -88,6 +88,7 @@ private:
     public:
         bool shadowPass = false;
         bool svsmPass = false; // Attachment-less page render, needs an explicit render area
+        u32 svsmRectIndex = 0xFFFFFFFFu; // Clip rect this draw renders (0-2), SVSM_CLIP_RECT_DISABLED = no clipping
         u32 viewIndex = 0;
         bool cullingEnabled = false;
 

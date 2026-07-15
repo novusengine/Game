@@ -141,8 +141,9 @@ private:
     Camera _readBackCascadeCameras[Renderer::Settings::MAX_SHADOW_CASCADES];
     f32 _sdsmDataReadBack[SDSM_DATA_FLOAT_COUNT] = { 0.0f };
 
-    // SVSM: scalar layout of SVSMData in Shadows/SVSM.inc.slang, offsets in ShadowRenderer.cpp
-    static constexpr u32 SVSM_DATA_UINT_COUNT = 220;
+    // SVSM: scalar layout of SVSMData in Shadows/SVSM.inc.slang, offsets in ShadowRenderer.cpp.
+    // Tail: clipRect{MinX,MinY,MaxX,MaxY}[24] at 220..315 (3 clip rects x 8 clipmaps)
+    static constexpr u32 SVSM_DATA_UINT_COUNT = 316;
     static constexpr u32 SVSM_MAX_CLIPMAPS = 8;
     static constexpr u32 SVSM_MAX_PAGE_TABLE_SIZE = 64;   // Pages per row, buffers are sized for this cap
     static constexpr u32 SVSM_MAX_POOL_PAGES = 4096;      // Physical page index is 12 bits in the table entry

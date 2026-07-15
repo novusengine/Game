@@ -125,7 +125,50 @@ struct SVSMData
     uint padding5;
     uint padding6;
     uint padding7;
+
+    // Fragment clip rects: this frame's dirty pages classified by UpdateB into three window-local
+    // page rects per clipmap, indexed [rect * 8 + clipmap]. Rect 0 = newly exposed X columns,
+    // 1 = newly exposed Y rows, 2 = everything else. The SVSM vertex shaders clip each of the
+    // three static draws to one rect (SV_ClipDistance) so an L-shaped toroidal update rasterizes
+    // two thin stripes instead of its huge bounding box
+    int clipRectMinX[24];
+    int clipRectMinY[24];
+    int clipRectMaxX[24];
+    int clipRectMaxY[24];
 };
+
+#define SVSM_CLIP_RECT_DISABLED 0xFFFFFFFFu
+
+// Clip distances for one static SVSM draw: positive inside the rect, negative outside, so the
+// fixed-function clipper culls triangles before rasterization. Same window math as the sampler.
+// An empty rect clips everything, a disabled index (dynamic draws) clips nothing
+float4 SVSMRectClipDistances(float3 worldPos, uint clipmapIndex, uint rectIndex, float3 cameraPos, StructuredBuffer<SVSMData> svsmData)
+{
+    if (rectIndex == SVSM_CLIP_RECT_DISABLED)
+    {
+        return float4(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    uint rectSlot = rectIndex * 8 + clipmapIndex;
+    int2 rectMin = int2(svsmData[0].clipRectMinX[rectSlot], svsmData[0].clipRectMinY[rectSlot]);
+    int2 rectMax = int2(svsmData[0].clipRectMaxX[rectSlot], svsmData[0].clipRectMaxY[rectSlot]);
+    if (any(rectMax < rectMin))
+    {
+        return float4(-1.0f, -1.0f, -1.0f, -1.0f);
+    }
+
+    float3x3 lightRotation = BuildLightRotation(svsmData[0].prevLightDirection.xyz);
+    float2 lightSpaceXY = mul(worldPos - cameraPos, lightRotation).xy;
+    float2 windowPos = lightSpaceXY + float2(svsmData[0].camMinusWindowMinX[clipmapIndex], svsmData[0].camMinusWindowMinY[clipmapIndex]);
+
+    uint pageSize = svsmData[0].configPageSize;
+    float texelWorld = svsmData[0].extent[clipmapIndex] / float(svsmData[0].configPageTableSize * pageSize);
+    float2 texel = windowPos / texelWorld;
+
+    float2 minTexel = float2(rectMin * int(pageSize));
+    float2 maxTexel = float2((rectMax + int2(1, 1)) * int(pageSize));
+    return float4(texel.x - minTexel.x, maxTexel.x - texel.x, texel.y - minTexel.y, maxTexel.y - texel.y);
+}
 
 uint GetPagePhysical(uint entry)
 {

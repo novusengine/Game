@@ -3301,7 +3301,8 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "0"}
+            { "SHADOW_PASS", "0"},
+            { "SVSM_PASS", "0"}
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
@@ -3339,12 +3340,13 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "1"}
+            { "SHADOW_PASS", "1"},
+            { "SVSM_PASS", "0"}
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-            
+
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
         {
@@ -3371,7 +3373,8 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "1"}
+            { "SHADOW_PASS", "1"},
+            { "SVSM_PASS", "1"}
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
@@ -4171,12 +4174,17 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     struct PushConstants
     {
         u32 viewIndex;
+        u32 svsmRectIndex;
     };
 
     PushConstants* constants = graphResources.FrameNew<PushConstants>();
 
     constants->viewIndex = params.viewIndex;
-    commandList.PushConstant(constants, 0, sizeof(PushConstants));
+    constants->svsmRectIndex = params.svsmRectIndex;
+
+    // Only the SVSM vertex permutation declares the rect index, the other pipelines' push range
+    // is a single uint
+    commandList.PushConstant(constants, 0, params.svsmPass ? sizeof(PushConstants) : sizeof(u32));
 
     for (auto& descriptorSet : params.descriptorSets)
     {
