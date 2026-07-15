@@ -20,6 +20,7 @@
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/UnitFaction.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
@@ -34,6 +35,7 @@
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
+#include "Game-Lib/ECS/Util/FactionUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/ProximityTriggerUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -79,6 +81,44 @@ AutoCVar_Int CVAR_NetworkDirectRemoteUnitPosition(CVarCategory::Network, "direct
 
 namespace ECS::Systems
 {
+    static void EmitUnitReactionChanged(entt::entity entity, Gameplay::Faction::Reaction oldReaction, Gameplay::Faction::Reaction newReaction)
+    {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        if (!zenith)
+            return;
+
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ReactionChanged, MetaGen::Game::Lua::UnitEventDataReactionChanged
+        {
+            .unitID = entt::to_integral(entity),
+            .oldReaction = static_cast<u8>(oldReaction),
+            .newReaction = static_cast<u8>(newReaction)
+        });
+    }
+
+    static void EmitReputationChanged(const Gameplay::Faction::ReputationChange& change)
+    {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        if (!zenith)
+            return;
+
+        zenith->CallEvent(MetaGen::Game::Lua::ReputationEvent::Changed, MetaGen::Game::Lua::ReputationEventDataChanged
+        {
+            .factionID = change.factionID,
+            .oldValue = change.oldValue,
+            .newValue = change.newValue,
+            .oldFlags = change.oldFlags,
+            .newFlags = change.newFlags,
+            .oldPersistentStandingID = change.oldPersistentStandingID,
+            .newPersistentStandingID = change.newPersistentStandingID,
+            .oldEffectiveStandingID = change.oldEffectiveStandingID,
+            .newEffectiveStandingID = change.newEffectiveStandingID,
+            .oldPerceptionFields = change.oldPerceptionFields,
+            .newPerceptionFields = change.newPerceptionFields,
+            .wasPresent = change.wasPresent,
+            .isPresent = change.isPresent
+        });
+    }
+
     static void InitActiveCharacterController(entt::registry& registry, bool isLocal)
     {
         CharacterController::InitCharacterController(registry, isLocal);
@@ -703,6 +743,7 @@ namespace ECS::Systems
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
 
         CleanupNetworkWorldEntities(*gameRegistry);
+        Util::Faction::ResetOwnerState(*gameRegistry);
         networkState.characterListInfo.characterSelected = false;
 
         ServiceLocator::GetLuaManager()->SetDirty();
@@ -753,6 +794,41 @@ namespace ECS::Systems
 
     bool HandleOnCheatCommandResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerCheatCommandResultPacket& packet)
     {
+        return true;
+    }
+
+    bool HandleOnUnitFactionUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitFactionUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        entt::entity entity = entt::null;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
+        {
+            NC_LOG_WARNING("Network : Received ServerUnitFactionUpdate for unknown entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        Util::Faction::ApplyUnitUpdate(*registry, entity, packet.factionID, packet.playerReactionBounds);
+        return true;
+    }
+
+    bool HandleOnReputationUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerReputationUpdatePacket& packet)
+    {
+        if (packet.isPresent > 1)
+        {
+            NC_LOG_WARNING("Network : Received ServerReputationUpdate with invalid presence value ({0})", packet.isPresent);
+            return false;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        Util::Faction::ApplyReputationUpdate(*registry, packet.factionID, packet.value, packet.flags, packet.isPresent == 1);
+        return true;
+    }
+
+    bool HandleOnFactionPerceptionOverrideUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerFactionPerceptionOverrideUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        Util::Faction::ApplyPerceptionUpdate(*registry, packet.factionID, packet.activeFields, packet.effectiveStandingValue, packet.effectiveReaction);
         return true;
     }
 
@@ -815,6 +891,8 @@ namespace ECS::Systems
         networkState.networkIDToEntity[packet.guid] = newEntity;
         networkState.entityToNetworkID[newEntity] = packet.guid;
 
+        Util::Faction::AttachUnit(*registry, newEntity);
+
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
             .unitID = entt::to_integral(newEntity)
@@ -854,6 +932,7 @@ namespace ECS::Systems
         networkState.entityToNetworkID.erase(entity);
         networkState.networkVisTree->Remove(packet.guid);
 
+        Util::Faction::DetachUnit(*registry, entity);
         registry->destroy(entity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
@@ -1187,6 +1266,8 @@ namespace ECS::Systems
 
         auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
         characterSingleton.moverEntity = entity;
+
+        Util::Faction::SetLocalPlayer(*registry, entity);
 
         InitActiveCharacterController(*registry, false);
         OrbitalCamera::ResetForNewWorld(*registry);
@@ -1966,6 +2047,7 @@ namespace ECS::Systems
         entt::registry::context& ctx = registry.ctx();
 
         auto& networkState = ctx.emplace<Singletons::NetworkState>();
+        Util::Faction::SetEventCallbacks(registry, EmitUnitReactionChanged, EmitReputationChanged);
 
         // Setup NetworkState
         {
@@ -1986,6 +2068,10 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUpdateStats);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCheatCommandResult);
+
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitFactionUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnReputationUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnFactionPerceptionOverrideUpdate);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitRemove);
@@ -2153,6 +2239,7 @@ namespace ECS::Systems
                 NC_LOG_WARNING("Network : Disconnected");
 
                 CleanupNetworkWorldEntities(registry);
+                Util::Faction::ResetOwnerState(registry);
 
                 networkState.authInfo.Reset();
                 networkState.characterListInfo.Reset();

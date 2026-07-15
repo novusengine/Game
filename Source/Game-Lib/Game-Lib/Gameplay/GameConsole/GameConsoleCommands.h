@@ -36,6 +36,14 @@ public:
     static bool HandleCreatureAdd(GameConsole* gameConsole, MetaGen::Game::Command::CreatureAddCommand& command);
     static bool HandleCreatureRemove(GameConsole* gameConsole, MetaGen::Game::Command::CreatureRemoveCommand& command);
     static bool HandleCreatureInfo(GameConsole* gameConsole, MetaGen::Game::Command::CreatureInfoCommand& command);
+    static bool HandleFactionReaction(GameConsole* gameConsole, MetaGen::Game::Command::FactionReactionCommand& command);
+    static bool HandleFactionSet(GameConsole* gameConsole, MetaGen::Game::Command::FactionSetCommand& command);
+    static bool HandleFactionReputationInfo(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationInfoCommand& command);
+    static bool HandleFactionReputationSet(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationSetCommand& command);
+    static bool HandleFactionReputationModify(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationModifyCommand& command);
+    static bool HandleFactionReputationRemove(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationRemoveCommand& command);
+    static bool HandleFactionReputationSetFlags(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationSetFlagsCommand& command);
+    static bool HandleFactionReputationLock(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationLockCommand& command);
     static bool HandleCheatLogin(GameConsole* gameConsole, MetaGen::Game::Command::CheatLoginCommand& command);
     static bool HandleCheatDamage(GameConsole* gameConsole, MetaGen::Game::Command::CheatDamageCommand& command);
     static bool HandleCheatKill(GameConsole* gameConsole, MetaGen::Game::Command::CheatKillCommand& command);

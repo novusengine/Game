@@ -47,6 +47,14 @@ return D.Definitions
         D.Field("AuraAdd"),
         D.Field("AuraUpdate"),
         D.Field("AuraRemove"),
+        D.Field("ReactionChanged"),
+        D.Field("Count")
+    }),
+
+    D.LuaEnum("ReputationEvent", Type.U8,
+    {
+        D.Field("Invalid"),
+        D.Field("Changed"),
         D.Field("Count")
     }),
 

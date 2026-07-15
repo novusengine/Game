@@ -98,6 +98,30 @@ return D.Definitions
         D.Field("auraID", Type.U32)
     }),
 
+    D.LuaEvent("UnitEventDataReactionChanged",
+    {
+        D.Field("unitID", Type.U32),
+        D.Field("oldReaction", Type.U8),
+        D.Field("newReaction", Type.U8)
+    }),
+
+    D.LuaEvent("ReputationEventDataChanged",
+    {
+        D.Field("factionID", Type.U16),
+        D.Field("oldValue", Type.I32),
+        D.Field("newValue", Type.I32),
+        D.Field("oldFlags", Type.U16),
+        D.Field("newFlags", Type.U16),
+        D.Field("oldPersistentStandingID", Type.U16),
+        D.Field("newPersistentStandingID", Type.U16),
+        D.Field("oldEffectiveStandingID", Type.U16),
+        D.Field("newEffectiveStandingID", Type.U16),
+        D.Field("oldPerceptionFields", Type.U8),
+        D.Field("newPerceptionFields", Type.U8),
+        D.Field("wasPresent", Type.BOOL),
+        D.Field("isPresent", Type.BOOL)
+    }),
+
     D.LuaEvent("ContainerEventDataAdd",
     {
         D.Field("index", Type.U32),

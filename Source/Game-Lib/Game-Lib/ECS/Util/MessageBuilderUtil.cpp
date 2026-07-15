@@ -445,6 +445,89 @@ namespace ECS::Util::MessageBuilder
             return result;
         }
 
+        bool BuildCheatFactionReaction(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID observerGUID, ObjectGUID targetGUID)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReaction);
+                buffer->Serialize(observerGUID);
+                buffer->Serialize(targetGUID);
+            });
+        }
+
+        bool BuildCheatUnitSetFaction(std::shared_ptr<Bytebuffer>& buffer, u16 factionID)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::UnitSetFaction);
+                buffer->PutU16(factionID);
+            });
+        }
+
+        bool BuildCheatFactionReputationInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationInfo);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+            });
+        }
+
+        bool BuildCheatFactionReputationSet(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, i32 value)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationSet);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+                buffer->PutI32(value);
+            });
+        }
+
+        bool BuildCheatFactionReputationModify(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, i32 delta)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationModify);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+                buffer->PutI32(delta);
+            });
+        }
+
+        bool BuildCheatFactionReputationRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationRemove);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+            });
+        }
+
+        bool BuildCheatFactionReputationSetFlags(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, u16 flags)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationSetFlags);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+                buffer->PutU16(flags);
+            });
+        }
+
+        bool BuildCheatFactionReputationLock(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, bool locked)
+        {
+            return CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&]()
+            {
+                buffer->Put(MetaGen::Shared::Cheat::CheatCommandEnum::FactionReputationLock);
+                buffer->Serialize(characterGUID);
+                buffer->PutU16(factionID);
+                buffer->PutU8(locked ? 1u : 0u);
+            });
+        }
+
         bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map)
         {
             bool result = CreatePacket(buffer, MetaGen::Shared::Packet::ClientSendCheatCommandPacket::PACKET_ID, [&, mapID]()

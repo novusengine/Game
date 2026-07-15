@@ -40,42 +40,6 @@ namespace Util::ClientDB
             discoveredHashes.insert(definition.hash);
         }
 
-        // PACT does not currently expose mount-table enumeration. Scan the writable
-        // overlays so databases created by the editor remain discoverable next run.
-        const fs::path pactDataPath = fs::current_path() / "data/pact/data";
-        const std::array<fs::path, 2> overlayRoots =
-        {
-            pactDataPath / "custom",
-            pactDataPath / "staging"
-        };
-
-        for (const fs::path& overlayRoot : overlayRoots)
-        {
-            const fs::path clientDBRoot = overlayRoot / "clientdb";
-            std::error_code errorCode;
-            if (!fs::exists(clientDBRoot, errorCode) || errorCode)
-                continue;
-
-            for (fs::recursive_directory_iterator itr(clientDBRoot, errorCode), end; itr != end && !errorCode; itr.increment(errorCode))
-            {
-                if (!itr->is_regular_file() || itr->path().extension() != ::ClientDB::FILE_EXTENSION)
-                    continue;
-
-                std::string dbName = itr->path().stem().string();
-                if (HasClientDBRecordSuffix(dbName))
-                {
-                    NC_LOG_WARNING("ClientDBLoader : Ignoring legacy Record-suffixed database '{0}'.", dbName);
-                    continue;
-                }
-
-                const ClientDBHash hash = GetClientDBHash(dbName);
-                if (!discoveredHashes.insert(hash).second)
-                    continue;
-
-                clientDBs.emplace_back(hash, std::move(dbName));
-            }
-        }
-
         const u32 numTotalClientDBs = static_cast<u32>(clientDBs.size());
         u32 numLoadedClientDBs = 0;
         clientDBSingleton.Reserve(numTotalClientDBs);

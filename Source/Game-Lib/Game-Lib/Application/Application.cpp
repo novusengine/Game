@@ -11,6 +11,7 @@
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
+#include "Game-Lib/ECS/Util/Database/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Database/IconUtil.h"
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Database/LightUtil.h"
@@ -626,6 +627,7 @@ void Application::DatabaseReload()
     ECSUtil::Spell::Refresh();
     ECSUtil::Item::Refresh();
     ECSUtil::UnitCustomization::Refresh();
+    ECSUtil::Faction::Refresh();
     NC_LOG_INFO("Application : Database Reload Finish");
 }
 

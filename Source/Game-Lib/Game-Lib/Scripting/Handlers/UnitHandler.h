@@ -26,6 +26,14 @@ namespace Scripting::Unit
         static i32 GetResource(Zenith* zenith);
         static i32 GetStat(Zenith* zenith);
         static i32 GetAuras(Zenith* zenith);
+        static i32 GetFactionID(Zenith* zenith);
+        static i32 GetReaction(Zenith* zenith);
+        static i32 CanAttack(Zenith* zenith);
+        static i32 GetLocalReactionToUnit(Zenith* zenith);
+        static i32 GetUnitReactionToLocalPlayer(Zenith* zenith);
+        static i32 GetPersistentReputation(Zenith* zenith);
+        static i32 GetPersistentStanding(Zenith* zenith);
+        static i32 GetEffectiveStanding(Zenith* zenith);
         static i32 ClearTarget(Zenith* zenith);
 
         static i32 SetWidgetToNamePos(Zenith* zenith);
@@ -43,6 +51,14 @@ namespace Scripting::Unit
         { "GetResource", UnitHandler::GetResource },
         { "GetStat", UnitHandler::GetStat },
         { "GetAuras", UnitHandler::GetAuras },
+        { "GetFactionID", UnitHandler::GetFactionID },
+        { "GetReaction", UnitHandler::GetReaction },
+        { "CanAttack", UnitHandler::CanAttack },
+        { "GetLocalReactionToUnit", UnitHandler::GetLocalReactionToUnit },
+        { "GetUnitReactionToLocalPlayer", UnitHandler::GetUnitReactionToLocalPlayer },
+        { "GetPersistentReputation", UnitHandler::GetPersistentReputation },
+        { "GetPersistentStanding", UnitHandler::GetPersistentStanding },
+        { "GetEffectiveStanding", UnitHandler::GetEffectiveStanding },
         { "ClearTarget", UnitHandler::ClearTarget },
 
         { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }

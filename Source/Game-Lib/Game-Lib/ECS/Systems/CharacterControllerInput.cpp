@@ -13,6 +13,7 @@
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/ECS/Util/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
@@ -240,6 +241,12 @@ namespace ECS::Systems::CharacterControllerInput
         if (!unit.isAutoAttacking)
             return;
 
+        if (!ECS::Util::Faction::CanAttack(registry, unit.targetEntity))
+        {
+            stopAutoAttack();
+            return;
+        }
+
         auto& targetPowers = registry.get<Components::UnitPowersComponent>(unit.targetEntity);
         if (!::Util::Unit::HasPower(targetPowers, MetaGen::Shared::Unit::PowerTypeEnum::Health))
         {
@@ -370,7 +377,7 @@ namespace ECS::Systems::CharacterControllerInput
         {
             if (key == GLFW_MOUSE_BUTTON_RIGHT)
             {
-                unit.isAutoAttacking = true;
+                unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
                 return true;
             }
 
@@ -390,7 +397,7 @@ namespace ECS::Systems::CharacterControllerInput
                 modelLoader->SetModelHighlight(*model, 1.25f);
 
             if (key == GLFW_MOUSE_BUTTON_RIGHT)
-                unit.isAutoAttacking = true;
+                unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
 
             zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
                 .unitID = entt::to_integral(characterSingleton.moverEntity),

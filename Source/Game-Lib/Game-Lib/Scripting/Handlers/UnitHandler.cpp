@@ -5,6 +5,7 @@
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
+#include "Game-Lib/ECS/Components/UnitFaction.h"
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Components/AABB.h"
@@ -12,6 +13,7 @@
 #include "Game-Lib/ECS/Singletons/CharacterControllerSingleton.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Systems/CharacterControllerInput.h"
+#include "Game-Lib/ECS/Util/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
@@ -64,6 +66,13 @@ namespace Scripting::Unit
 
             zenith->Pop();
         }
+
+        zenith->CreateTable("FactionReaction");
+        zenith->AddTableField("Hostile", static_cast<u8>(Gameplay::Faction::Reaction::Hostile));
+        zenith->AddTableField("Unfriendly", static_cast<u8>(Gameplay::Faction::Reaction::Unfriendly));
+        zenith->AddTableField("Neutral", static_cast<u8>(Gameplay::Faction::Reaction::Neutral));
+        zenith->AddTableField("Friendly", static_cast<u8>(Gameplay::Faction::Reaction::Friendly));
+        zenith->Pop();
     }
 
     void UnitHandler::PostLoad(Zenith* zenith)
@@ -380,6 +389,88 @@ namespace Scripting::Unit
             }
         }
 
+        return 1;
+    }
+
+    i32 UnitHandler::GetFactionID(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        Gameplay::Faction::FactionID factionID = Gameplay::Faction::NONE_FACTION_ID;
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        if (registry->valid(entity))
+        {
+            if (const auto* unitFaction = registry->try_get<ECS::Components::UnitFaction>(entity))
+                factionID = unitFaction->factionID;
+        }
+
+        zenith->Push(factionID);
+        return 1;
+    }
+
+    i32 UnitHandler::GetReaction(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        zenith->Push(static_cast<u8>(ECS::Util::Faction::GetPresentationReaction(*registry, entity)));
+        return 1;
+    }
+
+    i32 UnitHandler::CanAttack(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        zenith->Push(ECS::Util::Faction::CanAttack(*registry, entity));
+        return 1;
+    }
+
+    i32 UnitHandler::GetLocalReactionToUnit(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        zenith->Push(static_cast<u8>(ECS::Util::Faction::GetLocalReactionToUnit(*registry, entity)));
+        return 1;
+    }
+
+    i32 UnitHandler::GetUnitReactionToLocalPlayer(Zenith* zenith)
+    {
+        const entt::entity entity = static_cast<entt::entity>(zenith->CheckVal<u32>(1));
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        zenith->Push(static_cast<u8>(ECS::Util::Faction::GetUnitReactionToLocalPlayer(*registry, entity)));
+        return 1;
+    }
+
+    i32 UnitHandler::GetPersistentReputation(Zenith* zenith)
+    {
+        const auto factionID = zenith->CheckVal<Gameplay::Faction::FactionID>(1);
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+        Gameplay::Faction::ReputationState reputation;
+        const bool isPresent = ECS::Util::Faction::FindReputation(*registry, factionID, reputation);
+        const Gameplay::Faction::StandingThreshold* standing = ECS::Util::Faction::GetPersistentStanding(*registry, factionID);
+
+        zenith->Push(isPresent ? reputation.value : 0);
+        zenith->Push(standing ? standing->id : 0);
+        zenith->Push(isPresent ? reputation.flags : 0);
+        zenith->Push(isPresent);
+        return 4;
+    }
+
+    i32 UnitHandler::GetPersistentStanding(Zenith* zenith)
+    {
+        const auto factionID = zenith->CheckVal<Gameplay::Faction::FactionID>(1);
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const Gameplay::Faction::StandingThreshold* standing = ECS::Util::Faction::GetPersistentStanding(*registry, factionID);
+        zenith->Push(standing ? standing->id : 0);
+        return 1;
+    }
+
+    i32 UnitHandler::GetEffectiveStanding(Zenith* zenith)
+    {
+        const auto factionID = zenith->CheckVal<Gameplay::Faction::FactionID>(1);
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const Gameplay::Faction::StandingThreshold* standing = ECS::Util::Faction::GetEffectiveStanding(*registry, factionID);
+        zenith->Push(standing ? standing->id : 0);
         return 1;
     }
 

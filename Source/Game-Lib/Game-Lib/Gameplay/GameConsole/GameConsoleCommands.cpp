@@ -739,6 +739,144 @@ bool GameConsoleCommands::HandleCreatureInfo(GameConsole* gameConsole, MetaGen::
     return true;
 }
 
+namespace
+{
+    bool TryGetAdministrativeCharacterGUID(GameConsole* gameConsole, u64 characterCounter, ObjectGUID& characterGUID)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+
+        if (characterCounter != 0)
+        {
+            if (characterCounter > ObjectGUID::COUNTER_MASK)
+            {
+                gameConsole->PrintError("Character counter exceeds the ObjectGUID counter range");
+                return false;
+            }
+            characterGUID = ObjectGUID::CreatePlayer(characterCounter);
+            return true;
+        }
+
+        const auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+        const auto itr = networkState.entityToNetworkID.find(characterSingleton.moverEntity);
+        if (!registry->valid(characterSingleton.moverEntity) || itr == networkState.entityToNetworkID.end() || itr->second.GetType() != ObjectGUID::Type::Player)
+        {
+            gameConsole->PrintError("Character counter 0 requires a local player in the world");
+            return false;
+        }
+
+        characterGUID = itr->second;
+        return true;
+    }
+
+    bool SendFactionCheatCommand(std::shared_ptr<Bytebuffer>& buffer)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+        if (!networkState.client || !networkState.client->IsConnected())
+            return false;
+
+        networkState.client->Send(buffer);
+        return true;
+    }
+}
+
+bool GameConsoleCommands::HandleFactionReaction(GameConsole* gameConsole, MetaGen::Game::Command::FactionReactionCommand& command)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+    auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+    if (!networkState.client || !networkState.client->IsConnected())
+        return false;
+
+    const auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
+    const auto* localUnit = registry->try_get<ECS::Components::Unit>(characterSingleton.moverEntity);
+    if (!localUnit || !registry->valid(localUnit->targetEntity))
+    {
+        gameConsole->PrintError("Faction reaction requires a selected unit target");
+        return true;
+    }
+
+    const auto observerItr = networkState.entityToNetworkID.find(characterSingleton.moverEntity);
+    const auto targetItr = networkState.entityToNetworkID.find(localUnit->targetEntity);
+    if (observerItr == networkState.entityToNetworkID.end() || targetItr == networkState.entityToNetworkID.end())
+    {
+        gameConsole->PrintError("Faction reaction requires two networked units");
+        return true;
+    }
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    if (ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReaction(buffer, observerItr->second, targetItr->second))
+        networkState.client->Send(buffer);
+
+    return true;
+}
+
+bool GameConsoleCommands::HandleFactionSet(GameConsole* gameConsole, MetaGen::Game::Command::FactionSetCommand& command)
+{
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatUnitSetFaction(buffer, command.factionID) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationInfo(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationInfoCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationInfo(buffer, characterGUID, command.factionID) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationSet(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationSetCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationSet(buffer, characterGUID, command.factionID, command.value) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationModify(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationModifyCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationModify(buffer, characterGUID, command.factionID, command.delta) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationRemove(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationRemoveCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationRemove(buffer, characterGUID, command.factionID) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationSetFlags(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationSetFlagsCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationSetFlags(buffer, characterGUID, command.factionID, command.flags) && SendFactionCheatCommand(buffer);
+}
+
+bool GameConsoleCommands::HandleFactionReputationLock(GameConsole* gameConsole, MetaGen::Game::Command::FactionReputationLockCommand& command)
+{
+    ObjectGUID characterGUID;
+    if (!TryGetAdministrativeCharacterGUID(gameConsole, command.characterCounter, characterGUID))
+        return true;
+
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::Borrow<64>();
+    return ECS::Util::MessageBuilder::Cheat::BuildCheatFactionReputationLock(buffer, characterGUID, command.factionID, command.locked) && SendFactionCheatCommand(buffer);
+}
+
 bool GameConsoleCommands::HandleCheatLogin(GameConsole* gameConsole, MetaGen::Game::Command::CheatLoginCommand& command)
 {
     if (command.accountName.size() < 2)

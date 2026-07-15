@@ -99,13 +99,13 @@ local function OnGameUpdated(eventID : number, data : any)
     end
 
     local hoveredUnit = Unit.GetHovered()
-    local isLivingUnit = false
+    local canAttackUnit = false
     if hoveredUnit ~= INVALID_UNIT_ID then
         local health = Unit.GetHealth(hoveredUnit)
-        isLivingUnit = health > 0
+        canAttackUnit = health > 0 and Unit.CanAttack(hoveredUnit)
     end
 
-    local desiredCursor = if isLivingUnit then "attack" else "point"
+    local desiredCursor = if canAttackUnit then "attack" else "point"
     if desiredCursor == currentWorldCursor then
         return
     end

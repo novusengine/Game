@@ -55,7 +55,10 @@ enum class ClientDBHash : u64
     LightData                           = XXHash64::hashLiteral("clientdb/lightdata.cdb"),
     LightParams                         = XXHash64::hashLiteral("clientdb/lightparams.cdb"),
     LightSkybox                         = XXHash64::hashLiteral("clientdb/lightskybox.cdb"),
-    Icon                                = XXHash64::hashLiteral("clientdb/icon.cdb")
+    Icon                                = XXHash64::hashLiteral("clientdb/icon.cdb"),
+    Faction                             = XXHash64::hashLiteral("clientdb/faction.cdb"),
+    FactionRelation                     = XXHash64::hashLiteral("clientdb/factionrelation.cdb"),
+    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb")
 };
 
 struct ClientDBDefinition
@@ -65,7 +68,7 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 39> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 42> ClientDBHashes =
 {{
     { ClientDBHash::TextureFileData, "TextureFileData" },
     { ClientDBHash::ModelFileData, "ModelFileData" },
@@ -105,7 +108,10 @@ inline constexpr std::array<ClientDBDefinition, 39> ClientDBHashes =
     { ClientDBHash::LightData, "LightData" },
     { ClientDBHash::LightParams, "LightParams" },
     { ClientDBHash::LightSkybox, "LightSkybox" },
-    { ClientDBHash::Icon, "Icon" }
+    { ClientDBHash::Icon, "Icon" },
+    { ClientDBHash::Faction, "Faction" },
+    { ClientDBHash::FactionRelation, "FactionRelation" },
+    { ClientDBHash::FactionStanding, "FactionStanding" }
 }};
 
 inline bool HasClientDBRecordSuffix(std::string_view dbName)

@@ -127,6 +127,54 @@ return D.Definitions
     D.GameCommand("CreatureInfoCommand", { "creature info" },
     {}),
 
+    D.GameCommand("FactionReactionCommand", { "faction reaction" },
+    {}),
+
+    D.GameCommand("FactionSetCommand", { "faction set" },
+    {
+        D.Field("factionID", Type.U16)
+    }),
+
+    D.GameCommand("FactionReputationInfoCommand", { "faction reputation info" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16)
+    }),
+
+    D.GameCommand("FactionReputationSetCommand", { "faction reputation set" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16),
+        D.Field("value", Type.I32)
+    }),
+
+    D.GameCommand("FactionReputationModifyCommand", { "faction reputation modify" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16),
+        D.Field("delta", Type.I32)
+    }),
+
+    D.GameCommand("FactionReputationRemoveCommand", { "faction reputation remove", "faction reputation rem" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16)
+    }),
+
+    D.GameCommand("FactionReputationSetFlagsCommand", { "faction reputation setflags" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16),
+        D.Field("flags", Type.U16)
+    }),
+
+    D.GameCommand("FactionReputationLockCommand", { "faction reputation lock" },
+    {
+        D.Field("characterCounter", Type.U64),
+        D.Field("factionID", Type.U16),
+        D.Field("locked", Type.BOOL)
+    }),
+
     D.GameCommand("CreatureAddScriptCommand", { "creature add script" },
     {
         D.Field("scriptName", Type.STRING)

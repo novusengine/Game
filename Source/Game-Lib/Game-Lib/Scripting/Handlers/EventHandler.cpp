@@ -79,6 +79,10 @@ namespace Scripting
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraAdd>(MetaGen::Game::Lua::UnitEvent::AuraAdd);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraUpdate>(MetaGen::Game::Lua::UnitEvent::AuraUpdate);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataAuraRemove>(MetaGen::Game::Lua::UnitEvent::AuraRemove);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::UnitEventDataReactionChanged>(MetaGen::Game::Lua::UnitEvent::ReactionChanged);
+
+        zenith->RegisterEventType<MetaGen::Game::Lua::ReputationEvent>();
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::ReputationEventDataChanged>(MetaGen::Game::Lua::ReputationEvent::Changed);
 
         zenith->RegisterEventType<MetaGen::Game::Lua::ContainerEvent>();
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::ContainerEventDataAdd>(MetaGen::Game::Lua::ContainerEvent::Add);

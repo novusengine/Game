@@ -11,12 +11,27 @@ local nameplates =
 };
 
 local LOCAL_PLAYER_NAME_COLOR = vector.create(0.22, 0.58, 0.88);
+local HOSTILE_UNIT_NAME_COLOR = vector.create(0.92, 0.20, 0.18);
+local UNFRIENDLY_UNIT_NAME_COLOR = vector.create(0.95, 0.48, 0.18);
 local NEUTRAL_UNIT_NAME_COLOR = vector.create(0.88, 0.76, 0.32);
+local FRIENDLY_UNIT_NAME_COLOR = vector.create(0.24, 0.82, 0.38);
 local DEAD_UNIT_NAME_COLOR = vector.create(0.5, 0.5, 0.5);
 
 local function GetUnitNameColor(unitID : number)
     local localMoverUnitID = nameplates.localMoverUnitID or Unit.GetLocal();
-    return if localMoverUnitID == unitID then LOCAL_PLAYER_NAME_COLOR else NEUTRAL_UNIT_NAME_COLOR;
+    if localMoverUnitID == unitID then
+        return LOCAL_PLAYER_NAME_COLOR;
+    end
+
+    local reaction = Unit.GetReaction(unitID);
+    if reaction == FactionReaction.Hostile then
+        return HOSTILE_UNIT_NAME_COLOR;
+    elseif reaction == FactionReaction.Unfriendly then
+        return UNFRIENDLY_UNIT_NAME_COLOR;
+    elseif reaction == FactionReaction.Friendly then
+        return FRIENDLY_UNIT_NAME_COLOR;
+    end
+    return NEUTRAL_UNIT_NAME_COLOR;
 end
 
 local function RefreshUnitNameColor(unitID : number, nameplate : any, force : boolean?)
@@ -188,6 +203,13 @@ local function OnUnitTargetChanged(eventID : number, data : any)
     end
 end
 
+local function OnUnitReactionChanged(eventID : number, data : any)
+    local nameplate = nameplates.entries[data.unitID];
+    if nameplate ~= nil then
+        RefreshUnitNameColor(data.unitID, nameplate, true);
+    end
+end
+
 local function OnLocalMoverChanged(eventID : number, data : any)
     local previousMoverUnitID = nameplates.localMoverUnitID;
     nameplates.localMoverUnitID = data.moverID;
@@ -210,4 +232,5 @@ RegisterEvent(GameEvent.Updated, OnGameUpdated)
 RegisterEvent(UnitEvent.Add, OnUnitAdd)
 RegisterEvent(UnitEvent.Remove, OnUnitRemove)
 RegisterEvent(UnitEvent.TargetChanged, OnUnitTargetChanged)
+RegisterEvent(UnitEvent.ReactionChanged, OnUnitReactionChanged)
 RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged)
