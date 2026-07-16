@@ -195,21 +195,20 @@ namespace Scripting::UI
             panelTemplate.setFlags.texCoords = 1;
         }
 
-        if (zenith->GetTableField("nineSliceCoords", 2))
+        if (zenith->GetTableField("nineSliceInsets", 2))
         {
             ::UI::Box* box = zenith->GetUserData<::UI::Box>(-1);
             zenith->Pop();
 
             if (box)
             {
-                panelTemplate.nineSliceCoords = *box;
+                panelTemplate.nineSliceInsets = vec4(box->min, box->max);
             }
             else
             {
-                panelTemplate.nineSliceCoords.min = vec2(0.0f, 0.0f);
-                panelTemplate.nineSliceCoords.max = vec2(1.0f, 1.0f);
+                panelTemplate.nineSliceInsets = vec4(0.0f);
             }
-            panelTemplate.setFlags.nineSliceCoords = 1;
+            panelTemplate.setFlags.nineSliceInsets = 1;
         }
 
         // Event Templates

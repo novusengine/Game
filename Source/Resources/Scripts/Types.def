@@ -26,6 +26,7 @@ declare class UnitEvent
     PowerUpdate         : number
     ResistanceUpdate    : number
     StatUpdate          : number
+    ReactionChanged     : number
     AuraAdd             : number
     AuraUpdate          : number
     AuraRemove          : number
@@ -63,6 +64,14 @@ declare class PowerTypeEnum
     Count           : number
 end
 declare PowerTypeEnum : PowerTypeEnum
+
+declare class FactionReaction
+    Hostile     : number
+    Unfriendly  : number
+    Neutral     : number
+    Friendly    : number
+end
+declare FactionReaction : FactionReaction
 
 declare class StatTypeEnum
     Invalid         : number
@@ -288,8 +297,8 @@ declare class PanelTemplate extends EventTemplate
     foreground : string?
     color : vector?
     cornerRadius : number?
-    texCoords : vec4?
-    nineSliceCoords : vec4?
+    texCoords : Box?
+    nineSliceInsets : Box? -- Source pixels ordered left, top, right, bottom.
     onClickTemplate : string?
     onHoverTemplate : string?
     onUninteractableTemplate : string?
@@ -362,6 +371,11 @@ declare Unit :
     GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
     GetStat             : ((unitID : number, statType : number) -> (number, number)),
     GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),
+    GetFactionID        : ((unitID : number) -> number),
+    GetReaction         : ((unitID : number) -> number),
+    CanAttack           : ((unitID : number) -> boolean),
+    GetLocalReactionToUnit : ((unitID : number) -> number),
+    GetUnitReactionToLocalPlayer : ((unitID : number) -> number),
     ClearTarget         : (() -> boolean),
 
     SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> number),

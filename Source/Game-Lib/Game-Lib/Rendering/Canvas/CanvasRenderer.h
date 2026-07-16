@@ -134,7 +134,7 @@ private:
         uvec4 packed0 = uvec4(0, 0, 0, 0xFFFFFFFFu); // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (i32 reinterpret as -1)
         uvec4 packed1 = uvec4(0, 0, 0, 0); // Panel: x: textureIndex|additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
         vec4 texCoord = vec4(0.0f);                  // Panel only
-        vec4 slicingCoord = vec4(0.0f);              // Panel only
+        vec4 sliceCoords = vec4(0.0f);               // Panel only
         vec4 cornerRadiusAndBorder = vec4(0.0f);     // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
         uvec4 packed2 = uvec4(0, 0, 0, 0); // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
     };

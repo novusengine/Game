@@ -83,8 +83,7 @@ function templatesAPI.RegisterTemplates()
     local buttonMinX, buttonMinY = UI.PixelsToTexCoord(1, 1, 128, 32);
     local buttonMaxX, buttonMaxY = UI.PixelsToTexCoord(78, 22, 128, 32);
 
-    local buttonNineSliceMinX, buttonNineSliceMinY = UI.PixelsToTexCoord(5, 5, 128, 32);
-    local buttonNineSliceMaxX, buttonNineSliceMaxY = UI.PixelsToTexCoord(74, 18, 128, 32);
+    local buttonNineSliceInsets = Box.new(4, 4, 4, 4);
 
     -- Button
     UI.RegisterPanelTemplate("DefaultButtonPanel",
@@ -92,7 +91,7 @@ function templatesAPI.RegisterTemplates()
         background = "texture/interface/buttons/ui-panel-button-up.dds",
         cornerRadius = 0.0,
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
-        nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
+        nineSliceInsets = buttonNineSliceInsets,
 
         -- These get applied additively on this template
         onClickTemplate = "DefaultButtonDownPanel",
@@ -177,14 +176,13 @@ function templatesAPI.RegisterTemplates()
     local sliderMinX, sliderMinY = UI.PixelsToTexCoord(11, 11, 64, 64);
     local sliderMaxX, sliderMaxY = UI.PixelsToTexCoord(51, 51, 64, 64);
 
-    local sliderNineSliceMinX, sliderNineSliceMinY = UI.PixelsToTexCoord(16, 16, 64, 64);
-    local sliderNineSliceMaxX, sliderNineSliceMaxY = UI.PixelsToTexCoord(46, 46, 64, 64);
+    local sliderNineSliceInsets = Box.new(5, 5, 5, 5);
 
     UI.RegisterPanelTemplate("DefaultSliderBackground",
     {
         background = "texture/interface/buttons/ui-quickslot.dds",
         texCoords = Box.new(sliderMinX, sliderMinY, sliderMaxX, sliderMaxY),
-        nineSliceCoords = Box.new(sliderNineSliceMinX, sliderNineSliceMinY, sliderNineSliceMaxX, sliderNineSliceMaxY),
+        nineSliceInsets = sliderNineSliceInsets,
     });
 
     UI.RegisterPanelTemplate("DefaultSliderFill",
@@ -197,14 +195,13 @@ function templatesAPI.RegisterTemplates()
     local checkboxMinX, checkboxMinY = UI.PixelsToTexCoord(0, 0, 64, 32);
     local checkboxMaxX, checkboxMaxY = UI.PixelsToTexCoord(63, 22, 64, 32);
 
-    local checkboxNineSliceMinX, checkboxSliceMinY = UI.PixelsToTexCoord(3, 3, 64, 32);
-    local checkboxNineSliceMaxX, checkboxSliceMaxY = UI.PixelsToTexCoord(61, 20, 64, 32);
+    local checkboxNineSliceInsets = Box.new(3, 2, 2, 3);
 
     UI.RegisterPanelTemplate("DefaultCheckboxBackground",
     {
         background = "texture/interface/common/common-checkbox-background.dds",
         texCoords = Box.new(checkboxMinX, checkboxMinY, checkboxMaxX, checkboxMaxY),
-        nineSliceCoords = Box.new(checkboxNineSliceMinX, checkboxSliceMinY, checkboxNineSliceMaxX, checkboxSliceMaxY),
+        nineSliceInsets = checkboxNineSliceInsets,
     });
 
     UI.RegisterPanelTemplate("DefaultCheckboxFill",
@@ -230,7 +227,7 @@ function templatesAPI.RegisterTemplates()
     {
         background = "texture/interface/buttons/ui-panel-button-disabled.dds",
         texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
-        nineSliceCoords = Box.new(buttonNineSliceMinX, buttonNineSliceMinY, buttonNineSliceMaxX, buttonNineSliceMaxY),
+        nineSliceInsets = buttonNineSliceInsets,
     
         onHoverTemplate = "DefaultComboBoxHoveredPanel",
     });

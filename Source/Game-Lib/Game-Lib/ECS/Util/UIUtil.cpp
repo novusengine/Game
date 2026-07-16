@@ -742,9 +742,9 @@ namespace ECS::Util
                     panelTemplateComp.texCoords = panelTemplate.texCoords;
                     registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
                 }
-                if (panelTemplate.setFlags.nineSliceCoords)
+                if (panelTemplate.setFlags.nineSliceInsets)
                 {
-                    panelTemplateComp.nineSliceCoords = panelTemplate.nineSliceCoords;
+                    panelTemplateComp.nineSliceInsets = panelTemplate.nineSliceInsets;
                 }
 
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);

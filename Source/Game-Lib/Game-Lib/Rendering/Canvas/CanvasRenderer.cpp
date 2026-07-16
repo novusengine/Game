@@ -1120,19 +1120,49 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
 
     drawData.packed1.x = (textureIndex & 0xFFFF) | ((additiveTextureIndex & 0xFFFF) << 16);
 
-    // Nine slicing
+    // Convert source-pixel insets to normalized texture boundaries. Insets that do not fit
+    // the selected texture region are reduced proportionally on the affected axis.
     const vec2& widgetSize = transform.GetSize();
 
     Renderer::TextureID textureID = _renderer->GetTextureID(_textures, textureIndex);
     Renderer::TextureBaseDesc textureBaseDesc = _renderer->GetDesc(textureID);
-    vec2 texSize = vec2(textureBaseDesc.width, textureBaseDesc.height);
+    const vec2 texSize = vec2(textureBaseDesc.width, textureBaseDesc.height);
+    const vec2 safeTexSize = glm::max(texSize, vec2(1.0f));
+    const vec2 texCoordMin = panelTemplate.texCoords.min;
+    const vec2 texCoordMax = panelTemplate.texCoords.max;
+    const vec2 selectedTextureSize = glm::max((texCoordMax - texCoordMin) * texSize, vec2(0.0f));
 
-    vec2 textureScaleToWidgetSize = texSize / widgetSize;
-    hvec2 packedScale = hvec2(textureScaleToWidgetSize.x, textureScaleToWidgetSize.y);
+    vec4 sliceInsets = glm::max(panelTemplate.nineSliceInsets, vec4(0.0f));
+    const f32 horizontalInsetTotal = sliceInsets.x + sliceInsets.z;
+    if (horizontalInsetTotal > selectedTextureSize.x && horizontalInsetTotal > 0.0f)
+    {
+        const f32 insetScale = selectedTextureSize.x / horizontalInsetTotal;
+        sliceInsets.x *= insetScale;
+        sliceInsets.z *= insetScale;
+    }
+
+    const f32 verticalInsetTotal = sliceInsets.y + sliceInsets.w;
+    if (verticalInsetTotal > selectedTextureSize.y && verticalInsetTotal > 0.0f)
+    {
+        const f32 insetScale = selectedTextureSize.y / verticalInsetTotal;
+        sliceInsets.y *= insetScale;
+        sliceInsets.w *= insetScale;
+    }
+
+    const vec2 sliceCoordMin = texCoordMin + vec2(sliceInsets.x, sliceInsets.w) / safeTexSize;
+    const vec2 sliceCoordMax = texCoordMax - vec2(sliceInsets.z, sliceInsets.y) / safeTexSize;
+
+    vec2 texturePixelsPerWidgetPixel = vec2(0.0f);
+    if (widgetSize.x > 0.0f)
+        texturePixelsPerWidgetPixel.x = texSize.x / widgetSize.x;
+    if (widgetSize.y > 0.0f)
+        texturePixelsPerWidgetPixel.y = texSize.y / widgetSize.y;
+
+    hvec2 packedScale = hvec2(texturePixelsPerWidgetPixel.x, texturePixelsPerWidgetPixel.y);
     static_assert(sizeof(hvec2) == sizeof(u32), "hvec2 must be 4 bytes for packed storage");
     std::memcpy(&drawData.packed1.w, &packedScale, sizeof(u32));
-    drawData.texCoord = vec4(panelTemplate.texCoords.min, panelTemplate.texCoords.max);
-    drawData.slicingCoord = vec4(panelTemplate.nineSliceCoords.min, panelTemplate.nineSliceCoords.max);
+    drawData.texCoord = vec4(texCoordMin, texCoordMax);
+    drawData.sliceCoords = vec4(sliceCoordMin, sliceCoordMax);
 
     // Clipping. Resolution happens on the GPU via _widgetClipRects / _widgetMaskInfo;
     // we only stamp the slot indexes here. The slot contents are owned by the clip

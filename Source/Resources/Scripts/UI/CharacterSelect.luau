@@ -124,9 +124,6 @@ local function RegisterTemplates()
     local entryMinX, entryMinY = UI.PixelsToTexCoord(6, 2, 256, 64);
     local entryMaxX, entryMaxY = UI.PixelsToTexCoord(249, 59, 256, 64);
 
-    local entryNineSliceMinX, entryNineSliceMinY = UI.PixelsToTexCoord(16, 12, 256, 64);
-    local entryNineSliceMaxX, entryNineSliceMaxY = UI.PixelsToTexCoord(239, 49, 256, 64);
-
     UI.RegisterPanelTemplate("CharacterEntryButtonPanel",
     {
         cornerRadius = 0.0,
@@ -134,7 +131,6 @@ local function RegisterTemplates()
         alpha = 0.0,
 
         texCoords = Box.new(entryMinX, entryMinY, entryMaxX, entryMaxY),
-        --nineSliceCoords = Box.new(entryNineSliceMinX, entryNineSliceMinY, entryNineSliceMaxX, entryNineSliceMaxY), -- TODO: Investigate 9 slicing issues?
     });
 end
 

@@ -9,7 +9,7 @@ struct WidgetDrawData
     uint4 packed0; // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (int reinterpret)
     uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
     float4 texCoord;            // Panel only
-    float4 slicingCoord;        // Panel only
+    float4 sliceCoords;         // Panel only
     float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
     uint4 packed2; // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
 };
@@ -29,22 +29,46 @@ struct WidgetMaskInfo
 [[vk::binding(6, PER_PASS)]] StructuredBuffer<float4> _widgetClipRects;
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<WidgetMaskInfo> _widgetMaskInfo;
 
-float NineSliceAxis(float coord, float pixelSizeUV, float texCoordMin, float texCoordMax, float borderSizeMin, float borderSizeMax)
+float RemapRange(float value, float originalMin, float originalMax, float newMin, float newMax)
 {
-    // Branchless Version
-    float scaledBorderMin = texCoordMin + (borderSizeMin * pixelSizeUV);
-    float scaledBorderMax = texCoordMax - (borderSizeMax * pixelSizeUV);
+    float originalRange = originalMax - originalMin;
+    if (abs(originalRange) <= 1e-6f)
+        return newMin;
 
-    bool isBorderMin = coord < scaledBorderMin;
-    bool isCenter = !isBorderMin && coord < scaledBorderMax;
-    bool isBorderMax = !isBorderMin && !isCenter;
+    return ((value - originalMin) / originalRange) * (newMax - newMin) + newMin;
+}
 
-    float originalMin = (texCoordMin * isBorderMin) + (scaledBorderMin * isCenter) + (scaledBorderMax * isBorderMax);
-    float originalMax = (scaledBorderMin * isBorderMin) + (scaledBorderMax * isCenter) + (texCoordMax * isBorderMax);
-    float newMin = (texCoordMin * isBorderMin) + ((texCoordMin + borderSizeMin) * isCenter) + ((texCoordMax - borderSizeMax) * isBorderMax);
-    float newMax = ((texCoordMin + borderSizeMin) * isBorderMin) + ((texCoordMax - borderSizeMax) * isCenter) + (texCoordMax * isBorderMax);
+float NineSliceAxis(float coord, float texturePixelsPerWidgetPixel, float texCoordMin, float texCoordMax, float sliceCoordMin, float sliceCoordMax)
+{
+    float texCoordRange = texCoordMax - texCoordMin;
+    if (texCoordRange <= 1e-6f)
+        return texCoordMin;
 
-    return Map(coord, originalMin, originalMax, newMin, newMax);
+    float localCoord = saturate((coord - texCoordMin) / texCoordRange);
+    float destinationBorderMin = max((sliceCoordMin - texCoordMin) * texturePixelsPerWidgetPixel, 0.0f);
+    float destinationBorderMax = max((texCoordMax - sliceCoordMax) * texturePixelsPerWidgetPixel, 0.0f);
+
+    float destinationBorderTotal = destinationBorderMin + destinationBorderMax;
+    if (destinationBorderTotal > 1.0f)
+    {
+        float borderScale = 1.0f / destinationBorderTotal;
+        destinationBorderMin *= borderScale;
+        destinationBorderMax *= borderScale;
+    }
+
+    float destinationSliceMin = destinationBorderMin;
+    float destinationSliceMax = 1.0f - destinationBorderMax;
+
+    if (destinationBorderMin > 0.0f && localCoord < destinationSliceMin)
+        return RemapRange(localCoord, 0.0f, destinationSliceMin, texCoordMin, sliceCoordMin);
+
+    if (destinationBorderMax > 0.0f && localCoord > destinationSliceMax)
+        return RemapRange(localCoord, destinationSliceMax, 1.0f, sliceCoordMax, texCoordMax);
+
+    if (destinationSliceMax > destinationSliceMin)
+        return RemapRange(localCoord, destinationSliceMin, destinationSliceMax, sliceCoordMin, sliceCoordMax);
+
+    return localCoord <= destinationSliceMin ? sliceCoordMin : sliceCoordMax;
 }
 
 bool ShouldDiscard(float2 pos, float2 clipMin, float2 clipMax)
@@ -75,18 +99,15 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
     float2 uv = input.uvAndScreenPos.xy;
     float2 texCoordMin = drawData.texCoord.xy;
     float2 texCoordMax = drawData.texCoord.zw;
-    float2 slicingCoordMin = max(drawData.slicingCoord.xy, texCoordMin);
-    float2 slicingCoordMax = min(drawData.slicingCoord.zw, texCoordMax);
-
-    float2 borderSizeLeftTop = slicingCoordMin - texCoordMin;
-    float2 borderSizeRightBottom = texCoordMax - slicingCoordMax;
+    float2 sliceCoordMin = clamp(drawData.sliceCoords.xy, texCoordMin, texCoordMax);
+    float2 sliceCoordMax = clamp(drawData.sliceCoords.zw, sliceCoordMin, texCoordMax);
 
     uint packedTextureScaleToWidgetSize = drawData.packed1.w;
     float2 scale = float2(f16tof32(packedTextureScaleToWidgetSize), f16tof32(packedTextureScaleToWidgetSize >> 16));
 
     float2 scaledUV = float2(
-        NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, borderSizeLeftTop.x, borderSizeRightBottom.x),
-        NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, borderSizeLeftTop.y, borderSizeRightBottom.y)
+        NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, sliceCoordMin.x, sliceCoordMax.x),
+        NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, sliceCoordMin.y, sliceCoordMax.y)
     );
 
     uint textureIndex = drawData.packed1.x & 0xFFFF;
