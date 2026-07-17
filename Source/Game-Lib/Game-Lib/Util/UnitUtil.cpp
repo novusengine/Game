@@ -406,7 +406,7 @@ namespace Util::Unit
             {
                 animation = GetMoveRightAnimation(configuredSpeed, isFlying, isStealthed);
             }
-            else  if (isMovingForward)
+            else if (isMovingForward)
             {
                 animation = GetMoveForwardAnimation(configuredSpeed, isFlying, isStealthed);
             }

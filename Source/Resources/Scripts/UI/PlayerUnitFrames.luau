@@ -151,13 +151,13 @@ local function RegisterTemplates()
     UI.RegisterPanelTemplate("UnitFrameHealthDamageTrail",
     {
         cornerRadius = 1.0,
-        color = vector.create(0.62, 0.18, 0.09),
+        color = vector.create(0.68, 0.20, 0.055),
     });
 
     UI.RegisterPanelTemplate("UnitFrameHealthHealingTrail",
     {
         cornerRadius = 1.0,
-        color = vector.create(0.48, 0.82, 0.34),
+        color = vector.create(0.62, 0.90, 0.18),
     });
 
     UI.RegisterPanelTemplate("UnitFrameResourceFill",

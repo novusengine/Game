@@ -127,7 +127,7 @@ local EVEN_LEVEL_COLOR = vector.create(1.0, 1.0, 0.0);
 local DIFFICULT_LEVEL_COLOR = vector.create(0.95, 0.55, 0.18);
 local EXTREME_LEVEL_COLOR = vector.create(0.92, 0.20, 0.18);
 
-local FULL_HEALTH_COLOR = vector.create(0.42, 0.55, 0.08);
+local FULL_HEALTH_COLOR = vector.create(0.32, 0.62, 0.07);
 local MID_HEALTH_COLOR = vector.create(0.64, 0.58, 0.07);
 local LOW_HEALTH_COLOR = vector.create(0.82, 0.15, 0.08);
 local EMPTY_HEALTH_COLOR = vector.create(0.44, 0.06, 0.045);

@@ -43,6 +43,7 @@ type PlayerContainersAPI =
     containerData : PlayerContainersData,
 
     GetEquipmentBag : () -> Bag,
+    ToggleEquipmentBag : () -> boolean,
     GetBags : () -> { Bag },
     GetBag : (bagIndex : number) -> Bag,
     GetBankBag : () -> Bag,
@@ -69,6 +70,16 @@ local playerContainersAPI : PlayerContainersAPI =
 
 function playerContainersAPI.GetEquipmentBag()
     return playerContainersAPI.containerData.equipment
+end
+
+function playerContainersAPI.ToggleEquipmentBag() : boolean
+    local equipmentBag = playerContainersAPI.containerData.equipment
+    if equipmentBag == nil or equipmentBag.panel == nil then
+        return false
+    end
+
+    equipmentBag.panel:SetVisible(not equipmentBag.panel:IsVisible())
+    return true
 end
 
 function playerContainersAPI.GetBags()

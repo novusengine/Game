@@ -3,6 +3,7 @@ local Bag = require("@src/API/Game/Bag")
 local ItemSlot = require("@src/API/UI/ItemSlot")
 local PlayerContainers = require("@src/API/Game/PlayerContainers")
 local CursorInfo = require("@src/API/UI/CursorInfo")
+local MicroMenu = require("@src/API/UI/MicroMenu")
 
 type Bag = Bag.Bag
 
@@ -480,6 +481,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
         container.panel:SetAnchor(0.0, 0.0);
         container.panel:SetRelativePoint(0.0, 0.0);
+        container.panel:SetVisible(false);
 
         container.containerIndex = MIN_CONTAINER_INDEX
 
@@ -503,6 +505,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
     equipmentBag:LockItem(MAIN_BAG_SLOT_INDEX, true)
     PlayerContainers.SetEquipmentBag(equipmentBag)
+    MicroMenu.Refresh()
 end
 
 local function OnGameLoaded(eventID : number, data : any)
