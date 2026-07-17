@@ -1,8 +1,102 @@
+export type InputBinding =
+{
+    device : number,
+    code : number,
+    modifiers : number?,
+    modifierMatch : number?,
+}
+
+export type InputBindingConflict =
+{
+    action : string,
+    slot : number,
+    kind : number,
+}
+
+export type InputBindingMutation =
+{
+    action : string,
+    slot : number,
+    previousBinding : InputBinding?,
+    binding : InputBinding?,
+}
+
+export type InputBindingChangeResult =
+{
+    status : number,
+    succeeded : boolean,
+    requestedPolicy : number,
+    appliedPolicy : number,
+    conflicts : { InputBindingConflict },
+    mutations : { InputBindingMutation },
+}
+
+export type InputActionInfo =
+{
+    name : string,
+    displayName : string,
+    category : string,
+    context : string,
+    defaultReply : number,
+    categorySortOrder : number,
+    sortOrder : number,
+    rebindable : boolean,
+    defaultBindings : { [number] : InputBinding },
+    bindings : { [number] : InputBinding },
+}
+
+export type InputActionOptions =
+{
+    context : string?,
+    defaultReply : number?,
+    rebindable : boolean?,
+    categorySortOrder : number?,
+    sortOrder : number?,
+    secondaryBinding : InputBinding?,
+}
+
+export type InputContextInfo =
+{
+    name : string,
+    priority : number,
+    sortOrder : number,
+    active : boolean,
+}
+
+export type InputActionCallback = (phase : number, device : number, code : number, modifiers : number, value : number) -> number
+export type InputBindingCaptureCallback = (binding : InputBinding?) -> ()
+
 type InputTableAPI =
 {
     keyNames : { [number] : string },
     KeyValues : { [string] : number },
-    GetKeyName : (keyID : number) -> string
+    GetKeyName : (keyID : number) -> string,
+    GetKeyValue : (keyName : string) -> number,
+    Keyboard : (keyID : number, modifiers : number?, modifierMatch : number?) -> InputBinding,
+    Mouse : (buttonID : number, modifiers : number?, modifierMatch : number?) -> InputBinding,
+    MouseWheel : (direction : number, modifiers : number?, modifierMatch : number?) -> InputBinding,
+    RegisterAction : (name : string, displayName : string, category : string, binding : InputBinding, options : InputActionOptions?) -> boolean,
+    Bind : (name : string, displayName : string, category : string, binding : InputBinding, callback : InputActionCallback, options : InputActionOptions?) -> number,
+    Connect : (name : string, callback : InputActionCallback) -> number,
+    Disconnect : (connection : number) -> boolean,
+    SetBinding : (name : string, slot : number, binding : InputBinding, policy : number?) -> InputBindingChangeResult,
+    ClearBinding : (name : string, slot : number, policy : number?) -> InputBindingChangeResult,
+    ResetBinding : (name : string, slot : number, policy : number?) -> InputBindingChangeResult,
+    GetBinding : (name : string, slot : number) -> InputBinding?,
+    GetActions : () -> { InputActionInfo },
+    IsDown : (name : string) -> boolean,
+    WasPressed : (name : string) -> boolean,
+    WasReleased : (name : string) -> boolean,
+    FindBindingConflicts : (name : string, slot : number, binding : InputBinding) -> InputBindingChangeResult,
+    FormatBinding : (binding : InputBinding?) -> string,
+    BeginBindingCapture : (callback : InputBindingCaptureCallback) -> boolean,
+    CancelBindingCapture : () -> boolean,
+    IsBindingCaptureActive : () -> boolean,
+    SaveBindings : () -> boolean,
+    CreateContext : (name : string, priority : number, sortOrder : number?) -> boolean,
+    SetContextActive : (name : string, active : boolean) -> boolean,
+    IsContextActive : (name : string) -> boolean,
+    GetContexts : () -> { InputContextInfo },
 }
 
 local inputTableAPI : InputTableAPI = { };
@@ -131,128 +225,10 @@ inputTableAPI.keyNames =
     [348] = "MENU",
 }
 
-inputTableAPI.KeyValues = {
-    SPACE          = 32,
-    APOSTROPHE     = 39,
-    COMMA          = 44,
-    MINUS          = 45,
-    PERIOD         = 46,
-    SLASH          = 47,
-    ["0"]          = 48,
-    ["1"]          = 49,
-    ["2"]          = 50,
-    ["3"]          = 51,
-    ["4"]          = 52,
-    ["5"]          = 53,
-    ["6"]          = 54,
-    ["7"]          = 55,
-    ["8"]          = 56,
-    ["9"]          = 57,
-    SEMICOLON      = 59,
-    EQUAL          = 61,
-    A              = 65,
-    B              = 66,
-    C              = 67,
-    D              = 68,
-    E              = 69,
-    F              = 70,
-    G              = 71,
-    H              = 72,
-    I              = 73,
-    J              = 74,
-    K              = 75,
-    L              = 76,
-    M              = 77,
-    N              = 78,
-    O              = 79,
-    P              = 80,
-    Q              = 81,
-    R              = 82,
-    S              = 83,
-    T              = 84,
-    U              = 85,
-    V              = 86,
-    W              = 87,
-    X              = 88,
-    Y              = 89,
-    Z              = 90,
-    LEFT_BRACKET   = 91,
-    BACKSLASH      = 92,
-    RIGHT_BRACKET  = 93,
-    GRAVE_ACCENT   = 96,
-    WORLD_1        = 161,
-    WORLD_2        = 162,
-    ESCAPE         = 256,
-    ENTER          = 257,
-    TAB            = 258,
-    BACKSPACE      = 259,
-    INSERT         = 260,
-    DELETE         = 261,
-    RIGHT          = 262,
-    LEFT           = 263,
-    DOWN           = 264,
-    UP             = 265,
-    PAGE_UP        = 266,
-    PAGE_DOWN      = 267,
-    HOME           = 268,
-    END            = 269,
-    CAPS_LOCK      = 280,
-    SCROLL_LOCK    = 281,
-    NUM_LOCK       = 282,
-    PRINT_SCREEN   = 283,
-    PAUSE          = 284,
-    F1             = 290,
-    F2             = 291,
-    F3             = 292,
-    F4             = 293,
-    F5             = 294,
-    F6             = 295,
-    F7             = 296,
-    F8             = 297,
-    F9             = 298,
-    F10            = 299,
-    F11            = 300,
-    F12            = 301,
-    F13            = 302,
-    F14            = 303,
-    F15            = 304,
-    F16            = 305,
-    F17            = 306,
-    F18            = 307,
-    F19            = 308,
-    F20            = 309,
-    F21            = 310,
-    F22            = 311,
-    F23            = 312,
-    F24            = 313,
-    F25            = 314,
-    KP_0           = 320,
-    KP_1           = 321,
-    KP_2           = 322,
-    KP_3           = 323,
-    KP_4           = 324,
-    KP_5           = 325,
-    KP_6           = 326,
-    KP_7           = 327,
-    KP_8           = 328,
-    KP_9           = 329,
-    KP_DECIMAL     = 330,
-    KP_DIVIDE      = 331,
-    KP_MULTIPLY    = 332,
-    KP_SUBTRACT    = 333,
-    KP_ADD         = 334,
-    KP_ENTER       = 335,
-    KP_EQUAL       = 336,
-    LEFT_SHIFT     = 340,
-    LEFT_CONTROL   = 341,
-    LEFT_ALT       = 342,
-    LEFT_SUPER     = 343,
-    RIGHT_SHIFT    = 344,
-    RIGHT_CONTROL  = 345,
-    RIGHT_ALT      = 346,
-    RIGHT_SUPER    = 347,
-    MENU           = 348,
-}
+inputTableAPI.KeyValues = {};
+for keyID, keyName in inputTableAPI.keyNames do
+    inputTableAPI.KeyValues[keyName] = keyID;
+end
 
 function inputTableAPI.GetKeyName(keyID : number) : string
     return inputTableAPI.keyNames[keyID] or "";
@@ -260,6 +236,197 @@ end
 
 function inputTableAPI.GetKeyValue(keyName : string) : number
     return inputTableAPI.KeyValues[keyName] or -1;
+end
+
+function inputTableAPI.Keyboard(keyID : number, modifiers : number?, modifierMatch : number?) : InputBinding
+    return {
+        device = InputDevice.Keyboard,
+        code = keyID,
+        modifiers = modifiers or InputModifier.None,
+        modifierMatch = modifierMatch or InputModifierMatch.Exact,
+    };
+end
+
+function inputTableAPI.Mouse(buttonID : number, modifiers : number?, modifierMatch : number?) : InputBinding
+    return {
+        device = InputDevice.Mouse,
+        code = buttonID,
+        modifiers = modifiers or InputModifier.None,
+        modifierMatch = modifierMatch or InputModifierMatch.Exact,
+    };
+end
+
+function inputTableAPI.MouseWheel(direction : number, modifiers : number?, modifierMatch : number?) : InputBinding
+    return {
+        device = InputDevice.MouseWheel,
+        code = direction,
+        modifiers = modifiers or InputModifier.None,
+        modifierMatch = modifierMatch or InputModifierMatch.Exact,
+    };
+end
+
+function inputTableAPI.RegisterAction(
+    name : string,
+    displayName : string,
+    category : string,
+    binding : InputBinding,
+    options : InputActionOptions?
+) : boolean
+    return Input.RegisterAction(name, displayName, category, binding, options);
+end
+
+function inputTableAPI.Bind(
+    name : string,
+    displayName : string,
+    category : string,
+    binding : InputBinding,
+    callback : InputActionCallback,
+    options : InputActionOptions?
+) : number
+    if not inputTableAPI.RegisterAction(name, displayName, category, binding, options) then
+        return 0;
+    end
+
+    return Input.Connect(name, callback);
+end
+
+function inputTableAPI.Connect(name : string, callback : InputActionCallback) : number
+    return Input.Connect(name, callback);
+end
+
+function inputTableAPI.Disconnect(connection : number) : boolean
+    return Input.Disconnect(connection);
+end
+
+function inputTableAPI.SetBinding(name : string, slot : number, binding : InputBinding, policy : number?) : InputBindingChangeResult
+    return Input.SetBinding(name, slot, binding, policy or InputBindingConflictPolicy.Reject);
+end
+
+function inputTableAPI.ClearBinding(name : string, slot : number, policy : number?) : InputBindingChangeResult
+    return Input.ClearBinding(name, slot, policy or InputBindingConflictPolicy.Reject);
+end
+
+function inputTableAPI.ResetBinding(name : string, slot : number, policy : number?) : InputBindingChangeResult
+    return Input.ResetBinding(name, slot, policy or InputBindingConflictPolicy.Reject);
+end
+
+function inputTableAPI.GetBinding(name : string, slot : number) : InputBinding?
+    return Input.GetBinding(name, slot);
+end
+
+function inputTableAPI.GetActions() : { InputActionInfo }
+    return Input.GetActions();
+end
+
+function inputTableAPI.IsDown(name : string) : boolean
+    return Input.IsDown(name);
+end
+
+function inputTableAPI.WasPressed(name : string) : boolean
+    return Input.WasPressed(name);
+end
+
+function inputTableAPI.WasReleased(name : string) : boolean
+    return Input.WasReleased(name);
+end
+
+function inputTableAPI.FindBindingConflicts(name : string, slot : number, binding : InputBinding) : InputBindingChangeResult
+    return Input.FindBindingConflicts(name, slot, binding);
+end
+
+local DISPLAY_KEY_NAMES = {
+    SPACE = "Space",
+    APOSTROPHE = "Apostrophe",
+    COMMA = ",",
+    MINUS = "-",
+    PERIOD = ".",
+    SLASH = "/",
+    SEMICOLON = ";",
+    EQUAL = "=",
+    LEFT_BRACKET = "[",
+    BACKSLASH = "\\",
+    RIGHT_BRACKET = "]",
+    GRAVE_ACCENT = "`",
+    PAGE_UP = "Page Up",
+    PAGE_DOWN = "Page Down",
+    CAPS_LOCK = "Caps Lock",
+    SCROLL_LOCK = "Scroll Lock",
+    NUM_LOCK = "Num Lock",
+    PRINT_SCREEN = "Print Screen",
+    KP_DECIMAL = "Numpad .",
+    KP_DIVIDE = "Numpad /",
+    KP_MULTIPLY = "Numpad *",
+    KP_SUBTRACT = "Numpad -",
+    KP_ADD = "Numpad +",
+    KP_ENTER = "Numpad Enter",
+    KP_EQUAL = "Numpad =",
+};
+
+local function HasModifier(modifiers : number, modifier : number) : boolean
+    return bit32.band(modifiers, modifier) ~= 0;
+end
+
+function inputTableAPI.FormatBinding(binding : InputBinding?) : string
+    if binding == nil then
+        return "Unbound";
+    end
+
+    local parts = {};
+    local modifiers = binding.modifiers or InputModifier.None;
+    if HasModifier(modifiers, InputModifier.Control) then table.insert(parts, "Ctrl"); end
+    if HasModifier(modifiers, InputModifier.Shift) then table.insert(parts, "Shift"); end
+    if HasModifier(modifiers, InputModifier.Alt) then table.insert(parts, "Alt"); end
+    if HasModifier(modifiers, InputModifier.Super) then table.insert(parts, "Super"); end
+
+    local controlName = "Unknown";
+    if binding.device == InputDevice.Keyboard then
+        local keyName = inputTableAPI.GetKeyName(binding.code);
+        controlName = DISPLAY_KEY_NAMES[keyName] or string.gsub(keyName, "_", " ");
+        if string.sub(controlName, 1, 3) == "KP " then
+            controlName = `Numpad {string.sub(controlName, 4)}`;
+        end
+    elseif binding.device == InputDevice.Mouse then
+        local mouseNames = { "Left Mouse", "Right Mouse", "Middle Mouse", "Mouse 4", "Mouse 5", "Mouse 6", "Mouse 7", "Mouse 8" };
+        controlName = mouseNames[binding.code + 1] or "Unknown Mouse";
+    elseif binding.device == InputDevice.MouseWheel then
+        local wheelNames = { "Wheel Up", "Wheel Down", "Wheel Left", "Wheel Right" };
+        controlName = wheelNames[binding.code + 1] or "Unknown Wheel";
+    end
+
+    table.insert(parts, controlName);
+    return table.concat(parts, "+");
+end
+
+function inputTableAPI.BeginBindingCapture(callback : InputBindingCaptureCallback) : boolean
+    return Input.BeginBindingCapture(callback);
+end
+
+function inputTableAPI.CancelBindingCapture() : boolean
+    return Input.CancelBindingCapture();
+end
+
+function inputTableAPI.IsBindingCaptureActive() : boolean
+    return Input.IsBindingCaptureActive();
+end
+
+function inputTableAPI.SaveBindings() : boolean
+    return Input.SaveBindings();
+end
+
+function inputTableAPI.CreateContext(name : string, priority : number, sortOrder : number?) : boolean
+    return Input.CreateContext(name, priority, sortOrder or 0);
+end
+
+function inputTableAPI.SetContextActive(name : string, active : boolean) : boolean
+    return Input.SetContextActive(name, active);
+end
+
+function inputTableAPI.IsContextActive(name : string) : boolean
+    return Input.IsContextActive(name);
+end
+
+function inputTableAPI.GetContexts() : { InputContextInfo }
+    return Input.GetContexts();
 end
 
 return inputTableAPI;

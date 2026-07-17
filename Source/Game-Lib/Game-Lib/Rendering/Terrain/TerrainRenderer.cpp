@@ -14,8 +14,6 @@
 
 #include <Filesystem/PactStorage.h>
 
-#include <Input/InputManager.h>
-
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Descriptors/ImageDesc.h>

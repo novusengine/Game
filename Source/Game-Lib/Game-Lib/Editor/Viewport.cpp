@@ -14,11 +14,9 @@
 
 #include <Base/CVarSystem/CVarSystem.h>
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 
 #include <Renderer/RenderSettings.h>
-
-#include <GLFW/glfw3.h>
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -35,47 +33,6 @@ namespace Editor
     {
         _lastPanelSize = vec2(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
-
-        imguiKeybindGroup->AddKeyboardCallback("Editor RightClick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Press, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier)
-        {
-            InputManager* inputManager = ServiceLocator::GetInputManager();
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            entt::registry::context& ctx = registry->ctx();
-
-            auto& cameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
-            if (cameraSettings.captureMouse)
-                return false;
-
-            cameraSettings.captureMouseHasMoved = false;
-
-            ImGuiContext* context = ImGui::GetCurrentContext();
-            _rightClickStartedInViewport = context->HoveredWindow && strcmp(context->HoveredWindow->Name, GetName()) == 0;
-            return true;
-        });
-
-        imguiKeybindGroup->AddMouseScrollCallback([this](f32 x, f32 y) -> bool
-        {
-            ImGuiContext* context = ImGui::GetCurrentContext();
-
-            if (context->HoveredWindow)
-            {
-                InputManager* inputManager = ServiceLocator::GetInputManager();
-                KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
-
-                bool isViewportHovered = strcmp(context->HoveredWindow->Name, GetName()) == 0;
-                bool altIsDown = ImGui::GetIO().KeyAlt;
-
-                if (isViewportHovered && altIsDown)
-                {
-                    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-                    ECS::Systems::FreeflyingCamera::CapturedMouseScrolled(*registry, vec2(x, y));
-                }
-            }
-
-            return true;
-        });
     }
 
     void Viewport::Update(f32 deltaTime)
@@ -115,8 +72,7 @@ namespace Editor
 
         if (ImGui::Begin(GetName(), &IsVisible()))
         {
-            InputManager* inputManager = ServiceLocator::GetInputManager();
-            KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+            InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
             GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
             Renderer::Renderer* renderer = gameRenderer->GetRenderer();
@@ -146,20 +102,25 @@ namespace Editor
             auto& cameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
 
             ImGuiIO& io = ImGui::GetIO();
+            const bool viewportHovered = ImGui::IsItemHovered();
 
-            if (ImGui::IsMouseDoubleClicked(1) && ImGui::IsItemHovered()) // Double right click
+            if (viewportHovered && io.KeyAlt && io.MouseWheel != 0.0f)
+                ECS::Systems::FreeflyingCamera::CapturedMouseScrolled(*registry, vec2(io.MouseWheelH, io.MouseWheel));
+
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+                _rightClickStartedInViewport = viewportHovered;
+
+            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Right) && viewportHovered)
             {
                 ECS::Util::CameraUtil::SetCaptureMouse(true);
 
-                cameraSettings.prevMousePosition = inputManager->GetMousePosition();
                 cameraSettings.captureMouseHasMoved = false;
             }
-            else if (imguiKeybindGroup->IsKeybindPressed("Editor RightClick"_h))
+            else if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
             {
                 if (_rightClickStartedInViewport)
                 {
-                    vec2 mousePos = inputManager->GetMousePosition();
-                    ECS::Systems::FreeflyingCamera::CapturedMouseMoved(*registry, mousePos);
+                    ECS::Systems::FreeflyingCamera::CapturedMouseMoved(*registry, inputSystem->GetMouseDelta());
                 }
             }
             else
@@ -187,7 +148,7 @@ namespace Editor
 
     bool Viewport::GetMousePosition(vec2& outMousePos)
     {
-        InputManager* inputManager = ServiceLocator::GetInputManager();
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
         if (IsEditorMode())
         {
@@ -207,7 +168,7 @@ namespace Editor
         }
         else
         {
-            vec2 mousePosition = inputManager->GetMousePosition();
+            vec2 mousePosition = inputSystem->GetMousePosition();
             outMousePos = mousePosition;
         }
 

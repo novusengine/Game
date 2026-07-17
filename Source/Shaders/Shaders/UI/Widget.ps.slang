@@ -29,6 +29,12 @@ struct WidgetMaskInfo
 [[vk::binding(6, PER_PASS)]] StructuredBuffer<float4> _widgetClipRects;
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<WidgetMaskInfo> _widgetMaskInfo;
 
+struct Constants
+{
+    float2 viewportSize;
+};
+[[vk::push_constant]] Constants _constants;
+
 float RemapRange(float value, float originalMin, float originalMax, float newMin, float newMax)
 {
     float originalRange = originalMax - originalMin;
@@ -148,6 +154,10 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
 
     if (normalizedBorderSize.x > 0.0 || normalizedBorderSize.y > 0.0)
     {
+        // A logical UI pixel can cover less than one physical pixel when the reference UI is
+        // scaled to the viewport. Keep authored borders at least one fragment wide so subpixel
+        // movement, such as scrolling, cannot make individual edges disappear.
+        float2 effectiveBorderSize = max(normalizedBorderSize, fwidth(uv));
         float4 borderColor = PackedUnormsToFloat4(drawData.packed1.y);
         bool inBorder;
 
@@ -155,15 +165,14 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
         {
             // Corner zone: pixel is in the border ring if it lies outside
             // the inner corner ellipse (radii shrunken by borderSize).
-            float2 innerR = max(cornerRadius - normalizedBorderSize, float2(1e-5, 1e-5));
+            float2 innerR = max(cornerRadius - effectiveBorderSize, float2(1e-5, 1e-5));
             float2 toInner = 1.0 - edgeDist / innerR;
             bool insideInnerBox = toInner.x > 0.0 && toInner.y > 0.0;
             inBorder = !insideInnerBox || length(toInner) > 1.0;
         }
         else
         {
-            inBorder = edgeDist.x < normalizedBorderSize.x
-                || edgeDist.y < normalizedBorderSize.y;
+            inBorder = edgeDist.x < effectiveBorderSize.x || edgeDist.y < effectiveBorderSize.y;
         }
 
         if (inBorder)
@@ -211,7 +220,14 @@ float4 ShadeText(WidgetDrawData drawData, VertexOutput input)
 
     float innerOpacity = saturate(inner);
     float4 innerColor = textColor;
+
+    if (borderSize <= 0.0f)
+    {
+        return innerColor * innerOpacity;
+    }
+
     float outerOpacity = saturate(outer);
+    outerOpacity = max(outerOpacity, innerOpacity);
     float4 outerColor = float4(borderColor.rgb, 1.0f);
 
     return (innerColor * innerOpacity) + (outerColor * (outerOpacity - innerOpacity));
@@ -226,6 +242,12 @@ float4 main(VertexOutput input) : SV_Target
     float2 screenPos = input.uvAndScreenPos.zw;
     uint clipBoundsIndex = drawData.packed2.x;
     float4 clipRect = _widgetClipRects[clipBoundsIndex];
+    if (clipBoundsIndex != 0)
+    {
+        float2 clipPixelMin = round(clipRect.xy * _constants.viewportSize);
+        float2 clipPixelMax = max(round(clipRect.zw * _constants.viewportSize), clipPixelMin + 1.0f);
+        clipRect = float4(clipPixelMin, clipPixelMax) / float4(_constants.viewportSize, _constants.viewportSize);
+    }
     if (ShouldDiscard(screenPos, clipRect.xy, clipRect.zw))
     {
         discard;
@@ -236,6 +258,7 @@ float4 main(VertexOutput input) : SV_Target
     if (type == WIDGET_TYPE_PANEL)
     {
         color = ShadePanel(drawData, input);
+        color.rgb *= color.a;
     }
     else // WIDGET_TYPE_TEXT
     {
@@ -254,10 +277,9 @@ float4 main(VertexOutput input) : SV_Target
     {
         discard;
     }
-    color.a *= clipMask;
-
-    // Multiply the color channels by alpha for pre-multiplied alpha output
-    color.rgb *= color.a;
+    // Panel colors are converted to premultiplied alpha above. Text colors are already
+    // premultiplied by their MSDF coverage in ShadeText, so the clip mask must scale both.
+    color *= clipMask;
 
     return saturate(color);
 }

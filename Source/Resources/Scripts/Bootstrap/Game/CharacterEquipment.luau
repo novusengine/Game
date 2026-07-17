@@ -190,7 +190,7 @@ local function RegisterTemplates()
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
-        borderSize = 1.0,
+        borderSize = 0.2,
         borderColor = vector.create(0.0, 0.0, 0.0)
     });
 end

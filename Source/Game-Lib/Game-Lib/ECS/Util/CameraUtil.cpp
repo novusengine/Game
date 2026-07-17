@@ -12,7 +12,7 @@
 
 #include <Renderer/Window.h>
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 
 #include <imgui/imgui.h>
 #include <entt/entt.hpp>
@@ -21,6 +21,7 @@
 #include <glm/gtx/euler_angles.hpp>
 
 AutoCVar_Float CVAR_CameraMouseSensitivity(CVarCategory::Client, "cameraMouseSensitivity", "Mouse sensitivity multiplier used by captured camera rotation", 1.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Int CVAR_SoftwareCursor(CVarCategory::Client, "softwareCursor", "Render the game cursor through the UI instead of the platform cursor", 0, CVarFlags::EditCheckbox);
 
 namespace
 {
@@ -33,7 +34,7 @@ namespace ECS::Util
     {
         void SetCaptureMouse(bool capture)
         {
-            SetCaptureMouse(capture, ServiceLocator::GetInputManager()->GetMousePosition());
+            SetCaptureMouse(capture, ServiceLocator::GetInputSystem()->GetMousePosition());
         }
 
         void SetCaptureMouse(bool capture, const vec2& restorePosition)
@@ -61,12 +62,12 @@ namespace ECS::Util
 
             GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
             Novus::Window* window = gameRenderer->GetWindow();
-            InputManager* inputManager = ServiceLocator::GetInputManager();
+            InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
             if (capture)
             {
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouse;
-                inputManager->SetCursorVirtual(true);
+                inputSystem->SetCursorMode(CursorMode::Captured);
 
                 // Hide before entering disabled mode. GLFW centers the physical cursor while
                 // enabling disabled mode on Windows, so a direct NORMAL -> DISABLED transition
@@ -87,31 +88,55 @@ namespace ECS::Util
                 // before making it visible again.
                 glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
                 gameRenderer->RestoreCursorPosition(restorePosition);
-                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                inputManager->SetCursorVirtual(false);
                 ImGui::GetIO().ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+                ApplyCursorMode();
+            }
+        }
+
+        void InitializeCursorMode()
+        {
+            static bool initialized = false;
+            if (initialized)
+                return;
+
+            initialized = true;
+            CVAR_SoftwareCursor.AddOnValueChanged([](const i32&)
+            {
+                if (!ServiceLocator::GetInputSystem()->IsMouseCaptured())
+                    ApplyCursorMode();
+            });
+
+            ApplyCursorMode();
+        }
+
+        void ApplyCursorMode()
+        {
+            InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+            Novus::Window* window = ServiceLocator::GetGameRenderer()->GetWindow();
+            ImGuiIO& io = ImGui::GetIO();
+
+            if (IsSoftwareCursorEnabled())
+            {
+                inputSystem->SetCursorMode(CursorMode::Software);
+                io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+            }
+            else
+            {
+                inputSystem->SetCursorMode(CursorMode::Hardware);
+                io.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
+                glfwSetInputMode(window->GetWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             }
         }
 
         bool IsCapturingMouse()
         {
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            entt::registry::context& ctx = registry->ctx();
+            return ServiceLocator::GetInputSystem()->IsMouseCaptured();
+        }
 
-            auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
-            auto& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
-            auto& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
-
-            if (activeCamera.entity == freeFlyingCameraSettings.entity)
-            {
-                return freeFlyingCameraSettings.captureMouse;
-            }
-            else if (activeCamera.entity == orbitalCameraSettings.entity)
-            {
-                return orbitalCameraSettings.captureMouse;
-            }
-
-            return false;
+        bool IsSoftwareCursorEnabled()
+        {
+            return CVAR_SoftwareCursor.Get() != 0;
         }
 
         f32 GetMouseSensitivity()

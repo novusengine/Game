@@ -9,7 +9,9 @@ export type ActionBarAPI =
 export type ActionBarButton =
 {
     widget : buttonAPI.Button,
-    callback : (self : ActionBarButton) -> ()
+    callback : ((self : ActionBarButton) -> ())?,
+    actionName : string,
+    inputConnection : number,
 }
 
 export type ActionBar =
@@ -65,10 +67,31 @@ local function SetupActionBarMethods(actionBarTable : ActionBar)
         end
 
         local button = self.buttons[index];
-        local keyName = input.GetKeyName(key);
-        button.widget:SetText(keyName);
+        local binding = input.Keyboard(key, InputModifier.None, InputModifierMatch.Any);
+        if button.inputConnection == 0 then
+            input.RegisterAction(button.actionName, `Action Bar Slot {index}`, "Action Bar", binding);
+            button.inputConnection = input.Connect(button.actionName, function(phase)
+                if phase == InputPhase.Pressed or phase == InputPhase.Repeated then
+                    button.widget.panel:SetColor(vector.create(0.5, 0.5, 0.5));
+                    return InputReply.Consumed;
+                end
 
-        self.keyToButtonIndex[key] = index;
+                if phase == InputPhase.Released or phase == InputPhase.Canceled then
+                    button.widget.panel:SetColor(vector.create(1.0, 1.0, 1.0));
+                    if phase == InputPhase.Released and button.callback ~= nil then
+                        button:callback();
+                    end
+                end
+
+                return InputReply.Consumed;
+            end);
+        else
+            input.SetBinding(button.actionName, 1, binding);
+        end
+
+        local activeBinding = input.GetBinding(button.actionName, 1) or binding;
+        button.widget:SetText(input.GetKeyName(activeBinding.code));
+        self.keyToButtonIndex[activeBinding.code] = index;
     end
     
     actionBarTable.SetButtonCallback = function(table, index : number, callback : (self : ActionBarButton) -> ())
@@ -101,7 +124,7 @@ local function SetupActionBarMethods(actionBarTable : ActionBar)
 
         local actionButton = self.buttons[index];
         if spellID == 0 then
-            actionButton.widget.SetText("");
+            actionButton.widget:SetText("");
             actionButton.widget.panel:SetBackground(nil);
             self:SetButtonCallback(index, nil);
         else
@@ -149,7 +172,9 @@ function actionBarAPI.CreateActionBar(parent : Widget, position : vector, numRow
             actionBarTable.buttons[i] =
             {
                 widget = button,
-                callback = nil
+                callback = nil,
+                actionName = `ActionBarSlot{i}`,
+                inputConnection = 0,
             };
 
             button.panel:SetAlpha(0.85);
@@ -159,26 +184,6 @@ function actionBarAPI.CreateActionBar(parent : Widget, position : vector, numRow
             button.text:SetWrapWidth(buttonSize - 4)
         end
     end
-
-    UI.AddOnKeyboard(function(eventID, ...)
-        if eventID ~= UIKeyboardEvent.Key then return false end
-
-        local keyID, action, modifierMask = ...;
-        local actionButton = actionBarTable:GetButtonFromKey(keyID);
-        if actionButton == nil then return false end
-        
-        if (action == InputAction.Press) then
-            actionButton.widget.panel:SetColor(vector.create(0.5, 0.5, 0.5));
-            return true
-        end
-
-        actionButton.widget.panel:SetColor(vector.create(1.0, 1.0, 1.0));
-        if actionButton.callback ~= nil then
-            actionButton:callback();
-        end
-
-        return true;
-    end);
 
     SetupActionBarMethods(actionBarTable);
 

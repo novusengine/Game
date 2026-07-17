@@ -100,10 +100,20 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
             auto& textTemplate = registry->get<ECS::Components::UI::TextTemplate>(text->entity);
-            textTemplate.size = size;
+            if (textTemplate.size == size)
+                return 0;
 
-            registry->emplace_or_replace<ECS::Components::UI::DirtyWidgetTransform>(text->entity);
-            ECS::Util::UI::RefreshClipper(registry, text->entity);
+            textTemplate.size = size;
+            textTemplate.setFlags.size = true;
+
+            auto& textComponent = registry->get<ECS::Components::UI::Text>(text->entity);
+            ECS::Util::UI::RefreshText(registry, text->entity, textComponent.rawText);
+
+            registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(text->canvasEntity);
+
+            auto* clipper = registry->try_get<ECS::Components::UI::Clipper>(text->entity);
+            if (clipper != nullptr && (clipper->clipChildren || clipper->hasClipMaskTexture))
+                ECS::Util::UI::RefreshClipper(registry, text->entity);
 
             return 0;
         }

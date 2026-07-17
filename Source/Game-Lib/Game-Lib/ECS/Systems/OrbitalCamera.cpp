@@ -9,12 +9,13 @@
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 #include <Renderer/Window.h>
 
 #include <entt/entt.hpp>
@@ -30,7 +31,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/euler_angles.hpp>
-#include <imgui/imgui.h>
 
 AutoCVar_Float CVAR_CameraZoomDistance(CVarCategory::Client, "cameraZoomDistance", "The current zoom distance for the camera", 12, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CameraZoomMaxDistance(CVarCategory::Client, "cameraZoomMaxDistance", "The max zoom distance for the camera", 30.0f, CVarFlags::EditFloatDrag);
@@ -46,11 +46,20 @@ namespace
     constexpr f32 DEFAULT_CAMERA_PITCH = 30.0f;
     constexpr f32 DEFAULT_CAMERA_ZOOM_DISTANCE = 12.0f;
 
+    void AdjustCameraZoom(ECS::Singletons::OrbitalCameraSettings& settings, f32 wheelSteps)
+    {
+        const f32 zoomDistance = Math::Clamp(CVAR_CameraZoomDistance.GetFloat() + wheelSteps, 0.0f, CVAR_CameraZoomMaxDistance.GetFloat());
+        CVAR_CameraZoomDistance.Set(zoomDistance);
+
+        settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, 1.8f, -zoomDistance);
+        settings.cameraZoomProgress = 0.0f;
+    }
+
     void BeginMouseGesture(ECS::Singletons::OrbitalCameraSettings& settings)
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         Novus::Window* window = gameRenderer->GetWindow();
-        InputManager* inputManager = ServiceLocator::GetInputManager();
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
         gameRenderer->CancelCursorRestore();
 
@@ -58,15 +67,26 @@ namespace
         f64 mouseY;
         glfwGetCursorPos(window->GetWindow(), &mouseX, &mouseY);
         const vec2 physicalMousePosition(static_cast<f32>(mouseX), static_cast<f32>(mouseY));
-        inputManager->SetMousePosition(physicalMousePosition.x, physicalMousePosition.y);
+        inputSystem->SetMousePosition(physicalMousePosition);
 
         settings.captureMousePending = true;
         settings.captureMouseHasMoved = false;
         settings.captureMouseWasDragged = false;
-        settings.prevMousePosition = physicalMousePosition;
-        settings.captureStartMousePosition = settings.prevMousePosition;
+        settings.captureStartMousePosition = physicalMousePosition;
         settings.captureRestoreMousePosition = settings.captureStartMousePosition;
         settings.captureStartTime = glfwGetTime();
+    }
+
+    void EndMouseGesture(ECS::Singletons::OrbitalCameraSettings& settings)
+    {
+        settings.captureMousePending = false;
+
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+        if (inputSystem->IsMouseCaptured())
+            ECS::Util::CameraUtil::SetCaptureMouse(false, settings.captureRestoreMousePosition);
+
+        settings.captureMouse = false;
+        settings.captureMouseHasMoved = false;
     }
 
     class StaticBroadPhaseFilter final : public JPH::BroadPhaseLayerFilter
@@ -116,7 +136,9 @@ namespace
 
 namespace ECS::Systems
 {
-    KeybindGroup* OrbitalCamera::_keybindGroup = nullptr;
+    InputActionContextHandle OrbitalCamera::_inputContext;
+    InputContextHandle OrbitalCamera::_pointerInputContext;
+    InputActionHandle OrbitalCamera::_altAction;
 
     void OrbitalCamera::Init(entt::registry& registry)
     {
@@ -142,69 +164,95 @@ namespace ECS::Systems
         settings.cameraCurrentZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, 1.8f, -zoomDistance);
         settings.cameraTargetZoomOffset = settings.cameraCurrentZoomOffset;
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        _keybindGroup = inputManager->CreateKeybindGroup("OrbitalCamera", 10);
-        _keybindGroup->SetActive(false);
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        _inputContext = inputActions->CreateContext("OrbitalCamera", GameInputPriority::Gameplay);
+        inputActions->SetContextActive(_inputContext, false);
 
-        _keybindGroup->AddKeyboardCallback("AltMod", GLFW_KEY_LEFT_ALT, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Left Mouseclick", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Click, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
+        _altAction = inputActions->RegisterAction(_inputContext, "OrbitalCameraSpeedModifier", "Orbital Camera Speed Modifier", "Camera", InputBinding::Keyboard(Key::LeftAlt, InputModifier::None, ModifierMatch::Any), { .rebindable = false });
+
+        inputActions->RegisterAction(_inputContext, "OrbitalCameraLeftMouse", "Orbital Camera Left Mouse", "Camera",
+            InputBinding::Mouse(MouseButton::Left, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled, .rebindable = false }, [&settings](const InputActionEvent& event)
         {
-            if (action == KeybindAction::Press)
+            if (event.phase == InputPhase::Pressed)
             {
+                InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+                settings.mouseRightDown = inputSystem->IsDown(InputControl::Mouse(MouseButton::Right));
                 if (!settings.mouseRightDown)
                     BeginMouseGesture(settings);
 
                 settings.mouseLeftDown = true;
             }
-            else
+            else if (event.phase == InputPhase::Released)
             {
-                if (!settings.mouseRightDown)
-                {
-                    if (settings.captureMouse)
-                        ECS::Util::CameraUtil::SetCaptureMouse(false, settings.captureRestoreMousePosition);
-                    else
-                        settings.captureMousePending = false;
-                }
-
                 settings.mouseLeftDown = false;
+                settings.mouseRightDown = ServiceLocator::GetInputSystem()->IsDown(InputControl::Mouse(MouseButton::Right));
+                if (!settings.mouseRightDown)
+                    EndMouseGesture(settings);
+            }
+            else if (event.phase == InputPhase::Canceled)
+            {
+                settings.mouseLeftDown = false;
+                settings.mouseRightDown = false;
+                EndMouseGesture(settings);
             }
 
-            return true;
+            return InputReply::Handled;
         });
-        _keybindGroup->AddKeyboardCallback("Right Mouseclick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
+
+        inputActions->RegisterAction(_inputContext, "OrbitalCameraRightMouse", "Orbital Camera Right Mouse", "Camera",
+            InputBinding::Mouse(MouseButton::Right, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled, .rebindable = false }, [&settings](const InputActionEvent& event)
         {
-            if (action == KeybindAction::Press)
+            if (event.phase == InputPhase::Pressed)
             {
+                InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+                settings.mouseLeftDown = inputSystem->IsDown(InputControl::Mouse(MouseButton::Left));
                 if (!settings.mouseLeftDown)
                     BeginMouseGesture(settings);
 
                 settings.mouseRightDown = true;
             }
-            else
+            else if (event.phase == InputPhase::Released)
             {
-                if (!settings.mouseLeftDown)
-                {
-                    if (settings.captureMouse)
-                        ECS::Util::CameraUtil::SetCaptureMouse(false, settings.captureRestoreMousePosition);
-                    else
-                        settings.captureMousePending = false;
-                }
-
                 settings.mouseRightDown = false;
+                settings.mouseLeftDown = ServiceLocator::GetInputSystem()->IsDown(InputControl::Mouse(MouseButton::Left));
+                if (!settings.mouseLeftDown)
+                    EndMouseGesture(settings);
+            }
+            else if (event.phase == InputPhase::Canceled)
+            {
+                settings.mouseLeftDown = false;
+                settings.mouseRightDown = false;
+                EndMouseGesture(settings);
             }
 
-            return true;
+            return InputReply::Handled;
         });
-        _keybindGroup->AddMousePositionCallback([&settings, &registry](f32 xPos, f32 yPos)
-        {
-            if (settings.captureMousePending)
-            {
-                const vec2 position(xPos, yPos);
-                settings.prevMousePosition = position;
 
+        inputActions->RegisterAction(_inputContext, "CameraZoomIn", "Camera Zoom In", "Camera", InputBinding::MouseWheel(MouseWheelDirection::Up, InputModifier::None, ModifierMatch::Any), [&settings](const InputActionEvent& event)
+        {
+            AdjustCameraZoom(settings, -event.value);
+            return InputReply::Consumed;
+        });
+        inputActions->RegisterAction(_inputContext, "CameraZoomOut", "Camera Zoom Out", "Camera", InputBinding::MouseWheel(MouseWheelDirection::Down, InputModifier::None, ModifierMatch::Any), [&settings](const InputActionEvent& event)
+        {
+            AdjustCameraZoom(settings, event.value);
+            return InputReply::Consumed;
+        });
+
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+        _pointerInputContext = inputSystem->CreateContext("OrbitalCameraPointer", GameInputPriority::Gameplay, [&settings, &registry, inputActions](const InputEvent& event)
+        {
+            if (!inputActions->IsContextActive(_inputContext))
+                return InputReply::Ignored;
+
+            if (event.type == InputEventType::CursorMove && settings.captureMousePending)
+            {
+                const vec2 position = event.position;
                 const f64 clickGracePeriod = static_cast<f64>(glm::max(CVAR_CameraClickGracePeriod.GetFloat(), 0.0f)) / 1000.0;
                 if (glfwGetTime() - settings.captureStartTime < clickGracePeriod)
-                    return true;
+                    return InputReply::Consumed;
 
                 const vec2 displacement = position - settings.captureStartMousePosition;
                 const f32 dragThreshold = glm::max(CVAR_CameraMouseDragThreshold.GetFloat(), 0.0f);
@@ -216,31 +264,27 @@ namespace ECS::Systems
                     ECS::Util::CameraUtil::SetCaptureMouse(true, settings.captureRestoreMousePosition);
                 }
 
-                return true;
+                return InputReply::Consumed;
             }
 
-            if (settings.captureMouse)
-                CapturedMouseMoved(registry, vec2(xPos, yPos));
-
-            return settings.captureMouse;
-        });
-        _keybindGroup->AddMouseScrollCallback([&settings, &registry](f32 xPos, f32 yPos)
-        {
-            if (_keybindGroup->IsKeybindPressed("AltMod"_h))
+            if (event.type == InputEventType::CursorMove && settings.captureMouse)
             {
-                CapturedMouseScrolled(registry, vec2(xPos, yPos));
+                CapturedMouseMoved(registry, event.delta);
+                return InputReply::Consumed;
             }
-            else
+
+            if (event.type != InputEventType::Scroll)
+                return InputReply::Ignored;
+
+            if (inputActions->IsDown(_altAction))
             {
-                f32 zoomDistance = Math::Clamp(CVAR_CameraZoomDistance.GetFloat() + static_cast<i8>(-yPos), 0.0f, CVAR_CameraZoomMaxDistance.GetFloat());
-                CVAR_CameraZoomDistance.Set(zoomDistance);
-
-                settings.cameraTargetZoomOffset = vec3(0.0f, 1.0f, 1.0f) * vec3(1.0f, 1.8f, -zoomDistance);
-                settings.cameraZoomProgress = 0.0f;
+                CapturedMouseScrolled(registry, event.delta);
+                return InputReply::Consumed;
             }
 
-            return true;
+            return InputReply::Ignored;
         });
+        inputSystem->SetContextActive(_pointerInputContext, true);
     }
 
     void OrbitalCamera::ResetForNewWorld(entt::registry& registry)
@@ -378,9 +422,9 @@ namespace ECS::Systems
         camera.dirtyView = true;
     }
 
-    void OrbitalCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)
+    void OrbitalCamera::CapturedMouseMoved(entt::registry& registry, const vec2& delta)
     {
-        if (!_keybindGroup->IsActive())
+        if (!ServiceLocator::GetInputActionSystem()->IsContextActive(_inputContext))
             return;
 
         entt::registry::context& ctx = registry.ctx();
@@ -390,25 +434,18 @@ namespace ECS::Systems
 
         auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
-        if (settings.captureMouseHasMoved)
-        {
-            vec2 deltaPosition = settings.prevMousePosition - position;
-            const f32 mouseSensitivity = ECS::Util::CameraUtil::GetMouseSensitivity();
+        const f32 mouseSensitivity = ECS::Util::CameraUtil::GetMouseSensitivity();
 
-            camera.yaw += -deltaPosition.x * mouseSensitivity;
+        camera.yaw += delta.x * mouseSensitivity;
 
-            if (camera.yaw >= 360.0f)
-                camera.yaw -= 360.0f;
-            else if (camera.yaw < 0.0f)
-                camera.yaw += 360.0f;
+        if (camera.yaw >= 360.0f)
+            camera.yaw -= 360.0f;
+        else if (camera.yaw < 0.0f)
+            camera.yaw += 360.0f;
 
-            camera.pitch = Math::Clamp(camera.pitch - (deltaPosition.y * mouseSensitivity), -89.0f, 89.0f);
-            camera.dirtyView = true;
-        }
-        else
-            settings.captureMouseHasMoved = true;
-
-        settings.prevMousePosition = position;
+        camera.pitch = Math::Clamp(camera.pitch + (delta.y * mouseSensitivity), -89.0f, 89.0f);
+        camera.dirtyView = true;
+        settings.captureMouseHasMoved = true;
     }
 
     void OrbitalCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)

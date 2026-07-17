@@ -8,6 +8,7 @@
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
@@ -20,8 +21,7 @@
 
 #include <Base/Math/Color.h>
 
-#include <Input/InputManager.h>
-#include <Input/KeybindGroup.h>
+#include <Input/InputSystem.h>
 
 #include <MetaGen/Game/Lua/Lua.h>
 
@@ -48,8 +48,6 @@ namespace ECS::Systems::Editor
         PickModelTransparent = 3,
     };
 
-    static constexpr i32 MOUSE_BUTTON_LEFT = 0; // GLFW_MOUSE_BUTTON_LEFT
-    static constexpr i32 KEY_DELETE = 261;      // GLFW_KEY_DELETE
     // The gizmo is drawn on top at a constant screen size (like ImGuizmo): its world length is a
     // fraction of the camera->pivot distance, which keeps it the same apparent size regardless of
     // distance and independent of the object's (collider-inflated) bounds.
@@ -85,47 +83,45 @@ namespace ECS::Systems::Editor
         bool dragSpawnTransparencyApplied = false;
 
         bool deleteSelectedRequested = false;    // set by the Delete keybind, processed in Update
+        InputContextHandle pointerInputContext;
     };
     static EditorToolsState s;
 
     void EditorTools::Init(entt::registry& /*registry*/)
     {
-        // Editor input. Priority above the cameras (10) but below the UI (200), so focused text
-        // fields keep their keys; we consume the wheel (so cameras don't zoom) only mid-drag, and
-        // Delete only when there's a selection to remove.
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        if (inputManager)
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+        s.pointerInputContext = inputSystem->CreateContext("EditorToolsPointer", GameInputPriority::Editor, [](const InputEvent& event)
         {
-            KeybindGroup* group = inputManager->CreateKeybindGroup("EditorTools", 100);
-            group->SetActive(true);
-
-            // Scroll-to-rotate the object being drag-spawned.
-            group->AddMouseScrollCallback([](f32 /*x*/, f32 y) -> bool
+            if (event.type == InputEventType::Scroll && s.dragSpawnActive && s.dragSpawnEntity != entt::null)
             {
-                if (s.dragSpawnActive && s.dragSpawnEntity != entt::null)
-                {
-                    s.scrollAccum += y;
-                    return true;
-                }
-                return false;
-            });
+                s.scrollAccum += event.delta.y;
+                return InputReply::Consumed;
+            }
 
-            // Delete removes the selected entity (deferred to Update for a safe ECS mutation point).
-            group->AddKeyboardCallback("DeleteSelected", KEY_DELETE, KeybindAction::Press, KeybindModifier::Any, [](i32 /*key*/, KeybindAction /*action*/, KeybindModifier /*modifier*/) -> bool
-            {
-                EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-                if (!registries || !registries->gameRegistry)
-                    return false;
+            return InputReply::Ignored;
+        });
+        inputSystem->SetContextActive(s.pointerInputContext, true);
 
-                entt::registry::context& ctx = registries->gameRegistry->ctx();
-                auto& selection = ctx.get<Singletons::EditorSelection>();
-                if (selection.selectedEntity == entt::null || !registries->gameRegistry->valid(selection.selectedEntity))
-                    return false;
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        inputActions->RegisterAction("Editor"_x, "DeleteSelectedEditorEntity", "Delete Selected Entity", "Editor",
+            InputBinding::Keyboard(Key::Delete, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled }, [](const InputActionEvent& event)
+        {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
 
-                s.deleteSelectedRequested = true;
-                return true;
-            });
-        }
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            if (!registries || !registries->gameRegistry)
+                return InputReply::Ignored;
+
+            entt::registry::context& ctx = registries->gameRegistry->ctx();
+            auto& selection = ctx.get<Singletons::EditorSelection>();
+            if (selection.selectedEntity == entt::null || !registries->gameRegistry->valid(selection.selectedEntity))
+                return InputReply::Ignored;
+
+            s.deleteSelectedRequested = true;
+            return InputReply::Consumed;
+        });
     }
 
     // Builds a world-space ray through the mouse pixel by unprojecting the near and far clip points.
@@ -374,9 +370,9 @@ namespace ECS::Systems::Editor
         vec3 cameraPos = cameraTransform->GetWorldPosition();
 
         // ---- Input state ----
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        vec2 mouse = inputManager->GetMousePosition();
-        bool mouseDown = inputManager->IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+        vec2 mouse = inputSystem->GetMousePosition();
+        bool mouseDown = inputSystem->IsDown(InputControl::Mouse(MouseButton::Left));
         bool mousePressed = mouseDown && !s.prevMouseDown;
         bool mouseReleased = !mouseDown && s.prevMouseDown;
 

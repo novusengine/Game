@@ -1,5 +1,6 @@
 local UIButton = require("@src/API/UI/Button");
 local UIInputBox = require("@src/API/UI/InputBox");
+local InputAPI = require("@src/API/Input/Input");
 --local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox");
 local UIVerticalLayout = require("@src/API/UI/VerticalLayout");
 local ChatListener = require("@src/API/Game/ChatListener");
@@ -364,33 +365,19 @@ local function OnGameLoaded(eventID : number, data : any)
     local mainChat = CreateChat(chatCanvas);
     RegisterOptions(mainChat);
 
-    -- Set up global enter key handler
-    UI.AddOnKeyboard(function(eventID, ...)
-        if (eventID == UIKeyboardEvent.Key) then
-            local keyID, action, modifierMask = ...;
-
-            local keyIDEnter = 257;
-            -- actionMask is up, down etc
-            -- modifierMask is ctrl, shift etc
-
-            if (action ~= InputAction.Press or keyID ~= keyIDEnter) then
-                return false;
-            end
-
-            if (chatToOpenOnEnter == nil) then
-                return false; -- No chat to open
-            end
-
-            if (UI.WasJustFocusedWidget(chatToOpenOnEnter.inputBox.button.panel)) then
-                -- If the input box was just focused, submit the message
-                return false; -- Do not submit, this is the enter press to submit the message and we don't want to open the chat again
-            end
-
-            chatToOpenOnEnter.inputBox:Focus(); -- Focus the input box of the chat to open
-            return true;
+    local binding = InputAPI.Keyboard(InputAPI.KeyValues.ENTER, InputModifier.None, InputModifierMatch.Any);
+    InputAPI.Bind("OpenChat", "Open Chat", "Chat", binding, function(phase)
+        if phase ~= InputPhase.Pressed or chatToOpenOnEnter == nil then
+            return InputReply.Ignored;
         end
-        return false;
-    end);
+
+        if UI.WasJustFocusedWidget(chatToOpenOnEnter.inputBox.button.panel) then
+            return InputReply.Ignored;
+        end
+
+        chatToOpenOnEnter.inputBox:Focus();
+        return InputReply.Consumed;
+    end, { defaultReply = InputReply.Ignored });
 
     -- Set up callback for pushing messages from C++
     UI.RegisterSendMessageToChatCallback(function(channel : string, playerName : string, text : string, isOutgoing : boolean)

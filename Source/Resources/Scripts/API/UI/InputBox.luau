@@ -1,4 +1,5 @@
 local UIButton = require("@src/API/UI/Button");
+local KeyValues = require("@src/API/Input/Input").KeyValues;
 
 local inputBoxAPI = { };
 --[[
@@ -179,7 +180,11 @@ local function SetupInputBoxMethods(inputBoxTable)
     end
 
     inputBoxTable.SetTextVerticallyCentered = function(table)
-        local _, lineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
+        local lineHeight = inputBoxTable.button.text:GetHeight();
+        if (lineHeight <= 0) then
+            local _, fallbackLineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
+            lineHeight = fallbackLineHeight;
+        end
         local y = math.floor((inputBoxTable.button.panel:GetHeight() - lineHeight) * 0.5);
         inputBoxTable.textInsetX = 5;
         inputBoxTable.buttonTextRelativePointX = 0.0;
@@ -437,11 +442,9 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     local buttonText = inputBoxTable.button.text;
 
-    local _, lineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
-    local y = math.floor((inputBoxTable.button.panel:GetHeight() - lineHeight) * 0.5);
     inputBoxTable.button.text:SetAnchor(0.0, 0.0);
     inputBoxTable.button.text:SetRelativePoint(0.0, 0.0);
-    inputBoxTable.button.text:SetPos(5, y);
+    inputBoxTable.button.text:SetPos(5, 0);
     inputBoxTable.buttonTextRelativePointX = buttonText:GetRelativePoint();
 
     inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
@@ -514,47 +517,42 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     inputBoxTable.button:SetOnKeyboard(function(widget, eventID, ...)
         if (eventID == UIKeyboardEvent.Key) then
-            local keyID, action, modifierMask = ...;
+            local keyID, action = ...;
 
-            local keyIDEscape = 256;
-            local keyIDBackspace = 259;
-            local keyIDEnter = 257;
-            local keyIDTab = 258;
-            local keyIDLeft = 263;
-            local keyIDRight = 262;
-            local keyIDDelete = 261;  -- Delete Key
-            local keyIDHome = 268;    -- Home Key
-            local keyIDEnd = 269;     -- End Key
-            -- actionMask is up, down etc
-            -- modifierMask is ctrl, shift etc
+            local isPressed = action == InputPhase.Pressed;
+            local isRepeated = action == InputPhase.Repeated;
 
-            if (action == InputAction.Press) then
-                if (keyID == keyIDEscape) then
+            if (isPressed) then
+                if (keyID == KeyValues.ESCAPE) then
                     inputBoxTable:Unfocus();
                     return true;
-                elseif (keyID == keyIDBackspace) then
-                    inputBoxTable:Backspace();
-                    return true;
-                elseif (keyID == keyIDDelete) then
-                    inputBoxTable:Delete();
-                    return true;
-                elseif (keyID == keyIDEnter) then
+                elseif (keyID == KeyValues.ENTER) then
                     inputBoxTable:Submit();
                     return true;
-                elseif (keyID == keyIDTab) then
+                elseif (keyID == KeyValues.TAB) then
                     inputBoxTable.Tab();
                     return true;
-                elseif (keyID == keyIDLeft) then
-                    inputBoxTable:Left();
-                    return true;
-                elseif (keyID == keyIDRight) then
-                    inputBoxTable:Right();
-                    return true;
-                elseif (keyID == keyIDHome) then
+                elseif (keyID == KeyValues.HOME) then
                     inputBoxTable:Home();
                     return true;
-                elseif (keyID == keyIDEnd) then
+                elseif (keyID == KeyValues.END) then
                     inputBoxTable:End();
+                    return true;
+                end
+            end
+
+            if (isPressed or isRepeated) then
+                if (keyID == KeyValues.BACKSPACE) then
+                    inputBoxTable:Backspace();
+                    return true;
+                elseif (keyID == KeyValues.DELETE) then
+                    inputBoxTable:Delete();
+                    return true;
+                elseif (keyID == KeyValues.LEFT) then
+                    inputBoxTable:Left();
+                    return true;
+                elseif (keyID == KeyValues.RIGHT) then
+                    inputBoxTable:Right();
                     return true;
                 end
             end
@@ -571,6 +569,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     -- Call RefreshText to initialize startCharPos and endCharPos
     RefreshText(inputBoxTable);
+    inputBoxTable:SetTextVerticallyCentered();
 
     return inputBoxTable;
 end

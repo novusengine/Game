@@ -19,7 +19,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 
 AutoCVar_Int CVAR_NetworkRemoteGroundCorrection(CVarCategory::Network, "remoteGroundCorrection", "Snaps grounded remote units to static world collision", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
-AutoCVar_Int CVAR_NetworkRemoteSlopeAlignment(CVarCategory::Network, "remoteSlopeAlignment", "Visually aligns grounded remote units to sampled slopes", 1, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+AutoCVar_Int CVAR_NetworkRemoteSlopeAlignment(CVarCategory::Network, "remoteSlopeAlignment", "Visually aligns grounded remote units to sampled slopes", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
 
 namespace
 {

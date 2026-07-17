@@ -24,8 +24,6 @@
 
 #include <Scripting/Zenith.h>
 
-#include <Input/InputManager.h>
-
 #include <Renderer/Renderer.h>
 #include <Renderer/GPUVector.h>
 #include <Renderer/RenderGraph.h>
@@ -66,6 +64,8 @@ void CanvasRenderer::Clear()
 
     _mainBucket.drawCount = 0;
     _mainBucket.slotOwners.clear();
+    _mainWorldBucket.drawCount = 0;
+    _mainWorldBucket.slotOwners.clear();
 
     for (auto& pair : _rtBuckets)
     {
@@ -80,6 +80,7 @@ void CanvasRenderer::Clear()
     _canvasOrderByEntity.clear();
     _siblingScratch.clear();
     _sortScratch.clear();
+    _worldSortScratch.clear();
     _uploadScratch.clear();
 
     _textureNameHashToIndex.clear();
@@ -246,9 +247,12 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->view<Widget, EventInputInfo, DirtyWidgetFlags>().each([&](entt::entity entity, Widget& widget, EventInputInfo& eventInputInfo)
     {
         bool wasInteractable = eventInputInfo.isInteractable;
+        const bool hasStateTemplate = eventInputInfo.onHoverTemplateHash != 0 || eventInputInfo.onClickTemplateHash != 0 || eventInputInfo.onUninteractableTemplateHash != 0;
+
         eventInputInfo.isInteractable = (widget.flags & WidgetFlags::Interactable) == WidgetFlags::Interactable;
 
-        if (wasInteractable != eventInputInfo.isInteractable)
+        // Resetting a widget with no state templates would discard runtime overrides such as font size and color.
+        if (wasInteractable != eventInputInfo.isInteractable && hasStateTemplate)
         {
             ECS::Util::UI::RefreshTemplate(uiRegistry, entity, eventInputInfo);
         }
@@ -271,6 +275,7 @@ void CanvasRenderer::Update(f32 deltaTime)
 
         if (widget.gpuMatrixSlot == -1)
             widget.gpuMatrixSlot = static_cast<i32>(ReserveMatrixSlot());
+
         u32 slot = static_cast<u32>(widget.gpuMatrixSlot);
 
         // Resolve the parent's matrix slot. Top-level widgets (parent == canvas) and any widget whose
@@ -474,10 +479,15 @@ void CanvasRenderer::Update(f32 deltaTime)
                 DfsAssignSortKey(uiRegistry, canvasEntity, canvasOrder, traversalIndex, rootPriority);
 
                 if (uiRegistry->all_of<CanvasRenderTargetTag>(canvasEntity))
+                {
                     RefreshBucketCPU(uiRegistry, canvasEntity, /*isRT=*/true);
+                }
                 else
+                {
                     mainBucketDirty = true;
+                }
             });
+
             if (mainBucketDirty)
                 RefreshBucketCPU(uiRegistry, entt::null, /*isRT=*/false);
 
@@ -577,12 +587,73 @@ void CanvasRenderer::UpdateMaskInfo(u32 index, const vec4& region, u32 textureIn
 
 void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
+    if (_mainWorldBucket.drawCount > 0)
+    {
+        struct WorldData
+        {
+        public:
+            Renderer::ImageMutableResource target;
+            Renderer::DepthImageMutableResource depth;
+            Renderer::BufferResource argBuffer;
+            Renderer::BufferResource countBuffer;
+            Renderer::DescriptorSetResource globalDescriptorSet;
+            Renderer::DescriptorSetResource widgetDescriptorSet;
+        };
+
+        renderGraph->AddPass<WorldData>("World Canvases",
+            [this, &resources](WorldData& data, Renderer::RenderGraphBuilder& builder)
+            {
+                using BufferUsage = Renderer::BufferPassUsage;
+
+                data.target = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+
+                builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetDrawDatas.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetWorldPositions.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetLocalMatrices.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetParentSlots.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetClipRects.GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(_widgetMaskInfo.GetBuffer(), BufferUsage::GRAPHICS);
+
+                data.argBuffer = builder.Read(_mainWorldBucket.finalSortedArgs, BufferUsage::GRAPHICS);
+                data.countBuffer = builder.Read(_mainWorldBucket.finalCount, BufferUsage::GRAPHICS);
+                data.globalDescriptorSet = builder.Use(resources.globalDescriptorSet);
+                data.widgetDescriptorSet = builder.Use(_widgetDescriptorSet);
+
+                return true;
+            },
+            [this, frameIndex](WorldData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+            {
+                GPU_SCOPED_PROFILER_ZONE(commandList, DebugRender2D);
+
+                vec2 renderSize = _renderer->GetRenderSize();
+                commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+                commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+
+                Renderer::RenderPassDesc renderPassDesc;
+                graphResources.InitializeRenderPassDesc(renderPassDesc);
+                renderPassDesc.renderTargets[0] = data.target;
+                renderPassDesc.depthStencil = data.depth;
+
+                commandList.BeginRenderPass(renderPassDesc);
+                commandList.BeginPipeline(_worldWidgetPipeline);
+                commandList.PushConstant(reinterpret_cast<void*>(&renderSize), 0, sizeof(renderSize));
+                commandList.BindDescriptorSet(data.globalDescriptorSet, frameIndex);
+                commandList.BindDescriptorSet(data.widgetDescriptorSet, frameIndex);
+                commandList.DrawIndirectCount(data.argBuffer, 0, data.countBuffer, 0, _mainWorldBucket.drawCount);
+                commandList.EndPipeline(_worldWidgetPipeline);
+                commandList.EndRenderPass(renderPassDesc);
+            });
+    }
     // --- "Canvases" (graphics) -----------------------------------------------------------------
     // Per bucket, bind its retained finalSortedArgs + finalCount and issue one DrawIndirectCount.
     // finalSortedArgs is populated CPU-side by RefreshBucketCPU via std::sort + UploadToBuffer;
     // this pass just consumes it.
     struct Data
     {
+    public:
         Renderer::ImageMutableResource target;
 
         // Per-bucket buffer resources, in the same order as _drawBuckets below. Each element i
@@ -689,6 +760,8 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                     commandList.PushMarker("RT Canvas: " + canvas.name, Color::PastelOrange);
                     commandList.BeginRenderPass(renderPassDesc);
                     commandList.BeginPipeline(_widgetPipeline);
+                    vec2 viewportSize(static_cast<f32>(textureDesc.width), static_cast<f32>(textureDesc.height));
+                    commandList.PushConstant(&viewportSize, 0, sizeof(viewportSize));
                     commandList.BindDescriptorSet(data.globalDescriptorSet, frameIndex);
                     commandList.BindDescriptorSet(data.widgetDescriptorSet, frameIndex);
                     commandList.DrawIndirectCount(data.argBuffers[i], 0, data.countBuffers[i], 0, drawCount);
@@ -706,6 +779,7 @@ void CanvasRenderer::AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderRes
                         mainRenderPassOpen = true;
                     }
                     commandList.BeginPipeline(_widgetPipeline);
+                    commandList.PushConstant(&renderSize, 0, sizeof(renderSize));
                     commandList.BindDescriptorSet(data.globalDescriptorSet, frameIndex);
                     commandList.BindDescriptorSet(data.widgetDescriptorSet, frameIndex);
                     commandList.DrawIndirectCount(data.argBuffers[i], 0, data.countBuffers[i], 0, drawCount);
@@ -843,17 +917,26 @@ void CanvasRenderer::CreatePipelines()
 
     // Blending
     pipelineDesc.states.blendState.renderTargets[0].blendEnable = true;
-    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::SRC_ALPHA;
+    pipelineDesc.states.blendState.renderTargets[0].srcBlend = Renderer::BlendMode::ONE;
     pipelineDesc.states.blendState.renderTargets[0].destBlend = Renderer::BlendMode::INV_SRC_ALPHA;
     pipelineDesc.states.blendState.renderTargets[0].srcBlendAlpha = Renderer::BlendMode::ONE;
     pipelineDesc.states.blendState.renderTargets[0].destBlendAlpha = Renderer::BlendMode::INV_SRC_ALPHA;
 
     _widgetPipeline = _renderer->CreatePipeline(pipelineDesc);
+
+    pipelineDesc.debugName = "World Widget Pipeline";
+    pipelineDesc.states.depthStencilState.depthEnable = true;
+    pipelineDesc.states.depthStencilState.depthWriteEnable = false;
+    pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER_EQUAL;
+    pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
+
+    _worldWidgetPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
 void CanvasRenderer::InitDescriptorSets()
 {
     _widgetDescriptorSet.RegisterPipeline(_renderer, _widgetPipeline);
+    _widgetDescriptorSet.RegisterPipeline(_renderer, _worldWidgetPipeline);
     _widgetDescriptorSet.Init(_renderer);
 }
 
@@ -1358,11 +1441,12 @@ void CanvasRenderer::PatchTextBucketSlot(entt::registry* registry, entt::entity 
         auto it = _rtBuckets.find(canvasEntity);
         if (it == _rtBuckets.end())
             return;
+
         bucket = &it->second;
     }
     else
     {
-        bucket = &_mainBucket;
+        bucket = widget.worldTransformIndex == std::numeric_limits<u32>().max() ? &_mainBucket : &_mainWorldBucket;
     }
 
     u32 slot = static_cast<u32>(text.bucketSlot);
@@ -1560,11 +1644,11 @@ void CanvasRenderer::RefreshBucketCPU(entt::registry* registry, entt::entity can
     ECS::Transform2DSystem& transformSystem2D = ECS::Transform2DSystem::Get(*registry);
 
     // Resolve target bucket (insert empty on first encounter for this RT canvas).
-    BucketResources* bucket = isRT ? &_rtBuckets.try_emplace(canvasEntity).first->second
-                                   : &_mainBucket;
+    BucketResources* bucket = isRT ? &_rtBuckets.try_emplace(canvasEntity).first->second : &_mainBucket;
 
     // --- Gather (sortKey, IndirectDraw) pairs into _sortScratch -------------------------------
     _sortScratch.clear();
+    _worldSortScratch.clear();
 
     auto gather = [&](entt::entity root)
     {
@@ -1573,6 +1657,7 @@ void CanvasRenderer::RefreshBucketCPU(entt::registry* registry, entt::entity can
             auto& w = registry->get<Widget>(childEntity);
             if (!w.IsVisible()) 
                 return false;
+
             if (w.type != WidgetType::Panel && w.type != WidgetType::Text) 
                 return true;
 
@@ -1585,6 +1670,7 @@ void CanvasRenderer::RefreshBucketCPU(entt::registry* registry, entt::entity can
                 auto& panel = registry->get<Panel>(childEntity);
                 if (panel.gpuDataIndex < 0) 
                     return true;
+
                 args.instanceCount = 1;
                 args.firstInstance = static_cast<u32>(panel.gpuDataIndex);
             }
@@ -1593,11 +1679,14 @@ void CanvasRenderer::RefreshBucketCPU(entt::registry* registry, entt::entity can
                 auto& text = registry->get<Text>(childEntity);
                 if (text.numCharsNonWhitespace <= 0 || text.gpuDataIndex < 0) 
                     return true;
+
                 args.instanceCount = static_cast<u32>(text.numCharsNonWhitespace);
                 args.firstInstance = static_cast<u32>(text.gpuDataIndex);
             }
 
-            _sortScratch.push_back({ w.sortKey, args, childEntity });
+            const bool isWorldWidget = !isRT && w.worldTransformIndex != std::numeric_limits<u32>().max();
+            auto& targetScratch = isWorldWidget ? _worldSortScratch : _sortScratch;
+            targetScratch.push_back({ w.sortKey, args, childEntity });
             return true;
         });
     };
@@ -1614,64 +1703,70 @@ void CanvasRenderer::RefreshBucketCPU(entt::registry* registry, entt::entity can
         });
     }
 
-    const u32 drawCount = static_cast<u32>(_sortScratch.size());
-    bucket->drawCount = drawCount;
-
-    if (drawCount == 0)
+    auto uploadBucket = [&](BucketResources& targetBucket, std::vector<SortEntry>& sortScratch, std::string_view bufferName)
     {
-        // Nothing to draw. Leave retained buffers as-is; the draw pass checks drawCount==0 and skips.
-        bucket->slotOwners.clear();
-        return;
-    }
+        const u32 drawCount = static_cast<u32>(sortScratch.size());
+        targetBucket.drawCount = drawCount;
 
-    // --- Sort on CPU ---------------------------------------------------------------------------
-    // std::sort beats our GPU radix sort at UI scale (N up to a few thousand) because the GPU pipe
-    // is dispatch-overhead-bound regardless of N. See git history for the GPU path (RadixSort.*).
-    std::sort(_sortScratch.begin(), _sortScratch.end(), [](const SortEntry& a, const SortEntry& b) 
-    { 
-        return a.key < b.key; 
-    });
+        if (drawCount == 0)
+        {
+            // Nothing to draw. Leave retained buffers as-is; the draw pass checks drawCount==0 and skips.
+            targetBucket.slotOwners.clear();
+            return;
+        }
 
-    // --- Extract sorted IndirectDraws + record slot ownership for incremental patching ----------
-    _uploadScratch.clear();
-    _uploadScratch.reserve(drawCount);
-    bucket->slotOwners.resize(drawCount);
-    for (u32 i = 0; i < drawCount; i++)
-    {
-        const SortEntry& e = _sortScratch[i];
-        _uploadScratch.push_back(e.draw);
-        bucket->slotOwners[i] = e.entity;
+        // std::sort beats our GPU radix sort at UI scale (N up to a few thousand) because the GPU
+        // pipe is dispatch-overhead-bound regardless of N. See git history for the GPU path.
+        std::sort(sortScratch.begin(), sortScratch.end(), [](const SortEntry& a, const SortEntry& b)
+        {
+            return a.key < b.key;
+        });
 
-        // Texts can change glyph count while in place (scrolling); remember the slot so we can patch
-        // just that entry later instead of rebuilding. Panels never change their args once bucketed.
-        if (Text* text = registry->try_get<Text>(e.entity))
-            text->bucketSlot = static_cast<i32>(i);
-    }
+        _uploadScratch.clear();
+        _uploadScratch.reserve(drawCount);
+        targetBucket.slotOwners.resize(drawCount);
 
-    // --- (Re)create retained finalSortedArgs / finalCount if needed ----------------------------
-    if (bucket->finalSortedArgsCapacity < drawCount || bucket->finalSortedArgs == Renderer::BufferID::Invalid())
-    {
-        Renderer::BufferDesc argsDesc;
-        argsDesc.name  = isRT ? "UISort.RT.FinalSortedArgs" : "UISort.Main.FinalSortedArgs";
-        argsDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER
-                       | Renderer::BufferUsage::TRANSFER_DESTINATION;
-        argsDesc.size  = static_cast<u64>(drawCount) * sizeof(Renderer::IndirectDraw);
-        bucket->finalSortedArgs = _renderer->CreateBuffer(bucket->finalSortedArgs, argsDesc);
-        bucket->finalSortedArgsCapacity = drawCount;
-    }
-    if (bucket->finalCount == Renderer::BufferID::Invalid())
-    {
-        Renderer::BufferDesc countDesc;
-        countDesc.name  = isRT ? "UISort.RT.FinalCount" : "UISort.Main.FinalCount";
-        countDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER
-                        | Renderer::BufferUsage::TRANSFER_DESTINATION;
-        countDesc.size  = sizeof(u32);
-        bucket->finalCount = _renderer->CreateBuffer(countDesc);
-    }
+        for (u32 i = 0; i < drawCount; ++i)
+        {
+            const SortEntry& entry = sortScratch[i];
+            _uploadScratch.push_back(entry.draw);
+            targetBucket.slotOwners[i] = entry.entity;
 
-    // --- Upload --------------------------------------------------------------------------------
-    // UploadToBuffer queues a staged copy that completes before the next frame's command list
-    // runs. Same mechanism we already use for everything else here.
-    _renderer->UploadToBuffer(bucket->finalSortedArgs, 0, _uploadScratch.data(), 0, static_cast<u64>(drawCount) * sizeof(Renderer::IndirectDraw));
-    _renderer->UploadToBuffer(bucket->finalCount, 0, &bucket->drawCount, 0, sizeof(u32));
+            // Texts can change glyph count while in place (scrolling); remember the slot so we can
+            // patch just that entry later instead of rebuilding. Panels have fixed arguments.
+            if (Text* text = registry->try_get<Text>(entry.entity))
+                text->bucketSlot = static_cast<i32>(i);
+        }
+
+        if (targetBucket.finalSortedArgsCapacity < drawCount || targetBucket.finalSortedArgs == Renderer::BufferID::Invalid())
+        {
+            Renderer::BufferDesc argsDesc;
+            argsDesc.name = bufferName;
+            argsDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+            argsDesc.size = static_cast<u64>(drawCount) * sizeof(Renderer::IndirectDraw);
+
+            targetBucket.finalSortedArgs = _renderer->CreateBuffer(targetBucket.finalSortedArgs, argsDesc);
+            targetBucket.finalSortedArgsCapacity = drawCount;
+        }
+
+        if (targetBucket.finalCount == Renderer::BufferID::Invalid())
+        {
+            Renderer::BufferDesc countDesc;
+            countDesc.name = std::string(bufferName) + ".Count";
+            countDesc.usage = Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+            countDesc.size = sizeof(u32);
+
+            targetBucket.finalCount = _renderer->CreateBuffer(countDesc);
+        }
+
+        // UploadToBuffer queues a staged copy that completes before the next frame's command list.
+        _renderer->UploadToBuffer(targetBucket.finalSortedArgs, 0, _uploadScratch.data(), 0, static_cast<u64>(drawCount) * sizeof(Renderer::IndirectDraw));
+        _renderer->UploadToBuffer(targetBucket.finalCount, 0, &targetBucket.drawCount, 0, sizeof(u32));
+    };
+
+    const std::string_view mainBufferName = isRT ? "UISort.RT.FinalSortedArgs" : "UISort.Main.FinalSortedArgs";
+    uploadBucket(*bucket, _sortScratch, mainBufferName);
+
+    if (!isRT)
+        uploadBucket(_mainWorldBucket, _worldSortScratch, "UISort.MainWorld.FinalSortedArgs");
 }

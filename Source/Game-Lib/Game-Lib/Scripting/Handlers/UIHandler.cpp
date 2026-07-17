@@ -3,7 +3,6 @@
 #include "Game-Lib/ECS/Components/UI/Canvas.h"
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/LayoutEventInfo.h"
-#include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
 #include "Game-Lib/ECS/Util/UIRefCleanup.h"
@@ -14,6 +13,7 @@
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 #include "Game-Lib/Scripting/UI/Text.h"
+#include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/UI/Box.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/AssetPath.h"
@@ -23,13 +23,17 @@
 
 #include <Filesystem/PactStorage.h>
 
-#include <Input/InputManager.h>
-#include <Input/KeybindGroup.h>
+#include <MetaGen/Game/Lua/Lua.h>
 
+#include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 #include <lualib.h>
+#include <xxhash/xxhash64.h>
+
+#include <algorithm>
+#include <cstring>
 
 namespace
 {
@@ -43,22 +47,224 @@ namespace
 
 namespace Scripting::UI
 {
+    namespace
+    {
+        UIHandler* GetUIHandler()
+        {
+            LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            if (!luaManager)
+                return nullptr;
+
+            return luaManager->GetLuaHandler<UIHandler>(static_cast<LuaHandlerID>(MetaGen::Game::Lua::LuaHandlerTypeEnum::UI));
+        }
+
+        InputActionHandle GetAction(const char* name)
+        {
+            if (!name)
+                return {};
+
+            return ServiceLocator::GetInputActionSystem()->GetAction(XXHash64::hash(name, std::strlen(name), 0));
+        }
+
+        InputActionContextHandle GetActionContext(const char* name)
+        {
+            if (!name)
+                return {};
+
+            return ServiceLocator::GetInputActionSystem()->GetContext(XXHash64::hash(name, std::strlen(name), 0));
+        }
+
+        bool ReadUnsignedField(Zenith* zenith, i32 tableIndex, const char* fieldName, u32& value, bool required = false)
+        {
+            if (!zenith->GetTableField(fieldName, tableIndex))
+                return !required;
+
+            const bool valid = zenith->IsNumber(-1);
+            if (valid)
+                value = zenith->Get<u32>(-1);
+
+            zenith->Pop();
+            return valid;
+        }
+
+        bool ReadIntegerField(Zenith* zenith, i32 tableIndex, const char* fieldName, i32& value)
+        {
+            if (!zenith->GetTableField(fieldName, tableIndex))
+                return true;
+
+            const bool valid = zenith->IsNumber(-1);
+            if (valid)
+                value = zenith->Get<i32>(-1);
+
+            zenith->Pop();
+            return valid;
+        }
+
+        bool ReadBooleanField(Zenith* zenith, i32 tableIndex, const char* fieldName, bool& value)
+        {
+            if (!zenith->GetTableField(fieldName, tableIndex))
+                return true;
+
+            const bool valid = zenith->IsBoolean(-1);
+            if (valid)
+                value = zenith->ToBoolean(-1);
+
+            zenith->Pop();
+            return valid;
+        }
+
+        std::optional<InputBinding> ReadBinding(Zenith* zenith, i32 tableIndex)
+        {
+            if (!zenith->IsTable(tableIndex))
+                return std::nullopt;
+
+            u32 device = 0;
+            u32 code = 0;
+            u32 modifiers = static_cast<u32>(InputModifier::None);
+            u32 modifierMatch = static_cast<u32>(ModifierMatch::Exact);
+            if (!ReadUnsignedField(zenith, tableIndex, "device", device, true)
+                || !ReadUnsignedField(zenith, tableIndex, "code", code, true)
+                || !ReadUnsignedField(zenith, tableIndex, "modifiers", modifiers)
+                || !ReadUnsignedField(zenith, tableIndex, "modifierMatch", modifierMatch))
+            {
+                return std::nullopt;
+            }
+
+            return InputActionSystem::TryCreateBinding(device, code, modifiers, modifierMatch);
+        }
+
+        bool ReadInputActionOptions(Zenith* zenith, i32 tableIndex, std::string& contextName, InputActionDesc& desc)
+        {
+            if (zenith->GetTop() < tableIndex || zenith->IsNil(tableIndex))
+                return true;
+
+            if (!zenith->IsTable(tableIndex))
+                return false;
+
+            if (zenith->GetTableField("context", tableIndex))
+            {
+                if (!zenith->IsString(-1))
+                {
+                    zenith->Pop();
+                    return false;
+                }
+
+                contextName = zenith->Get<const char*>(-1);
+                zenith->Pop();
+            }
+
+            u32 defaultReply = static_cast<u32>(desc.defaultReply);
+            if (!ReadUnsignedField(zenith, tableIndex, "defaultReply", defaultReply)
+                || defaultReply > static_cast<u32>(InputReply::Consumed)
+                || !ReadBooleanField(zenith, tableIndex, "rebindable", desc.rebindable)
+                || !ReadIntegerField(zenith, tableIndex, "categorySortOrder", desc.categorySortOrder)
+                || !ReadIntegerField(zenith, tableIndex, "sortOrder", desc.sortOrder))
+            {
+                return false;
+            }
+
+            desc.defaultReply = static_cast<InputReply>(defaultReply);
+
+            if (zenith->GetTableField("secondaryBinding", tableIndex))
+            {
+                desc.defaultBindings[1] = ReadBinding(zenith, -1);
+                zenith->Pop();
+
+                if (!desc.defaultBindings[1])
+                    return false;
+            }
+
+            return true;
+        }
+
+        void PushBinding(Zenith* zenith, const InputBinding& binding)
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("device", static_cast<u32>(binding.control.device));
+            zenith->AddTableField("code", static_cast<u32>(binding.control.code));
+            zenith->AddTableField("modifiers", static_cast<u32>(binding.modifiers));
+            zenith->AddTableField("modifierMatch", static_cast<u32>(binding.modifierMatch));
+        }
+
+        void AddBindingsField(Zenith* zenith, const char* fieldName, const std::array<std::optional<InputBinding>, InputActionDesc::MAX_BINDINGS>& bindings)
+        {
+            zenith->CreateTable();
+
+            for (u32 bindingSlot = 0; bindingSlot < bindings.size(); bindingSlot++)
+            {
+                if (!bindings[bindingSlot])
+                    continue;
+
+                PushBinding(zenith, *bindings[bindingSlot]);
+                zenith->SetTableKey(static_cast<i32>(bindingSlot + 1));
+            }
+            zenith->SetTableKey(fieldName);
+        }
+
+        void PushBindingChangeResult(Zenith* zenith, const InputBindingChangeResult& result)
+        {
+            InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+
+            zenith->CreateTable();
+            zenith->AddTableField("status", static_cast<u32>(result.status));
+            zenith->AddTableField("succeeded", result.Succeeded());
+            zenith->AddTableField("requestedPolicy", static_cast<u32>(result.requestedPolicy));
+            zenith->AddTableField("appliedPolicy", static_cast<u32>(result.appliedPolicy));
+
+            zenith->CreateTable();
+            i32 conflictIndex = 1;
+            for (const InputBindingConflict& conflict : result.conflicts)
+            {
+                const InputActionInfo* info = inputActions->GetActionInfo(conflict.action);
+                zenith->CreateTable();
+                zenith->AddTableField("action", info ? info->name.c_str() : "");
+                zenith->AddTableField("slot", conflict.bindingSlot + 1);
+                zenith->AddTableField("kind", static_cast<u32>(conflict.kind));
+                zenith->SetTableKey(conflictIndex++);
+            }
+            zenith->SetTableKey("conflicts");
+
+            zenith->CreateTable();
+            i32 mutationIndex = 1;
+            for (const InputBindingMutation& mutation : result.mutations)
+            {
+                const InputActionInfo* info = inputActions->GetActionInfo(mutation.action);
+                zenith->CreateTable();
+                zenith->AddTableField("action", info ? info->name.c_str() : "");
+                zenith->AddTableField("slot", mutation.bindingSlot + 1);
+
+                if (mutation.previousBinding)
+                {
+                    PushBinding(zenith, *mutation.previousBinding);
+                    zenith->SetTableKey("previousBinding");
+                }
+
+                if (mutation.binding)
+                {
+                    PushBinding(zenith, *mutation.binding);
+                    zenith->SetTableKey("binding");
+                }
+
+                zenith->SetTableKey(mutationIndex++);
+            }
+            zenith->SetTableKey("mutations");
+        }
+    }
+
     void UIHandler::Register(Zenith* zenith)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         registry->ctx().emplace<ECS::Singletons::UISingleton>();
-        registry->ctx().emplace<ECS::Singletons::InputSingleton>();
 
         // Release Lua-registry refs (SetOnMouseUp, RegisterLayoutRefresh, etc.)
         // when their owning entities are destroyed; otherwise the registry slot
         // leaks for the lifetime of the Lua state.
-        registry->on_destroy<ECS::Components::UI::EventInputInfo>()
-            .connect<&ECS::Util::UIRefCleanup::ReleaseEventInputInfoRefs>();
-        registry->on_destroy<ECS::Components::UI::LayoutEventInfo>()
-            .connect<&ECS::Util::UIRefCleanup::ReleaseLayoutEventInfoRefs>();
+        registry->on_destroy<ECS::Components::UI::EventInputInfo>().connect<&ECS::Util::UIRefCleanup::ReleaseEventInputInfoRefs>();
+        registry->on_destroy<ECS::Components::UI::LayoutEventInfo>().connect<&ECS::Util::UIRefCleanup::ReleaseLayoutEventInfoRefs>();
 
         // UI
         LuaMethodTable::Set(zenith, uiGlobalMethods, "UI");
+        LuaMethodTable::Set(zenith, inputGlobalMethods, "Input");
 
         // Widgets
         Widget::Register(zenith);
@@ -69,12 +275,11 @@ namespace Scripting::UI
         // Utils
         Box::Register(zenith);
 
-        CreateUIInputEventTable(zenith);
+        CreateInputConstants(zenith);
 
         // Setup Cursor Canvas
         {
             auto& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
-
             uiSingleton.cursorCanvasEntity = ECS::Util::UI::GetOrEmplaceCanvas(uiSingleton.cursorCanvas, registry, "CursorCanvas", vec2(0, 0), ivec2(48, 48), false);
         }
     }
@@ -92,6 +297,7 @@ namespace Scripting::UI
                 delete widget.scriptWidget;
                 widget.scriptWidget = nullptr;
             }
+
             if (transformSystem.HasParent(entity))
             {
                 transformSystem.ClearParent(entity);
@@ -121,11 +327,19 @@ namespace Scripting::UI
             uiSingleton.scriptWidgets.clear();
         }
 
-        if (ctx.contains<ECS::Singletons::InputSingleton>())
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        for (ScriptInputConnection& scriptConnection : _inputConnections)
         {
-            auto& inputSingleton = ctx.get<ECS::Singletons::InputSingleton>();
-            inputSingleton.globalKeyboardEvents.clear();
-            inputSingleton.eventIDToKeyboardEventIndex.clear();
+            inputActions->Disconnect(scriptConnection.connection);
+            Scripting::Util::Zenith::Unref(zenith, scriptConnection.callbackRef);
+        }
+        _inputConnections.clear();
+
+        if (_bindingCaptureCallbackRef >= 0)
+        {
+            inputActions->CancelBindingCapture(false);
+            Scripting::Util::Zenith::Unref(zenith, _bindingCaptureCallbackRef);
+            _bindingCaptureCallbackRef = -1;
         }
     }
 
@@ -536,10 +750,10 @@ namespace Scripting::UI
     i32 UIHandler::GetMousePos(Zenith* zenith)
     {
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
-        InputManager* inputManager = ServiceLocator::GetInputManager();
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
         const vec2& renderSize = renderer->GetRenderSize();
-        auto mousePos = inputManager->GetMousePosition();
+        auto mousePos = inputSystem->GetMousePosition();
 
         mousePos.y = renderSize.y - mousePos.y; // Flipped because UI is bottom-left origin
         mousePos = mousePos / renderSize;
@@ -564,7 +778,7 @@ namespace Scripting::UI
         else
         {
             auto* pactStorage = ServiceLocator::GetPactStorage();
-            u64 textureNameHash = Util::AssetPath::Hash(texturePath);
+            u64 textureNameHash = ::Util::AssetPath::Hash(texturePath);
 
             PACT::PactFileHandle fileHandle;
             if (pactStorage->ReadFile(textureNameHash, fileHandle) == PACT::PactReadResult::Success)
@@ -652,7 +866,7 @@ namespace Scripting::UI
 
         zenith->Push(textSize.x);
         zenith->Push(textSize.y);
-        
+
         return 2;
     }
 
@@ -838,19 +1052,410 @@ namespace Scripting::UI
         return 0;
     }
 
-    i32 UIHandler::AddOnKeyboard(Zenith* zenith)
+    i32 UIHandler::RegisterInputAction(Zenith* zenith)
     {
-        entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        auto& regCtx = registry->ctx();
-        auto& inputSingleton = regCtx.get<ECS::Singletons::InputSingleton>();
+        InputActionDesc desc;
+        desc.name = zenith->CheckVal<const char*>(1);
+        desc.displayName = zenith->CheckVal<const char*>(2);
+        desc.category = zenith->CheckVal<const char*>(3);
+        desc.defaultBindings[0] = ReadBinding(zenith, 4);
+        desc.defaultReply = InputReply::Consumed;
 
-        u32 eventIndex = static_cast<u32>(inputSingleton.globalKeyboardEvents.size());
-        i32 callback = zenith->IsFunction(1) ? zenith->GetRef(1) : -1;
+        std::string contextName = "Global";
+        if (!desc.defaultBindings[0] || !ReadInputActionOptions(zenith, 5, contextName, desc))
+        {
+            zenith->Push(false);
+            return 1;
+        }
 
-        inputSingleton.globalKeyboardEvents.push_back(callback);
-        inputSingleton.eventIDToKeyboardEventIndex[callback] = eventIndex;
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        const InputActionContextHandle context = GetActionContext(contextName.c_str());
+        if (!context.IsValid())
+        {
+            zenith->Push(false);
+            return 1;
+        }
 
-        return 0;
+        InputActionHandle action = GetAction(desc.name.c_str());
+        if (action.IsValid())
+        {
+            const InputActionInfo* info = inputActions->GetActionInfo(action);
+            const std::string& expectedDisplayName = desc.displayName.empty() ? desc.name : desc.displayName;
+            const bool matchesExisting = info
+                && info->name == desc.name
+                && info->displayName == expectedDisplayName
+                && info->category == desc.category
+                && info->defaultBindings == desc.defaultBindings
+                && info->context == context
+                && info->defaultReply == desc.defaultReply
+                && info->categorySortOrder == desc.categorySortOrder
+                && info->sortOrder == desc.sortOrder
+                && info->rebindable == desc.rebindable;
+            zenith->Push(matchesExisting);
+            return 1;
+        }
+
+        action = inputActions->RegisterAction(context, desc);
+        zenith->Push(action.IsValid());
+        return 1;
+    }
+
+    i32 UIHandler::ConnectInputAction(Zenith* zenith)
+    {
+        UIHandler* self = GetUIHandler();
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        if (!self || !action.IsValid() || !zenith->IsFunction(2))
+        {
+            zenith->Push(0u);
+            return 1;
+        }
+
+        const i32 callbackRef = zenith->GetRef(2);
+        InputActionConnection connection = ServiceLocator::GetInputActionSystem()->Connect(action, [zenith, callbackRef](const InputActionEvent& event)
+        {
+            if (!zenith || !zenith->state)
+                return InputReply::Handled;
+
+            lua_checkstack(zenith->state, 6);
+            zenith->GetRawI(LUA_REGISTRYINDEX, callbackRef);
+            zenith->Push(static_cast<u32>(event.phase));
+            zenith->Push(static_cast<u32>(event.control.device));
+            zenith->Push(static_cast<u32>(event.control.code));
+            zenith->Push(static_cast<u32>(event.modifiers));
+            zenith->Push(event.value);
+
+            if (!zenith->PCall(5, 1))
+                return InputReply::Handled;
+
+            InputReply reply = InputReply::Handled;
+            if (zenith->IsNumber(-1))
+            {
+                const u32 result = zenith->Get<u32>(-1);
+                if (result <= static_cast<u32>(InputReply::Consumed))
+                    reply = static_cast<InputReply>(result);
+            }
+            zenith->Pop();
+            return reply;
+        });
+
+        if (!connection.IsValid())
+        {
+            Scripting::Util::Zenith::Unref(zenith, callbackRef);
+            zenith->Push(0u);
+            return 1;
+        }
+
+        u32 connectionID = self->_nextInputConnectionID++;
+        if (self->_nextInputConnectionID == 0)
+            self->_nextInputConnectionID = 1;
+
+        self->_inputConnections.push_back({ connection, callbackRef, connectionID });
+        zenith->Push(connectionID);
+        return 1;
+    }
+
+    i32 UIHandler::DisconnectInputAction(Zenith* zenith)
+    {
+        UIHandler* self = GetUIHandler();
+        const u32 connectionID = zenith->CheckVal<u32>(1);
+        if (!self)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        auto connection = std::find_if(self->_inputConnections.begin(), self->_inputConnections.end(), [connectionID](const ScriptInputConnection& candidate)
+        {
+            return candidate.id == connectionID;
+        });
+
+        if (connection == self->_inputConnections.end())
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        ServiceLocator::GetInputActionSystem()->Disconnect(connection->connection);
+        Scripting::Util::Zenith::Unref(zenith, connection->callbackRef);
+        self->_inputConnections.erase(connection);
+        zenith->Push(true);
+        return 1;
+    }
+
+    i32 UIHandler::SetInputBinding(Zenith* zenith)
+    {
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        const u32 bindingSlot = zenith->CheckVal<u32>(2);
+        std::optional<InputBinding> binding = ReadBinding(zenith, 3);
+
+        InputBindingChangeResult result;
+        if (action.IsValid() && bindingSlot > 0 && binding)
+        {
+            const InputBindingConflictPolicy policy = zenith->GetTop() >= 4 ? static_cast<InputBindingConflictPolicy>(zenith->CheckVal<u32>(4)) : InputBindingConflictPolicy::Reject;
+            result = ServiceLocator::GetInputActionSystem()->SetBinding(action, bindingSlot - 1, binding, policy);
+        }
+
+        PushBindingChangeResult(zenith, result);
+        return 1;
+    }
+
+    i32 UIHandler::ClearInputBinding(Zenith* zenith)
+    {
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        const u32 bindingSlot = zenith->CheckVal<u32>(2);
+
+        InputBindingChangeResult result;
+        if (action.IsValid() && bindingSlot > 0)
+        {
+            const InputBindingConflictPolicy policy = zenith->GetTop() >= 3 ? static_cast<InputBindingConflictPolicy>(zenith->CheckVal<u32>(3)) : InputBindingConflictPolicy::Reject;
+            result = ServiceLocator::GetInputActionSystem()->SetBinding(action, bindingSlot - 1, std::nullopt, policy);
+        }
+
+        PushBindingChangeResult(zenith, result);
+        return 1;
+    }
+
+    i32 UIHandler::ResetInputBinding(Zenith* zenith)
+    {
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        const u32 bindingSlot = zenith->CheckVal<u32>(2);
+
+        InputBindingChangeResult result;
+        if (action.IsValid() && bindingSlot > 0)
+        {
+            const InputBindingConflictPolicy policy = zenith->GetTop() >= 3 ? static_cast<InputBindingConflictPolicy>(zenith->CheckVal<u32>(3)) : InputBindingConflictPolicy::Reject;
+            result = ServiceLocator::GetInputActionSystem()->ResetBinding(action, bindingSlot - 1, policy);
+        }
+
+        PushBindingChangeResult(zenith, result);
+        return 1;
+    }
+
+    i32 UIHandler::GetInputBinding(Zenith* zenith)
+    {
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        const u32 bindingSlot = zenith->CheckVal<u32>(2);
+
+        const InputActionInfo* info = ServiceLocator::GetInputActionSystem()->GetActionInfo(action);
+        if (!info || bindingSlot == 0 || bindingSlot > info->bindings.size() || !info->bindings[bindingSlot - 1])
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        PushBinding(zenith, *info->bindings[bindingSlot - 1]);
+        return 1;
+    }
+
+    i32 UIHandler::GetInputActions(Zenith* zenith)
+    {
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        zenith->CreateTable();
+
+        i32 actionIndex = 1;
+        for (InputActionHandle action : inputActions->GetActions())
+        {
+            const InputActionInfo* info = inputActions->GetActionInfo(action);
+            const InputActionContextInfo* contextInfo = info ? inputActions->GetContextInfo(info->context) : nullptr;
+            if (!info || !contextInfo)
+                continue;
+
+            zenith->CreateTable();
+            zenith->AddTableField("name", info->name.c_str());
+            zenith->AddTableField("displayName", info->displayName.c_str());
+            zenith->AddTableField("category", info->category.c_str());
+            zenith->AddTableField("context", contextInfo->name.c_str());
+            zenith->AddTableField("defaultReply", static_cast<u32>(info->defaultReply));
+            zenith->AddTableField("categorySortOrder", info->categorySortOrder);
+            zenith->AddTableField("sortOrder", info->sortOrder);
+            zenith->AddTableField("rebindable", info->rebindable);
+            AddBindingsField(zenith, "defaultBindings", info->defaultBindings);
+            AddBindingsField(zenith, "bindings", info->bindings);
+            zenith->SetTableKey(actionIndex++);
+        }
+
+        return 1;
+    }
+
+    i32 UIHandler::IsInputActionDown(Zenith* zenith)
+    {
+        const InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        zenith->Push(ServiceLocator::GetInputActionSystem()->IsDown(action));
+        return 1;
+    }
+
+    i32 UIHandler::WasInputActionPressed(Zenith* zenith)
+    {
+        const InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        zenith->Push(ServiceLocator::GetInputActionSystem()->WasPressed(action));
+        return 1;
+    }
+
+    i32 UIHandler::WasInputActionReleased(Zenith* zenith)
+    {
+        const InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        zenith->Push(ServiceLocator::GetInputActionSystem()->WasReleased(action));
+        return 1;
+    }
+
+    i32 UIHandler::FindInputBindingConflicts(Zenith* zenith)
+    {
+        InputActionHandle action = GetAction(zenith->CheckVal<const char*>(1));
+        const u32 bindingSlot = zenith->CheckVal<u32>(2);
+        std::optional<InputBinding> binding = ReadBinding(zenith, 3);
+
+        InputBindingChangeResult result;
+        if (action.IsValid() && bindingSlot > 0 && binding)
+        {
+            result.action = action;
+            result.bindingSlot = bindingSlot - 1;
+            result.conflicts = ServiceLocator::GetInputActionSystem()->FindBindingConflicts(action, bindingSlot - 1, *binding);
+            result.status = result.conflicts.empty() ? InputBindingChangeStatus::Applied : InputBindingChangeStatus::AppliedWithConflicts;
+        }
+
+        PushBindingChangeResult(zenith, result);
+        return 1;
+    }
+
+    i32 UIHandler::BeginInputBindingCapture(Zenith* zenith)
+    {
+        UIHandler* self = GetUIHandler();
+        if (!self || !zenith->IsFunction(1) || self->_bindingCaptureCallbackRef >= 0)
+        {
+            zenith->Push(false);
+            return 1;
+        }
+
+        const i32 callbackRef = zenith->GetRef(1);
+        const bool started = ServiceLocator::GetInputActionSystem()->BeginBindingCapture([zenith, callbackRef](std::optional<InputBinding> binding)
+        {
+            UIHandler* currentHandler = GetUIHandler();
+            if (!currentHandler || currentHandler->_bindingCaptureCallbackRef != callbackRef || !zenith || !zenith->state)
+                return;
+
+            currentHandler->_bindingCaptureCallbackRef = -1;
+            lua_checkstack(zenith->state, 2);
+            zenith->GetRawI(LUA_REGISTRYINDEX, callbackRef);
+            if (binding)
+            {
+                PushBinding(zenith, *binding);
+            }
+            else
+            {
+                zenith->Push();
+            }
+
+            zenith->PCall(1, 0);
+            Scripting::Util::Zenith::Unref(zenith, callbackRef);
+        });
+
+        if (!started)
+        {
+            Scripting::Util::Zenith::Unref(zenith, callbackRef);
+            zenith->Push(false);
+            return 1;
+        }
+
+        self->_bindingCaptureCallbackRef = callbackRef;
+        zenith->Push(true);
+        return 1;
+    }
+
+    i32 UIHandler::CancelInputBindingCapture(Zenith* zenith)
+    {
+        zenith->Push(ServiceLocator::GetInputActionSystem()->CancelBindingCapture());
+        return 1;
+    }
+
+    i32 UIHandler::IsInputBindingCaptureActive(Zenith* zenith)
+    {
+        zenith->Push(ServiceLocator::GetInputActionSystem()->IsBindingCaptureActive());
+        return 1;
+    }
+
+    i32 UIHandler::SaveInputBindings(Zenith* zenith)
+    {
+        zenith->Push(ServiceLocator::GetInputActionSystem()->SaveBindings());
+        return 1;
+    }
+
+    i32 UIHandler::CreateInputContext(Zenith* zenith)
+    {
+        const char* name = zenith->CheckVal<const char*>(1);
+        const i32 priority = zenith->CheckVal<i32>(2);
+        const i32 sortOrder = zenith->GetTop() >= 3 ? zenith->CheckVal<i32>(3) : 0;
+
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        InputActionContextHandle context = GetActionContext(name);
+        if (context.IsValid())
+        {
+            const InputActionContextInfo* info = inputActions->GetContextInfo(context);
+            zenith->Push(info && info->priority == priority && info->sortOrder == sortOrder);
+            return 1;
+        }
+
+        context = inputActions->CreateContext(name, priority, sortOrder);
+        zenith->Push(context.IsValid());
+        return 1;
+    }
+
+    i32 UIHandler::SetInputContextActive(Zenith* zenith)
+    {
+        InputActionContextHandle context = GetActionContext(zenith->CheckVal<const char*>(1));
+        const bool result = context.IsValid() && ServiceLocator::GetInputActionSystem()->SetContextActive(context, zenith->CheckVal<bool>(2));
+        zenith->Push(result);
+        return 1;
+    }
+
+    i32 UIHandler::IsInputContextActive(Zenith* zenith)
+    {
+        const InputActionContextHandle context = GetActionContext(zenith->CheckVal<const char*>(1));
+        zenith->Push(ServiceLocator::GetInputActionSystem()->IsContextActive(context));
+        return 1;
+    }
+
+    i32 UIHandler::GetInputContexts(Zenith* zenith)
+    {
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        zenith->CreateTable();
+
+        i32 contextIndex = 1;
+        for (InputActionContextHandle context : inputActions->GetContexts())
+        {
+            const InputActionContextInfo* info = inputActions->GetContextInfo(context);
+            if (!info)
+                continue;
+
+            zenith->CreateTable();
+            zenith->AddTableField("name", info->name.c_str());
+            zenith->AddTableField("priority", info->priority);
+            zenith->AddTableField("sortOrder", info->sortOrder);
+            zenith->AddTableField("active", inputActions->IsContextActive(context));
+            zenith->SetTableKey(contextIndex++);
+        }
+
+        return 1;
+    }
+
+    i32 UIHandler::IsSoftwareCursorEnabled(Zenith* zenith)
+    {
+        zenith->Push(ServiceLocator::GetInputSystem()->GetCursorMode() == CursorMode::Software);
+        return 1;
+    }
+
+    i32 UIHandler::GetCursorState(Zenith* zenith)
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        const u32 knownRevision = zenith->GetTop() > 0 ? zenith->CheckVal<u32>(1) : 0;
+        if (knownRevision == gameRenderer->GetCursorRevision())
+        {
+            zenith->Push();
+            return 1;
+        }
+
+        zenith->Push(gameRenderer->GetCursorRevision());
+        zenith->Push(gameRenderer->GetCursorTexturePath());
+        return 2;
     }
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
@@ -995,7 +1600,7 @@ namespace Scripting::UI
         zenith->PCall(4);
     }
 
-    void UIHandler::CreateUIInputEventTable(Zenith* zenith)
+    void UIHandler::CreateInputConstants(Zenith* zenith)
     {
         {
             zenith->CreateTable("UIInputEvent");
@@ -1025,12 +1630,38 @@ namespace Scripting::UI
         }
 
         {
-            // TODO: Move these to something related to input in the future
-            zenith->CreateTable("InputAction");
+            zenith->CreateTable("InputPhase");
 
-            zenith->AddTableField("Press", static_cast<u32>(KeybindAction::Press));
-            zenith->AddTableField("Release", static_cast<u32>(KeybindAction::Release));
-            zenith->AddTableField("Click", static_cast<u32>(KeybindAction::Click));
+            zenith->AddTableField("Pressed", static_cast<u32>(InputPhase::Pressed));
+            zenith->AddTableField("Repeated", static_cast<u32>(InputPhase::Repeated));
+            zenith->AddTableField("Released", static_cast<u32>(InputPhase::Released));
+            zenith->AddTableField("Canceled", static_cast<u32>(InputPhase::Canceled));
+            zenith->AddTableField("Triggered", static_cast<u32>(InputPhase::Triggered));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputReply");
+
+            zenith->AddTableField("Ignored", static_cast<u32>(InputReply::Ignored));
+            zenith->AddTableField("Handled", static_cast<u32>(InputReply::Handled));
+            zenith->AddTableField("Consumed", static_cast<u32>(InputReply::Consumed));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("GameInputPriority");
+
+            zenith->AddTableField("ImGui", GameInputPriority::ImGui);
+            zenith->AddTableField("Modal", GameInputPriority::Modal);
+            zenith->AddTableField("UI", GameInputPriority::UI);
+            zenith->AddTableField("Editor", GameInputPriority::Editor);
+            zenith->AddTableField("Camera", GameInputPriority::Camera);
+            zenith->AddTableField("Global", GameInputPriority::Global);
+            zenith->AddTableField("Gameplay", GameInputPriority::Gameplay);
+            zenith->AddTableField("Debug", GameInputPriority::Debug);
 
             zenith->Pop();
         }
@@ -1038,12 +1669,79 @@ namespace Scripting::UI
         {
             zenith->CreateTable("InputModifier");
 
-            zenith->AddTableField("Invalid", static_cast<u32>(KeybindModifier::Invalid));
-            zenith->AddTableField("None", static_cast<u32>(KeybindModifier::ModNone));
-            zenith->AddTableField("Shift", static_cast<u32>(KeybindModifier::Shift));
-            zenith->AddTableField("Ctrl", static_cast<u32>(KeybindModifier::Ctrl));
-            zenith->AddTableField("Alt", static_cast<u32>(KeybindModifier::Alt));
-            zenith->AddTableField("Any", static_cast<u32>(KeybindModifier::Any));
+            zenith->AddTableField("None", static_cast<u32>(InputModifier::None));
+            zenith->AddTableField("Shift", static_cast<u32>(InputModifier::Shift));
+            zenith->AddTableField("Control", static_cast<u32>(InputModifier::Control));
+            zenith->AddTableField("Alt", static_cast<u32>(InputModifier::Alt));
+            zenith->AddTableField("Super", static_cast<u32>(InputModifier::Super));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputDevice");
+
+            zenith->AddTableField("Keyboard", static_cast<u32>(InputDevice::Keyboard));
+            zenith->AddTableField("Mouse", static_cast<u32>(InputDevice::Mouse));
+            zenith->AddTableField("MouseWheel", static_cast<u32>(InputDevice::MouseWheel));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("MouseWheelDirection");
+
+            zenith->AddTableField("Up", static_cast<u32>(MouseWheelDirection::Up));
+            zenith->AddTableField("Down", static_cast<u32>(MouseWheelDirection::Down));
+            zenith->AddTableField("Left", static_cast<u32>(MouseWheelDirection::Left));
+            zenith->AddTableField("Right", static_cast<u32>(MouseWheelDirection::Right));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputModifierMatch");
+
+            zenith->AddTableField("Exact", static_cast<u32>(ModifierMatch::Exact));
+            zenith->AddTableField("AtLeast", static_cast<u32>(ModifierMatch::AtLeast));
+            zenith->AddTableField("Any", static_cast<u32>(ModifierMatch::Any));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputBindingConflictPolicy");
+
+            zenith->AddTableField("Reject", static_cast<u32>(InputBindingConflictPolicy::Reject));
+            zenith->AddTableField("Replace", static_cast<u32>(InputBindingConflictPolicy::Replace));
+            zenith->AddTableField("Swap", static_cast<u32>(InputBindingConflictPolicy::Swap));
+            zenith->AddTableField("Allow", static_cast<u32>(InputBindingConflictPolicy::Allow));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputBindingConflictKind");
+
+            zenith->AddTableField("Direct", static_cast<u32>(InputBindingConflictKind::Direct));
+            zenith->AddTableField("ShadowsRequested", static_cast<u32>(InputBindingConflictKind::ShadowsRequested));
+            zenith->AddTableField("ShadowedByRequested", static_cast<u32>(InputBindingConflictKind::ShadowedByRequested));
+
+            zenith->Pop();
+        }
+
+        {
+            zenith->CreateTable("InputBindingChangeStatus");
+
+            zenith->AddTableField("Applied", static_cast<u32>(InputBindingChangeStatus::Applied));
+            zenith->AddTableField("AppliedWithConflicts", static_cast<u32>(InputBindingChangeStatus::AppliedWithConflicts));
+            zenith->AddTableField("Queued", static_cast<u32>(InputBindingChangeStatus::Queued));
+            zenith->AddTableField("RejectedConflict", static_cast<u32>(InputBindingChangeStatus::RejectedConflict));
+            zenith->AddTableField("InvalidAction", static_cast<u32>(InputBindingChangeStatus::InvalidAction));
+            zenith->AddTableField("InvalidSlot", static_cast<u32>(InputBindingChangeStatus::InvalidSlot));
+            zenith->AddTableField("InvalidBinding", static_cast<u32>(InputBindingChangeStatus::InvalidBinding));
+            zenith->AddTableField("InvalidPolicy", static_cast<u32>(InputBindingChangeStatus::InvalidPolicy));
+            zenith->AddTableField("NotRebindable", static_cast<u32>(InputBindingChangeStatus::NotRebindable));
 
             zenith->Pop();
         }

@@ -28,8 +28,6 @@
 
 #include <Filesystem/PactStorage.h>
 
-#include <Input/InputManager.h>
-
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <Renderer/Renderer.h>
@@ -2566,7 +2564,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -2582,7 +2582,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -2596,7 +2598,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -2610,7 +2614,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;

@@ -29,14 +29,13 @@
 #include <MetaGen/Game/Lua/Lua.h>
 #include <MetaGen/Shared/Packet/Packet.h>
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 
 #include <Renderer/Renderer.h>
 
 #include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
-#include <GLFW/glfw3.h>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
@@ -47,6 +46,9 @@
 
 namespace
 {
+    constexpr f32 HOVER_HIGHLIGHT_INTENSITY = 1.15f;
+    constexpr f32 TARGET_HIGHLIGHT_INTENSITY = 1.25f;
+
     struct Ray
     {
     public:
@@ -114,11 +116,8 @@ namespace
 
         const auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
         auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
-        if (activeCamera.entity == entt::null
-            || !registry.valid(activeCamera.entity)
-            || moverEntity == entt::null
-            || !registry.valid(moverEntity)
-            || !networkState.networkVisTree)
+        if (activeCamera.entity == entt::null || !registry.valid(activeCamera.entity)
+            || moverEntity == entt::null || !registry.valid(moverEntity) || !networkState.networkVisTree)
             return entt::null;
 
         vec2 mousePosition;
@@ -141,8 +140,9 @@ namespace
         const vec3 rayMax = glm::max(ray.origin, rayEnd);
 
         entt::entity nearestEntity = entt::null;
-        f32 nearestDistance = std::numeric_limits<f32>::infinity();
-        networkState.networkVisTree->Search(&rayMin.x, &rayMax.x, [&registry, &networkState, moverUnit, &ray, &nearestEntity, &nearestDistance](const ObjectGUID& guid)
+        f32 nearestCursorDistanceSquared = std::numeric_limits<f32>::infinity();
+        f32 nearestHitDistance = std::numeric_limits<f32>::infinity();
+        networkState.networkVisTree->Search(&rayMin.x, &rayMax.x, [&](const ObjectGUID& guid)
         {
             if (!networkState.networkIDToEntity.contains(guid) || moverUnit->networkID == guid)
                 return true;
@@ -153,7 +153,8 @@ namespace
 
             const auto& transform = registry.get<ECS::Components::Transform>(entity);
             const auto& aabb = registry.get<ECS::Components::AABB>(entity);
-            const mat4x4 worldToLocal = glm::inverse(transform.GetMatrix());
+            const mat4x4 transformMatrix = transform.GetMatrix();
+            const mat4x4 worldToLocal = glm::inverse(transformMatrix);
             const Ray localRay =
             {
                 vec3(worldToLocal * vec4(ray.origin, 1.0f)),
@@ -165,10 +166,24 @@ namespace
             f32 tFar;
             if (RayIntersectsAABB(localRay, aabb.centerPos - aabb.extents, aabb.centerPos + aabb.extents, tNear, tFar) && tNear <= ray.length)
             {
-                const f32 hitDistance = glm::max(tNear, 0.0f);
-                if (hitDistance < nearestDistance)
+                const vec3 worldCenter = vec3(transformMatrix * vec4(aabb.centerPos, 1.0f));
+                const vec4 clipCenter = camera->worldToClip * vec4(worldCenter, 1.0f);
+                if (clipCenter.w <= 0.0f)
+                    return true;
+
+                const vec2 ndcCenter = vec2(clipCenter) / clipCenter.w;
+                const vec2 screenCenter =
                 {
-                    nearestDistance = hitDistance;
+                    (ndcCenter.x * 0.5f + 0.5f) * renderSize.x,
+                    (0.5f - ndcCenter.y * 0.5f) * renderSize.y
+                };
+                const vec2 cursorOffset = screenCenter - mousePosition;
+                const f32 cursorDistanceSquared = glm::dot(cursorOffset, cursorOffset);
+                const f32 hitDistance = glm::max(tNear, 0.0f);
+                if (cursorDistanceSquared < nearestCursorDistanceSquared || (cursorDistanceSquared == nearestCursorDistanceSquared && hitDistance < nearestHitDistance))
+                {
+                    nearestCursorDistanceSquared = cursorDistanceSquared;
+                    nearestHitDistance = hitDistance;
                     nearestEntity = entity;
                 }
             }
@@ -185,22 +200,50 @@ namespace ECS::Systems::CharacterControllerInput
     void UpdateHoveredUnit(entt::registry& registry, f32)
     {
         auto& controllerState = registry.ctx().get<Singletons::CharacterControllerSingleton>();
-        controllerState.hoveredEntity = entt::null;
-
-        InputManager* inputManager = ServiceLocator::GetInputManager();
+        entt::entity hoveredEntity = entt::null;
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
         Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
-        if (inputManager->IsCursorVirtual() || (!viewport->IsEditorMode() && ImGui::GetIO().WantCaptureMouse))
-            return;
+        bool canHoverWorld = !inputSystem->IsMouseCaptured() && (viewport->IsEditorMode() || !ImGui::GetIO().WantCaptureMouse);
 
-        EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-        if (registries->uiRegistry)
+        if (canHoverWorld)
         {
-            auto& uiCtx = registries->uiRegistry->ctx();
-            if (uiCtx.contains<Singletons::UISingleton>() && !uiCtx.get<Singletons::UISingleton>().allHoveredEntities.empty())
-                return;
+            EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
+            if (registries->uiRegistry)
+            {
+                auto& uiCtx = registries->uiRegistry->ctx();
+                canHoverWorld = !uiCtx.contains<Singletons::UISingleton>() || uiCtx.get<Singletons::UISingleton>().allHoveredEntities.empty();
+            }
         }
 
-        controllerState.hoveredEntity = FindUnitUnderCursor(registry, controllerState.moverEntity);
+        if (canHoverWorld)
+            hoveredEntity = FindUnitUnderCursor(registry, controllerState.moverEntity);
+
+        if (hoveredEntity == controllerState.hoveredEntity)
+            return;
+
+        entt::entity targetEntity = entt::null;
+        if (registry.valid(controllerState.moverEntity))
+        {
+            if (const auto* moverUnit = registry.try_get<Components::Unit>(controllerState.moverEntity))
+                targetEntity = moverUnit->targetEntity;
+        }
+
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        if (registry.valid(controllerState.hoveredEntity))
+        {
+            if (const auto* model = registry.try_get<Components::Model>(controllerState.hoveredEntity))
+                modelLoader->SetModelHighlight(*model, controllerState.hoveredEntity == targetEntity ? TARGET_HIGHLIGHT_INTENSITY : 1.0f);
+        }
+
+        controllerState.hoveredEntity = hoveredEntity;
+        if (registry.valid(hoveredEntity))
+        {
+            if (const auto* model = registry.try_get<Components::Model>(hoveredEntity))
+            {
+                const f32 highlightIntensity = hoveredEntity == targetEntity ? TARGET_HIGHLIGHT_INTENSITY : HOVER_HIGHLIGHT_INTENSITY;
+                modelLoader->SetModelHighlight(*model, highlightIntensity);
+            }
+        }
     }
 
     void UpdateAutoAttack(entt::registry& registry, f32 deltaTime)
@@ -276,8 +319,7 @@ namespace ECS::Systems::CharacterControllerInput
         const auto& targetTransform = registry.get<Components::Transform>(unit.targetEntity);
         const vec3 directionToTarget = targetTransform.GetWorldPosition() - transform.GetWorldPosition();
         const f32 distanceToTarget = glm::length(directionToTarget);
-        const bool targetIsWithin45DegreeAngle = distanceToTarget > 0.0f
-            && glm::dot(directionToTarget / distanceToTarget, glm::normalize(-transform.GetLocalForward())) > glm::cos(glm::radians(45.0f));
+        const bool targetIsWithin45DegreeAngle = distanceToTarget > 0.0f && glm::dot(directionToTarget / distanceToTarget, glm::normalize(-transform.GetLocalForward())) > glm::cos(glm::radians(45.0f));
         if (distanceToTarget > 5.0f || !targetIsWithin45DegreeAngle)
             return;
 
@@ -318,7 +360,11 @@ namespace ECS::Systems::CharacterControllerInput
         if (registry->valid(unit->targetEntity))
         {
             if (auto* model = registry->try_get<Components::Model>(unit->targetEntity))
-                ServiceLocator::GetGameRenderer()->GetModelLoader()->SetModelHighlight(*model, 1.0f);
+            {
+                const auto* controllerState = ctx.find<Singletons::CharacterControllerSingleton>();
+                const f32 highlightIntensity = controllerState && controllerState->hoveredEntity == unit->targetEntity ? HOVER_HIGHLIGHT_INTENSITY : 1.0f;
+                ServiceLocator::GetGameRenderer()->GetModelLoader()->SetModelHighlight(*model, highlightIntensity);
+            }
         }
 
         unit->targetEntity = entt::null;
@@ -334,8 +380,11 @@ namespace ECS::Systems::CharacterControllerInput
         return true;
     }
 
-    bool HandleTargetInput(i32 key, KeybindAction, KeybindModifier modifier)
+    InputReply HandleTargetInput(const InputActionEvent& event)
     {
+        if (event.phase != InputPhase::Released)
+            return InputReply::Handled;
+
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         entt::registry::context& ctx = registry->ctx();
         auto& characterSingleton = ctx.get<Singletons::CharacterSingleton>();
@@ -343,7 +392,7 @@ namespace ECS::Systems::CharacterControllerInput
         auto& networkState = ctx.get<Singletons::NetworkState>();
 
         if (characterSingleton.moverEntity == entt::null || activeCamera.entity == entt::null)
-            return false;
+            return InputReply::Ignored;
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
@@ -353,35 +402,40 @@ namespace ECS::Systems::CharacterControllerInput
         {
             const auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
             if (activeCamera.entity == orbitalCameraSettings.entity && orbitalCameraSettings.captureMouseWasDragged)
-                return true;
+                return InputReply::Consumed;
         }
 
-        if (key == GLFW_MOUSE_BUTTON_LEFT && (modifier & KeybindModifier::Shift) != KeybindModifier::Invalid)
+        if (event.control == InputControl::Mouse(MouseButton::Left) && (event.modifiers & InputModifier::Shift) != InputModifier::None)
         {
             ClearTarget();
-            return true;
+            return InputReply::Consumed;
         }
 
+        const auto* controllerState = ctx.find<Singletons::CharacterControllerSingleton>();
         entt::entity targetEntity = entt::null;
-        if (const auto* controllerState = ctx.find<Singletons::CharacterControllerSingleton>())
+        if (controllerState)
+        {
             targetEntity = controllerState->hoveredEntity;
+        }
         else
+        {
             targetEntity = FindUnitUnderCursor(*registry, characterSingleton.moverEntity);
+        }
 
         if (!registry->valid(targetEntity) || targetEntity == characterSingleton.moverEntity || !registry->all_of<Components::Unit>(targetEntity))
-            return false;
+            return InputReply::Ignored;
 
         const ObjectGUID targetNetworkID = registry->get<Components::Unit>(targetEntity).networkID;
 
         if (unit.targetEntity == targetEntity)
         {
-            if (key == GLFW_MOUSE_BUTTON_RIGHT)
+            if (event.control == InputControl::Mouse(MouseButton::Right))
             {
                 unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
-                return true;
+                return InputReply::Consumed;
             }
 
-            return false;
+            return InputReply::Ignored;
         }
 
         if (Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientUnitTargetUpdatePacket{
@@ -389,14 +443,17 @@ namespace ECS::Systems::CharacterControllerInput
         }))
         {
             if (auto* model = registry->try_get<Components::Model>(unit.targetEntity))
-                modelLoader->SetModelHighlight(*model, 1.0f);
+            {
+                const f32 highlightIntensity = controllerState && controllerState->hoveredEntity == unit.targetEntity ? HOVER_HIGHLIGHT_INTENSITY : 1.0f;
+                modelLoader->SetModelHighlight(*model, highlightIntensity);
+            }
 
             unit.targetEntity = targetEntity;
 
             if (auto* model = registry->try_get<Components::Model>(targetEntity))
-                modelLoader->SetModelHighlight(*model, 1.25f);
+                modelLoader->SetModelHighlight(*model, TARGET_HIGHLIGHT_INTENSITY);
 
-            if (key == GLFW_MOUSE_BUTTON_RIGHT)
+            if (event.control == InputControl::Mouse(MouseButton::Right))
                 unit.isAutoAttacking = ECS::Util::Faction::CanAttack(*registry, targetEntity);
 
             zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::TargetChanged, MetaGen::Game::Lua::UnitEventDataTargetChanged{
@@ -405,6 +462,6 @@ namespace ECS::Systems::CharacterControllerInput
             });
         }
 
-        return true;
+        return InputReply::Consumed;
     }
 }

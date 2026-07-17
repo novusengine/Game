@@ -163,6 +163,7 @@ private:
     robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToFontTexturesIndex;
 
     Renderer::GraphicsPipelineID _widgetPipeline;
+    Renderer::GraphicsPipelineID _worldWidgetPipeline;
 
     Renderer::DescriptorSet _widgetDescriptorSet;
 
@@ -179,14 +180,15 @@ private:
 
     // --- Per-bucket retained indirect-draw state ----------------------------------
     // One BucketResources per render-pass bucket: one per RT canvas that has ever existed,
-    // plus one static _mainBucket for all non-RT canvases merged together. finalSortedArgs
+    // plus separate screen-space and world-space buckets for all non-RT canvases. finalSortedArgs
     // is retained across frames; it's CPU-sorted and uploaded only when the bucket is dirty,
     // and consumed as-is by DrawIndirectCount every frame.
     struct BucketResources
     {
+    public:
         Renderer::BufferID finalSortedArgs = Renderer::BufferID::Invalid();
-        u32                finalSortedArgsCapacity = 0;
-        u32                drawCount = 0;
+        u32 finalSortedArgsCapacity = 0;
+        u32 drawCount = 0;
 
         // Single-element u32 count buffer for DrawIndirectCount.
         Renderer::BufferID finalCount = Renderer::BufferID::Invalid();
@@ -198,10 +200,19 @@ private:
 
     robin_hood::unordered_map<entt::entity, BucketResources> _rtBuckets; // key: RT canvas entity
     BucketResources _mainBucket;
+    BucketResources _mainWorldBucket;
 
     // CPU scratch for gather+sort+upload inside RefreshBucketCPU. Reused across refreshes;
     // `.clear()` preserves capacity.
-    struct SortEntry { u32 key; Renderer::IndirectDraw draw; entt::entity entity; };
-    std::vector<SortEntry>              _sortScratch;
+    struct SortEntry
+    {
+    public:
+        u32 key;
+        Renderer::IndirectDraw draw;
+        entt::entity entity;
+    };
+
+    std::vector<SortEntry> _sortScratch;
+    std::vector<SortEntry> _worldSortScratch;
     std::vector<Renderer::IndirectDraw> _uploadScratch;
 };

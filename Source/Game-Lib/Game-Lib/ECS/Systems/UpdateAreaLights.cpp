@@ -310,15 +310,16 @@ namespace ECS::Systems
         MaterialRenderer* materialRenderer = ServiceLocator::GetGameRenderer()->GetMaterialRenderer();
         
         vec3 direction = GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
-        const vec3& diffuseColor = glm::normalize(areaLightInfo.finalColorData.diffuseColor);
-        const vec3& ambientColor = glm::normalize(areaLightInfo.finalColorData.ambientColor);
-        vec3 groundAmbientColor = ambientColor * 0.7f;
-        vec3 skyAmbientColor = ambientColor * 1.1f;
+        const vec3& diffuseColor = areaLightInfo.finalColorData.diffuseColor;
+        const vec3& ambientColor = areaLightInfo.finalColorData.ambientColor;
+        vec3 groundAmbientColor = ambientColor * 1.0f;
+        vec3 skyAmbientColor = ambientColor * 1.0f;
         vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
+        constexpr f32 ambientIntensity = 1.0f;
         
-        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor))
+        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor))
         {
-            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor);
+            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor);
         }
         
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
@@ -373,7 +374,6 @@ namespace ECS::Systems
         f32 lightDirZ = sinPhi * sinTheta;
         f32 lightDirY = cosPhi;
 
-        // Can also try (X, Z, -Y)
-        return -vec3(lightDirX, lightDirY, lightDirZ);
+        return vec3(lightDirX, -lightDirY, -lightDirZ);
     }
 }

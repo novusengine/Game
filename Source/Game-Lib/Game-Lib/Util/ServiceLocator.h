@@ -12,7 +12,8 @@ namespace Editor
 {
     class EditorHandler;
 }
-class InputManager;
+class InputActionSystem;
+class InputSystem;
 class GameRenderer;
 
 namespace enki
@@ -58,12 +59,19 @@ public:
     }
     static void SetEditorHandler(Editor::EditorHandler* editorHandler);
 
-    static InputManager* GetInputManager()
+    static InputSystem* GetInputSystem()
     {
-        assert(_inputManager != nullptr);
-        return _inputManager;
+        assert(_inputSystem != nullptr);
+        return _inputSystem;
     }
-    static void SetInputManager(InputManager* inputManager);
+    static void SetInputSystem(InputSystem* inputSystem);
+
+    static InputActionSystem* GetInputActionSystem()
+    {
+        assert(_inputActionSystem != nullptr);
+        return _inputActionSystem;
+    }
+    static void SetInputActionSystem(InputActionSystem* inputActionSystem);
 
     static GameRenderer* GetGameRenderer()
     {
@@ -112,7 +120,8 @@ private:
     static Application* _application;
     static PACT::PactStorage* _pactStorage;
     static Editor::EditorHandler* _editorHandler;
-    static InputManager* _inputManager;
+    static InputSystem* _inputSystem;
+    static InputActionSystem* _inputActionSystem;
     static GameRenderer* _gameRenderer;
     static enki::TaskScheduler* _taskScheduler;
     static EnttRegistries* _enttRegistries;

@@ -25,6 +25,7 @@
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/ECS/Util/Network/NetworkUtil.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
@@ -35,9 +36,6 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Math/Color.h>
 #include <Base/Util/DebugHandler.h>
-
-#include <Input/InputManager.h>
-#include <Input/KeybindGroup.h>
 
 #include <MetaGen/Shared/Packet/Packet.h>
 
@@ -51,7 +49,6 @@
 #include <Jolt/Physics/Collision/ShapeFilter.h>
 
 #include <entt/entt.hpp>
-#include <GLFW/glfw3.h>
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
@@ -143,44 +140,63 @@ namespace
         PostUpdate
     };
 
-    void InitInput(ECS::Singletons::CharacterControllerSingleton& state, ECS::Singletons::CharacterSingleton& characterSingleton)
+    void InitInput(ECS::Singletons::CharacterControllerSingleton& state)
     {
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        state.keybindGroup = inputManager->CreateKeybindGroup("CharacterController", 100);
-        characterSingleton.keybindGroup = state.keybindGroup;
-        characterSingleton.cameraToggleKeybindGroup = inputManager->CreateKeybindGroup("CharacterController - Camera Toggle", 101);
-        state.keybindGroup->SetActive(false);
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        state.inputContext = inputActions->CreateContext("CharacterGameplay", GameInputPriority::Gameplay);
+        state.cameraInputContext = inputActions->CreateContext("CharacterCamera", GameInputPriority::Camera);
+        inputActions->SetContextActive(state.inputContext, false);
+        inputActions->SetContextActive(state.cameraInputContext, true);
 
-        const auto cancelAutorun = [](i32, KeybindAction, KeybindModifier)
+        const auto cancelAutorun = [](const InputActionEvent& event)
         {
-            entt::registry * registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            auto& state = registry->ctx().get<ECS::Singletons::CharacterControllerSingleton>();
+            if (event.phase == InputPhase::Pressed)
+            {
+                entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+                auto& state = registry->ctx().get<ECS::Singletons::CharacterControllerSingleton>();
+                state.autorunEnabled = false;
+            }
 
-            state.autorunEnabled = false;
-            return false;
+            return InputReply::Consumed;
         };
 
-        state.keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, cancelAutorun);
-        state.keybindGroup->AddKeyboardCallback("Backward", GLFW_KEY_S, KeybindAction::Press, KeybindModifier::Any, cancelAutorun);
-        state.keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        state.keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        state.keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        state.keybindGroup->AddKeyboardCallback("Toggle Autorun", GLFW_MOUSE_BUTTON_MIDDLE, KeybindAction::Press, KeybindModifier::Any, [](i32, KeybindAction, KeybindModifier)
+        state.moveForwardAction = inputActions->RegisterAction(state.inputContext, "MoveForward", "Move Forward", "Movement", InputBinding::Keyboard(Key::W, InputModifier::None, ModifierMatch::Any), cancelAutorun);
+        state.moveBackwardAction = inputActions->RegisterAction(state.inputContext, "MoveBackward", "Move Backward", "Movement", InputBinding::Keyboard(Key::S, InputModifier::None, ModifierMatch::Any), cancelAutorun);
+        state.strafeLeftAction = inputActions->RegisterAction(state.inputContext, "StrafeLeft", "Strafe Left", "Movement", InputBinding::Keyboard(Key::A, InputModifier::None, ModifierMatch::Any));
+        state.strafeRightAction = inputActions->RegisterAction(state.inputContext, "StrafeRight", "Strafe Right", "Movement", InputBinding::Keyboard(Key::D, InputModifier::None, ModifierMatch::Any));
+        state.jumpAction = inputActions->RegisterAction(state.inputContext, "Jump", "Jump", "Movement", InputBinding::Keyboard(Key::Space, InputModifier::None, ModifierMatch::Any));
+
+        inputActions->RegisterAction(state.inputContext, "ToggleAutorun", "Toggle Autorun", "Movement",
+            InputBinding::Mouse(MouseButton::Middle, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled }, [](const InputActionEvent& event)
         {
-            entt::registry * registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& state = registry->ctx().get<ECS::Singletons::CharacterControllerSingleton>();
             if (!state.controlMask.allowForcedForward)
-                return false;
+                return InputReply::Ignored;
 
             state.autorunEnabled = !state.autorunEnabled;
-            return true;
+            return InputReply::Consumed;
         });
-        state.keybindGroup->AddKeyboardCallback("Select Target", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Release, KeybindModifier::Any, ECS::Systems::CharacterControllerInput::HandleTargetInput);
-        state.keybindGroup->AddKeyboardCallback("Interact Target", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Release, KeybindModifier::Any, ECS::Systems::CharacterControllerInput::HandleTargetInput);
 
-        characterSingleton.cameraToggleKeybindGroup->SetActive(true);
-        characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Toggle Camera Mode", GLFW_KEY_C, KeybindAction::Press, KeybindModifier::Any, [](i32, KeybindAction, KeybindModifier)
+        inputActions->RegisterAction(state.inputContext, "SelectTarget", "Select Target", "Targeting",
+            InputBinding::Mouse(MouseButton::Left, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled }, ECS::Systems::CharacterControllerInput::HandleTargetInput);
+
+        inputActions->RegisterAction(state.inputContext, "InteractTarget", "Interact With Target", "Targeting",
+            InputBinding::Mouse(MouseButton::Right, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled }, ECS::Systems::CharacterControllerInput::HandleTargetInput);
+
+        inputActions->RegisterAction(state.cameraInputContext, "ToggleCameraMode", "Toggle Camera Mode", "Camera",
+            InputBinding::Keyboard(Key::C, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled }, [](const InputActionEvent& event)
         {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
@@ -189,37 +205,37 @@ namespace
             auto& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
             auto& orbitalCameraSettings = ctx.get<ECS::Singletons::OrbitalCameraSettings>();
 
-            InputManager* inputManager = ServiceLocator::GetInputManager();
-            KeybindGroup* freeFlyingCameraKeybindGroup = inputManager->GetKeybindGroupByHash("FreeFlyingCamera"_h);
-            KeybindGroup* orbitalCameraKeybindGroup = inputManager->GetKeybindGroupByHash("OrbitalCamera"_h);
+            InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+            const InputActionContextHandle freeFlyingCameraContext = inputActions->GetContext("FreeFlyingCamera"_x);
+            const InputActionContextHandle orbitalCameraContext = inputActions->GetContext("OrbitalCamera"_x);
 
             if (activeCamera.entity == orbitalCameraSettings.entity)
             {
                 if (!registry->valid(freeFlyingCameraSettings.entity))
-                    return false;
+                    return InputReply::Ignored;
 
                 activeCamera.entity = freeFlyingCameraSettings.entity;
 
-                state.keybindGroup->SetActive(false);
-                orbitalCameraKeybindGroup->SetActive(false);
-                freeFlyingCameraKeybindGroup->SetActive(true);
+                inputActions->SetContextActive(state.inputContext, false);
+                inputActions->SetContextActive(orbitalCameraContext, false);
+                inputActions->SetContextActive(freeFlyingCameraContext, true);
                 ECS::Util::CameraUtil::SetCaptureMouse(false);
             }
             else if (activeCamera.entity == freeFlyingCameraSettings.entity)
             {
                 if (!registry->valid(orbitalCameraSettings.entity))
-                    return false;
+                    return InputReply::Ignored;
 
                 activeCamera.entity = orbitalCameraSettings.entity;
 
-                freeFlyingCameraKeybindGroup->SetActive(false);
-                state.keybindGroup->SetActive(true);
-                orbitalCameraKeybindGroup->SetActive(true);
+                inputActions->SetContextActive(freeFlyingCameraContext, false);
+                inputActions->SetContextActive(state.inputContext, true);
+                inputActions->SetContextActive(orbitalCameraContext, true);
                 ECS::Util::CameraUtil::SetCaptureMouse(false);
             }
             else
             {
-                return false;
+                return InputReply::Ignored;
             }
 
             ECS::Components::MovementInfo* movementInfo = nullptr;
@@ -231,11 +247,34 @@ namespace
             auto& camera = registry->get<ECS::Components::Camera>(activeCamera.entity);
             camera.dirtyView = true;
             camera.dirtyPerspective = true;
-            return true;
+            return InputReply::Consumed;
         });
 
-        characterSingleton.cameraToggleKeybindGroup->AddKeyboardCallback("Move Character To Camera", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::Any, [](i32, KeybindAction, KeybindModifier)
+        inputActions->RegisterAction(state.cameraInputContext, "ReleaseFreeCameraMouseCapture", "Release Free Camera Mouse Capture", "Camera",
+            InputBinding::Keyboard(Key::Escape, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Ignored, .rebindable = false }, [](const InputActionEvent& event)
         {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Ignored;
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& ctx = registry->ctx();
+            const auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
+            const auto& settings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
+            if (activeCamera.entity != settings.entity || !settings.captureMouse)
+                return InputReply::Ignored;
+
+            ECS::Util::CameraUtil::SetCaptureMouse(false);
+            return InputReply::Consumed;
+        });
+
+        inputActions->RegisterAction(state.cameraInputContext, "MoveCharacterToCamera", "Move Character To Camera", "Debug",
+            InputBinding::Keyboard(Key::G, InputModifier::None, ModifierMatch::Any),
+            { .defaultReply = InputReply::Handled, .rebindable = false }, [](const InputActionEvent& event)
+        {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             entt::registry::context& ctx = registry->ctx();
 
@@ -243,7 +282,7 @@ namespace
             auto& activeCamera = ctx.get<ECS::Singletons::ActiveCamera>();
             auto& freeFlyingCameraSettings = ctx.get<ECS::Singletons::FreeflyingCameraSettings>();
             if (activeCamera.entity != freeFlyingCameraSettings.entity || !registry->valid(state.moverEntity))
-                return false;
+                return InputReply::Ignored;
 
             auto& transformSystem = ctx.get<ECS::TransformSystem>();
             auto& camera = registry->get<ECS::Components::Camera>(freeFlyingCameraSettings.entity);
@@ -262,7 +301,7 @@ namespace
             movementInfo.pitch = 0.0f;
             movementInfo.yaw = glm::radians(camera.yaw);
             unit.positionOrRotationIsDirty = true;
-            return true;
+            return InputReply::Consumed;
         });
     }
 
@@ -317,8 +356,8 @@ namespace
     ECS::Singletons::CharacterMovementIntent BuildIntent(entt::registry& registry, ECS::Singletons::CharacterControllerSingleton& state, bool isAlive)
     {
         ECS::Singletons::CharacterMovementIntent intent;
-        KeybindGroup* keybindGroup = state.keybindGroup;
-        if (!keybindGroup || !isAlive)
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        if (!isAlive || !inputActions->IsContextActive(state.inputContext))
             return intent;
 
         entt::registry::context& ctx = registry.ctx();
@@ -326,8 +365,8 @@ namespace
 
         if (state.controlMask.allowForwardBack)
         {
-            const bool moveForward = keybindGroup->IsKeybindPressed("Forward"_h);
-            const bool moveBackward = keybindGroup->IsKeybindPressed("Backward"_h);
+            const bool moveForward = inputActions->IsDown(state.moveForwardAction);
+            const bool moveBackward = inputActions->IsDown(state.moveBackwardAction);
             intent.mouseForward = orbitalCameraSettings && orbitalCameraSettings->mouseLeftDown && orbitalCameraSettings->mouseRightDown;
 
             const bool mouseForwardStarted = intent.mouseForward && !state.intent.mouseForward;
@@ -342,12 +381,12 @@ namespace
 
         if (state.controlMask.allowStrafe)
         {
-            intent.strafeLeft = keybindGroup->IsKeybindPressed("Left"_h);
-            intent.strafeRight = keybindGroup->IsKeybindPressed("Right"_h);
+            intent.strafeLeft = inputActions->IsDown(state.strafeLeftAction);
+            intent.strafeRight = inputActions->IsDown(state.strafeRightAction);
         }
 
         if (state.controlMask.allowJump || state.controlMask.allowAscendDescend)
-            intent.jumpOrAscend = keybindGroup->IsKeybindPressed("Upwards"_h);
+            intent.jumpOrAscend = inputActions->IsDown(state.jumpAction);
 
         if (state.controlMask.allowAscendDescend)
             intent.descend = state.intent.descend;
@@ -913,7 +952,7 @@ namespace ECS::Systems
         transformSystem.SetWorldPosition(state.controllerEntity, vec3(0.0f));
 
         InitCharacterController(registry, true);
-        InitInput(state, characterSingleton);
+        InitInput(state);
     }
 
     void CharacterController::Update(entt::registry& registry, f32)
@@ -930,7 +969,7 @@ namespace ECS::Systems
             InitCharacterController(registry, isLocal);
         });
 
-        if (!state.initialized || !state.character || !state.keybindGroup || !state.keybindGroup->IsActive())
+        if (!state.initialized || !state.character || !ServiceLocator::GetInputActionSystem()->IsContextActive(state.inputContext))
             return;
 
         auto& settings = ctx.get<Singletons::CharacterControllerSettings>();

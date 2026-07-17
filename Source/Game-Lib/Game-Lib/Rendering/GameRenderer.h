@@ -22,7 +22,6 @@ struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
 struct ImGuiStyle;
-class InputManager;
 class TerrainRenderer;
 class TerrainLoader;
 class TerrainManipulator;
@@ -54,7 +53,7 @@ public:
 class GameRenderer
 {
 public:
-    GameRenderer(InputManager* inputManager);
+    GameRenderer();
     ~GameRenderer();
 
     bool UpdateWindow(f32 deltaTime);
@@ -63,8 +62,10 @@ public:
 
     void ReloadShaders(bool forceRecompileAll);
 
-    bool AddCursor(u64 nameHash, u64 pathHash);
+    bool AddCursor(u64 nameHash, u64 pathHash, const std::string& texturePath);
     bool SetCursor(u64 nameHash, u32 imguiMouseCursor = 0);
+    u32 GetCursorRevision() const { return _cursorRevision; }
+    const std::string& GetCursorTexturePath() const { return _cursorTexturePath; }
     void HandleCursorPosition(f64 x, f64 y);
     void RestoreCursorPosition(const vec2& position);
     void CancelCursorRestore();
@@ -120,6 +121,7 @@ private:
     public:
         GLFWimage* image = nullptr;
         GLFWcursor* cursor = nullptr;
+        std::string texturePath;
     };
 
     Renderer::Renderer* _renderer = nullptr;
@@ -169,6 +171,9 @@ private:
     robin_hood::unordered_map<u32, u32> _themeNameHashToIndex;
 
     robin_hood::unordered_map<u64, Cursor> _nameHashToCursor;
+    std::string _cursorTexturePath;
+    u64 _currentCursorHash = 0;
+    u32 _cursorRevision = 0;
 
     robin_hood::unordered_map<u32, std::shared_ptr<Bytebuffer>> _shaderPackBuffers;
     robin_hood::unordered_map<u32, Renderer::ShaderEntry> _shaderNameHashToShaderEntry;

@@ -6,15 +6,14 @@ local nameplates =
 {
     entries = {},
     deadByUnitID = {},
-    localTargetUnitID = nil,
     localMoverUnitID = nil,
 };
 
-local LOCAL_PLAYER_NAME_COLOR = vector.create(0.22, 0.58, 0.88);
-local HOSTILE_UNIT_NAME_COLOR = vector.create(0.92, 0.20, 0.18);
+local LOCAL_PLAYER_NAME_COLOR = vector.create(96.0 / 255.0, 96.0 / 255.0, 255.0 / 255.0);
+local HOSTILE_UNIT_NAME_COLOR = vector.create(1.0, 0.0, 0.0);
 local UNFRIENDLY_UNIT_NAME_COLOR = vector.create(0.95, 0.48, 0.18);
-local NEUTRAL_UNIT_NAME_COLOR = vector.create(0.88, 0.76, 0.32);
-local FRIENDLY_UNIT_NAME_COLOR = vector.create(0.24, 0.82, 0.38);
+local NEUTRAL_UNIT_NAME_COLOR = vector.create(1.0, 1.0, 0.0);
+local FRIENDLY_UNIT_NAME_COLOR = vector.create(0.0, 1.0, 0.0);
 local DEAD_UNIT_NAME_COLOR = vector.create(0.5, 0.5, 0.5);
 
 local function GetUnitNameColor(unitID : number)
@@ -46,27 +45,18 @@ local function RefreshUnitNameColor(unitID : number, nameplate : any, force : bo
 end
 
 local function RegisterTemplates()
-    UI.RegisterTextTemplate("PlayerName",
-    {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
-        size = 11.0,
-        color = NEUTRAL_UNIT_NAME_COLOR,
-        borderSize = 0.4,
-        borderColor = vector.create(0.0, 0.0, 0.0),
-    });
-
     UI.RegisterTextTemplate("NameplateName",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
-        size = 12.0,
-        color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.0,
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
+        size = 13.0,
+        color = NEUTRAL_UNIT_NAME_COLOR,
+        borderSize = 0.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("NameplateHealth",
     {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(240.0/240.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,
@@ -115,14 +105,11 @@ local textDisplayModeCancelCallback = textDisplayModeOption:RegisterOnValueChang
     return true;
 end);
 
-local playerNameTextWidget = nil
-
 local function OnGameLoaded(eventID : number, data : any)
     RegisterTemplates();
 
     -- Ensure Nameplates Canvas is created
-    local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
-    nameplates.localTargetUnitID = nil;
+    UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 end
 
 local function OnGameUpdated(eventID : number, data : any)
@@ -158,7 +145,7 @@ local function OnUnitAdd(eventID : number, data : any)
 
     local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 125, 20, 0, {
         panelTemplate = "DialogBox",
-        textTemplate = "PlayerName",
+        textTemplate = "NameplateName",
 
         unitID = data.unitID,
         unitName = Unit.GetName(data.unitID)
@@ -179,28 +166,6 @@ local function OnUnitRemove(eventID : number, data : any)
     nameplate:Destroy();
     nameplates.entries[data.unitID] = nil;
     nameplates.deadByUnitID[data.unitID] = nil;
-end
-
-local function OnUnitTargetChanged(eventID : number, data : any)
-    if Unit.GetLocal() == data.unitID then
-        -- Remove highlight from previous target
-        if nameplates.localTargetUnitID ~= nil then
-            local previousNameplate = nameplates.entries[nameplates.localTargetUnitID];
-            if previousNameplate ~= nil then
-                previousNameplate:SetHighlighted(false);
-            end
-        end
-
-        -- Highlight new target
-        if data.targetID ~= nil then
-            local newNameplate = nameplates.entries[data.targetID];
-            if newNameplate ~= nil then
-                newNameplate:SetHighlighted(true);
-            end
-        end
-
-        nameplates.localTargetUnitID = data.targetID;
-    end
 end
 
 local function OnUnitReactionChanged(eventID : number, data : any)
@@ -231,6 +196,5 @@ RegisterEvent(GameEvent.Loaded, OnGameLoaded)
 RegisterEvent(GameEvent.Updated, OnGameUpdated)
 RegisterEvent(UnitEvent.Add, OnUnitAdd)
 RegisterEvent(UnitEvent.Remove, OnUnitRemove)
-RegisterEvent(UnitEvent.TargetChanged, OnUnitTargetChanged)
 RegisterEvent(UnitEvent.ReactionChanged, OnUnitReactionChanged)
 RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged)

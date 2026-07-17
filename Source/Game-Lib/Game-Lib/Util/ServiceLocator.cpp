@@ -3,7 +3,8 @@
 Application* ServiceLocator::_application = nullptr;
 PACT::PactStorage* ServiceLocator::_pactStorage = nullptr;
 Editor::EditorHandler* ServiceLocator::_editorHandler = nullptr;
-InputManager* ServiceLocator::_inputManager = nullptr;
+InputSystem* ServiceLocator::_inputSystem = nullptr;
+InputActionSystem* ServiceLocator::_inputActionSystem = nullptr;
 GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
 EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
@@ -29,10 +30,16 @@ void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
     _editorHandler = editorHandler;
 }
 
-void ServiceLocator::SetInputManager(InputManager* inputManager)
+void ServiceLocator::SetInputSystem(InputSystem* inputSystem)
 {
-    assert(_inputManager == nullptr);
-    _inputManager = inputManager;
+    assert(_inputSystem == nullptr);
+    _inputSystem = inputSystem;
+}
+
+void ServiceLocator::SetInputActionSystem(InputActionSystem* inputActionSystem)
+{
+    assert(_inputActionSystem == nullptr);
+    _inputActionSystem = inputActionSystem;
 }
 
 void ServiceLocator::SetGameRenderer(GameRenderer* gameRenderer)

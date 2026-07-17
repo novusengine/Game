@@ -80,7 +80,7 @@ namespace Scripting
         u64 cursorPathHash = Util::AssetPath::Hash(cursorPath);
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-        bool result = gameRenderer->AddCursor(cursorNameHash, cursorPathHash);
+        bool result = gameRenderer->AddCursor(cursorNameHash, cursorPathHash, cursorPath);
 
         zenith->Push(result);
         return 1;

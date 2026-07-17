@@ -1,25 +1,24 @@
 #pragma once
 #include <Base/Types.h>
-#include <entt/fwd.hpp>
+#include <entt/entity/entity.hpp>
 
 namespace ECS::Singletons
 {
     struct OrbitalCameraSettings
     {
     public:
-        entt::entity entity;
+        entt::entity entity = entt::null;
 
-        bool captureMouse;
-        bool captureMousePending;
-        bool captureMouseHasMoved;
-        bool captureMouseWasDragged;
+        bool captureMouse = false;
+        bool captureMousePending = false;
+        bool captureMouseHasMoved = false;
+        bool captureMouseWasDragged = false;
 
-        bool mouseLeftDown;
-        bool mouseRightDown;
+        bool mouseLeftDown = false;
+        bool mouseRightDown = false;
 
-        vec2 prevMousePosition;
-        vec2 captureStartMousePosition;
-        vec2 captureRestoreMousePosition;
+        vec2 captureStartMousePosition = vec2(0.0f);
+        vec2 captureRestoreMousePosition = vec2(0.0f);
         f64 captureStartTime = 0.0;
 
         vec3 cameraCurrentZoomOffset = vec3(0.0f, 0.0f, 0.0f);

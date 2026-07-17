@@ -99,7 +99,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("UnitFrameLevel",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf",
+        font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 7.0,
         color = vector.create(0.86, 0.82, 0.68),
         borderSize = 1.0,
@@ -108,37 +108,37 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("UnitFrameName",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 8.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("UnitFrameHealth",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
-        size = 8.0,
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        size = 9.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("UnitFrameResource",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
-        size = 7.0,
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        size = 8.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("UnitFrameAuraText",
     {
-        font = "Data/Fonts/OpenSans-Medium.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 9.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
     
@@ -174,7 +174,7 @@ local function RegisterTemplates()
 
     UI.RegisterTextTemplate("ActionBarButtonText",
     {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 1.0,

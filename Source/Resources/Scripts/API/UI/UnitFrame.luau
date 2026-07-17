@@ -115,15 +115,15 @@ local UNFRIENDLY_TARGET_BORDER_COLOR = vector.create(0.82, 0.32, 0.10);
 local DEAD_BORDER_COLOR = vector.create(0.26, 0.27, 0.25);
 
 local DEFAULT_TEXT_COLOR = vector.create(0.94, 0.94, 0.94);
-local HOSTILE_NAME_COLOR = vector.create(0.92, 0.20, 0.18);
+local HOSTILE_NAME_COLOR = vector.create(1.0, 0.0, 0.0);
 local UNFRIENDLY_NAME_COLOR = vector.create(0.95, 0.48, 0.18);
-local NEUTRAL_NAME_COLOR = vector.create(0.88, 0.76, 0.32);
-local FRIENDLY_NAME_COLOR = vector.create(0.35, 0.78, 0.43);
+local NEUTRAL_NAME_COLOR = vector.create(1.0, 1.0, 0.0);
+local FRIENDLY_NAME_COLOR = vector.create(0.0, 1.0, 0.0);
 local DEAD_IDENTITY_COLOR = vector.create(0.50, 0.50, 0.48);
 
 local TRIVIAL_LEVEL_COLOR = vector.create(0.52, 0.54, 0.52);
 local EASY_LEVEL_COLOR = vector.create(0.35, 0.74, 0.40);
-local EVEN_LEVEL_COLOR = vector.create(0.86, 0.82, 0.68);
+local EVEN_LEVEL_COLOR = vector.create(1.0, 1.0, 0.0);
 local DIFFICULT_LEVEL_COLOR = vector.create(0.95, 0.55, 0.18);
 local EXTREME_LEVEL_COLOR = vector.create(0.92, 0.20, 0.18);
 
@@ -185,7 +185,7 @@ local function GetLevelPresentation(unitLevel : number, playerLevel : number, re
         return tostring(unitLevel), EASY_LEVEL_COLOR;
     elseif levelDelta <= 2 then
         return tostring(unitLevel), EVEN_LEVEL_COLOR;
-    elseif levelDelta <= 6 then
+    elseif levelDelta <= 4 then
         return tostring(unitLevel), DIFFICULT_LEVEL_COLOR;
     elseif levelDelta <= 9 then
         return tostring(unitLevel), EXTREME_LEVEL_COLOR;
@@ -227,24 +227,37 @@ local function FormatNumber(value : number) : string
     return sign .. formatted;
 end
 
+local function GetAsciiUnitName(unitName : string) : string
+    local characters : { string } = {};
+    local isReplacingNonAscii = false;
+
+    for index = 1, #unitName do
+        local byte = string.byte(unitName, index);
+        local isPrintableAscii = byte >= 32 and byte <= 126;
+
+        if isPrintableAscii then
+            table.insert(characters, string.char(byte));
+            isReplacingNonAscii = false;
+        elseif not isReplacingNonAscii then
+            table.insert(characters, "?");
+            isReplacingNonAscii = true;
+        end
+    end
+
+    local asciiName = table.concat(characters);
+    return if asciiName == "" then "Unknown" else asciiName;
+end
+
 local function SetFittedName(nameText : TextWidget, unitName : string, maxWidth : number)
     nameText:SetText(unitName);
     if nameText:GetWidth() <= maxWidth then
         return;
     end
 
-    local characterCount = utf8.len(unitName);
-    if characterCount == nil then
-        nameText:SetText("…");
-        return;
-    end
-
+    local characterCount = #unitName;
     while characterCount > 0 do
         characterCount -= 1;
-
-        local endByte = utf8.offset(unitName, characterCount + 1);
-        local prefix = string.sub(unitName, 1, (endByte or (#unitName + 1)) - 1);
-        nameText:SetText(prefix .. "…");
+        nameText:SetText(string.sub(unitName, 1, characterCount) .. "...");
 
         if nameText:GetWidth() <= maxWidth then
             return;
@@ -429,8 +442,8 @@ local function SetupUnitFrameMethods(unitFrameTable : UnitFrame)
     end
 
     unitFrameTable.SetUnitName = function(self : UnitFrame, unitName : string)
-        self.unitName = unitName;
-        SetFittedName(self.nameText, unitName, self.maxNameWidth);
+        self.unitName = GetAsciiUnitName(unitName);
+        SetFittedName(self.nameText, self.unitName, self.maxNameWidth);
     end
 
     unitFrameTable.SetUnitLevel = function(self : UnitFrame, unitLevel : number, playerLevel : number?)
@@ -578,7 +591,7 @@ function unitFrameAPI.NewUnitFrame(parent : Widget, posX : number, posY : number
     local unitFrameTable : UnitFrame = {};
 
     unitFrameTable.unitID = unitFrameTemplateTable.unitID or -1;
-    unitFrameTable.unitName = unitFrameTemplateTable.unitName or "Unknown";
+    unitFrameTable.unitName = GetAsciiUnitName(unitFrameTemplateTable.unitName or "Unknown");
     unitFrameTable.unitLevel = unitFrameTemplateTable.unitLevel or 0;
     unitFrameTable.health = unitFrameTemplateTable.unitHealth or 50;
     unitFrameTable.maxHealth = unitFrameTemplateTable.unitMaxHealth or 100;

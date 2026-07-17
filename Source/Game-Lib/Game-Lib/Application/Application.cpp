@@ -21,6 +21,9 @@
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
+#include "Game-Lib/Input/ImGuiInputBridge.h"
+#include "Game-Lib/Input/InputActionSystem.h"
+#include "Game-Lib/Input/InputPerformanceTest.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
@@ -52,6 +55,8 @@
 #include <Base/Util/CPUInfo.h>
 
 #include <Filesystem/PactStorage.h>
+
+#include <Input/InputSystem.h>
 
 #include <MetaGen/Game/Lua/Lua.h>
 
@@ -120,8 +125,12 @@ Application::Application() : _messagesInbound(256), _messagesOutbound(256)
 }
 Application::~Application()
 {
+    delete _imguiInputBridge;
     delete _gameRenderer;
     delete _editorHandler;
+    delete _inputPerformanceTest;
+    delete _inputActionSystem;
+    delete _inputSystem;
     delete _ecsScheduler;
     delete _taskScheduler;
     delete _assetWriter;
@@ -242,6 +251,9 @@ void Application::Run()
 
             updateTimer.Reset();
             renderState.frameNumber++;
+
+            _inputSystem->BeginFrame();
+            _inputActionSystem->BeginFrame();
 
             bool shouldExit = !_gameRenderer->UpdateWindow(deltaTime);
             if (shouldExit)
@@ -394,12 +406,17 @@ bool Application::Init()
 
     ServiceLocator::SetTaskScheduler(_taskScheduler);
 
-    _inputManager = new InputManager();
-    ServiceLocator::SetInputManager(_inputManager);
+    _inputSystem = new InputSystem();
+    ServiceLocator::SetInputSystem(_inputSystem);
 
-    constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
-    KeybindGroup* imguiGroup = _inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
-    imguiGroup->SetActive(true);
+    _inputActionSystem = new InputActionSystem(*_inputSystem, "Data/Config/InputBindings.json");
+    ServiceLocator::SetInputActionSystem(_inputActionSystem);
+
+    const InputActionContextHandle globalInputContext = _inputActionSystem->CreateContext("Global", GameInputPriority::Global);
+    _inputActionSystem->SetContextActive(globalInputContext, true);
+
+    const InputActionContextHandle debugInputContext = _inputActionSystem->CreateContext("Debug", GameInputPriority::Debug);
+    _inputActionSystem->SetContextActive(debugInputContext, true);
 
     JoltTraceLoggingEnabled.store(CVAR_PhysicsLogJoltTraces.Get() != 0, std::memory_order_relaxed);
     CVAR_PhysicsLogJoltTraces.AddOnValueChanged([](const i32& value)
@@ -414,7 +431,8 @@ bool Application::Init()
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer(_inputManager);
+    _gameRenderer = new GameRenderer();
+    _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");
     _editorHandler = new Editor::EditorHandler();
@@ -425,6 +443,7 @@ bool Application::Init()
     _ecsScheduler->Init(_registries);
 
     ServiceLocator::SetGameConsole(new GameConsole());
+    _inputPerformanceTest = new InputPerformanceTest(*_inputSystem, *_inputActionSystem);
 
     // Initialize Databases
     DatabaseReload();
@@ -453,7 +472,7 @@ bool Application::Init()
 
         _luaManager->SetDeveloperMode(CVAR_DeveloperMode.Get() != 0);
 
-        CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client, "developerMode"_h, 
+        CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client, "developerMode"_h,
             [this](const i32& value)
             {
                 _luaManager->SetDeveloperMode(value != 0);
@@ -488,6 +507,14 @@ bool Application::Tick(f32 deltaTime)
     {
         ZoneScopedN("ImGuizmo::BeginFrame");
         ImGuizmo::BeginFrame();
+    }
+    {
+        ZoneScopedN("InputSystem::ProcessEvents");
+        _inputPerformanceTest->BeginFrame();
+        _inputPerformanceTest->BeginLiveDispatch();
+        _inputSystem->ProcessEvents();
+        _inputPerformanceTest->EndLiveDispatch();
+        _inputPerformanceTest->Update(deltaTime);
     }
 
     _editorHandler->BeginImGui();
@@ -524,7 +551,7 @@ bool Application::Tick(f32 deltaTime)
                 {
                     NC_LOG_ERROR("Failed to run Lua DoString");
                 }
-                
+
                 break;
             }
 

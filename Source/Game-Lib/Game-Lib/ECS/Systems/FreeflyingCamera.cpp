@@ -6,20 +6,27 @@
 #include "Game-Lib/ECS/Components/Camera.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 #include <Base/Util/DebugHandler.h>
 #include <Renderer/Window.h>
 
 #include <entt/entt.hpp>
-#include <imgui/imgui.h>
-#include <GLFW/glfw3.h>
 
 namespace ECS::Systems
 {
-    KeybindGroup* FreeflyingCamera::_keybindGroup = nullptr;
+    InputActionContextHandle FreeflyingCamera::_inputContext;
+    InputContextHandle FreeflyingCamera::_pointerInputContext;
+    InputActionHandle FreeflyingCamera::_moveForwardAction;
+    InputActionHandle FreeflyingCamera::_moveBackwardAction;
+    InputActionHandle FreeflyingCamera::_moveLeftAction;
+    InputActionHandle FreeflyingCamera::_moveRightAction;
+    InputActionHandle FreeflyingCamera::_moveUpAction;
+    InputActionHandle FreeflyingCamera::_moveDownAction;
+    InputActionHandle FreeflyingCamera::_altAction;
 
     void FreeflyingCamera::Init(entt::registry& registry)
     {
@@ -41,54 +48,48 @@ namespace ECS::Systems
             camera.pitch = 30.0f;
         }
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        _keybindGroup = inputManager->CreateKeybindGroup("FreeFlyingCamera", 10);
-        _keybindGroup->SetActive(true);
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        _inputContext = inputActions->CreateContext("FreeFlyingCamera", GameInputPriority::Gameplay);
+        inputActions->SetContextActive(_inputContext, true);
 
-        _keybindGroup->AddKeyboardCallback("Forward", GLFW_KEY_W, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Backward", GLFW_KEY_S, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Left", GLFW_KEY_A, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Right", GLFW_KEY_D, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Upwards", GLFW_KEY_E, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("Downwards", GLFW_KEY_Q, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("AltMod", GLFW_KEY_LEFT_ALT, KeybindAction::Press, KeybindModifier::Any, nullptr);
-        _keybindGroup->AddKeyboardCallback("ToggleMouseCapture", GLFW_KEY_ESCAPE, KeybindAction::Press, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
-        {
-            ECS::Util::CameraUtil::SetCaptureMouse(!settings.captureMouse);
+        _moveForwardAction = inputActions->RegisterAction(_inputContext, "FreeCameraForward", "Free Camera Forward", "Camera", InputBinding::Keyboard(Key::W, InputModifier::None, ModifierMatch::Any));
+        _moveBackwardAction = inputActions->RegisterAction(_inputContext, "FreeCameraBackward", "Free Camera Backward", "Camera", InputBinding::Keyboard(Key::S, InputModifier::None, ModifierMatch::Any));
+        _moveLeftAction = inputActions->RegisterAction(_inputContext, "FreeCameraLeft", "Free Camera Left", "Camera", InputBinding::Keyboard(Key::A, InputModifier::None, ModifierMatch::Any));
+        _moveRightAction = inputActions->RegisterAction(_inputContext, "FreeCameraRight", "Free Camera Right", "Camera", InputBinding::Keyboard(Key::D, InputModifier::None, ModifierMatch::Any));
+        _moveUpAction = inputActions->RegisterAction(_inputContext, "FreeCameraUp", "Free Camera Up", "Camera", InputBinding::Keyboard(Key::E, InputModifier::None, ModifierMatch::Any));
+        _moveDownAction = inputActions->RegisterAction(_inputContext, "FreeCameraDown", "Free Camera Down", "Camera", InputBinding::Keyboard(Key::Q, InputModifier::None, ModifierMatch::Any));
 
-            return true;
-        });
-        _keybindGroup->AddKeyboardCallback("Right Mouseclick", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [&settings](i32 key, KeybindAction action, KeybindModifier modifier)
+        _altAction = inputActions->RegisterAction(_inputContext, "FreeCameraSpeedModifier", "Free Camera Speed Modifier", "Camera", InputBinding::Keyboard(Key::LeftAlt, InputModifier::None, ModifierMatch::Any), { .rebindable = false });
+
+        inputActions->RegisterAction(_inputContext, "CaptureFreeCameraMouse", "Capture Free Camera Mouse", "Camera",
+            InputBinding::Mouse(MouseButton::Right, InputModifier::None, ModifierMatch::Any), [&settings](const InputActionEvent& event)
         {
-            if (!settings.captureMouse)
+            if (event.phase == InputPhase::Pressed && !settings.captureMouse)
             {
                 ECS::Util::CameraUtil::SetCaptureMouse(true);
-
-                InputManager* inputManager = ServiceLocator::GetInputManager();
-                settings.prevMousePosition = inputManager->GetMousePosition();
             }
-            return true;
+
+            return InputReply::Consumed;
         });
-        _keybindGroup->AddMousePositionCallback([&settings, &registry](f32 xPos, f32 yPos)
+
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+        _pointerInputContext = inputSystem->CreateContext("FreeFlyingCameraPointer", GameInputPriority::Gameplay, [&settings, &registry, inputActions](const InputEvent& event)
         {
-            if (settings.captureMouse)
+            if (event.type == InputEventType::CursorMove && settings.captureMouse)
             {
-                CapturedMouseMoved(registry, vec2(xPos, yPos));
+                CapturedMouseMoved(registry, event.delta);
+                return InputReply::Consumed;
             }
 
-            return settings.captureMouse;
-        });
-        _keybindGroup->AddMouseScrollCallback([&settings, &registry](f32 xPos, f32 yPos)
-        {
-            bool altIsDown = _keybindGroup->IsKeybindPressed("AltMod"_h);
-                    
-            if (altIsDown)
+            if (event.type == InputEventType::Scroll && inputActions->IsDown(_altAction))
             {
-                CapturedMouseScrolled(registry, vec2(xPos, yPos));
+                CapturedMouseScrolled(registry, event.delta);
+                return InputReply::Consumed;
             }
 
-            return altIsDown;
+            return InputReply::Ignored;
         });
+        inputSystem->SetContextActive(_pointerInputContext, true);
     }
 
     void FreeflyingCamera::Update(entt::registry& registry, f32 deltaTime)
@@ -110,32 +111,33 @@ namespace ECS::Systems
 
         vec3 cameraOffset = vec3(0.0f, 0.0f, 0.0f);
         // Input
-        if (_keybindGroup->IsKeybindPressed("Forward"_h))
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        if (inputActions->IsDown(_moveForwardAction))
         {
             cameraOffset += cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
-        if (_keybindGroup->IsKeybindPressed("Backward"_h))
+        if (inputActions->IsDown(_moveBackwardAction))
         {
             cameraOffset += -cameraTransform.GetLocalForward() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
-        if (_keybindGroup->IsKeybindPressed("Left"_h))
+        if (inputActions->IsDown(_moveLeftAction))
         {
             cameraOffset += -cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
-        if (_keybindGroup->IsKeybindPressed("Right"_h))
+        if (inputActions->IsDown(_moveRightAction))
         {
             cameraOffset += cameraTransform.GetLocalRight() * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
-        if (_keybindGroup->IsKeybindPressed("Upwards"_h))
+        if (inputActions->IsDown(_moveUpAction))
         {
             cameraOffset += vec3(0.0f, 1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
         }
-        if (_keybindGroup->IsKeybindPressed("Downwards"_h))
+        if (inputActions->IsDown(_moveDownAction))
         {
             cameraOffset += vec3(0.0f, -1.0f, 0.0f) * settings.cameraSpeed * deltaTime;
             camera.dirtyView = true;
@@ -149,9 +151,9 @@ namespace ECS::Systems
         tSystem.SetLocalRotation(activeCamera.entity, quat(glm::radians(eulerAngles)));
     }
 
-    void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& position)
+    void FreeflyingCamera::CapturedMouseMoved(entt::registry& registry, const vec2& delta)
     {
-        if (!_keybindGroup->IsActive())
+        if (!ServiceLocator::GetInputActionSystem()->IsContextActive(_inputContext))
             return;
 
         entt::registry::context& ctx = registry.ctx();
@@ -161,25 +163,18 @@ namespace ECS::Systems
 
         auto& camera = registry.get<Components::Camera>(activeCamera.entity);
 
-        if (settings.captureMouseHasMoved)
-        {
-            vec2 deltaPosition = settings.prevMousePosition - position;
-            const f32 mouseSensitivity = ECS::Util::CameraUtil::GetMouseSensitivity();
+        const f32 mouseSensitivity = ECS::Util::CameraUtil::GetMouseSensitivity();
 
-            camera.yaw += -deltaPosition.x * mouseSensitivity;
+        camera.yaw += delta.x * mouseSensitivity;
 
-            if (camera.yaw > 360)
-                camera.yaw -= 360;
-            else if (camera.yaw < 0)
-                camera.yaw += 360;
+        if (camera.yaw > 360)
+            camera.yaw -= 360;
+        else if (camera.yaw < 0)
+            camera.yaw += 360;
 
-            camera.pitch = Math::Clamp(camera.pitch - (deltaPosition.y * mouseSensitivity), -89.0f, 89.0f);
-            camera.dirtyView = true;
-        }
-        else
-            settings.captureMouseHasMoved = true;
-
-        settings.prevMousePosition = position;
+        camera.pitch = Math::Clamp(camera.pitch + (delta.y * mouseSensitivity), -89.0f, 89.0f);
+        camera.dirtyView = true;
+        settings.captureMouseHasMoved = true;
     }
 
     void FreeflyingCamera::CapturedMouseScrolled(entt::registry& registry, const vec2& position)

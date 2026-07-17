@@ -2,10 +2,10 @@
 
 #include <Base/Types.h>
 
+#include "Game-Lib/Input/InputActionSystem.h"
+
 #include <entt/entt.hpp>
 #include <glm/trigonometric.hpp>
-
-class KeybindGroup;
 
 namespace JPH
 {
@@ -115,7 +115,13 @@ namespace ECS::Singletons
     {
     public:
         JPH::CharacterVirtual* character = nullptr;
-        KeybindGroup* keybindGroup = nullptr;
+        InputActionContextHandle inputContext;
+        InputActionContextHandle cameraInputContext;
+        InputActionHandle moveForwardAction;
+        InputActionHandle moveBackwardAction;
+        InputActionHandle strafeLeftAction;
+        InputActionHandle strafeRightAction;
+        InputActionHandle jumpAction;
 
         f32 groundSnapGraceTimer = 0.0f;
         f32 appliedPitch = 0.0f;

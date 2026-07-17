@@ -76,6 +76,32 @@ local Cursors =
     { "unableitem", "texture/interface/cursor/unableitem.dds" }
 }
 
+local softwareCursor : Panel? = nil
+local cursorRevision = 0
+local softwareCursorEnabled = false
+
+local function UpdateSoftwareCursor()
+    if softwareCursor == nil then
+        return
+    end
+
+    local enabled = Input.IsSoftwareCursorEnabled()
+    if enabled ~= softwareCursorEnabled then
+        softwareCursorEnabled = enabled
+        softwareCursor:SetEnabled(enabled)
+    end
+
+    if not enabled then
+        return
+    end
+
+    local newRevision, texturePath = Input.GetCursorState(cursorRevision)
+    if newRevision ~= nil and texturePath ~= nil then
+        cursorRevision = newRevision
+        softwareCursor:SetBackground(texturePath)
+    end
+end
+
 local function RegisterCursors()
     for k, v in Cursors do
         local name = v[1]
@@ -89,10 +115,19 @@ end
 local function OnGameLoaded(eventID : number, data : any)
     RegisterCursors()
     SetCursor("point")
+
+    local cursorCanvas = UI.GetCanvas("CursorCanvas", 0, 0, 1920, 1080)
+    softwareCursor = cursorCanvas:NewPanel(0, 0, 48, 48, 0)
+    softwareCursor:SetEnabled(false)
+    softwareCursor:SetAnchor(0.0, 1.0)
+    softwareCursor:SetRelativePoint(0.0, 1.0)
+    UpdateSoftwareCursor()
 end
 
 local currentWorldCursor = "point"
 local function OnGameUpdated(eventID : number, data : any)
+    UpdateSoftwareCursor()
+
     if CursorInfo:HasItemInHand() then
         currentWorldCursor = ""
         return

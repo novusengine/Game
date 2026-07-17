@@ -7,12 +7,12 @@
 #include "Game-Lib/ECS/Components/UI/EventInputInfo.h"
 #include "Game-Lib/ECS/Components/UI/Panel.h"
 #include "Game-Lib/ECS/Components/UI/Widget.h"
-#include "Game-Lib/ECS/Singletons/InputSingleton.h"
 #include "Game-Lib/ECS/Singletons/UISingleton.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/ECS/Util/UIInputUtil.h"
 #include "Game-Lib/ECS/Util/Transform2D.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Scripting/Handlers/UIHandler.h"
@@ -21,14 +21,12 @@
 
 #include <Renderer/Renderer.h>
 
-#include <Input/InputManager.h>
-#include <Input/KeybindGroup.h>
+#include <Input/InputSystem.h>
 
 #include <Base/Util/DebugHandler.h>
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <entt/entt.hpp>
-#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <tracy/Tracy.hpp>
 
@@ -68,8 +66,10 @@ namespace ECS::Systems::UI
         {
             if (lhs.sortKey != rhs.sortKey)
                 return lhs.sortKey > rhs.sortKey;
+
             if (lhs.distanceToMouse != rhs.distanceToMouse)
                 return lhs.distanceToMouse < rhs.distanceToMouse;
+
             return entt::to_integral(lhs.entity) < entt::to_integral(rhs.entity);
         });
         return true;
@@ -83,8 +83,10 @@ namespace ECS::Systems::UI
     void BeginDebugSnapshot(Singletons::UISingleton& uiSingleton, Singletons::UIInputEventKind eventKind, const vec2& mousePosition, i32 debugLevel)
     {
         auto& snapshot = uiSingleton.inputDebugSnapshot;
+
         if (debugLevel < 3)
             snapshot.records.clear();
+
         snapshot.eventKind = eventKind;
         snapshot.mousePosition = mousePosition;
         snapshot.consumedWithoutAcceptedElement = false;
@@ -95,11 +97,13 @@ namespace ECS::Systems::UI
             const u32 availableRecords = Singletons::UIInputDebugSnapshot::MAX_RECORDS - static_cast<u32>(snapshot.records.size());
             const u32 count = std::min(static_cast<u32>(uiSingleton.allHoveredEntities.size()), availableRecords);
             snapshot.records.reserve(std::max(snapshot.records.capacity(), static_cast<size_t>(count)));
+
             for (u32 i = 0; i < count; i++)
             {
                 const auto& candidate = uiSingleton.allHoveredEntities[i];
                 snapshot.records.push_back({ candidate.entity, candidate.min, candidate.max, Singletons::UIInputDebugResult::Considered, candidate.sortKey, i });
             }
+
             snapshot.truncated += static_cast<u32>(uiSingleton.allHoveredEntities.size()) - count;
         }
     }
@@ -128,6 +132,7 @@ namespace ECS::Systems::UI
         if (auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(uiSingleton.clickedEntity))
         {
             eventInputInfo->isClicked = false;
+
             if (eventInputInfo->onClickTemplateHash != 0)
                 ECS::Util::UI::RefreshTemplate(&registry, uiSingleton.clickedEntity, *eventInputInfo);
         }
@@ -139,28 +144,26 @@ namespace ECS::Systems::UI
     {
         auto& uiSingleton = registry.ctx().emplace<Singletons::UISingleton>();
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("UI", 200);
-        keybindGroup->SetActive(true);
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
 
-        keybindGroup->AddKeyboardCallback("UI Click", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Click, KeybindModifier::Any, [&registry, inputManager](i32 key, KeybindAction action, KeybindModifier modifier)
+        auto handleLeftClick = [&registry, inputSystem](i32 key, bool isDown)
         {
             auto& ctx = registry.ctx();
             auto& uiSingleton = ctx.get<Singletons::UISingleton>();
 
-            bool isDown = action == KeybindAction::Press;
-
-            if (inputManager->IsCursorVirtual() || ImGui::GetIO().WantCaptureMouse)
+            if (inputSystem->IsMouseCaptured())
             {
                 if (!isDown)
                     CancelClickedEntity(registry, uiSingleton);
+
                 return false;
             }
 
             vec2 mousePos;
             const i32 debugLevel = GetUIInputDebugLevel();
-            if (!RebuildCandidates(registry, inputManager->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
+            if (!RebuildCandidates(registry, inputSystem->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
                 return false;
+
             BeginDebugSnapshot(uiSingleton, isDown ? Singletons::UIInputEventKind::Press : Singletons::UIInputEventKind::Release, mousePos, debugLevel);
 
             if (isDown)
@@ -257,16 +260,14 @@ namespace ECS::Systems::UI
             }
 
             return false;
-        });
+        };
 
-        keybindGroup->AddKeyboardCallback("UI Click", GLFW_MOUSE_BUTTON_RIGHT, KeybindAction::Click, KeybindModifier::Any, [&registry, inputManager](i32 key, KeybindAction action, KeybindModifier modifier)
+        auto handleRightClick = [&registry, inputSystem](i32 key, bool isDown)
         {
             auto& ctx = registry.ctx();
             auto& uiSingleton = ctx.get<Singletons::UISingleton>();
 
-            bool isDown = action == KeybindAction::Press;
-
-            if (inputManager->IsCursorVirtual() || ImGui::GetIO().WantCaptureMouse)
+            if (inputSystem->IsMouseCaptured())
             {
                 if (!isDown)
                     CancelClickedEntity(registry, uiSingleton);
@@ -275,9 +276,11 @@ namespace ECS::Systems::UI
 
             vec2 mousePos;
             const i32 debugLevel = GetUIInputDebugLevel();
-            if (!RebuildCandidates(registry, inputManager->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
+            if (!RebuildCandidates(registry, inputSystem->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
                 return false;
+
             BeginDebugSnapshot(uiSingleton, isDown ? Singletons::UIInputEventKind::Press : Singletons::UIInputEventKind::Release, mousePos, debugLevel);
+
             if (isDown)
             {
                 for (auto& pair : uiSingleton.allHoveredEntities)
@@ -372,20 +375,21 @@ namespace ECS::Systems::UI
             }
 
             return false;
-        });
+        };
 
-        keybindGroup->AddMouseScrollCallback([&registry, inputManager](f32 xPos, f32 yPos)
+        auto handleScroll = [&registry, inputSystem](const vec2& scrollDelta)
         {
             auto& ctx = registry.ctx();
             auto& uiSingleton = ctx.get<Singletons::UISingleton>();
 
-            if (inputManager->IsCursorVirtual() || ImGui::GetIO().WantCaptureMouse)
+            if (inputSystem->IsMouseCaptured())
                 return false;
 
             vec2 mousePos;
             const i32 debugLevel = GetUIInputDebugLevel();
-            if (!RebuildCandidates(registry, inputManager->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
+            if (!RebuildCandidates(registry, inputSystem->GetMousePosition(), uiSingleton, mousePos, debugLevel >= 3))
                 return false;
+
             BeginDebugSnapshot(uiSingleton, Singletons::UIInputEventKind::Wheel, mousePos, debugLevel);
 
             for (auto& pair : uiSingleton.allHoveredEntities)
@@ -413,8 +417,7 @@ namespace ECS::Systems::UI
 
                 if (hasInputEvent)
                 {
-                    vec2 scrollPos = vec2(xPos, yPos);
-                    ECS::Util::UI::CallLuaEvent(scrollEvent, Scripting::UI::UIInputEvent::MouseScroll, widget.scriptWidget, scrollPos);
+                    ECS::Util::UI::CallLuaEvent(scrollEvent, Scripting::UI::UIInputEvent::MouseScroll, widget.scriptWidget, scrollDelta);
 
                     if (hasFocusEvent)
                     {
@@ -433,38 +436,9 @@ namespace ECS::Systems::UI
             ECS::Util::UI::FocusWidgetEntity(&registry, entt::null);
 
             return false;
-        });
+        };
 
-        keybindGroup->AddMouseInputValidator("MouseUIInputValidator", [&registry, inputManager](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
-        {
-            auto& ctx = registry.ctx();
-            auto& uiSingleton = ctx.get<Singletons::UISingleton>();
-
-            if (uiSingleton.clickedEntity != entt::null && action == KeybindAction::Release)
-            {
-                return true;
-            }
-
-            if (inputManager->IsCursorVirtual() || ImGui::GetIO().WantCaptureMouse)
-                return false;
-
-            for (const auto& candidate : uiSingleton.allHoveredEntities)
-            {
-                const auto* eventInputInfo = registry.try_get<Components::UI::EventInputInfo>(candidate.entity);
-                if (eventInputInfo == nullptr)
-                    continue;
-
-                if (eventInputInfo->onClickTemplateHash != 0
-                    || eventInputInfo->onMouseDownEvent != -1
-                    || eventInputInfo->onMouseUpEvent != -1
-                    || eventInputInfo->onMouseHeldEvent != -1)
-                    return true;
-            }
-
-            return false;
-        });
-
-        keybindGroup->AddAnyUnicodeCallback([&registry](u32 unicode) -> bool
+        auto handleText = [&registry](u32 unicode)
         {
             auto& ctx = registry.ctx();
             auto& uiSingleton = ctx.get<Singletons::UISingleton>();
@@ -482,14 +456,13 @@ namespace ECS::Systems::UI
             }
 
             return false;
-        });
+        };
 
-        keybindGroup->AddKeyboardInputValidator("KeyboardUIInputValidator", [&registry](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+        auto handleKeyboard = [&registry](i32 key, InputPhase phase, InputModifier modifiers)
         {
             auto& ctx = registry.ctx();
             auto* uiSingleton = ctx.find<Singletons::UISingleton>();
-            auto* inputSingleton = ctx.find<Singletons::InputSingleton>();
-            if (!uiSingleton || !inputSingleton)
+            if (!uiSingleton)
                 return false;
 
             if (uiSingleton->focusedEntity != entt::null)
@@ -501,25 +474,45 @@ namespace ECS::Systems::UI
                     return false;
                 }
 
-                if (ECS::Util::UI::CallKeyboardEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, key, static_cast<i32>(action), static_cast<i32>(modifier)))
+                if (ECS::Util::UI::CallKeyboardEvent(eventInputInfo->onKeyboardEvent, widget->scriptWidget, key, static_cast<i32>(phase), static_cast<i32>(modifiers)))
                 {
                     return true;
                 }
             }
 
-            if (!ECS::Util::CameraUtil::IsCapturingMouse())
-            {
-                for (i32 keyboardEvent : inputSingleton->globalKeyboardEvents)
-                {
-                    if (ECS::Util::UI::CallKeyboardEvent(keyboardEvent, key, static_cast<i32>(action), static_cast<i32>(modifier)))
-                    {
-                        return true;
-                    }
-                }
-            }
-
             return false;
+        };
+
+        InputContextHandle inputContext = inputSystem->CreateContext("UI", GameInputPriority::UI,
+            [handleLeftClick = std::move(handleLeftClick),
+             handleRightClick = std::move(handleRightClick),
+             handleScroll = std::move(handleScroll),
+             handleText = std::move(handleText),
+             handleKeyboard = std::move(handleKeyboard)](const InputEvent& event)
+        {
+            if (event.type == InputEventType::Text)
+                return handleText(event.codepoint) ? InputReply::Consumed : InputReply::Ignored;
+
+            if (event.type == InputEventType::Scroll)
+                return handleScroll(event.delta) ? InputReply::Consumed : InputReply::Ignored;
+
+            if (event.type != InputEventType::Button)
+                return InputReply::Ignored;
+
+            if (event.control.device == InputDevice::Keyboard)
+                return handleKeyboard(event.control.code, event.phase, event.modifiers) ? InputReply::Consumed : InputReply::Ignored;
+
+            const bool isDown = event.phase == InputPhase::Pressed;
+            if (event.control == InputControl::Mouse(MouseButton::Left))
+                return handleLeftClick(event.control.code, isDown) ? InputReply::Consumed : InputReply::Ignored;
+
+            if (event.control == InputControl::Mouse(MouseButton::Right))
+                return handleRightClick(event.control.code, isDown) ? InputReply::Consumed : InputReply::Ignored;
+
+            return InputReply::Ignored;
         });
+
+        inputSystem->SetContextActive(inputContext, true);
     }
 
     // Walks `entity`'s widget subtree to collect hovered entities. Each widget's world rect is composed
@@ -561,10 +554,12 @@ namespace ECS::Systems::UI
             {
                 vec2 clipMin = worldMin + size * clipper->clipRegionMin;
                 vec2 clipRegionMax = worldMin + size * clipper->clipRegionMax;
+
                 if (!ECS::Util::UIInput::IsWithin(mousePos, clipMin, clipRegionMax))
                 {
                     if (discardedRecords != nullptr && hasDrawableRect && discardedRecords->size() < Singletons::UIInputDebugSnapshot::MAX_RECORDS)
                         discardedRecords->push_back({ childEntity, worldMin, cappedMax, Singletons::UIInputDebugResult::Clipped, widget.sortKey, 0 });
+
                     return;
                 }
             }
@@ -636,19 +631,17 @@ namespace ECS::Systems::UI
         auto& ctx = registry.ctx();
         auto& uiSingleton = ctx.get<Singletons::UISingleton>();
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
+        InputSystem* inputSystem = ServiceLocator::GetInputSystem();
         Renderer::Renderer* renderer = ServiceLocator::GetGameRenderer()->GetRenderer();
         const vec2 referenceSize(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
         vec2 mousePos;
-        const bool cursorIsVirtual = inputManager->IsCursorVirtual();
-        const bool hasValidMousePosition = ECS::Util::UIInput::PhysicalTopLeftToReference(inputManager->GetMousePosition(), renderer->GetRenderSize(), referenceSize, mousePos);
+        const bool cursorIsCaptured = inputSystem->IsMouseCaptured();
+        const bool hasValidMousePosition = ECS::Util::UIInput::PhysicalTopLeftToReference(inputSystem->GetMousePosition(), renderer->GetRenderSize(), referenceSize, mousePos);
 
         // Cursor-following visuals are independent of whether the cursor may
-        // currently interact with UI. In virtual/captured mode InputManager
+        // currently interact with UI. In captured mode InputSystem
         // retains the last physical position specifically for UI presentation.
-        const bool hasValidInputCandidates = !cursorIsVirtual
-            && hasValidMousePosition
-            && RebuildCandidates(registry, inputManager->GetMousePosition(), uiSingleton, mousePos, false);
+        const bool hasValidInputCandidates = !cursorIsCaptured && hasValidMousePosition && RebuildCandidates(registry, inputSystem->GetMousePosition(), uiSingleton, mousePos, false);
 
         auto& transform2DSystem = ECS::Transform2DSystem::Get(registry);
 
@@ -668,12 +661,14 @@ namespace ECS::Systems::UI
             {
                 const vec2 referenceSize(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
                 const vec2 scale = renderSize / referenceSize;
+
                 auto drawRect = [&](const vec2& min, const vec2& max, Color color)
                 {
                     const vec2 physicalMin = min * scale;
                     const vec2 physicalMax = max * scale;
                     debugRenderer->DrawBox2D((physicalMin + physicalMax) * 0.5f, (physicalMax - physicalMin) * 0.5f, color);
                 };
+
                 auto drawResult = [&](Singletons::UIInputDebugResult result, Color color)
                 {
                     for (const auto& record : uiSingleton.inputDebugSnapshot.records)
@@ -693,6 +688,7 @@ namespace ECS::Systems::UI
                     drawResult(Singletons::UIInputDebugResult::NotInteractable, Color::Red);
                     drawResult(Singletons::UIInputDebugResult::MissingBounds, Color::Red);
                 }
+
                 if (debugLevel >= 2)
                     drawResult(Singletons::UIInputDebugResult::Considered, Color::Yellow);
 
@@ -708,11 +704,13 @@ namespace ECS::Systems::UI
                             || eventInputInfo->onHoverBeginEvent != -1
                             || eventInputInfo->onHoverEndEvent != -1
                             || eventInputInfo->onHoverHeldEvent != -1;
+
                         const bool hasMouseEffect = eventInputInfo->onClickTemplateHash != 0
                             || eventInputInfo->onMouseDownEvent != -1
                             || eventInputInfo->onMouseUpEvent != -1
                             || eventInputInfo->onMouseHeldEvent != -1
                             || eventInputInfo->onMouseScrollEvent != -1;
+
                         if (!hasHoverEffect && !hasMouseEffect)
                             continue;
 
@@ -739,7 +737,7 @@ namespace ECS::Systems::UI
         // Debug draw all hovered entities
         bool imGuiWantsMouseInput = ImGui::GetIO().WantCaptureMouse;
 
-        if (cursorIsVirtual || imGuiWantsMouseInput)
+        if (cursorIsCaptured || imGuiWantsMouseInput)
             CancelClickedEntity(registry, uiSingleton);
 
         bool foundHoverEvent = false;
@@ -761,6 +759,7 @@ namespace ECS::Systems::UI
                     || eventInputInfo->onHoverBeginEvent != -1
                     || eventInputInfo->onHoverEndEvent != -1
                     || eventInputInfo->onHoverHeldEvent != -1;
+
                 const bool hasMouseEffect = eventInputInfo->onClickTemplateHash != 0
                     || eventInputInfo->onMouseDownEvent != -1
                     || eventInputInfo->onMouseUpEvent != -1
@@ -824,6 +823,7 @@ namespace ECS::Systems::UI
                 {
                     uiSingleton.hoveredEntity = entt::null;
                 }
+
                 foundHoverEvent = true;
                 break;
             }

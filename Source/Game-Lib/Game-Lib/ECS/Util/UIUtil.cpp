@@ -517,15 +517,15 @@ namespace ECS::Util
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo)
         {
             ResetTemplate(registry, entity);
-            if (eventInputInfo.isHovered && eventInputInfo.onHoverTemplateHash != -1)
+            if (eventInputInfo.isHovered && eventInputInfo.onHoverTemplateHash != 0)
             {
                 ApplyTemplateAdditively(registry, entity, eventInputInfo.onHoverTemplateHash);
             }
-            if (eventInputInfo.isClicked && eventInputInfo.onClickTemplateHash != -1)
+            if (eventInputInfo.isClicked && eventInputInfo.onClickTemplateHash != 0)
             {
                 ApplyTemplateAdditively(registry, entity, eventInputInfo.onClickTemplateHash);
             }
-            if (!eventInputInfo.isInteractable && eventInputInfo.onUninteractableTemplateHash != -1)
+            if (!eventInputInfo.isInteractable && eventInputInfo.onUninteractableTemplateHash != 0)
             {
                 ApplyTemplateAdditively(registry, entity, eventInputInfo.onUninteractableTemplateHash);
             }
@@ -1056,6 +1056,7 @@ namespace ECS::Util
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(widget->entity);
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(widget->entity);
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
+                registry->get_or_emplace<ECS::Components::UI::DirtyCanvasSort>(widget->canvasEntity);
             }
         }
 
@@ -1072,6 +1073,7 @@ namespace ECS::Util
             if (widgetComp.worldTransformIndex != std::numeric_limits<u32>().max())
             {
                 canvasRenderer->ReleaseWorldTransform(widgetComp.worldTransformIndex);
+                registry->get_or_emplace<ECS::Components::UI::DirtyCanvasSort>(widget->canvasEntity);
             }
 
             widgetComp.worldTransformIndex = std::numeric_limits<u32>().max();

@@ -26,11 +26,8 @@ type Nameplate = {
     background: Panel,
     fill: Panel,
     nameText: TextWidget,
-    nameTextColor: vector,
     healthText: TextWidget,
-    healthTextColor: vector,
     standaloneNameText: TextWidget,
-    standaloneNameTextColor: vector,
 
     -- Methods
     Destroy: (self: Nameplate) -> (),
@@ -146,8 +143,6 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.SetNameColor = function(self : Nameplate, color : vector)
-        self.nameTextColor = color;
-        self.standaloneNameTextColor = color;
         self.nameText:SetColor(color);
         self.standaloneNameText:SetColor(color);
     end
@@ -200,22 +195,6 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         nameplateTable.healthText:SetText(text);
     end
 
-    nameplateTable.SetHighlighted = function(self : Nameplate, highlighted : boolean)
-
-        local baseStandaloneColor = if highlighted then self.standaloneNameTextColor * vector.create(1.25, 1.25, 1.25) else self.standaloneNameTextColor;
-        baseStandaloneColor = vector.min(baseStandaloneColor, vector.create(1.0, 1.0, 1.0));
-
-        local baseNameColor = if highlighted then self.nameTextColor * vector.create(1.25, 1.25, 1.25) else self.nameTextColor;
-        baseNameColor = vector.min(baseNameColor, vector.create(1.0, 1.0, 1.0));
-
-        local baseHealthColor = if highlighted then self.healthTextColor * vector.create(1.25, 1.25, 1.25) else self.healthTextColor;
-        baseHealthColor = vector.min(baseHealthColor, vector.create(1.0, 1.0, 1.0));
-
-        self.standaloneNameText:SetColor(baseStandaloneColor);
-        self.nameText:SetColor(baseNameColor);
-        self.healthText:SetColor(baseHealthColor);
-    end
-
     return nameplateTable;
 end
 
@@ -256,19 +235,16 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     nameplateTable.nameText = nameplateTable.border:NewText(nameplateTable.unitName, 5, 2, 0, "NameplateName");
     nameplateTable.nameText:SetAnchor(0.0, 1.0);
     nameplateTable.nameText:SetRelativePoint(0.0, 0.0);
-    nameplateTable.nameTextColor = nameplateTable.nameText:GetColor();
 
     -- Create health text
     nameplateTable.healthText = nameplateTable.background:NewText("1000 (100%)", 0, 3, 0, "NameplateHealth");
     nameplateTable.healthText:SetAnchor(1.0, 0.5);
     nameplateTable.healthText:SetRelativePoint(1.0, 0.5);
-    nameplateTable.healthTextColor = nameplateTable.healthText:GetColor();
 
     -- Create standalone name text
-    nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 0, 4, 0, "PlayerName");
+    nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 0, 4, 0, "NameplateName");
     nameplateTable.standaloneNameText:SetAnchor(0.5, 0.0);
     nameplateTable.standaloneNameText:SetRelativePoint(0.5, 0.0);
-    nameplateTable.standaloneNameTextColor = nameplateTable.standaloneNameText:GetColor();
 
     nameplateTable = SetupNameplateMethods(nameplateTable);
 

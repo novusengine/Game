@@ -13,7 +13,10 @@ namespace Editor
 {
     class EditorHandler;
 }
-class InputManager;
+class ImGuiInputBridge;
+class InputActionSystem;
+class InputPerformanceTest;
+class InputSystem;
 class GameRenderer;
 class ModelLoader;
 
@@ -65,7 +68,10 @@ private:
     std::atomic_bool _isRunning = false;
     std::atomic_bool _exitRequested = false;
 
-    InputManager* _inputManager = nullptr;
+    InputSystem* _inputSystem = nullptr;
+    InputActionSystem* _inputActionSystem = nullptr;
+    InputPerformanceTest* _inputPerformanceTest = nullptr;
+    ImGuiInputBridge* _imguiInputBridge = nullptr;
     GameRenderer* _gameRenderer = nullptr;
 
     Editor::EditorHandler* _editorHandler = nullptr;

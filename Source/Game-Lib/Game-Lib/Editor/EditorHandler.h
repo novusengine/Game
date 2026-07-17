@@ -1,6 +1,5 @@
 #pragma once
 #include <Base/Types.h>
-#include <Input/InputManager.h>
 
 namespace Editor
 {
