@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
+#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
@@ -679,7 +680,16 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
 
         params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
 
-        params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+        if (params.svsmPass && params.svsmFillArgsBuffer != Renderer::BufferMutableResource::Invalid())
+        {
+            // Finalize zeroed the group count for rings with no page work this frame
+            u32 argsOffset = (viewIndex - 1) * ShadowRenderer::SVSM_FILL_ARGS_VIEW_STRIDE + (keepDynamic ? ShadowRenderer::SVSM_FILL_ARGS_DYNAMIC_OFFSET : 0);
+            params.commandList->DispatchIndirect(params.svsmFillArgsBuffer, argsOffset);
+        }
+        else
+        {
+            params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+        }
 
         params.commandList->EndPipeline(pipeline);
         params.commandList->PopMarker();
@@ -904,8 +914,9 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
         // SVSM caster split: rebuild the shared buffers with only dynamic instances and draw them
         // into the dynamic pool. Runs after the static readback copies so the perf stats show the
-        // static (dominant) counts. Views without recent live dynamic pages skip the whole phase
-        if (params.svsmSplitFills && params.enableDrawing && i > 0 && params.svsmDynamicViewActive[i])
+        // static (dominant) counts. Rings without resident dynamic pages cost a zero-group
+        // indirect fill and a zero-count draw (Finalize's fill args, same-frame GPU truth)
+        if (params.svsmSplitFills && params.enableDrawing && i > 0)
         {
             params.commandList->PushMarker("Dynamic", Color::PastelOrange);
 

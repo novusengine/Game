@@ -141,10 +141,11 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
             _svsmPoolNeedsClear = true; // Fresh VRAM is garbage that must never be sampled, zero both once
         }
 
+        // Diagnostics only (perf editor stats), rendering decisions never read this — it is a
+        // frame old, the GPU gates its own per-view work through Finalize's fill dispatch args
         u32* svsmData = static_cast<u32*>(_renderer->MapBuffer(_svsmDataReadBackBuffer));
         if (svsmData != nullptr)
         {
-            memcpy(_svsmDynamicLivePrev, &_svsmDataReadBack[196], sizeof(_svsmDynamicLivePrev)); // SVSMDataOffsets::StatsDynamicLive
             memcpy(_svsmDataReadBack, svsmData, sizeof(u32) * SVSM_DATA_UINT_COUNT);
         }
         _renderer->UnmapBuffer(_svsmDataReadBackBuffer);
@@ -436,6 +437,7 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             data.dynamicAABBBuffer = builder.Write(_svsmDynamicAABBBuffer, BufferUsage::COMPUTE);
             data.svsmDataReadBackBuffer = builder.Write(_svsmDataReadBackBuffer, BufferUsage::TRANSFER);
             data.dynamicValidateReadBackBuffer = builder.Write(_svsmDynamicValidateReadBackBuffer, BufferUsage::TRANSFER);
+            builder.Write(_svsmFillArgsBuffer, BufferUsage::COMPUTE); // Finalize writes the per-view fill dispatch args
             data.pagePool = builder.Write(_svsmPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
             data.dynamicPagePool = builder.Write(_svsmDynamicPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
@@ -477,8 +479,8 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
                 u32 dynamicPoolPagesPerRow;
                 u32 renderBudget;
                 u32 dynamicPhase;
-                u32 padding3;
-                u32 padding4;
+                u32 fillInstanceCount;
+                u32 fillCellCount;
             };
 
             CVarSystem* cvarSystem = CVarSystem::Get();
@@ -509,6 +511,10 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             constants->dynamicPoolPagesPerRow = dynamicSplit ? dynamicPoolPagesPerRow : 0;
             constants->renderBudget = static_cast<u32>(glm::max(CVAR_SVSMRenderBudget.Get(), 0));
             constants->dynamicPhase = 0;
+            // The same record-time counts the geometry passes size their fills from, Finalize
+            // turns them into per-view indirect dispatch args gated on this frame's page stats
+            constants->fillInstanceCount = _modelRenderer->GetOpaqueCullingResources().GetNumInstances();
+            constants->fillCellCount = _terrainRenderer->GetNumDrawCalls();
 
             if (_svsmPoolNeedsClear)
             {
@@ -1077,6 +1083,25 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         _svsmDynamicPageClearDescriptorSet.Bind("_clearList"_h, _svsmDynamicClearListBuffer);
         _svsmPageTableDebugDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
         // _srcCameras / _depth / _target / _rwCameras / _pagePool are bound per frame, those resources can be recreated
+
+        // Per-view fill dispatch args written by Finalize, consumed by the geometry passes'
+        // DispatchIndirect: per clipmap 3 x uvec3 (model static, model dynamic, terrain static).
+        // Prefilled with zero groups so a pre-Finalize consumer launches nothing
+        Renderer::BufferDesc fillArgsDesc;
+        fillArgsDesc.name = "SVSMFillDispatchArgs";
+        fillArgsDesc.size = SVSM_FILL_ARGS_VIEW_STRIDE * SVSM_MAX_CLIPMAPS;
+        fillArgsDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER;
+        _svsmFillArgsBuffer = _renderer->CreateAndFillBuffer(_svsmFillArgsBuffer, fillArgsDesc, [](void* mappedMemory, size_t size)
+        {
+            u32* values = static_cast<u32*>(mappedMemory);
+            for (u32 i = 0; i < SVSM_MAX_CLIPMAPS * 9; i += 3)
+            {
+                values[i + 0] = 0;
+                values[i + 1] = 1;
+                values[i + 2] = 1;
+            }
+        });
+        _svsmFinalizeDescriptorSet.Bind("_fillDispatchArgs"_h, _svsmFillArgsBuffer);
 
         bufferDesc.name = "SVSMDataReadBack";
         bufferDesc.size = sizeof(u32) * SVSM_DATA_UINT_COUNT;

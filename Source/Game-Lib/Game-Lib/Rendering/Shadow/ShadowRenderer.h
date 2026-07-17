@@ -65,16 +65,10 @@ public:
     // binds leave a hole) and again if the cameras buffer is ever recreated
     void BindCameraBuffers(RenderResources& resources);
 
-    // Current-frame CPU knowledge: with no dynamic casters at all, the dynamic fills/draws skip entirely
+    // Current-frame CPU knowledge: with no dynamic casters at all, the dynamic fills/draws skip
+    // entirely. Per-view skipping is GPU-driven (Finalize's fill dispatch args) — a readback-based
+    // per-view skip is a frame late and drops freshly acquired dynamic pages' draws for a frame
     bool HasSVSMDynamicCasters() const { return !_svsmDynamicAABBs.empty(); }
-
-    // True if the clipmap had live dynamic pages in either of the last two frames (readback is one
-    // frame old, the second frame is hysteresis). Inactive views skip their dynamic fill+draw,
-    // a caster entering a fresh ring renders at most one frame late
-    bool GetSVSMDynamicViewActive(u32 clipmapIndex) const
-    {
-        return _svsmDataReadBack[196 + clipmapIndex] != 0 || _svsmDynamicLivePrev[clipmapIndex] != 0; // SVSMDataOffsets::StatsDynamicLive
-    }
 
     // CPU-side caster classification counts, rebuilt each Update
     void GetSVSMCasterStats(u32& outDynamicCasters, u32& outAnimatedCasters, u32& outDroppedAABBs) const
@@ -91,6 +85,13 @@ public:
     Renderer::ImageID GetSVSMPagePool() const { return _svsmPagePool; }
     Renderer::BufferID GetSVSMDynamicPageTableBuffer() const { return _svsmDynamicPageTableBuffer; }
     Renderer::ImageID GetSVSMDynamicPagePool() const { return _svsmDynamicPagePool; }
+
+    // Finalize-written per-view fill dispatch args: per clipmap 3 x uvec3 (model static fill,
+    // model dynamic fill, terrain static fill), byte stride SVSM_FILL_ARGS_VIEW_STRIDE
+    Renderer::BufferID GetSVSMFillArgsBuffer() const { return _svsmFillArgsBuffer; }
+    static constexpr u32 SVSM_FILL_ARGS_VIEW_STRIDE = 3 * 3 * sizeof(u32);
+    static constexpr u32 SVSM_FILL_ARGS_DYNAMIC_OFFSET = 3 * sizeof(u32);
+    static constexpr u32 SVSM_FILL_ARGS_TERRAIN_OFFSET = 6 * sizeof(u32);
 
     // For the material pass LIGHT set bindings, which must stay valid before the pools exist.
     // Nothing samples the placeholder while the page tables have no resident entries
@@ -149,13 +150,13 @@ private:
     Renderer::BufferID _svsmDynamicFreeListBuffer;
     Renderer::BufferID _svsmDynamicClearListBuffer;
     Renderer::BufferID _svsmDynamicAABBBuffer;
-    Renderer::BufferID _svsmDataReadBackBuffer;
+    Renderer::BufferID _svsmDataReadBackBuffer; // Diagnostics only (perf editor stats), no rendering decision reads it
     Renderer::BufferID _svsmDynamicValidateReadBackBuffer; // svsmValidateDynamic one-shot: dynamic table + free list
+    Renderer::BufferID _svsmFillArgsBuffer;
     Renderer::ImageID _svsmPagePool;
     Renderer::ImageID _svsmDynamicPagePool;
     Renderer::ImageID _svsmPagePoolPlaceholder;
     u32 _svsmDataReadBack[SVSM_DATA_UINT_COUNT] = { 0 };
-    u32 _svsmDynamicLivePrev[SVSM_MAX_CLIPMAPS] = { 0 }; // The readback generation before the current one, for skip hysteresis
 
     std::vector<vec4> _svsmDirtyAABBs;   // Static invalidation (min, max) pairs, uploaded by the update pass
     std::vector<vec4> _svsmDynamicAABBs; // This frame's dynamic caster (min, max) pairs

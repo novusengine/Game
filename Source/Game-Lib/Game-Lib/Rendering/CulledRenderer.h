@@ -322,7 +322,11 @@ protected:
         bool svsmSplitFills = false;
         std::function<void(DrawParams&)> drawCallbackDynamic;
         Renderer::BufferMutableResource svsmDynamicDrawCountReadBackBuffer; // Per-view dynamic surviving counts for the perf editor
-        bool svsmDynamicViewActive[Renderer::Settings::MAX_VIEWS] = { false }; // Views without recent live dynamic pages skip their dynamic fill+draw
+
+        // Finalize-written per-view fill dispatch args: rings with no dirty static pages / no
+        // resident dynamic pages this frame get zero-group fills. Same-frame GPU truth — a
+        // CPU/readback gate here is a frame late and flickers freshly acquired dynamic pages
+        Renderer::BufferMutableResource svsmFillArgsBuffer;
     };
     void GeometryPass(GeometryPassParams& params);
     void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic); // Shared-buffer rebuild from a view's bitmask slice

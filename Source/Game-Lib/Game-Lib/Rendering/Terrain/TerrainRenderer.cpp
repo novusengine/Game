@@ -603,6 +603,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
         Renderer::ImageMutableResource pagePool;
         Renderer::BufferResource svsmData;
         Renderer::BufferResource pageTable;
+        Renderer::BufferMutableResource svsmFillArgsBuffer;
 
         Renderer::BufferMutableResource culledInstanceBuffer;
 
@@ -623,6 +624,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
             data.pagePool = builder.Write(shadowRenderer->GetSVSMPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
             data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
+            data.svsmFillArgsBuffer = builder.Write(shadowRenderer->GetSVSMFillArgsBuffer(), BufferUsage::COMPUTE); // Consumed by DispatchIndirect in the per-view fills
 
             builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
@@ -693,6 +695,10 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                     fillParams.diffAgainstPrev = false;
                     fillParams.currentBitmaskIndex = frameIndex;
                     fillParams.fillSet = data.fillSet;
+
+                    // Finalize zeroed the group count for rings with no dirty pages this frame
+                    fillParams.fillArgsBuffer = data.svsmFillArgsBuffer;
+                    fillParams.fillArgsByteOffset = (i - 1) * ShadowRenderer::SVSM_FILL_ARGS_VIEW_STRIDE + ShadowRenderer::SVSM_FILL_ARGS_TERRAIN_OFFSET;
 
                     Profiled("Fill", i, [&] { FillDrawCalls(frameIndex, graphResources, commandList, fillParams); });
                     commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
@@ -1496,7 +1502,14 @@ void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResource
     // Bind descriptorset
     commandList.BindDescriptorSet(params.fillSet, frameIndex);
 
-    commandList.Dispatch((params.cellCount + 31) / 32, 1, 1);
+    if (params.fillArgsBuffer != Renderer::BufferMutableResource::Invalid())
+    {
+        commandList.DispatchIndirect(params.fillArgsBuffer, params.fillArgsByteOffset);
+    }
+    else
+    {
+        commandList.Dispatch((params.cellCount + 31) / 32, 1, 1);
+    }
 
     commandList.EndPipeline(pipeline);
     commandList.PopMarker();

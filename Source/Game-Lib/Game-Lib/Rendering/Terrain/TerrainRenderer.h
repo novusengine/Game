@@ -116,6 +116,11 @@ private:
         u32 currentBitmaskIndex = 0;
 
         Renderer::DescriptorSetResource fillSet;
+
+        // When set the fill dispatches indirectly from these GPU-written args (SVSM per-view
+        // gating), zero groups for views with no page work this frame
+        Renderer::BufferMutableResource fillArgsBuffer;
+        u32 fillArgsByteOffset = 0;
     };
     void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);
 

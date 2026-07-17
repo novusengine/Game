@@ -1014,6 +1014,7 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
         Renderer::BufferMutableResource triangleCountReadBackBuffer;
 
         Renderer::BufferMutableResource svsmDynamicDrawCountReadBackBuffer;
+        Renderer::BufferMutableResource svsmFillArgsBuffer;
 
         Renderer::DescriptorSetResource globalSet;
         Renderer::DescriptorSetResource modelSet;
@@ -1032,6 +1033,7 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
             data.pagePool = builder.Write(shadowRenderer->GetSVSMPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
             data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
+            data.svsmFillArgsBuffer = builder.Write(shadowRenderer->GetSVSMFillArgsBuffer(), BufferUsage::COMPUTE); // Consumed by DispatchIndirect in the per-view fills
             if (splitFills)
             {
                 data.dynamicPagePool = builder.Write(shadowRenderer->GetSVSMDynamicPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
@@ -1124,15 +1126,9 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
             params.svsmExtent = uvec2(virtualSize, virtualSize);
 
             params.svsmSplitFills = splitFills;
+            params.svsmFillArgsBuffer = data.svsmFillArgsBuffer;
             if (splitFills)
             {
-                // Rings with no live dynamic pages the last two frames skip their dynamic phase,
-                // a caster entering a fresh ring renders at most one frame late
-                for (u32 view = 1; view <= numClipmaps; view++)
-                {
-                    params.svsmDynamicViewActive[view] = shadowRenderer->GetSVSMDynamicViewActive(view - 1);
-                }
-
                 params.svsmDynamicDrawCountReadBackBuffer = data.svsmDynamicDrawCountReadBackBuffer;
                 params.drawCallbackDynamic = [&](DrawParams& drawParams)
                 {

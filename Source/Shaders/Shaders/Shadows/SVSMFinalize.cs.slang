@@ -1,20 +1,27 @@
 #include "Include/Camera.inc.slang"
 #include "Shadows/SVSM.inc.slang"
 
-// Last SVSM dispatch, single thread, runs after UpdateB so the dirty rects are known: writes the
-// clipmap render cameras into the shared cameras buffer that culling and the page render passes
-// read. Mirrors the CascadeFitCameras tail, minus the texel snap: the window center is aligned to
-// the absolute page grid by construction.
+// Last SVSM dispatch, single thread, runs after UpdateB and DynamicUpdate so the dirty rects and
+// per-ring page stats are final: writes the clipmap render cameras into the shared cameras buffer
+// that culling and the page render passes read, and the per-view fill dispatch args that gate the
+// geometry passes' instance fills. Mirrors the CascadeFitCameras tail, minus the texel snap: the
+// window center is aligned to the absolute page grid by construction.
 //
 // The camera MATRICES always map the full clipmap window (the render viewport spans the whole
 // virtual texture). The cull PLANES are tightened to this frame's dirty page rect, XY-tight is
 // safe for an ortho light (a caster's light-space XY equals its shadow's XY); the near plane is
 // swept toward the sun by the caster margin, depth clamp pancakes those casters at render time.
+//
+// The fill args are the same-frame GPU truth the per-view skip must run on: a ring with no DIRTY
+// static pages skips its static fill, a ring with no resident dynamic pages skips its dynamic
+// fill. Gating this from a CPU readback (one frame old) drops freshly acquired dynamic pages'
+// draws for a frame — resident-but-undrawn pages read lit and flicker dynamic shadows out
 
 [[vk::push_constant]] SVSMConstants _constants;
 
 [[vk::binding(0, PER_PASS)]] RWStructuredBuffer<Camera> _rwCameras; // Same buffer as the global _cameras, element 0 = main camera
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<SVSMData> _svsmData;
+[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _fillDispatchArgs; // Per clipmap: 3 x uvec3 (model static fill, model dynamic fill, terrain static fill)
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -23,6 +30,27 @@ void main()
     float3 lightDirection = _constants.lightDirection.xyz;
     float3x3 lightRotation = BuildLightRotation(lightDirection);
     float3 upDir = StableUp(lightDirection);
+
+    // Per-view fill dispatch args, zero groups for rings with no page work this frame
+    uint modelFillGroups = (_constants.fillInstanceCount + 31) / 32;
+    uint terrainFillGroups = (_constants.fillCellCount + 31) / 32;
+    for (uint k = 0; k < 8; k++)
+    {
+        bool inUse = k < _constants.numClipmaps;
+        bool hasDirty = inUse && _svsmData[0].statsDirty[k] != 0;
+        bool hasDynamic = inUse && _svsmData[0].statsDynamicLive[k] != 0;
+
+        uint base = k * 9;
+        _fillDispatchArgs[base + 0] = hasDirty ? modelFillGroups : 0;
+        _fillDispatchArgs[base + 1] = 1;
+        _fillDispatchArgs[base + 2] = 1;
+        _fillDispatchArgs[base + 3] = hasDynamic ? modelFillGroups : 0;
+        _fillDispatchArgs[base + 4] = 1;
+        _fillDispatchArgs[base + 5] = 1;
+        _fillDispatchArgs[base + 6] = hasDirty ? terrainFillGroups : 0;
+        _fillDispatchArgs[base + 7] = 1;
+        _fillDispatchArgs[base + 8] = 1;
+    }
 
     float zRangeMin = _svsmData[0].zRangeMin;
     float zRangeMax = _svsmData[0].zRangeMax;

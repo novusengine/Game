@@ -39,8 +39,8 @@ struct SVSMConstants
     uint dynamicPoolPagesPerRow; // Caster-split dynamic pool pages per row, 0 while the split is off
     uint renderBudget;      // Static pages rendered per frame, 0 = unlimited; the coarsest two rings are exempt
     uint dynamicPhase;      // DynamicUpdate: 0 = release pages, 1 = acquire + bookkeeping. Split so free-list pushes and pops never share a dispatch
-    uint padding3;
-    uint padding4;
+    uint fillInstanceCount; // Model instances this frame, Finalize sizes the per-view fill dispatch args from it
+    uint fillCellCount;     // Terrain cells this frame, same purpose
 };
 
 // Page table entry bits. A zeroed entry is a free slot
