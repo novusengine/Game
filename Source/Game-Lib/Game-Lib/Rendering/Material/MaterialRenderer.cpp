@@ -20,7 +20,7 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_Int CVAR_VisibilityBufferDebugID(CVarCategory::Client | CVarCategory::Rendering, "visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - ShadowCascade, 5 - SVSM Compare Margin", 0);
+AutoCVar_Int CVAR_VisibilityBufferDebugID(CVarCategory::Client | CVarCategory::Rendering, "visibilityBufferDebugID", "Debug visualizers: 0 - Off, 1 - TypeID, 2 - ObjectID, 3 - TriangleID, 4 - Retired, 5 - SVSM Compare Margin", 0);
 AutoCVar_ShowFlag CVAR_DrawTerrainWireframe(CVarCategory::Client | CVarCategory::Rendering, "drawTerrainWireframe", "Draw terrain wireframe", ShowFlag::DISABLED);
 AutoCVar_ShowFlag CVAR_EnableFog(CVarCategory::Client | CVarCategory::Rendering, "enableFog", "Toggle fog", ShowFlag::DISABLED);
 AutoCVar_VecFloat CVAR_FogColor(CVarCategory::Client | CVarCategory::Rendering, "fogColor", "Change fog color", vec4(0.33f, 0.2f, 0.38f, 1.0f), CVarFlags::None);
@@ -209,10 +209,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     commandList.BindDescriptorSet(data.terrainSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     break;
-                case 4: // CascadeID reconstructs vertex data and reads the cascade cameras
-                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
-                    commandList.BindDescriptorSet(data.terrainSet, frameIndex);
-                    commandList.BindDescriptorSet(data.modelSet, frameIndex);
+                case 4: // Retired (was CascadeID), the variant only reads the visibility buffer
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     break;
                 case 5: // SVSM compare margin reconstructs vertex data and samples the virtual shadow map

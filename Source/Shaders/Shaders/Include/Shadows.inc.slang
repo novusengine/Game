@@ -100,6 +100,16 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
     float camMinusZAnchor = _svsmData[0].configCamMinusZAnchor;
     float compareBias = shadowSettings.svsmConstantBias / zRangeLength;
 
+    // Receivers below the window's far plane have no representable occluder: the raster clamps
+    // their casters away (pages stay 0 = lit), but an unclamped receiver depth goes negative and
+    // then even EMPTY texels compare as shadowing — the camera-anchored window climbs with the
+    // camera, so terrain more than zHalfRange below it (along the light axis) blacks out square.
+    // No data means lit. The Z window is global, so no ring can do better — bail out entirely
+    if (zHalf - (mul(relativePos, lightRotation).z + camMinusZAnchor) < 0.0f)
+    {
+        return 1.0f;
+    }
+
     float staticFactor = 1.0f;
     for (uint k = uint(selectedClipmap); k < numClipmaps; k++)
     {
@@ -300,7 +310,8 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
 }
 
 // Diagnostic view of the SVSM compare: single center-texel sample, classification colors.
-// Dark purple = no SVSM state, blue = outside coverage, magenta = page never resident,
+// Dark purple = no SVSM state, blue = outside coverage (XY window or below the Z window),
+// magenta = page never resident,
 // red = shadowed (brightness = margin up to 8m, green channel rises toward 512m -> yellow),
 // green = lit (brightness = margin up to 8m, blue channel rises toward 512m -> cyan)
 float3 GetSVSMDebugColor(float3 worldPos, float3 worldNormal, float normalOffset, float constantBias)
@@ -329,6 +340,12 @@ float3 GetSVSMDebugColor(float3 worldPos, float3 worldNormal, float normalOffset
     float zRangeMin = _svsmData[0].zRangeMin;
     float zRangeMax = _svsmData[0].zRangeMax;
     float zRangeLength = max(zRangeMax - zRangeMin, 1.0f);
+
+    // Below the window's far plane, same bail as the sampler: no representable occluder
+    if (zRangeLength * 0.5f - (mul(relativePos, lightRotation).z + _svsmData[0].configCamMinusZAnchor) < 0.0f)
+    {
+        return float3(0.0f, 0.3f, 1.0f);
+    }
 
     // Same independent static/dynamic resolves as GetSVSMShadowFactor, single center tap each.
     // The classification compares whichever depth is more occluding against its own receiver
