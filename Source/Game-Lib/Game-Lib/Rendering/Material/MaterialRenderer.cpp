@@ -236,8 +236,8 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             {
                 struct Constants
                 {
-                    vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height 
-                    uvec4 lightInfo; // x = Directional Light Count, Y = Point Light Count, Z = Cascade Count, W = Shadows Enabled
+                    vec4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height
+                    uvec4 lightInfo; // x = Directional Light Count, y = Shadows Ready (enabled, strength > 0, pool created), zw = UNUSED
                     uvec4 tileInfo; // xy = Num Tiles, zw = UNUSED
                     vec4 fogColor;
                     vec4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
@@ -248,8 +248,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     Color patchEdgeColor;
                     Color vertexColor;
                     Color brushColor;
-                    vec4 shadowFilterSettings; // x = Filter Size, y = Penumbra Filter Size, z = Shadow Strength, w = Normal Offset Bias
-                    vec4 svsmSettings; // x = Constant Bias (world meters)
+                    vec4 shadowSettings; // x = Shadow Strength, y = Normal Offset Bias, z = SVSM Constant Bias (world meters), w = UNUSED
                 };
 
                 Constants* constants = graphResources.FrameNew<Constants>();
@@ -258,14 +257,14 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->renderInfo = vec4(outputSize, 1.0f / outputSize);
 
                 CVarSystem* cvarSystem = CVarSystem::Get();
-                const u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"));
                 const f32 shadowStrength = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"));
-                // lightInfo.y selects the shadow technique: 0 = cascades, 1 = sparse virtual shadow maps
+                // Shadows sample only once the (lazily created) page pool exists, the placeholder
+                // pool bound before then must never be read
                 ShadowRenderer* shadowRenderer = _gameRenderer->GetShadowRenderer();
-                const bool useSVSM = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique") == 1
+                const bool shadowsReady = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) != 0
+                    && shadowStrength > 0.0f
                     && shadowRenderer != nullptr && shadowRenderer->GetSVSMPagePool() != Renderer::ImageID::Invalid();
-                const u32 shadowEnabled = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) && shadowStrength > 0.0f;
-                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), useSVSM ? 1 : 0, numCascades, shadowEnabled);
+                constants->lightInfo = uvec4(static_cast<u32>(_directionalLights.Count()), shadowsReady ? 1 : 0, 0, 0);
 
                 constants->tileInfo = uvec4(_lightRenderer->CalculateNumTiles2D(outputSize), 0, 0);
 
@@ -287,13 +286,9 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                 constants->vertexColor = terrainTools->GetVertexColor();
                 constants->brushColor = terrainTools->GetBrushColor();
 
-                f32 shadowFilterSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterSize"));
-                f32 shadowFilterPenumbraSize = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterPenumbraSize"));
                 f32 shadowNormalOffsetBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias"));
-                constants->shadowFilterSettings = vec4(shadowFilterSize, shadowFilterPenumbraSize, shadowStrength, shadowNormalOffsetBias);
-
                 f32 svsmConstantBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias"));
-                constants->svsmSettings = vec4(svsmConstantBias, 0.0f, 0.0f, 0.0f);
+                constants->shadowSettings = vec4(shadowStrength, shadowNormalOffsetBias, svsmConstantBias, 0.0f);
 
                 commandList.PushConstant(constants, 0, sizeof(Constants));
             }
@@ -362,11 +357,6 @@ void MaterialRenderer::CreatePermanentResources()
         CreateMaterialPipeline();
     });
 
-    CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h, [this](const i32& val)
-    {
-        CreateMaterialPipeline();
-    });
-
     // Register pipelines with descriptor sets and init
     _preEffectsPassDescriptorSet.RegisterPipeline(_renderer, _preEffectsPipeline);
     _preEffectsPassDescriptorSet.Init(_renderer);
@@ -407,12 +397,9 @@ void MaterialRenderer::CreatePermanentResources()
 
 void MaterialRenderer::CreateMaterialPipeline()
 {
-    const i32 shadowFilterMode = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowFilterMode"_h);
-
-    std::vector<Renderer::PermutationField> permutationFields = 
+    std::vector<Renderer::PermutationField> permutationFields =
     {
         { "DEBUG_ID", std::to_string(CVAR_VisibilityBufferDebugID.Get()) },
-        { "SHADOW_FILTER_MODE", std::to_string(shadowFilterMode) },
         { "EDITOR_MODE", CVAR_DrawTerrainWireframe.Get() == ShowFlag::ENABLED ? "1" : "0" }
     };
     u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Material/MaterialPass.cs", permutationFields);

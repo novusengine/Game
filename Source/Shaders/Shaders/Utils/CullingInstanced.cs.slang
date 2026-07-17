@@ -57,7 +57,7 @@ struct CullingData
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<PackedCullingData> _cullingDatas;
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<float4x4> _instanceMatrices;
 [[vk::binding(5, PER_PASS)]] SamplerState _depthSampler;
-[[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
+[[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow views?
 
 #if USE_BITMASKS
 // TODO: When instanceCounts resizes we need to invalidate (zero out) the prev bitmask since a single index in current and prev would point to different actual drawcalls
@@ -198,7 +198,7 @@ struct CullOutput
 };
 
 #if USE_BITMASKS
-// Shadow cascades only need the visibility bitmask, the per-view draw sets are filled from it later in the geometry pass
+// Shadow clipmap views only need the visibility bitmask, the per-view draw sets are filled from it later in the geometry pass
 void CullForCascade(DrawInput drawInput, Camera camera, uint bitmaskOffset, bool debugDrawResults)
 {
     bool isVisible = drawInput.instanceCount > 0 && IsSphereInsideFrustum(camera, drawInput.sphere);
@@ -418,7 +418,7 @@ void main(CSInput input)
     }
 
 #if USE_BITMASKS
-    // Shadow cascades
+    // Shadow clipmap views
     for (uint i = 1; i < _constants.numCascades + 1; i++)
     {
         bool debugDrawResults = (_constants.debugDrawView == i);

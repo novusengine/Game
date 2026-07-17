@@ -1,51 +1,11 @@
-#ifndef SDSM_INCLUDED
-#define SDSM_INCLUDED
+#ifndef LIGHT_BASIS_INCLUDED
+#define LIGHT_BASIS_INCLUDED
 
-// Shared types and helpers for the SDSM cascade fitting chain:
-// DepthMinMax.cs -> CascadeFitRange.cs -> CascadeXYReduce.cs -> CascadeFitCameras.cs
+// Light-space basis and camera matrix helpers shared by the SVSM update chain and the sampler.
 //
 // Matrix layout rule (load-bearing): shaders consume glm column-major uploads with
 // mul(rowVector, M), so a Slang float4x4 row i must hold what glm stores in column i.
 // glm composition C = A * B therefore becomes C_s = mul(B_s, A_s) here.
-
-// Push constants shared by all fit dispatches, identical bytes pushed to each pipeline
-struct SDSMConstants
-{
-    float4 lightDirection; // xyz = direction the light travels
-    uint numCascades;
-    float cascadeSplitLambda;
-    float cascadeTextureSize;
-    uint stableShadows;
-    float shadowMaxDistance;
-    float quantizeStep;
-    float shrinkDelay;
-    float deltaTime;
-    uint useDepthBounds;
-    float casterMargin;
-    uint useXYBounds; // 0 = sphere fit, 1 = reduce runs for diagnostics only, 2 = XY bounds drive the cameras
-    float xyMarginTexels;
-};
-
-struct SDSMState
-{
-    float smoothedMin;
-    float smoothedMax;
-    float usedMin;
-    float usedMax;
-    float windowLowestMin;  // Widest bounds seen during the current shrink window
-    float windowHighestMax;
-    float windowTimer;
-    float padding;
-};
-
-struct SDSMData
-{
-    SDSMState state;          // Persistent Z-range hysteresis, float offsets [0..7] are read back by the CPU
-    float splitDist[8];       // Split as an NDC-corner lerp fraction, consumed by the slice corner math
-    float splitDepth[8];      // Split as view distance - nearClip, mirrors _cameras[i].eyePosition.w semantics
-    float4 cascadeStable[8];  // Persistent per cascade: x = bucketHalfX, y = bucketHalfY
-    float4 cascadeDiag[8];    // Per frame diagnostics: xyz = fitted extents, w = valid
-};
 
 // Constant up for the stable path, falls back to Z when the light is near vertical
 float3 StableUp(float3 lightDirection)
@@ -69,8 +29,8 @@ float4x4 BuildLookAt(float3 eye, float3 center, float3 up)
 }
 
 // Rotation-only light basis, lightSpace = mul(cameraRelativeWorld, R). The rows mirror
-// BuildLookAt(0, lightDirection, StableUp) term for term so CascadeXYReduce coordinates
-// and the CascadeFitCameras view matrix agree bit for bit
+// BuildLookAt(0, lightDirection, StableUp) term for term so window coordinates and the
+// clipmap view matrices agree bit for bit
 float3x3 BuildLightRotation(float3 lightDirection)
 {
     float3 f = normalize(lightDirection);
@@ -137,18 +97,4 @@ float4 ExtractPlane(float4 row)
     return float4(row.xyz / normalLength, -row.w / normalLength);
 }
 
-// Order-preserving float <-> uint for atomic min/max on signed light-space coordinates.
-// Branches on the stored sign bit so -0.0 orders below +0.0. Sentinels: 0xFFFFFFFF orders
-// above all real keys, 0x00000000 below, so an untouched slot decodes as min > max (invalid)
-uint EncodeLightSpaceCoord(float f)
-{
-    uint u = asuint(f);
-    return (u & 0x80000000u) != 0 ? ~u : (u | 0x80000000u);
-}
-
-float DecodeLightSpaceCoord(uint u)
-{
-    return asfloat((u & 0x80000000u) != 0 ? (u ^ 0x80000000u) : ~u);
-}
-
-#endif // SDSM_INCLUDED
+#endif // LIGHT_BASIS_INCLUDED

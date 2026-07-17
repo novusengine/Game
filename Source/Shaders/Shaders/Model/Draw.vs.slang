@@ -1,5 +1,4 @@
 permutation EDITOR_PASS = [0, 1];
-permutation SHADOW_PASS = [0, 1];
 permutation SVSM_PASS = [0, 1]; // 1 adds per-draw clip-rect distances for the SVSM page render
 #define GEOMETRY_PASS 1
 

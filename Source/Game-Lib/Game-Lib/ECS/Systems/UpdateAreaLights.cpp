@@ -20,9 +20,21 @@
 #include <glm/gtc/constants.hpp>
 
 AutoCVar_Int CVAR_SunDebugFullRotation(CVarCategory::Client | CVarCategory::Rendering, "sunDebugFullRotation", "debug: sun does a full rotation per day instead of the authored wobble", 0, CVarFlags::EditCheckbox);
+AutoCVar_Float CVAR_ShadowSunUpdateInterval(CVarCategory::Client | CVarCategory::Rendering, "shadowSunUpdateInterval", "game seconds between shadow sun direction updates, a continuously rotating sun re-renders every shadow texel each frame and shimmers", 120.0f);
 
 namespace ECS::Systems
 {
+    // The shadow sun steps in discrete intervals, the visual sun stays smooth. A continuously
+    // rotating light invalidates the whole texel grid every frame, which snapping cannot hide
+    f32 GetShadowTimeOfDay(f32 timeOfDay)
+    {
+        f32 interval = CVAR_ShadowSunUpdateInterval.GetFloat();
+        if (interval <= 0.0f)
+            return timeOfDay;
+
+        return glm::floor(timeOfDay / interval) * interval;
+    }
+
     vec3 UnpackU32BGRToColor(u32 bgr)
     {
         vec3 result;

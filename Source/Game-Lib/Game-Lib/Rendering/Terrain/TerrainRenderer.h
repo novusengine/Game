@@ -49,8 +49,7 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
     void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
 
     // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
@@ -86,7 +85,6 @@ private:
     struct DrawParams
     {
     public:
-        bool shadowPass = false;
         bool svsmPass = false; // Attachment-less page render, needs an explicit render area
         u32 svsmRectIndex = 0xFFFFFFFFu; // Clip rect this draw renders (0-2), SVSM_CLIP_RECT_DISABLED = no clipping
         u32 viewIndex = 0;
@@ -167,7 +165,6 @@ private:
     Renderer::ComputePipelineID _fillDrawCallsPipeline;
     Renderer::ComputePipelineID _cullingPipeline;
     Renderer::GraphicsPipelineID _drawPipeline;
-    Renderer::GraphicsPipelineID _drawShadowPipeline;
     Renderer::GraphicsPipelineID _drawSVSMPipeline;
 
     Renderer::GPUVector<u16> _cellIndices;

@@ -348,8 +348,7 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
     void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
 
     // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
@@ -456,7 +455,6 @@ private:
     CullingResourcesIndexed<DrawCallData> _transparentSkyboxCullingResources;
 
     Renderer::GraphicsPipelineID _drawPipeline;
-    Renderer::GraphicsPipelineID _drawShadowPipeline;
     Renderer::GraphicsPipelineID _drawSVSMPipeline;
     Renderer::GraphicsPipelineID _drawSVSMDynamicPipeline;
     Renderer::GraphicsPipelineID _drawTransparentPipeline;

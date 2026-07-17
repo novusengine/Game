@@ -1,4 +1,3 @@
-permutation SHADOW_PASS = [0, 1];
 #define GEOMETRY_PASS 1
 
 #include "DescriptorSet/Global.inc.slang"
@@ -12,19 +11,13 @@ struct PSInput
     uint4 drawIDInstanceIDTextureDataIDInstanceRefID : TEXCOORD0;
     float4 uv01 : TEXCOORD1;
 
-#if !SHADOW_PASS
     uint triangleID : SV_PrimitiveID;
-#endif
 };
 
-#if !SHADOW_PASS
 struct PSOutput
 {
     uint2 visibilityBuffer : SV_Target0;
 };
-#else
-#define PSOutput void
-#endif
 
 [shader("fragment")]
 PSOutput main(PSInput input)
@@ -44,7 +37,7 @@ PSOutput main(PSInput input)
 
         if (blendingMode != 1) // ALPHA KEY
             continue;
-        
+
         uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
         uint texture1SamplerIndex = (textureUnit.data1 >> 3) & 0x3;
         uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
@@ -74,10 +67,8 @@ PSOutput main(PSInput input)
         }
     }
 
-#if !SHADOW_PASS
     PSOutput output;
     output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, instanceRefID, input.triangleID);
 
     return output;
-#endif
 }

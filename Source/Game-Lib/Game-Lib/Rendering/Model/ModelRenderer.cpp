@@ -132,8 +132,8 @@ void ModelRenderer::Update(f32 deltaTime)
         _animatedCasterAABBs.clear();
 
         CVarSystem* cvarSystem = CVarSystem::Get();
-        const bool svsmActive = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-        const f32 range = svsmActive ? static_cast<f32>(glm::max(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange"_h), 0.0)) : 0.0f;
+        const bool shadowsEnabled = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 1;
+        const f32 range = shadowsEnabled ? static_cast<f32>(glm::max(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange"_h), 0.0)) : 0.0f;
         const bool split = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit"_h) == 1;
 
         u32 modelID;
@@ -572,10 +572,6 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
 
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -645,10 +641,6 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.drawCallDataSize = sizeof(DrawCallData);
             
             params.numCascades = numCascades;
-
-            params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-            params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-            params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
 
             params.enableDrawing = CVAR_ModelDrawOccluders.Get();
             params.disableTwoStepCulling = CVAR_ModelDisableTwoStepCulling.Get();
@@ -797,10 +789,6 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
 
             builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS  | BufferUsage::COMPUTE);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -875,10 +863,6 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
 
             params.numCascades = numCascades;
 
-            params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-            params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-            params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
-
             params.enableDrawing = CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
 
@@ -905,21 +889,8 @@ void ModelRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, Re
     if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
         return;
 
-    // Under SVSM the same per-view culling runs against the clipmap cameras, which need no
-    // cascade depth images
-    const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-    u32 numCascades;
-    if (useSVSM)
-    {
-        numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
-    }
-    else
-    {
-        numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-        numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
-    }
-    if (numCascades == 0)
-        return;
+    // The same per-view culling the main view uses, run against the clipmap cameras
+    const u32 numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
 
     struct Data
     {
@@ -990,152 +961,6 @@ void ModelRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, Re
         });
 }
 
-void ModelRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
-{
-    ZoneScoped;
-
-    if (!CVAR_ModelRendererEnabled.Get())
-        return;
-
-    if (!CVAR_ModelCullingEnabled.Get()) // Cascades are driven by the culled bitmask slices
-        return;
-
-    CVarSystem* cvarSystem = CVarSystem::Get();
-
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
-        return;
-
-    if (CVAR_ModelsCastShadow.Get() != 1)
-        return;
-
-    // SVSM renders pages through AddSVSMGeometryPass instead
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1)
-        return;
-
-    if (_opaqueCullingResources.GetDrawCalls().Count() == 0)
-        return;
-
-    u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
-    if (numCascades == 0)
-        return;
-
-    struct Data
-    {
-        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
-
-        Renderer::BufferMutableResource drawCallsBuffer;
-        Renderer::BufferMutableResource culledDrawCallsBuffer;
-        Renderer::BufferMutableResource culledDrawCallCountBuffer;
-
-        Renderer::BufferMutableResource culledInstanceCountsBuffer;
-
-        Renderer::BufferMutableResource drawCountBuffer;
-        Renderer::BufferMutableResource triangleCountBuffer;
-        Renderer::BufferMutableResource drawCountReadBackBuffer;
-        Renderer::BufferMutableResource triangleCountReadBackBuffer;
-
-        Renderer::DescriptorSetResource globalSet;
-        Renderer::DescriptorSetResource modelSet;
-        Renderer::DescriptorSetResource fillSet;
-        Renderer::DescriptorSetResource createIndirectSet;
-        Renderer::DescriptorSetResource drawSet;
-    };
-
-    renderGraph->AddPass<Data>("Model (O) Cascade Geometry",
-        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder)
-        {
-            using BufferUsage = Renderer::BufferPassUsage;
-
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
-
-            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_indices.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_textureDatas.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_textureUnits.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-
-            builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-
-            GeometryPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
-            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            builder.Write(_opaqueCullingResources.GetCulledDrawCallsBitMaskBuffer(!frameIndex), BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-
-            data.culledInstanceCountsBuffer = builder.Write(_opaqueCullingResources.GetCulledInstanceCountsBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE);
-
-            builder.Read(_opaqueCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-
-            data.globalSet = builder.Use(resources.globalDescriptorSet);
-            data.modelSet = builder.Use(resources.modelDescriptorSet);
-            data.fillSet = builder.Use(_opaqueCullingResources.GetGeometryFillDescriptorSet());
-            data.createIndirectSet = builder.Use(_opaqueCullingResources.GetCreateIndirectAfterCullDescriptorSet());
-
-            return true; // Return true from setup to enable this pass, return false to disable it
-        },
-        [this, &resources, frameIndex, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
-        {
-            GPU_SCOPED_PROFILER_ZONE(commandList, ModelCascadeGeometry);
-
-            CulledRenderer::GeometryPassParams params;
-            params.passName = "Opaque";
-            params.graphResources = &graphResources;
-            params.commandList = &commandList;
-            params.cullingResources = &_opaqueCullingResources;
-
-            params.frameIndex = frameIndex;
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                params.depth[i] = data.depth[i];
-            }
-
-            params.drawCallsBuffer = data.drawCallsBuffer;
-            params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
-            params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
-            params.culledInstanceCountsBuffer = data.culledInstanceCountsBuffer;
-
-            params.drawCountBuffer = data.drawCountBuffer;
-            params.triangleCountBuffer = data.triangleCountBuffer;
-            params.drawCountReadBackBuffer = data.drawCountReadBackBuffer;
-            params.triangleCountReadBackBuffer = data.triangleCountReadBackBuffer;
-
-            params.globalDescriptorSet = data.globalSet;
-            params.fillDescriptorSet = data.fillSet;
-            params.createIndirectDescriptorSet = data.createIndirectSet;
-            params.drawDescriptorSet = data.drawSet;
-
-            params.drawCallback = [&](DrawParams& drawParams)
-            {
-                drawParams.descriptorSets = {
-                    &data.globalSet,
-                    &data.modelSet
-                };
-                Draw(resources, frameIndex, graphResources, commandList, drawParams);
-            };
-
-            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
-            params.drawCallDataSize = sizeof(DrawCallData);
-
-            params.firstViewIndex = 1;
-            params.numCascades = numCascades;
-
-            params.biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-            params.biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-            params.biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
-
-            params.enableDrawing = CVAR_ModelDrawGeometry.Get();
-            params.cullingEnabled = true;
-
-            GeometryPass(params);
-        });
-}
-
 void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer)
 {
     ZoneScoped;
@@ -1152,9 +977,6 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
         return;
 
     if (CVAR_ModelsCastShadow.Get() != 1)
-        return;
-
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) != 1)
         return;
 
     if (shadowRenderer->GetSVSMPagePool() == Renderer::ImageID::Invalid())
@@ -3301,7 +3123,6 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "0"},
             { "SVSM_PASS", "0"}
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
@@ -3309,55 +3130,10 @@ void ModelRenderer::CreateModelPipelines()
         pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
             
         Renderer::PixelShaderDesc pixelShaderDesc;
-        std::vector<Renderer::PermutationField> pixelPermutationFields =
-        {
-            { "SHADOW_PASS", "0" }
-        };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.ps");
+        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/Draw.ps"_h, "Model/Draw.ps");
         pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
 
         _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
-    }
-    // Shadows
-    {
-        Renderer::GraphicsPipelineDesc pipelineDesc;
-        pipelineDesc.debugName = "Model Draw Shadow";
-
-        // Depth state
-        pipelineDesc.states.depthStencilState.depthEnable = true;
-        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-        // Rasterizer state
-        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-        pipelineDesc.states.rasterizerState.depthBiasEnabled = true;
-        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
-
-        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
-
-        Renderer::VertexShaderDesc vertexShaderDesc;
-        std::vector<Renderer::PermutationField> vertexPermutationFields =
-        {
-            { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "1"},
-            { "SVSM_PASS", "0"}
-        };
-        u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
-        vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-
-        Renderer::PixelShaderDesc pixelShaderDesc;
-        std::vector<Renderer::PermutationField> pixelPermutationFields =
-        {
-            { "SHADOW_PASS", "1" }
-        };
-        shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.ps", pixelPermutationFields);
-        pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.ps");
-        pipelineDesc.states.pixelShader = _renderer->LoadShader(pixelShaderDesc);
-            
-        // Draw
-        _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
     // SVSM pages: attachment-less, the pixel shader keeps the alpha-key discard and writes depth
     // into the page pool with image atomics. Depth clamp stays on so pancaked casters rasterize
@@ -3373,7 +3149,6 @@ void ModelRenderer::CreateModelPipelines()
         std::vector<Renderer::PermutationField> vertexPermutationFields =
         {
             { "EDITOR_PASS", "0" },
-            { "SHADOW_PASS", "1"},
             { "SVSM_PASS", "1"}
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
@@ -4155,20 +3930,17 @@ void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Render
     }
     else
     {
-        if (!params.shadowPass)
+        renderPassDesc.renderTargets[0] = params.rt0;
+        if (params.rt1 != Renderer::ImageMutableResource::Invalid())
         {
-            renderPassDesc.renderTargets[0] = params.rt0;
-            if (params.rt1 != Renderer::ImageMutableResource::Invalid())
-            {
-                renderPassDesc.renderTargets[1] = params.rt1;
-            }
+            renderPassDesc.renderTargets[1] = params.rt1;
         }
         renderPassDesc.depthStencil = params.depth;
     }
     commandList.BeginRenderPass(renderPassDesc);
 
     Renderer::GraphicsPipelineID pipeline = params.svsmPass ? (params.svsmDynamicPass ? _drawSVSMDynamicPipeline : _drawSVSMPipeline)
-                                                            : (params.shadowPass ? _drawShadowPipeline : _drawPipeline);
+                                                            : _drawPipeline;
     commandList.BeginPipeline(pipeline);
 
     struct PushConstants

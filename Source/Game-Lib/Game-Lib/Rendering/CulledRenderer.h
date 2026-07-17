@@ -37,7 +37,6 @@ protected:
     {
     public:
         bool cullingEnabled = false;
-        bool shadowPass = false;
         bool svsmPass = false;        // Attachment-less page render, needs an explicit render area
         bool svsmDynamicPass = false; // Caster-split dynamic instances into the dynamic pool
         u32 svsmRectIndex = 0xFFFFFFFFu; // Clip rect this draw renders (0-2), SVSM_CLIP_RECT_DISABLED = no clipping
@@ -154,10 +153,6 @@ protected:
         u32 drawCallDataSize = 0;
 
         u32 numCascades = 0;
-
-        f32 biasConstantFactor = 0.0f;
-        f32 biasClamp = 0.0f;
-        f32 biasSlopeFactor = 0.0f;
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool disableTwoStepCulling = false;
@@ -313,12 +308,8 @@ protected:
         u32 baseInstanceLookupOffset = 0; // Instanced only
         u32 drawCallDataSize = 0; // Instanced only
 
-        u32 firstViewIndex = 0; // 0 = main view first, 1 = cascades only
+        u32 firstViewIndex = 0; // 0 = main view first, 1 = clipmap views only
         u32 numCascades = 0;
-
-        f32 biasConstantFactor = 0.0f;
-        f32 biasClamp = 0.0f;
-        f32 biasSlopeFactor = 0.0f;
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool cullingEnabled = false;

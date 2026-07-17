@@ -205,7 +205,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
             DrawParams drawParams;
             drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
-            drawParams.shadowPass = false;
             drawParams.viewIndex = 0;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
@@ -258,16 +257,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
                 params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
             }
 
-            if (i == 1)
-            {
-                uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
-
-                params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-
-                params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
-            }
-
             // Fill the occluders to draw
             {
                 std::string debugName = params.passName + " Occlusion Fill";
@@ -313,7 +302,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
 
                 DrawParams drawParams;
                 drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
-                drawParams.shadowPass = i > 0;
                 drawParams.viewIndex = i;
                 drawParams.rt0 = params.rt0;
                 drawParams.rt1 = params.rt1;
@@ -338,11 +326,10 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             params.commandList->PopMarker();
         }
 
-        // Finish by resetting the viewport, scissor and depth bias
+        // Finish by resetting the viewport and scissor
         vec2 renderSize = _renderer->GetRenderSize();
         params.commandList->SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
         params.commandList->SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-        params.commandList->SetDepthBias(0, 0, 0);
     }
 }
 
@@ -765,27 +752,15 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
     for (u32 i = params.firstViewIndex; i < params.numCascades + 1; i++)
     {
-        std::string markerName = (i == 0) ? "Main" : (params.svsmPass ? "Clipmap " : "Cascade ") + std::to_string(i - 1);
+        std::string markerName = (i == 0) ? "Main" : "Clipmap " + std::to_string(i - 1);
         params.commandList->PushMarker(markerName, Color::PastelYellow);
 
         if (i == 1)
         {
-            if (params.svsmPass)
-            {
-                // The viewport spans the virtual texture so SV_Position.xy is the virtual texel.
-                // No depth bias: there is no depth attachment for it to apply to
-                params.commandList->SetViewport(0, 0, static_cast<f32>(params.svsmExtent.x), static_cast<f32>(params.svsmExtent.y), 0.0f, 1.0f);
-                params.commandList->SetScissorRect(0, params.svsmExtent.x, 0, params.svsmExtent.y);
-            }
-            else
-            {
-                uvec2 shadowDepthDimensions = params.graphResources->GetImageDimensions(params.depth[1]);
-
-                params.commandList->SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                params.commandList->SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-
-                params.commandList->SetDepthBias(params.biasConstantFactor, params.biasClamp, params.biasSlopeFactor);
-            }
+            // The viewport spans the virtual texture so SV_Position.xy is the virtual texel.
+            // No depth bias: there is no depth attachment for it to apply to
+            params.commandList->SetViewport(0, 0, static_cast<f32>(params.svsmExtent.x), static_cast<f32>(params.svsmExtent.y), 0.0f, 1.0f);
+            params.commandList->SetScissorRect(0, params.svsmExtent.x, 0, params.svsmExtent.y);
         }
 
         // Reset the counters
@@ -856,7 +831,6 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
             DrawParams drawParams;
             drawParams.cullingEnabled = params.cullingEnabled;
-            drawParams.shadowPass = i > 0;
             drawParams.svsmPass = params.svsmPass;
             drawParams.svsmExtent = params.svsmExtent;
             drawParams.viewIndex = i;
@@ -939,7 +913,6 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
             DrawParams drawParams;
             drawParams.cullingEnabled = params.cullingEnabled;
-            drawParams.shadowPass = true;
             drawParams.svsmPass = params.svsmPass;
             drawParams.svsmDynamicPass = true;
             drawParams.svsmExtent = params.svsmExtent;
@@ -962,11 +935,10 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         params.commandList->PopMarker();
     }
 
-    // Finish by resetting the viewport, scissor and depth bias
+    // Finish by resetting the viewport and scissor
     vec2 renderSize = _renderer->GetRenderSize();
     params.commandList->SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
     params.commandList->SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-    params.commandList->SetDepthBias(0, 0, 0);
 }
 
 void CulledRenderer::BindCullingResource(CullingResourcesBase& resources)

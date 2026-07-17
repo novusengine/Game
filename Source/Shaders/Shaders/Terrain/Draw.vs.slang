@@ -1,5 +1,4 @@
 permutation EDITOR_PASS = [0, 1];
-permutation SHADOW_PASS = [0, 1];
 permutation SVSM_PASS = [0, 1]; // 1 adds per-draw clip-rect distances for the SVSM page render
 #define GEOMETRY_PASS 1
 
@@ -33,7 +32,7 @@ struct VSInput
 struct VSOutput
 {
     float4 position : SV_Position;
-#if !EDITOR_PASS && !SHADOW_PASS
+#if !EDITOR_PASS && !SVSM_PASS
     uint instanceID : TEXCOORD0;
 #endif
 #if SVSM_PASS
@@ -67,7 +66,7 @@ VSOutput main(VSInput input)
 
     output.position = mul(float4(vertex.position, 1.0f), _cameras[_constants.viewIndex].worldToClip);
 
-#if !EDITOR_PASS && !SHADOW_PASS
+#if !EDITOR_PASS && !SVSM_PASS
     output.instanceID = instanceData.globalCellID;
 #endif
 #if SVSM_PASS

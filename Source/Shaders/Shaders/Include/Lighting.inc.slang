@@ -25,11 +25,9 @@ DirectionalLight LoadDirectionalLight(uint index)
     return light;
 }
 
-float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
+float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
 {
     uint numDirectionalLights = lightInfo.x;
-    uint shadowTechnique = lightInfo.y; // 0 = cascaded shadow maps, 1 = sparse virtual shadow maps
-    uint numCascades = lightInfo.z;
 
     float3 ambientColor = float3(0.0f, 0.0f, 0.0f);
     float3 directionalColor = float3(0.0f, 0.0f, 0.0f);
@@ -54,39 +52,11 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
         float3 lightColor = lerp(light.color.rgb, float3(1.0f, 1.0f, 1.0f), nDotL); // Light color based on normal
         lightColor *= light.color.a; // Intensity in alpha channel
         
-        // Directional Light Shadows
-        if (shadowSettings.enableShadows && shadowTechnique == 1)
+        // Directional Light Shadows: clipmap selection, page walk and far fade all live in
+        // GetSVSMShadowFactor
+        if (shadowSettings.enableShadows)
         {
-            // Sparse virtual shadow maps: clipmap selection, page walk and far fade all live in
-            // GetSVSMShadowFactor
             float shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
-
-            // Sun elevation strength, fades shadows out around dawn/dusk
-            shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
-
-            lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
-        }
-        else if (shadowSettings.enableShadows && numCascades > 0)
-        {
-            shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
-            Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera
-
-            // Normal-offset bias: push the receiver along its surface normal by a fraction of the
-            // cascade texel size, robust against acne on hard angles where slope bias fails
-            float2 shadowTexDim;
-            _shadowCascadeRTs[shadowSettings.cascadeIndex].GetDimensions(shadowTexDim.x, shadowTexDim.y);
-            float texelWorldSize = 2.0f / (cascadeCamera.viewToClip[0][0] * shadowTexDim.x);
-            float3 offsetWorldPos = pixelVertexData.worldPos + pixelVertexData.worldNormal * (texelWorldSize * shadowSettings.normalOffset);
-
-            float4 shadowPosition = mul(float4(offsetWorldPos, 1.0f), cascadeCamera.worldToClip);
-
-            float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
-
-            // Fade to unshadowed over the last 15% of the last cascade, beyond it there is no shadow data
-            float lastSplitDepth = _cameras[numCascades].eyePosition.w;
-            float fadeStartDepth = 0.85f * lastSplitDepth;
-            float fade = saturate((pixelVertexData.viewPos.z - fadeStartDepth) / (lastSplitDepth - fadeStartDepth));
-            shadowFactor = lerp(shadowFactor, 1.0f, fade);
 
             // Sun elevation strength, fades shadows out around dawn/dusk
             shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);

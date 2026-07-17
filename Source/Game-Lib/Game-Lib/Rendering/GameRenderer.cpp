@@ -410,18 +410,12 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
-    // Cascade block, runs after the main depth is complete so the cascades can be fitted to the
-    // visible samples (SDSM: depth range + per-cascade light-space bounds), culled and drawn the same frame.
-    // The SVSM update (shadowTechnique 1) analyzes the same depth to mark and allocate virtual shadow
-    // pages, it runs alongside the CSM path until the SVSM rendering and sampling stages land
-    _shadowRenderer->AddDepthMinMaxPass(&renderGraph, _resources, _frameIndex);
-    _shadowRenderer->AddCascadeFitPass(&renderGraph, _resources, _frameIndex);
+    // SVSM block, runs after the main depth is complete so page marking can analyze the visible
+    // samples, then allocates, culls per clipmap view and renders the dirty pages the same frame
     _shadowRenderer->AddSVSMUpdatePass(&renderGraph, _resources, _frameIndex);
-    _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
+    _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
-    _terrainRenderer->AddCascadeGeometryPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddCascadeGeometryPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
     _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
 

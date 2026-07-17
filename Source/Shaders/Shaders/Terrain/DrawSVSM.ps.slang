@@ -5,7 +5,7 @@
 #include "Shadows/SVSM.inc.slang"
 
 // SVSM page render: no attachments, the fragment writes reversed-Z depth into the physical page
-// pool with image atomics. Paired with the SHADOW_PASS=1 vertex permutation, viewport spans the
+// pool with image atomics. Paired with the SVSM_PASS=1 vertex permutation, viewport spans the
 // full virtual texture so SV_Position.xy is the window-local virtual texel.
 
 struct Constants

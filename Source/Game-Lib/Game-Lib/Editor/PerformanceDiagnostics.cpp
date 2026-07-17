@@ -80,54 +80,76 @@ namespace Editor
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-            // Under SVSM the shadow views are clipmaps instead of cascades
-            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-            u32 numCascades = useSVSM ? *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h)
-                                      : *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h);
+            const u32 numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
 
-            // SDSM reduced depth bounds
+            // SVSM stat block
             {
                 GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
                 ShadowRenderer* shadowRenderer = gameRenderer->GetShadowRenderer();
 
-                f32 minDistance = 0.0f;
-                f32 maxDistance = 0.0f;
-                if (shadowRenderer && shadowRenderer->GetDepthBoundsViewDistances(gameRenderer->GetRenderResources(), minDistance, maxDistance))
+                // Copy the shadow stat block (SVSM pool/dynamic/instances, per-clipmap table) as
+                // semicolon-separated lines, same rule as the render pass CSV
+                if (shadowRenderer)
                 {
-                    f32 shadowMaxDistance = static_cast<f32>(*CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowMaxDistance"_h));
-                    ImGui::Text("Visible Depth: %.1f - %.1f (Shadow Max: %.0f)", minDistance, maxDistance, shadowMaxDistance);
-
-                    f32 effectiveMin = 0.0f;
-                    f32 effectiveMax = 0.0f;
-                    if (shadowRenderer->GetEffectiveShadowRange(effectiveMin, effectiveMax))
+                    const char* copyStatsLabel = "Copy Stats";
+                    ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - ImGui::CalcTextSize(copyStatsLabel).x - ImGui::GetStyle().FramePadding.x * 2.0f);
+                    if (ImGui::SmallButton(copyStatsLabel))
                     {
-                        ImGui::Text("Shadow Range: %.1f - %.1f (used by cascades)", effectiveMin, effectiveMax);
-                    }
+                        std::string csv;
+                        char line[512];
 
-                    for (u32 i = 0; i < numCascades; i++)
-                    {
-                        vec3 extents = vec3(0.0f);
-                        bool valid = false;
-                        if (!shadowRenderer->GetCascadeFittedBounds(i, extents, valid))
-                            break;
+                        {
+                            u32 freePages = 0;
+                            u32 totalPages = 0;
+                            u32 overflow = 0;
+                            u32 invalidationCause = 0;
+                            shadowRenderer->GetSVSMGlobalStats(freePages, totalPages, overflow, invalidationCause);
+                            snprintf(line, sizeof(line), "SVSMPool;used;%u;total;%u;overflow;%u;invalidationCause;%u\n", totalPages - glm::min(freePages, totalPages), totalPages, overflow, invalidationCause);
+                            csv += line;
 
-                        if (valid)
-                        {
-                            ImGui::Text("C%u: %.1f x %.1f x %.1f", i, extents.x, extents.y, extents.z);
+                            u32 dynamicLive = 0;
+                            u32 dynamicTotal = 0;
+                            u32 dynamicOverflow = 0;
+                            shadowRenderer->GetSVSMDynamicStats(dynamicLive, dynamicTotal, dynamicOverflow);
+
+                            u32 dynamicCasters = 0;
+                            u32 animatedCasters = 0;
+                            u32 droppedAABBs = 0;
+                            shadowRenderer->GetSVSMCasterStats(dynamicCasters, animatedCasters, droppedAABBs);
+                            snprintf(line, sizeof(line), "SVSMDynamic;live;%u;total;%u;overflow;%u;dynamicCasters;%u;animatedCasters;%u;droppedAABBs;%u\n", dynamicLive, dynamicTotal, dynamicOverflow, dynamicCasters, animatedCasters, droppedAABBs);
+                            csv += line;
+
+                            snprintf(line, sizeof(line), "SVSMBudgetUsed;%u\n", shadowRenderer->GetSVSMBudgetUsed());
+                            csv += line;
+
+                            if (ModelRenderer* statsModelRenderer = gameRenderer->GetModelRenderer())
+                            {
+                                std::string dynInstances = "SVSMDynInstances";
+                                for (u32 view = 1; view <= numCascades && view < Renderer::Settings::MAX_VIEWS; view++)
+                                {
+                                    dynInstances += ";" + std::to_string(statsModelRenderer->GetNumSVSMDynamicInstances(view));
+                                }
+                                csv += dynInstances + "\n";
+                            }
+
+                            csv += "Clipmap;extent;marked;resident;dirty;invalidated;evicted;dynamic;deferred\n";
+                            for (u32 i = 0; i < numCascades; i++)
+                            {
+                                ShadowRenderer::SVSMClipmapStats stats;
+                                if (!shadowRenderer->GetSVSMClipmapStats(i, stats))
+                                    break;
+
+                                snprintf(line, sizeof(line), "P%u;%.0f;%u;%u;%u;%u;%u;%u;%u\n", i, stats.extent, stats.marked, stats.resident, stats.dirty, stats.invalidated, stats.evicted, stats.dynamicLive, stats.deferred);
+                                csv += line;
+                            }
                         }
-                        else
-                        {
-                            ImGui::Text("C%u: empty", i);
-                        }
+
+                        ImGui::SetClipboardText(csv.c_str());
                     }
-                }
-                else
-                {
-                    ImGui::Text("Visible Depth: - (no valid samples)");
                 }
 
                 // SVSM page table state, one frame old
-                if (*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1 && shadowRenderer)
+                if (shadowRenderer)
                 {
                     u32 freePages = 0;
                     u32 totalPages = 0;
@@ -717,8 +739,7 @@ namespace Editor
         std::string viewName = "Main View Instances";
         if (viewID > 0)
         {
-            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-            viewName = (useSVSM ? "Clipmap " : "Shadow Cascade ") + std::to_string(viewID - 1) + " Drawcalls";
+            viewName = "Clipmap " + std::to_string(viewID - 1) + " Drawcalls";
         }
 
         if (!_drawCallStatsOnlyForMainView)
@@ -827,8 +848,7 @@ namespace Editor
         std::string viewName = "Main View Triangles";
         if (viewID > 0)
         {
-            const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-            viewName = (useSVSM ? "Clipmap " : "Shadow Cascade ") + std::to_string(viewID - 1) + " Triangles";
+            viewName = "Clipmap " + std::to_string(viewID - 1) + " Triangles";
         }
 
         if (!_drawCallStatsOnlyForMainView)

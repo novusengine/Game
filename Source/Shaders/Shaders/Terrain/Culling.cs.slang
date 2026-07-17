@@ -182,10 +182,10 @@ void main(CSInput input)
         CullForCamera(drawInput, _cameras[0], bitmaskInput, _constants.debugDrawView == 0);
     }
 
-    // Shadow cascades
+    // Shadow clipmap views
     for (uint i = 1; i < _constants.numCascades + 1; i++)
     {
-        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
+        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow views... yet?
 
         bitmaskInput.bitmaskOffset = _constants.bitMaskBufferSizePerView * i;
 

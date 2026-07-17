@@ -1,7 +1,7 @@
 #ifndef SVSM_INCLUDED
 #define SVSM_INCLUDED
 
-#include "Shadows/SDSM.inc.slang"
+#include "Shadows/LightBasis.inc.slang"
 
 // Shared types and helpers for the Sparse Virtual Shadow Map chain:
 // SVSMPrepare.cs -> SVSMInvalidateAABBs.cs -> SVSMPageUpdateA.cs -> SVSMPageMark.cs -> SVSMPageUpdateB.cs
@@ -59,7 +59,7 @@ struct SVSMConstants
 #define SVSM_CAUSE_AABB_OVERFLOW 8u
 
 // Persistent GPU state + per-frame stats. Scalar arrays only so the std430 layout matches the
-// flat u32 readback on the CPU, same pattern as SDSMData
+// flat u32 readback on the CPU
 struct SVSMData
 {
     float4 prevLightDirection;   // w > 0.5 once valid

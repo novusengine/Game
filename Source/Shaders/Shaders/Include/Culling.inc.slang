@@ -10,8 +10,6 @@ struct AABBMinMax
     float3 max;
 };
 
-#define NUM_CULL_VIEWS 1 + MAX_SHADOW_CASCADES // Main view plus max number of cascades
-
 // Based on the work of WickedEngine, thank you! https://github.com/turanszkij/WickedEngine/
 struct Plane
 {

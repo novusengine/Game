@@ -9,10 +9,10 @@ permutation SVSM_DYNAMIC = [0, 1]; // 1 = dynamic caster split pass, renders int
 #include "Model/ModelShared.inc.slang"
 #include "Shadows/SVSM.inc.slang"
 
-// SVSM page render for models: keeps the alpha-key discard from the shadow permutation of
-// Model/Draw.ps, then writes reversed-Z depth into the physical page pool with image atomics.
-// No attachments, viewport spans the full virtual texture so SV_Position.xy is the window-local
-// virtual texel. Paired with the SHADOW_PASS=1 vertex permutation.
+// SVSM page render for models: keeps the alpha-key discard from Model/Draw.ps, then writes
+// reversed-Z depth into the physical page pool with image atomics. No attachments, viewport
+// spans the full virtual texture so SV_Position.xy is the window-local virtual texel. Paired
+// with the SVSM_PASS=1 vertex permutation.
 //
 // SVSM_DYNAMIC renders the dynamic-instance fill into the dynamic pool: same bindings, the pass
 // binds the dynamic table/pool instead, and dynamic pages render whenever RESIDENT (every frame)
@@ -41,7 +41,7 @@ void main(PSInput input)
 {
     uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
 
-    // Alpha-key discard, mirrors the SHADOW_PASS branch of Model/Draw.ps
+    // Alpha-key discard, mirrors Model/Draw.ps without the visibility-buffer write
     TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, textureDataID);
 
     for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)

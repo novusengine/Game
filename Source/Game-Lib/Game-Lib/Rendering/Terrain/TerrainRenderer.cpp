@@ -127,14 +127,10 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
     const bool disableTwoStepCulling = CVAR_TerrainDisableTwoStepCulling.Get();
 
-    CVarSystem* cvarSystem = CVarSystem::Get();
-
-    const u32 numCascades = 0; // Occluders are main view only, cascades render in their own block late in the frame
-
     struct Data
     {
         Renderer::ImageMutableResource visibilityBuffer;
-        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
+        Renderer::DepthImageMutableResource depth;
 
         Renderer::BufferMutableResource culledInstanceBuffer;
         Renderer::BufferMutableResource culledInstanceBitMaskBuffer;
@@ -147,16 +143,12 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
     };
 
     renderGraph->AddPass<Data>("Terrain Occluders",
-        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i-1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
             builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
@@ -176,7 +168,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, numCascades, disableTwoStepCulling, cullingEnabled, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &resources, frameIndex, disableTwoStepCulling, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainOccluders);
 
@@ -189,80 +181,49 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
                 commandList.BufferBarrier(data.culledInstanceBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
             }
 
-            for (u32 i = 0; i < numCascades + 1; i++)
+            // Reset the counters
             {
-                std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
-                commandList.PushMarker(markerName, Color::White);
+                commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
+                commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+            }
 
-                // Reset the counters
-                {
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                    commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                }
+            // Fill the occluders to draw
+            FillDrawCallsParams fillParams;
+            fillParams.passName = "Occluders";
+            fillParams.cellCount = cellCount;
+            fillParams.viewIndex = 0;
+            fillParams.diffAgainstPrev = false;
+            fillParams.currentBitmaskIndex = !frameIndex; // Occluders consume last frame's culling output
+            fillParams.fillSet = data.fillSet;
 
-                // Fill the occluders to draw
-                FillDrawCallsParams fillParams;
-                fillParams.passName = "Occluders";
-                fillParams.cellCount = cellCount;
-                fillParams.viewIndex = i;
-                fillParams.diffAgainstPrev = false;
-                fillParams.currentBitmaskIndex = !frameIndex; // Occluders consume last frame's culling output
-                fillParams.fillSet = data.fillSet;
+            FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
+            commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
+            commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
 
-                FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
-                commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
+            // Draw the occluders
+            if (CVAR_TerrainOccludersEnabled.Get())
+            {
+                commandList.PushMarker("Occlusion Draw", Color::White);
 
-                // Draw the occluders
-                if (CVAR_TerrainOccludersEnabled.Get())
-                {
-                    commandList.PushMarker("Occlusion Draw", Color::White);
+                DrawParams drawParams;
+                drawParams.viewIndex = 0;
+                drawParams.cullingEnabled = cullingEnabled;
+                drawParams.visibilityBuffer = data.visibilityBuffer;
+                drawParams.depth = data.depth;
+                drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
+                drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
 
-                    if (i == 1)
-                    {
-                        uvec2 shadowDepthDimensions = _renderer->GetImageDimensions(resources.shadowDepthCascades[0]);
+                drawParams.globalDescriptorSet = data.globalSet;
+                drawParams.drawDescriptorSet = data.drawSet;
 
-                        commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                        commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-
-                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
-                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
-                    }
-
-                    DrawParams drawParams;
-                    drawParams.shadowPass = i != 0;
-                    drawParams.viewIndex = i;
-                    drawParams.cullingEnabled = cullingEnabled;
-                    drawParams.visibilityBuffer = data.visibilityBuffer;
-                    drawParams.depth = data.depth[i];
-                    drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
-                    drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
-
-                    drawParams.globalDescriptorSet = data.globalSet;
-                    drawParams.drawDescriptorSet = data.drawSet;
-
-                    Draw(resources, frameIndex, graphResources, commandList, drawParams);
-
-                    commandList.PopMarker();
-                }
-
-                // Copy drawn count
-                {
-                    u32 dstOffset = i * sizeof(u32);
-                    commandList.CopyBuffer(data.occluderDrawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);
-                }
+                Draw(resources, frameIndex, graphResources, commandList, drawParams);
 
                 commandList.PopMarker();
             }
 
-            // Finish by resetting the viewport, scissor and depth bias
-            vec2 renderSize = _renderer->GetRenderSize();
-            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
-            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-            commandList.SetDepthBias(0, 0, 0);
+            // Copy drawn count
+            commandList.CopyBuffer(data.occluderDrawCountReadBackBuffer, 0, data.argumentBuffer, 4, 4);
         });
 }
 
@@ -413,13 +374,10 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
     const bool cullingEnabled = true;//CVAR_TerrainCullingEnabled.Get();
 
-    CVarSystem* cvarSystem = CVarSystem::Get();
-    const u32 numCascades = 0; // Main view only, cascades render in their own block late in the frame
-
     struct Data
     {
         Renderer::ImageMutableResource visibilityBuffer;
-        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
+        Renderer::DepthImageMutableResource depth;
 
         Renderer::BufferMutableResource culledInstanceBuffer;
 
@@ -433,16 +391,12 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
     };
 
     renderGraph->AddPass<Data>("Terrain Geometry",
-        [this, &resources, frameIndex, cullingEnabled, numCascades](Data& data, Renderer::RenderGraphBuilder& builder)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             using BufferUsage = Renderer::BufferPassUsage;
 
             data.visibilityBuffer = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            data.depth[0] = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
+            data.depth = builder.Write(resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
 
             builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
@@ -466,84 +420,56 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex, cullingEnabled, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, &resources, frameIndex, cullingEnabled](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainGeometryPass);
-            for (u32 i = 0; i < numCascades + 1; i++)
+
+            // Reset the counters
             {
-                std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
-                commandList.PushMarker(markerName, Color::White);
+                commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
+                commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+            }
 
-                // Reset the counters
-                {
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                    commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                }
+            if (CVAR_TerrainGeometryEnabled.Get())
+            {
+                const u32 cellCount = static_cast<u32>(_cellDatas.Count());
 
-                if (CVAR_TerrainGeometryEnabled.Get())
-                {
-                    const u32 cellCount = static_cast<u32>(_cellDatas.Count());
+                // Fill the cells to draw
+                FillDrawCallsParams fillParams;
+                fillParams.passName = "Geometry";
+                fillParams.cellCount = cellCount;
+                fillParams.viewIndex = 0;
+                fillParams.diffAgainstPrev = true;
+                fillParams.currentBitmaskIndex = frameIndex;
+                fillParams.fillSet = data.fillSet;
 
-                    // Fill the occluders to draw
-                    FillDrawCallsParams fillParams;
-                    fillParams.passName = "Geometry";
-                    fillParams.cellCount = cellCount;
-                    fillParams.viewIndex = i;
-                    fillParams.diffAgainstPrev = true;
-                    fillParams.currentBitmaskIndex = frameIndex;
-                    fillParams.fillSet = data.fillSet;
+                FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
+                commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
+                commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
 
-                    FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
-                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
-                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
+                commandList.PushMarker("Draw", Color::White);
 
-                    if (i == 1)
-                    {
-                        uvec2 shadowDepthDimensions = _renderer->GetImageDimensions(resources.shadowDepthCascades[0]);
+                DrawParams drawParams;
+                drawParams.viewIndex = 0;
+                drawParams.cullingEnabled = cullingEnabled;
+                drawParams.visibilityBuffer = data.visibilityBuffer;
+                drawParams.depth = data.depth;
+                drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
+                drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
 
-                        commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                        commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
+                drawParams.globalDescriptorSet = data.globalSet;
+                drawParams.drawDescriptorSet = data.geometryPassSet;
 
-                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
-                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
-                    }
-
-                    commandList.PushMarker("Draw", Color::White);
-
-                    DrawParams drawParams;
-                    drawParams.shadowPass = i != 0;
-                    drawParams.viewIndex = i;
-                    drawParams.cullingEnabled = cullingEnabled;
-                    drawParams.visibilityBuffer = data.visibilityBuffer;
-                    drawParams.depth = data.depth[i];
-                    drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
-                    drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
-
-                    drawParams.globalDescriptorSet = data.globalSet;
-                    drawParams.drawDescriptorSet = data.geometryPassSet;
-
-                    Draw(resources, frameIndex, graphResources, commandList, drawParams);
-
-                    commandList.PopMarker();
-                }
-
-                if (cullingEnabled)
-                {
-                    u32 dstOffset = i * sizeof(u32);
-                    commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);
-                }
+                Draw(resources, frameIndex, graphResources, commandList, drawParams);
 
                 commandList.PopMarker();
             }
 
-            // Finish by resetting the viewport, scissor and depth bias
-            vec2 renderSize = _renderer->GetRenderSize();
-            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
-            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-            commandList.SetDepthBias(0, 0, 0);
+            if (cullingEnabled)
+            {
+                commandList.CopyBuffer(data.drawCountReadBackBuffer, 0, data.argumentBuffer, 4, 4);
+            }
         });
 }
 
@@ -563,21 +489,8 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
     if (CVAR_TerrainCastShadow.Get() != 1)
         return;
 
-    // Under SVSM the same per-view culling runs against the clipmap cameras, which need no
-    // cascade depth images
-    const bool useSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1;
-    u32 numCascades;
-    if (useSVSM)
-    {
-        numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
-    }
-    else
-    {
-        numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-        numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
-    }
-    if (numCascades == 0)
-        return;
+    // The same per-view culling the main view uses, run against the clipmap cameras
+    const u32 numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
 
     struct Data
     {
@@ -661,157 +574,6 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
         });
 }
 
-void TerrainRenderer::AddCascadeGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
-{
-    ZoneScoped;
-
-    if (!CVAR_TerrainRendererEnabled.Get())
-        return;
-
-    if (_instanceDatas.Count() == 0)
-        return;
-
-    CVarSystem* cvarSystem = CVarSystem::Get();
-
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 0)
-        return;
-
-    if (CVAR_TerrainCastShadow.Get() != 1)
-        return;
-
-    // SVSM renders pages through AddSVSMGeometryPass instead
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) == 1)
-        return;
-
-    u32 numCascades = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCascadeNum"_h));
-    numCascades = std::min(numCascades, static_cast<u32>(resources.shadowDepthCascades.size()));
-    if (numCascades == 0)
-        return;
-
-    struct Data
-    {
-        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
-
-        Renderer::BufferMutableResource culledInstanceBuffer;
-
-        Renderer::BufferMutableResource argumentBuffer;
-        Renderer::BufferMutableResource drawCountReadBackBuffer;
-
-        Renderer::DescriptorSetResource globalSet;
-        Renderer::DescriptorSetResource fillSet;
-        Renderer::DescriptorSetResource geometryPassSet;
-    };
-
-    renderGraph->AddPass<Data>("Terrain Cascade Geometry",
-        [this, &resources, frameIndex, numCascades](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
-        {
-            using BufferUsage = Renderer::BufferPassUsage;
-
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                data.depth[i] = builder.Write(resources.shadowDepthCascades[i - 1], Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            }
-
-            builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.culledInstanceBuffer = builder.Write(_culledInstanceBuffer, BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-
-            builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_vertices.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_cellDatas.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_chunkDatas.GetBuffer(), BufferUsage::GRAPHICS);
-            builder.Read(_instanceDatas.GetBuffer(), BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
-
-            data.argumentBuffer = builder.Write(_argumentBuffer, BufferUsage::TRANSFER | BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
-            data.drawCountReadBackBuffer = builder.Write(_drawCountReadBackBuffer, BufferUsage::TRANSFER);
-
-            data.globalSet = builder.Use(resources.globalDescriptorSet);
-            data.fillSet = builder.Use(_geometryFillPassDescriptorSet);
-            data.geometryPassSet = builder.Use(resources.terrainDescriptorSet);
-
-            return true; // Return true from setup to enable this pass, return false to disable it
-        },
-        [this, &resources, frameIndex, numCascades, cvarSystem](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
-        {
-            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCascadeGeometry);
-
-            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
-
-            for (u32 i = 1; i < numCascades + 1; i++)
-            {
-                std::string markerName = "Cascade " + std::to_string(i - 1);
-                commandList.PushMarker(markerName, Color::White);
-
-                // Reset the counters
-                {
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                    commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
-                }
-
-                if (CVAR_TerrainGeometryEnabled.Get())
-                {
-                    // Cascades draw their full surviving set in one phase, occluders no longer pre-draw into them
-                    FillDrawCallsParams fillParams;
-                    fillParams.passName = "Cascade Geometry";
-                    fillParams.cellCount = cellCount;
-                    fillParams.viewIndex = i;
-                    fillParams.diffAgainstPrev = false;
-                    fillParams.currentBitmaskIndex = frameIndex;
-                    fillParams.fillSet = data.fillSet;
-
-                    FillDrawCalls(frameIndex, graphResources, commandList, fillParams);
-                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::COMPUTE);
-                    commandList.BufferBarrier(data.culledInstanceBuffer, Renderer::BufferPassUsage::GRAPHICS);
-
-                    if (i == 1)
-                    {
-                        uvec2 shadowDepthDimensions = _renderer->GetImageDimensions(resources.shadowDepthCascades[0]);
-
-                        commandList.SetViewport(0, 0, static_cast<f32>(shadowDepthDimensions.x), static_cast<f32>(shadowDepthDimensions.y), 0.0f, 1.0f);
-                        commandList.SetScissorRect(0, shadowDepthDimensions.x, 0, shadowDepthDimensions.y);
-
-                        f32 biasConstantFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasConstant"));
-                        f32 biasClamp = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasClamp"));
-                        f32 biasSlopeFactor = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDepthBiasSlope"));
-                        commandList.SetDepthBias(biasConstantFactor, biasClamp, biasSlopeFactor);
-                    }
-
-                    commandList.PushMarker("Draw", Color::White);
-
-                    DrawParams drawParams;
-                    drawParams.shadowPass = true;
-                    drawParams.viewIndex = i;
-                    drawParams.cullingEnabled = true;
-                    drawParams.depth = data.depth[i];
-                    drawParams.instanceBuffer = ToBufferResource(data.culledInstanceBuffer);
-                    drawParams.argumentBuffer = ToBufferResource(data.argumentBuffer);
-
-                    drawParams.globalDescriptorSet = data.globalSet;
-                    drawParams.drawDescriptorSet = data.geometryPassSet;
-
-                    Draw(resources, frameIndex, graphResources, commandList, drawParams);
-
-                    commandList.PopMarker();
-                }
-
-                // Copy drawn count
-                {
-                    u32 dstOffset = i * sizeof(u32);
-                    commandList.CopyBuffer(data.drawCountReadBackBuffer, dstOffset, data.argumentBuffer, 4, 4);
-                }
-
-                commandList.PopMarker();
-            }
-
-            // Finish by resetting the viewport, scissor and depth bias
-            vec2 renderSize = _renderer->GetRenderSize();
-            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
-            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
-            commandList.SetDepthBias(0, 0, 0);
-        });
-}
-
 void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer)
 {
     ZoneScoped;
@@ -828,9 +590,6 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
         return;
 
     if (CVAR_TerrainCastShadow.Get() != 1)
-        return;
-
-    if (*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTechnique"_h) != 1)
         return;
 
     if (shadowRenderer->GetSVSMPagePool() == Renderer::ImageID::Invalid())
@@ -950,7 +709,6 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                     commandList.PushMarker("Draw", Color::White);
 
                     DrawParams drawParams;
-                    drawParams.shadowPass = true;
                     drawParams.svsmPass = true;
                     drawParams.viewIndex = i;
                     drawParams.cullingEnabled = true;
@@ -1487,7 +1245,6 @@ void TerrainRenderer::CreatePipelines()
             std::vector<Renderer::PermutationField> permutationFields =
             {
                 { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "0" },
                 { "SVSM_PASS", "0" }
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
@@ -1516,41 +1273,6 @@ void TerrainRenderer::CreatePipelines()
 
         _drawPipeline = _renderer->CreatePipeline(pipelineDesc);
     }
-    // Draw shadow
-    {
-        Renderer::GraphicsPipelineDesc pipelineDesc;
-        pipelineDesc.debugName = "Terrain Draw Shadow";
-
-        // Shaders
-        Renderer::VertexShaderDesc vertexShaderDesc;
-        {
-            std::vector<Renderer::PermutationField> permutationFields =
-            {
-                { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "1" },
-                { "SVSM_PASS", "0" }
-            };
-            u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
-            vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
-        }
-
-        // Depth state
-        pipelineDesc.states.depthStencilState.depthEnable = true;
-        pipelineDesc.states.depthStencilState.depthWriteEnable = true;
-        pipelineDesc.states.depthStencilState.depthFunc = Renderer::ComparisonFunc::GREATER;
-
-        // Rasterizer state
-        pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
-        pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
-        pipelineDesc.states.rasterizerState.depthBiasEnabled = true;
-        pipelineDesc.states.rasterizerState.depthClampEnabled = true;
-
-        // Render targets
-        pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
-
-        _drawShadowPipeline = _renderer->CreatePipeline(pipelineDesc);
-    }
     // Draw SVSM pages: attachment-less, the pixel shader writes depth into the page pool with
     // image atomics. Depth clamp stays on so pancaked casters rasterize instead of clipping
     {
@@ -1563,7 +1285,6 @@ void TerrainRenderer::CreatePipelines()
             std::vector<Renderer::PermutationField> permutationFields =
             {
                 { "EDITOR_PASS", "0" },
-                { "SHADOW_PASS", "1" },
                 { "SVSM_PASS", "1" }
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
@@ -1696,16 +1417,13 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
     }
     else
     {
-        if (!params.shadowPass)
-        {
-            renderPassDesc.renderTargets[0] = params.visibilityBuffer;
-        }
+        renderPassDesc.renderTargets[0] = params.visibilityBuffer;
         renderPassDesc.depthStencil = params.depth;
     }
     commandList.BeginRenderPass(renderPassDesc);
 
     // Set pipeline
-    Renderer::GraphicsPipelineID pipeline = params.svsmPass ? _drawSVSMPipeline : (params.shadowPass ? _drawShadowPipeline : _drawPipeline);
+    Renderer::GraphicsPipelineID pipeline = params.svsmPass ? _drawSVSMPipeline : _drawPipeline;
     commandList.BeginPipeline(pipeline);
 
     // Set index buffer
