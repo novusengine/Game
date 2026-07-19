@@ -120,7 +120,7 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
         float3 lightSpacePos = mul(relativePos + worldNormal * (texelWorld * shadowSettings.normalOffset), lightRotation);
         float2 windowPos = lightSpacePos.xy + float2(_svsmData[0].camMinusWindowMinX[k], _svsmData[0].camMinusWindowMinY[k]);
 
-        // Reversed Z like the cascades: 1 = sun side. lightSpacePos is camera-relative, the raster
+        // Reversed Z: 1 = sun side. lightSpacePos is camera-relative, the raster
         // maps absolute light-space Z, camMinusZAnchor reconciles the two with small quantities.
         // Positive bias moves the receiver toward the sun
         float compareDepth = (zHalf - (lightSpacePos.z + camMinusZAnchor)) / zRangeLength + compareBias;

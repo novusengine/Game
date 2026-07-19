@@ -241,7 +241,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
     if (_instanceDatas.Count() == 0)
         return;
 
-    const u32 numCascades = 0; // Main view only, cascades are culled in their own block late in the frame
+    const u32 numShadowViews = 0; // Main view only, cascades are culled in their own block late in the frame
 
     struct Data
     {
@@ -281,7 +281,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, frameIndex, numCascades](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex, numShadowViews](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCulling);
 
@@ -325,7 +325,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             {
                 u32 viewportSizeX;
                 u32 viewportSizeY;
-                u32 numCascades;
+                u32 numShadowViews;
                 u32 occlusionEnabled;
                 u32 bitMaskBufferSizePerView;
                 u32 currentBitmaskIndex;
@@ -338,7 +338,7 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
             cullConstants->viewportSizeX = u32(viewportSize.x);
             cullConstants->viewportSizeY = u32(viewportSize.y);
-            cullConstants->numCascades = numCascades;
+            cullConstants->numShadowViews = numShadowViews;
             cullConstants->occlusionEnabled = CVAR_OcclusionCullingEnabled.Get();
             const u32 cellCount = static_cast<u32>(_cellDatas.Count());
             cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
@@ -473,7 +473,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
         });
 }
 
-void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+void TerrainRenderer::AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
     ZoneScoped;
 
@@ -490,7 +490,7 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
         return;
 
     // The same per-view culling the main view uses, run against the clipmap cameras
-    const u32 numCascades = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    const u32 numShadowViews = static_cast<u32>(glm::clamp(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(ShadowRenderer::SVSM_MAX_CLIPMAPS)));
 
     struct Data
     {
@@ -503,7 +503,7 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
         Renderer::DescriptorSetResource cullingSet;
     };
 
-    renderGraph->AddPass<Data>("Terrain Cascade Culling",
+    renderGraph->AddPass<Data>("Terrain Clipmap Culling",
         [this, &resources, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             using BufferUsage = Renderer::BufferPassUsage;
@@ -526,9 +526,9 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, frameIndex, numCascades](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, frameIndex, numShadowViews](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
-            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainCascadeCulling);
+            GPU_SCOPED_PROFILER_ZONE(commandList, TerrainClipmapCulling);
 
             // Frustum-only cull of the cascade views into their bitmask slices, no occlusion culling for cascades
             Renderer::ComputePipelineID pipeline = _cullingPipeline;
@@ -538,7 +538,7 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
             {
                 u32 viewportSizeX;
                 u32 viewportSizeY;
-                u32 numCascades;
+                u32 numShadowViews;
                 u32 occlusionEnabled;
                 u32 bitMaskBufferSizePerView;
                 u32 currentBitmaskIndex;
@@ -553,7 +553,7 @@ void TerrainRenderer::AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, 
             CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
             cullConstants->viewportSizeX = u32(viewportSize.x);
             cullConstants->viewportSizeY = u32(viewportSize.y);
-            cullConstants->numCascades = numCascades;
+            cullConstants->numShadowViews = numShadowViews;
             cullConstants->occlusionEnabled = false;
             cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
             cullConstants->currentBitmaskIndex = frameIndex;
@@ -595,7 +595,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
     if (shadowRenderer->GetSVSMPagePool() == Renderer::ImageID::Invalid())
         return;
 
-    const u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(Renderer::Settings::MAX_SHADOW_CASCADES)));
+    const u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), i32(1), i32(ShadowRenderer::SVSM_MAX_CLIPMAPS)));
     const u32 virtualSize = static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmVirtualSize"_h));
 
     struct Data
@@ -603,7 +603,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
         Renderer::ImageMutableResource pagePool;
         Renderer::BufferResource svsmData;
         Renderer::BufferResource pageTable;
-        Renderer::BufferMutableResource svsmFillArgsBuffer;
+        Renderer::BufferResource svsmFillArgsBuffer;
 
         Renderer::BufferMutableResource culledInstanceBuffer;
 
@@ -624,7 +624,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
             data.pagePool = builder.Write(shadowRenderer->GetSVSMPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
             data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
             data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
-            data.svsmFillArgsBuffer = builder.Write(shadowRenderer->GetSVSMFillArgsBuffer(), BufferUsage::COMPUTE); // Consumed by DispatchIndirect in the per-view fills
+            data.svsmFillArgsBuffer = builder.Read(shadowRenderer->GetSVSMFillArgsBuffer(), BufferUsage::COMPUTE); // Consumed read-only by DispatchIndirect in the per-view fills
 
             builder.Write(_culledInstanceBitMaskBuffer.Get(frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             builder.Write(_culledInstanceBitMaskBuffer.Get(!frameIndex), BufferUsage::COMPUTE | BufferUsage::TRANSFER);
@@ -1502,7 +1502,7 @@ void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResource
     // Bind descriptorset
     commandList.BindDescriptorSet(params.fillSet, frameIndex);
 
-    if (params.fillArgsBuffer != Renderer::BufferMutableResource::Invalid())
+    if (params.fillArgsBuffer != Renderer::BufferResource::Invalid())
     {
         commandList.DispatchIndirect(params.fillArgsBuffer, params.fillArgsByteOffset);
     }

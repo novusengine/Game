@@ -80,7 +80,7 @@ namespace Editor
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
 
-            const u32 numCascades = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
+            const u32 numClipmaps = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
 
             // SVSM stat block
             {
@@ -113,10 +113,11 @@ namespace Editor
                             shadowRenderer->GetSVSMDynamicStats(dynamicLive, dynamicTotal, dynamicOverflow);
 
                             u32 dynamicCasters = 0;
-                            u32 animatedCasters = 0;
+                            u32 transitionsIn = 0;
+                            u32 transitionsOut = 0;
                             u32 droppedAABBs = 0;
-                            shadowRenderer->GetSVSMCasterStats(dynamicCasters, animatedCasters, droppedAABBs);
-                            snprintf(line, sizeof(line), "SVSMDynamic;live;%u;total;%u;overflow;%u;dynamicCasters;%u;animatedCasters;%u;droppedAABBs;%u\n", dynamicLive, dynamicTotal, dynamicOverflow, dynamicCasters, animatedCasters, droppedAABBs);
+                            shadowRenderer->GetSVSMCasterStats(dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
+                            snprintf(line, sizeof(line), "SVSMDynamic;live;%u;total;%u;overflow;%u;dynamicCasters;%u;transitionsIn;%u;transitionsOut;%u;droppedAABBs;%u\n", dynamicLive, dynamicTotal, dynamicOverflow, dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
                             csv += line;
 
                             snprintf(line, sizeof(line), "SVSMBudgetUsed;%u\n", shadowRenderer->GetSVSMBudgetUsed());
@@ -125,7 +126,7 @@ namespace Editor
                             if (ModelRenderer* statsModelRenderer = gameRenderer->GetModelRenderer())
                             {
                                 std::string dynInstances = "SVSMDynInstances";
-                                for (u32 view = 1; view <= numCascades && view < Renderer::Settings::MAX_VIEWS; view++)
+                                for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
                                 {
                                     dynInstances += ";" + std::to_string(statsModelRenderer->GetNumSVSMDynamicInstances(view));
                                 }
@@ -133,7 +134,7 @@ namespace Editor
                             }
 
                             csv += "Clipmap;extent;marked;resident;dirty;invalidated;evicted;dynamic;deferred\n";
-                            for (u32 i = 0; i < numCascades; i++)
+                            for (u32 i = 0; i < numClipmaps; i++)
                             {
                                 ShadowRenderer::SVSMClipmapStats stats;
                                 if (!shadowRenderer->GetSVSMClipmapStats(i, stats))
@@ -170,24 +171,24 @@ namespace Editor
                     shadowRenderer->GetSVSMDynamicStats(dynamicLive, dynamicTotal, dynamicOverflow);
 
                     u32 dynamicCasters = 0;
-                    u32 animatedCasters = 0;
+                    u32 transitionsIn = 0;
+                    u32 transitionsOut = 0;
                     u32 droppedAABBs = 0;
-                    shadowRenderer->GetSVSMCasterStats(dynamicCasters, animatedCasters, droppedAABBs);
-                    if (dynamicLive > 0 || dynamicOverflow > 0 || dynamicCasters > 0 || animatedCasters > 0)
+                    shadowRenderer->GetSVSMCasterStats(dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
+                    if (dynamicLive > 0 || dynamicOverflow > 0 || dynamicCasters > 0 || transitionsIn > 0 || transitionsOut > 0)
                     {
-                        ImGui::Text("SVSM Dynamic: %u / %u pages live%s | casters: %u dynamic + %u animated", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, animatedCasters);
+                        ImGui::Text("SVSM Dynamic: %u / %u pages live%s | %u casters (+%u / -%u)", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, transitionsIn, transitionsOut);
                         if (droppedAABBs > 0)
                         {
-                            ImGui::Text("SVSM Dynamic: %u caster AABBs dropped!", droppedAABBs);
+                            ImGui::Text("SVSM Dynamic: %u casters spilled to static!", droppedAABBs);
                         }
 
                         // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
                         // frame old. A bouncing count here = the fill/cull chain loses casters
                         if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
                         {
-                            u32 numClipmapViews = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
                             std::string dynDraws = "SVSM Dyn instances:";
-                            for (u32 view = 1; view <= numClipmapViews && view < Renderer::Settings::MAX_VIEWS; view++)
+                            for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
                             {
                                 dynDraws += " " + std::to_string(svsmModelRenderer->GetNumSVSMDynamicInstances(view));
                             }
@@ -211,7 +212,6 @@ namespace Editor
                         ImGui::Text("SVSM Invalidation: %s", causes.c_str());
                     }
 
-                    u32 numClipmaps = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h));
                     for (u32 i = 0; i < numClipmaps; i++)
                     {
                         ShadowRenderer::SVSMClipmapStats stats;
@@ -273,10 +273,10 @@ namespace Editor
                         switch (i)
                         {
                         case 0:
-                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades);
+                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numClipmaps);
                             break;
                         case 1:
-                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades);
+                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numClipmaps);
                             break;
                         case 2:
                             DrawFrameTimes(heightConstraint, average, flags);
@@ -322,10 +322,10 @@ namespace Editor
                         switch (i)
                         {
                         case 0:
-                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numCascades, widthConstraint);
+                            DrawSurvivingDrawCalls(heightConstraint, rightHeaderText, numClipmaps, widthConstraint);
                             break;
                         case 1:
-                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numCascades, widthConstraint);
+                            DrawSurvivingTriangles(heightConstraint, rightHeaderText, numClipmaps, widthConstraint);
                             break;
                         case 2:
                             DrawFrameTimes(heightConstraint, average, flags, widthConstraint);
@@ -383,9 +383,9 @@ namespace Editor
                     {
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
-                        DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numCascades);
+                        DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numClipmaps);
                         ImGui::TableSetColumnIndex(1);
-                        DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numCascades);
+                        DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numClipmaps);
 
                         ImGui::TableNextRow();
                         ImGui::TableSetColumnIndex(0);
@@ -410,8 +410,8 @@ namespace Editor
                         height *= ImGui::GetContentRegionAvail().y;
                     }
 
-                    DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numCascades);
-                    DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numCascades);
+                    DrawSurvivingDrawCalls(newHeightProportions[0], rightHeaderText, numClipmaps);
+                    DrawSurvivingTriangles(newHeightProportions[1], rightHeaderText, numClipmaps);
                     DrawFrameTimes(newHeightProportions[2], average, flags);
                     DrawRenderPass(newHeightProportions[3], renderer, stats, flags);
                     DrawFrameTimesGraph(newHeightProportions[4], stats);
@@ -463,7 +463,7 @@ namespace Editor
         }
     }
 
-    void PerformanceDiagnostics::DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint)
+    void PerformanceDiagnostics::DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numClipmaps, f32 widthConstraint)
     {
         if (!_showSurvivingDrawCalls)
             return;
@@ -498,7 +498,7 @@ namespace Editor
 
             if (!_drawCallStatsOnlyForMainView)
             {
-                for (u32 i = 1; i < numCascades + 1; i++)
+                for (u32 i = 1; i < numClipmaps + 1; i++)
                 {
                     DrawCullingDrawCallStatsView(i, textPos, totalDrawCalls, totalDrawCallsSurvived);
                 }
@@ -511,7 +511,7 @@ namespace Editor
         }
     }
 
-    void PerformanceDiagnostics::DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint)
+    void PerformanceDiagnostics::DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numClipmaps, f32 widthConstraint)
     {
         if (!_showSurvivingTriangle)
             return;
@@ -546,7 +546,7 @@ namespace Editor
 
             if (!_drawCallStatsOnlyForMainView)
             {
-                for (u32 i = 1; i < numCascades + 1; i++)
+                for (u32 i = 1; i < numClipmaps + 1; i++)
                 {
                     DrawCullingTriangleStatsView(i, textPos, totalTriangles, totalTrianglesSurvived);
                 }
@@ -763,7 +763,7 @@ namespace Editor
         u32 viewDrawCalls = 0;
         u32 viewDrawCallsSurvived = 0;
 
-        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Cascades draw their full surviving set in one phase, no occluders
+        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Clipmap views draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
         bool viewRendersTerrainCulling = true;
@@ -872,7 +872,7 @@ namespace Editor
         u32 viewTriangles = 0;
         u32 viewTrianglesSurvived = 0;
 
-        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Cascades draw their full surviving set in one phase, no occluders
+        bool viewSupportsTerrainOcclusionCulling = viewID == 0; // Clipmap views draw their full surviving set in one phase, no occluders
         bool viewSupportsModelsOcclusionCulling = viewID == 0;
 
         bool viewRendersTerrainCulling = true; // Only main view supports terrain culling so far

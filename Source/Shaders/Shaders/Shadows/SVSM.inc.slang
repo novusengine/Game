@@ -17,7 +17,8 @@
 // offset inside the window (camMinusWindowMin), and every pass works with
 // windowPos = lightSpace(P - camera) + camMinusWindowMin, which is at most one window extent.
 
-// Push constants shared by all SVSM dispatches, identical bytes pushed to each pipeline
+// Push constants shared by all SVSM dispatches. One layout everywhere, but allocClipmap,
+// dynamicPhase and numDirtyAABBs vary per dispatch
 struct SVSMConstants
 {
     float4 lightDirection;  // xyz = direction the light travels, quantized shadow sun
@@ -29,7 +30,7 @@ struct SVSMConstants
     float markBorderTexels; // filter footprint margin, marks neighbor pages near page borders
     uint evictAge;          // frames without a mark before a resident page returns to the pool
     uint invalidateAll;     // CPU-requested invalidation cause bits (SVSM_CAUSE_*)
-    uint numDirtyAABBs;
+    uint numDirtyAABBs;     // Static dirty AABB count; for DynamicMark this carries the DYNAMIC AABB count instead
     uint allocClipmap;      // UpdateB runs once per clipmap, finest first, so pool starvation always lands on the coarsest ring
     float casterMargin;     // Sun-side sweep on the near cull plane, depth clamp pancakes those casters
     float zHalfRange;       // Half depth range of every clipmap window around the quantized Z anchor

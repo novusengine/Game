@@ -340,7 +340,7 @@ namespace ECS::Systems
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
         skyboxRenderer->SetSunDirection(-direction); // direction is the direction light travels, the sun sits opposite
 
-        // Fade shadows out as the sun approaches the horizon, below it the cascades would project the underside of the world
+        // Fade shadows out as the sun approaches the horizon, below it the shadow views would project the underside of the world
         f32 sunElevationSin = -direction.y; // Positive while the sun is above the horizon
         f32 shadowStrength = glm::clamp(sunElevationSin / 0.1f, 0.0f, 1.0f);
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"_h) = shadowStrength;

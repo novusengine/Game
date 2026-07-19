@@ -348,7 +348,7 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
+    void AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
     void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
 
     // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
@@ -366,8 +366,16 @@ public:
     // SVSM: appends world (min, max) pairs of spawned/despawned instances, returns pairs appended
     u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs);
 
-    // SVSM: world (min, max) pairs of in-range animated shadow casters, rebuilt each Update
-    const std::vector<vec4>& GetAnimatedCasterAABBs() const { return _animatedCasterAABBs; }
+    // SVSM dynamic-caster classifier outputs, rebuilt each Update: world (min, max) pairs of the
+    // live set, its size, spill count, and this frame's enter/leave transitions
+    const std::vector<vec4>& GetDynamicCasterAABBs() const { return _dynamicCasterAABBs; }
+    u32 GetNumDynamicCasters() const { return static_cast<u32>(_dynamicCasterLiveIDs.size()); }
+    u32 GetNumDynamicCastersDropped() const { return _dynamicCastersDropped; }
+    void GetDynamicCasterTransitions(u32& outTransitionsIn, u32& outTransitionsOut) const
+    {
+        outTransitionsIn = _dynamicCasterTransitionsIn;
+        outTransitionsOut = _dynamicCasterTransitionsOut;
+    }
 
     CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
     CullingResourcesIndexed<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
@@ -465,10 +473,25 @@ private:
     Renderer::DescriptorSet _svsmDynamicDrawDescriptorSet;
 
     // SVSM static/dynamic caster split: instances that moved or pushed bone matrices this frame.
-    // Producers enqueue from any thread, SyncToGPU rebuilds the bit mask once per frame
+    // Producers enqueue from any thread; Update drains them into the classifier below, SyncToGPU
+    // rebuilds the bit mask once per frame from the classifier's live set
     moodycamel::ConcurrentQueue<u32> _dynamicInstanceQueue;
-    std::vector<u32> _dynamicInstanceIDs; // Last frame's live set, backs the incremental bit updates
+    std::vector<u32> _dynamicInstanceIDs; // Last frame's masked set, backs the incremental bit updates
     Renderer::GPUVector<u32> _dynamicInstanceMask;
+
+    // The single dynamic-caster classifier: instanceID -> accumulated-seconds stamp of its last
+    // dynamic signal (move or bone push). Instances stay classified for a grace period after the
+    // last signal so brief pauses don't churn the static cache; entering pulls the baked pose out
+    // of the static pages, expiring bakes it back. A despawned instance's stale entry expires
+    // within the grace and costs one spurious page refresh at worst (RemoveInstance already
+    // invalidated its real footprint)
+    robin_hood::unordered_map<u32, f32> _dynamicCasterLastSignal;
+    std::vector<u32> _dynamicCasterLiveIDs; // This frame's live set, feeds the mask sync
+    std::vector<vec4> _dynamicCasterAABBs;  // World (min, max) pairs of the live set, rebuilt each frame
+    f32 _dynamicCasterTime = 0.0f;
+    u32 _dynamicCastersDropped = 0;         // Spilled to static this frame (cap or oversize), never dropped from both pools
+    u32 _dynamicCasterTransitionsIn = 0;
+    u32 _dynamicCasterTransitionsOut = 0;
 
     // Spawned/despawned/re-modeled instances must invalidate the cached static shadow pages under
     // them, ShadowRenderer drains this each frame
@@ -486,12 +509,9 @@ private:
 
     // Animated doodads (windmills, flags, swaying vegetation) share one uninstanced bone stream
     // per model; the queue signals which models advanced their animation this frame so Update can
-    // classify their placements within svsmAnimatedCasterRange as dynamic shadow casters
+    // promote their placements within svsmAnimatedCasterRange to per-instance dynamic signals
     moodycamel::ConcurrentQueue<u32> _uninstancedAnimatedModelQueue;
-    robin_hood::unordered_map<u32, u64> _animatedModelLastPushFrame; // modelID -> last frame it pushed bones
-    robin_hood::unordered_set<u32> _animatedCasterInstances; // In-range animated instances, persists as last frame's set
-    std::vector<vec4> _animatedCasterAABBs; // World (min, max) pairs of the set, rebuilt each frame
-    u64 _animatedCasterFrame = 0;
+    robin_hood::unordered_map<u32, f32> _animatedModelLastPushTime; // modelID -> last accumulated-seconds it pushed bones
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

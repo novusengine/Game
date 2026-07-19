@@ -49,7 +49,7 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
-    void AddCascadeCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
+    void AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
     void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
 
     // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
@@ -119,7 +119,7 @@ private:
 
         // When set the fill dispatches indirectly from these GPU-written args (SVSM per-view
         // gating), zero groups for views with no page work this frame
-        Renderer::BufferMutableResource fillArgsBuffer;
+        Renderer::BufferResource fillArgsBuffer; // Finalize-written dispatch args, consumed read-only via DispatchIndirect
         u32 fillArgsByteOffset = 0;
     };
     void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);

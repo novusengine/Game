@@ -12,7 +12,7 @@ struct Constants
     uint viewportSizeX;
     uint viewportSizeY;
     uint maxDrawCount;
-    uint numCascades;
+    uint numShadowViews;
     uint occlusionCull;
     uint instanceIDOffset;
     uint modelIDOffset;
@@ -323,7 +323,7 @@ void main(CSInput input)
     // Shadow is only supported if we USE_BITMASKS
 #if USE_BITMASKS
     // Shadow clipmap views
-    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
     {
         drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow views... yet?
 

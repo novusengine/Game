@@ -181,7 +181,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
-    _shadowRenderer = new ShadowRenderer(_renderer, this, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
+    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _resources);
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
@@ -414,8 +414,8 @@ f32 GameRenderer::Render()
     // samples, then allocates, culls per clipmap view and renders the dirty pages the same frame
     _shadowRenderer->AddSVSMUpdatePass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
-    _terrainRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddCascadeCullingPass(&renderGraph, _resources, _frameIndex);
+    _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
     _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
 

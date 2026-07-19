@@ -268,7 +268,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
     if (_cullingResources.GetDrawCalls().Count() == 0)
         return;
 
-    u32 numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+    u32 numShadowViews = 0;
 
     struct Data
     {
@@ -340,7 +340,7 @@ void LiquidRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderRe
             params.cullingDescriptorSet = data.cullingSet;
             params.createIndirectAfterCullSet = data.cullingSet;
 
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            params.numShadowViews = 0;
             params.occlusionCull = CVAR_LiquidOcclusionCullingEnabled.Get();
             params.disableTwoStepCulling = true; // Transparent objects don't write depth, so we don't need to two step cull them
 
@@ -496,7 +496,7 @@ void LiquidRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderR
 
             params.enableDrawing = true;//CVAR_ModelDrawGeometry.Get();
             params.cullingEnabled = cullingEnabled;
-            params.numCascades = 0;// *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "numShadowCascades"_h);
+            params.numShadowViews = 0;
 
             GeometryPass(params);
         });

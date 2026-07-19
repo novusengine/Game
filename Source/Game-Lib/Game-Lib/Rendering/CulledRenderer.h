@@ -128,7 +128,7 @@ protected:
     public:
         Renderer::ImageMutableResource rt0;
         Renderer::ImageMutableResource rt1;
-        Renderer::DepthImageMutableResource depth[Renderer::Settings::MAX_VIEWS];
+        Renderer::DepthImageMutableResource depth;
 
         Renderer::BufferMutableResource culledDrawCallsBuffer;
         Renderer::BufferMutableResource culledDrawCallCountBuffer;
@@ -151,8 +151,6 @@ protected:
 
         u32 baseInstanceLookupOffset = 0;
         u32 drawCallDataSize = 0;
-
-        u32 numCascades = 0;
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool disableTwoStepCulling = false;
@@ -223,7 +221,7 @@ protected:
         Renderer::DescriptorSetResource cullingDescriptorSet;
         Renderer::DescriptorSetResource createIndirectAfterCullSet;
 
-        u32 numCascades = 0;
+        u32 numShadowViews = 0;
         bool cullMainView = true;
         bool occlusionCull = true;
         bool disableTwoStepCulling = false;
@@ -309,7 +307,7 @@ protected:
         u32 drawCallDataSize = 0; // Instanced only
 
         u32 firstViewIndex = 0; // 0 = main view first, 1 = clipmap views only
-        u32 numCascades = 0;
+        u32 numShadowViews = 0;
 
         bool enableDrawing = false; // Allows us to do everything but the actual drawcall, for debugging
         bool cullingEnabled = false;
@@ -326,11 +324,11 @@ protected:
         // Finalize-written per-view fill dispatch args: rings with no dirty static pages / no
         // resident dynamic pages this frame get zero-group fills. Same-frame GPU truth — a
         // CPU/readback gate here is a frame late and flickers freshly acquired dynamic pages
-        Renderer::BufferMutableResource svsmFillArgsBuffer;
+        Renderer::BufferResource svsmFillArgsBuffer; // Finalize-written dispatch args, consumed read-only via DispatchIndirect
     };
     void GeometryPass(GeometryPassParams& params);
     void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic); // Shared-buffer rebuild from a view's bitmask slice
-    void CascadeCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
+    void ClipmapCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
 
     void SyncToGPU();
     void BindCullingResource(CullingResourcesBase& resources);

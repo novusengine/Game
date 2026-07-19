@@ -99,8 +99,8 @@ void SkyboxRenderer::SetSkybandColors(const vec3& skyTopColor, const vec3& skyMi
 
 void SkyboxRenderer::SetSunDirection(const vec3& directionToSun)
 {
-    f32 enabled = _skybandColors.sunDirection.w;
-    _skybandColors.sunDirection = vec4(glm::normalize(directionToSun), enabled);
+    // w is stomped from skyboxDrawSun in AddSkyboxPass every frame
+    _skybandColors.sunDirection = vec4(glm::normalize(directionToSun), 0.0f);
 }
 
 void SkyboxRenderer::CreatePermanentResources()

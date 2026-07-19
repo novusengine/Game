@@ -1,4 +1,4 @@
-permutation DEBUG_ID = [0, 1, 2, 3, 4, 5]; // 4 (CascadeID) retired with CSM, kept so 5 = SVSM margin stays stable
+permutation DEBUG_ID = [0, 1, 2, 3, 4]; // Off, TypeID, ObjectID, TriangleID, SVSM compare margin
 permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 
 #include "DescriptorSet/Debug.inc.slang"
@@ -335,10 +335,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 debugColor = IDToColor3(vBuffer.triangleID);
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
-#elif DEBUG_ID == 4 // Retired (was CascadeID)
-    _resolvedColor[pixelPos] = float4(0, 0, 0, 1);
-    return;
-#elif DEBUG_ID == 5 // SVSM compare margin
+#elif DEBUG_ID == 4 // SVSM compare margin
     PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
     float3 debugColor = GetSVSMDebugColor(pixelVertexData.worldPos, pixelVertexData.worldNormal, _constants.shadowSettings.y, _constants.shadowSettings.z);
     _resolvedColor[pixelPos] = float4(debugColor, 1);

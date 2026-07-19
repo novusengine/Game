@@ -39,8 +39,8 @@ namespace Editor
 
         void DrawCullingStatsEntry(std::string_view name, u32 drawCalls, u32 survivedDrawCalls);
 
-        void DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint = -1.f);
-        void DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numCascades, f32 widthConstraint = -1.f);
+        void DrawSurvivingDrawCalls(f32 constraint, const std::string& text, u32 numClipmaps, f32 widthConstraint = -1.f);
+        void DrawSurvivingTriangles(f32 constraint, const std::string& text, u32 numClipmaps, f32 widthConstraint = -1.f);
         void DrawFrameTimes(f32 constraint, const ECS::Singletons::FrameTimes& average, const ImGuiTableFlags& flags, f32 widthConstraint = -1.f);
         void DrawRenderPass(f32 constraint, Renderer::Renderer* renderer, ECS::Singletons::EngineStats& stats, const ImGuiTableFlags& flags, f32 widthConstraint = -1.f);
         void DrawFrameTimesGraph(f32 constraint, const ECS::Singletons::EngineStats& stats, f32 widthConstraint = -1.f);

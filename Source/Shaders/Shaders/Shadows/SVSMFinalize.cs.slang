@@ -4,8 +4,9 @@
 // Last SVSM dispatch, single thread, runs after UpdateB and DynamicUpdate so the dirty rects and
 // per-ring page stats are final: writes the clipmap render cameras into the shared cameras buffer
 // that culling and the page render passes read, and the per-view fill dispatch args that gate the
-// geometry passes' instance fills. Mirrors the CascadeFitCameras tail, minus the texel snap: the
-// window center is aligned to the absolute page grid by construction.
+// geometry passes' instance fills. Same GPU-writes-the-camera-slots shape the retired SDSM fit
+// pass used, minus the texel snap: the window center is aligned to the absolute page grid by
+// construction.
 //
 // The camera MATRICES always map the full clipmap window (the render viewport spans the whole
 // virtual texture). The cull PLANES are tightened to this frame's dirty page rect, XY-tight is
@@ -84,7 +85,7 @@ void main()
         clipmapCamera.worldToClip = mul(view, proj); // glm viewToClip * worldToView
         clipmapCamera.clipToWorld = mul(clipmapCamera.clipToView, clipmapCamera.viewToWorld); // glm viewToWorld * clipToView
 
-        clipmapCamera.eyePosition = float4(shadowCameraPos, halfExtent); // w = window coverage radius, the far fade reads it
+        clipmapCamera.eyePosition = float4(shadowCameraPos, 0.0f);
         clipmapCamera.eyeRotation = float4(0.0f, 0.0f, 0.0f, 0.0f);
         clipmapCamera.nearFar = float4(0.0f, 0.0f, 0.0f, 0.0f);
 

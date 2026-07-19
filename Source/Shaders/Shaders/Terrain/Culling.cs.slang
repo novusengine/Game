@@ -11,12 +11,12 @@ struct Constants
 {
     uint viewportSizeX;
     uint viewportSizeY;
-    uint numCascades;
+    uint numShadowViews;
     uint occlusionCull;
     uint bitMaskBufferSizePerView;
     uint currentBitmaskIndex;
     uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
-    uint cullMainView; // The late cascade dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice
+    uint cullMainView; // The late clipmap dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice
 };
 
 struct HeightRange
@@ -183,7 +183,7 @@ void main(CSInput input)
     }
 
     // Shadow clipmap views
-    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
     {
         drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow views... yet?
 

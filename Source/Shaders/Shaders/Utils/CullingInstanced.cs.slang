@@ -21,10 +21,10 @@ struct Constants
     uint cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
     uint debugDrawColliders;
     uint currentBitmaskIndex;
-    uint numCascades;
+    uint numShadowViews;
     uint bitMaskBufferUintsPerView;
     uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
-    uint cullMainView; // The late cascade dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice and the instance lookup
+    uint cullMainView; // The late clipmap dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice and the instance lookup
 };
 
 struct InstanceRef
@@ -199,7 +199,7 @@ struct CullOutput
 
 #if USE_BITMASKS
 // Shadow clipmap views only need the visibility bitmask, the per-view draw sets are filled from it later in the geometry pass
-void CullForCascade(DrawInput drawInput, Camera camera, uint bitmaskOffset, bool debugDrawResults)
+void CullForClipmap(DrawInput drawInput, Camera camera, uint bitmaskOffset, bool debugDrawResults)
 {
     bool isVisible = drawInput.instanceCount > 0 && IsSphereInsideFrustum(camera, drawInput.sphere);
 
@@ -419,10 +419,10 @@ void main(CSInput input)
 
 #if USE_BITMASKS
     // Shadow clipmap views
-    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
     {
         bool debugDrawResults = (_constants.debugDrawView == i);
-        CullForCascade(drawInput, _cameras[i], _constants.bitMaskBufferUintsPerView * i, debugDrawResults);
+        CullForClipmap(drawInput, _cameras[i], _constants.bitMaskBufferUintsPerView * i, debugDrawResults);
     }
 #endif
 }

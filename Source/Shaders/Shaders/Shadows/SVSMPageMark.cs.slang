@@ -1,8 +1,8 @@
 #include "Include/Camera.inc.slang"
 #include "Shadows/SVSM.inc.slang"
 
-// Marks the pages touched by visible depth samples, structurally CascadeXYReduce with a page
-// table as the write target. Positions are reconstructed camera-relative (clipToView + rotate-only
+// Marks the pages touched by visible depth samples: one thread per depth pixel reconstructs the
+// world position and marks the page it samples. Positions are reconstructed camera-relative (clipToView + rotate-only
 // viewToWorld) and addressed through the anchor-relative window math from SVSM.inc.
 //
 // Samples within markBorderTexels of a page border also mark the neighbor page so the filter
@@ -58,6 +58,8 @@ void main(CSInput input)
     uint2 dim;
     _depth.GetDimensions(dim.x, dim.y);
 
+    // Clamp instead of early return: the LDS mark-cache flush below needs every thread at the
+    // group barrier, and the duplicate edge marks dedup through the cache anyway
     uint2 pixel = min(input.dispatchThreadID.xy, dim - 1);
     float depth = _depth[pixel];
 

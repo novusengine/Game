@@ -21,7 +21,6 @@ namespace Renderer
 }
 
 struct RenderResources;
-class DebugRenderer;
 class GameRenderer;
 class ModelRenderer;
 class TerrainRenderer;
@@ -29,7 +28,7 @@ class TerrainRenderer;
 class ShadowRenderer
 {
 public:
-    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources);
+    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources);
     ~ShadowRenderer();
 
     void Update(f32 deltaTime, RenderResources& resources);
@@ -60,7 +59,7 @@ public:
     void GetSVSMDynamicStats(u32& outLivePages, u32& outTotalPages, u32& outOverflow) const;
     u32 GetSVSMBudgetUsed() const { return _svsmDataReadBack[216]; } // SVSMDataOffsets::StatsBudgetUsed
 
-    // Binds the cameras buffer into every SDSM/SVSM set that reads or writes it. Called at init
+    // Binds the cameras buffer into every SVSM set that reads or writes it. Called at init
     // (buffer binds only reach the canonical descriptor copies at a later FlipFrame, so mid-frame
     // binds leave a hole) and again if the cameras buffer is ever recreated
     void BindCameraBuffers(RenderResources& resources);
@@ -70,11 +69,13 @@ public:
     // per-view skip is a frame late and drops freshly acquired dynamic pages' draws for a frame
     bool HasSVSMDynamicCasters() const { return !_svsmDynamicAABBs.empty(); }
 
-    // CPU-side caster classification counts, rebuilt each Update
-    void GetSVSMCasterStats(u32& outDynamicCasters, u32& outAnimatedCasters, u32& outDroppedAABBs) const
+    // CPU-side caster classification counts, rebuilt each Update from the ModelRenderer's
+    // classifier: live set size, this frame's enter/leave transitions, and static-spilled casters
+    void GetSVSMCasterStats(u32& outDynamicCasters, u32& outTransitionsIn, u32& outTransitionsOut, u32& outDroppedAABBs) const
     {
         outDynamicCasters = _svsmNumDynamicCasters;
-        outAnimatedCasters = _svsmNumAnimatedCasters;
+        outTransitionsIn = _svsmCasterTransitionsIn;
+        outTransitionsOut = _svsmCasterTransitionsOut;
         outDroppedAABBs = _svsmDynamicAABBsDropped;
     }
 
@@ -93,6 +94,15 @@ public:
     static constexpr u32 SVSM_FILL_ARGS_DYNAMIC_OFFSET = 3 * sizeof(u32);
     static constexpr u32 SVSM_FILL_ARGS_TERRAIN_OFFSET = 6 * sizeof(u32);
 
+    // The single clipmap-count cap every clamp site uses. The camera buffer and bitmask slices
+    // are laid out against the Engine's view cap, the two must stay equal
+    static constexpr u32 SVSM_MAX_CLIPMAPS = 8;
+    static_assert(SVSM_MAX_CLIPMAPS == Renderer::Settings::MAX_SHADOW_CASCADES, "SVSM clipmap cap must match the Engine shadow view cap, both size the camera buffer and bitmask slices");
+
+    // Dynamic AABB buffer capacity; the ModelRenderer's classifier caps its emission against this
+    // and spills the excess to the static path (never excluded from both pools)
+    static constexpr u32 SVSM_MAX_DYNAMIC_AABBS = 4096;
+
     // For the material pass LIGHT set bindings, which must stay valid before the pools exist.
     // Nothing samples the placeholder while the page tables have no resident entries
     Renderer::ImageID GetSVSMPagePoolOrPlaceholder() const { return _svsmPagePool != Renderer::ImageID::Invalid() ? _svsmPagePool : _svsmPagePoolPlaceholder; }
@@ -100,22 +110,20 @@ public:
 
 private:
     void CreatePermanentResources(RenderResources& resources);
+    void ResetSVSMPoolState(RenderResources& resources);
 
 private:
     Renderer::Renderer* _renderer = nullptr;
     GameRenderer* _gameRenderer = nullptr;
-    DebugRenderer* _debugRenderer = nullptr;
     TerrainRenderer* _terrainRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
 
     // SVSM: scalar layout of SVSMData in Shadows/SVSM.inc.slang, offsets in ShadowRenderer.cpp.
     // Tail: clipRect{MinX,MinY,MaxX,MaxY}[24] at 220..315 (3 clip rects x 8 clipmaps)
     static constexpr u32 SVSM_DATA_UINT_COUNT = 316;
-    static constexpr u32 SVSM_MAX_CLIPMAPS = 8;
     static constexpr u32 SVSM_MAX_PAGE_TABLE_SIZE = 64;   // Pages per row, buffers are sized for this cap
     static constexpr u32 SVSM_MAX_POOL_PAGES = 4096;      // Physical page index is 12 bits in the table entry
     static constexpr u32 SVSM_MAX_DIRTY_AABBS = 1024;
-    static constexpr u32 SVSM_MAX_DYNAMIC_AABBS = 4096; // Animated forests are many small casters, overflow drops (never full-invalidates)
 
     Renderer::ComputePipelineID _svsmPreparePipeline;
     Renderer::ComputePipelineID _svsmInvalidateAABBsPipeline;
@@ -160,16 +168,27 @@ private:
 
     std::vector<vec4> _svsmDirtyAABBs;   // Static invalidation (min, max) pairs, uploaded by the update pass
     std::vector<vec4> _svsmDynamicAABBs; // This frame's dynamic caster (min, max) pairs
-    robin_hood::unordered_set<u32> _svsmPrevDynamicEntities; // Last frame's dynamic entity handles for transition detection
     bool _svsmDirtyAABBOverflow = false;
-    u32 _svsmNumDynamicCasters = 0;   // ECS entities: moved or actively bone-simulated
-    u32 _svsmNumAnimatedCasters = 0;  // In-range animated doodad instances from the ModelRenderer
-    u32 _svsmDynamicAABBsDropped = 0; // Dynamic list overflow: dropped casters freeze for the frame
+    u32 _svsmNumDynamicCasters = 0;     // Classifier live set: moved or bone-pushed within the grace window
+    u32 _svsmCasterTransitionsIn = 0;   // Classifier enter/leave this frame, each re-bakes static pages
+    u32 _svsmCasterTransitionsOut = 0;
+    u32 _svsmDynamicAABBsDropped = 0;   // Spilled to the static path this frame (cap or oversize)
     bool _svsmForceInvalidateAll = false; // Set when invalidations were discarded while SVSM was inactive
     bool _svsmValidatePending = false;    // A validation copy was recorded, Update maps and checks it next frame
     bool _svsmPoolNeedsClear = false;
     u32 _svsmPoolPages = 0;
     u32 _svsmDynamicPoolPages = 0;
 
-    f32 _lastDeltaTime = 0.0f;
+    // The config ResetSVSMPoolState last shaped the free lists and page counts for. pageSize is
+    // live-editable (a change refills them in place); the pool sizes are restart-only once the
+    // pool images exist, the Engine cannot destroy images to recreate them at new dimensions
+    u32 _svsmAppliedPageSize = 0;
+    u32 _svsmAppliedPoolSize = 0;
+    u32 _svsmAppliedDynamicPoolSize = 0;
+
+    // Caster-toggle cvar states as of last Update: a flip must re-bake the whole static cache,
+    // resident pages keep the toggled class's baked depth forever otherwise (marked pages never
+    // age out while visible). Initialized to the cvar defaults so startup does not invalidate
+    bool _svsmModelsCastShadow = true;
+    bool _svsmTerrainCastShadow = true;
 };

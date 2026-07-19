@@ -1,14 +1,12 @@
 #include "ShadowRenderer.h"
 #include <Game-Lib/Application/EnttRegistries.h>
 #include <Game-Lib/ECS/Components/AABB.h>
-#include <Game-Lib/ECS/Components/AnimationData.h>
 #include <Game-Lib/ECS/Components/Camera.h>
 #include <Game-Lib/ECS/Components/Model.h>
 #include <Game-Lib/ECS/Singletons/DayNightCycle.h>
 #include <Game-Lib/ECS/Util/Transforms.h>
 
 #include <Game-Lib/ECS/Systems/UpdateAreaLights.h>
-#include <Game-Lib/Rendering/Debug/DebugRenderer.h>
 #include <Game-Lib/Rendering/GameRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Model/ModelRenderer.h>
@@ -25,23 +23,25 @@
 
 #include <entt/entt.hpp>
 
+#include <bit>
+
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 1, CVarFlags::EditCheckbox);
-AutoCVar_Float CVAR_ShadowStrength(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength", "directional shadow strength, overwritten each frame from the sun elevation", 1.0f);
+AutoCVar_Float CVAR_ShadowStrength(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength", "directional shadow strength, overwritten each frame from the sun elevation", 1.0f, CVarFlags::EditReadOnly);
 AutoCVar_Float CVAR_ShadowNormalOffsetBias(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias", "receiver offset along the surface normal in shadow texels, fights acne on hard angles", 1.0f);
 AutoCVar_Float CVAR_ShadowCasterMargin(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin", "extends clipmap culling toward the sun so far-away casters with long shadows are not culled, depth clamp pancakes them onto the near plane", 2500.0f);
 AutoCVar_Int CVAR_SVSMNumClipmaps(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps", "number of SVSM clipmap rings, each ring doubles the covered area", 6);
 AutoCVar_Float CVAR_SVSMClipmap0Extent(CVarCategory::Client | CVarCategory::Rendering, "svsmClipmap0Extent", "world extent of the finest SVSM clipmap window in meters, finer rings multiply the near-field page demand", 64.0f);
 AutoCVar_Int CVAR_SVSMVirtualSize(CVarCategory::Client | CVarCategory::Rendering, "svsmVirtualSize", "virtual texture resolution per clipmap", 8192);
 AutoCVar_Int CVAR_SVSMPageSize(CVarCategory::Client | CVarCategory::Rendering, "svsmPageSize", "texels per page", 128);
-AutoCVar_Int CVAR_SVSMPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmPoolSize", "physical page pool texture resolution, page count is fixed at startup", 8192);
+AutoCVar_Int CVAR_SVSMPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmPoolSize", "physical page pool texture resolution, restart-only once shadows have been enabled", 8192);
 AutoCVar_Int CVAR_SVSMPageEvictAge(CVarCategory::Client | CVarCategory::Rendering, "svsmPageEvictAge", "frames without a visible sample before a cached page returns to the pool, the age counter caps at 254", 240);
 AutoCVar_Float CVAR_SVSMMarkBorderTexels(CVarCategory::Client | CVarCategory::Rendering, "svsmMarkBorderTexels", "filter footprint margin in texels, samples near a page border also mark the neighbor page", 4.0f);
 AutoCVar_Float CVAR_SVSMResolutionScale(CVarCategory::Client | CVarCategory::Rendering, "svsmResolutionScale", "eye-distance clipmap floor: skip rings finer than the sample's screen footprint times this, 0 disables, lower = sharper distant shadows for more pages. Below ~0.25 the pool pressure-evicts and churns", 1.0f);
 AutoCVar_Int CVAR_SVSMDynamicSplit(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit", "static/dynamic caster split: animated and moving casters render into a transient dynamic pool instead of churning the static cache, 0 reverts to v1 behavior", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_SVSMDynamicPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicPoolSize", "dynamic page pool texture resolution, page count is fixed at startup", 2048);
+AutoCVar_Int CVAR_SVSMDynamicPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicPoolSize", "dynamic page pool texture resolution, restart-only once shadows have been enabled", 2048);
 AutoCVar_Int CVAR_SVSMRenderBudget(CVarCategory::Client | CVarCategory::Rendering, "svsmRenderBudget", "static pages rendered per frame, 0 = unlimited; overflow refines over following frames coarse-to-fine, the coarsest two rings are exempt", 0);
 AutoCVar_Float CVAR_SVSMAnimatedCasterRange(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange", "camera range in meters within which animated doodads (windmills, flags) cast dynamic shadows, beyond it their pose bakes static, 0 disables", 128.0f);
-AutoCVar_Int CVAR_SVSMFreeze(CVarCategory::Client | CVarCategory::Rendering, "svsmFreeze", "freeze SVSM page marking and lifecycle to inspect the cached state", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_SVSMFreeze(CVarCategory::Client | CVarCategory::Rendering, "svsmFreeze", "freeze SVSM page marking and lifecycle to inspect the cached state. Stale dirty state stays live and pages never clear, so dynamic content ghost-accumulates while frozen; unfreezing re-bakes the cache if anything spawned/despawned meanwhile", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMInvalidateAll(CVarCategory::Client | CVarCategory::Rendering, "svsmInvalidateAll", "one shot, invalidate every cached SVSM page", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMValidateDynamic(CVarCategory::Client | CVarCategory::Rendering, "svsmValidateDynamic", "one shot, read back the dynamic page table and free list and validate pool invariants (aliasing, leaks)", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMDebugClipmap(CVarCategory::Client | CVarCategory::Rendering, "svsmDebugClipmap", "draw this clipmap's page table as an overlay, -1 disables", -1);
@@ -77,10 +77,38 @@ namespace SVSMCause
     constexpr u32 AABBOverflow = 8;
 }
 
-ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
+// pageTableSize must be a power of two in [16, maxPageTableSize] (WrapPageSlot masks with
+// pageTableSize - 1), and every consumer — the geometry passes' viewport extents included —
+// derives it from these cvars, so invalid values are corrected at the source. Returns true when
+// anything was corrected: the pre-snap values were live for a few frames and mis-addressed the
+// cached pages, so the caller must invalidate the cache
+static bool SanitizeSVSMConfigCVars(u32 maxPageTableSize)
+{
+    const u32 pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
+    const u32 virtualSize = static_cast<u32>(glm::max(CVAR_SVSMVirtualSize.Get(), 1));
+
+    const u32 pageTableSize = glm::clamp(std::bit_floor(virtualSize / pageSize), 16u, maxPageTableSize);
+    const u32 correctedVirtualSize = pageTableSize * pageSize;
+
+    bool corrected = false;
+    if (correctedVirtualSize != static_cast<u32>(CVAR_SVSMVirtualSize.Get()))
+    {
+        NC_LOG_WARNING("SVSM: svsmVirtualSize {0} is not a power-of-two multiple of the page size in [16, {1}] pages, corrected to {2}", CVAR_SVSMVirtualSize.Get(), maxPageTableSize, correctedVirtualSize);
+        CVAR_SVSMVirtualSize.Set(static_cast<i32>(correctedVirtualSize));
+        corrected = true;
+    }
+    if (pageSize != static_cast<u32>(CVAR_SVSMPageSize.Get()))
+    {
+        NC_LOG_WARNING("SVSM: svsmPageSize {0} is below the 16 texel minimum, corrected to {1}", CVAR_SVSMPageSize.Get(), pageSize);
+        CVAR_SVSMPageSize.Set(static_cast<i32>(pageSize));
+        corrected = true;
+    }
+    return corrected;
+}
+
+ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
-    , _debugRenderer(debugRenderer)
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
     , _svsmPrepareDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
@@ -107,19 +135,66 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
     ZoneScoped;
 
-    _lastDeltaTime = deltaTime;
+    if (SanitizeSVSMConfigCVars(SVSM_MAX_PAGE_TABLE_SIZE))
+    {
+        _svsmForceInvalidateAll = true; // Pages cached under the pre-snap addressing are garbage
+    }
 
-    // SVSM: last frame's page table stats plus this frame's caster bounds. With the caster split,
-    // the current dynamic set (moved + animated) feeds dynamic page marking, and only
-    // classification transitions and spawns/despawns invalidate cached static content. With the
-    // split off, everything feeds static invalidation like v1
+    // Live config edits: a pageSize change reshapes the pool page counts and free lists in place
+    // (the pool textures keep their dimensions, only the page grid over them changes). The pool
+    // size cvars are restart-only once the pool images exist — the Engine cannot destroy images,
+    // so recreating them at new dimensions would leak the old texture — and revert with a warning
+    {
+        if (_svsmPagePool != Renderer::ImageID::Invalid() &&
+            (static_cast<u32>(CVAR_SVSMPoolSize.Get()) != _svsmAppliedPoolSize || static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) != _svsmAppliedDynamicPoolSize))
+        {
+            NC_LOG_WARNING("SVSM: svsmPoolSize/svsmDynamicPoolSize changes need a restart once the pools exist, reverting to {0}/{1}", _svsmAppliedPoolSize, _svsmAppliedDynamicPoolSize);
+            CVAR_SVSMPoolSize.Set(static_cast<i32>(_svsmAppliedPoolSize));
+            CVAR_SVSMDynamicPoolSize.Set(static_cast<i32>(_svsmAppliedDynamicPoolSize));
+        }
+
+        const bool configChanged = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16)) != _svsmAppliedPageSize
+            || static_cast<u32>(CVAR_SVSMPoolSize.Get()) != _svsmAppliedPoolSize
+            || static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) != _svsmAppliedDynamicPoolSize;
+        if (configChanged)
+        {
+            ResetSVSMPoolState(resources);
+            _svsmForceInvalidateAll = true;
+            if (_svsmPagePool != Renderer::ImageID::Invalid())
+            {
+                _svsmPoolNeedsClear = true; // The old page grid's depth is garbage under the new one
+            }
+        }
+    }
+
+    // Caster-toggle transitions re-bake the whole static cache: resident pages hold the toggled
+    // class's baked depth, and marked pages never age out while visible, so without this the old
+    // shadows persist indefinitely after a toggle
+    {
+        CVarSystem* cvarSystem = CVarSystem::Get();
+        const bool modelsCastShadow = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowModelsCastShadow"_h) == 1;
+        const bool terrainCastShadow = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowTerrainCastShadow"_h) == 1;
+        if (modelsCastShadow != _svsmModelsCastShadow || terrainCastShadow != _svsmTerrainCastShadow)
+        {
+            _svsmModelsCastShadow = modelsCastShadow;
+            _svsmTerrainCastShadow = terrainCastShadow;
+            _svsmForceInvalidateAll = true;
+        }
+    }
+
+    // SVSM: last frame's page table stats plus this frame's caster bounds. The ModelRenderer's
+    // per-instance classifier owns the dynamic set (moved or bone-pushed within the grace window)
+    // and its transition invalidations; this just copies the results and uploads. With the split
+    // off, the classifier feeds everything through static invalidation like v1
     _svsmDirtyAABBs.clear();
     _svsmDynamicAABBs.clear();
     _svsmDirtyAABBOverflow = false;
     _svsmNumDynamicCasters = 0;
-    _svsmNumAnimatedCasters = 0;
+    _svsmCasterTransitionsIn = 0;
+    _svsmCasterTransitionsOut = 0;
     _svsmDynamicAABBsDropped = 0;
-    if (CVAR_ShadowEnabled.Get())
+    const bool frozen = CVAR_SVSMFreeze.Get() != 0;
+    if (CVAR_ShadowEnabled.Get() && !frozen)
     {
         // The pools are the SVSM VRAM cost, only allocated once shadows are actually used
         if (_svsmPagePool == Renderer::ImageID::Invalid())
@@ -142,7 +217,9 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         }
 
         // Diagnostics only (perf editor stats), rendering decisions never read this — it is a
-        // frame old, the GPU gates its own per-view work through Finalize's fill dispatch args
+        // frame old, the GPU gates its own per-view work through Finalize's fill dispatch args.
+        // Single-buffered across frames in flight: this map can race the in-flight GPU copy, so
+        // values may tear (house readback pattern, accepted — stats can read inconsistent)
         u32* svsmData = static_cast<u32*>(_renderer->MapBuffer(_svsmDataReadBackBuffer));
         if (svsmData != nullptr)
         {
@@ -224,112 +301,24 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
             CVAR_SVSMValidateDynamic.Set(0);
         }
 
-        entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-        const bool split = CVAR_SVSMDynamicSplit.Get() == 1;
-
-        auto AppendStaticAABB = [this](const vec4& min, const vec4& max)
-        {
-            if (_svsmDirtyAABBs.size() >= SVSM_MAX_DIRTY_AABBS * 2)
-            {
-                _svsmDirtyAABBOverflow = true; // Falls back to a full static invalidation
-                return;
-            }
-
-            _svsmDirtyAABBs.push_back(min);
-            _svsmDirtyAABBs.push_back(max);
-        };
-
-        // Dynamic list overflow must NOT full-invalidate the static cache: the dropped casters'
-        // shadows just freeze for the frame, visible in the perf editor
-        auto AppendDynamicAABB = [this](const vec4& min, const vec4& max)
-        {
-            if (_svsmDynamicAABBs.size() >= SVSM_MAX_DYNAMIC_AABBS * 2)
-            {
-                _svsmDynamicAABBsDropped++;
-                return;
-            }
-
-            _svsmDynamicAABBs.push_back(min);
-            _svsmDynamicAABBs.push_back(max);
-        };
-
-        // Spawned/despawned/re-modeled instances always invalidate cached static pages
-        if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, SVSM_MAX_DIRTY_AABBS) * 2 > SVSM_MAX_DIRTY_AABBS * 2)
+        // Spawned/despawned/re-modeled instances and the classifier's transition/spill
+        // invalidations always re-bake cached static pages
+        if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, SVSM_MAX_DIRTY_AABBS) > SVSM_MAX_DIRTY_AABBS)
         {
             _svsmDirtyAABBOverflow = true;
         }
 
-        // The current dynamic caster set: moved this frame or actively bone-simulated
-        robin_hood::unordered_set<u32> currentDynamicEntities;
+        // The dynamic caster set — moved or bone-pushed within the grace window — is classified
+        // per instance by the ModelRenderer (one classifier feeds both this list and the GPU
+        // instance mask, so they can never disagree). Capped and oversize-spilled at the source,
+        // the copy just has to fit
+        const std::vector<vec4>& dynamicAABBs = _modelRenderer->GetDynamicCasterAABBs();
+        NC_ASSERT(dynamicAABBs.size() <= SVSM_MAX_DYNAMIC_AABBS * 2, "SVSM: ModelRenderer emitted more dynamic caster AABBs than the buffer holds, the source cap is broken");
+        _svsmDynamicAABBs.assign(dynamicAABBs.begin(), dynamicAABBs.end());
 
-        auto CollectDynamic = [&](entt::entity entity, const ECS::Components::Model& model, const ECS::Components::WorldAABB& worldAABB)
-        {
-            if (model.instanceID == std::numeric_limits<u32>::max())
-                return;
-
-            u32 entityHandle = static_cast<u32>(entity);
-            if (!currentDynamicEntities.insert(entityHandle).second)
-                return; // Already collected through the other view
-
-            vec4 aabbMin = vec4(worldAABB.min, 0.0f);
-            vec4 aabbMax = vec4(worldAABB.max, 0.0f);
-            if (split)
-            {
-                AppendDynamicAABB(aabbMin, aabbMax);
-
-                // Newly dynamic: its shadow is baked into static pages and must come out
-                if (!_svsmPrevDynamicEntities.contains(entityHandle))
-                {
-                    AppendStaticAABB(aabbMin, aabbMax);
-                }
-            }
-            else
-            {
-                AppendStaticAABB(aabbMin, aabbMax); // v1 behavior
-            }
-        };
-
-        gameRegistry->view<ECS::Components::Model, ECS::Components::WorldAABB, ECS::Components::DirtyTransform>().each([&](entt::entity entity, ECS::Components::Model& model, ECS::Components::WorldAABB& worldAABB, ECS::Components::DirtyTransform&)
-        {
-            CollectDynamic(entity, model, worldAABB);
-        });
-
-        gameRegistry->view<ECS::Components::Model, ECS::Components::WorldAABB, ECS::Components::AnimationData>().each([&](entt::entity entity, ECS::Components::Model& model, ECS::Components::WorldAABB& worldAABB, ECS::Components::AnimationData&)
-        {
-            CollectDynamic(entity, model, worldAABB);
-        });
-
-        // Turned static (or split just toggled off): its last pose must bake back into static pages.
-        // Destroyed-while-dynamic entities are covered by the despawn queue above
-        for (u32 entityHandle : _svsmPrevDynamicEntities)
-        {
-            if (currentDynamicEntities.contains(entityHandle))
-                continue;
-
-            entt::entity entity = static_cast<entt::entity>(entityHandle);
-            if (!gameRegistry->valid(entity) || !gameRegistry->all_of<ECS::Components::WorldAABB>(entity))
-                continue;
-
-            const ECS::Components::WorldAABB& worldAABB = gameRegistry->get<ECS::Components::WorldAABB>(entity);
-            AppendStaticAABB(vec4(worldAABB.min, 0.0f), vec4(worldAABB.max, 0.0f));
-        }
-
-        _svsmNumDynamicCasters = static_cast<u32>(currentDynamicEntities.size());
-        _svsmPrevDynamicEntities = std::move(currentDynamicEntities);
-        if (!split)
-        {
-            _svsmPrevDynamicEntities.clear(); // Re-enabling the split re-transitions everything
-        }
-
-        // Animated doodads in range, classified and range-diffed by the ModelRenderer. With the
-        // split off the ModelRenderer feeds them through the static invalidation queue instead
-        // and this list is empty
-        const std::vector<vec4>& animatedAABBs = _modelRenderer->GetAnimatedCasterAABBs();
-        _svsmNumAnimatedCasters = static_cast<u32>(animatedAABBs.size() / 2);
-        for (size_t i = 0; i + 1 < animatedAABBs.size(); i += 2)
-        {
-            AppendDynamicAABB(animatedAABBs[i], animatedAABBs[i + 1]);
-        }
+        _svsmNumDynamicCasters = _modelRenderer->GetNumDynamicCasters();
+        _svsmDynamicAABBsDropped = _modelRenderer->GetNumDynamicCastersDropped();
+        _modelRenderer->GetDynamicCasterTransitions(_svsmCasterTransitionsIn, _svsmCasterTransitionsOut);
 
         // Upload this frame's AABB lists through the frame-synced staging ring, the render graph
         // issues a global upload barrier before any pass executes
@@ -348,8 +337,10 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     }
     else
     {
-        // Shadows off: spawn/despawn invalidations would accumulate in the queue unboundedly.
-        // Discard them (maxPairs 0 appends nothing) and re-bake the whole cache on re-enable instead
+        // Shadows off or frozen (the update pass doesn't run, so nothing would consume the
+        // queue): spawn/despawn and classifier-transition invalidations would accumulate
+        // unboundedly. Discard them (maxPairs 0 appends nothing) and re-bake the whole cache on
+        // resume instead — the classifier keeps ticking meanwhile, so its state stays current
         if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
         {
             _svsmForceInvalidateAll = true;
@@ -367,12 +358,12 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::BufferMutableResource svsmDataBuffer;
         Renderer::BufferMutableResource pageTableBuffer;
         Renderer::BufferMutableResource freeListBuffer;
-        Renderer::BufferMutableResource dirtyAABBBuffer;
+        Renderer::BufferResource dirtyAABBBuffer;
         Renderer::BufferMutableResource clearListBuffer;
         Renderer::BufferMutableResource dynamicPageTableBuffer;
         Renderer::BufferMutableResource dynamicFreeListBuffer;
         Renderer::BufferMutableResource dynamicClearListBuffer;
-        Renderer::BufferMutableResource dynamicAABBBuffer;
+        Renderer::BufferResource dynamicAABBBuffer;
         Renderer::BufferMutableResource svsmDataReadBackBuffer;
         Renderer::BufferMutableResource dynamicValidateReadBackBuffer;
         Renderer::ImageMutableResource pagePool;
@@ -429,12 +420,12 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             data.svsmDataBuffer = builder.Write(_svsmDataBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             data.pageTableBuffer = builder.Write(_svsmPageTableBuffer, BufferUsage::COMPUTE);
             data.freeListBuffer = builder.Write(_svsmFreeListBuffer, BufferUsage::COMPUTE);
-            data.dirtyAABBBuffer = builder.Write(_svsmDirtyAABBBuffer, BufferUsage::COMPUTE);
+            data.dirtyAABBBuffer = builder.Read(_svsmDirtyAABBBuffer, BufferUsage::COMPUTE); // CPU-uploaded input, the shaders only read it
             data.clearListBuffer = builder.Write(_svsmClearListBuffer, BufferUsage::COMPUTE);
-            data.dynamicPageTableBuffer = builder.Write(_svsmDynamicPageTableBuffer, BufferUsage::COMPUTE);
-            data.dynamicFreeListBuffer = builder.Write(_svsmDynamicFreeListBuffer, BufferUsage::COMPUTE);
+            data.dynamicPageTableBuffer = builder.Write(_svsmDynamicPageTableBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER); // TRANSFER: the svsmValidateDynamic snapshot copies from it
+            data.dynamicFreeListBuffer = builder.Write(_svsmDynamicFreeListBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
             data.dynamicClearListBuffer = builder.Write(_svsmDynamicClearListBuffer, BufferUsage::COMPUTE);
-            data.dynamicAABBBuffer = builder.Write(_svsmDynamicAABBBuffer, BufferUsage::COMPUTE);
+            data.dynamicAABBBuffer = builder.Read(_svsmDynamicAABBBuffer, BufferUsage::COMPUTE); // CPU-uploaded input, the shaders only read it
             data.svsmDataReadBackBuffer = builder.Write(_svsmDataReadBackBuffer, BufferUsage::TRANSFER);
             data.dynamicValidateReadBackBuffer = builder.Write(_svsmDynamicValidateReadBackBuffer, BufferUsage::TRANSFER);
             builder.Write(_svsmFillArgsBuffer, BufferUsage::COMPUTE); // Finalize writes the per-view fill dispatch args
@@ -483,7 +474,6 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
                 u32 fillCellCount;
             };
 
-            CVarSystem* cvarSystem = CVarSystem::Get();
             const u32 pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
             const u32 pageTableSize = glm::clamp(static_cast<u32>(CVAR_SVSMVirtualSize.Get()) / pageSize, 16u, SVSM_MAX_PAGE_TABLE_SIZE);
             u32 poolPagesPerRow = static_cast<u32>(CVAR_SVSMPoolSize.Get()) / pageSize;
@@ -503,7 +493,7 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             constants->invalidateAll = invalidateCause;
             constants->numDirtyAABBs = numDirtyAABBs;
             constants->allocClipmap = 0;
-            constants->casterMargin = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin"));
+            constants->casterMargin = CVAR_ShadowCasterMargin.GetFloat();
             constants->zHalfRange = CVAR_SVSMZHalfRange.GetFloat();
             constants->padding0 = 0.0f;
             constants->padding1 = 0.0f;
@@ -540,6 +530,10 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             commandList.EndPipeline(_svsmPreparePipeline);
 
             commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+            // The clear-list header resets must be visible to UpdateB / DynamicUpdate's atomic
+            // appends; barriers are per-buffer, the svsmData one above does not cover them
+            commandList.BufferBarrier(data.clearListBuffer, Renderer::BufferPassUsage::COMPUTE);
+            commandList.BufferBarrier(data.dynamicClearListBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Moved and animated instances invalidate the pages under them
             if (numDirtyAABBs > 0)
@@ -871,6 +865,8 @@ void ShadowRenderer::AddSVSMBindPass(Renderer::RenderGraph* renderGraph, RenderR
 
 void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
 {
+    SanitizeSVSMConfigCVars(SVSM_MAX_PAGE_TABLE_SIZE);
+
     // SVSM page table lifecycle
     {
         Renderer::ComputePipelineDesc pipelineDesc;
@@ -957,48 +953,7 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         _svsmPoolDebugDescriptorSet.RegisterPipeline(_renderer, _svsmPoolDebugPipeline);
         _svsmPoolDebugDescriptorSet.Init(_renderer);
 
-        // The physical page index is 12 bits in the table entry, the pool page counts are fixed at
-        // startup (svsmPoolSize/svsmDynamicPoolSize changes need a restart)
-        const u32 pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
-        const u32 poolPagesPerRow = static_cast<u32>(CVAR_SVSMPoolSize.Get()) / pageSize;
-        _svsmPoolPages = glm::min(poolPagesPerRow * poolPagesPerRow, SVSM_MAX_POOL_PAGES);
-        const u32 dynamicPoolPagesPerRow = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) / pageSize;
-        _svsmDynamicPoolPages = glm::min(dynamicPoolPagesPerRow * dynamicPoolPagesPerRow, SVSM_MAX_POOL_PAGES);
-
         Renderer::BufferDesc bufferDesc;
-        bufferDesc.name = "SVSMData";
-        bufferDesc.size = sizeof(u32) * SVSM_DATA_UINT_COUNT;
-        bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::TRANSFER_SOURCE;
-        _svsmDataBuffer = _renderer->CreateAndFillBuffer(_svsmDataBuffer, bufferDesc, [](void* mappedMemory, size_t size)
-        {
-            memset(mappedMemory, 0, size); // prevLightDirection.w = 0 marks the state uninitialized
-        });
-
-        bufferDesc.name = "SVSMPageTable";
-        bufferDesc.size = sizeof(u32) * SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
-        bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
-        _svsmPageTableBuffer = _renderer->CreateAndFillBuffer(_svsmPageTableBuffer, bufferDesc, [](void* mappedMemory, size_t size)
-        {
-            memset(mappedMemory, 0, size); // A zeroed entry is a free slot
-        });
-
-        bufferDesc.name = "SVSMFreeList";
-        bufferDesc.size = sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES);
-        bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
-        const u32 poolPages = _svsmPoolPages;
-        _svsmFreeListBuffer = _renderer->CreateAndFillBuffer(_svsmFreeListBuffer, bufferDesc, [poolPages](void* mappedMemory, size_t size)
-        {
-            u32* values = static_cast<u32*>(mappedMemory);
-            values[0] = poolPages; // [0] = count, [1..3] padding, entries from [4]
-            values[1] = 0;
-            values[2] = 0;
-            values[3] = 0;
-            for (u32 i = 0; i < SVSM_MAX_POOL_PAGES; i++)
-            {
-                values[4 + i] = i < poolPages ? i : 0;
-            }
-        });
-
         bufferDesc.name = "SVSMDirtyAABBs";
         bufferDesc.size = sizeof(vec4) * SVSM_MAX_DIRTY_AABBS * 2;
         bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
@@ -1007,30 +962,6 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         bufferDesc.name = "SVSMDynamicAABBs";
         bufferDesc.size = sizeof(vec4) * SVSM_MAX_DYNAMIC_AABBS * 2;
         _svsmDynamicAABBBuffer = _renderer->CreateBuffer(_svsmDynamicAABBBuffer, bufferDesc);
-
-        // Static/dynamic caster split resources
-        bufferDesc.name = "SVSMDynamicPageTable";
-        bufferDesc.size = sizeof(u32) * SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
-        bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
-        _svsmDynamicPageTableBuffer = _renderer->CreateAndFillBuffer(_svsmDynamicPageTableBuffer, bufferDesc, [](void* mappedMemory, size_t size)
-        {
-            memset(mappedMemory, 0, size);
-        });
-
-        bufferDesc.name = "SVSMDynamicFreeList";
-        bufferDesc.size = sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES);
-        bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
-        const u32 dynamicPoolPages = _svsmDynamicPoolPages;
-        _svsmDynamicFreeListBuffer = _renderer->CreateAndFillBuffer(_svsmDynamicFreeListBuffer, bufferDesc, [dynamicPoolPages](void* mappedMemory, size_t size)
-        {
-            u32* values = static_cast<u32*>(mappedMemory);
-            memset(values, 0, size);
-            values[0] = dynamicPoolPages;
-            for (u32 i = 0; i < dynamicPoolPages; i++)
-            {
-                values[4 + i] = i;
-            }
-        });
 
         bufferDesc.name = "SVSMDynamicClearList";
         bufferDesc.size = sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES);
@@ -1054,34 +985,16 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
             values[2] = 1;
         });
 
-        _svsmPrepareDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmPrepareDescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
+        // The config-independent buffer binds. The config-shaped buffers (SVSMData, page tables,
+        // free lists) are created and bound by ResetSVSMPoolState below
         _svsmPrepareDescriptorSet.Bind("_clearList"_h, _svsmClearListBuffer);
         _svsmPrepareDescriptorSet.Bind("_dynamicClearList"_h, _svsmDynamicClearListBuffer);
-        _svsmInvalidateAABBsDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmInvalidateAABBsDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
         _svsmInvalidateAABBsDescriptorSet.Bind("_dirtyAABBs"_h, _svsmDirtyAABBBuffer);
-        _svsmPageUpdateADescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmPageUpdateADescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
-        _svsmPageUpdateADescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
-        _svsmPageMarkDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmPageMarkDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
-        _svsmPageUpdateBDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmPageUpdateBDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
-        _svsmPageUpdateBDescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
         _svsmPageUpdateBDescriptorSet.Bind("_clearList"_h, _svsmClearListBuffer);
-        _svsmDynamicMarkDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmDynamicMarkDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
-        _svsmDynamicMarkDescriptorSet.Bind("_dynamicPageTable"_h, _svsmDynamicPageTableBuffer);
         _svsmDynamicMarkDescriptorSet.Bind("_dynamicAABBs"_h, _svsmDynamicAABBBuffer);
-        _svsmDynamicUpdateDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        _svsmDynamicUpdateDescriptorSet.Bind("_dynamicPageTable"_h, _svsmDynamicPageTableBuffer);
-        _svsmDynamicUpdateDescriptorSet.Bind("_dynamicFreeList"_h, _svsmDynamicFreeListBuffer);
         _svsmDynamicUpdateDescriptorSet.Bind("_dynamicClearList"_h, _svsmDynamicClearListBuffer);
-        _svsmFinalizeDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
         _svsmPageClearDescriptorSet.Bind("_clearList"_h, _svsmClearListBuffer);
         _svsmDynamicPageClearDescriptorSet.Bind("_clearList"_h, _svsmDynamicClearListBuffer);
-        _svsmPageTableDebugDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
         // _srcCameras / _depth / _target / _rwCameras / _pagePool are bound per frame, those resources can be recreated
 
         // Per-view fill dispatch args written by Finalize, consumed by the geometry passes'
@@ -1113,12 +1026,6 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         bufferDesc.size = sizeof(u32) * (SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE + 4 + SVSM_MAX_POOL_PAGES);
         _svsmDynamicValidateReadBackBuffer = _renderer->CreateBuffer(_svsmDynamicValidateReadBackBuffer, bufferDesc);
 
-        // The material pass samples SVSM through the LIGHT set. The buffers bind here, the pools
-        // bind per frame in the material pass (real pools once created, a placeholder before)
-        resources.lightDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
-        resources.lightDescriptorSet.Bind("_svsmPageTable"_h, _svsmPageTableBuffer);
-        resources.lightDescriptorSet.Bind("_svsmDynamicPageTable"_h, _svsmDynamicPageTableBuffer);
-
         Renderer::ImageDesc placeholderDesc;
         placeholderDesc.debugName = "SVSMPagePoolPlaceholder";
         placeholderDesc.dimensions = vec2(1, 1);
@@ -1129,13 +1036,121 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
 
         _svsmPagePoolPlaceholder = _renderer->CreateImage(placeholderDesc);
 
-        // The terrain/model SVSM page-render sets read these permanent buffers, bind them once
-        // here (the pools stay per-frame, they are created lazily). Same for the cameras buffer
-        _terrainRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer);
-        _modelRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
+        // Creates the config-shaped buffers and binds them everywhere, here and again on live
+        // config edits
+        ResetSVSMPoolState(resources);
     }
 
     BindCameraBuffers(resources);
+}
+
+void ShadowRenderer::ResetSVSMPoolState(RenderResources& resources)
+{
+    // (Re)shapes everything svsmPageSize touches: pool page counts, free lists, page tables and
+    // the SVSMData scratch (zeroed SVSMData reads as uninitialized, Prepare re-derives the
+    // anchors). The refills happen CPU-side so GPU eviction never runs against a half-rebuilt
+    // free list, and CreateAndFillBuffer swaps in a fresh buffer (deferred-destroying the old one
+    // past the frames in flight), so every consumer set rebinds below. The pool textures are NOT
+    // recreated — their dimensions only depend on the pool size cvars, which are restart-only
+    // once the pools exist (the Engine cannot destroy images)
+    _svsmAppliedPageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
+    _svsmAppliedPoolSize = static_cast<u32>(CVAR_SVSMPoolSize.Get());
+    _svsmAppliedDynamicPoolSize = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get());
+
+    // The physical page index is 12 bits in the table entry
+    const u32 poolPagesPerRow = _svsmAppliedPoolSize / _svsmAppliedPageSize;
+    _svsmPoolPages = glm::min(poolPagesPerRow * poolPagesPerRow, SVSM_MAX_POOL_PAGES);
+    const u32 dynamicPoolPagesPerRow = _svsmAppliedDynamicPoolSize / _svsmAppliedPageSize;
+    _svsmDynamicPoolPages = glm::min(dynamicPoolPagesPerRow * dynamicPoolPagesPerRow, SVSM_MAX_POOL_PAGES);
+
+    Renderer::BufferDesc bufferDesc;
+    bufferDesc.name = "SVSMData";
+    bufferDesc.size = sizeof(u32) * SVSM_DATA_UINT_COUNT;
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION | Renderer::BufferUsage::TRANSFER_SOURCE;
+    _svsmDataBuffer = _renderer->CreateAndFillBuffer(_svsmDataBuffer, bufferDesc, [](void* mappedMemory, size_t size)
+    {
+        memset(mappedMemory, 0, size); // prevLightDirection.w = 0 marks the state uninitialized
+    });
+
+    bufferDesc.name = "SVSMPageTable";
+    bufferDesc.size = sizeof(u32) * SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
+    _svsmPageTableBuffer = _renderer->CreateAndFillBuffer(_svsmPageTableBuffer, bufferDesc, [](void* mappedMemory, size_t size)
+    {
+        memset(mappedMemory, 0, size); // A zeroed entry is a free slot
+    });
+
+    bufferDesc.name = "SVSMFreeList";
+    bufferDesc.size = sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES);
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
+    const u32 poolPages = _svsmPoolPages;
+    _svsmFreeListBuffer = _renderer->CreateAndFillBuffer(_svsmFreeListBuffer, bufferDesc, [poolPages](void* mappedMemory, size_t size)
+    {
+        u32* values = static_cast<u32*>(mappedMemory);
+        values[0] = poolPages; // [0] = count, [1..3] padding, entries from [4]
+        values[1] = 0;
+        values[2] = 0;
+        values[3] = 0;
+        for (u32 i = 0; i < SVSM_MAX_POOL_PAGES; i++)
+        {
+            values[4 + i] = i < poolPages ? i : 0;
+        }
+    });
+
+    bufferDesc.name = "SVSMDynamicPageTable";
+    bufferDesc.size = sizeof(u32) * SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_SOURCE; // Source of the svsmValidateDynamic snapshot copy
+    _svsmDynamicPageTableBuffer = _renderer->CreateAndFillBuffer(_svsmDynamicPageTableBuffer, bufferDesc, [](void* mappedMemory, size_t size)
+    {
+        memset(mappedMemory, 0, size);
+    });
+
+    bufferDesc.name = "SVSMDynamicFreeList";
+    bufferDesc.size = sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES);
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_SOURCE;
+    const u32 dynamicPoolPages = _svsmDynamicPoolPages;
+    _svsmDynamicFreeListBuffer = _renderer->CreateAndFillBuffer(_svsmDynamicFreeListBuffer, bufferDesc, [dynamicPoolPages](void* mappedMemory, size_t size)
+    {
+        u32* values = static_cast<u32*>(mappedMemory);
+        memset(values, 0, size);
+        values[0] = dynamicPoolPages;
+        for (u32 i = 0; i < dynamicPoolPages; i++)
+        {
+            values[4 + i] = i;
+        }
+    });
+
+    _svsmPrepareDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmPrepareDescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
+    _svsmInvalidateAABBsDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmInvalidateAABBsDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+    _svsmPageUpdateADescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmPageUpdateADescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+    _svsmPageUpdateADescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
+    _svsmPageMarkDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmPageMarkDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+    _svsmPageUpdateBDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmPageUpdateBDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+    _svsmPageUpdateBDescriptorSet.Bind("_freeList"_h, _svsmFreeListBuffer);
+    _svsmDynamicMarkDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmDynamicMarkDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+    _svsmDynamicMarkDescriptorSet.Bind("_dynamicPageTable"_h, _svsmDynamicPageTableBuffer);
+    _svsmDynamicUpdateDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmDynamicUpdateDescriptorSet.Bind("_dynamicPageTable"_h, _svsmDynamicPageTableBuffer);
+    _svsmDynamicUpdateDescriptorSet.Bind("_dynamicFreeList"_h, _svsmDynamicFreeListBuffer);
+    _svsmFinalizeDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    _svsmPageTableDebugDescriptorSet.Bind("_pageTable"_h, _svsmPageTableBuffer);
+
+    // The material pass samples SVSM through the LIGHT set. The buffers bind here, the pools
+    // bind per frame in the material pass (real pools once created, a placeholder before)
+    resources.lightDescriptorSet.Bind("_svsmData"_h, _svsmDataBuffer);
+    resources.lightDescriptorSet.Bind("_svsmPageTable"_h, _svsmPageTableBuffer);
+    resources.lightDescriptorSet.Bind("_svsmDynamicPageTable"_h, _svsmDynamicPageTableBuffer);
+
+    // The terrain/model SVSM page-render sets read these permanent buffers, bind them once
+    // here (the pools stay per-frame, they are created lazily). Same for the cameras buffer
+    _terrainRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer);
+    _modelRenderer->BindSVSMBuffers(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
 }
 
 void ShadowRenderer::BindCameraBuffers(RenderResources& resources)

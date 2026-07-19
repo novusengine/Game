@@ -209,7 +209,7 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             drawParams.viewIndex = 0;
             drawParams.rt0 = params.rt0;
             drawParams.rt1 = params.rt1;
-            drawParams.depth = params.depth[0];
+            drawParams.depth = params.depth;
             drawParams.argumentBuffer = params.culledDrawCallsBuffer;
             drawParams.drawCountBuffer = params.culledDrawCallCountBuffer;
             drawParams.drawCountIndex = 0;
@@ -240,97 +240,83 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             params.commandList->BufferBarrier(params.culledDrawCallsBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
         }
 
-        for (u32 i = 0; i < params.numCascades + 1; i++)
+        // Reset the counters
         {
-            std::string markerName = (i == 0) ? "Main" : "Cascade " + std::to_string(i - 1);
-            params.commandList->PushMarker(markerName, Color::PastelYellow);
+            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
-            // Reset the counters
+            params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
+            params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
+
+            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+        }
+
+        // Fill the occluders to draw
+        {
+            std::string debugName = params.passName + " Occlusion Fill";
+            params.commandList->PushMarker(debugName, Color::White);
+
+            Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
+            params.commandList->BeginPipeline(pipeline);
+
+            struct FillDrawCallConstants
             {
-                params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-                params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
+                u32 numTotalDraws;
+                u32 bitmaskOffset;
+                u32 diffAgainstPrev;
+                u32 currentBitmaskIndex;
+            };
 
-                // Reset the counters
-                params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
-                params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
+            FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
+            fillConstants->numTotalDraws = numDrawCalls;
+            fillConstants->bitmaskOffset = 0; // Occluders only draw the main view
+            fillConstants->diffAgainstPrev = 0; // Occluders should not diff against prev
+            fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
+            params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
 
-                params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-                params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-            }
+            // Bind descriptorset
+            params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+            params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
 
-            // Fill the occluders to draw
-            {
-                std::string debugName = params.passName + " Occlusion Fill";
-                params.commandList->PushMarker(debugName, Color::White);
+            params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
 
-                Renderer::ComputePipelineID pipeline = _fillDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
-                params.commandList->BeginPipeline(pipeline);
-
-                struct FillDrawCallConstants
-                {
-                    u32 numTotalDraws;
-                    u32 bitmaskOffset;
-                    u32 diffAgainstPrev;
-                    u32 currentBitmaskIndex;
-                };
-
-                FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
-                fillConstants->numTotalDraws = numDrawCalls;
-                fillConstants->bitmaskOffset = i * params.cullingResources->GetBitMaskBufferUintsPerView();
-                fillConstants->diffAgainstPrev = 0; // Occluders should not diff against prev
-                fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
-                params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-                // Bind descriptorset
-                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
-
-                params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
-
-                params.commandList->EndPipeline(pipeline);
-
-                params.commandList->PopMarker();
-            }
-
-            params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
-            params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
-            params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            if (params.enableDrawing)
-            {
-                // Draw Occluders
-                params.commandList->PushMarker(params.passName + " Occlusion Draw " + std::to_string(numDrawCalls), Color::White);
-
-                DrawParams drawParams;
-                drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
-                drawParams.viewIndex = i;
-                drawParams.rt0 = params.rt0;
-                drawParams.rt1 = params.rt1;
-                drawParams.depth = params.depth[i];
-                drawParams.argumentBuffer = params.culledDrawCallsBuffer;
-                drawParams.drawCountBuffer = params.drawCountBuffer;
-                drawParams.drawCountIndex = 0;
-                drawParams.numMaxDrawCalls = numDrawCalls;
-
-                params.drawCallback(drawParams);
-            }
-
-            // Copy from our draw count buffer to the readback buffer
-            params.commandList->CopyBuffer(params.drawCountReadBackBuffer, sizeof(u32) * i, params.drawCountBuffer, 0, sizeof(u32));
-            params.commandList->CopyBuffer(params.triangleCountReadBackBuffer, sizeof(u32) * i, params.triangleCountBuffer, 0, sizeof(u32));
-
-            if (params.enableDrawing)
-            {
-                params.commandList->PopMarker();
-            }
+            params.commandList->EndPipeline(pipeline);
 
             params.commandList->PopMarker();
         }
 
-        // Finish by resetting the viewport and scissor
-        vec2 renderSize = _renderer->GetRenderSize();
-        params.commandList->SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
-        params.commandList->SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+        params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
+        params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+        params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::COMPUTE);
+
+        if (params.enableDrawing)
+        {
+            // Draw Occluders
+            params.commandList->PushMarker(params.passName + " Occlusion Draw " + std::to_string(numDrawCalls), Color::White);
+
+            DrawParams drawParams;
+            drawParams.cullingEnabled = true; // The occuder pass only makes sense if culling is enabled
+            drawParams.viewIndex = 0;
+            drawParams.rt0 = params.rt0;
+            drawParams.rt1 = params.rt1;
+            drawParams.depth = params.depth;
+            drawParams.argumentBuffer = params.culledDrawCallsBuffer;
+            drawParams.drawCountBuffer = params.drawCountBuffer;
+            drawParams.drawCountIndex = 0;
+            drawParams.numMaxDrawCalls = numDrawCalls;
+
+            params.drawCallback(drawParams);
+        }
+
+        // Copy from our draw count buffer to the readback buffer
+        params.commandList->CopyBuffer(params.drawCountReadBackBuffer, 0, params.drawCountBuffer, 0, sizeof(u32));
+        params.commandList->CopyBuffer(params.triangleCountReadBackBuffer, 0, params.triangleCountBuffer, 0, sizeof(u32));
+
+        if (params.enableDrawing)
+        {
+            params.commandList->PopMarker();
+        }
     }
 }
 
@@ -384,7 +370,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                     u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
                     u32 debugDrawColliders;
                     u32 currentBitmaskIndex;
-                    u32 numCascades;
+                    u32 numShadowViews;
                     u32 bitMaskBufferUintsPerView;
                     u32 debugDrawView;
                     u32 cullMainView;
@@ -406,7 +392,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
                 cullConstants->debugDrawColliders = params.debugDrawColliders;
                 cullConstants->currentBitmaskIndex = params.frameIndex;
-                cullConstants->numCascades = params.numCascades;
+                cullConstants->numShadowViews = params.numShadowViews;
                 cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
                 cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
                 cullConstants->cullMainView = params.cullMainView;
@@ -497,7 +483,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 u32 viewportSizeX;
                 u32 viewportSizeY;
                 u32 maxDrawCount;
-                u32 numCascades;
+                u32 numShadowViews;
                 u32 occlusionCull;
                 u32 instanceIDOffset;
                 u32 modelIDOffset;
@@ -512,7 +498,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             cullConstants->viewportSizeX = u32(viewportSize.x);
             cullConstants->viewportSizeY = u32(viewportSize.y);
             cullConstants->maxDrawCount = numDrawCalls;
-            cullConstants->numCascades = params.numCascades;
+            cullConstants->numShadowViews = params.numShadowViews;
             cullConstants->occlusionCull = params.occlusionCull;
             cullConstants->instanceIDOffset = params.instanceIDOffset;
             cullConstants->modelIDOffset = params.modelIDOffset;
@@ -557,20 +543,20 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     }
 }
 
-void CulledRenderer::CascadeCullingPass(CullingPassParams& params)
+void CulledRenderer::ClipmapCullingPass(CullingPassParams& params)
 {
-    NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : CascadeCullingPass params provided an invalid drawCallDataSize");
-    NC_ASSERT(params.cullingResources->IsInstanced(), "CulledRenderer : CascadeCullingPass only supports instanced culling resources");
+    NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : ClipmapCullingPass params provided an invalid drawCallDataSize");
+    NC_ASSERT(params.cullingResources->IsInstanced(), "CulledRenderer : ClipmapCullingPass only supports instanced culling resources");
 
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
     u32 numInstances = params.cullingResources->GetNumInstances();
 
-    if (numDrawCalls == 0 || numInstances == 0 || params.numCascades == 0)
+    if (numDrawCalls == 0 || numInstances == 0 || params.numShadowViews == 0)
         return;
 
     // Frustum-only cull of the cascade views into their bitmask slices. No counter resets (the
     // per-cascade fill in the geometry pass resets and rebuilds the shared draw sets), no occlusion
-    std::string debugName = params.passName + " Cascade Culling";
+    std::string debugName = params.passName + " Clipmap Culling";
     params.commandList->PushMarker(debugName, Color::Yellow);
 
     Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[1]; // Cascades require the bitmask permutation
@@ -592,7 +578,7 @@ void CulledRenderer::CascadeCullingPass(CullingPassParams& params)
         u32 cullingDataIsWorldspace;
         u32 debugDrawColliders;
         u32 currentBitmaskIndex;
-        u32 numCascades;
+        u32 numShadowViews;
         u32 bitMaskBufferUintsPerView;
         u32 debugDrawView;
         u32 cullMainView;
@@ -614,7 +600,7 @@ void CulledRenderer::CascadeCullingPass(CullingPassParams& params)
     cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
     cullConstants->debugDrawColliders = false;
     cullConstants->currentBitmaskIndex = params.frameIndex;
-    cullConstants->numCascades = params.numCascades;
+    cullConstants->numShadowViews = params.numShadowViews;
     cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
     cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
     cullConstants->cullMainView = false;
@@ -680,7 +666,7 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
 
         params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
 
-        if (params.svsmPass && params.svsmFillArgsBuffer != Renderer::BufferMutableResource::Invalid())
+        if (params.svsmPass && params.svsmFillArgsBuffer != Renderer::BufferResource::Invalid())
         {
             // Finalize zeroed the group count for rings with no page work this frame
             u32 argsOffset = (viewIndex - 1) * ShadowRenderer::SVSM_FILL_ARGS_VIEW_STRIDE + (keepDynamic ? ShadowRenderer::SVSM_FILL_ARGS_DYNAMIC_OFFSET : 0);
@@ -760,7 +746,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         params.commandList->EndTimeQuery(timeQuery);
     };
 
-    for (u32 i = params.firstViewIndex; i < params.numCascades + 1; i++)
+    for (u32 i = params.firstViewIndex; i < params.numShadowViews + 1; i++)
     {
         std::string markerName = (i == 0) ? "Main" : "Clipmap " + std::to_string(i - 1);
         params.commandList->PushMarker(markerName, Color::PastelYellow);
@@ -988,12 +974,12 @@ void CulledRenderer::CreatePipelines()
     // Fill Drawcalls From Bitmask pipelines
     Renderer::ComputePipelineDesc pipelineDesc;
     {
-        pipelineDesc.debugName = "FillInstancedDrawcallsFromBitmask";
-
         for (u32 i = 0; i < 2; i++)
         {
             for (u32 filtered = 0; filtered < 2; filtered++)
             {
+                pipelineDesc.debugName = (filtered == 0) ? "FillInstancedDrawcallsFromBitmask" : "FillInstancedDrawcallsFromBitmaskFiltered";
+
                 std::vector<Renderer::PermutationField> permutationFields =
                 {
                     { "IS_INDEXED", std::to_string(i) },

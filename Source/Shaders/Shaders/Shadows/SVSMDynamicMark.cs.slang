@@ -54,7 +54,9 @@ void main(CSInput input)
         return; // Outside this clipmap's window
     }
 
-    // A huge dynamic mover marks at most this many pages, beyond it the finer clipmaps cover it
+    // A huge dynamic mover marks at most this many pages per ring, coarser clipmaps cover it
+    // (span quarters per ring). The CPU classifier routes casters that would exceed this in EVERY
+    // ring to the static path instead, so the cutoff never orphans a caster from both pools
     int2 span = pageMax - pageMin + int2(1, 1);
     if (span.x * span.y > 1024)
     {
