@@ -480,39 +480,394 @@ bool ShadowRenderer::IsSVSMActive() const
     return CVAR_ShadowEnabled.Get() != 0 && !_svsmNightActive;
 }
 
-void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+struct ShadowRenderer::SVSMUpdatePassData
 {
-    struct Data
+    Renderer::DepthImageResource depth;
+
+    Renderer::BufferMutableResource cameras;
+    Renderer::BufferMutableResource svsmDataBuffer;
+    Renderer::BufferMutableResource pageTableBuffer;
+    Renderer::BufferMutableResource freeListBuffer;
+    Renderer::BufferResource dirtyAABBBuffer;
+    Renderer::BufferMutableResource clearListBuffer;
+    Renderer::BufferMutableResource dynamicPageTableBuffer;
+    Renderer::BufferMutableResource dynamicFreeListBuffer;
+    Renderer::BufferMutableResource dynamicClearListBuffer;
+    Renderer::BufferResource dynamicAABBBuffer;
+    Renderer::BufferMutableResource svsmDataReadBackBuffer;
+    Renderer::BufferMutableResource dynamicValidateReadBackBuffer;
+    Renderer::ImageMutableResource pagePool;
+    Renderer::ImageMutableResource dynamicPagePool;
+
+    Renderer::DescriptorSetResource prepareSet;
+    Renderer::DescriptorSetResource invalidateSet;
+    Renderer::DescriptorSetResource updateASet;
+    Renderer::DescriptorSetResource markSet;
+    Renderer::DescriptorSetResource updateBSet;
+    Renderer::DescriptorSetResource dynamicMarkSet;
+    Renderer::DescriptorSetResource dynamicUpdateSet;
+    Renderer::DescriptorSetResource finalizeSet;
+    Renderer::DescriptorSetResource clearSet;
+    Renderer::DescriptorSetResource dynamicClearSet;
+
+    bool DeclareResources(ShadowRenderer& owner, RenderResources& resources, Renderer::RenderGraphBuilder& builder)
     {
-        Renderer::DepthImageResource depth;
+        using BufferUsage = Renderer::BufferPassUsage;
 
-        Renderer::BufferMutableResource cameras;
-        Renderer::BufferMutableResource svsmDataBuffer;
-        Renderer::BufferMutableResource pageTableBuffer;
-        Renderer::BufferMutableResource freeListBuffer;
-        Renderer::BufferResource dirtyAABBBuffer;
-        Renderer::BufferMutableResource clearListBuffer;
-        Renderer::BufferMutableResource dynamicPageTableBuffer;
-        Renderer::BufferMutableResource dynamicFreeListBuffer;
-        Renderer::BufferMutableResource dynamicClearListBuffer;
-        Renderer::BufferResource dynamicAABBBuffer;
-        Renderer::BufferMutableResource svsmDataReadBackBuffer;
-        Renderer::BufferMutableResource dynamicValidateReadBackBuffer;
-        Renderer::ImageMutableResource pagePool;
-        Renderer::ImageMutableResource dynamicPagePool;
+        depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
+        cameras = builder.Write(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
+        svsmDataBuffer = builder.Write(owner._svsmDataBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+        pageTableBuffer = builder.Write(owner._svsmPageTableBuffer, BufferUsage::COMPUTE);
+        freeListBuffer = builder.Write(owner._svsmFreeListBuffer, BufferUsage::COMPUTE);
+        dirtyAABBBuffer = builder.Read(owner._svsmDirtyAABBBuffer, BufferUsage::COMPUTE);
+        clearListBuffer = builder.Write(owner._svsmClearListBuffer, BufferUsage::COMPUTE);
+        dynamicPageTableBuffer = builder.Write(owner._svsmDynamicPageTableBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+        dynamicFreeListBuffer = builder.Write(owner._svsmDynamicFreeListBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
+        dynamicClearListBuffer = builder.Write(owner._svsmDynamicClearListBuffer, BufferUsage::COMPUTE);
+        dynamicAABBBuffer = builder.Read(owner._svsmDynamicAABBBuffer, BufferUsage::COMPUTE);
+        svsmDataReadBackBuffer = builder.Write(owner._svsmDataReadBackBuffer, BufferUsage::TRANSFER);
+        dynamicValidateReadBackBuffer = builder.Write(owner._svsmDynamicValidateReadBackBuffer, BufferUsage::TRANSFER);
+        builder.Write(owner._svsmFillArgsBuffer, BufferUsage::COMPUTE);
+        pagePool = builder.Write(owner._svsmPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+        dynamicPagePool = builder.Write(owner._svsmDynamicPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
-        Renderer::DescriptorSetResource prepareSet;
-        Renderer::DescriptorSetResource invalidateSet;
-        Renderer::DescriptorSetResource updateASet;
-        Renderer::DescriptorSetResource markSet;
-        Renderer::DescriptorSetResource updateBSet;
-        Renderer::DescriptorSetResource dynamicMarkSet;
-        Renderer::DescriptorSetResource dynamicUpdateSet;
-        Renderer::DescriptorSetResource finalizeSet;
-        Renderer::DescriptorSetResource clearSet;
-        Renderer::DescriptorSetResource dynamicClearSet;
+        prepareSet = builder.Use(owner._svsmPrepareDescriptorSet);
+        invalidateSet = builder.Use(owner._svsmInvalidateAABBsDescriptorSet);
+        updateASet = builder.Use(owner._svsmPageUpdateADescriptorSet);
+        markSet = builder.Use(owner._svsmPageMarkDescriptorSet);
+        updateBSet = builder.Use(owner._svsmPageUpdateBDescriptorSet);
+        dynamicMarkSet = builder.Use(owner._svsmDynamicMarkDescriptorSet);
+        dynamicUpdateSet = builder.Use(owner._svsmDynamicUpdateDescriptorSet);
+        finalizeSet = builder.Use(owner._svsmFinalizeDescriptorSet);
+        clearSet = builder.Use(owner._svsmPageClearDescriptorSet);
+        dynamicClearSet = builder.Use(owner._svsmDynamicPageClearDescriptorSet);
+
+        return true;
+    }
+};
+
+struct ShadowRenderer::SVSMUpdateRecorder
+{
+    struct Constants
+    {
+        vec4 lightDirection;
+        u32 numClipmaps;
+        u32 pageTableSize;
+        u32 pageSize;
+        u32 poolPagesPerRow;
+        f32 clipmap0Extent;
+        f32 markBorderTexels;
+        u32 evictAge;
+        u32 invalidateAll;
+        u32 numDirtyAABBs;
+        u32 allocClipmap;
+        f32 casterMargin;
+        f32 zHalfRange;
+        u32 fillDrawCallCount;
+        f32 padding1;
+        f32 resolutionScale;
+        u32 dynamicPoolPagesPerRow;
+        u32 renderBudget;
+        u32 dynamicPhase;
+        u32 fillInstanceCount;
+        u32 fillCellCount;
     };
 
+    ShadowRenderer& owner;
+    SVSMUpdatePassData& data;
+    Renderer::RenderGraphResources& graphResources;
+    Renderer::CommandList& commandList;
+    u8 frameIndex;
+    u32 numClipmaps;
+    u32 numDirtyAABBs;
+    u32 numDynamicAABBs;
+    bool dynamicSplit;
+    SVSMDerivedConfig config;
+    u32 tableCapacity;
+    Constants* constants;
+
+    SVSMUpdateRecorder(ShadowRenderer& owner, SVSMUpdatePassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList,
+        u8 frameIndex, u32 numClipmaps, const vec3& lightDirection, u32 invalidateCause, u32 numDirtyAABBs, bool dynamicSplit, u32 numDynamicAABBs);
+
+    void Record();
+    void ClearPhysicalPoolsIfNeeded();
+    void PrepareFrameStateAndClipmapAnchors();
+    void InvalidatePagesTouchedByChangedCasters();
+    void RecycleStaleStaticPages();
+    void MarkPagesNeededByVisibleReceivers();
+    void AllocateAndQueueStaticPages();
+    void RebuildDynamicPageSet();
+    void MarkPagesTouchedByDynamicCasters();
+    void BuildClipmapCamerasAndGeometryDispatches();
+    void ClearPagesQueuedForRendering();
+    void CaptureDiagnostics();
+};
+
+ShadowRenderer::SVSMUpdateRecorder::SVSMUpdateRecorder(ShadowRenderer& owner, SVSMUpdatePassData& data,
+    Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u8 frameIndex, u32 numClipmaps,
+    const vec3& lightDirection, u32 invalidateCause, u32 numDirtyAABBs, bool dynamicSplit, u32 numDynamicAABBs)
+    : owner(owner)
+    , data(data)
+    , graphResources(graphResources)
+    , commandList(commandList)
+    , frameIndex(frameIndex)
+    , numClipmaps(numClipmaps)
+    , numDirtyAABBs(numDirtyAABBs)
+    , numDynamicAABBs(numDynamicAABBs)
+    , dynamicSplit(dynamicSplit)
+    , config(DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE))
+    , tableCapacity(SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE)
+    , constants(graphResources.FrameNew<Constants>())
+{
+    constants->lightDirection = vec4(lightDirection, 0.0f);
+    constants->numClipmaps = numClipmaps;
+    constants->pageTableSize = config.pageTableSize;
+    constants->pageSize = config.pageSize;
+    constants->poolPagesPerRow = config.poolPagesPerRow;
+    constants->clipmap0Extent = CVAR_SVSMClipmap0Extent.GetFloat();
+    constants->markBorderTexels = CVAR_SVSMMarkBorderTexels.GetFloat();
+    constants->evictAge = static_cast<u32>(glm::clamp(CVAR_SVSMPageEvictAge.Get(), 1, 254));
+    constants->invalidateAll = invalidateCause;
+    constants->numDirtyAABBs = numDirtyAABBs;
+    constants->allocClipmap = 0;
+    constants->casterMargin = CVAR_ShadowCasterMargin.GetFloat();
+    constants->zHalfRange = CVAR_SVSMZHalfRange.GetFloat();
+    constants->padding1 = 0.0f;
+    constants->resolutionScale = CVAR_SVSMResolutionScale.GetFloat();
+    constants->dynamicPoolPagesPerRow = dynamicSplit ? config.dynamicPoolPagesPerRow : 0;
+    constants->renderBudget = static_cast<u32>(glm::max(CVAR_SVSMRenderBudget.Get(), 0));
+    constants->dynamicPhase = 0;
+
+    // Finalize turns these record-time counts into same-frame per-view indirect dispatch args.
+    constants->fillInstanceCount = owner._modelRenderer->GetOpaqueCullingResources().GetNumInstances();
+    constants->fillCellCount = owner._terrainRenderer->GetNumDrawCalls();
+    constants->fillDrawCallCount = owner._modelRenderer->GetOpaqueCullingResources().GetDrawCallCount();
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::Record()
+{
+    GPU_SCOPED_PROFILER_ZONE(commandList, SVSMUpdate);
+
+    ClearPhysicalPoolsIfNeeded();
+    PrepareFrameStateAndClipmapAnchors();
+    InvalidatePagesTouchedByChangedCasters();
+    RecycleStaleStaticPages();
+    MarkPagesNeededByVisibleReceivers();
+    AllocateAndQueueStaticPages();
+
+    if (dynamicSplit)
+    {
+        RebuildDynamicPageSet();
+    }
+
+    BuildClipmapCamerasAndGeometryDispatches();
+    ClearPagesQueuedForRendering();
+    CaptureDiagnostics();
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::ClearPhysicalPoolsIfNeeded()
+{
+    if (!owner._svsmPoolNeedsClear)
+        return;
+
+    // Fresh VRAM must be zero before sampling or reversed-depth atomics can preserve garbage.
+    commandList.Clear(data.pagePool, uvec4(0, 0, 0, 0));
+    commandList.ImageBarrier(data.pagePool);
+    commandList.Clear(data.dynamicPagePool, uvec4(0, 0, 0, 0));
+    commandList.ImageBarrier(data.dynamicPagePool);
+    owner._svsmPoolNeedsClear = false;
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::PrepareFrameStateAndClipmapAnchors()
+{
+    // Detect global invalidation, snap clipmap windows and reset frame statistics/list headers.
+    commandList.BeginPipeline(owner._svsmPreparePipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.prepareSet, frameIndex);
+    commandList.Dispatch(1, 1, 1);
+    commandList.EndPipeline(owner._svsmPreparePipeline);
+
+    commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+    // Clear-list header resets must be visible to the later atomic appenders. Barriers are
+    // per-buffer, so publishing svsmData alone does not cover either list.
+    commandList.BufferBarrier(data.clearListBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.dynamicClearListBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::InvalidatePagesTouchedByChangedCasters()
+{
+    if (numDirtyAABBs == 0)
+        return;
+
+    commandList.BeginPipeline(owner._svsmInvalidateAABBsPipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.invalidateSet, frameIndex);
+    commandList.Dispatch((numDirtyAABBs + 63) / 64, numClipmaps, 1);
+    commandList.EndPipeline(owner._svsmInvalidateAABBsPipeline);
+
+    commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::RecycleStaleStaticPages()
+{
+    // Apply toroidal/global invalidation, age entries and return stale physical pages. The full
+    // capacity is visited so entries orphaned by configuration changes also age out.
+    commandList.BeginPipeline(owner._svsmPageUpdateAPipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.updateASet, frameIndex);
+    commandList.Dispatch(tableCapacity / 256, 1, 1);
+    commandList.EndPipeline(owner._svsmPageUpdateAPipeline);
+
+    commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.freeListBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::MarkPagesNeededByVisibleReceivers()
+{
+    commandList.BeginPipeline(owner._svsmPageMarkPipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    data.markSet.Bind("_depth"_h, data.depth);
+    commandList.BindDescriptorSet(data.markSet, frameIndex);
+
+    const uvec2 depthDimensions = graphResources.GetImageDimensions(data.depth);
+    commandList.Dispatch((depthDimensions.x + 15) / 16, (depthDimensions.y + 15) / 16, 1);
+    commandList.EndPipeline(owner._svsmPageMarkPipeline);
+
+    commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::AllocateAndQueueStaticPages()
+{
+    // Allocate finest-to-coarsest so pool starvation lands on the coarsest fallback rings. This
+    // also re-dirties invalid pages and builds the dirty rectangles and physical clear list.
+    commandList.BeginPipeline(owner._svsmPageUpdateBPipeline);
+    commandList.BindDescriptorSet(data.updateBSet, frameIndex);
+
+    for (u32 clipmapIndex = 0; clipmapIndex < numClipmaps; clipmapIndex++)
+    {
+        Constants* allocConstants = graphResources.FrameNew<Constants>();
+        *allocConstants = *constants;
+        allocConstants->allocClipmap = clipmapIndex;
+
+        commandList.PushConstant(allocConstants, 0, sizeof(Constants));
+        commandList.Dispatch((config.pageTableSize * config.pageTableSize) / 256, 1, 1);
+
+        if (clipmapIndex + 1 < numClipmaps)
+        {
+            commandList.BufferBarrier(data.freeListBuffer, Renderer::BufferPassUsage::COMPUTE);
+        }
+    }
+
+    commandList.EndPipeline(owner._svsmPageUpdateBPipeline);
+
+    commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.clearListBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::MarkPagesTouchedByDynamicCasters()
+{
+    if (numDynamicAABBs == 0)
+        return;
+
+    Constants* dynamicMarkConstants = graphResources.FrameNew<Constants>();
+    *dynamicMarkConstants = *constants;
+    dynamicMarkConstants->numDirtyAABBs = numDynamicAABBs;
+
+    commandList.BeginPipeline(owner._svsmDynamicMarkPipeline);
+    commandList.PushConstant(dynamicMarkConstants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.dynamicMarkSet, frameIndex);
+
+    commandList.Dispatch((numDynamicAABBs + 63) / 64, numClipmaps, 1);
+    commandList.EndPipeline(owner._svsmDynamicMarkPipeline);
+
+    commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::RebuildDynamicPageSet()
+{
+    MarkPagesTouchedByDynamicCasters();
+
+    // Release before acquire. Combining free-list pushes and pops in one dispatch can expose a
+    // slot before its physical page index is written, aliasing one page under two table entries.
+    commandList.BeginPipeline(owner._svsmDynamicUpdatePipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.dynamicUpdateSet, frameIndex);
+    commandList.Dispatch(tableCapacity / 256, 1, 1);
+
+    commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.dynamicFreeListBuffer, Renderer::BufferPassUsage::COMPUTE);
+
+    Constants* dynamicAcquireConstants = graphResources.FrameNew<Constants>();
+    *dynamicAcquireConstants = *constants;
+    dynamicAcquireConstants->dynamicPhase = 1;
+
+    commandList.PushConstant(dynamicAcquireConstants, 0, sizeof(Constants));
+    commandList.Dispatch(tableCapacity / 256, 1, 1);
+    commandList.EndPipeline(owner._svsmDynamicUpdatePipeline);
+
+    commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.dynamicFreeListBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.dynamicClearListBuffer, Renderer::BufferPassUsage::COMPUTE);
+    commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::BuildClipmapCamerasAndGeometryDispatches()
+{
+    commandList.BeginPipeline(owner._svsmFinalizePipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+    commandList.BindDescriptorSet(data.finalizeSet, frameIndex);
+
+    commandList.Dispatch(1, 1, 1);
+    commandList.EndPipeline(owner._svsmFinalizePipeline);
+
+    commandList.BufferBarrier(data.cameras, Renderer::BufferPassUsage::COMPUTE);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::ClearPagesQueuedForRendering()
+{
+    commandList.BeginPipeline(owner._svsmPageClearPipeline);
+    commandList.PushConstant(constants, 0, sizeof(Constants));
+
+    data.clearSet.Bind("_pagePool"_h, data.pagePool);
+    commandList.BindDescriptorSet(data.clearSet, frameIndex);
+
+    commandList.DispatchIndirect(data.clearListBuffer, 0);
+    commandList.EndPipeline(owner._svsmPageClearPipeline);
+
+    if (!dynamicSplit)
+        return;
+
+    Constants* dynamicClearConstants = graphResources.FrameNew<Constants>();
+    *dynamicClearConstants = *constants;
+    dynamicClearConstants->poolPagesPerRow = constants->dynamicPoolPagesPerRow;
+
+    commandList.BeginPipeline(owner._svsmPageClearPipeline);
+    commandList.PushConstant(dynamicClearConstants, 0, sizeof(Constants));
+
+    data.dynamicClearSet.Bind("_pagePool"_h, data.dynamicPagePool);
+    commandList.BindDescriptorSet(data.dynamicClearSet, frameIndex);
+
+    commandList.DispatchIndirect(data.dynamicClearListBuffer, 0);
+    commandList.EndPipeline(owner._svsmPageClearPipeline);
+}
+
+void ShadowRenderer::SVSMUpdateRecorder::CaptureDiagnostics()
+{
+    commandList.CopyBuffer(data.svsmDataReadBackBuffer, 0, data.svsmDataBuffer, 0, sizeof(u32) * SVSM_DATA_UINT_COUNT);
+
+    if (!dynamicSplit || owner._svsmValidatePending || CVAR_SVSMValidateDynamic.Get() == 0)
+        return;
+
+    const u32 tableUints = SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
+    commandList.CopyBuffer(data.dynamicValidateReadBackBuffer, 0, data.dynamicPageTableBuffer, 0, sizeof(u32) * tableUints);
+    commandList.CopyBuffer(data.dynamicValidateReadBackBuffer, sizeof(u32) * tableUints, data.dynamicFreeListBuffer, 0, sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES));
+    owner._svsmValidatePending = true;
+}
+
+void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+{
     const u32 numClipmaps = static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1, static_cast<i32>(SVSM_MAX_CLIPMAPS)));
     const bool enabled = CVAR_ShadowEnabled.Get() && !CVAR_SVSMFreeze.Get() && !_svsmNightActive;
     if (!enabled || _svsmPagePool == Renderer::ImageID::Invalid())
@@ -541,291 +896,16 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
     const bool dynamicSplit = CVAR_SVSMDynamicSplit.Get() == 1;
     const u32 numDynamicAABBs = dynamicSplit ? static_cast<u32>(_svsmDynamicAABBs.size() / 2) : 0;
 
-    renderGraph->AddPass<Data>("SVSM Update",
-        [this, &resources](Data& data, Renderer::RenderGraphBuilder& builder)
+    renderGraph->AddPass<SVSMUpdatePassData>("SVSM Update",
+        [this, &resources](SVSMUpdatePassData& data, Renderer::RenderGraphBuilder& builder)
         {
-            using BufferUsage = Renderer::BufferPassUsage;
-
-            data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
-
-            data.cameras = builder.Write(resources.cameras.GetBuffer(), BufferUsage::COMPUTE);
-            data.svsmDataBuffer = builder.Write(_svsmDataBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.pageTableBuffer = builder.Write(_svsmPageTableBuffer, BufferUsage::COMPUTE);
-            data.freeListBuffer = builder.Write(_svsmFreeListBuffer, BufferUsage::COMPUTE);
-            data.dirtyAABBBuffer = builder.Read(_svsmDirtyAABBBuffer, BufferUsage::COMPUTE); // CPU-uploaded input, the shaders only read it
-            data.clearListBuffer = builder.Write(_svsmClearListBuffer, BufferUsage::COMPUTE);
-            data.dynamicPageTableBuffer = builder.Write(_svsmDynamicPageTableBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER); // TRANSFER: the svsmValidateDynamic snapshot copies from it
-            data.dynamicFreeListBuffer = builder.Write(_svsmDynamicFreeListBuffer, BufferUsage::COMPUTE | BufferUsage::TRANSFER);
-            data.dynamicClearListBuffer = builder.Write(_svsmDynamicClearListBuffer, BufferUsage::COMPUTE);
-            data.dynamicAABBBuffer = builder.Read(_svsmDynamicAABBBuffer, BufferUsage::COMPUTE); // CPU-uploaded input, the shaders only read it
-            data.svsmDataReadBackBuffer = builder.Write(_svsmDataReadBackBuffer, BufferUsage::TRANSFER);
-            data.dynamicValidateReadBackBuffer = builder.Write(_svsmDynamicValidateReadBackBuffer, BufferUsage::TRANSFER);
-            builder.Write(_svsmFillArgsBuffer, BufferUsage::COMPUTE); // Finalize writes the per-view fill dispatch args
-            data.pagePool = builder.Write(_svsmPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
-            data.dynamicPagePool = builder.Write(_svsmDynamicPagePool, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
-
-            data.prepareSet = builder.Use(_svsmPrepareDescriptorSet);
-            data.invalidateSet = builder.Use(_svsmInvalidateAABBsDescriptorSet);
-            data.updateASet = builder.Use(_svsmPageUpdateADescriptorSet);
-            data.markSet = builder.Use(_svsmPageMarkDescriptorSet);
-            data.updateBSet = builder.Use(_svsmPageUpdateBDescriptorSet);
-            data.dynamicMarkSet = builder.Use(_svsmDynamicMarkDescriptorSet);
-            data.dynamicUpdateSet = builder.Use(_svsmDynamicUpdateDescriptorSet);
-            data.finalizeSet = builder.Use(_svsmFinalizeDescriptorSet);
-            data.clearSet = builder.Use(_svsmPageClearDescriptorSet);
-            data.dynamicClearSet = builder.Use(_svsmDynamicPageClearDescriptorSet);
-
-            return true; // Return true from setup to enable this pass, return false to disable it
+            return data.DeclareResources(*this, resources, builder);
         },
-        [this, frameIndex, numClipmaps, lightDirection, invalidateCause, numDirtyAABBs, dynamicSplit, numDynamicAABBs](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        [this, frameIndex, numClipmaps, lightDirection, invalidateCause, numDirtyAABBs, dynamicSplit, numDynamicAABBs](SVSMUpdatePassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {
-            GPU_SCOPED_PROFILER_ZONE(commandList, SVSMUpdate);
-
-            struct SVSMConstants
-            {
-                vec4 lightDirection;
-                u32 numClipmaps;
-                u32 pageTableSize;
-                u32 pageSize;
-                u32 poolPagesPerRow;
-                f32 clipmap0Extent;
-                f32 markBorderTexels;
-                u32 evictAge;
-                u32 invalidateAll;
-                u32 numDirtyAABBs;
-                u32 allocClipmap;
-                f32 casterMargin;
-                f32 zHalfRange;
-                u32 fillDrawCallCount;
-                f32 padding1;
-                f32 resolutionScale;
-                u32 dynamicPoolPagesPerRow;
-                u32 renderBudget;
-                u32 dynamicPhase;
-                u32 fillInstanceCount;
-                u32 fillCellCount;
-            };
-
-            const SVSMDerivedConfig config = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE);
-            const u32 pageTableSize = config.pageTableSize;
-
-            SVSMConstants* constants = graphResources.FrameNew<SVSMConstants>();
-            constants->lightDirection = vec4(lightDirection, 0.0f);
-            constants->numClipmaps = numClipmaps;
-            constants->pageTableSize = config.pageTableSize;
-            constants->pageSize = config.pageSize;
-            constants->poolPagesPerRow = config.poolPagesPerRow;
-            constants->clipmap0Extent = CVAR_SVSMClipmap0Extent.GetFloat();
-            constants->markBorderTexels = CVAR_SVSMMarkBorderTexels.GetFloat();
-            constants->evictAge = static_cast<u32>(glm::clamp(CVAR_SVSMPageEvictAge.Get(), 1, 254));
-            constants->invalidateAll = invalidateCause;
-            constants->numDirtyAABBs = numDirtyAABBs;
-            constants->allocClipmap = 0;
-            constants->casterMargin = CVAR_ShadowCasterMargin.GetFloat();
-            constants->zHalfRange = CVAR_SVSMZHalfRange.GetFloat();
-            constants->padding1 = 0.0f;
-            constants->resolutionScale = CVAR_SVSMResolutionScale.GetFloat();
-            constants->dynamicPoolPagesPerRow = dynamicSplit ? config.dynamicPoolPagesPerRow : 0;
-            constants->renderBudget = static_cast<u32>(glm::max(CVAR_SVSMRenderBudget.Get(), 0));
-            constants->dynamicPhase = 0;
-            // The same record-time counts the geometry passes size their fills from, Finalize
-            // turns them into per-view indirect dispatch args gated on this frame's page stats
-            constants->fillInstanceCount = _modelRenderer->GetOpaqueCullingResources().GetNumInstances();
-            constants->fillCellCount = _terrainRenderer->GetNumDrawCalls();
-            constants->fillDrawCallCount = _modelRenderer->GetOpaqueCullingResources().GetDrawCallCount();
-
-            if (_svsmPoolNeedsClear)
-            {
-                // One-shot zero of the fresh pools: uninitialized VRAM must never be sampled, and
-                // depth atomics against garbage would keep the garbage
-                commandList.Clear(data.pagePool, uvec4(0, 0, 0, 0));
-                commandList.ImageBarrier(data.pagePool);
-                commandList.Clear(data.dynamicPagePool, uvec4(0, 0, 0, 0));
-                commandList.ImageBarrier(data.dynamicPagePool);
-                _svsmPoolNeedsClear = false;
-            }
-
-            // The AABB lists upload from Update through the frame-synced staging ring, the render
-            // graph issues a global upload barrier before any pass executes
-
-            // Prepare: invalidation detection, window anchors, per-frame stat reset
-            commandList.BeginPipeline(_svsmPreparePipeline);
-            commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-
-            commandList.BindDescriptorSet(data.prepareSet, frameIndex);
-
-            commandList.Dispatch(1, 1, 1);
-            commandList.EndPipeline(_svsmPreparePipeline);
-
-            commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
-            // The clear-list header resets must be visible to UpdateB / DynamicUpdate's atomic
-            // appends; barriers are per-buffer, the svsmData one above does not cover them
-            commandList.BufferBarrier(data.clearListBuffer, Renderer::BufferPassUsage::COMPUTE);
-            commandList.BufferBarrier(data.dynamicClearListBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            // Moved and animated instances invalidate the pages under them
-            if (numDirtyAABBs > 0)
-            {
-                commandList.BeginPipeline(_svsmInvalidateAABBsPipeline);
-                commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-                commandList.BindDescriptorSet(data.invalidateSet, frameIndex);
-
-                commandList.Dispatch((numDirtyAABBs + 63) / 64, numClipmaps, 1);
-                commandList.EndPipeline(_svsmInvalidateAABBsPipeline);
-
-                commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
-            }
-
-            // Update A: toroidal and global invalidation, aging, eviction. Visits the full table
-            // capacity so entries orphaned by config changes still age out
-            const u32 tableCapacity = SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
-
-            commandList.BeginPipeline(_svsmPageUpdateAPipeline);
-            commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-            commandList.BindDescriptorSet(data.updateASet, frameIndex);
-
-            commandList.Dispatch(tableCapacity / 256, 1, 1);
-            commandList.EndPipeline(_svsmPageUpdateAPipeline);
-
-            commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-            commandList.BufferBarrier(data.freeListBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            // Mark: pages touched by visible depth samples
-            commandList.BeginPipeline(_svsmPageMarkPipeline);
-            commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-
-            data.markSet.Bind("_depth"_h, data.depth);
-            commandList.BindDescriptorSet(data.markSet, frameIndex);
-
-            uvec2 depthDimensions = graphResources.GetImageDimensions(data.depth);
-            commandList.Dispatch((depthDimensions.x + 15) / 16, (depthDimensions.y + 15) / 16, 1);
-
-            commandList.EndPipeline(_svsmPageMarkPipeline);
-
-            commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            // Update B: allocation, re-dirtying, dirty rects. One dispatch per clipmap, finest
-            // first with a free list barrier between, so pool starvation always lands on the
-            // coarsest ring where the sampler fallback costs the least
-            commandList.BeginPipeline(_svsmPageUpdateBPipeline);
-            commandList.BindDescriptorSet(data.updateBSet, frameIndex);
-
-            for (u32 clipmapIndex = 0; clipmapIndex < numClipmaps; clipmapIndex++)
-            {
-                SVSMConstants* allocConstants = graphResources.FrameNew<SVSMConstants>();
-                *allocConstants = *constants;
-                allocConstants->allocClipmap = clipmapIndex;
-
-                commandList.PushConstant(allocConstants, 0, sizeof(SVSMConstants));
-                commandList.Dispatch((pageTableSize * pageTableSize) / 256, 1, 1);
-
-                if (clipmapIndex + 1 < numClipmaps)
-                {
-                    commandList.BufferBarrier(data.freeListBuffer, Renderer::BufferPassUsage::COMPUTE);
-                }
-            }
-
-            commandList.EndPipeline(_svsmPageUpdateBPipeline);
-
-            commandList.BufferBarrier(data.pageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-            commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
-            commandList.BufferBarrier(data.clearListBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-            // Caster split: mark pages under dynamic casters (visible ones only), then run the
-            // transient dynamic page lifecycle. Must precede Finalize, which unions the rects
-            if (dynamicSplit)
-            {
-                if (numDynamicAABBs > 0)
-                {
-                    SVSMConstants* dynamicMarkConstants = graphResources.FrameNew<SVSMConstants>();
-                    *dynamicMarkConstants = *constants;
-                    dynamicMarkConstants->numDirtyAABBs = numDynamicAABBs;
-
-                    commandList.BeginPipeline(_svsmDynamicMarkPipeline);
-                    commandList.PushConstant(dynamicMarkConstants, 0, sizeof(SVSMConstants));
-                    commandList.BindDescriptorSet(data.dynamicMarkSet, frameIndex);
-
-                    commandList.Dispatch((numDynamicAABBs + 63) / 64, numClipmaps, 1);
-                    commandList.EndPipeline(_svsmDynamicMarkPipeline);
-
-                    commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-                }
-
-                // Two dispatches: release then acquire. Free-list pushes and pops in one dispatch
-                // race (a pop can read a slot before the pushed phys index lands), aliasing one
-                // physical page under two table entries — the ghost-shadow bug
-                commandList.BeginPipeline(_svsmDynamicUpdatePipeline);
-                commandList.PushConstant(constants, 0, sizeof(SVSMConstants)); // dynamicPhase 0
-                commandList.BindDescriptorSet(data.dynamicUpdateSet, frameIndex);
-                commandList.Dispatch(tableCapacity / 256, 1, 1);
-
-                commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.dynamicFreeListBuffer, Renderer::BufferPassUsage::COMPUTE);
-
-                SVSMConstants* dynamicAcquireConstants = graphResources.FrameNew<SVSMConstants>();
-                *dynamicAcquireConstants = *constants;
-                dynamicAcquireConstants->dynamicPhase = 1;
-
-                commandList.PushConstant(dynamicAcquireConstants, 0, sizeof(SVSMConstants));
-                commandList.Dispatch(tableCapacity / 256, 1, 1);
-                commandList.EndPipeline(_svsmDynamicUpdatePipeline);
-
-                commandList.BufferBarrier(data.dynamicPageTableBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.dynamicFreeListBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.dynamicClearListBuffer, Renderer::BufferPassUsage::COMPUTE);
-                commandList.BufferBarrier(data.svsmDataBuffer, Renderer::BufferPassUsage::COMPUTE);
-            }
-
-            // Finalize: clipmap render cameras from the anchors and this frame's dirty rects
-            commandList.BeginPipeline(_svsmFinalizePipeline);
-            commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-
-            commandList.BindDescriptorSet(data.finalizeSet, frameIndex);
-
-            commandList.Dispatch(1, 1, 1);
-            commandList.EndPipeline(_svsmFinalizePipeline);
-
-            commandList.BufferBarrier(data.cameras, Renderer::BufferPassUsage::COMPUTE);
-
-            // Clear this frame's dirty pages, one workgroup per page from the list UpdateB built
-            commandList.BeginPipeline(_svsmPageClearPipeline);
-            commandList.PushConstant(constants, 0, sizeof(SVSMConstants));
-
-            data.clearSet.Bind("_pagePool"_h, data.pagePool);
-            commandList.BindDescriptorSet(data.clearSet, frameIndex);
-
-            commandList.DispatchIndirect(data.clearListBuffer, 0);
-            commandList.EndPipeline(_svsmPageClearPipeline);
-
-            // Caster split: every live dynamic page clears (and later re-renders) each frame.
-            // Same shader, dynamic list + pool, pool row count overridden
-            if (dynamicSplit)
-            {
-                SVSMConstants* dynamicClearConstants = graphResources.FrameNew<SVSMConstants>();
-                *dynamicClearConstants = *constants;
-                dynamicClearConstants->poolPagesPerRow = constants->dynamicPoolPagesPerRow;
-
-                commandList.BeginPipeline(_svsmPageClearPipeline);
-                commandList.PushConstant(dynamicClearConstants, 0, sizeof(SVSMConstants));
-
-                data.dynamicClearSet.Bind("_pagePool"_h, data.dynamicPagePool);
-                commandList.BindDescriptorSet(data.dynamicClearSet, frameIndex);
-
-                commandList.DispatchIndirect(data.dynamicClearListBuffer, 0);
-                commandList.EndPipeline(_svsmPageClearPipeline);
-            }
-
-            commandList.CopyBuffer(data.svsmDataReadBackBuffer, 0, data.svsmDataBuffer, 0, sizeof(u32) * SVSM_DATA_UINT_COUNT);
-
-            // One-shot dynamic pool validation snapshot, Update maps and checks it next frame
-            if (dynamicSplit && !_svsmValidatePending && CVAR_SVSMValidateDynamic.Get() != 0)
-            {
-                const u32 tableUints = SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE;
-                commandList.CopyBuffer(data.dynamicValidateReadBackBuffer, 0, data.dynamicPageTableBuffer, 0, sizeof(u32) * tableUints);
-                commandList.CopyBuffer(data.dynamicValidateReadBackBuffer, sizeof(u32) * tableUints, data.dynamicFreeListBuffer, 0, sizeof(u32) * (4 + SVSM_MAX_POOL_PAGES));
-                _svsmValidatePending = true;
-            }
+            SVSMUpdateRecorder recorder(*this, data, graphResources, commandList, frameIndex, numClipmaps,
+                lightDirection, invalidateCause, numDirtyAABBs, dynamicSplit, numDynamicAABBs);
+            recorder.Record();
         });
 }
 

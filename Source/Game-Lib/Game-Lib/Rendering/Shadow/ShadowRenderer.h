@@ -122,6 +122,9 @@ public:
     Renderer::ImageID GetSVSMDynamicPagePoolOrPlaceholder() const { return _svsmDynamicPagePool != Renderer::ImageID::Invalid() ? _svsmDynamicPagePool : _svsmPagePoolPlaceholder; }
 
 private:
+    struct SVSMUpdatePassData;
+    struct SVSMUpdateRecorder;
+
     void CreatePermanentResources(RenderResources& resources);
     void ResetSVSMPoolState(RenderResources& resources);
 
