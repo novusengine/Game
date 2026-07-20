@@ -158,12 +158,10 @@ namespace Editor
                     u32 invalidationCause = 0;
                     shadowRenderer->GetSVSMGlobalStats(freePages, totalPages, overflow, invalidationCause);
 
+                    // Every line renders unconditionally: one-frame events must never add or
+                    // remove lines, a layout that jumps for a frame is unreadable
                     ImGui::Spacing();
-                    ImGui::Text("SVSM Pool: %u / %u pages used", totalPages - glm::min(freePages, totalPages), totalPages);
-                    if (overflow > 0)
-                    {
-                        ImGui::Text("SVSM Overflow: %u page requests dropped", overflow);
-                    }
+                    ImGui::Text("SVSM Pool: %u / %u pages used%s", totalPages - glm::min(freePages, totalPages), totalPages, overflow > 0 ? " (request overflow!)" : "");
 
                     u32 dynamicLive = 0;
                     u32 dynamicTotal = 0;
@@ -175,42 +173,37 @@ namespace Editor
                     u32 transitionsOut = 0;
                     u32 droppedAABBs = 0;
                     shadowRenderer->GetSVSMCasterStats(dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
-                    if (dynamicLive > 0 || dynamicOverflow > 0 || dynamicCasters > 0 || transitionsIn > 0 || transitionsOut > 0)
-                    {
-                        ImGui::Text("SVSM Dynamic: %u / %u pages live%s | %u casters (+%u / -%u)", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, transitionsIn, transitionsOut);
-                        if (droppedAABBs > 0)
-                        {
-                            ImGui::Text("SVSM Dynamic: %u casters spilled to static!", droppedAABBs);
-                        }
+                    ImGui::Text("SVSM Dynamic: %u / %u pages live%s | %u casters (+%u / -%u total) | %u spilled", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
 
-                        // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
-                        // frame old. A bouncing count here = the fill/cull chain loses casters
-                        if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
+                    // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
+                    // frame old. A bouncing count here = the fill/cull chain loses casters
+                    if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
+                    {
+                        std::string dynDraws = "SVSM Dyn instances:";
+                        for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
                         {
-                            std::string dynDraws = "SVSM Dyn instances:";
-                            for (u32 view = 1; view <= numClipmaps && view < Renderer::Settings::MAX_VIEWS; view++)
-                            {
-                                dynDraws += " " + std::to_string(svsmModelRenderer->GetNumSVSMDynamicInstances(view));
-                            }
-                            ImGui::Text("%s", dynDraws.c_str());
+                            dynDraws += " " + std::to_string(svsmModelRenderer->GetNumSVSMDynamicInstances(view));
                         }
+                        ImGui::Text("%s", dynDraws.c_str());
                     }
 
                     i32 renderBudget = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmRenderBudget"_h);
                     if (renderBudget > 0)
                     {
-                        ImGui::Text("SVSM Budget: %u requested / %d allowed", shadowRenderer->GetSVSMBudgetUsed(), renderBudget);
+                        ImGui::Text("SVSM Budget: %u rendered / %d allowed", shadowRenderer->GetSVSMBudgetUsed(), renderBudget);
                     }
 
+                    // Invalidations happen on a single frame, latch the last cause so the line is
+                    // stable and readable
                     if (invalidationCause != 0)
                     {
-                        std::string causes;
-                        if (invalidationCause & 1) causes += "sun step ";
-                        if (invalidationCause & 2) causes += "z range ";
-                        if (invalidationCause & 4) causes += "manual ";
-                        if (invalidationCause & 8) causes += "aabb overflow ";
-                        ImGui::Text("SVSM Invalidation: %s", causes.c_str());
+                        _svsmLastInvalidationCause.clear();
+                        if (invalidationCause & 1) _svsmLastInvalidationCause += "sun step ";
+                        if (invalidationCause & 2) _svsmLastInvalidationCause += "z range ";
+                        if (invalidationCause & 4) _svsmLastInvalidationCause += "manual ";
+                        if (invalidationCause & 8) _svsmLastInvalidationCause += "aabb overflow ";
                     }
+                    ImGui::Text("SVSM Last Invalidation: %s", _svsmLastInvalidationCause.empty() ? "-" : _svsmLastInvalidationCause.c_str());
 
                     for (u32 i = 0; i < numClipmaps; i++)
                     {

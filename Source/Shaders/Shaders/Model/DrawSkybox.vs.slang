@@ -37,14 +37,16 @@ VSOutput main(VSInput input)
     float4x4 boneTransformMatrix = CalcBoneTransformMatrix(_instanceBoneMatrices, instanceData, vertex);
     float4 position = mul(float4(vertex.position, 1.0f), boneTransformMatrix);
 
-    // Save the skinned vertex position (in model-space) if this vertex was animated
-    if (instanceData.boneMatrixOffset != 4294967295)
-    {
-        uint localVertexID = input.vertexID - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
-        uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
-
-        StoreAnimatedVertexPosition(_animatedModelVertexPositions, animatedVertexID, position.xyz);
-    }
+    // TODO: Separate skinning compute shader — the cache below is currently dead (its consumer
+    // left with the visibility-buffer barycentrics; the material pass re-skins analytically)
+    //// Save the skinned vertex position (in model-space) if this vertex was animated
+    //if (instanceData.boneMatrixOffset != 4294967295)
+    //{
+    //    uint localVertexID = input.vertexID - instanceData.modelVertexOffset; // This gets the local vertex ID relative to the model
+    //    uint animatedVertexID = localVertexID + instanceData.animatedVertexOffset; // This makes it relative to the animated instance
+    //
+    //    StoreAnimatedVertexPosition(_animatedModelVertexPositions, animatedVertexID, position.xyz);
+    //}
 
     float4x4 instanceMatrix = _modelInstanceMatrices[instanceID];
     position = mul(position, instanceMatrix);

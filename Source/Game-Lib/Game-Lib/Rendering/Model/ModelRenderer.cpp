@@ -129,6 +129,10 @@ void ModelRenderer::Update(f32 deltaTime)
         });
     }
 
+    CVarSystem* cvarSystem = CVarSystem::Get();
+    const bool shadowsEnabled = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 1;
+    const bool split = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit"_h) == 1;
+
     // Dynamic shadow casters: one classifier for everything that moved or pushed bone matrices,
     // at instance granularity. Producers enqueue signals from any thread (the transform view
     // above, the instanced bone-push path, and the in-range placements of uninstanced animated
@@ -140,17 +144,14 @@ void ModelRenderer::Update(f32 deltaTime)
     {
         ZoneScopedN("Dynamic Shadow Casters");
 
+        const f32 range = shadowsEnabled ? static_cast<f32>(glm::max(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange"_h), 0.0)) : 0.0f;
+
         _dynamicCasterTime += deltaTime;
         _dynamicCasterLiveIDs.clear();
         _dynamicCasterAABBs.clear();
         _dynamicCastersDropped = 0;
-        _dynamicCasterTransitionsIn = 0;
-        _dynamicCasterTransitionsOut = 0;
-
-        CVarSystem* cvarSystem = CVarSystem::Get();
-        const bool shadowsEnabled = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled"_h) == 1;
-        const f32 range = shadowsEnabled ? static_cast<f32>(glm::max(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange"_h), 0.0)) : 0.0f;
-        const bool split = *cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit"_h) == 1;
+        // Transition counters accumulate (reset on Clear) — per-frame events are unreadable in
+        // the perf editor and made its layout jump
 
         // Brief animation pauses don't churn the static cache
         constexpr f32 dynamicGraceSeconds = 0.5f;
@@ -184,7 +185,7 @@ void ModelRenderer::Update(f32 deltaTime)
         u32 modelID;
         while (_uninstancedAnimatedModelQueue.try_dequeue(modelID))
         {
-            _animatedModelLastPushTime[modelID] = _dynamicCasterTime;
+            _animatedModelLastPushTime[modelID].lastPushTime = _dynamicCasterTime;
         }
 
         vec3 cameraPos = vec3(0.0f);
@@ -204,9 +205,15 @@ void ModelRenderer::Update(f32 deltaTime)
             const f32 leaveDist = range * 1.15f; // Hysteresis against camera jitter at the boundary
             const f32 leaveDistSq = leaveDist * leaveDist;
 
+            // Rescan slack: a placement beyond leaveDist at scan time cannot reach the enter
+            // radius until the camera has moved at least the hysteresis margin
+            const f32 rescanDist = leaveDist - range;
+            const f32 rescanDistSq = rescanDist * rescanDist;
+
             for (auto it = _animatedModelLastPushTime.begin(); it != _animatedModelLastPushTime.end();)
             {
-                if (_dynamicCasterTime - it->second > dynamicGraceSeconds)
+                AnimatedModelState& state = it->second;
+                if (_dynamicCasterTime - state.lastPushTime > dynamicGraceSeconds)
                 {
                     it = _animatedModelLastPushTime.erase(it);
                     continue;
@@ -214,7 +221,29 @@ void ModelRenderer::Update(f32 deltaTime)
 
                 u32 animatedModelID = it->first;
                 std::scoped_lock lock(*_modelManifestsInstancesMutexes[animatedModelID]);
-                for (u32 placementID : _modelManifests[animatedModelID].instances)
+                ModelManifest& manifest = _modelManifests[animatedModelID];
+
+                // The full placement scan only runs when the cached near-camera subset can be
+                // stale: first scan, camera moved past the hysteresis slack, or placements changed
+                vec3 toScanCamera = state.scanCameraPos - cameraPos;
+                if (!state.scanned || glm::dot(toScanCamera, toScanCamera) > rescanDistSq || manifest.instanceSetDirty)
+                {
+                    state.scanned = true;
+                    state.scanCameraPos = cameraPos;
+                    state.nearInstances.clear();
+                    manifest.instanceSetDirty = false;
+
+                    for (u32 placementID : manifest.instances)
+                    {
+                        vec3 toCamera = vec3(_instanceMatrices[placementID][3]) - cameraPos;
+                        if (glm::dot(toCamera, toCamera) < leaveDistSq)
+                        {
+                            state.nearInstances.push_back(placementID);
+                        }
+                    }
+                }
+
+                for (u32 placementID : state.nearInstances)
                 {
                     vec3 toCamera = vec3(_instanceMatrices[placementID][3]) - cameraPos;
                     f32 distSq = glm::dot(toCamera, toCamera);
@@ -282,6 +311,8 @@ void ModelRenderer::Update(f32 deltaTime)
         }
     }
 
+    // Diagnostics only, nothing to read back while the dynamic draws don't run
+    if (shadowsEnabled && split)
     {
         ZoneScopedN("SVSM Dynamic Draw Count ReadBack");
 
@@ -291,6 +322,13 @@ void ModelRenderer::Update(f32 deltaTime)
             memcpy(_numSvsmDynamicInstances, counts, sizeof(u32) * Renderer::Settings::MAX_VIEWS);
         }
         _renderer->UnmapBuffer(_svsmDynamicDrawCountReadBackBuffer);
+
+        _numSvsmDynamicInstancesZeroed = false;
+    }
+    else if (!_numSvsmDynamicInstancesZeroed)
+    {
+        memset(_numSvsmDynamicInstances, 0, sizeof(_numSvsmDynamicInstances));
+        _numSvsmDynamicInstancesZeroed = true;
     }
 
     {
@@ -573,6 +611,8 @@ void ModelRenderer::Clear()
     _dynamicCasterLastSignal.clear();
     _dynamicCasterLiveIDs.clear();
     _dynamicCasterAABBs.clear();
+    _dynamicCasterTransitionsIn = 0;
+    _dynamicCasterTransitionsOut = 0;
 
     // Zero the mask bits set last frame BEFORE the instance capacity shrinks under the word
     // count — recycled IDs on the next map must not start masked out of the static pages. Sized
@@ -2102,6 +2142,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
         manifest.instances.insert(instanceOffsets.instanceIndex);
+        manifest.instanceSetDirty = true;
     }
 
     // Set up InstanceManifest
@@ -2150,6 +2191,7 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[instanceData.modelID]);
         manifest.instances.erase(instanceID);
         manifest.skyboxInstances.erase(instanceID);
+        manifest.instanceSetDirty = true;
     }
 
     std::scoped_lock lock(_instanceOffsetsMutex);
@@ -2191,6 +2233,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[oldModelID]);
         oldManifest.instances.erase(instanceID);
         oldManifest.skyboxInstances.erase(instanceID);
+        oldManifest.instanceSetDirty = true;
     }
 
     // Deallocate old animation data
@@ -2205,6 +2248,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
         newManifest.instances.insert(instanceID);
+        newManifest.instanceSetDirty = true;
     }
 
     // Modify InstanceData
@@ -3647,6 +3691,7 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
 
         // Remove the non skybox instance
         modelManifest.instances.erase(instanceID);
+        modelManifest.instanceSetDirty = true;
     }
     else
     {
@@ -3655,6 +3700,7 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
         
         // Add the non skybox instance
         modelManifest.instances.insert(instanceID);
+        modelManifest.instanceSetDirty = true;
     }
 }
 

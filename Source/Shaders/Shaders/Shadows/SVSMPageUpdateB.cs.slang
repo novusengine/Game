@@ -88,6 +88,10 @@ void main(CSInput input)
             {
                 InterlockedAdd(gDeferredCount, 1);
                 deferred = true;
+
+                // Give the claim back so the stat reads pages actually rendered, not attempts.
+                // Deferral decisions are unaffected, each uses its own pre-add value
+                InterlockedAdd(_svsmData[0].statsBudgetUsed, uint(-1));
             }
         }
 

@@ -170,7 +170,7 @@ private:
     std::vector<vec4> _svsmDynamicAABBs; // This frame's dynamic caster (min, max) pairs
     bool _svsmDirtyAABBOverflow = false;
     u32 _svsmNumDynamicCasters = 0;     // Classifier live set: moved or bone-pushed within the grace window
-    u32 _svsmCasterTransitionsIn = 0;   // Classifier enter/leave this frame, each re-bakes static pages
+    u32 _svsmCasterTransitionsIn = 0;   // Classifier enter/leave running totals, each re-bakes static pages
     u32 _svsmCasterTransitionsOut = 0;
     u32 _svsmDynamicAABBsDropped = 0;   // Spilled to the static path this frame (cap or oversize)
     bool _svsmForceInvalidateAll = false; // Set when invalidations were discarded while SVSM was inactive

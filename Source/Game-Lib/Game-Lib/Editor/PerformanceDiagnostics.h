@@ -52,6 +52,8 @@ namespace Editor
     private:
         bool _drawCallStatsOnlyForMainView = true;
 
+        std::string _svsmLastInvalidationCause; // Latched, invalidations only exist for one frame
+
         bool _showSurvivingDrawCalls = true;
         bool _showSurvivingTriangle = true;
         bool _showFrameTime = true;

@@ -109,6 +109,8 @@ public:
         robin_hood::unordered_set<u32> instances;
         robin_hood::unordered_set<u32> skyboxInstances;
         robin_hood::unordered_set<u32> originallyTransparentDrawIDs;
+
+        bool instanceSetDirty = false; // Set under the instances mutex on add/remove, consumed by the animated-caster scan cache
     };
 
     struct InstanceManifest
@@ -490,7 +492,7 @@ private:
     std::vector<vec4> _dynamicCasterAABBs;  // World (min, max) pairs of the live set, rebuilt each frame
     f32 _dynamicCasterTime = 0.0f;
     u32 _dynamicCastersDropped = 0;         // Spilled to static this frame (cap or oversize), never dropped from both pools
-    u32 _dynamicCasterTransitionsIn = 0;
+    u32 _dynamicCasterTransitionsIn = 0;    // Running totals since map load, per-frame ticks are unreadable in the perf editor
     u32 _dynamicCasterTransitionsOut = 0;
 
     // Spawned/despawned/re-modeled instances must invalidate the cached static shadow pages under
@@ -506,12 +508,23 @@ private:
     // for diagnosing missing dynamic shadow draws
     Renderer::BufferID _svsmDynamicDrawCountReadBackBuffer;
     u32 _numSvsmDynamicInstances[Renderer::Settings::MAX_VIEWS] = { 0 };
+    bool _numSvsmDynamicInstancesZeroed = false; // One-shot zero of the stats when the readback is gated off
 
     // Animated doodads (windmills, flags, swaying vegetation) share one uninstanced bone stream
     // per model; the queue signals which models advanced their animation this frame so Update can
-    // promote their placements within svsmAnimatedCasterRange to per-instance dynamic signals
+    // promote their placements within svsmAnimatedCasterRange to per-instance dynamic signals.
+    // The full placement scan is expensive (large vegetation models have tens of thousands of
+    // placements), so each in-grace model caches its near-camera subset and rescans only when the
+    // camera moves past the hysteresis slack or the placement set changes
+    struct AnimatedModelState
+    {
+        f32 lastPushTime = 0.0f;        // Accumulated seconds of the last bone push
+        vec3 scanCameraPos = vec3(0.0f); // Camera position the cached subset was scanned from
+        bool scanned = false;
+        std::vector<u32> nearInstances; // Placements within leaveDist at scan time
+    };
     moodycamel::ConcurrentQueue<u32> _uninstancedAnimatedModelQueue;
-    robin_hood::unordered_map<u32, f32> _animatedModelLastPushTime; // modelID -> last accumulated-seconds it pushed bones
+    robin_hood::unordered_map<u32, AnimatedModelState> _animatedModelLastPushTime; // Keyed by modelID
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

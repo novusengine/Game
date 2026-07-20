@@ -61,6 +61,18 @@ float SVSMLoadDynamicDepth(uint clipmapIndex, int2 virtualTexel, uint pageTableS
     return asfloat(_svsmDynamicPagePool[physicalBase + pageTexel]);
 }
 
+// Residency alone: one page-table read, no pool load — for probes that only need to know whether
+// a dynamic page exists at the texel
+bool SVSMIsDynamicPageResident(uint clipmapIndex, int2 virtualTexel, uint pageTableSize, uint pageSize)
+{
+    int2 localPage = virtualTexel / int(pageSize);
+    int2 anchorPageMin = int2(_svsmData[0].anchorPageMinX[clipmapIndex], _svsmData[0].anchorPageMinY[clipmapIndex]);
+    int2 slot = WrapPageSlot(anchorPageMin + localPage, pageTableSize);
+
+    uint entry = _svsmDynamicPageTable[PageEntryIndex(clipmapIndex, slot, pageTableSize)];
+    return (entry & SVSM_PAGE_RESIDENT) != 0;
+}
+
 // Software percentage-closer filtering over the sparse clipmaps: select the finest covering
 // clipmap, walk to coarser ones when a touched page is not resident, 3x3 bilinear-weighted taps
 // over a shared 4x4 texel block. Returns 1 (lit) when nothing is resident, the marking pass
@@ -235,9 +247,7 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
 
             // Center-texel residency probe: DynamicMark pads the caster footprint by a full page,
             // far wider than the filter, so a non-resident center means no dynamic caster here
-            bool centerResident;
-            SVSMLoadDynamicDepth(kd, int2(floor(texelPos)), pageTableSize, pageSize, centerResident);
-            if (!centerResident)
+            if (!SVSMIsDynamicPageResident(kd, int2(floor(texelPos)), pageTableSize, pageSize))
             {
                 continue;
             }

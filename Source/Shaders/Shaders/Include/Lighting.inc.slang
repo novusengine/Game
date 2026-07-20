@@ -34,6 +34,18 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
 
     float ambientOcclusion = _ambientOcclusion.Load(int3(pixelVertexData.pixelPos, 0)).r;
 
+    // Directional Light Shadows: clipmap selection, page walk and far fade all live in
+    // GetSVSMShadowFactor. Light-independent (the sun direction comes from the SVSM state, not
+    // the light), so it samples once outside the loop — it is the most expensive part of the pass
+    float shadowFactor = 1.0f;
+    if (shadowSettings.enableShadows && numDirectionalLights > 0)
+    {
+        shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
+
+        // Sun elevation strength, fades shadows out around dawn/dusk
+        shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
+    }
+
     for (uint i = 0; i < numDirectionalLights; i++)
     {
         DirectionalLight light = LoadDirectionalLight(i);
@@ -51,16 +63,9 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
         float nDotL = saturate(dot(pixelVertexData.worldNormal, -light.direction.xyz)); // Dot product between normal and light direction
         float3 lightColor = lerp(light.color.rgb, float3(1.0f, 1.0f, 1.0f), nDotL); // Light color based on normal
         lightColor *= light.color.a; // Intensity in alpha channel
-        
-        // Directional Light Shadows: clipmap selection, page walk and far fade all live in
-        // GetSVSMShadowFactor
+
         if (shadowSettings.enableShadows)
         {
-            float shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
-
-            // Sun elevation strength, fades shadows out around dawn/dusk
-            shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
-
             lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
         }
 
