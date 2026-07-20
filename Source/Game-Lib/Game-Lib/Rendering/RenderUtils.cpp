@@ -33,19 +33,17 @@ void RenderUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
     }
 }
 
-void RenderUtils::SVSMGeometryProfiler::operator()(const char* stageName, u32 viewIndex, const std::function<void()>& work) const
+Renderer::TimeQueryID RenderUtils::SVSMGeometryProfiler::BeginStage(const char* stageName, u32 viewIndex) const
 {
-    if (!_enabled)
-    {
-        work();
-        return;
-    }
-
     Renderer::TimeQueryDesc timeQueryDesc;
     timeQueryDesc.name = _namePrefix + " " + stageName + " v" + std::to_string(viewIndex);
     Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
     _commandList->BeginTimeQuery(timeQuery);
-    work();
+    return timeQuery;
+}
+
+void RenderUtils::SVSMGeometryProfiler::EndStage(Renderer::TimeQueryID timeQuery) const
+{
     _commandList->EndTimeQuery(timeQuery);
 }
 

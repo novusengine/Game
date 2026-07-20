@@ -79,7 +79,7 @@ void CulledRenderer::DispatchInstancedFill(PassParams& params, const std::string
 {
     const u32 numInstances = params.cullingResources->GetNumInstances();
 
-    params.commandList->PushMarker(params.passName + " " + markerName, Color::White);
+    params.commandList->PushMarker(markerName, Color::White);
 
     Renderer::ComputePipelineID pipeline = filtered ? _fillInstancedDrawCallsFilteredPipeline[params.cullingResources->IsIndexed()]
                                                     : _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
@@ -123,12 +123,12 @@ void CulledRenderer::DispatchInstancedFill(PassParams& params, const std::string
 // Per-drawcall instance counts become indirect draw args, each count cleared after consumption
 // (the counts buffer is always zero between uses). An indirect args buffer applies the same
 // Finalize gate as the fill that produced the counts
-void CulledRenderer::DispatchCreateIndirect(PassParams& params, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset)
+void CulledRenderer::DispatchCreateIndirect(PassParams& params, const std::string& markerName, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset)
 {
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
     const bool debugOrdered = false; // Single-group ordered variant for determinism debugging
 
-    params.commandList->PushMarker(params.passName + " Create Indirect", Color::Yellow);
+    params.commandList->PushMarker(markerName, Color::Yellow);
 
     Renderer::ComputePipelineID pipeline = debugOrdered ? _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()]
                                                         : _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
@@ -206,13 +206,13 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
         }
 
         // Fill the occluders to draw: last frame's main-view culling output
-        DispatchInstancedFill(params, "Instanced Occlusion Fill", params.occluderFillDescriptorSet, false, !params.frameIndex, 0, false, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
+        DispatchInstancedFill(params, params.passName + " Instanced Occlusion Fill", params.occluderFillDescriptorSet, false, !params.frameIndex, 0, false, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
         params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
         params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
         // Create indirect argument buffer
-        DispatchCreateIndirect(params, params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
+        DispatchCreateIndirect(params, params.passName + " Create Indirect", params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
         params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
 
@@ -443,7 +443,7 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
             params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Create indirect argument buffer
-            DispatchCreateIndirect(params, params.createIndirectAfterCullSet, &params.debugDescriptorSet, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
+            DispatchCreateIndirect(params, params.passName + " Create Indirect", params.createIndirectAfterCullSet, &params.debugDescriptorSet, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
             params.commandList->PopMarker();
         }
@@ -559,7 +559,7 @@ void CulledRenderer::ClipmapCullingPass(CullingPassParams& params)
 
 // Rebuilds the shared instance counts/lookup/argument buffers from a view's bitmask slice.
 // filtered selects the SVSM caster-split fill variant, keepDynamic its instance class
-void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic)
+void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic, const std::string& fillMarkerName, const std::string& createIndirectMarkerName)
 {
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
 
@@ -589,7 +589,7 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
     params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
     // Fill the instances visible in this view
-    DispatchInstancedFill(params, "Instanced Geometry Fill", params.fillDescriptorSet, filtered, params.frameIndex, viewIndex * params.cullingResources->GetBitMaskBufferUintsPerView(), keepDynamic, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, fillArgsOffset);
+    DispatchInstancedFill(params, fillMarkerName, params.fillDescriptorSet, filtered, params.frameIndex, viewIndex * params.cullingResources->GetBitMaskBufferUintsPerView(), keepDynamic, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, fillArgsOffset);
 
     params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
 
@@ -598,7 +598,7 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
     params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
     // Create indirect argument buffer
-    DispatchCreateIndirect(params, params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, overheadArgsOffset);
+    DispatchCreateIndirect(params, createIndirectMarkerName, params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, overheadArgsOffset);
 
     params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
     params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
@@ -616,6 +616,12 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
     // render pass list
     const bool profileSVSM = params.svsmPass && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry"_h) != 0;
     RenderUtils::SVSMGeometryProfiler Profiled(_renderer, *params.commandList, "SVSM", profileSVSM);
+
+    // View-invariant marker strings and cvar reads, the loop body runs up to 8 views x 2 fills
+    const std::string fillMarkerName = params.passName + " Instanced Geometry Fill";
+    const std::string createIndirectMarkerName = params.passName + " Create Indirect";
+    const std::string drawMarkerName = params.passName + " " + std::to_string(numDrawCalls);
+    const bool svsmClipRectsEnabled = params.svsmPass && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
 
     for (u32 i = params.firstViewIndex; i < params.numShadowViews + 1; i++)
     {
@@ -679,7 +685,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             // The main view (i == 0) consumes the culling pass's output directly, cascades rebuild the
             // shared instance counts/lookup/argument buffers from their bitmask slice before drawing
-            Profiled("Fill", i, [&] { RunInstancedGeometryFill(params, i, params.svsmSplitFills, false); });
+            Profiled("Fill", i, [&] { RunInstancedGeometryFill(params, i, params.svsmSplitFills, false, fillMarkerName, createIndirectMarkerName); });
         }
 
         if (!params.cullingEnabled)
@@ -692,7 +698,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
         if (params.enableDrawing)
         {
-            params.commandList->PushMarker(params.passName + " " + std::to_string(numDrawCalls), Color::White);
+            params.commandList->PushMarker(drawMarkerName, Color::White);
 
             const u32 debugDrawCallBufferIndex = 0;//CVAR_ComplexModelDebugShadowDraws.Get();
 
@@ -737,8 +743,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
             }
 
 
-            const bool svsmClipRects = params.svsmPass && i > 0
-                && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
+            const bool svsmClipRects = svsmClipRectsEnabled && i > 0;
             Profiled("Draw", i, [&] { RenderUtils::DrawSVSMClipRects(svsmClipRects, drawParams, [&](DrawParams& rectDrawParams) { params.drawCallback(rectDrawParams); }); });
         }
 
@@ -759,7 +764,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         {
             params.commandList->PushMarker("Dynamic", Color::PastelOrange);
 
-            Profiled("DynFill", i, [&] { RunInstancedGeometryFill(params, i, true, true); });
+            Profiled("DynFill", i, [&] { RunInstancedGeometryFill(params, i, true, true, fillMarkerName, createIndirectMarkerName); });
 
             DrawParams drawParams;
             drawParams.cullingEnabled = params.cullingEnabled;

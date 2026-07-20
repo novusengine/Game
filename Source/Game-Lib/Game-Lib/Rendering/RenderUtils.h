@@ -5,9 +5,9 @@
 #include <Renderer/RenderGraphResources.h>
 #include <Renderer/Descriptors/ImageDesc.h>
 #include <Renderer/Descriptors/SamplerDesc.h>
+#include <Renderer/Descriptors/TimeQueryDesc.h>
 #include <Renderer/DescriptorSet.h>
 
-#include <functional>
 #include <string>
 
 namespace Renderer
@@ -161,9 +161,24 @@ public:
         {
         }
 
-        void operator()(const char* stageName, u32 viewIndex, const std::function<void()>& work) const;
+        template <typename Work>
+        void operator()(const char* stageName, u32 viewIndex, Work&& work) const
+        {
+            if (!_enabled)
+            {
+                work();
+                return;
+            }
+
+            Renderer::TimeQueryID timeQuery = BeginStage(stageName, viewIndex);
+            work();
+            EndStage(timeQuery);
+        }
 
     private:
+        Renderer::TimeQueryID BeginStage(const char* stageName, u32 viewIndex) const;
+        void EndStage(Renderer::TimeQueryID timeQuery) const;
+
         Renderer::Renderer* _renderer = nullptr;
         Renderer::CommandList* _commandList = nullptr;
         std::string _namePrefix;

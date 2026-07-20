@@ -334,7 +334,7 @@ protected:
         u32 svsmFillArgsDynamicOverheadOffset = 0;
     };
     void GeometryPass(GeometryPassParams& params);
-    void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic); // Shared-buffer rebuild from a view's bitmask slice
+    void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic, const std::string& fillMarkerName, const std::string& createIndirectMarkerName); // Shared-buffer rebuild from a view's bitmask slice; markers prebuilt by the caller, this runs per view
     void ClipmapCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
 
     // The instanced cull dispatch shared by CullingPass and ClipmapCullingPass: one thread per
@@ -350,8 +350,9 @@ protected:
 
     // The CreateIndirectAfterCulling dispatch shared by the occluder, culling and geometry-fill
     // paths: per-drawcall instance counts become indirect draw args (each count is cleared after
-    // consumption, keeping the counts buffer always-zero between uses). debugSet is optional
-    void DispatchCreateIndirect(PassParams& params, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset);
+    // consumption, keeping the counts buffer always-zero between uses). debugSet is optional.
+    // Both helpers take the full marker string prebuilt so per-view callers pay it once
+    void DispatchCreateIndirect(PassParams& params, const std::string& markerName, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset);
 
     void SyncToGPU();
     void BindCullingResource(CullingResourcesBase& resources);

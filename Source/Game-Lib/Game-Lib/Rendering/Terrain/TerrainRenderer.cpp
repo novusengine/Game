@@ -190,7 +190,7 @@ void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Render
 
             // Fill the occluders to draw
             FillDrawCallsParams fillParams;
-            fillParams.passName = "Occluders";
+            fillParams.markerName = "Occluders Fill";
             fillParams.cellCount = cellCount;
             fillParams.viewIndex = 0;
             fillParams.diffAgainstPrev = false;
@@ -398,7 +398,7 @@ void TerrainRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Render
 
                 // Fill the cells to draw
                 FillDrawCallsParams fillParams;
-                fillParams.passName = "Geometry";
+                fillParams.markerName = "Geometry Fill";
                 fillParams.cellCount = cellCount;
                 fillParams.viewIndex = 0;
                 fillParams.diffAgainstPrev = true;
@@ -626,6 +626,17 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
             // created pool binds per frame (image binds write the descriptor immediately)
             data.svsmSet.Bind("_pagePool"_h, data.pagePool);
 
+            // View-invariant fill params, cvar reads and marker strings — the loop body runs per clipmap
+            const bool svsmClipRects = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
+
+            FillDrawCallsParams fillParams;
+            fillParams.markerName = "SVSM Geometry Fill";
+            fillParams.cellCount = cellCount;
+            fillParams.diffAgainstPrev = false;
+            fillParams.currentBitmaskIndex = frameIndex;
+            fillParams.fillSet = data.fillSet;
+            fillParams.fillArgsBuffer = data.svsmFillArgsBuffer;
+
             for (u32 i = 1; i < numClipmaps + 1; i++)
             {
                 std::string markerName = "Clipmap " + std::to_string(i - 1);
@@ -640,16 +651,8 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
 
                 if (CVAR_TerrainGeometryEnabled.Get())
                 {
-                    FillDrawCallsParams fillParams;
-                    fillParams.passName = "SVSM Geometry";
-                    fillParams.cellCount = cellCount;
-                    fillParams.viewIndex = i;
-                    fillParams.diffAgainstPrev = false;
-                    fillParams.currentBitmaskIndex = frameIndex;
-                    fillParams.fillSet = data.fillSet;
-
                     // Finalize zeroed the group count for rings with no dirty pages this frame
-                    fillParams.fillArgsBuffer = data.svsmFillArgsBuffer;
+                    fillParams.viewIndex = i;
                     fillParams.fillArgsByteOffset = (i - 1) * ShadowRenderer::SVSM_FILL_ARGS_VIEW_STRIDE + ShadowRenderer::SVSM_FILL_ARGS_TERRAIN_OFFSET;
 
                     Profiled("Fill", i, [&] { FillDrawCalls(frameIndex, graphResources, commandList, fillParams); });
@@ -678,7 +681,6 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                     drawParams.drawDescriptorSet = data.geometryPassSet;
                     drawParams.svsmDescriptorSet = data.svsmSet;
 
-                    const bool svsmClipRects = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
                     Profiled("Draw", i, [&] { RenderUtils::DrawSVSMClipRects(svsmClipRects, drawParams, [&](DrawParams& rectDrawParams) { Draw(resources, frameIndex, graphResources, commandList, rectDrawParams); }); });
 
                     commandList.PopMarker();
@@ -1411,7 +1413,7 @@ void TerrainRenderer::Draw(const RenderResources& resources, u8 frameIndex, Rend
 
 void TerrainRenderer::FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params)
 {
-    commandList.PushMarker(params.passName + " Fill", Color::White);
+    commandList.PushMarker(params.markerName, Color::White);
 
     Renderer::ComputePipelineID pipeline = _fillDrawCallsPipeline;
     commandList.BeginPipeline(pipeline);

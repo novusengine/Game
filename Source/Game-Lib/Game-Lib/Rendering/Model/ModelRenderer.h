@@ -110,7 +110,6 @@ public:
         robin_hood::unordered_set<u32> skyboxInstances;
         robin_hood::unordered_set<u32> originallyTransparentDrawIDs;
 
-        bool instanceSetDirty = false; // Set under the instances mutex on add/remove, consumed by the animated-caster scan cache
     };
 
     struct InstanceManifest
@@ -412,6 +411,7 @@ private:
 
     void ComputeInstanceShadowAABB(u32 instanceID, const mat4x4& transformMatrix, vec3& outMin, vec3& outMax);
     void QueueShadowInvalidation(u32 instanceID, const mat4x4& transformMatrix);
+    void QueueShadowInvalidation(const vec3& aabbMin, const vec3& aabbMax); // For callers holding a cached AABB
 
     void CompactInstanceRefs();
     void SyncToGPU();
@@ -486,8 +486,16 @@ private:
     // last signal so brief pauses don't churn the static cache; entering pulls the baked pose out
     // of the static pages, expiring bakes it back. A despawned instance's stale entry expires
     // within the grace and costs one spurious page refresh at worst (RemoveInstance already
-    // invalidated its real footprint)
-    robin_hood::unordered_map<u32, f32> _dynamicCasterLastSignal;
+    // invalidated its real footprint).
+    // The shadow AABB is cached in the entry and recomputed only when it can change (classifier
+    // entry, transform update) — the per-frame tick reads it instead of redoing the glm math
+    struct DynamicCasterState
+    {
+        f32 lastSignal = 0.0f;
+        vec3 aabbMin = vec3(0.0f);
+        vec3 aabbMax = vec3(0.0f);
+    };
+    robin_hood::unordered_map<u32, DynamicCasterState> _dynamicCasterStates;
     std::vector<u32> _dynamicCasterLiveIDs; // This frame's live set, feeds the mask sync
     std::vector<vec4> _dynamicCasterAABBs;  // World (min, max) pairs of the live set, rebuilt each frame
     f32 _dynamicCasterTime = 0.0f;
@@ -521,10 +529,16 @@ private:
         f32 lastPushTime = 0.0f;        // Accumulated seconds of the last bone push
         vec3 scanCameraPos = vec3(0.0f); // Camera position the cached subset was scanned from
         bool scanned = false;
+        u32 lastSeenInstanceEpoch = 0;  // _instanceSetEpoch value the cached subset was scanned at
         std::vector<u32> nearInstances; // Placements within leaveDist at scan time
     };
     moodycamel::ConcurrentQueue<u32> _uninstancedAnimatedModelQueue;
     robin_hood::unordered_map<u32, AnimatedModelState> _animatedModelLastPushTime; // Keyed by modelID
+
+    // Bumped on every instance add/remove/re-model (any model, any thread). The animated-caster
+    // scan caches compare against it so the steady-state tick never takes a manifest mutex; an
+    // epoch bump from an unrelated model costs the few in-grace models one spare rescan
+    std::atomic<u32> _instanceSetEpoch = 0;
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

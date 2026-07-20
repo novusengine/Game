@@ -115,14 +115,21 @@ void ModelRenderer::Update(f32 deltaTime)
 
             // Transitioning into the dynamic class: the shadow baked at the PREVIOUS position must
             // come out of the static pages too, a single-frame move can be arbitrarily large.
-            // Already-classified instances need nothing, the dynamic pool is transient per frame
-            if (!_dynamicCasterLastSignal.contains(instanceID))
+            // Already-classified instances only refresh their cached shadow AABB, the dynamic
+            // pool is transient per frame
+            auto casterIt = _dynamicCasterStates.find(instanceID);
+            if (casterIt == _dynamicCasterStates.end())
             {
                 QueueShadowInvalidation(instanceID, matrix); // Pre-move matrix
             }
 
             matrix = transform.GetMatrix();
             _instanceMatrices.SetDirtyElement(instanceID);
+
+            if (casterIt != _dynamicCasterStates.end())
+            {
+                ComputeInstanceShadowAABB(instanceID, matrix, casterIt->second.aabbMin, casterIt->second.aabbMax);
+            }
 
             // Moved this frame -> dynamic shadow caster this frame
             _dynamicInstanceQueue.enqueue(instanceID);
@@ -157,18 +164,19 @@ void ModelRenderer::Update(f32 deltaTime)
         constexpr f32 dynamicGraceSeconds = 0.5f;
 
         // A first-time stamp is a transition IN: the instance's baked pose must come out of the
-        // static pages (movers additionally invalidated their pre-move footprint above)
+        // static pages (movers additionally invalidated their pre-move footprint above). The
+        // shadow AABB caches in the entry — it only changes with the transform, which the
+        // dirty-transform view refreshes, so re-stamps just bump the time
         auto Stamp = [&](u32 instanceID)
         {
-            auto [it, inserted] = _dynamicCasterLastSignal.try_emplace(instanceID, _dynamicCasterTime);
+            auto [it, inserted] = _dynamicCasterStates.try_emplace(instanceID);
+            DynamicCasterState& state = it->second;
+            state.lastSignal = _dynamicCasterTime;
             if (inserted)
             {
                 _dynamicCasterTransitionsIn++;
-                QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
-            }
-            else
-            {
-                it->second = _dynamicCasterTime;
+                ComputeInstanceShadowAABB(instanceID, _instanceMatrices[instanceID], state.aabbMin, state.aabbMax);
+                QueueShadowInvalidation(state.aabbMin, state.aabbMax);
             }
         };
 
@@ -220,19 +228,23 @@ void ModelRenderer::Update(f32 deltaTime)
                 }
 
                 u32 animatedModelID = it->first;
-                std::scoped_lock lock(*_modelManifestsInstancesMutexes[animatedModelID]);
-                ModelManifest& manifest = _modelManifests[animatedModelID];
 
                 // The full placement scan only runs when the cached near-camera subset can be
-                // stale: first scan, camera moved past the hysteresis slack, or placements changed
+                // stale: first scan, camera moved past the hysteresis slack, or the instance-set
+                // epoch advanced (any model's add/remove — spare rescans are cheap and rare).
+                // The manifest mutex is only taken for the scan itself; the steady-state tick
+                // walks the cached subset lock-free
+                const u32 instanceSetEpoch = _instanceSetEpoch.load(std::memory_order_acquire);
                 vec3 toScanCamera = state.scanCameraPos - cameraPos;
-                if (!state.scanned || glm::dot(toScanCamera, toScanCamera) > rescanDistSq || manifest.instanceSetDirty)
+                if (!state.scanned || glm::dot(toScanCamera, toScanCamera) > rescanDistSq || state.lastSeenInstanceEpoch != instanceSetEpoch)
                 {
                     state.scanned = true;
                     state.scanCameraPos = cameraPos;
+                    state.lastSeenInstanceEpoch = instanceSetEpoch;
                     state.nearInstances.clear();
-                    manifest.instanceSetDirty = false;
 
+                    std::scoped_lock lock(*_modelManifestsInstancesMutexes[animatedModelID]);
+                    const ModelManifest& manifest = _modelManifests[animatedModelID];
                     for (u32 placementID : manifest.instances)
                     {
                         vec3 toCamera = vec3(_instanceMatrices[placementID][3]) - cameraPos;
@@ -247,10 +259,20 @@ void ModelRenderer::Update(f32 deltaTime)
                 {
                     vec3 toCamera = vec3(_instanceMatrices[placementID][3]) - cameraPos;
                     f32 distSq = glm::dot(toCamera, toCamera);
-                    f32 limitSq = _dynamicCasterLastSignal.contains(placementID) ? leaveDistSq : enterDistSq;
+
+                    // One lookup serves both the hysteresis limit and the re-stamp
+                    auto casterIt = _dynamicCasterStates.find(placementID);
+                    f32 limitSq = casterIt != _dynamicCasterStates.end() ? leaveDistSq : enterDistSq;
                     if (distSq < limitSq)
                     {
-                        Stamp(placementID);
+                        if (casterIt != _dynamicCasterStates.end())
+                        {
+                            casterIt->second.lastSignal = _dynamicCasterTime;
+                        }
+                        else
+                        {
+                            Stamp(placementID);
+                        }
                     }
                 }
                 ++it;
@@ -269,42 +291,40 @@ void ModelRenderer::Update(f32 deltaTime)
         // emit this frame's mask feed and dynamic AABB list. Overflow and oversize SPILL to the
         // static path instead of dropping: a spilled caster re-bakes every frame (page churn) but
         // is never excluded from both pools
-        for (auto it = _dynamicCasterLastSignal.begin(); it != _dynamicCasterLastSignal.end();)
+        for (auto it = _dynamicCasterStates.begin(); it != _dynamicCasterStates.end();)
         {
             u32 liveInstanceID = it->first;
+            const DynamicCasterState& state = it->second;
 
-            if (_dynamicCasterTime - it->second > dynamicGraceSeconds)
+            if (_dynamicCasterTime - state.lastSignal > dynamicGraceSeconds)
             {
                 _dynamicCasterTransitionsOut++;
-                QueueShadowInvalidation(liveInstanceID, _instanceMatrices[liveInstanceID]);
-                it = _dynamicCasterLastSignal.erase(it);
+                QueueShadowInvalidation(state.aabbMin, state.aabbMax);
+                it = _dynamicCasterStates.erase(it);
                 continue;
             }
 
             if (split)
             {
-                vec3 aabbMin, aabbMax;
-                ComputeInstanceShadowAABB(liveInstanceID, _instanceMatrices[liveInstanceID], aabbMin, aabbMax);
-
-                vec3 extent = aabbMax - aabbMin;
+                vec3 extent = state.aabbMax - state.aabbMin;
                 const bool oversized = glm::max(extent.x, glm::max(extent.y, extent.z)) > oversizeLimit;
                 const bool overCap = _dynamicCasterAABBs.size() >= ShadowRenderer::SVSM_MAX_DYNAMIC_AABBS * 2;
                 if (oversized || overCap)
                 {
                     _dynamicCastersDropped++;
-                    QueueShadowInvalidation(liveInstanceID, _instanceMatrices[liveInstanceID]);
+                    QueueShadowInvalidation(state.aabbMin, state.aabbMax);
                 }
                 else
                 {
                     _dynamicCasterLiveIDs.push_back(liveInstanceID);
-                    _dynamicCasterAABBs.push_back(vec4(aabbMin, 0.0f));
-                    _dynamicCasterAABBs.push_back(vec4(aabbMax, 0.0f));
+                    _dynamicCasterAABBs.push_back(vec4(state.aabbMin, 0.0f));
+                    _dynamicCasterAABBs.push_back(vec4(state.aabbMax, 0.0f));
                 }
             }
             else
             {
                 // Split off: v1-style per-frame static invalidation
-                QueueShadowInvalidation(liveInstanceID, _instanceMatrices[liveInstanceID]);
+                QueueShadowInvalidation(state.aabbMin, state.aabbMax);
             }
 
             ++it;
@@ -608,7 +628,7 @@ void ModelRenderer::Clear()
     ShadowInvalidation drainedInvalidation;
     while (_shadowInvalidationQueue.try_dequeue(drainedInvalidation)) {}
     _animatedModelLastPushTime.clear();
-    _dynamicCasterLastSignal.clear();
+    _dynamicCasterStates.clear();
     _dynamicCasterLiveIDs.clear();
     _dynamicCasterAABBs.clear();
     _dynamicCasterTransitionsIn = 0;
@@ -2080,7 +2100,11 @@ void ModelRenderer::QueueShadowInvalidation(u32 instanceID, const mat4x4& transf
 {
     vec3 aabbMin, aabbMax;
     ComputeInstanceShadowAABB(instanceID, transformMatrix, aabbMin, aabbMax);
+    QueueShadowInvalidation(aabbMin, aabbMax);
+}
 
+void ModelRenderer::QueueShadowInvalidation(const vec3& aabbMin, const vec3& aabbMax)
+{
     ShadowInvalidation invalidation;
     invalidation.min = vec4(aabbMin, 0.0f);
     invalidation.max = vec4(aabbMax, 0.0f);
@@ -2143,7 +2167,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
         manifest.instances.insert(instanceOffsets.instanceIndex);
-        manifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
 
     // Set up InstanceManifest
@@ -2192,7 +2216,7 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[instanceData.modelID]);
         manifest.instances.erase(instanceID);
         manifest.skyboxInstances.erase(instanceID);
-        manifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
 
     std::scoped_lock lock(_instanceOffsetsMutex);
@@ -2234,7 +2258,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[oldModelID]);
         oldManifest.instances.erase(instanceID);
         oldManifest.skyboxInstances.erase(instanceID);
-        oldManifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
 
     // Deallocate old animation data
@@ -2249,7 +2273,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     {
         std::scoped_lock lock(*_modelManifestsInstancesMutexes[modelID]);
         newManifest.instances.insert(instanceID);
-        newManifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
 
     // Modify InstanceData
@@ -3693,7 +3717,7 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
 
         // Remove the non skybox instance
         modelManifest.instances.erase(instanceID);
-        modelManifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
     else
     {
@@ -3702,7 +3726,7 @@ void ModelRenderer::MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanc
         
         // Add the non skybox instance
         modelManifest.instances.insert(instanceID);
-        modelManifest.instanceSetDirty = true;
+        _instanceSetEpoch.fetch_add(1, std::memory_order_release);
     }
 }
 
@@ -3977,7 +4001,9 @@ void ModelRenderer::SyncToGPU()
     BindCullingResource(_transparentSkyboxCullingResources);
 
     // Rebuild the SVSM dynamic instance mask from the classifier's live set (Update drained the
-    // raw signals into it earlier this frame)
+    // raw signals into it earlier this frame). Nothing live now and nothing masked last frame
+    // means every bit is already zero
+    if (!_dynamicCasterLiveIDs.empty() || !_dynamicInstanceIDs.empty())
     {
         ZoneScopedN("Sync Dynamic Instance Mask");
 

@@ -108,7 +108,7 @@ private:
     struct FillDrawCallsParams
     {
     public:
-        std::string passName;
+        std::string markerName; // Full marker string, prebuilt by the caller (the SVSM pass fills per view)
 
         u32 cellCount;
         u32 viewIndex;
