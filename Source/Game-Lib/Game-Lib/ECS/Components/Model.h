@@ -20,7 +20,7 @@ namespace ECS::Components
         ModelFlags flags = { 0 };
         u32 modelID = std::numeric_limits<u32>().max();
         u32 instanceID = std::numeric_limits<u32>().max();
-        u32 modelHash = std::numeric_limits<u32>().max();
+        u64 modelHash = std::numeric_limits<u64>().max();
         f32 opacity = 1.0f;
         f32 scale = 1.0f;
     };

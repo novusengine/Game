@@ -26,6 +26,7 @@ declare class UnitEvent
     PowerUpdate         : number
     ResistanceUpdate    : number
     StatUpdate          : number
+    ReactionChanged     : number
     AuraAdd             : number
     AuraUpdate          : number
     AuraRemove          : number
@@ -63,6 +64,14 @@ declare class PowerTypeEnum
     Count           : number
 end
 declare PowerTypeEnum : PowerTypeEnum
+
+declare class FactionReaction
+    Hostile     : number
+    Unfriendly  : number
+    Neutral     : number
+    Friendly    : number
+end
+declare FactionReaction : FactionReaction
 
 declare class StatTypeEnum
     Invalid         : number
@@ -162,13 +171,92 @@ declare class UIKeyboardEvent
 end
 declare UIKeyboardEvent : UIKeyboardEvent;
 
-declare class InputAction
-    Invalid : number
-    Press   : number
-    Release : number
-    Click   : number
+declare class InputPhase
+    Pressed  : number
+    Repeated : number
+    Released : number
+    Canceled : number
+    Triggered : number
 end
-declare InputAction : InputAction;
+declare InputPhase : InputPhase;
+
+declare class InputReply
+    Ignored  : number
+    Handled  : number
+    Consumed : number
+end
+declare InputReply : InputReply;
+
+declare class GameInputPriority
+    ImGui    : number
+    Modal    : number
+    UI       : number
+    Editor   : number
+    Camera   : number
+    Global   : number
+    Gameplay : number
+    Debug    : number
+end
+declare GameInputPriority : GameInputPriority;
+
+declare class InputModifier
+    None    : number
+    Shift   : number
+    Control : number
+    Alt     : number
+    Super   : number
+end
+declare InputModifier : InputModifier;
+
+declare class InputDevice
+    Keyboard : number
+    Mouse    : number
+    MouseWheel : number
+end
+declare InputDevice : InputDevice;
+
+declare class MouseWheelDirection
+    Up    : number
+    Down  : number
+    Left  : number
+    Right : number
+end
+declare MouseWheelDirection : MouseWheelDirection;
+
+declare class InputModifierMatch
+    Exact   : number
+    AtLeast : number
+    Any     : number
+end
+declare InputModifierMatch : InputModifierMatch;
+
+declare class InputBindingConflictPolicy
+    Reject  : number
+    Replace : number
+    Swap    : number
+    Allow   : number
+end
+declare InputBindingConflictPolicy : InputBindingConflictPolicy;
+
+declare class InputBindingConflictKind
+    Direct              : number
+    ShadowsRequested    : number
+    ShadowedByRequested : number
+end
+declare InputBindingConflictKind : InputBindingConflictKind;
+
+declare class InputBindingChangeStatus
+    Applied              : number
+    AppliedWithConflicts : number
+    Queued               : number
+    RejectedConflict     : number
+    InvalidAction        : number
+    InvalidSlot          : number
+    InvalidBinding       : number
+    InvalidPolicy        : number
+    NotRebindable        : number
+end
+declare InputBindingChangeStatus : InputBindingChangeStatus;
 
 type MouseEventCallback = ((event : UIInputEvent, widget : Widget, x : number, y : number) -> ())
 type KeyboardEventCallback = ((widget : Widget, event : UIKeyboardEvent, ...any) -> ())
@@ -211,14 +299,14 @@ declare class Widget extends WidgetInputEvents
     function SetClipRect(self, minX : number, minY : number, maxX : number, maxY : number) : ()
     function GetClipMaskTexture(self) : string
     function SetClipMaskTexture(self, texturePath : string) : ()
-    
+
     function GetPos(self) : vec2
     function GetPosX(self) : number
     function GetPosY(self) : number
     function SetPos(self, pos : vec2) : ()
     function SetPosX(self, x : number) : ()
     function SetPosY(self, y : number) : ()
-        
+
     function GetWorldPos(self) : vec2
     function GetWorldPosX(self) : number
     function GetWorldPosY(self) : number
@@ -245,10 +333,12 @@ declare class Panel extends Widget
 
     function SetBackground(self, background : string) : ()
     function SetForeground(self, foreground : string) : ()
-    
+
     function SetTexCoords(self, minX : number, minY : number, maxX : number, maxY : number) : ()
     function SetColor(self, color : vec3, alpha : number?) : ()
-    function SetAlpha(self, alpha : number) : ()    
+    function SetAlpha(self, alpha : number) : ()
+    function SetBorderColor(self, color : vec3) : ()
+    function SetBorderSize(self, size : number) : ()
 end
 
 declare class TextWidget extends Widget
@@ -286,8 +376,8 @@ declare class PanelTemplate extends EventTemplate
     foreground : string?
     color : vector?
     cornerRadius : number?
-    texCoords : vec4?
-    nineSliceCoords : vec4?
+    texCoords : Box?
+    nineSliceInsets : Box? -- Source pixels ordered left, top, right, bottom.
     onClickTemplate : string?
     onHoverTemplate : string?
     onUninteractableTemplate : string?
@@ -317,11 +407,12 @@ declare UI :
     GetCanvas : ((name : string, pos : vec2, size : vec2, isRenderTexture : boolean?) -> Canvas),
     GetMousePos : (() -> vec2),
     GetTextureSize : ((path : string) -> vec2),
+    IsSmoothUnitFrameBarsEnabled : (() -> boolean),
 
     PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
     CalculateTextSize : ((text : string, template : string) -> vec2),
     WrapText : ((text : string, template : string, wrapWidth : number?) -> (string, vec2)),
-    
+
     FocusWidget : ((widget : Widget) -> ()),
     UnfocusWidget : ((widget : Widget) -> ()),
     IsFocusedWidget : ((widget : Widget) -> boolean),
@@ -331,8 +422,32 @@ declare UI :
     IsHoveredWidget : ((widget : Widget) -> boolean),
 
     DestroyWidget : ((widget : Widget) -> boolean),
+}
 
-    AddOnKeyboard : ((event : UIKeyboardEvent, ...any) -> boolean),
+declare Input :
+{
+    RegisterAction : ((name : string, displayName : string, category : string, binding : { [string] : any }, options : { [string] : any }?) -> boolean),
+    Connect : ((name : string, callback : (phase : number, device : number, code : number, modifiers : number, value : number) -> number) -> number),
+    Disconnect : ((connection : number) -> boolean),
+    SetBinding : ((name : string, slot : number, binding : { [string] : any }, policy : number?) -> { [any] : any }),
+    ClearBinding : ((name : string, slot : number, policy : number?) -> { [any] : any }),
+    ResetBinding : ((name : string, slot : number, policy : number?) -> { [any] : any }),
+    GetBinding : ((name : string, slot : number) -> { [string] : any }?),
+    GetActions : (() -> { any }),
+    IsDown : ((name : string) -> boolean),
+    WasPressed : ((name : string) -> boolean),
+    WasReleased : ((name : string) -> boolean),
+    FindBindingConflicts : ((name : string, slot : number, binding : { [string] : any }) -> { [any] : any }),
+    BeginBindingCapture : ((callback : (binding : { [string] : any }?) -> ()) -> boolean),
+    CancelBindingCapture : (() -> boolean),
+    IsBindingCaptureActive : (() -> boolean),
+    SaveBindings : (() -> boolean),
+    CreateContext : ((name : string, priority : number, sortOrder : number?) -> boolean),
+    SetContextActive : ((name : string, active : boolean) -> boolean),
+    IsContextActive : ((name : string) -> boolean),
+    GetContexts : (() -> { any }),
+    IsSoftwareCursorEnabled : (() -> boolean),
+    GetCursorState : ((knownRevision : number?) -> (number?, string?)),
 }
 
 declare Cursor : Canvas
@@ -350,14 +465,23 @@ declare Box :
 declare Unit :
 {
     GetLocal            : (() -> number),
+    GetHovered          : (() -> number),
     GetName             : ((unitID : number) -> string),
     GetHealth           : ((unitID : number) -> (number, number)),
+    GetLevel            : ((unitID : number) -> number),
+    GetClass            : ((unitID : number) -> number),
     GetResourceType     : ((unitID : number) -> PowerTypeEnum),
     GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
     GetStat             : ((unitID : number, statType : number) -> (number, number)),
     GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),
+    GetFactionID        : ((unitID : number) -> number),
+    GetReaction         : ((unitID : number) -> number),
+    CanAttack           : ((unitID : number) -> boolean),
+    GetLocalReactionToUnit : ((unitID : number) -> number),
+    GetUnitReactionToLocalPlayer : ((unitID : number) -> number),
+    ClearTarget         : (() -> boolean),
 
-    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> ()),
+    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> number),
 }
 
 declare class AuraInfo
@@ -491,7 +615,7 @@ declare Spell :
 
 declare Container :
 {
-    RequestSwapSlots : ((containerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
+    RequestSwapSlots : ((srcContainerIndex : number, destContainerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
     GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
 }
 

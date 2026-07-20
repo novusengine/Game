@@ -31,6 +31,8 @@ inline u32 GetGroupCount(u32 threadCount, u32 localSize)
 
 void DepthPyramidUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
 {
+    ZoneScoped;
+
     _renderer = renderer;
     _gameRenderer = gameRenderer;
 

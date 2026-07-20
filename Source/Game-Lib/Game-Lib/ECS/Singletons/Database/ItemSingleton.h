@@ -27,7 +27,7 @@ namespace ECS
                 static constexpr u32 NumArraySlots = ((u32)GameDefine::UnitRace::Count * 2);
 
                 // This maps as follows (RaceID * 2 == Base Index, Male == +0, Female == +1)
-                std::array<u32, NumArraySlots> raceGenderToModelHash = { };
+                std::array<u64, NumArraySlots> raceGenderToModelHash = { };
             };
 
             struct ShoulderModelMapping
@@ -36,13 +36,13 @@ namespace ECS
                 static constexpr u32 NumArraySlots = 2;
 
                 // This maps as follows (Left == 0, Right == 1)
-                std::array<u32, NumArraySlots> sideToModelHash = { };
+                std::array<u64, NumArraySlots> sideToModelHash = { };
             };
 
             struct ItemDisplayInfoComponentSectionData
             {
             public:
-                robin_hood::unordered_map<u8, u32> componentSectionToTextureHash;
+                robin_hood::unordered_map<u8, u64> componentSectionToTextureHash;
             };
 
         public:

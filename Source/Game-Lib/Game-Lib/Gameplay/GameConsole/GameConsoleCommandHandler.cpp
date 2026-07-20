@@ -34,6 +34,14 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleCreatureAdd);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemove);
     RegisterCommand(GameConsoleCommands::HandleCreatureInfo);
+    RegisterCommand(GameConsoleCommands::HandleFactionReaction);
+    RegisterCommand(GameConsoleCommands::HandleFactionSet);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationInfo);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationSet);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationModify);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationRemove);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationSetFlags);
+    RegisterCommand(GameConsoleCommands::HandleFactionReputationLock);
     RegisterCommand(GameConsoleCommands::HandleCheatLogin);
     RegisterCommand(GameConsoleCommands::HandleCheatDamage);
     RegisterCommand(GameConsoleCommands::HandleCheatKill);
@@ -54,6 +62,10 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
     RegisterCommand(GameConsoleCommands::HandleCheatPathGenerate);
+    RegisterCommand(GameConsoleCommands::HandleCreatureMove);
+    RegisterCommand(GameConsoleCommands::HandleCreatureFollow);
+    RegisterCommand(GameConsoleCommands::HandleCreatureWander);
+    RegisterCommand(GameConsoleCommands::HandleCreatureStop);
 }
 
 bool GameConsoleCommandHandler::HandleCommand(GameConsole* gameConsole, std::string& command)

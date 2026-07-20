@@ -11,6 +11,8 @@ type NameplateAPI =
 type NameplateTemplate =
 {
     unitID : number,
+    unitName : string?,
+    isStandalone : boolean?,
 }
 
 type Nameplate = {
@@ -24,11 +26,8 @@ type Nameplate = {
     background: Panel,
     fill: Panel,
     nameText: TextWidget,
-    nameTextColor: vector,
     healthText: TextWidget,
-    healthTextColor: vector,
     standaloneNameText: TextWidget,
-    standaloneNameTextColor: vector,
 
     -- Methods
     Destroy: (self: Nameplate) -> (),
@@ -42,6 +41,7 @@ type Nameplate = {
     GetUnitID: (self: Nameplate) -> number,
     GetUnitName: (self: Nameplate) -> string,
     SetUnitName: (self: Nameplate, unitName: string) -> (),
+    SetNameColor: (self: Nameplate, color: vector) -> (),
     IsStandalone: (self: Nameplate) -> boolean,
     SetStandalone: (self: Nameplate, standalone: boolean) -> (),
     GetHealth: (self: Nameplate) -> number,
@@ -92,11 +92,18 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.SetEnabled = function(self : Nameplate, enabled : boolean)
-        nameplateTable.border:SetEnabled(enabled);
+        self.border:SetEnabled(enabled);
+        self.standaloneNameText:SetEnabled(enabled);
     end
 
     nameplateTable.SetVisible = function(self : Nameplate, visible : boolean)
-        nameplateTable.border:SetVisible(visible);
+        if self.isStandalone then
+            self.border:SetVisible(false);
+            self.standaloneNameText:SetVisible(visible);
+        else
+            self.border:SetVisible(visible);
+            self.standaloneNameText:SetVisible(false);
+        end
     end
 
     nameplateTable.SetInteractable = function(self : Nameplate, interactable : boolean)
@@ -116,47 +123,9 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
     end
 
     nameplateTable.SetPosToUnit = function(self : Nameplate, unitID : number)
-        if self.isStandalone then
-            local resultCode = Unit.SetWidgetToNamePos(self.standaloneNameText, unitID);
-
-            if resultCode ~= 2 then
-                local result = if resultCode == 1 then true else false;
-                self.standaloneNameText:SetVisible(result);
-            end
-        else
-            local borderResultCode = Unit.SetWidgetToNamePos(self.border, unitID);
-            local backgroundResultCode = Unit.SetWidgetToNamePos(self.background, unitID);
-            local fillResultCode = Unit.SetWidgetToNamePos(self.fill, unitID);
-            local nameResultCode = Unit.SetWidgetToNamePos(self.nameText, unitID);
-
-            if borderResultCode ~= 2 then
-                local result = if borderResultCode == 1 then true else false;
-                self.border:SetVisible(result);
-            end
-
-            if backgroundResultCode ~= 2 then
-                local result = if backgroundResultCode == 1 then true else false;
-                self.background:SetVisible(result);
-            end
-
-            if fillResultCode ~= 2 then
-                local result = if fillResultCode == 1 then true else false;
-                self.fill:SetVisible(result);
-            end
-
-            if nameResultCode ~= 2 then
-                local result = if nameResultCode == 1 then true else false;
-                self.nameText:SetVisible(result);
-            end
-        end
-
         local widget = if self.isStandalone then self.standaloneNameText else self.border;
         local resultCode = Unit.SetWidgetToNamePos(widget, unitID);
-
-        if resultCode ~= 2 then
-            local result = if resultCode == 1 then true else false;
-            widget:SetVisible(result);
-        end
+        self:SetVisible(resultCode == 1);
     end
 
     nameplateTable.GetUnitID = function(self : Nameplate)
@@ -171,6 +140,11 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         self.unitName = unitName;
         self.nameText:SetText(unitName);
         self.standaloneNameText:SetText(unitName);
+    end
+
+    nameplateTable.SetNameColor = function(self : Nameplate, color : vector)
+        self.nameText:SetColor(color);
+        self.standaloneNameText:SetColor(color);
     end
 
     nameplateTable.IsStandalone = function(self : Nameplate)
@@ -221,22 +195,6 @@ local function SetupNameplateMethods(nameplateTable : Nameplate)
         nameplateTable.healthText:SetText(text);
     end
 
-    nameplateTable.SetHighlighted = function(self : Nameplate, highlighted : boolean)
-
-        local baseStandaloneColor = if highlighted then self.standaloneNameTextColor * vector.create(1.25, 1.25, 1.25) else self.standaloneNameTextColor;
-        baseStandaloneColor = vector.min(baseStandaloneColor, vector.create(1.0, 1.0, 1.0));
-
-        local baseNameColor = if highlighted then self.nameTextColor * vector.create(1.25, 1.25, 1.25) else self.nameTextColor;
-        baseNameColor = vector.min(baseNameColor, vector.create(1.0, 1.0, 1.0));
-
-        local baseHealthColor = if highlighted then self.healthTextColor * vector.create(1.25, 1.25, 1.25) else self.healthTextColor;
-        baseHealthColor = vector.min(baseHealthColor, vector.create(1.0, 1.0, 1.0));
-
-        self.standaloneNameText:SetColor(baseStandaloneColor);
-        self.nameText:SetColor(baseNameColor);
-        self.healthText:SetColor(baseHealthColor);
-    end
-
     return nameplateTable;
 end
 
@@ -245,7 +203,7 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
 
     nameplateTable.unitID = nameplateTemplateTable.unitID or -1;
     nameplateTable.unitName = nameplateTemplateTable.unitName or "Unknown";
-    nameplateTable.isStandalone = nameplateTemplateTable.isStandalone or true;
+    nameplateTable.isStandalone = if nameplateTemplateTable.isStandalone == nil then true else nameplateTemplateTable.isStandalone;
     nameplateTable.health = 0;
     nameplateTable.maxHealth = 100;
 
@@ -261,7 +219,7 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     local sizeYWithoutBorder = sizeY - borderWidth;
 
     nameplateTable.background = nameplateTable.border:NewPanel(0, 0, sizeXWithoutBorder, sizeYWithoutBorder, layer, "DebugRed");
-    nameplateTable.background:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
+    nameplateTable.background:SetBackground("texture/interface/raidframe/raid-bar-hp-fill.dds");
     nameplateTable.background:SetAnchor(0.5, 0.5);
     nameplateTable.background:SetRelativePoint(0.5, 0.5);
 
@@ -269,7 +227,7 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     local fillPosX = (-sizeXWithoutBorder * 0.5) - 0.5;
     
     nameplateTable.fill = nameplateTable.background:NewPanel(fillPosX, 0, sizeXWithoutBorder, sizeYWithoutBorder, layer, "DebugGreen");
-    nameplateTable.fill:SetBackground("Data/Texture/interface/raidframe/raid-bar-hp-fill.dds");
+    nameplateTable.fill:SetBackground("texture/interface/raidframe/raid-bar-hp-fill.dds");
     nameplateTable.fill:SetRelativePoint(0.0, 0.5);
     nameplateTable.fill:SetClipRect(0, 0, 1, 1);
 
@@ -277,18 +235,16 @@ function nameplateAPI.NewNameplate(parent : Widget, posX : number, posY : number
     nameplateTable.nameText = nameplateTable.border:NewText(nameplateTable.unitName, 5, 2, 0, "NameplateName");
     nameplateTable.nameText:SetAnchor(0.0, 1.0);
     nameplateTable.nameText:SetRelativePoint(0.0, 0.0);
-    nameplateTable.nameTextColor = nameplateTable.nameText:GetColor();
 
     -- Create health text
     nameplateTable.healthText = nameplateTable.background:NewText("1000 (100%)", 0, 3, 0, "NameplateHealth");
     nameplateTable.healthText:SetAnchor(1.0, 0.5);
     nameplateTable.healthText:SetRelativePoint(1.0, 0.5);
-    nameplateTable.healthTextColor = nameplateTable.healthText:GetColor();
 
     -- Create standalone name text
-    nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 5, 2, 0, "PlayerName");
+    nameplateTable.standaloneNameText = parent:NewText(nameplateTable.unitName, 0, 4, 0, "NameplateName");
+    nameplateTable.standaloneNameText:SetAnchor(0.5, 0.0);
     nameplateTable.standaloneNameText:SetRelativePoint(0.5, 0.0);
-    nameplateTable.standaloneNameTextColor = nameplateTable.standaloneNameText:GetColor();
 
     nameplateTable = SetupNameplateMethods(nameplateTable);
 

@@ -17,6 +17,7 @@ namespace ECS::Components
         u32 justGrounded : 1 = 0;
         u32 justEndedJump : 1 = 0;
     };
+    static_assert(sizeof(MovementFlags) == sizeof(u32));
 
     enum class JumpState : u8
     {
@@ -26,13 +27,22 @@ namespace ECS::Components
         Fall
     };
 
+    struct MovementSpeeds
+    {
+    public:
+        f32 ground = 7.1111f;
+        f32 flight = 7.1111f;
+        f32 swim = 7.1111f;
+        f32 backward = 3.55555f;
+    };
+
     struct MovementInfo
     {
     public:
         f32 pitch = 0.0f;
         f32 yaw = 0.0f;
 
-        f32 speed = 7.1111f;
+        MovementSpeeds speeds;
         f32 jumpSpeed = 7.9555f;
         f32 gravityModifier = 1.0f;
 

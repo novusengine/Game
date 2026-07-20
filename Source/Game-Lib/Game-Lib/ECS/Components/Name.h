@@ -11,7 +11,7 @@ namespace ECS::Components
     public:
         std::string name;
         std::string fullName;
-        u32 nameHash = std::numeric_limits<u32>().max();
+        u64 nameHash = std::numeric_limits<u64>().max();
     };
 }
 

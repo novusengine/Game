@@ -5,11 +5,12 @@
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -17,11 +18,41 @@
 #include <imgui/misc/cpp/imgui_stdlib.h>
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 
 using namespace ClientDB;
 using namespace ECS::Singletons;
 namespace fs = std::filesystem;
+
+namespace
+{
+    bool CanDeleteClientDBAsset(ClientDBHash hash, const std::string& dbName)
+    {
+        if (IsBuiltinClientDBHash(hash))
+            return false;
+
+        const std::string virtualPath = GetClientDBVirtualPath(dbName);
+        if (!ServiceLocator::GetPactStorage()->FileExists(static_cast<u64>(hash)))
+            return true;
+
+        fs::path overlayPath;
+        Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
+        return assetWriter->ResolvePath(virtualPath, Util::AssetWriteTarget::PactOverlay, overlayPath)
+            && fs::exists(overlayPath);
+    }
+
+    bool DeleteClientDBAsset(ClientDBHash hash, const std::string& dbName)
+    {
+        if (!CanDeleteClientDBAsset(hash, dbName))
+            return false;
+
+        if (!ServiceLocator::GetPactStorage()->FileExists(static_cast<u64>(hash)))
+            return true;
+
+        return ServiceLocator::GetAssetWriter()->Delete(GetClientDBVirtualPath(dbName), Util::AssetWriteTarget::PactOverlay);
+    }
+}
 
 namespace Editor
 {
@@ -30,7 +61,7 @@ namespace Editor
     {
     }
 
-    void DrawDBItem(const ClientDBHash hash, const ClientDB::Data* db, const std::string& name, std::string& filter, u32& selectedDBHash)
+    void DrawDBItem(const ClientDBHash hash, const ClientDB::Data* db, const std::string& name, std::string& filter, u64& selectedDBHash)
     {
         bool hasFilter = filter.length() > 0;
         if (hasFilter)
@@ -42,8 +73,8 @@ namespace Editor
                 return;
         }
 
-        u32 dbHashAsInteger = static_cast<u32>(hash);
-        ImGui::PushID(dbHashAsInteger);
+        u64 dbHashAsInteger = static_cast<u64>(hash);
+        ImGui::PushID(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(dbHashAsInteger)));
         {
             ImGui::BeginGroup(); // Start group for the whole row
             {
@@ -56,7 +87,7 @@ namespace Editor
             max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
             bool isSelected = selectedDBHash == dbHashAsInteger;
-            bool isHovered = !ServiceLocator::GetInputManager()->IsCursorVirtual() && ImGui::IsMouseHoveringRect(min, max);
+            bool isHovered = !ServiceLocator::GetInputSystem()->IsMouseCaptured() && ImGui::IsMouseHoveringRect(min, max);
             static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
             if (!isSelected && isHovered)
@@ -161,11 +192,17 @@ namespace Editor
             if (ImGui::Button("Delete Database", ImVec2(buttonWidth, 0.0f)))
             {
                 ClientDBHash hash = static_cast<ClientDBHash>(_selectedDBHash);
-                clientDBSingleton.Remove(hash);
-
-                _selectedDBHash = 0;
-                _previousSelectedDBHash = 0;
-                _editMode = EditMode::None;
+                const std::string dbName = clientDBSingleton.GetDBName(hash);
+                if (DeleteClientDBAsset(hash, dbName) && clientDBSingleton.Remove(hash))
+                {
+                    _selectedDBHash = 0;
+                    _previousSelectedDBHash = 0;
+                    _editMode = EditMode::None;
+                }
+                else
+                {
+                    NC_LOG_WARNING("CDBEditor : Database '{0}' is built-in or does not belong to the writable staging overlay and cannot be deleted.", dbName);
+                }
             }
 
             if (ImGui::Button("Edit Header", ImVec2(buttonWidth, 0.0f)))
@@ -356,6 +393,10 @@ namespace Editor
                         {
                             errorMessage = "Database name can only contain alphanumeric characters.\n";
                         }
+                        else if (HasClientDBRecordSuffix(_newDatabaseName))
+                        {
+                            errorMessage = "Database names must not use the generated Record suffix.\n";
+                        }
                     }
                 }
 
@@ -393,8 +434,7 @@ namespace Editor
                 // If validation passes, proceed
                 if (errorMessage.empty())
                 {
-                    u32 newDatabaseNameHash = StringUtils::fnv1a_32(_newDatabaseName.c_str(), _newDatabaseName.size());
-                    ClientDBHash dbHash = static_cast<ClientDBHash>(newDatabaseNameHash);
+                    ClientDBHash dbHash = GetClientDBHash(_newDatabaseName);
 
                     if (clientDBSingleton.Has(dbHash))
                     {
@@ -637,6 +677,10 @@ namespace Editor
                         {
                             errorMessage = "Database name can only contain alphanumeric characters.\n";
                         }
+                        else if (HasClientDBRecordSuffix(_editDatabaseName))
+                        {
+                            errorMessage = "Database names must not use the generated Record suffix.\n";
+                        }
                     }
                 }
 
@@ -682,18 +726,19 @@ namespace Editor
                 {
                     bool preservedName = _editDatabaseName == _editOriginalDatabaseName;
 
-                    u32 newDatabaseNameHash = StringUtils::fnv1a_32(_editDatabaseName.c_str(), _editDatabaseName.size());
-                    ClientDBHash dbHash = static_cast<ClientDBHash>(newDatabaseNameHash);
+                    ClientDBHash dbHash = GetClientDBHash(_editDatabaseName);
+                    ClientDBHash originalDBHash = GetClientDBHash(_editOriginalDatabaseName);
 
                     if (!preservedName && clientDBSingleton.Has(dbHash))
                     {
                         errorMessage = "A Database with that name already exists.";
                     }
+                    else if (!preservedName && !CanDeleteClientDBAsset(originalDBHash, _editOriginalDatabaseName))
+                    {
+                        errorMessage = "Built-in databases and databases outside the staging overlay cannot be renamed.";
+                    }
                     else
                     {
-                        u32 originalDatabaseNameHash = StringUtils::fnv1a_32(_editOriginalDatabaseName.c_str(), _editOriginalDatabaseName.size());
-                        ClientDBHash originalDBHash = static_cast<ClientDBHash>(originalDatabaseNameHash);
-
                         struct FieldMapping
                         {
                         public:
@@ -789,12 +834,19 @@ namespace Editor
                             auto& oldData = oldStorage->GetData();
                             auto& newData = newStorage->GetData();
 
+                            const u32 newRowSize = newStorage->GetHeader().numBytesPerRow;
+                            std::vector<u8> defaultNewRow(newData.begin(), newData.begin() + newRowSize);
+                            std::vector<u8> migratedNewRow(newRowSize);
+
                             u8 oldFieldData[1024] = { };
 
                             for (u32 i = 0; i < numOldRows; i++)
                             {
                                 u32 oldRowOffset = oldIDList[i].index;
                                 u32 newRowOffset = newIDList[i].index;
+
+                                // Build and copy the complete aligned row so padding bytes are included in the migration.
+                                memcpy(migratedNewRow.data(), defaultNewRow.data(), newRowSize);
 
                                 for (const auto& fieldToMap : fieldMapping)
                                 {
@@ -805,7 +857,7 @@ namespace Editor
                                     u32 newFieldOffset = newFieldOffsets[fieldToMap.newFieldInfoIndex];
 
                                     u32 oldRowFieldOffset = oldRowOffset + oldFieldOffset;
-                                    u32 newRowFieldOffset = newRowOffset + newFieldOffset;
+                                    u32 newRowFieldOffset = newFieldOffset;
 
                                     // Promote all Integers/StringRef to I64, all floats to F64
                                     memset(oldFieldData, 0, 1024);
@@ -1029,142 +1081,157 @@ namespace Editor
                                             case FieldType::i8:
                                             {
                                                 i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<i8*>(&newData[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<i8>(val);
+                                                *reinterpret_cast<i8*>(&migratedNewRow[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<i8>(val);
                                                 break;
                                             }
                                             case FieldType::u8:
                                             {
                                                 u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<u8*>(&newData[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<u8>(val);
+                                                *reinterpret_cast<u8*>(&migratedNewRow[newRowFieldOffset + (1 * fieldArrIndex)]) = static_cast<u8>(val);
                                                 break;
                                             }
                                             case FieldType::i16:
                                             {
                                                 i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<i16*>(&newData[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<i16>(val);
+                                                *reinterpret_cast<i16*>(&migratedNewRow[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<i16>(val);
                                                 break;
                                             }
                                             case FieldType::u16:
                                             {
                                                 u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<u16*>(&newData[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<u16>(val);
+                                                *reinterpret_cast<u16*>(&migratedNewRow[newRowFieldOffset + (2 * fieldArrIndex)]) = static_cast<u16>(val);
                                                 break;
                                             }
                                             case FieldType::i32:
                                             case FieldType::StringRef:
                                             {
                                                 i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<i32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<i32>(val);
+                                                *reinterpret_cast<i32*>(&migratedNewRow[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<i32>(val);
                                                 break;
                                             }
                                             case FieldType::u32:
                                             {
                                                 u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<u32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<u32>(val);
+                                                *reinterpret_cast<u32*>(&migratedNewRow[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<u32>(val);
                                                 break;
                                             }
                                             case FieldType::i64:
                                             {
                                                 i64 val = *reinterpret_cast<i64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<i64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<i64*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::u64:
                                             {
                                                 u64 val = *reinterpret_cast<u64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<u64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<u64*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
 
                                             case FieldType::f32:
                                             {
                                                 f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<f32*>(&newData[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<f32>(val);
+                                                *reinterpret_cast<f32*>(&migratedNewRow[newRowFieldOffset + (4 * fieldArrIndex)]) = static_cast<f32>(val);
                                                 break;
                                             }
                                             case FieldType::f64:
                                             {
                                                 f64 val = *reinterpret_cast<f64*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<f64*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<f64*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
 
                                             case FieldType::vec2:
                                             {
                                                 vec2 val = *reinterpret_cast<vec2*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<vec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<vec2*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::vec3:
                                             {
                                                 vec3 val = *reinterpret_cast<vec3*>(&oldFieldData[fieldArrIndex * 12]);
-                                                *reinterpret_cast<vec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<vec3*>(&migratedNewRow[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::vec4:
                                             {
                                                 vec4 val = *reinterpret_cast<vec4*>(&oldFieldData[fieldArrIndex * 16]);
-                                                *reinterpret_cast<vec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<vec4*>(&migratedNewRow[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
                                                 break;
                                             }
 
                                             case FieldType::ivec2:
                                             {
                                                 ivec2 val = *reinterpret_cast<ivec2*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<ivec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<ivec2*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::ivec3:
                                             {
                                                 ivec3 val = *reinterpret_cast<ivec3*>(&oldFieldData[fieldArrIndex * 12]);
-                                                *reinterpret_cast<ivec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<ivec3*>(&migratedNewRow[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::ivec4:
                                             {
                                                 ivec4 val = *reinterpret_cast<ivec4*>(&oldFieldData[fieldArrIndex * 16]);
-                                                *reinterpret_cast<ivec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<ivec4*>(&migratedNewRow[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
                                                 break;
                                             }
 
                                             case FieldType::uvec2:
                                             {
                                                 uvec2 val = *reinterpret_cast<uvec2*>(&oldFieldData[fieldArrIndex * 8]);
-                                                *reinterpret_cast<uvec2*>(&newData[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<uvec2*>(&migratedNewRow[newRowFieldOffset + (8 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::uvec3:
                                             {
                                                 uvec3 val = *reinterpret_cast<uvec3*>(&oldFieldData[fieldArrIndex * 12]);
-                                                *reinterpret_cast<uvec3*>(&newData[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<uvec3*>(&migratedNewRow[newRowFieldOffset + (12 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                             case FieldType::uvec4:
                                             {
                                                 uvec4 val = *reinterpret_cast<uvec4*>(&oldFieldData[fieldArrIndex * 16]);
-                                                *reinterpret_cast<uvec4*>(&newData[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
+                                                *reinterpret_cast<uvec4*>(&migratedNewRow[newRowFieldOffset + (16 * fieldArrIndex)]) = val;
                                                 break;
                                             }
                                         }
                                     }
                                 }
+
+                                memcpy(&newData[newRowOffset], migratedNewRow.data(), newRowSize);
                             }
 
                             newStorage->Compact();
                         }
 
+                        bool canCommitChanges = true;
                         if (!preservedName)
                         {
-                            clientDBSingleton.Remove(originalDBHash);
-                            clientDBSingleton.Register(dbHash, _editDatabaseName);
+                            if (!DeleteClientDBAsset(originalDBHash, _editOriginalDatabaseName))
+                            {
+                                delete newStorage;
+                                errorMessage = "Failed to delete the original database from the staging overlay.";
+                                canCommitChanges = false;
+                            }
+                            else
+                            {
+                                clientDBSingleton.Remove(originalDBHash);
+                                clientDBSingleton.Register(dbHash, _editDatabaseName);
+                            }
                         }
 
-                        clientDBSingleton.Replace(dbHash, newStorage);
-                        newStorage->MarkDirty();
+                        if (canCommitChanges)
+                        {
+                            clientDBSingleton.Replace(dbHash, newStorage);
+                            newStorage->MarkDirty();
 
-                        _editMode = EditMode::None;
-                        draggedFieldIndex = -1;
-                        errorMessage = "";
+                            _editMode = EditMode::None;
+                            draggedFieldIndex = -1;
+                            errorMessage = "";
+                        }
                     }
                 }
             }

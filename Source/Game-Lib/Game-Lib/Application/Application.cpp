@@ -1,5 +1,4 @@
 #include "Application.h"
-#include "IOLoader.h"
 
 #include "Game-Lib/ECS/Scheduler.h"
 #include "Game-Lib/ECS/Components/Events.h"
@@ -12,6 +11,7 @@
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/ECS/Util/Database/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Database/CursorUtil.h"
+#include "Game-Lib/ECS/Util/Database/FactionUtil.h"
 #include "Game-Lib/ECS/Util/Database/IconUtil.h"
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/ECS/Util/Database/LightUtil.h"
@@ -21,7 +21,12 @@
 #include "Game-Lib/ECS/Util/Database/UnitCustomizationUtil.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Gameplay/GameConsole/GameConsole.h"
+#include "Game-Lib/Input/ImGuiInputBridge.h"
+#include "Game-Lib/Input/InputActionSystem.h"
+#include "Game-Lib/Input/InputPerformanceTest.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Scripting/Handlers/GlobalHandler.h"
 #include "Game-Lib/Scripting/Handlers/EventHandler.h"
 #include "Game-Lib/Scripting/Handlers/DatabaseHandler.h"
@@ -34,16 +39,24 @@
 #include "Game-Lib/Scripting/Handlers/SceneHandler.h"
 #include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
 #include "Game-Lib/Scripting/Handlers/AssetHandler.h"
+#include "Game-Lib/Util/AssetPath.h"
+#include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
+#include "Game-Lib/Util/JoltMemoryTelemetry.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/TextureUtil.h"
 
 #include <Base/Types.h>
 #include <Base/CVarSystem/CVarSystem.h>
+#include <Base/Memory/Bytebuffer.h>
 #include <Base/Util/Timer.h>
 #include <Base/Util/JsonUtils.h>
 #include <Base/Util/DebugHandler.h>
 #include <Base/Util/CPUInfo.h>
+
+#include <Filesystem/PactStorage.h>
+
+#include <Input/InputSystem.h>
 
 #include <MetaGen/Game/Lua/Lua.h>
 
@@ -62,7 +75,12 @@
 #include <Jolt/RegisterTypes.h>
 #include <tracy/Tracy.hpp>
 
+#include <atomic>
+#include <cstdarg>
+#include <cstdio>
 #include <filesystem>
+#include <limits>
+#include <xxhash/xxhash32.h>
 
 AutoCVar_Int CVAR_FramerateLimit(CVarCategory::Client, "framerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_IOFramerateLimit(CVarCategory::Client, "ioFramerateLimit", "enable framerate limit", 1, CVarFlags::EditCheckbox);
@@ -74,14 +92,48 @@ AutoCVar_Int CVAR_ClientDBSaveMethod(CVarCategory::Client, "clientDBSaveMethod",
 AutoCVar_Float CVAR_ClientDBSaveTimer(CVarCategory::Client, "clientDBSaveTimer", "specifies how often clientDBs are saved when using save method 1 (Specified in seconds, default is 5 seconds)", 5.0f);
 AutoCVar_String CVAR_ImguiTheme(CVarCategory::Client, "imguiTheme", "specifies the current imgui theme", "Blue Teal", CVarFlags::Hidden);
 AutoCVar_Int CVAR_DeveloperMode(CVarCategory::Client, "developerMode", "enables developer-only Luau APIs (Editor, Time) and dev-tool scripts under Resources/Scripts/Editor", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_PhysicsLogJoltTraces(CVarCategory::Client | CVarCategory::Physics, "logJoltTraces", "logs trace output emitted by Jolt Physics", 0, CVarFlags::EditCheckbox);
 
-Application::Application() : _messagesInbound(256), _messagesOutbound(256) { }
+namespace
+{
+    std::atomic_bool JoltTraceLoggingEnabled = false;
+
+    void JoltTrace(const char* format, ...)
+    {
+        if (!JoltTraceLoggingEnabled.load(std::memory_order_relaxed))
+            return;
+
+        char message[4096];
+        va_list args;
+        va_start(args, format);
+        const i32 length = std::vsnprintf(message, sizeof(message), format, args);
+        va_end(args);
+
+        if (length <= 0)
+            return;
+
+        const i32 messageLength = Math::Min(length, static_cast<i32>(sizeof(message) - 1));
+        message[messageLength] = '\0';
+
+        NC_LOG_INFO("Jolt : {0}", message);
+    }
+}
+
+Application::Application() : _messagesInbound(256), _messagesOutbound(256)
+{
+    ServiceLocator::SetApplication(this);
+}
 Application::~Application()
 {
+    delete _imguiInputBridge;
     delete _gameRenderer;
     delete _editorHandler;
+    delete _inputPerformanceTest;
+    delete _inputActionSystem;
+    delete _inputSystem;
     delete _ecsScheduler;
     delete _taskScheduler;
+    delete _assetWriter;
 }
 
 void Application::Start(bool startInSeparateThread)
@@ -92,14 +144,6 @@ void Application::Start(bool startInSeparateThread)
     if (startInSeparateThread)
     {
         _isRunning = true;
-
-        {
-            IOLoader* ioLoader = new IOLoader();
-            ServiceLocator::SetIOLoader(ioLoader);
-
-            std::thread ioLoadThread = std::thread(&Application::IOLoadThread, this);
-            ioLoadThread.detach();
-        }
 
         std::thread applicationThread = std::thread(&Application::Run, this);
         applicationThread.detach();
@@ -112,7 +156,7 @@ void Application::Start(bool startInSeparateThread)
 
 void Application::Stop()
 {
-    if (!_isRunning)
+    if (!_isRunning.exchange(false))
         return;
 
     NC_LOG_INFO("Application : Shutdown Initiated");
@@ -123,24 +167,50 @@ void Application::Stop()
     _messagesOutbound.enqueue(message);
 }
 
+void Application::RequestExit()
+{
+    _exitRequested = true;
+}
+
 void Application::Cleanup()
 {
-    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
-    ioLoader->SetRunning(false);
-
-    entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-    entt::registry::context& ctx = registry->ctx();
-    auto& networkState = ctx.get<ECS::Singletons::NetworkState>();
-    if (networkState.client && networkState.client->IsConnected())
+    if (EnttRegistries* enttRegistries = ServiceLocator::GetEnttRegistries())
     {
-        networkState.client->Stop();
+        entt::registry* registry = enttRegistries->gameRegistry;
+        if (registry)
+        {
+            entt::registry::context& ctx = registry->ctx();
+            if (auto* networkState = ctx.find<ECS::Singletons::NetworkState>())
+            {
+                if (networkState->client && networkState->client->IsConnected())
+                    networkState->client->Stop();
+
+                networkState->asioContext.stop();
+                if (networkState->asioThread.joinable())
+                    networkState->asioThread.join();
+            }
+        }
+
+        i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
+        if (clientDBSaveMethod == 2
+            && _assetWriter
+            && enttRegistries->dbRegistry
+            && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+            SaveCDB();
     }
 
-    i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
-    if (clientDBSaveMethod == 2)
+    if (_gameRenderer)
     {
-        SaveCDB();
+        if (_gameRenderer->GetTerrainLoader())
+            _gameRenderer->GetTerrainLoader()->Shutdown();
+
+        if (_gameRenderer->GetModelLoader())
+            _gameRenderer->GetModelLoader()->Shutdown();
     }
+
+    auto* pactStorage = ServiceLocator::GetPactStorage();
+    if (!pactStorage->Shutdown())
+        NC_LOG_ERROR("Application : PACT shutdown failed because file handles are still alive");
 }
 
 void Application::PassMessage(MessageInbound& message)
@@ -171,7 +241,7 @@ void Application::Run()
         auto& engineStats = ctx.get<ECS::Singletons::EngineStats>();
 
         ECS::Singletons::FrameTimes timings;
-        while (true)
+        while (!_exitRequested)
         {
             ZoneScoped;
             f32 deltaTime = timer.GetDeltaTime();
@@ -181,6 +251,9 @@ void Application::Run()
 
             updateTimer.Reset();
             renderState.frameNumber++;
+
+            _inputSystem->BeginFrame();
+            _inputActionSystem->BeginFrame();
 
             bool shouldExit = !_gameRenderer->UpdateWindow(deltaTime);
             if (shouldExit)
@@ -252,41 +325,55 @@ void Application::Run()
     Stop();
 }
 
-void Application::IOLoadThread()
-{
-    tracy::SetThreadName("IOLoader Thread");
-
-    IOLoader* ioLoader = ServiceLocator::GetIOLoader();
-    ioLoader->SetRunning(true);
-
-    Timer timer;
-    while (true)
-    {
-        f32 deltaTime = timer.GetDeltaTime();
-        timer.Tick();
-
-        if (!ioLoader->Tick())
-            break;
-
-        bool limitFrameRate = CVAR_IOFramerateLimit.Get() == 1;
-        if (limitFrameRate)
-        {
-            f32 targetFramerate = Math::Max(static_cast<f32>(CVAR_IOFramerateLimitTarget.Get()), 5.0f);
-            f32 targetDelta = 1.0f / targetFramerate;
-
-            for (deltaTime = timer.GetDeltaTime(); deltaTime < targetDelta; deltaTime = timer.GetDeltaTime())
-            {
-                std::this_thread::yield();
-            }
-        }
-    }
-}
-
 bool Application::Init()
 {
+    _registries.gameRegistry = new entt::registry();
+    _registries.uiRegistry = new entt::registry();
+    _registries.dbRegistry = new entt::registry();
+    _registries.eventIncomingRegistry = new entt::registry();
+    _registries.eventOutgoingRegistry = new entt::registry();
+    ServiceLocator::SetEnttRegistries(&_registries);
+
+    std::filesystem::path currentPath = std::filesystem::current_path();
+    std::filesystem::path pactPath = currentPath / "data/pact";
+    std::filesystem::path customOverlayPath = pactPath / "data/custom";
+    std::filesystem::path stagingOverlayPath = pactPath / "data/staging";
+
+    NC_LOG_INFO("Initializing PACT");
+    auto pactStorage = new PACT::PactStorage();
+    ServiceLocator::SetPactStorage(pactStorage);
+
+    if (!pactStorage->Open(pactPath, PACT::PactOpenOptions{ .FallbackToInit = 1 }))
+        return false;
+
+    pactStorage->MountAll();
+
+    PACT::PactManifestHandle customOverlayHandle = pactStorage->AddOverlay(customOverlayPath, true, std::numeric_limits<u32>::max() - 1);
+    if (customOverlayHandle == PACT::MANIFEST_INVALID_ID)
+        return false;
+
+    PACT::PactManifestHandle stagingOverlayHandle = pactStorage->AddOverlay(stagingOverlayPath, true, std::numeric_limits<u32>::max());
+    if (stagingOverlayHandle == PACT::MANIFEST_INVALID_ID)
+        return false;
+
+    NC_LOG_INFO("Initialized PACT");
+
+    _assetWriter = new Util::AssetWriter();
+    if (!_assetWriter->Init(Util::AssetWriterConfig
+    {
+        .diskRoot = currentPath / "Data",
+        .pactOverlayRoot = stagingOverlayPath,
+        .pactStorage = pactStorage,
+        .pactOverlayHandle = stagingOverlayHandle
+    }))
+    {
+        return false;
+    }
+
+    ServiceLocator::SetAssetWriter(_assetWriter);
+
     // Setup CVar Config
     {
-        std::filesystem::path currentPath = std::filesystem::current_path();
         NC_LOG_INFO("Current Path : {}", currentPath.string());
         std::filesystem::create_directories("Data/Config");
 
@@ -319,35 +406,44 @@ bool Application::Init()
 
     ServiceLocator::SetTaskScheduler(_taskScheduler);
 
-    _registries.gameRegistry = new entt::registry();
-    _registries.uiRegistry = new entt::registry();
-    _registries.dbRegistry = new entt::registry();
-    _registries.eventIncomingRegistry = new entt::registry();
-    _registries.eventOutgoingRegistry = new entt::registry();
-    ServiceLocator::SetEnttRegistries(&_registries);
+    _inputSystem = new InputSystem();
+    ServiceLocator::SetInputSystem(_inputSystem);
 
-    _inputManager = new InputManager();
-    ServiceLocator::SetInputManager(_inputManager);
+    _inputActionSystem = new InputActionSystem(*_inputSystem, "Data/Config/InputBindings.json");
+    ServiceLocator::SetInputActionSystem(_inputActionSystem);
 
-    constexpr u32 imguiKeybindGroupPriority = std::numeric_limits<u32>().max();
-    KeybindGroup* imguiGroup = _inputManager->CreateKeybindGroup("Imgui", imguiKeybindGroupPriority);
-    imguiGroup->SetActive(true);
+    const InputActionContextHandle globalInputContext = _inputActionSystem->CreateContext("Global", GameInputPriority::Global);
+    _inputActionSystem->SetContextActive(globalInputContext, true);
 
-    JPH::RegisterDefaultAllocator();
+    const InputActionContextHandle debugInputContext = _inputActionSystem->CreateContext("Debug", GameInputPriority::Debug);
+    _inputActionSystem->SetContextActive(debugInputContext, true);
+
+    JoltTraceLoggingEnabled.store(CVAR_PhysicsLogJoltTraces.Get() != 0, std::memory_order_relaxed);
+    CVAR_PhysicsLogJoltTraces.AddOnValueChanged([](const i32& value)
+    {
+        JoltTraceLoggingEnabled.store(value != 0, std::memory_order_relaxed);
+    });
+    JPH::Trace = JoltTrace;
+    Util::JoltMemoryTelemetry::RegisterAllocator();
     JPH::Factory::sInstance = new JPH::Factory();
     JPH::RegisterTypes();
 
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer(_inputManager);
+    _gameRenderer = new GameRenderer();
+    _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
+
+    NC_LOG_INFO("EditorHandler : Initializing");
     _editorHandler = new Editor::EditorHandler();
     ServiceLocator::SetEditorHandler(_editorHandler);
+    NC_LOG_INFO("EditorHandler : Initialized");
 
     _ecsScheduler = new ECS::Scheduler();
     _ecsScheduler->Init(_registries);
 
     ServiceLocator::SetGameConsole(new GameConsole());
+    _inputPerformanceTest = new InputPerformanceTest(*_inputSystem, *_inputActionSystem);
 
     // Initialize Databases
     DatabaseReload();
@@ -376,7 +472,7 @@ bool Application::Init()
 
         _luaManager->SetDeveloperMode(CVAR_DeveloperMode.Get() != 0);
 
-        CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client, "developerMode"_h, 
+        CVarSystem::Get()->AddOnIntValueChanged(CVarCategory::Client, "developerMode"_h,
             [this](const i32& value)
             {
                 _luaManager->SetDeveloperMode(value != 0);
@@ -411,6 +507,14 @@ bool Application::Tick(f32 deltaTime)
     {
         ZoneScopedN("ImGuizmo::BeginFrame");
         ImGuizmo::BeginFrame();
+    }
+    {
+        ZoneScopedN("InputSystem::ProcessEvents");
+        _inputPerformanceTest->BeginFrame();
+        _inputPerformanceTest->BeginLiveDispatch();
+        _inputSystem->ProcessEvents();
+        _inputPerformanceTest->EndLiveDispatch();
+        _inputPerformanceTest->Update(deltaTime);
     }
 
     _editorHandler->BeginImGui();
@@ -447,7 +551,7 @@ bool Application::Tick(f32 deltaTime)
                 {
                     NC_LOG_ERROR("Failed to run Lua DoString");
                 }
-                
+
                 break;
             }
 
@@ -501,6 +605,10 @@ bool Application::Tick(f32 deltaTime)
     i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
     if (clientDBSaveMethod == 0)
     {
+        SaveCDB();
+    }
+    else if (clientDBSaveMethod == 1)
+    {
         static f32 saveClientDBTimer = 0.0f;
         f32 maxClientDBTimer = CVAR_ClientDBSaveTimer.GetFloat();
 
@@ -512,10 +620,6 @@ bool Application::Tick(f32 deltaTime)
 
             saveClientDBTimer -= maxClientDBTimer;
         }
-    }
-    else if (clientDBSaveMethod == 1)
-    {
-        SaveCDB();
     }
 
     return true;
@@ -540,6 +644,7 @@ bool Application::Render(f32 deltaTime, f32& timeSpentWaiting)
 
 void Application::DatabaseReload()
 {
+    NC_LOG_INFO("Application : Database Reload Init");
     ECSUtil::Icon::Refresh();
     ECSUtil::Camera::Refresh();
     ECSUtil::Cursor::Refresh();
@@ -549,24 +654,37 @@ void Application::DatabaseReload()
     ECSUtil::Spell::Refresh();
     ECSUtil::Item::Refresh();
     ECSUtil::UnitCustomization::Refresh();
+    ECSUtil::Faction::Refresh();
+    NC_LOG_INFO("Application : Database Reload Finish");
 }
 
 void Application::SaveCDB()
 {
     entt::registry::context& ctx = _registries.dbRegistry->ctx();
     auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
+    Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
 
-    std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
-
-    clientDBSingleton.Each([&clientDBSingleton, &absolutePath](ClientDBHash dbHash, ClientDB::Data* db)
+    clientDBSingleton.Each([&clientDBSingleton, assetWriter](ClientDBHash dbHash, ClientDB::Data* db)
     {
         if (!db->IsDirty())
             return;
 
         const std::string& dbName = clientDBSingleton.GetDBName(dbHash);
-        std::string savePath = std::filesystem::path(absolutePath / dbName).replace_extension(ClientDB::FILE_EXTENSION).string();
+        std::string virtualPath = Util::AssetPath::Create("clientdb", dbName + ClientDB::FILE_EXTENSION);
 
-        db->Save(savePath);
+        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(db->GetSerializedSize());
+        if (!db->Save(buffer))
+        {
+            NC_LOG_ERROR("Application : Failed to serialize ClientDB \"{0}\"", dbName);
+            return;
+        }
+
+        if (!assetWriter->WriteBytes(virtualPath, *buffer, Util::AssetWriteTarget::PactOverlay))
+        {
+            NC_LOG_ERROR("Application : Failed to save ClientDB \"{0}\" to PACT staging overlay", dbName);
+            return;
+        }
+
         db->ClearDirty();
     });
 }

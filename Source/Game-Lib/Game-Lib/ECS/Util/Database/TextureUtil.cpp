@@ -43,20 +43,11 @@ namespace ECSUtil::Texture
         {
             if (id == 0) return true;
 
-            u32 textureHash = textureFileDataStorage->GetStringHash(row.texture);
+            u64 textureHash = textureFileDataStorage->GetStringHash(row.texture);
             textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID].push_back(textureHash);
             return true;
         });
 
         return true;
-    }
-
-    bool HasTexture(ECS::Singletons::TextureSingleton& textureSingleton, u32 textureHash)
-    {
-        return textureSingleton.textureHashToPath.contains(textureHash);
-    }
-    const std::string& GetTexturePath(ECS::Singletons::TextureSingleton& textureSingleton, u32 textureHash)
-    {
-        return textureSingleton.textureHashToPath[textureHash];
     }
 }

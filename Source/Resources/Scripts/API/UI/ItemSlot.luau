@@ -29,7 +29,7 @@ end
 
 -- Constructor
 function itemSlotAPI.Create(parent : Canvas | Widget, bag : Bag, bagIndex : number, equipType : number) : UIItemSlot
-    local texture = if equipType then ItemUtil.GetEquipTypeTexture(equipType) else "Data/Texture/interface/paperdoll/ui-backpack-emptyslot.dds"
+    local texture = if equipType then ItemUtil.GetEquipTypeTexture(equipType) else "texture/interface/paperdoll/ui-backpack-emptyslot.dds"
     local uiParent = parent or UI.GetCanvas("ItemSlot", 0, 0, 1920, 1080)
 
     local self = setmetatable({ }, itemSlotAPI)
@@ -149,7 +149,7 @@ function itemSlotAPI:SetItem(itemID : number) : ()
     self.itemID = itemID
 
     local itemTemplate = Item.GetItemInfo(self.itemID)
-    local defaultIcon : Icon = { Texture = "Data/Texture/interface/icons/inv_misc_questionmark.dds" }
+    local defaultIcon : Icon = { Texture = "texture/interface/icons/inv_misc_questionmark.dds" }
     local itemIcon = if itemTemplate then Item.GetIconInfo(itemTemplate.IconID) else defaultIcon
 
     self.panel:SetBackground(itemIcon.Texture)

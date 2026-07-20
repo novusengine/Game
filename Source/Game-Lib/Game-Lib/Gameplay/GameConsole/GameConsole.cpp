@@ -1,5 +1,6 @@
 #include "GameConsole.h"
 #include "GameConsoleCommandHandler.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <imgui/imgui.h>
@@ -8,10 +9,8 @@
 #include <imgui/misc/cpp/imgui_stdlib.h>
 #include <imgui/implot.h>
 
-#include <Input/InputManager.h>
 #include <Renderer/RenderSettings.h>
 
-#include <GLFW/glfw3.h>
 #include <imgui_internal.h>
 #include <tracy/Tracy.hpp>
 
@@ -22,12 +21,16 @@ GameConsole::GameConsole()
 {
     _lines.push_back("Welcome to Game Console. You may enter 'help' for more information about usage.");
 
-    InputManager* inputManager = ServiceLocator::GetInputManager();
-    KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-    keybindGroup->AddKeyboardCallback("Enable Game Console", GLFW_KEY_BACKSLASH, KeybindAction::Release, KeybindModifier::Any, [this](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
+    InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+    inputActions->RegisterAction("Debug"_x, "ToggleGameConsole", "Toggle Game Console", "Debug",
+        InputBinding::Keyboard(Key::Backslash, InputModifier::None, ModifierMatch::Any),
+        { .defaultReply = InputReply::Handled }, [this](const InputActionEvent& event)
     {
+        if (event.phase != InputPhase::Released)
+            return InputReply::Ignored;
+
         Toggle();
-        return true;
+        return InputReply::Consumed;
     });
 
     Disable();

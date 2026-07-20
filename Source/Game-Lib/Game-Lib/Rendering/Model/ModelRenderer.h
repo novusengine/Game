@@ -1,6 +1,7 @@
 #pragma once
 #include "Game-Lib/Rendering/CulledRenderer.h"
 #include "Game-Lib/Rendering/CullingResources.h"
+#include "Game-Lib/Rendering/Model/ModelLoadTypes.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
@@ -17,6 +18,8 @@
 #include <entt/fwd.hpp>
 #include <robinhood/robinhood.h>
 
+#include <thread>
+
 class DebugRenderer;
 class GameRenderer;
 class ShadowRenderer;
@@ -31,11 +34,6 @@ namespace Renderer
 }
 
 struct DrawParams;
-
-constexpr u32 MODEL_INVALID_TEXTURE_ID = 0; // This refers to the debug texture
-constexpr u32 MODEL_INVALID_TEXTURE_TRANSFORM_ID = std::numeric_limits<u16>().max();
-constexpr u32 MODEL_INVALID_TEXTURE_DATA_ID = std::numeric_limits<u32>().max();
-constexpr u8 MODEL_INVALID_TEXTURE_UNIT_INDEX = std::numeric_limits<u8>().max();
 
 class ModelRenderer : CulledRenderer
 {
@@ -178,18 +176,7 @@ public:
         u32 numTextureTransforms = 0;
     };
 
-    struct TextureUnit
-    {
-    public:
-        u16 data = 0; // Texture Flag + Material Flag + Material Blending Mode
-        u16 materialType = 0; // Shader ID
-        u32 textureIds[2] = { MODEL_INVALID_TEXTURE_ID, MODEL_INVALID_TEXTURE_ID };
-        u16 textureTransformIds[2] = { MODEL_INVALID_TEXTURE_TRANSFORM_ID, MODEL_INVALID_TEXTURE_TRANSFORM_ID };
-        u32 rgba = 0xFFFFFFFF;
-        u32 padding0; 
-        u32 padding1;
-        u32 padding2;
-    };
+    using TextureUnit = ModelLoading::PreparedTextureUnit;
 
     struct PackedAnimatedVertexPositions
     {
@@ -203,7 +190,7 @@ public:
     public:
         u32 textureUnitOffset = 0;
         u32 textureIndex = 0;
-        u32 textureHash = 0;
+        u64 textureHash = 0;
     };
 
     struct ChangeGroupRequest
@@ -320,8 +307,8 @@ public:
 
     Renderer::TextureID LoadTexture(const std::string& path, u32& arrayIndex);
 
-    u32 LoadModel(const std::string& name, Model::ComplexModel& model);
-    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);
+    u32 CommitPreparedModel(const ModelLoading::PreparedRenderModel& preparedModel);
+    u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u64 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);
     u32 AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
     void RemoveInstance(u32 instanceID);
     void ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked = std::numeric_limits<u64>().max());
@@ -397,9 +384,11 @@ private:
     void CreateModelPipelines();
     void InitDescriptorSets();
 
-    void AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets);
+    void AssertOwnerThread() const;
+
+    void AllocateModel(const ModelLoading::PreparedRenderModel& preparedModel, ModelOffsets& offsets);
     void AllocateTextureData(u32 numTextureDatas, TextureDataOffsets& offsets);
-    void AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitOffsets& offsets);
+    void AllocateTextureUnits(u32 numTextureUnits, TextureUnitOffsets& offsets);
     void AllocateAnimation(u32 modelID, AnimationOffsets& offsets);
     void AllocateInstance(u32 modelID, InstanceOffsets& offsets);
     void AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets);
@@ -424,6 +413,7 @@ private:
     Renderer::Renderer* _renderer = nullptr;
     GameRenderer* _gameRenderer = nullptr;
     DebugRenderer* _debugRenderer = nullptr;
+    std::thread::id _ownerThreadID;
 
     std::mutex _textureLoadMutex;
 
@@ -558,6 +548,7 @@ private:
     moodycamel::ConcurrentQueue<TextureLoadRequest> _textureLoadRequests;
     std::vector<TextureLoadRequest> _textureLoadWork;
     robin_hood::unordered_set<u32> _dirtyTextureUnitOffsets;
+    robin_hood::unordered_map<u64, u32> _modelTextureHashToArrayIndex;
 
     moodycamel::ConcurrentQueue<ChangeGroupRequest> _changeGroupRequests;
     std::vector<ChangeGroupRequest> _changeGroupWork;

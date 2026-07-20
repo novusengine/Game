@@ -60,10 +60,10 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
         ambientColor += lightAmbientColor.rgb;
 
         // Directional Light
-        float nDotL = saturate(dot(pixelVertexData.worldNormal, -light.direction.xyz)); // Dot product between normal and light direction
-        float3 lightColor = lerp(light.color.rgb, float3(1.0f, 1.0f, 1.0f), nDotL); // Light color based on normal
-        lightColor *= light.color.a; // Intensity in alpha channel
+        float nDotL = saturate(dot(pixelVertexData.worldNormal, light.direction.xyz)); // Dot product between normal and light direction
+        float3 lightColor = light.color.rgb * light.color.a * nDotL;
 
+        // Directional Light Shadows
         if (shadowSettings.enableShadows)
         {
             lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
@@ -75,7 +75,7 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
     // Point Lights
 
     // Combine
-    float3 color = materialColor * (ambientColor + (directionalColor * 0.5f));
+    float3 color = materialColor * (ambientColor + directionalColor);
 
     return color;
 }

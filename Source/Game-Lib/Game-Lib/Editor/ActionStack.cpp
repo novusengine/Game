@@ -1,10 +1,8 @@
 #include "ActionStack.h"
 #include "EditorHandler.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Input/InputManager.h>
-
-#include <GLFW/glfw3.h>
 #include <imgui/imgui.h>
 
 namespace Editor
@@ -22,23 +20,24 @@ namespace Editor
         , _maxSize(maxSize)
     {
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("GlobalEditor"_h);
-
-        keybindGroup->AddKeyboardCallback("UndoEditor", GLFW_KEY_Z, KeybindAction::Press, KeybindModifier::Ctrl, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        inputActions->RegisterAction("Editor"_x, "UndoEditor", "Undo", "Editor",
+            InputBinding::Keyboard(Key::Z, InputModifier::Control, ModifierMatch::AtLeast), [this](const InputActionEvent& event)
         {
-                if (_actionStack.size() == 0)
-                return true;
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
 
-                // Undo most recent action
-                BaseAction* lastAction = _actionStack.back();
-                lastAction->Undo();
-                delete lastAction;
+            if (_actionStack.empty())
+                return InputReply::Consumed;
 
-                _actionStack.pop_back();
+            BaseAction* lastAction = _actionStack.back();
+            lastAction->Undo();
+            delete lastAction;
 
-                return true;
-            });
+            _actionStack.pop_back();
+
+            return InputReply::Consumed;
+        });
     }
 
     void ActionStackEditor::OnModeUpdate(bool mode)

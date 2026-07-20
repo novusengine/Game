@@ -268,25 +268,25 @@ itemUtilAPI.EquipTypeNames =
 
 itemUtilAPI.EquipTypeTextures =
 {
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-head.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-neck.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-shoulder.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-chest.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-chest.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-shirt.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-tabard.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-wrists.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-hands.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-waist.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-legs.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-feet.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-finger.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-trinket.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-mainhand.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-secondaryhand.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-ranged.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-ammo.dds",
-    "Data/Texture/interface/paperdoll/ui-paperdoll-slot-bag.dds"
+    "texture/interface/paperdoll/ui-paperdoll-slot-head.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-neck.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-shoulder.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-chest.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-chest.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-shirt.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-tabard.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-wrists.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-hands.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-waist.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-legs.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-feet.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-finger.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-trinket.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-mainhand.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-secondaryhand.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-ranged.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-ammo.dds",
+    "texture/interface/paperdoll/ui-paperdoll-slot-bag.dds"
 }
 
 itemUtilAPI.GetEquipTypeForEquipSlot = function(equipSlot : number) : number

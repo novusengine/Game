@@ -76,7 +76,7 @@ local classInfos : ClassInfos = {
         name = "Warrior",
         description = "Warriors are plate-wearing fighters who strive for perfection in armed combat. As warriors fight they generate rage, which is used to power special attacks.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 1,
@@ -85,7 +85,7 @@ local classInfos : ClassInfos = {
         name = "Paladin",
         description = "Paladins are heavily-armored fighters and defenders who use Holy magic to heal wounds and combat evil. They can focus on two-handed weapons, shields or healing.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 9,
@@ -94,7 +94,7 @@ local classInfos : ClassInfos = {
         name = "Hunter",
         description = "Hunters are at home in the wilderness and have a special affinity for beasts. They rely on their weaponry and their pet to deal damage.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 5,
@@ -103,7 +103,7 @@ local classInfos : ClassInfos = {
         name = "Rogue",
         description = "Rogues often serve as assassins or scouts, though many are lone wolves as well. Rogues can often sneak around enemies or attack an opponent from behind to try and finish them off quickly.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 3,
@@ -112,7 +112,7 @@ local classInfos : ClassInfos = {
         name = "Priest",
         description = "Priests are well-rounded healers with a variety of tools. However, they can also sacrifice their healing to deal damage with Shadow magic.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 7,
@@ -121,7 +121,7 @@ local classInfos : ClassInfos = {
         name = "Shaman",
         description = "Shaman use the power of the elements to enhance their weapon damage or spells. Shaman summon totems in combat, small objects that disable enemies, heal, or cause damage to enemies.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 6,
@@ -130,7 +130,7 @@ local classInfos : ClassInfos = {
         name = "Mage",
         description = "Mages are the iconic magic-users of Azeroth who learn their craft through intense research and study. They make up for their light armor with a potent array of offensive and defensive spells.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 2,
@@ -139,7 +139,7 @@ local classInfos : ClassInfos = {
         name = "Warlock",
         description = "Warlocks cast Fire or Shadow magic to damage, drain, or curse their enemy. They summon demons as servants.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 8,
@@ -148,7 +148,7 @@ local classInfos : ClassInfos = {
         name = "Druid",
         description = "Druids are shape-shifters with an affinity for the plant and animal kingdoms. Druids can specialize in healing, casting spells at range, or taking on the form of a cat or bear to fight in melee.",
 
-        iconAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
+        iconAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-classes.dds",
         iconAtlasTextureNumTexturesX = 4,
         iconAtlasTextureNumTexturesY = 4,
         iconAtlasIndex = 4,
@@ -158,7 +158,7 @@ local classInfos : ClassInfos = {
 local factionInfos : FactionInfos = {
     {
         name = "Alliance",
-        factionAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-factions.dds",
+        factionAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-factions.dds",
         factionAtlasTextureNumTexturesX = 2,
         factionAtlasTextureNumTexturesY = 1,
         factionAtlasIndex = 1,
@@ -186,13 +186,13 @@ local factionInfos : FactionInfos = {
                 genderIndexToRaceAtlasIndex = { 4, 12 },
             }
         },
-        raceAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-races.dds",
+        raceAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-races.dds",
         raceAtlasTextureNumTexturesX = 4,
         raceAtlasTextureNumTexturesY = 4,
     },
     {
         name = "Horde",
-        factionAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-factions.dds",
+        factionAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-factions.dds",
         factionAtlasTextureNumTexturesX = 2,
         factionAtlasTextureNumTexturesY = 1,
         factionAtlasIndex = 2,
@@ -220,7 +220,7 @@ local factionInfos : FactionInfos = {
                 genderIndexToRaceAtlasIndex = { 6, 14 },
             }
         },
-        raceAtlasTexture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-races.dds",
+        raceAtlasTexture = "texture/interface/glues/charactercreate/ui-charactercreate-races.dds",
         raceAtlasTextureNumTexturesX = 4,
         raceAtlasTextureNumTexturesY = 4,
     }
@@ -357,7 +357,7 @@ local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreati
     });
 
     local maleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
-        texture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
+        texture = "texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
         numTexturesX = 2, numTexturesY = 1,
     });
     maleButton:SetOnMouseUp(function(eventID, widget, ...)
@@ -366,7 +366,7 @@ local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreati
     table.insert(characterCreationScreen.buttons.genderButtons, maleButton);
 
     local femaleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
-        texture = "Data/Texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
+        texture = "texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
         numTexturesX = 2, numTexturesY = 1, atlasIndex = 2,
     });
     femaleButton:SetOnMouseUp(function(eventID, widget, ...)

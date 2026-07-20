@@ -27,6 +27,15 @@ project.Init = function(self, rootDir, buildDir, binDir)
 
     self.DependencyDir = path.getabsolute("Dependencies/", self.RootDir)
     self.ModulesDir = path.getabsolute("Source/", self.RootDir)
+
+    include(path.getabsolute("Submodules/Engine/Source/Meta/Profile.lua", self.RootDir))
+    include(path.getabsolute("Source/Meta/Providers.lua", self.RootDir))
+    MetaGen.ConfigureProject {
+        name = self.Name,
+        outputRoot = path.getabsolute("Source/Meta/MetaGen", self.RootDir),
+        providers = { "Game.Runtime" }
+    }
+    MetaGen.RequestFinalization()
     
     local buildSettings = path.getabsolute("Premake/BuildSettings.lua", self.RootDir)
     local silentFailOnDuplicateSetting = not self.IsRoot

@@ -14,6 +14,7 @@
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
+#include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -25,6 +26,7 @@
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <Base/Util/StringUtils.h>
 
@@ -36,6 +38,21 @@ using namespace ECS;
 
 namespace Util::Unit
 {
+    static constexpr f32 REMOTE_IDLE_SPEED_THRESHOLD = 0.08f;
+    static constexpr f32 MIN_LOCOMOTION_SPEED_MODIFIER = 0.35f;
+    static constexpr f32 MAX_LOCOMOTION_SPEED_MODIFIER = 1.75f;
+
+    static f32 GetForwardAnimationSpeed(f32 configuredSpeed)
+    {
+        if (configuredSpeed >= 11.0f)
+            return 11.0f;
+
+        if (configuredSpeed > 4.0f)
+            return 7.1111f;
+
+        return 4.0f;
+    }
+
     bool HasPower(const Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType)
     {
         bool hasPowerType = unitPowersComponent.powerTypeToValue.contains(powerType);
@@ -303,6 +320,17 @@ namespace Util::Unit
         bool isGrounded = movementInfo.movementFlags.grounded;
         bool isFlying = !isGrounded && movementInfo.movementFlags.flying;
 
+        const auto* remoteMovement = registry.try_get<Components::UnitMovementOverTime>(entity);
+        const bool hasDisplayedGroundSpeed = isGrounded && remoteMovement && remoteMovement->hasRenderedPosition;
+        const f32 displayedGroundSpeed = hasDisplayedGroundSpeed ? remoteMovement->displayedSpeed : movementInfo.speeds.ground;
+        if (hasDisplayedGroundSpeed && displayedGroundSpeed < REMOTE_IDLE_SPEED_THRESHOLD)
+        {
+            isMovingForward = false;
+            isMovingBackward = false;
+            isMovingLeft = false;
+            isMovingRight = false;
+        }
+
         if (movementInfo.jumpState == Components::JumpState::Begin)
         {
             if (PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, ::Animation::Defines::Type::JumpStart, false, ::Animation::Defines::Flags::HoldAtEnd, ::Animation::Defines::BlendOverride::None))
@@ -342,7 +370,9 @@ namespace Util::Unit
         {
             ::Animation::Defines::Type animation = GetMoveBackwardAnimation(isFlying);
             auto blendOverride = isFlying ? ::Animation::Defines::BlendOverride::Auto : ::Animation::Defines::BlendOverride::Start;
-            f32 speedModifier = glm::clamp(movementInfo.speed / 3.5555f, 0.5f, 1.0f);
+            const f32 speedModifier = hasDisplayedGroundSpeed
+                ? glm::clamp(displayedGroundSpeed / 3.5555f, MIN_LOCOMOTION_SPEED_MODIFIER, MAX_LOCOMOTION_SPEED_MODIFIER)
+                : glm::clamp(movementInfo.speeds.backward / 3.5555f, 0.5f, 1.0f);
 
             return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, animation, false, ::Animation::Defines::Flags::None, blendOverride, speedModifier);
         }
@@ -361,31 +391,24 @@ namespace Util::Unit
 
             ::Animation::Defines::Type animation = ::Animation::Defines::Type::Run;
 
-            f32 speed = movementInfo.speed;
-            f32 baseSpeed = 4.0f;
-            if (speed >= 11.0f)
-            {
-                baseSpeed = 11.0f;
-            }
-            else if (speed > 4.0f)
-            {
-                baseSpeed = 7.1111f;
-            }
-
-            f32 speedModifier = glm::clamp(movementInfo.speed / baseSpeed, 0.1f, 1.5f);
+            const f32 configuredSpeed = isFlying ? movementInfo.speeds.flight : movementInfo.speeds.ground;
+            const f32 animationSpeed = GetForwardAnimationSpeed(configuredSpeed);
+            const f32 speedModifier = hasDisplayedGroundSpeed
+                ? glm::clamp(displayedGroundSpeed / animationSpeed, MIN_LOCOMOTION_SPEED_MODIFIER, MAX_LOCOMOTION_SPEED_MODIFIER)
+                : glm::clamp(configuredSpeed / animationSpeed, 0.1f, 1.5f);
             bool isStealthed = false;
 
             if (isMovingLeft)
             {
-                animation = GetMoveLeftAnimation(speed, isFlying, isStealthed);
+                animation = GetMoveLeftAnimation(configuredSpeed, isFlying, isStealthed);
             }
             else if (isMovingRight)
             {
-                animation = GetMoveRightAnimation(speed, isFlying, isStealthed);
+                animation = GetMoveRightAnimation(configuredSpeed, isFlying, isStealthed);
             }
-            else  if (isMovingForward)
+            else if (isMovingForward)
             {
-                animation = GetMoveForwardAnimation(speed, isFlying, isStealthed);
+                animation = GetMoveForwardAnimation(configuredSpeed, isFlying, isStealthed);
             }
 
             auto blendOverride = ::Animation::Defines::BlendOverride::None;
@@ -540,7 +563,7 @@ namespace Util::Unit
             return false;
 
         u8 helmVariant = 0;
-        u32 itemModelHash = ::ECSUtil::Item::GetModelHashForHelm(itemSingleton, modelResourcesID, race, gender, helmVariant);
+        u64 itemModelHash = ::ECSUtil::Item::GetModelHashForHelm(itemSingleton, modelResourcesID, race, gender, helmVariant);
         return AddItemToAttachment(registry, entity, ::Attachment::Defines::Type::Helm, item.displayID, itemEntity, itemModelHash, helmVariant);
     }
 
@@ -576,18 +599,18 @@ namespace Util::Unit
         if (equipType != Database::Item::ItemArmorEquipType::Shoulders)
             return false;
 
-        u32 shoulderLeftModelHash;
-        u32 shoulderRightModelHash;
+        u64 shoulderLeftModelHash;
+        u64 shoulderRightModelHash;
         ECSUtil::Item::GetModelHashesForShoulders(itemSingleton, modelResourcesID, shoulderLeftModelHash, shoulderRightModelHash);
 
-        bool hasLeftShoulderModel = shoulderLeftModelHash != std::numeric_limits<u32>().max();
+        bool hasLeftShoulderModel = shoulderLeftModelHash != std::numeric_limits<u64>().max();
         bool addedLeftShoulder = false;
         if (hasLeftShoulderModel)
         {
             addedLeftShoulder = AddItemToAttachment(registry, entity, ::Attachment::Defines::Type::ShoulderLeft, item.displayID, shoulderLeftEntity, shoulderLeftModelHash);
         }
 
-        bool hasRightShoulderModel = shoulderRightModelHash != std::numeric_limits<u32>().max();
+        bool hasRightShoulderModel = shoulderRightModelHash != std::numeric_limits<u64>().max();
         bool addedRightShoulder = false;
         if (hasRightShoulderModel)
         {
@@ -648,7 +671,7 @@ namespace Util::Unit
         return AddItemToAttachment(registry, entity, attachmentType, item.displayID, itemEntity);
     }
 
-    bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u32 modelHash, u8 modelVariant)
+    bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u64 modelHash, u8 modelVariant)
     {
         if (!registry.all_of<Components::AttachmentData, Components::Model>(entity))
             return false;
@@ -708,7 +731,8 @@ namespace Util::Unit
         if (!modelLoader->LoadDisplayIDForEntity(attachedEntity, attachedModel, Database::Unit::DisplayInfoType::Item, displayID, modelHash, modelVariant))
         {
             // Force load cube?
-            u32 modelHash = "spells/errorcube.complexmodel"_h;
+            std::string modelPath = Util::AssetPath::Model("spells/errorcube.complexmodel");
+            u64 modelHash = Util::AssetPath::Hash(modelPath);
             if (!modelLoader->LoadModelForEntity(attachedEntity, attachedModel, modelHash))
             {
                 NC_LOG_ERROR("Util::Unit::AddItemToAttachment - Failed to load Item Display, then failed to load Error Cube!!!");

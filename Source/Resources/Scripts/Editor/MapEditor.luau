@@ -45,11 +45,11 @@ local ICON_TEMPLATES = {
 }
 local DEFAULT_ICON_TEMPLATE = ICON_TEMPLATES[0]
 
-UI.RegisterPanelTemplate("MapIcon_OpenWorld",    { background = "Data/Texture/interface/worldmap/worldmap-icon.dds",          cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Dungeon",      { background = "Data/Texture/interface/minimap/dungeon_icon.dds",            cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Raid",         { background = "Data/Texture/interface/minimap/raid_icon.dds",               cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Battleground", { background = "Data/Texture/interface/battlefieldframe/ui-battlefield-icon.dds", cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Arena",        { background = "Data/Texture/interface/calendar/ui-calendar-event-pvp.dds",  cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_OpenWorld",    { background = "texture/interface/worldmap/worldmap-icon.dds",          cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Dungeon",      { background = "texture/interface/minimap/dungeon_icon.dds",            cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Raid",         { background = "texture/interface/minimap/raid_icon.dds",               cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Battleground", { background = "texture/interface/battlefieldframe/ui-battlefield-icon.dds", cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Arena",        { background = "texture/interface/calendar/ui-calendar-event-pvp.dds",  cornerRadius = 0.0 })
 
 local function MakeBtnOpts(text)
     return {

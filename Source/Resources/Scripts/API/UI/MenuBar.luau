@@ -24,7 +24,7 @@ UI.RegisterTextTemplate("DevToolsText",
 {
     font = "Data/Fonts/OpenSans-Regular.ttf",
     size = 8.0,
-    borderSize = 1.0,
+    borderSize = 0.2,
     borderColor = vector.create(0.0, 0.0, 0.0),
 })
 

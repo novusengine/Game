@@ -7,6 +7,7 @@
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -14,12 +15,8 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Base/Util/DebugHandler.h>
 
-#include <Input/KeybindGroup.h>
-#include <Input/InputManager.h>
-
 #include <entt/entt.hpp>
 
-#include <GLFW/glfw3.h>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
@@ -55,6 +52,9 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::StaticMeshComponent, body != nullptr);
+            if (!body)
+                return;
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
 
@@ -85,6 +85,9 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::KinematicMeshComponent, body != nullptr);
+            if (!body)
+                return;
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
 
@@ -122,6 +125,10 @@ namespace ECS::Systems
 
             // Create the actual rigid body
             JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
+            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::DynamicMeshComponent, body != nullptr);
+            if (!body)
+                return;
+
             body->GetMotionProperties()->SetAngularDamping(0.8f);
 
             body->SetUserData(JPH::uint64(entt::to_integral(entity)));
@@ -142,6 +149,7 @@ namespace ECS::Systems
         joltState.physicsSystem.Init(Jolt::Settings::maxBodies, Jolt::Settings::numBodyMutexes, Jolt::Settings::maxBodyPairs, Jolt::Settings::maxContactConstraints, joltState.broadPhaseLayerInterface, joltState.objectVSBroadPhaseLayerFilter, joltState.objectVSObjectLayerFilter);
         joltState.physicsSystem.SetBodyActivationListener(&joltState.bodyActivationListener);
         joltState.physicsSystem.SetContactListener(&joltState.contactListener);
+        joltState.ResetPhysicsTelemetry("Startup");
 
         // Setup StaticMesh Sink
         {
@@ -161,10 +169,12 @@ namespace ECS::Systems
             sink.connect<&OnDynamicMeshCreated>();
         }
 
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Debug"_h);
-        keybindGroup->AddKeyboardCallback("Spawn Physics OBB", GLFW_KEY_G, KeybindAction::Press, KeybindModifier::ModNone, [&](i32 key, KeybindAction action, KeybindModifier modifier)
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        inputActions->RegisterAction("Debug"_x, "SpawnPhysicsOBB", "Spawn Physics OBB", "Debug", InputBinding::Keyboard(Key::G), [](const InputActionEvent& event)
         {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
+
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& activeCamera = registry->ctx().get<ECS::Singletons::ActiveCamera>();
             auto& tSystem = ECS::TransformSystem::Get(*registry);
@@ -172,7 +182,7 @@ namespace ECS::Systems
             if (activeCamera.entity == entt::null)
             {
                 NC_LOG_ERROR("[Keybind:Debug] ActiveCamera::entity not set!");
-                return false;
+                return InputReply::Ignored;
             }
 
             auto& cameraTransform = registry->get<ECS::Components::Transform>(activeCamera.entity);
@@ -189,7 +199,7 @@ namespace ECS::Systems
 
             registry->emplace<ECS::Components::DynamicMesh>(entity);
 
-            return true;
+            return InputReply::Consumed;
         });
     }
 
@@ -210,6 +220,7 @@ namespace ECS::Systems
         // Step the world
         {
             joltState.physicsSystem.Update(joltState.FixedDeltaTime, 4, &joltState.allocator, &joltState.scheduler);
+            joltState.RefreshPhysicsTelemetryHighWater();
         }
     }
 }

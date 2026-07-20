@@ -22,6 +22,8 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _drawSolid3DDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _drawSolid3DOverlayDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
+
     _renderer = renderer;
 
     CreatePermanentResources();
@@ -29,6 +31,8 @@ DebugRenderer::DebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
 
 void DebugRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     CreatePipelines();
     InitDescriptorSets();
 

@@ -24,8 +24,8 @@ namespace ECSUtil::Item
     bool ItemHasAnyEffects(const ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID);
     const u32* GetItemEffectIDs(ECS::Singletons::ItemSingleton& itemSingleton, u32 itemID, u32& count);
 
-    u32 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8& variant);
-    void GetModelHashesForShoulders(ECS::Singletons::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u32& modelHashLeftShoulder, u32& modelHashRightShoulder);
+    u64 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8& variant);
+    void GetModelHashesForShoulders(ECS::Singletons::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u64& modelHashLeftShoulder, u64& modelHashRightShoulder);
 
     u64 CreateItemDisplayMaterialResourcesKey(u32 displayID, u8 componentSection, u32 materialResourcesID);
     u64 CreateItemDisplayModelMaterialResourcesKey(u32 displayID, u8 modelIndex, u8 textureType, u32 materialResourcesID);

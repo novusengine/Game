@@ -7,6 +7,9 @@
 
 #include <entt/entt.hpp>
 
+#include <algorithm>
+#include <cctype>
+
 namespace ECSUtil::Icon
 {
     bool Refresh()
@@ -23,7 +26,7 @@ namespace ECSUtil::Icon
             iconStorage->Initialize<MetaGen::Shared::ClientDB::IconRecord>();
 
             MetaGen::Shared::ClientDB::IconRecord defaultIcon;
-            defaultIcon.texture = iconStorage->AddString("Data/Texture/interface/icons/inv_misc_questionmark.dds");
+            defaultIcon.texture = iconStorage->AddString("texture/interface/icons/inv_misc_questionmark.dds");
 
             iconStorage->Replace(0, defaultIcon);
         }
@@ -31,7 +34,7 @@ namespace ECSUtil::Icon
         auto* iconStorage = clientDBSingleton.Get(ClientDBHash::Icon);
         static const std::filesystem::path fileExtension = ".dds";
         std::filesystem::path currentPath = std::filesystem::current_path();
-        std::filesystem::path relativeParentPath = "Data/Texture/interface/icons";
+        std::filesystem::path relativeParentPath = "texture/interface/icons";
         std::filesystem::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
 
         // Note : This is used because it is more performant than doing fs::relative by up to 3x on 140k textures
@@ -64,6 +67,25 @@ namespace ECSUtil::Icon
                 storageIsDirty |= true;
             }
         }
+
+        // Temporary compatibility migration: Icon.cdb is dynamically maintained and still stores
+        // paths relative to Data. PACT cannot discover icon files, so patch its paths in memory on boot.
+        iconStorage->Each([&iconStorage](u32 /*id*/, MetaGen::Shared::ClientDB::IconRecord& icon) -> bool
+        {
+            std::string texturePath = iconStorage->GetString(icon.texture);
+            std::replace(texturePath.begin(), texturePath.end(), '\\', '/');
+
+            if (texturePath.starts_with("Data/"))
+                texturePath.erase(0, sizeof("Data/") - 1);
+
+            std::transform(texturePath.begin(), texturePath.end(), texturePath.begin(), [](unsigned char character)
+            {
+                return static_cast<char>(std::tolower(character));
+            });
+
+            icon.texture = iconStorage->AddString(texturePath);
+            return true;
+        });
 
         if (storageIsDirty)
             iconStorage->MarkDirty();

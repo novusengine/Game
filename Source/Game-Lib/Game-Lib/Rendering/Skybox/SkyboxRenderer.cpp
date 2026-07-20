@@ -20,6 +20,7 @@ SkyboxRenderer::SkyboxRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _gameRenderer(gameRenderer)
     //, _debugRenderer(debugRenderer)
 {
+    ZoneScoped;
     CreatePermanentResources();
 }
 
@@ -105,6 +106,8 @@ void SkyboxRenderer::SetSunDirection(const vec3& directionToSun)
 
 void SkyboxRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     Renderer::GraphicsPipelineDesc pipelineDesc;
 
     // Shaders

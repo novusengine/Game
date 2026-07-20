@@ -3,12 +3,17 @@
 
 #include <Game-Lib/Application/EnttRegistries.h>
 
+namespace PACT
+{
+    class PactStorage;
+}
+
 namespace Editor
 {
     class EditorHandler;
 }
-class InputManager;
-class IOLoader;
+class InputActionSystem;
+class InputSystem;
 class GameRenderer;
 
 namespace enki
@@ -17,6 +22,7 @@ namespace enki
 }
 
 struct EnttRegistries;
+class Application;
 class GameConsole;
 
 namespace Scripting
@@ -24,9 +30,28 @@ namespace Scripting
     class LuaManager;
 }
 
+namespace Util
+{
+    class AssetWriter;
+}
+
 class ServiceLocator
 {
 public:
+    static Application* GetApplication()
+    {
+        assert(_application != nullptr);
+        return _application;
+    }
+    static void SetApplication(Application* application);
+
+    static PACT::PactStorage* GetPactStorage()
+    {
+        assert(_pactStorage != nullptr);
+        return _pactStorage;
+    }
+    static void SetPactStorage(PACT::PactStorage* pactStorage);
+
     static Editor::EditorHandler* GetEditorHandler()
     {
         assert(_editorHandler != nullptr);
@@ -34,19 +59,19 @@ public:
     }
     static void SetEditorHandler(Editor::EditorHandler* editorHandler);
 
-    static InputManager* GetInputManager()
+    static InputSystem* GetInputSystem()
     {
-        assert(_inputManager != nullptr);
-        return _inputManager;
+        assert(_inputSystem != nullptr);
+        return _inputSystem;
     }
-    static void SetInputManager(InputManager* inputManager);
+    static void SetInputSystem(InputSystem* inputSystem);
 
-    static IOLoader* GetIOLoader()
+    static InputActionSystem* GetInputActionSystem()
     {
-        assert(_ioLoader != nullptr);
-        return _ioLoader;
+        assert(_inputActionSystem != nullptr);
+        return _inputActionSystem;
     }
-    static void SetIOLoader(IOLoader* ioLoader);
+    static void SetInputActionSystem(InputActionSystem* inputActionSystem);
 
     static GameRenderer* GetGameRenderer()
     {
@@ -83,14 +108,24 @@ public:
     }
     static void SetLuaManager(Scripting::LuaManager* luaManager);
 
+    static Util::AssetWriter* GetAssetWriter()
+    {
+        assert(_assetWriter != nullptr);
+        return _assetWriter;
+    }
+    static void SetAssetWriter(Util::AssetWriter* assetWriter);
+
 private:
     ServiceLocator() { }
+    static Application* _application;
+    static PACT::PactStorage* _pactStorage;
     static Editor::EditorHandler* _editorHandler;
-    static InputManager* _inputManager;
-    static IOLoader* _ioLoader;
+    static InputSystem* _inputSystem;
+    static InputActionSystem* _inputActionSystem;
     static GameRenderer* _gameRenderer;
     static enki::TaskScheduler* _taskScheduler;
     static EnttRegistries* _enttRegistries;
     static GameConsole* _gameConsole;
     static Scripting::LuaManager* _luaManager;
+    static Util::AssetWriter* _assetWriter;
 };

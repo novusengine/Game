@@ -12,8 +12,7 @@ namespace ECS
         public:
             TextureSingleton() {}
 
-            robin_hood::unordered_map<u32, std::string> textureHashToPath;
-            robin_hood::unordered_map<u32, std::vector<u32>> materialResourcesIDToTextureHashes;
+            robin_hood::unordered_map<u32, std::vector<u64>> materialResourcesIDToTextureHashes;
         };
     }
 }

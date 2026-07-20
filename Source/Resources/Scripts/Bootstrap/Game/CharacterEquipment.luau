@@ -3,6 +3,7 @@ local Bag = require("@src/API/Game/Bag")
 local ItemSlot = require("@src/API/UI/ItemSlot")
 local PlayerContainers = require("@src/API/Game/PlayerContainers")
 local CursorInfo = require("@src/API/UI/CursorInfo")
+local MicroMenu = require("@src/API/UI/MicroMenu")
 
 type Bag = Bag.Bag
 
@@ -168,7 +169,7 @@ local SLOT_CONFIG : SlotConfig =
 local function RegisterTemplates()
     UI.RegisterPanelTemplate(UI_CONSTANTS.MAIN_PANEL_TEMPLATE,
     {
-        background = "Data/Texture/interface/framegeneral/ui-background-marble.dds",
+        background = "texture/interface/framegeneral/ui-background-marble.dds",
         --color = vector.create(100.0/255.0, 100.0/255.0, 100.0/255.0),
         cornerRadius = 5.0
     });
@@ -181,7 +182,7 @@ local function RegisterTemplates()
 
     UI.RegisterPanelTemplate(UI_CONSTANTS.STAT_INFO_PANEL_TEMPLATE,
     {
-        background = "Data/Texture/interface/dialogframe/ui-dialogbox-background.dds",
+        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
         cornerRadius = 3.0
     });
 
@@ -190,7 +191,7 @@ local function RegisterTemplates()
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
-        borderSize = 1.0,
+        borderSize = 0.2,
         borderColor = vector.create(0.0, 0.0, 0.0)
     });
 end
@@ -327,7 +328,7 @@ local function OnBagEvent(container : Bag, eventID : Bag.Event, ... : number)
                 uiBagSlot.itemSlot.panel:SetForeground("")
                 bag.panel:SetVisible(false)
             else
-                uiBagSlot.itemSlot.panel:SetForeground("Data/Texture/interface/fullscreentextures/outofcontrol.dds")
+                uiBagSlot.itemSlot.panel:SetForeground("texture/interface/fullscreentextures/outofcontrol.dds")
                 bag.panel:SetVisible(true)
             end
         end
@@ -480,6 +481,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
         container.panel:SetAnchor(0.0, 0.0);
         container.panel:SetRelativePoint(0.0, 0.0);
+        container.panel:SetVisible(false);
 
         container.containerIndex = MIN_CONTAINER_INDEX
 
@@ -503,6 +505,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
     equipmentBag:LockItem(MAIN_BAG_SLOT_INDEX, true)
     PlayerContainers.SetEquipmentBag(equipmentBag)
+    MicroMenu.Refresh()
 end
 
 local function OnGameLoaded(eventID : number, data : any)

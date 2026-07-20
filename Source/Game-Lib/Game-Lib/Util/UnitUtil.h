@@ -70,7 +70,7 @@ namespace Util::Unit
     bool AddShoulders(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, entt::entity& shoulderLeftEntity, entt::entity& shoulderRightEntity);
     bool AddWeaponToHand(entt::registry& registry, const entt::entity entity, const MetaGen::Shared::ClientDB::ItemRecord& item, const bool isOffHand, entt::entity& itemEntity);
 
-    bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u32 modelHash = std::numeric_limits<u32>().max(), u8 modelVariant = 0);
+    bool AddItemToAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment, u32 displayID, entt::entity& itemEntity, u64 modelHash = std::numeric_limits<u64>().max(), u8 modelVariant = 0);
     bool RemoveItemFromAttachment(entt::registry& registry, entt::entity entity, ::Attachment::Defines::Type attachment);
 
     void EnableGeometryGroup(entt::registry& registry, entt::entity entity, const ::ECS::Components::Model& model, u32 groupID);

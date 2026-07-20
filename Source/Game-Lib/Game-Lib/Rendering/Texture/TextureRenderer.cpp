@@ -27,7 +27,10 @@ using namespace ECS::Components::UI;
 
 void TextureRenderer::Clear()
 {
+    RenderTextureToTextureRequest renderTextureToTextureRequest;
+    while (_renderTextureToTextureRequests.try_dequeue(renderTextureToTextureRequest)) { }
 
+    _texturesNeedingMipResolve.clear();
 }
 
 TextureRenderer::TextureRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
@@ -36,6 +39,8 @@ TextureRenderer::TextureRenderer(Renderer::Renderer* renderer, GameRenderer* gam
     , _debugRenderer(debugRenderer)
     , _mipResolveDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
+
     CreatePermanentResources();
 }
 
@@ -176,6 +181,7 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                     Renderer::TextureID textureID = Renderer::TextureID(texture);
                     ResolveMips(graphResources, commandList, frameIndex, data.mipResolveDescriptorSet, textureID);
                 }
+
                 _texturesNeedingMipResolve.clear();
                 //commandList.ImageBarrier()
 
@@ -221,11 +227,14 @@ void TextureRenderer::RequestRenderTextureToTexture(Renderer::TextureID dst, con
         .srcRectMin = srcRectMin,
         .srcRectMax = srcRectMax,
     };
+
     _renderTextureToTextureRequests.enqueue(renderTextureToTextureRequest);
 }
 
 void TextureRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     CreatePipelines();
     InitDescriptorSets();
 

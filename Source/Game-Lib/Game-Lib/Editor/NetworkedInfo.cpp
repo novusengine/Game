@@ -10,7 +10,7 @@
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
-#include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/CharacterControllerSingleton.h"
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
@@ -56,6 +56,33 @@ namespace Editor
 
     }
 
+    void NetworkedInfo::Update(f32 deltaTime)
+    {
+        if (!IsVisible() || CVAR_NetworkDrawTargetABB.Get() == 0)
+            return;
+
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& characterSingleton = registry.ctx().get<CharacterControllerSingleton>();
+        if (!registry.valid(characterSingleton.moverEntity))
+            return;
+
+        const auto* moverUnit = registry.try_get<ECS::Components::Unit>(characterSingleton.moverEntity);
+        if (!moverUnit || !registry.valid(moverUnit->targetEntity))
+            return;
+
+        const auto* aabb = registry.try_get<ECS::Components::AABB>(moverUnit->targetEntity);
+        const auto* transform = registry.try_get<ECS::Components::Transform>(moverUnit->targetEntity);
+        if (!aabb || !transform)
+            return;
+
+        const vec3 scale = glm::abs(transform->GetLocalScale());
+        const vec3 worldCenter = transform->GetWorldPosition() + transform->GetWorldRotation() * (scale * aabb->centerPos);
+        const vec3 worldExtents = scale * aabb->extents;
+
+        DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
+        debugRenderer->DrawOBB3D(worldCenter, worldExtents, transform->GetWorldRotation(), Color::Cyan);
+    }
+
     void NetworkedInfo::DrawImGui()
     {
         if (ImGui::Begin(GetName(), &IsVisible()))
@@ -65,7 +92,7 @@ namespace Editor
             entt::registry::context& ctx = registry.ctx();
 
             auto& networkState = ctx.get<NetworkState>();
-            auto& characterSingleton = ctx.get<CharacterSingleton>();
+            auto& characterSingleton = ctx.get<CharacterControllerSingleton>();
 
             bool isConnected = networkState.client->IsConnected();
 
@@ -92,7 +119,7 @@ namespace Editor
 
                     f32 yaw = glm::degrees(movementInfo.yaw);
                     ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f (%.2f))", worldPos.x, worldPos.y, worldPos.z, movementInfo.yaw, yaw);
-                    ImGui::Text("Speed: %.2f", movementInfo.speed);
+                    ImGui::Text("Speed G/F/S/B: %.2f / %.2f / %.2f / %.2f", movementInfo.speeds.ground, movementInfo.speeds.flight, movementInfo.speeds.swim, movementInfo.speeds.backward);
 
                     ImGui::Separator();
 
@@ -131,21 +158,6 @@ namespace Editor
                             ImGui::Separator();
                         }
 
-                        if (CVAR_NetworkDrawTargetABB.Get())
-                        {
-                            auto* aabb = registry.try_get<ECS::Components::AABB>(moverUnit.targetEntity);
-                            if (aabb)
-                            {
-                                auto& transform = registry.get<ECS::Components::Transform>(moverUnit.targetEntity);
-
-                                DebugRenderer* debugRenderer = ServiceLocator::GetGameRenderer()->GetDebugRenderer();
-                                vec3 worldCenter = transform.GetWorldPosition() + transform.GetWorldRotation() * (transform.GetLocalScale() * aabb->centerPos);
-                                vec3 worldExtents = transform.GetLocalScale() * aabb->extents;
-                                quat worldRotation = transform.GetWorldRotation();
-
-                                debugRenderer->DrawOBB3D(worldCenter, worldExtents, worldRotation, Color::Cyan);
-                            }
-                        }
                     }
                 }
                 else
@@ -175,7 +187,7 @@ namespace Editor
 
                     f32 yaw = glm::degrees(movementInfo.yaw);
                     ImGui::Text("Pos + O: (%.2f, %.2f, %.2f, %.2f (%.2f))", worldPos.x, worldPos.y, worldPos.z, movementInfo.yaw, yaw);
-                    ImGui::Text("Speed: %.2f", movementInfo.speed);
+                    ImGui::Text("Speed G/F/S/B: %.2f / %.2f / %.2f / %.2f", movementInfo.speeds.ground, movementInfo.speeds.flight, movementInfo.speeds.swim, movementInfo.speeds.backward);
 
                     ImGui::Separator();
 

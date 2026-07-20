@@ -1,13 +1,28 @@
 #include "ServiceLocator.h"
 
+Application* ServiceLocator::_application = nullptr;
+PACT::PactStorage* ServiceLocator::_pactStorage = nullptr;
 Editor::EditorHandler* ServiceLocator::_editorHandler = nullptr;
-InputManager* ServiceLocator::_inputManager = nullptr;
-IOLoader* ServiceLocator::_ioLoader = nullptr;
+InputSystem* ServiceLocator::_inputSystem = nullptr;
+InputActionSystem* ServiceLocator::_inputActionSystem = nullptr;
 GameRenderer* ServiceLocator::_gameRenderer = nullptr;
 enki::TaskScheduler* ServiceLocator::_taskScheduler = nullptr;
 EnttRegistries* ServiceLocator::_enttRegistries = nullptr;
 GameConsole* ServiceLocator::_gameConsole = nullptr;
 Scripting::LuaManager* ServiceLocator::_luaManager = nullptr;
+Util::AssetWriter* ServiceLocator::_assetWriter = nullptr;
+
+void ServiceLocator::SetApplication(Application* application)
+{
+    assert(_application == nullptr);
+    _application = application;
+}
+
+void ServiceLocator::SetPactStorage(PACT::PactStorage* pactStorage)
+{
+    assert(_pactStorage == nullptr);
+    _pactStorage = pactStorage;
+}
 
 void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
 {
@@ -15,16 +30,16 @@ void ServiceLocator::SetEditorHandler(Editor::EditorHandler* editorHandler)
     _editorHandler = editorHandler;
 }
 
-void ServiceLocator::SetInputManager(InputManager* inputManager)
+void ServiceLocator::SetInputSystem(InputSystem* inputSystem)
 {
-    assert(_inputManager == nullptr);
-    _inputManager = inputManager;
+    assert(_inputSystem == nullptr);
+    _inputSystem = inputSystem;
 }
 
-void ServiceLocator::SetIOLoader(IOLoader* ioLoader)
+void ServiceLocator::SetInputActionSystem(InputActionSystem* inputActionSystem)
 {
-    assert(_ioLoader == nullptr);
-    _ioLoader = ioLoader;
+    assert(_inputActionSystem == nullptr);
+    _inputActionSystem = inputActionSystem;
 }
 
 void ServiceLocator::SetGameRenderer(GameRenderer* gameRenderer)
@@ -55,4 +70,10 @@ void ServiceLocator::SetLuaManager(Scripting::LuaManager* luaManager)
 {
     assert(_luaManager == nullptr);
     _luaManager = luaManager;
+}
+
+void ServiceLocator::SetAssetWriter(Util::AssetWriter* assetWriter)
+{
+    assert(_assetWriter == nullptr);
+    _assetWriter = assetWriter;
 }

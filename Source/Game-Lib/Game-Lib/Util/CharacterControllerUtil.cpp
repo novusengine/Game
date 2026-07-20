@@ -1,87 +1,366 @@
 #include "CharacterControllerUtil.h"
 
+#include "Game-Lib/ECS/Components/MovementInfo.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
+
 #include <Jolt/Jolt.h>
-#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/Body.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 
-void Util::CharacterController::Update(JPH::CharacterVirtual* characterVirtual, f32 deltaTime, JPH::Vec3& inGravity, const UpdateSettings& inSettings, const JPH::BroadPhaseLayerFilter& inBroadPhaseLayerFilter, const JPH::ObjectLayerFilter& inObjectLayerFilter, const JPH::BodyFilter& inBodyFilter, const JPH::ShapeFilter& inShapeFilter, JPH::TempAllocator& inAllocator)
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
+
+namespace Util::CharacterController
 {
-    JPH::Vec3 stickToFloorStepDown = JPH::Vec3(inSettings.mStickToFloorStepDown.x, inSettings.mStickToFloorStepDown.y, inSettings.mStickToFloorStepDown.z);
-    JPH::Vec3 walkStairsStepUp = JPH::Vec3(inSettings.mWalkStairsStepUp.x, inSettings.mWalkStairsStepUp.y, inSettings.mWalkStairsStepUp.z);
-    JPH::Vec3 walkStairsStepDownExtra = JPH::Vec3(inSettings.mWalkStairsStepDownExtra.x, inSettings.mWalkStairsStepDownExtra.y, inSettings.mWalkStairsStepDownExtra.z);
-
-    // Update the velocity
-    JPH::Vec3 desired_velocity = characterVirtual->GetLinearVelocity();
-    characterVirtual->SetLinearVelocity(characterVirtual->CancelVelocityTowardsSteepSlopes(desired_velocity));
-
-    // Remember old position
-    JPH::RVec3 old_position = characterVirtual->GetPosition();
-
-    // Track if on ground before the update
-    bool ground_to_air = characterVirtual->IsSupported();
-
-    // Update the character position (instant, do not have to wait for physics update)
-    characterVirtual->Update(deltaTime, inGravity, inBroadPhaseLayerFilter, inObjectLayerFilter, inBodyFilter, inShapeFilter, inAllocator);
-
-    // ... and that we got into air after
-    if (characterVirtual->IsSupported())
-        ground_to_air = false;
-
-    // If stick to floor enabled and we're going from supported to not supported
-    if (ground_to_air && !stickToFloorStepDown.IsNearZero())
+    JPH::Vec3 ToJolt(const vec3& value)
     {
-        // If we're not moving up, stick to the floor
-        float velocity = JPH::Vec3(characterVirtual->GetPosition() - old_position).Dot(characterVirtual->GetUp()) / deltaTime;
-        if (velocity <= 1.0e-6f)
-            characterVirtual->StickToFloor(stickToFloorStepDown, inBroadPhaseLayerFilter, inObjectLayerFilter, inBodyFilter, inShapeFilter, inAllocator);
+        return JPH::Vec3(value.x, value.y, value.z);
     }
 
-    // If walk stairs enabled
-    if (!walkStairsStepUp.IsNearZero())
+    vec3 FromJolt(const JPH::Vec3Arg& value)
     {
-        // Calculate how much we wanted to move horizontally
-        JPH::Vec3 desired_horizontal_step = desired_velocity * deltaTime;
-        desired_horizontal_step -= desired_horizontal_step.Dot(characterVirtual->GetUp()) * characterVirtual->GetUp();
-        float desired_horizontal_step_len = desired_horizontal_step.Length();
-        if (desired_horizontal_step_len > 0.0f)
+        return vec3(value.GetX(), value.GetY(), value.GetZ());
+    }
+
+    BoxPyramidShapeDimensions GetBoxPyramidShapeDimensionsFromCollision(f32 collisionWidth, f32 collisionHeight)
+    {
+        const f32 collisionHalfWidth = glm::max(0.0f, collisionWidth);
+        return
         {
-            // Calculate how much we moved horizontally
-            JPH::Vec3 achieved_horizontal_step = JPH::Vec3(characterVirtual->GetPosition() - old_position);
-            achieved_horizontal_step -= achieved_horizontal_step.Dot(characterVirtual->GetUp()) * characterVirtual->GetUp();
+            .collisionHalfWidth = collisionHalfWidth,
+            .collisionHeight = glm::max(0.0f, collisionHeight),
+            .pyramidHeight = collisionHalfWidth
+        };
+    }
 
-            // Only count movement in the direction of the desired movement
-            // (otherwise we find it ok if we're sliding downhill while we're trying to climb uphill)
-            JPH::Vec3 step_forward_normalized = desired_horizontal_step / desired_horizontal_step_len;
-            achieved_horizontal_step = JPH::max(0.0f, achieved_horizontal_step.Dot(step_forward_normalized)) * step_forward_normalized;
-            float achieved_horizontal_step_len = achieved_horizontal_step.Length();
+    BoxPyramidShapeDimensions GetBoxPyramidShapeDimensions(const ECS::Singletons::CharacterControllerSettings& settings)
+    {
+        return GetBoxPyramidShapeDimensionsFromCollision(settings.collisionHalfWidth, settings.collisionHeight);
+    }
 
-            // If we didn't move as far as we wanted and we're against a slope that's too steep
-            if (achieved_horizontal_step_len + 1.0e-4f < desired_horizontal_step_len
-                && characterVirtual->CanWalkStairs(desired_velocity))
-            {
-                // Calculate how much we should step forward
-                // Note that we clamp the step forward to a minimum distance. This is done because at very high frame rates the delta time
-                // may be very small, causing a very small step forward. If the step becomes small enough, we may not move far enough
-                // horizontally to actually end up at the top of the step.
-                JPH::Vec3 step_forward = step_forward_normalized * JPH::max(inSettings.mWalkStairsMinStepForward, desired_horizontal_step_len - achieved_horizontal_step_len);
+    BoxPyramidShapeDimensions EstimateBoxPyramidShapeDimensionsFromGeoBox(const vec3& geoBoxMin, const vec3& geoBoxMax)
+    {
+        // GeoBox coordinates are expected in engine space: Y is vertical and Z is
+        // lateral. The supplied data indicate a 9/8 lateral envelope scale with
+        // widths quantized to inches, while collision height tracks GeoBox height.
+        constexpr f32 lateralEnvelopeScale = 9.0f / 8.0f;
+        constexpr f32 yardsPerInch = 1.0f / 36.0f;
 
-                // Calculate how far to scan ahead for a floor. This is only used in case the floor normal at step_forward is too steep.
-                // In that case an additional check will be performed at this distance to check if that normal is not too steep.
-                // Start with the ground normal in the horizontal plane and normalizing it
-                JPH::Vec3 step_forward_test = -characterVirtual->GetGroundNormal();
-                step_forward_test -= step_forward_test.Dot(characterVirtual->GetUp()) * characterVirtual->GetUp();
-                step_forward_test = step_forward_test.NormalizedOr(step_forward_normalized);
+        const f32 geoBoxWidth = glm::max(0.0f, geoBoxMax.z - geoBoxMin.z);
+        const f32 geoBoxHeight = glm::max(0.0f, geoBoxMax.y - geoBoxMin.y);
+        const f32 estimatedHalfWidth = geoBoxWidth * lateralEnvelopeScale * 0.5f;
+        const f32 quantizedHalfWidth = glm::round(estimatedHalfWidth / yardsPerInch) * yardsPerInch;
 
-                // If this normalized vector and the character forward vector is bigger than a preset angle, we use the character forward vector instead of the ground normal
-                // to do our forward test
-                if (step_forward_test.Dot(step_forward_normalized) < inSettings.mWalkStairsCosAngleForwardContact)
-                    step_forward_test = step_forward_normalized;
+        return
+        {
+            .collisionHalfWidth = quantizedHalfWidth,
+            .collisionHeight = geoBoxHeight,
+            .pyramidHeight = quantizedHalfWidth
+        };
+    }
 
-                // Calculate the correct magnitude for the test vector
-                step_forward_test *= inSettings.mWalkStairsStepForwardTest;
+    JPH::ShapeRefC CreateBoxPyramidShape(const BoxPyramidShapeDimensions& dimensions, f32 convexRadius)
+    {
+        const f32 halfWidth = dimensions.collisionHalfWidth;
+        const f32 collisionHeight = dimensions.collisionHeight;
+        const f32 pyramidHeight = dimensions.pyramidHeight;
+        if (halfWidth <= 0.0f || collisionHeight <= pyramidHeight || pyramidHeight < 0.0f)
+            return {};
 
-                characterVirtual->WalkStairs(deltaTime, walkStairsStepUp, step_forward, step_forward_test, walkStairsStepDownExtra, inBroadPhaseLayerFilter, inObjectLayerFilter, inBodyFilter, inShapeFilter, inAllocator);
-            }
+        const JPH::Vec3 points[9] =
+        {
+            // Top of the box.
+            {-halfWidth, collisionHeight, -halfWidth},
+            {-halfWidth, collisionHeight,  halfWidth},
+            { halfWidth, collisionHeight,  halfWidth},
+            { halfWidth, collisionHeight, -halfWidth},
+
+            // Bottom of the box.
+            {-halfWidth, pyramidHeight, -halfWidth},
+            {-halfWidth, pyramidHeight,  halfWidth},
+            { halfWidth, pyramidHeight,  halfWidth},
+            { halfWidth, pyramidHeight, -halfWidth},
+
+            // Foot apex. This is the authoritative gameplay position.
+            { 0.0f, 0.0f, 0.0f }
+        };
+
+        JPH::ConvexHullShapeSettings shapeSetting(points, 9, glm::max(0.0f, convexRadius));
+        JPH::ShapeSettings::ShapeResult shapeResult = shapeSetting.Create();
+        if (!shapeResult.IsValid())
+            return {};
+
+        return shapeResult.Get();
+    }
+
+    JPH::ShapeRefC CreateBoxPyramidShape(const ECS::Singletons::CharacterControllerSettings& settings)
+    {
+        return CreateBoxPyramidShape(GetBoxPyramidShapeDimensions(settings), settings.shapeConvexRadius);
+    }
+
+    bool HasMovementInput(const ECS::Singletons::CharacterMovementIntent& intent)
+    {
+        const bool moveForward = intent.moveForward || intent.autorun || intent.mouseForward;
+        const bool hasForwardBackMovement = moveForward != static_cast<bool>(intent.moveBackward);
+        const bool hasStrafeMovement = static_cast<bool>(intent.strafeLeft) != static_cast<bool>(intent.strafeRight);
+        return hasForwardBackMovement || hasStrafeMovement;
+    }
+
+    void ResetMovementInput(ECS::Singletons::CharacterControllerSingleton& state, ECS::Components::MovementInfo* movementInfo)
+    {
+        state.autorunEnabled = false;
+        state.intent = {};
+
+        if (!movementInfo)
+            return;
+
+        movementInfo->movementFlags.forward = false;
+        movementInfo->movementFlags.backward = false;
+        movementInfo->movementFlags.left = false;
+        movementInfo->movementFlags.right = false;
+        movementInfo->movementFlags.justGrounded = false;
+        movementInfo->movementFlags.justEndedJump = false;
+    }
+
+    JPH::Vec3 BuildCharacterRelativeMoveDirection(const ECS::Singletons::CharacterMovementIntent& intent, const quat& characterRotation)
+    {
+        const bool moveForward = (intent.moveForward || intent.autorun || intent.mouseForward) && !intent.moveBackward;
+        const bool moveBackward = intent.moveBackward && !(intent.moveForward || intent.autorun || intent.mouseForward);
+        const bool moveLeft = intent.strafeLeft && !intent.strafeRight;
+        const bool moveRight = intent.strafeRight && !intent.strafeLeft;
+        if (!moveForward && !moveBackward && !moveLeft && !moveRight)
+            return JPH::Vec3::sZero();
+
+        const JPH::Vec3 worldForward = ToJolt(ECS::Components::Transform::WORLD_FORWARD);
+        const JPH::Vec3 worldRight = ToJolt(ECS::Components::Transform::WORLD_RIGHT);
+        JPH::Vec3 moveDirection = JPH::Vec3::sZero();
+
+        if (moveForward)
+            moveDirection -= worldForward;
+        else if (moveBackward)
+            moveDirection += worldForward;
+
+        if (moveLeft)
+            moveDirection += worldRight;
+        else if (moveRight)
+            moveDirection -= worldRight;
+
+        const JPH::Quat rotation(characterRotation.x, characterRotation.y, characterRotation.z, characterRotation.w);
+        return (rotation * moveDirection).Normalized();
+    }
+
+    f32 GetPlanarSpeed(const ECS::Components::MovementInfo& movementInfo, const ECS::Singletons::CharacterMovementIntent& intent, ECS::Singletons::CharacterMotorType motor)
+    {
+        const bool movingBackward = intent.moveBackward && !(intent.moveForward || intent.autorun || intent.mouseForward);
+        if (movingBackward)
+            return movementInfo.speeds.backward;
+
+        switch (motor)
+        {
+            case ECS::Singletons::CharacterMotorType::Flight:
+                return movementInfo.speeds.flight;
+            case ECS::Singletons::CharacterMotorType::Swim:
+                return movementInfo.speeds.swim;
+            case ECS::Singletons::CharacterMotorType::Ground:
+            case ECS::Singletons::CharacterMotorType::Vehicle:
+            default:
+                return movementInfo.speeds.ground;
         }
+    }
+
+    void ResetGroundProbeDebug(ECS::Singletons::CharacterControllerDebugSingleton& debugState)
+    {
+        debugState.supportProbeStart = vec3(0.0f);
+        debugState.supportProbeEnd = vec3(0.0f);
+        debugState.supportProbeHitPosition = vec3(0.0f);
+        debugState.supportProbeNormal = vec3(0.0f);
+        debugState.supportProbeActive = false;
+        debugState.supportProbeHit = false;
+        debugState.supportProbeWalkable = false;
+        debugState.supportProbeUsedForGrounding = false;
+    }
+
+    bool IsWalkableGroundNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& groundNormal)
+    {
+        if (!character || groundNormal.IsNearZero() || character->IsSlopeTooSteep(groundNormal))
+            return false;
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        return groundNormal.Dot(up) > 1.0e-4f;
+    }
+
+    bool TryGetWalkableGroundProbeNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, ECS::Singletons::JoltState& joltState, const JPH::Vec3Arg& position, f32 startOffset, f32 distance, JPH::Vec3& outGroundNormal, JPH::Vec3* outHitPosition, ECS::Singletons::CharacterControllerDebugSingleton* debugState)
+    {
+        if (debugState)
+            ResetGroundProbeDebug(*debugState);
+
+        if (distance <= 0.0f)
+            return false;
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        startOffset = glm::max(0.0f, startOffset);
+        distance = glm::max(0.0f, distance);
+        const JPH::Vec3 start = position + up * startOffset;
+        const JPH::Vec3 displacement = -up * (startOffset + distance);
+        if (debugState)
+        {
+            debugState->supportProbeStart = FromJolt(start);
+            debugState->supportProbeEnd = FromJolt(start + displacement);
+            debugState->supportProbeActive = true;
+        }
+
+        JPH::RRayCast ray(JPH::RVec3(start.GetX(), start.GetY(), start.GetZ()), displacement);
+        JPH::RayCastResult hit;
+
+        JPH::DefaultBroadPhaseLayerFilter broadPhaseLayerFilter(joltState.objectVSBroadPhaseLayerFilter, Jolt::Layers::MOVING);
+        JPH::DefaultObjectLayerFilter objectLayerFilter(joltState.objectVSObjectLayerFilter, Jolt::Layers::MOVING);
+        JPH::BodyFilter bodyFilter;
+
+        if (!joltState.physicsSystem.GetNarrowPhaseQuery().CastRay(ray, hit, broadPhaseLayerFilter, objectLayerFilter, bodyFilter))
+            return false;
+
+        JPH::BodyLockRead lock(joltState.physicsSystem.GetBodyLockInterface(), hit.mBodyID);
+        if (!lock.SucceededAndIsInBroadPhase())
+            return false;
+
+        const JPH::RVec3 hitPosition = ray.GetPointOnRay(hit.mFraction);
+        const JPH::Vec3 hitPositionFloat(static_cast<f32>(hitPosition.GetX()), static_cast<f32>(hitPosition.GetY()), static_cast<f32>(hitPosition.GetZ()));
+        const JPH::Vec3 groundNormal = lock.GetBody().GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, hitPosition).NormalizedOr(JPH::Vec3::sZero());
+        const bool isWalkable = IsWalkableGroundNormal(character, settings, groundNormal);
+        if (debugState)
+        {
+            debugState->supportProbeHitPosition = FromJolt(hitPositionFloat);
+            debugState->supportProbeNormal = FromJolt(groundNormal);
+            debugState->supportProbeHit = true;
+            debugState->supportProbeWalkable = isWalkable;
+        }
+
+        if (!isWalkable)
+            return false;
+
+        outGroundNormal = groundNormal;
+        if (outHitPosition)
+            *outHitPosition = hitPositionFloat;
+
+        return true;
+    }
+
+    JPH::Vec3 ResolveGroundMovementNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings)
+    {
+        const JPH::Vec3 up = ToJolt(settings.up);
+        JPH::Vec3 groundNormal = character->GetGroundNormal();
+        f32 bestUpDot = IsWalkableGroundNormal(character, settings, groundNormal) ? groundNormal.Dot(up) : 0.0f;
+
+        for (const JPH::CharacterContact& contact : character->GetActiveContacts())
+        {
+            if (!contact.mHadCollision || !IsWalkableGroundNormal(character, settings, contact.mSurfaceNormal))
+                continue;
+
+            const f32 upDot = contact.mSurfaceNormal.Dot(up);
+            if (upDot <= bestUpDot)
+                continue;
+
+            groundNormal = contact.mSurfaceNormal;
+            bestUpDot = upDot;
+        }
+
+        return groundNormal;
+    }
+
+    JPH::Vec3 BuildGroundSlopeVelocity(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, const JPH::Vec3Arg& groundNormal)
+    {
+        if (!IsWalkableGroundNormal(character, settings, groundNormal))
+            return JPH::Vec3::sZero();
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        const f32 groundUpDot = groundNormal.Dot(up);
+        if (groundUpDot <= 1.0e-4f)
+            return JPH::Vec3::sZero();
+
+        const f32 slopeVerticalSpeed = -planarVelocity.Dot(groundNormal) / groundUpDot;
+        return up * slopeVerticalSpeed;
+    }
+
+    void UpdateGroundSnapGrace(ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, bool isGrounded, f32 fixedDeltaTime)
+    {
+        if (isGrounded)
+        {
+            state.groundSnapGraceTimer = settings.groundSnapGraceTime;
+            return;
+        }
+
+        state.groundSnapGraceTimer = glm::max(0.0f, state.groundSnapGraceTimer - fixedDeltaTime);
+    }
+
+    bool ShouldSnapToGround(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& persistentVelocity, bool isFlying, bool justStartedJump)
+    {
+        if (isFlying || justStartedJump || settings.groundSnapDistance <= 0.0f || state.groundSnapGraceTimer <= 0.0f)
+            return false;
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        const f32 verticalSpeed = persistentVelocity.Dot(up);
+        return verticalSpeed <= 1.0e-3f && verticalSpeed >= -settings.groundSnapMaxDownVelocity;
+    }
+
+    bool ShouldPreserveSteepSlopeJumpVelocity(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity, bool isFlying, bool isJumping, bool justStartedJump)
+    {
+        if (isFlying)
+            return false;
+
+        if (justStartedJump)
+            return true;
+
+        if (!isJumping && !state.preserveSteepSlopeJumpVelocityUntilFalling)
+            return false;
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        return velocity.Dot(up) > 1.0e-3f;
+    }
+
+    bool HasRisingHeadContact(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity, bool isFlying, bool isJumping)
+    {
+        if (!state.character || isFlying || !isJumping)
+            return false;
+
+        const JPH::Vec3 up = ToJolt(settings.up);
+        if (velocity.Dot(up) <= 1.0e-3f)
+            return false;
+
+        constexpr f32 maxUpDot = -0.55f;
+        for (const JPH::CharacterContact& contact : state.character->GetActiveContacts())
+        {
+            if (!contact.mHadCollision)
+                continue;
+
+            if (contact.mContactNormal.Dot(up) < maxUpDot || contact.mSurfaceNormal.Dot(up) < maxUpDot)
+                return true;
+        }
+
+        return false;
+    }
+
+    JPH::Vec3 RemoveUpwardVelocity(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity)
+    {
+        const JPH::Vec3 up = ToJolt(settings.up);
+        const f32 verticalSpeed = velocity.Dot(up);
+        return verticalSpeed > 0.0f ? velocity - up * verticalSpeed : velocity;
+    }
+
+    JPH::Vec3 GetGroundSnapStepDown(const ECS::Singletons::CharacterControllerSettings& settings)
+    {
+        return -ToJolt(settings.up) * settings.groundSnapDistance;
+    }
+
+    bool IsOnGround(const JPH::CharacterVirtual* character)
+    {
+        return character->GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround;
     }
 }

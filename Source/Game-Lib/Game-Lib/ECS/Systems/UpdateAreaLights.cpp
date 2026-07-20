@@ -325,23 +325,24 @@ namespace ECS::Systems
         MaterialRenderer* materialRenderer = ServiceLocator::GetGameRenderer()->GetMaterialRenderer();
         
         vec3 direction = GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
-        const vec3& diffuseColor = glm::normalize(areaLightInfo.finalColorData.diffuseColor);
-        const vec3& ambientColor = glm::normalize(areaLightInfo.finalColorData.ambientColor);
-        vec3 groundAmbientColor = ambientColor * 0.7f;
-        vec3 skyAmbientColor = ambientColor * 1.1f;
+        const vec3& diffuseColor = areaLightInfo.finalColorData.diffuseColor;
+        const vec3& ambientColor = areaLightInfo.finalColorData.ambientColor;
+        vec3 groundAmbientColor = ambientColor * 1.0f;
+        vec3 skyAmbientColor = ambientColor * 1.0f;
         vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
+        constexpr f32 ambientIntensity = 1.0f;
         
-        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor))
+        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor))
         {
-            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, 1.0f, skyAmbientColor, 1.0f, shadowColor);
+            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor);
         }
         
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
-        skyboxRenderer->SetSunDirection(-direction); // direction is the direction light travels, the sun sits opposite
+        skyboxRenderer->SetSunDirection(direction); // direction points toward the sun
 
         // Fade shadows out as the sun approaches the horizon, below it the shadow views would project the underside of the world
-        f32 sunElevationSin = -direction.y; // Positive while the sun is above the horizon
+        f32 sunElevationSin = direction.y; // Positive while the sun is above the horizon
         f32 shadowStrength = glm::clamp(sunElevationSin / 0.1f, 0.0f, 1.0f);
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"_h) = shadowStrength;
 
@@ -403,7 +404,8 @@ namespace ECS::Systems
         f32 lightDirZ = sinPhi * sinTheta;
         f32 lightDirY = cosPhi;
 
-        // Direction the light travels (sun to ground), the authored phi table points below the horizon during the day
-        return vec3(lightDirX, lightDirY, lightDirZ);
+        // Points toward the sun (the shading convention); SVSM consumers negate this to get the
+        // direction the light travels
+        return vec3(lightDirX, -lightDirY, -lightDirZ);
     }
 }

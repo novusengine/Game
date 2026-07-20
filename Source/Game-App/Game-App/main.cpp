@@ -3,16 +3,23 @@
 #include "Game-Lib/Application/ConsoleCommandHandler.h"
 
 #include <Base/Types.h>
+#include <Base/Container/ConcurrentQueue.h>
 #include <Base/Util/StringUtils.h>
 #include <Base/Util/DebugHandler.h>
 
 #include <quill/Backend.h>
 
-#include <future>
+#include <atomic>
+#include <iostream>
+#include <thread>
 
 #if WIN32
+#include <Windows.h>
 #include <timeapi.h>
 #pragma comment(lib, "winmm.lib")
+#else
+#include <poll.h>
+#include <unistd.h>
 #endif
 
 i32 main()
@@ -30,7 +37,35 @@ i32 main()
     app.Start(true);
 
     ConsoleCommandHandler commandHandler;
-    auto future = std::async(std::launch::async, StringUtils::GetLineFromCin);
+#if WIN32
+    moodycamel::ConcurrentQueue<std::string> consoleCommands;
+    std::atomic_bool consoleInputRunning = true;
+    HANDLE consoleInput = GetStdHandle(STD_INPUT_HANDLE);
+    std::thread consoleInputThread;
+    if (consoleInput != nullptr && consoleInput != INVALID_HANDLE_VALUE)
+    {
+        consoleInputThread = std::thread([&consoleCommands, &consoleInputRunning]()
+        {
+            while (consoleInputRunning)
+            {
+                std::string command = StringUtils::GetLineFromCin();
+                if (!consoleInputRunning || std::cin.fail())
+                    break;
+
+                consoleCommands.enqueue(std::move(command));
+            }
+        });
+    }
+#else
+    pollfd consoleInput =
+    {
+        .fd = STDIN_FILENO,
+        .events = POLLIN,
+        .revents = 0
+    };
+    bool consoleInputOpen = true;
+#endif
+
     while (true)
     {
         bool shouldExit = false;
@@ -67,14 +102,43 @@ i32 main()
         if (shouldExit)
             break;
 
-        if (future.wait_for(std::chrono::milliseconds(50)) == std::future_status::ready)
+#if WIN32
+        std::string command;
+        while (consoleCommands.try_dequeue(command))
         {
-            std::string command = future.get();
-
             commandHandler.HandleCommand(app, command);
-            future = std::async(std::launch::async, StringUtils::GetLineFromCin);
         }
+#else
+        if (consoleInputOpen && poll(&consoleInput, 1, 0) > 0)
+        {
+            if ((consoleInput.revents & POLLIN) != 0)
+            {
+                std::string command = StringUtils::GetLineFromCin();
+                if (std::cin.fail())
+                    consoleInputOpen = false;
+                else
+                    commandHandler.HandleCommand(app, command);
+            }
+
+            if ((consoleInput.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
+                consoleInputOpen = false;
+        }
+#endif
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
+
+#if WIN32
+    consoleInputRunning = false;
+    if (consoleInputThread.joinable())
+        CancelSynchronousIo(consoleInputThread.native_handle());
+
+    FreeConsole();
+
+    if (consoleInputThread.joinable())
+        consoleInputThread.join();
+
+    timeEndPeriod(1);
+#endif
 
     return 0;
 }

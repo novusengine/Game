@@ -1,10 +1,13 @@
 #pragma once
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
 
 #include <Base/Types.h>
 
 #include <Scripting/Defines.h>
 #include <Scripting/LuaMethodTable.h>
+
+#include <vector>
 
 namespace Scripting::UI
 {
@@ -37,24 +40,34 @@ namespace Scripting::UI
     class UIHandler : public LuaHandlerBase
     {
     private:
+        struct ScriptInputConnection
+        {
+        public:
+            InputActionConnection connection;
+            i32 callbackRef = -1;
+            u32 id = 0;
+        };
+
+    private:
         void Register(Zenith* zenith);
         void Clear(Zenith* zenith);
 
         void PostLoad(Zenith* zenith) {}
         void Update(Zenith* zenith, f32 deltaTime) {}
 
-    public: 
+    public:
         // Registered Functions
         // Register templates
         static i32 RegisterPanelTemplate(Zenith* zenith);
         static i32 RegisterTextTemplate(Zenith* zenith);
 
         static i32 RegisterSendMessageToChatCallback(Zenith* zenith);
-        
+
         // UI functions
         static i32 GetCanvas(Zenith* zenith);
         static i32 GetMousePos(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
+        static i32 IsSmoothUnitFrameBarsEnabled(Zenith* zenith);
 
         // Utils
         static i32 PixelsToTexCoord(Zenith* zenith);
@@ -71,13 +84,29 @@ namespace Scripting::UI
 
         static i32 DestroyWidget(Zenith* zenith);
 
-        // Global input (probably split into InputHandler)
-        //i32 AddOnMouseDown(Zenith* zenith);
-        //i32 AddOnMouseUp(Zenith* zenith);
-        //i32 AddOnMouseHeld(Zenith* zenith);
-        //i32 AddOnMouseScroll(Zenith* zenith);
-
-        static i32 AddOnKeyboard(Zenith* zenith);
+        // Input actions
+        static i32 RegisterInputAction(Zenith* zenith);
+        static i32 ConnectInputAction(Zenith* zenith);
+        static i32 DisconnectInputAction(Zenith* zenith);
+        static i32 SetInputBinding(Zenith* zenith);
+        static i32 ClearInputBinding(Zenith* zenith);
+        static i32 ResetInputBinding(Zenith* zenith);
+        static i32 GetInputBinding(Zenith* zenith);
+        static i32 GetInputActions(Zenith* zenith);
+        static i32 IsInputActionDown(Zenith* zenith);
+        static i32 WasInputActionPressed(Zenith* zenith);
+        static i32 WasInputActionReleased(Zenith* zenith);
+        static i32 FindInputBindingConflicts(Zenith* zenith);
+        static i32 BeginInputBindingCapture(Zenith* zenith);
+        static i32 CancelInputBindingCapture(Zenith* zenith);
+        static i32 IsInputBindingCaptureActive(Zenith* zenith);
+        static i32 SaveInputBindings(Zenith* zenith);
+        static i32 CreateInputContext(Zenith* zenith);
+        static i32 SetInputContextActive(Zenith* zenith);
+        static i32 IsInputContextActive(Zenith* zenith);
+        static i32 GetInputContexts(Zenith* zenith);
+        static i32 IsSoftwareCursorEnabled(Zenith* zenith);
+        static i32 GetCursorState(Zenith* zenith);
 
         // Event calls
         void CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget);
@@ -93,7 +122,12 @@ namespace Scripting::UI
         void CallSendMessageToChat(Zenith* zenith, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing);
 
     private:
-        void CreateUIInputEventTable(Zenith* zenith);
+        void CreateInputConstants(Zenith* zenith);
+
+    private:
+        std::vector<ScriptInputConnection> _inputConnections;
+        u32 _nextInputConnectionID = 1;
+        i32 _bindingCaptureCallbackRef = -1;
     };
 
     static LuaRegister<> uiGlobalMethods[] =
@@ -108,6 +142,7 @@ namespace Scripting::UI
 
         // Utils
         { "GetTextureSize", UIHandler::GetTextureSize },
+        { "IsSmoothUnitFrameBarsEnabled", UIHandler::IsSmoothUnitFrameBarsEnabled },
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
         { "CalculateTextSize", UIHandler::CalculateTextSize },
         { "WrapText", UIHandler::WrapText },
@@ -120,9 +155,32 @@ namespace Scripting::UI
 
         { "IsHoveredWidget", UIHandler::IsHoveredWidget },
 
-        { "DestroyWidget", UIHandler::DestroyWidget },
+        { "DestroyWidget", UIHandler::DestroyWidget }
+    };
 
-        // Global input functions
-        { "AddOnKeyboard", UIHandler::AddOnKeyboard }
+    static LuaRegister<> inputGlobalMethods[] =
+    {
+        { "RegisterAction", UIHandler::RegisterInputAction },
+        { "Connect", UIHandler::ConnectInputAction },
+        { "Disconnect", UIHandler::DisconnectInputAction },
+        { "SetBinding", UIHandler::SetInputBinding },
+        { "ClearBinding", UIHandler::ClearInputBinding },
+        { "ResetBinding", UIHandler::ResetInputBinding },
+        { "GetBinding", UIHandler::GetInputBinding },
+        { "GetActions", UIHandler::GetInputActions },
+        { "IsDown", UIHandler::IsInputActionDown },
+        { "WasPressed", UIHandler::WasInputActionPressed },
+        { "WasReleased", UIHandler::WasInputActionReleased },
+        { "FindBindingConflicts", UIHandler::FindInputBindingConflicts },
+        { "BeginBindingCapture", UIHandler::BeginInputBindingCapture },
+        { "CancelBindingCapture", UIHandler::CancelInputBindingCapture },
+        { "IsBindingCaptureActive", UIHandler::IsInputBindingCaptureActive },
+        { "SaveBindings", UIHandler::SaveInputBindings },
+        { "CreateContext", UIHandler::CreateInputContext },
+        { "SetContextActive", UIHandler::SetInputContextActive },
+        { "IsContextActive", UIHandler::IsInputContextActive },
+        { "GetContexts", UIHandler::GetInputContexts },
+        { "IsSoftwareCursorEnabled", UIHandler::IsSoftwareCursorEnabled },
+        { "GetCursorState", UIHandler::GetCursorState }
     };
 }

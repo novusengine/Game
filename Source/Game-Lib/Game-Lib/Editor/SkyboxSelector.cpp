@@ -11,7 +11,7 @@
 
 #include <Base/CVarSystem/CVarSystemPrivate.h>
 
-#include <Input/InputManager.h>
+#include <Input/InputSystem.h>
 
 #include <entt/entt.hpp>
 #include <imgui/imgui.h>
@@ -87,7 +87,7 @@ namespace Editor
         max.x = ImGui::GetWindowContentRegionMax().x + ImGui::GetWindowPos().x; // Extend to full width
 
         bool isSelected = selectedSkyboxID == skyboxID;
-        bool isHovered = !ServiceLocator::GetInputManager()->IsCursorVirtual() && ImGui::IsMouseHoveringRect(min, max);
+        bool isHovered = !ServiceLocator::GetInputSystem()->IsMouseCaptured() && ImGui::IsMouseHoveringRect(min, max);
         static u32 hoveredColor = ImGui::GetColorU32(ImVec4(0.7f, 0.8f, 1.0f, 0.3f));
 
         if (!isSelected && isHovered)
@@ -229,7 +229,7 @@ namespace Editor
                             ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
 
                             auto& model = registry.get<ECS::Components::Model>(skybox.entity);
-                            u32 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
+                            u64 modelHash = modelLoader->GetModelHashFromModelPath(skyboxPath.generic_string());
                             if (!modelLoader->LoadModelForEntity(skybox.entity, model, modelHash))
                             {
                                 std::string pathStr = skyboxPath.string();

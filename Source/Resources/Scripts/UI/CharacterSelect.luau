@@ -58,7 +58,7 @@ local function RegisterTemplates()
     local restoreIconMaxX, restoreIconMaxY = UI.PixelsToTexCoord(23, 23, 32, 32);
     UI.RegisterPanelTemplate("RestoreIcon",
     {
-        background = "Data/Texture/interface/glues/characterselect/characterundelete.dds",
+        background = "texture/interface/glues/characterselect/characterundelete.dds",
         cornerRadius = 0.0,
 
         texCoords = Box.new(restoreIconMinX, restoreIconMinY, restoreIconMaxX, restoreIconMaxY),
@@ -69,7 +69,7 @@ local function RegisterTemplates()
     local rotateIconMaxX, rotateIconMaxY = UI.PixelsToTexCoord(47, 47, 64, 64);
     UI.RegisterPanelTemplate("RotateIcon",
     {
-        background = "Data/Texture/interface/glues/charactercreate/ui-rotationright-big-up.dds",
+        background = "texture/interface/glues/charactercreate/ui-rotationright-big-up.dds",
         cornerRadius = 0.0,
 
         texCoords = Box.new(rotateIconMinX, rotateIconMinY, rotateIconMaxX, rotateIconMaxY),
@@ -80,7 +80,7 @@ local function RegisterTemplates()
 
     UI.RegisterPanelTemplate("RotateIconDown",
     {
-        background = "Data/Texture/interface/glues/charactercreate/ui-rotationright-big-down.dds",
+        background = "texture/interface/glues/charactercreate/ui-rotationright-big-down.dds",
     });
 
     UI.RegisterTextTemplate("GreyText",
@@ -124,9 +124,6 @@ local function RegisterTemplates()
     local entryMinX, entryMinY = UI.PixelsToTexCoord(6, 2, 256, 64);
     local entryMaxX, entryMaxY = UI.PixelsToTexCoord(249, 59, 256, 64);
 
-    local entryNineSliceMinX, entryNineSliceMinY = UI.PixelsToTexCoord(16, 12, 256, 64);
-    local entryNineSliceMaxX, entryNineSliceMaxY = UI.PixelsToTexCoord(239, 49, 256, 64);
-
     UI.RegisterPanelTemplate("CharacterEntryButtonPanel",
     {
         cornerRadius = 0.0,
@@ -134,7 +131,6 @@ local function RegisterTemplates()
         alpha = 0.0,
 
         texCoords = Box.new(entryMinX, entryMinY, entryMaxX, entryMaxY),
-        --nineSliceCoords = Box.new(entryNineSliceMinX, entryNineSliceMinY, entryNineSliceMaxX, entryNineSliceMaxY), -- TODO: Investigate 9 slicing issues?
     });
 end
 
@@ -379,7 +375,7 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
 
         for i, character in self.characters do
             if (character.name == name) then
-                self.characters[i].panel:SetForeground("Data/Texture/interface/glues/characterselect/glue-characterselect-highlight.dds");
+                self.characters[i].panel:SetForeground("texture/interface/glues/characterselect/glue-characterselect-highlight.dds");
                 break;
             end
         end

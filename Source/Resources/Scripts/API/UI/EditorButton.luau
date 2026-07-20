@@ -23,6 +23,7 @@ function editorButtonAPI.NewEditorButton(parent, posX, posY, sizeX, sizeY, layer
     local hoverColor    = opts.hoverColor or DEFAULT_HOVER_COLOR
     local baseAlpha     = opts.alpha or DEFAULT_BASE_ALPHA_INVISIBLE
     local hoverAlpha    = opts.hoverAlpha or DEFAULT_HOVER_ALPHA
+    local disabledAlpha = opts.disabledAlpha or 0.08
 
     local panel = parent:NewPanel(posX, posY, sizeX, sizeY, layer or 0, "DebugDarkGrey")
     panel:SetColor(baseColor)
@@ -56,15 +57,23 @@ function editorButtonAPI.NewEditorButton(parent, posX, posY, sizeX, sizeY, layer
         _hoverAlpha = hoverAlpha,
         _highlighted = false,
         _hovered = false,
+        _interactable = true,
+        _disabledAlpha = disabledAlpha,
     }
 
     local function ApplyVisualState()
-        if self._highlighted or self._hovered then
+        if not self._interactable then
+            self.panel:SetColor(self._baseColor)
+            self.panel:SetAlpha(self._disabledAlpha)
+            self.text:SetAlpha(0.4)
+        elseif self._highlighted or self._hovered then
             self.panel:SetColor(self._hoverColor)
             self.panel:SetAlpha(self._hoverAlpha)
+            self.text:SetAlpha(1.0)
         else
             self.panel:SetColor(self._baseColor)
             self.panel:SetAlpha(self._baseAlpha)
+            self.text:SetAlpha(1.0)
         end
     end
 
@@ -109,7 +118,19 @@ function editorButtonAPI.NewEditorButton(parent, posX, posY, sizeX, sizeY, layer
     function self:GetPosX()              return self.panel:GetPosX() end
     function self:GetPosY()              return self.panel:GetPosY() end
     function self:SetVisible(v)          self.panel:SetVisible(v) end
-    function self:SetInteractable(v)     self.panel:SetInteractable(v) end
+    function self:SetInteractable(v)
+        self._interactable = v and true or false
+        if not self._interactable then self._hovered = false end
+        self.panel:SetInteractable(self._interactable)
+        ApplyVisualState()
+    end
+    -- Updates disabled/enabled styling without changing the underlying widget flag. Useful when
+    -- the caller guards its action and needs the visual change to apply in the current frame.
+    function self:SetVisualEnabled(v)
+        self._interactable = v and true or false
+        if not self._interactable then self._hovered = false end
+        ApplyVisualState()
+    end
     function self:SetSize(w, h)          self.panel:SetSize(w, h) end
 
     return self

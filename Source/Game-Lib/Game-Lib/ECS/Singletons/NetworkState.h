@@ -37,7 +37,7 @@ namespace ECS
         u8 gender;
         u8 unitClass;
         u16 level;
-        u16 mapID;
+        u32 mapID;
     };
 
     struct AuthenticationInfo
@@ -131,7 +131,7 @@ namespace ECS
 
             robin_hood::unordered_map<ObjectGUID, entt::entity> networkIDToEntity;
             robin_hood::unordered_map<entt::entity, ObjectGUID> entityToNetworkID;
-            RTree<ObjectGUID, f32, 3>* networkVisTree = nullptr;
+            std::unique_ptr<RTree<ObjectGUID, f32, 3>> networkVisTree;
         };
     }
 }

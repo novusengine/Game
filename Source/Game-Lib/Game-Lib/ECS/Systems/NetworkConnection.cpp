@@ -1,5 +1,6 @@
 #include "NetworkConnection.h"
 #include "CharacterController.h"
+#include "OrbitalCamera.h"
 
 #include "Game-Lib/ECS/Components/AABB.h"
 #include "Game-Lib/ECS/Components/AnimationData.h"
@@ -19,18 +20,22 @@
 #include "Game-Lib/ECS/Components/UnitAuraInfo.h"
 #include "Game-Lib/ECS/Components/UnitCustomization.h"
 #include "Game-Lib/ECS/Components/UnitEquipment.h"
+#include "Game-Lib/ECS/Components/UnitFaction.h"
 #include "Game-Lib/ECS/Components/UnitMovementOverTime.h"
 #include "Game-Lib/ECS/Components/UnitPowersComponent.h"
 #include "Game-Lib/ECS/Components/UnitResistancesComponent.h"
 #include "Game-Lib/ECS/Components/UnitStatsComponent.h"
 #include "Game-Lib/ECS/Singletons/CharacterSingleton.h"
+#include "Game-Lib/ECS/Singletons/CharacterControllerSingleton.h"
 #include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Singletons/NetworkState.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Singletons/ProximityTriggerSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
+#include "Game-Lib/ECS/Util/FactionUtil.h"
 #include "Game-Lib/ECS/Util/MessageBuilderUtil.h"
 #include "Game-Lib/ECS/Util/ProximityTriggerUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
@@ -72,8 +77,159 @@
 #include <chrono>
 #include <numeric>
 
+AutoCVar_Int CVAR_NetworkDirectRemoteUnitPosition(CVarCategory::Network, "directRemoteUnitPosition", "Applies remote unit movement packet positions directly instead of interpolating", 0, CVarFlags::EditCheckbox | CVarFlags::DoNotSave);
+
 namespace ECS::Systems
 {
+    static void EmitUnitReactionChanged(entt::entity entity, Gameplay::Faction::Reaction oldReaction, Gameplay::Faction::Reaction newReaction)
+    {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        if (!zenith)
+            return;
+
+        zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::ReactionChanged, MetaGen::Game::Lua::UnitEventDataReactionChanged
+        {
+            .unitID = entt::to_integral(entity),
+            .oldReaction = static_cast<u8>(oldReaction),
+            .newReaction = static_cast<u8>(newReaction)
+        });
+    }
+
+    static void EmitReputationChanged(const Gameplay::Faction::ReputationChange& change)
+    {
+        Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
+        if (!zenith)
+            return;
+
+        zenith->CallEvent(MetaGen::Game::Lua::ReputationEvent::Changed, MetaGen::Game::Lua::ReputationEventDataChanged
+        {
+            .factionID = change.factionID,
+            .oldValue = change.oldValue,
+            .newValue = change.newValue,
+            .oldFlags = change.oldFlags,
+            .newFlags = change.newFlags,
+            .oldPersistentStandingID = change.oldPersistentStandingID,
+            .newPersistentStandingID = change.newPersistentStandingID,
+            .oldEffectiveStandingID = change.oldEffectiveStandingID,
+            .newEffectiveStandingID = change.newEffectiveStandingID,
+            .oldPerceptionFields = change.oldPerceptionFields,
+            .newPerceptionFields = change.newPerceptionFields,
+            .wasPresent = change.wasPresent,
+            .isPresent = change.isPresent
+        });
+    }
+
+    static void InitActiveCharacterController(entt::registry& registry, bool isLocal)
+    {
+        CharacterController::InitCharacterController(registry, isLocal);
+    }
+
+    static void DeleteActiveCharacterController(entt::registry& registry, bool isLocal)
+    {
+        CharacterController::DeleteCharacterController(registry, isLocal);
+    }
+
+    static void CleanupCharacterContainers(entt::registry& registry)
+    {
+        auto& characterSingleton = registry.ctx().get<Singletons::CharacterSingleton>();
+
+        // The base container has no network GUID and is therefore not part of
+        // NetworkState::entityToNetworkID. Clean it up explicitly between worlds.
+        if (registry.valid(characterSingleton.baseContainerEntity))
+            registry.destroy(characterSingleton.baseContainerEntity);
+
+        characterSingleton.baseContainerEntity = entt::null;
+        characterSingleton.containers.fill(ObjectGUID::Empty);
+    }
+
+    static void CleanupOrbitalCameraState(entt::registry& registry)
+    {
+        auto* settings = registry.ctx().find<Singletons::OrbitalCameraSettings>();
+        if (!settings)
+            return;
+
+        // The orbital camera and controller are application-lifetime entities,
+        // while the mover/world are session-lifetime. Do not carry a parent
+        // relationship or transient collision/input state into the next world.
+        if (registry.valid(settings->entity))
+            TransformSystem::Get(registry).ClearParent(settings->entity);
+
+        if (settings->captureMouse)
+            Util::CameraUtil::SetCaptureMouse(false, settings->captureRestoreMousePosition);
+
+        settings->captureMouse = false;
+        settings->captureMousePending = false;
+        settings->captureMouseHasMoved = false;
+        settings->captureMouseWasDragged = false;
+        settings->mouseLeftDown = false;
+        settings->mouseRightDown = false;
+        settings->cameraCollisionCurrentDistance = -1.0f;
+        settings->cameraCollisionWasObstructed = false;
+    }
+
+    static void CleanupNetworkProximityTriggers(entt::registry& registry)
+    {
+        auto& proximityTriggerSingleton = registry.ctx().get<Singletons::ProximityTriggerSingleton>();
+
+        std::vector<entt::entity> triggerEntities;
+        auto triggerView = registry.view<Components::ProximityTrigger>();
+        triggerView.each([&triggerEntities](entt::entity triggerEntity, Components::ProximityTrigger& trigger)
+        {
+            if (trigger.networkID != Components::ProximityTrigger::INVALID_NETWORK_ID)
+                triggerEntities.push_back(triggerEntity);
+        });
+
+        // Destroy entities directly so duplicate/orphaned trigger IDs from an
+        // interrupted previous teardown are repaired as well.
+        for (entt::entity triggerEntity : triggerEntities)
+        {
+            proximityTriggerSingleton.proximityTriggers.Remove(triggerEntity);
+            registry.destroy(triggerEntity);
+        }
+
+        // Clear stale membership and ID entries after removing every live entity.
+        proximityTriggerSingleton.triggerIDToEntity.clear();
+        proximityTriggerSingleton.entityToProximityTriggers.clear();
+    }
+
+    static void CleanupNetworkWorldEntities(entt::registry& registry)
+    {
+        auto& networkState = registry.ctx().get<Singletons::NetworkState>();
+
+        DeleteActiveCharacterController(registry, false);
+        CleanupOrbitalCameraState(registry);
+        CleanupNetworkProximityTriggers(registry);
+
+        for (auto& [entity, networkID] : networkState.entityToNetworkID)
+        {
+            if (!registry.valid(entity))
+                continue;
+
+            if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
+            {
+                for (auto& pair : attachmentData->attachmentToInstance)
+                    ::Util::Unit::RemoveItemFromAttachment(registry, entity, pair.first);
+            }
+
+            if (auto* model = registry.try_get<Components::Model>(entity))
+            {
+                if (model->instanceID != std::numeric_limits<u32>().max())
+                    ServiceLocator::GetGameRenderer()->GetModelLoader()->UnloadModelForEntity(entity, *model);
+            }
+
+            registry.destroy(entity);
+        }
+
+        CleanupCharacterContainers(registry);
+
+        networkState.isLoadingMap = false;
+        networkState.isInWorld = false;
+        networkState.pathToVisualize.clear();
+        networkState.entityToNetworkID.clear();
+        networkState.networkIDToEntity.clear();
+        networkState.networkVisTree->RemoveAll();
+    }
+
     bool HandleOnCharacterList(Network::SocketID socketID, Network::Message& message)
     {
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -97,7 +253,7 @@ namespace ECS::Systems
             failed |= !message.buffer->GetU8(entry.gender);
             failed |= !message.buffer->GetU8(entry.unitClass);
             failed |= !message.buffer->GetU16(entry.level);
-            failed |= !message.buffer->GetU16(entry.mapID);
+            failed |= !message.buffer->GetU32(entry.mapID);
         }
 
         if (failed)
@@ -540,38 +696,8 @@ namespace ECS::Systems
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
 
-        CharacterController::DeleteCharacterController(*gameRegistry, false);
-
-        for (auto& [entity, networkID] : networkState.entityToNetworkID)
-        {
-            if (!gameRegistry->valid(entity))
-                continue;
-
-            if (auto* attachmentData = gameRegistry->try_get<Components::AttachmentData>(entity))
-            {
-                for (auto& pair : attachmentData->attachmentToInstance)
-                {
-                    ::Util::Unit::RemoveItemFromAttachment(*gameRegistry, entity, pair.first);
-                }
-            }
-
-            if (auto* model = gameRegistry->try_get<Components::Model>(entity))
-            {
-                if (model->instanceID != std::numeric_limits<u32>().max())
-                {
-                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                    modelLoader->UnloadModelForEntity(entity, *model);
-                }
-            }
-
-            gameRegistry->destroy(entity);
-        }
-
-        networkState.isLoadingMap = false;
+        CleanupNetworkWorldEntities(*gameRegistry);
         networkState.isInWorld = true;
-        networkState.entityToNetworkID.clear();
-        networkState.networkIDToEntity.clear();
-        networkState.networkVisTree->RemoveAll();
 
         ServiceLocator::GetLuaManager()->SetDirty();
 
@@ -616,39 +742,9 @@ namespace ECS::Systems
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = gameRegistry->ctx().get<Singletons::NetworkState>();
 
-        CharacterController::DeleteCharacterController(*gameRegistry, false);
-
-        for (auto& [entity, networkID] : networkState.entityToNetworkID)
-        {
-            if (!gameRegistry->valid(entity))
-                continue;
-
-            if (auto* attachmentData = gameRegistry->try_get<Components::AttachmentData>(entity))
-            {
-                for (auto& pair : attachmentData->attachmentToInstance)
-                {
-                    ::Util::Unit::RemoveItemFromAttachment(*gameRegistry, entity, pair.first);
-                }
-            }
-
-            if (auto* model = gameRegistry->try_get<Components::Model>(entity))
-            {
-                if (model->instanceID != std::numeric_limits<u32>().max())
-                {
-                    ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                    modelLoader->UnloadModelForEntity(entity, *model);
-                }
-            }
-
-            gameRegistry->destroy(entity);
-        }
-
-        networkState.isLoadingMap = false;
-        networkState.isInWorld = false;
+        CleanupNetworkWorldEntities(*gameRegistry);
+        Util::Faction::ResetOwnerState(*gameRegistry);
         networkState.characterListInfo.characterSelected = false;
-        networkState.entityToNetworkID.clear();
-        networkState.networkIDToEntity.clear();
-        networkState.networkVisTree->RemoveAll();
 
         ServiceLocator::GetLuaManager()->SetDirty();
 
@@ -698,6 +794,41 @@ namespace ECS::Systems
 
     bool HandleOnCheatCommandResult(Network::SocketID socketID, MetaGen::Shared::Packet::ServerCheatCommandResultPacket& packet)
     {
+        return true;
+    }
+
+    bool HandleOnUnitFactionUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerUnitFactionUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+        entt::entity entity = entt::null;
+        if (!Util::Network::GetEntityIDFromObjectGUID(networkState, packet.guid, entity))
+        {
+            NC_LOG_WARNING("Network : Received ServerUnitFactionUpdate for unknown entity ({0})", packet.guid.ToString());
+            return true;
+        }
+
+        Util::Faction::ApplyUnitUpdate(*registry, entity, packet.factionID, packet.playerReactionBounds);
+        return true;
+    }
+
+    bool HandleOnReputationUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerReputationUpdatePacket& packet)
+    {
+        if (packet.isPresent > 1)
+        {
+            NC_LOG_WARNING("Network : Received ServerReputationUpdate with invalid presence value ({0})", packet.isPresent);
+            return false;
+        }
+
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        Util::Faction::ApplyReputationUpdate(*registry, packet.factionID, packet.value, packet.flags, packet.isPresent == 1);
+        return true;
+    }
+
+    bool HandleOnFactionPerceptionOverrideUpdate(Network::SocketID socketID, MetaGen::Shared::Packet::ServerFactionPerceptionOverrideUpdatePacket& packet)
+    {
+        entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+        Util::Faction::ApplyPerceptionUpdate(*registry, packet.factionID, packet.activeFields, packet.effectiveStandingValue, packet.effectiveReaction);
         return true;
     }
 
@@ -760,14 +891,7 @@ namespace ECS::Systems
         networkState.networkIDToEntity[packet.guid] = newEntity;
         networkState.entityToNetworkID[newEntity] = packet.guid;
 
-        vec3 min = packet.position - (packet.scale * 0.5f);
-        vec3 max = packet.position + (packet.scale * 0.5f);
-        if (auto* aabb = registry->try_get<Components::AABB>(newEntity))
-        {
-            min = packet.position + (aabb->centerPos - aabb->extents);
-            max = packet.position + (aabb->centerPos + aabb->extents);
-        }
-        networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
+        Util::Faction::AttachUnit(*registry, newEntity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         zenith->CallEvent(MetaGen::Game::Lua::UnitEvent::Add, MetaGen::Game::Lua::UnitEventDataAdd{
@@ -808,6 +932,7 @@ namespace ECS::Systems
         networkState.entityToNetworkID.erase(entity);
         networkState.networkVisTree->Remove(packet.guid);
 
+        Util::Faction::DetachUnit(*registry, entity);
         registry->destroy(entity);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
@@ -1142,7 +1267,10 @@ namespace ECS::Systems
         auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
         characterSingleton.moverEntity = entity;
 
-        CharacterController::InitCharacterController(*registry, false);
+        Util::Faction::SetLocalPlayer(*registry, entity);
+
+        InitActiveCharacterController(*registry, false);
+        OrbitalCamera::ResetForNewWorld(*registry);
 
         Scripting::Zenith* zenith = Scripting::Util::Zenith::GetGlobal();
         zenith->CallEvent(MetaGen::Game::Lua::GameEvent::LocalMoverChanged, MetaGen::Game::Lua::GameEventDataLocalMoverChanged{
@@ -1166,10 +1294,25 @@ namespace ECS::Systems
         auto& unitMovementOverTime = registry->get<Components::UnitMovementOverTime>(entity);
         auto& transform = registry->get<Components::Transform>(entity);
         auto& movementInfo = registry->get<Components::MovementInfo>(entity);
+        auto& characterSingleton = registry->ctx().get<Singletons::CharacterSingleton>();
+
+        const bool applyPositionDirectly = CVAR_NetworkDirectRemoteUnitPosition.Get() != 0 && entity != characterSingleton.moverEntity;
+        const f64 snapshotTime = std::chrono::duration<f64>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        f32 snapshotSpacing = unitMovementOverTime.hasSnapshot ? static_cast<f32>(snapshotTime - unitMovementOverTime.lastSnapshotTime) : 0.1f;
+        snapshotSpacing = glm::clamp(snapshotSpacing, 0.05f, 0.25f);
 
         unitMovementOverTime.startPos = transform.GetWorldPosition();
         unitMovementOverTime.endPos = packet.position;
-        unitMovementOverTime.time = 0.0f;
+        unitMovementOverTime.elapsed = 0.0f;
+        unitMovementOverTime.duration = snapshotSpacing;
+        unitMovementOverTime.lastSnapshotTime = snapshotTime;
+        unitMovementOverTime.hasSnapshot = true;
+
+        if (applyPositionDirectly)
+        {
+            unitMovementOverTime.startPos = packet.position;
+            unitMovementOverTime.elapsed = unitMovementOverTime.duration;
+        }
 
         movementInfo.pitch = packet.pitchYaw.x;
         movementInfo.yaw = packet.pitchYaw.y;
@@ -1199,6 +1342,20 @@ namespace ECS::Systems
 
         quat rotation = quat(vec3(packet.pitchYaw.x, packet.pitchYaw.y, 0.0f));
         transformSystem.SetWorldRotation(entity, rotation);
+
+        if (applyPositionDirectly)
+        {
+            transformSystem.SetWorldPosition(entity, packet.position);
+
+            auto& unit = registry->get<Components::Unit>(entity);
+            if (unit.bodyID != std::numeric_limits<u32>().max())
+            {
+                auto& joltState = registry->ctx().get<Singletons::JoltState>();
+                JPH::BodyID bodyID = JPH::BodyID(unit.bodyID);
+                joltState.physicsSystem.GetBodyInterface().SetPositionAndRotation(bodyID, JPH::Vec3(packet.position.x, packet.position.y, packet.position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EActivation::DontActivate);
+            }
+
+        }
 
         return true;
     }
@@ -1267,22 +1424,12 @@ namespace ECS::Systems
             }
         }
 
-        f32 scale = transform.GetLocalScale().x;
-        vec3 min = packet.position - (scale * 0.5f);
-        vec3 max = packet.position + (scale * 0.5f);
-        if (auto* aabb = registry->try_get<Components::AABB>(entity))
-        {
-            min = packet.position + (aabb->centerPos - aabb->extents);
-            max = packet.position + (aabb->centerPos + aabb->extents);
-        }
-        networkState.networkVisTree->Remove(packet.guid);
-        networkState.networkVisTree->Insert(&min.x, &max.x, packet.guid);
-
         if (auto* unitMovementOverTime = registry->try_get<Components::UnitMovementOverTime>(entity))
         {
             unitMovementOverTime->startPos = packet.position;
             unitMovementOverTime->endPos = packet.position;
-            unitMovementOverTime->time = 1.0f;
+            unitMovementOverTime->elapsed = unitMovementOverTime->duration;
+            unitMovementOverTime->hasRenderedPosition = false;
         }
 
         return true;
@@ -1324,6 +1471,12 @@ namespace ECS::Systems
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& networkState = registry->ctx().get<Singletons::NetworkState>();
+
+        if (packet.index >= 6)
+        {
+            NC_LOG_WARNING("Network : Received Container Add for invalid container index ({0})", packet.index);
+            return true;
+        }
 
         if (Util::Network::IsObjectGUIDKnown(networkState, packet.guid))
         {
@@ -1533,6 +1686,12 @@ namespace ECS::Systems
         Components::Container* srcContainer = nullptr;
         Components::Container* dstContainer = nullptr;
 
+        if (packet.srcContainer >= characterSingleton.containers.size() || packet.dstContainer >= characterSingleton.containers.size())
+        {
+            NC_LOG_WARNING("Network : Received Container Swap Slots with invalid container indices ({0}, {1})", packet.srcContainer, packet.dstContainer);
+            return true;
+        }
+
         if (packet.srcContainer == 0)
         {
             if (!registry->valid(characterSingleton.baseContainerEntity))
@@ -1616,7 +1775,11 @@ namespace ECS::Systems
             }
         }
 
-        std::swap(srcContainer->items[packet.srcSlot], dstContainer->items[packet.dstSlot]);
+        if (!srcContainer->SwapSlots(*dstContainer, packet.srcSlot, packet.dstSlot))
+        {
+            NC_LOG_WARNING("Network : Received Container Swap Slots with invalid slot indices ({0}, {1})", packet.srcSlot, packet.dstSlot);
+            return true;
+        }
 
         if (auto* unitEquipment = registry->try_get<Components::UnitEquipment>(characterSingleton.moverEntity))
         {
@@ -1884,6 +2047,7 @@ namespace ECS::Systems
         entt::registry::context& ctx = registry.ctx();
 
         auto& networkState = ctx.emplace<Singletons::NetworkState>();
+        Util::Faction::SetEventCallbacks(registry, EmitUnitReactionChanged, EmitReputationChanged);
 
         // Setup NetworkState
         {
@@ -1891,7 +2055,7 @@ namespace ECS::Systems
             networkState.client = std::make_unique<Network::Client>(networkState.asioContext, networkState.resolver);
             networkState.networkIDToEntity.reserve(1024);
             networkState.entityToNetworkID.reserve(1024);
-            networkState.networkVisTree = new RTree<ObjectGUID, f32, 3>();
+            networkState.networkVisTree = std::make_unique<RTree<ObjectGUID, f32, 3>>();
             networkState.gameMessageRouter = std::make_unique<Network::GameMessageRouter>();
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnAuthChallenge);
@@ -1904,6 +2068,10 @@ namespace ECS::Systems
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnServerUpdateStats);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnCheatCommandResult);
+
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitFactionUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnReputationUpdate);
+            networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnFactionPerceptionOverrideUpdate);
 
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitAdd);
             networkState.gameMessageRouter->RegisterPacketHandler(Network::ConnectionStatus::Connected, HandleOnUnitRemove);
@@ -2009,7 +2177,7 @@ namespace ECS::Systems
                 // Just connected
                 wasConnected = true;
                 networkState.pingInfo.lastPingTime = currentTime;
-                CharacterController::DeleteCharacterController(registry, true);
+                DeleteActiveCharacterController(registry, true);
             }
             else
             {
@@ -2070,54 +2238,12 @@ namespace ECS::Systems
 
                 NC_LOG_WARNING("Network : Disconnected");
 
-                CharacterController::DeleteCharacterController(registry, false);
-
-                for (auto& [entity, networkID] : networkState.entityToNetworkID)
-                {
-                    if (!registry.valid(entity))
-                        continue;
-
-                    if (auto* attachmentData = registry.try_get<Components::AttachmentData>(entity))
-                    {
-                        for (auto& pair : attachmentData->attachmentToInstance)
-                        {
-                            ::Util::Unit::RemoveItemFromAttachment(registry, entity, pair.first);
-                        }
-                    }
-
-                    if (auto* model = registry.try_get<Components::Model>(entity))
-                    {
-                        if (model->instanceID != std::numeric_limits<u32>().max())
-                        {
-                            ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-                            modelLoader->UnloadModelForEntity(entity, *model);
-                        }
-                    }
-
-                    registry.destroy(entity);
-                }
-
-                // Clean up any networked proximity triggers
-                auto& proximityTriggerSingleton = ctx.get<Singletons::ProximityTriggerSingleton>();
-                auto triggerView = registry.view<Components::ProximityTrigger>();
-                triggerView.each([&](entt::entity triggerEntity, Components::ProximityTrigger& proximityTrigger)
-                {
-                    if (proximityTrigger.networkID == Components::ProximityTrigger::INVALID_NETWORK_ID)
-                        return;
-
-                    proximityTriggerSingleton.proximityTriggers.Remove(triggerEntity);
-                });
-
-                networkState.isLoadingMap = false;
-                networkState.isInWorld = false;
+                CleanupNetworkWorldEntities(registry);
+                Util::Faction::ResetOwnerState(registry);
 
                 networkState.authInfo.Reset();
                 networkState.characterListInfo.Reset();
                 networkState.pingInfo.Reset();
-                networkState.pathToVisualize.clear();
-                networkState.entityToNetworkID.clear();
-                networkState.networkIDToEntity.clear();
-                networkState.networkVisTree->RemoveAll();
 
                 networkState.asioContext.stop();
 

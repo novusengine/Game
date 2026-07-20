@@ -1,8 +1,8 @@
 #pragma once
+#include "Game-Lib/Input/InputActionSystem.h"
+
 #include <Base/Types.h>
 #include <entt/fwd.hpp>
-
-class KeybindGroup;
 
 namespace ECS::Systems
 {
@@ -12,10 +12,18 @@ namespace ECS::Systems
         static void Init(entt::registry& registry);
         static void Update(entt::registry& registry, f32 deltaTime);
 
-        static void CapturedMouseMoved(entt::registry& registry, const vec2& position);
-        static void CapturedMouseScrolled(entt::registry& registry, const vec2& position);
+        static void CapturedMouseMoved(entt::registry& registry, const vec2& delta);
+        static void CapturedMouseScrolled(entt::registry& registry, const vec2& delta);
 
     private:
-        static KeybindGroup* _keybindGroup;
+        static InputActionContextHandle _inputContext;
+        static InputContextHandle _pointerInputContext;
+        static InputActionHandle _moveForwardAction;
+        static InputActionHandle _moveBackwardAction;
+        static InputActionHandle _moveLeftAction;
+        static InputActionHandle _moveRightAction;
+        static InputActionHandle _moveUpAction;
+        static InputActionHandle _moveDownAction;
+        static InputActionHandle _altAction;
     };
 }

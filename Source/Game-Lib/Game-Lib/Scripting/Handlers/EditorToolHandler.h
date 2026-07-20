@@ -33,6 +33,12 @@ namespace Scripting::Editor
         static i32 SetDrawOBB(Zenith* zenith);
         static i32 SetDrawWorldAABB(Zenith* zenith);
 
+        static i32 GetCVars(Zenith* zenith);
+        static i32 SetCVar(Zenith* zenith);
+        static i32 ResetCVar(Zenith* zenith);
+        static i32 ResetAllCVars(Zenith* zenith);
+        static i32 ResetAllCVarValues(Zenith* zenith);
+
         // Fires the registered selection-changed callback. Called from Lua (after SetSelected)
         // and from C++ (after picking updates the selection).
         void OnSelectionChanged(Zenith* zenith);
@@ -60,5 +66,10 @@ namespace Scripting::Editor
         { "SetGizmoMode",           EditorToolHandler::SetGizmoMode,          Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetDrawOBB",             EditorToolHandler::SetDrawOBB,            Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetDrawWorldAABB",       EditorToolHandler::SetDrawWorldAABB,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetCVars",               EditorToolHandler::GetCVars,              Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetCVar",                EditorToolHandler::SetCVar,               Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetCVar",              EditorToolHandler::ResetCVar,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetAllCVars",          EditorToolHandler::ResetAllCVars,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetAllCVarValues",     EditorToolHandler::ResetAllCVarValues,    Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

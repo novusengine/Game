@@ -56,6 +56,7 @@ function contextMenuAPI.New(parent, opts)
         _parent     = parent,
         _items      = opts.items or {},
         _layer      = opts.layer or DEFAULT_LAYER,
+        _minWidth   = opts.minWidth or ITEM_MIN_W,
         _menuPanel  = nil,
         _shield     = nil,
     }
@@ -68,7 +69,7 @@ function contextMenuAPI.New(parent, opts)
                 if w > widest then widest = w end
             end
         end
-        return math.max(ITEM_MIN_W, math.ceil(widest) + ITEM_PAD_X)
+        return math.max(self._minWidth, math.ceil(widest) + ITEM_PAD_X)
     end
 
     local function CalculateHeight()
@@ -150,6 +151,7 @@ function contextMenuAPI.New(parent, opts)
                 })
                 item:SetAnchor(0.0, 1.0)
                 item:SetRelativePoint(0.0, 1.0)
+                item:SetHighlighted(it.selected == true)
 
                 if not enabled then
                     item.text:SetAlpha(0.4)

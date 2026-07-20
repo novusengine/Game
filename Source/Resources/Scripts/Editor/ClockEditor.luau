@@ -80,8 +80,6 @@ titleBar:SetAlpha(WINDOW_BG_ALPHA)
 local titleText = titleBar:NewText("Clock", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
 titleText:SetAnchor(0.0, 0.5)
 titleText:SetRelativePoint(0.0, 0.5)
--- Without this, clicking the label would block the title-bar drag.
-titleText:SetInteractable(false)
 
 local CLOSE_BTN_SIZE = 12
 local closeBtn = EditorButton.NewEditorButton(titleBar, -2, 0, CLOSE_BTN_SIZE, CLOSE_BTN_SIZE, 1, MakeBtnOpts("X"))

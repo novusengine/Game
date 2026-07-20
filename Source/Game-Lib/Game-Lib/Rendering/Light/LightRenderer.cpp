@@ -35,6 +35,8 @@ LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _classifyPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _debugPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
+
     CreatePermanentResources();
 }
 
@@ -211,7 +213,7 @@ void LightRenderer::Update(f32 deltaTime)
         registry->emplace<ECS::Components::AABB>(decalEntity, vec3(0.0f), vec3(5.0f, 5.0f, 10.0f));
 
         auto& decal = registry->emplace<ECS::Components::Decal>(decalEntity);
-        decal.texturePath = "Data/Texture/interface/spellshadow/spell-shadow-acceptable.dds";
+        decal.texturePath = "texture/interface/spellshadow/spell-shadow-acceptable.dds";
 
         registry->emplace<ECS::Components::DirtyDecal>(decalEntity);
 
@@ -375,6 +377,8 @@ void LightRenderer::RemoveDecal(entt::entity entity)
 
 void LightRenderer::CreatePermanentResources()
 {
+    ZoneScoped;
+
     // Create pipeline
     Renderer::ComputePipelineDesc pipelineDesc;
     pipelineDesc.debugName = "LightClassification";

@@ -1,62 +1,154 @@
 #pragma once
 #include <Base/Types.h>
 #include <Base/Util/StringUtils.h>
-
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 
 #include <robinhood/robinhood.h>
+#include <xxhash/xxhash64.h>
+
+#include <array>
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <string_view>
 
 class Application;
 class ClientDBLoader;
 
-// This exist because without it, MSVC will complain about requiring a narrow conversion
-constexpr u32 GetHash(u32 hash)
+enum class ClientDBHash : u64
 {
-    return hash;
+    TextureFileData                     = XXHash64::hashLiteral("clientdb/texturefiledata.cdb"),
+    ModelFileData                       = XXHash64::hashLiteral("clientdb/modelfiledata.cdb"),
+    Map                                 = XXHash64::hashLiteral("clientdb/map.cdb"),
+    LiquidObject                        = XXHash64::hashLiteral("clientdb/liquidobject.cdb"),
+    LiquidType                          = XXHash64::hashLiteral("clientdb/liquidtype.cdb"),
+    LiquidMaterial                      = XXHash64::hashLiteral("clientdb/liquidmaterial.cdb"),
+    CinematicCamera                     = XXHash64::hashLiteral("clientdb/cinematiccamera.cdb"),
+    CinematicSequences                  = XXHash64::hashLiteral("clientdb/cinematicsequences.cdb"),
+    CameraSave                          = XXHash64::hashLiteral("clientdb/camerasave.cdb"),
+    Cursor                              = XXHash64::hashLiteral("clientdb/cursor.cdb"),
+    AnimationData                       = XXHash64::hashLiteral("clientdb/animationdata.cdb"),
+    CreatureDisplayInfo                 = XXHash64::hashLiteral("clientdb/creaturedisplayinfo.cdb"),
+    CreatureDisplayInfoExtra            = XXHash64::hashLiteral("clientdb/creaturedisplayinfoextra.cdb"),
+    CreatureModelData                   = XXHash64::hashLiteral("clientdb/creaturemodeldata.cdb"),
+    Item                                = XXHash64::hashLiteral("clientdb/item.cdb"),
+    ItemStatTypes                       = XXHash64::hashLiteral("clientdb/itemstattypes.cdb"),
+    ItemStatTemplate                    = XXHash64::hashLiteral("clientdb/itemstattemplate.cdb"),
+    ItemArmorTemplate                   = XXHash64::hashLiteral("clientdb/itemarmortemplate.cdb"),
+    ItemWeaponTemplate                  = XXHash64::hashLiteral("clientdb/itemweapontemplate.cdb"),
+    ItemShieldTemplate                  = XXHash64::hashLiteral("clientdb/itemshieldtemplate.cdb"),
+    ItemEffects                         = XXHash64::hashLiteral("clientdb/itemeffects.cdb"),
+    ItemDisplayInfo                     = XXHash64::hashLiteral("clientdb/itemdisplayinfo.cdb"),
+    ItemDisplayMaterialResources        = XXHash64::hashLiteral("clientdb/itemdisplayinfomaterialres.cdb"),
+    ItemDisplayModelMaterialResources   = XXHash64::hashLiteral("clientdb/itemdisplayinfomodelmatres.cdb"),
+    UnitRace                            = XXHash64::hashLiteral("clientdb/unitrace.cdb"),
+    UnitTextureSection                  = XXHash64::hashLiteral("clientdb/unittexturesection.cdb"),
+    UnitCustomizationOption             = XXHash64::hashLiteral("clientdb/unitcustomizationoption.cdb"),
+    UnitCustomizationGeoset             = XXHash64::hashLiteral("clientdb/unitcustomizationgeoset.cdb"),
+    UnitCustomizationMaterial           = XXHash64::hashLiteral("clientdb/unitcustomizationmaterial.cdb"),
+    UnitRaceCustomizationChoice         = XXHash64::hashLiteral("clientdb/unitracecustomizationchoice.cdb"),
+    Spell                               = XXHash64::hashLiteral("clientdb/spell.cdb"),
+    SpellEffects                        = XXHash64::hashLiteral("clientdb/spelleffects.cdb"),
+    SpellProcData                       = XXHash64::hashLiteral("clientdb/spellprocdata.cdb"),
+    SpellProcLink                       = XXHash64::hashLiteral("clientdb/spellproclink.cdb"),
+    Light                               = XXHash64::hashLiteral("clientdb/light.cdb"),
+    LightData                           = XXHash64::hashLiteral("clientdb/lightdata.cdb"),
+    LightParams                         = XXHash64::hashLiteral("clientdb/lightparams.cdb"),
+    LightSkybox                         = XXHash64::hashLiteral("clientdb/lightskybox.cdb"),
+    Icon                                = XXHash64::hashLiteral("clientdb/icon.cdb"),
+    Faction                             = XXHash64::hashLiteral("clientdb/faction.cdb"),
+    FactionRelation                     = XXHash64::hashLiteral("clientdb/factionrelation.cdb"),
+    FactionStanding                     = XXHash64::hashLiteral("clientdb/factionstanding.cdb")
+};
+
+struct ClientDBDefinition
+{
+public:
+    ClientDBHash hash;
+    std::string_view debugName;
+};
+
+inline constexpr std::array<ClientDBDefinition, 42> ClientDBHashes =
+{{
+    { ClientDBHash::TextureFileData, "TextureFileData" },
+    { ClientDBHash::ModelFileData, "ModelFileData" },
+    { ClientDBHash::Map, "Map" },
+    { ClientDBHash::LiquidObject, "LiquidObject" },
+    { ClientDBHash::LiquidType, "LiquidType" },
+    { ClientDBHash::LiquidMaterial, "LiquidMaterial" },
+    { ClientDBHash::CinematicCamera, "CinematicCamera" },
+    { ClientDBHash::CinematicSequences, "CinematicSequences" },
+    { ClientDBHash::CameraSave, "CameraSave" },
+    { ClientDBHash::Cursor, "Cursor" },
+    { ClientDBHash::AnimationData, "AnimationData" },
+    { ClientDBHash::CreatureDisplayInfo, "CreatureDisplayInfo" },
+    { ClientDBHash::CreatureDisplayInfoExtra, "CreatureDisplayInfoExtra" },
+    { ClientDBHash::CreatureModelData, "CreatureModelData" },
+    { ClientDBHash::Item, "Item" },
+    { ClientDBHash::ItemStatTypes, "ItemStatTypes" },
+    { ClientDBHash::ItemStatTemplate, "ItemStatTemplate" },
+    { ClientDBHash::ItemArmorTemplate, "ItemArmorTemplate" },
+    { ClientDBHash::ItemWeaponTemplate, "ItemWeaponTemplate" },
+    { ClientDBHash::ItemShieldTemplate, "ItemShieldTemplate" },
+    { ClientDBHash::ItemEffects, "ItemEffects" },
+    { ClientDBHash::ItemDisplayInfo, "ItemDisplayInfo" },
+    { ClientDBHash::ItemDisplayMaterialResources, "ItemDisplayInfoMaterialRes" },
+    { ClientDBHash::ItemDisplayModelMaterialResources, "ItemDisplayInfoModelMatRes" },
+    { ClientDBHash::UnitRace, "UnitRace" },
+    { ClientDBHash::UnitTextureSection, "UnitTextureSection" },
+    { ClientDBHash::UnitCustomizationOption, "UnitCustomizationOption" },
+    { ClientDBHash::UnitCustomizationGeoset, "UnitCustomizationGeoset" },
+    { ClientDBHash::UnitCustomizationMaterial, "UnitCustomizationMaterial" },
+    { ClientDBHash::UnitRaceCustomizationChoice, "UnitRaceCustomizationChoice" },
+    { ClientDBHash::Spell, "Spell" },
+    { ClientDBHash::SpellEffects, "SpellEffects" },
+    { ClientDBHash::SpellProcData, "SpellProcData" },
+    { ClientDBHash::SpellProcLink, "SpellProcLink" },
+    { ClientDBHash::Light, "Light" },
+    { ClientDBHash::LightData, "LightData" },
+    { ClientDBHash::LightParams, "LightParams" },
+    { ClientDBHash::LightSkybox, "LightSkybox" },
+    { ClientDBHash::Icon, "Icon" },
+    { ClientDBHash::Faction, "Faction" },
+    { ClientDBHash::FactionRelation, "FactionRelation" },
+    { ClientDBHash::FactionStanding, "FactionStanding" }
+}};
+
+inline bool HasClientDBRecordSuffix(std::string_view dbName)
+{
+    constexpr std::string_view recordSuffix = "Record";
+    return dbName.size() >= recordSuffix.size()
+        && std::equal(recordSuffix.begin(), recordSuffix.end(), dbName.end() - recordSuffix.size(), [](unsigned char lhs, unsigned char rhs)
+        {
+            return std::tolower(lhs) == std::tolower(rhs);
+        });
 }
 
-enum class ClientDBHash : u32
+inline std::string GetClientDBVirtualPath(std::string_view dbName)
 {
-    TextureFileData                     = GetHash("TextureFileData"_h),
-    ModelFileData                       = GetHash("ModelFileData"_h),
-    Map                                 = GetHash("Map"_h),
-    LiquidObject                        = GetHash("LiquidObject"_h),
-    LiquidType                          = GetHash("LiquidType"_h),
-    LiquidMaterial                      = GetHash("LiquidMaterial"_h),
-    CinematicCamera                     = GetHash("CinematicCamera"_h),
-    CinematicSequence                   = GetHash("CinematicSequence"_h),
-    CameraSave                          = GetHash("CameraSave"_h),
-    Cursor                              = GetHash("Cursor"_h),
-    AnimationData                       = GetHash("AnimationData"_h),
-    CreatureDisplayInfo                 = GetHash("CreatureDisplayInfo"_h),
-    CreatureDisplayInfoExtra            = GetHash("CreatureDisplayInfoExtra"_h),
-    CreatureModelData                   = GetHash("CreatureModelData"_h),
-    Item                                = GetHash("Item"_h),
-    ItemStatTypes                       = GetHash("ItemStatTypes"_h),
-    ItemStatTemplate                    = GetHash("ItemStatTemplate"_h),
-    ItemArmorTemplate                   = GetHash("ItemArmorTemplate"_h),
-    ItemWeaponTemplate                  = GetHash("ItemWeaponTemplate"_h),
-    ItemShieldTemplate                  = GetHash("ItemShieldTemplate"_h),
-    ItemEffects                         = GetHash("ItemEffects"_h),
-    ItemDisplayInfo                     = GetHash("ItemDisplayInfo"_h),
-    ItemDisplayMaterialResources        = GetHash("ItemDisplayInfoMaterialRes"_h),
-    ItemDisplayModelMaterialResources   = GetHash("ItemDisplayInfoModelMatRes"_h),
-    UnitRace                            = GetHash("UnitRace"_h),
-    UnitTextureSection                  = GetHash("UnitTextureSection"_h),
-    UnitCustomizationOption             = GetHash("UnitCustomizationOption"_h),
-    UnitCustomizationGeoset             = GetHash("UnitCustomizationGeoset"_h),
-    UnitCustomizationMaterial           = GetHash("UnitCustomizationMaterial"_h),
-    UnitRaceCustomizationChoice         = GetHash("UnitRaceCustomizationChoice"_h),
-    Spell                               = GetHash("Spell"_h),
-    SpellEffects                        = GetHash("SpellEffects"_h),
-    SpellProcData                       = GetHash("SpellProcData"_h),
-    SpellProcLink                       = GetHash("SpellProcLink"_h),
-    Light                               = GetHash("Light"_h),
-    LightData                           = GetHash("LightData"_h),
-    LightParams                         = GetHash("LightParams"_h),
-    LightSkybox                         = GetHash("LightSkybox"_h),
-    Icon                                = GetHash("Icon"_h)
-};
+    std::string virtualPath = "clientdb/";
+    virtualPath += dbName;
+    virtualPath += ClientDB::FILE_EXTENSION;
+    std::transform(virtualPath.begin(), virtualPath.end(), virtualPath.begin(), [](unsigned char character)
+    {
+        return static_cast<char>(std::tolower(character));
+    });
+    return virtualPath;
+}
+
+inline ClientDBHash GetClientDBHash(std::string_view dbName)
+{
+    const std::string virtualPath = GetClientDBVirtualPath(dbName);
+    return static_cast<ClientDBHash>(XXHash64::hash(virtualPath.data(), virtualPath.size(), 0));
+}
+
+inline bool IsBuiltinClientDBHash(ClientDBHash hash)
+{
+    return std::ranges::any_of(ClientDBHashes, [hash](const ClientDBDefinition& definition)
+    {
+        return definition.hash == hash;
+    });
+}
 
 namespace ECS
 {
@@ -79,8 +171,10 @@ namespace ECS
             template <typename T> requires ClientDB::ValidClientDB<T>
             bool Register()
             {
-                ClientDBHash hash = static_cast<ClientDBHash>(T::NAME_HASH);
-                if (!Register(hash, T::NAME))
+                std::string dbName = T::NAME;
+                StringUtils::ToLower(dbName);
+                const ClientDBHash hash = GetClientDBHash(dbName);
+                if (!Register(hash, dbName))
                     return false;
 
                 auto* storage = Get(hash);
@@ -100,21 +194,14 @@ namespace ECS
                 return false;
             }
 
-            bool Register(ClientDBHash hash, const std::string& dbName)
+            bool Register(ClientDBHash hash, const std::string& dbgName)
             {
                 if (Has(hash))
                     return true;
 
-                if (dbName.length() == 0)
+                if (dbgName.length() == 0)
                 {
-                    NC_LOG_ERROR("ClientDBSingleton : Attempted to register ClientDB with no dbName.");
-                    return false;
-                }
-
-                ClientDBHash dbFileNameHash = static_cast<ClientDBHash>(StringUtils::fnv1a_32(dbName.c_str(), dbName.size()));
-                if (dbFileNameHash != hash)
-                {
-                    NC_LOG_ERROR("ClientDBSingleton : Attempted to register ClientDB \"{0}\" with mismatching ClientDBHash", dbName);
+                    NC_LOG_ERROR("ClientDBSingleton : Attempted to register ClientDB with no debug name.");
                     return false;
                 }
 
@@ -125,9 +212,9 @@ namespace ECS
                 _dbs.push_back(cdb);
                 _dbHashToIndex[hash] = index;
                 _dbIndexToHash[index] = hash;
-                _dbHashToName[hash] = dbName;
+                _dbHashToName[hash] = dbgName;
 
-                NC_LOG_INFO("ClientDBSingleton : Registered '{0}{1}'", dbName, ClientDB::FILE_EXTENSION);
+                NC_LOG_INFO("ClientDBSingleton : Registered '{0}{1}'", dbgName, ClientDB::FILE_EXTENSION);
                 return true;
             }
 
@@ -152,19 +239,18 @@ namespace ECS
                     return false;
 
                 u32 index = _dbHashToIndex[hash];
-                std::string name = _dbHashToName[hash];
+
+                ClientDB::Data* storage = _dbs[index];
+                if (storage)
+                {
+                    storage->Clear();
+                    delete storage;
+                    _dbs[index] = nullptr;
+                }
 
                 _dbHashToIndex.erase(hash);
                 _dbIndexToHash.erase(index);
                 _dbHashToName.erase(hash);
-
-                std::filesystem::path absolutePath = std::filesystem::absolute("Data/ClientDB").make_preferred();
-                std::filesystem::path savePath = std::filesystem::path(absolutePath / name).replace_extension(ClientDB::FILE_EXTENSION);
-
-                if (!std::filesystem::exists(savePath))
-                    return false;
-
-                std::filesystem::remove(savePath);
                 return true;
             }
 

@@ -1,5 +1,7 @@
 #pragma once
+
 #include <Base/Types.h>
+
 #include <entt/fwd.hpp>
 
 namespace ECS::Systems

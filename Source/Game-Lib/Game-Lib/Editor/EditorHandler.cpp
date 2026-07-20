@@ -14,18 +14,16 @@
 #include "Viewport.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Input/InputActionSystem.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <Scripting/LuaManager.h>
 
-#include <GLFW/glfw3.h>
-
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include <imgui/ImGuiNotify.hpp>
-#include <imgui/imguizmo/ImGuizmo.h>
 #include <tracy/Tracy.hpp>
 
 #include <fstream>
@@ -34,10 +32,9 @@ namespace Editor
 {
     EditorHandler::EditorHandler()
     {
-        InputManager* inputManager = ServiceLocator::GetInputManager();
-        KeybindGroup* keybindGroup = inputManager->CreateKeybindGroup("GlobalEditor", 0);
-
-        KeybindGroup* imguiKeybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+        InputActionSystem* inputActions = ServiceLocator::GetInputActionSystem();
+        const InputActionContextHandle inputContext = inputActions->CreateContext("Editor", GameInputPriority::Editor);
+        inputActions->SetContextActive(inputContext, true);
 
         _viewport = new Viewport();
         _editors.push_back(_viewport);
@@ -57,17 +54,18 @@ namespace Editor
         _terrainTools = new TerrainTools();
         _editors.push_back(_terrainTools);
         
-        keybindGroup->SetActive(true);
-
         _editorMode = _viewport->IsEditorMode();
         LoadLayouts();
 
         for (auto& editor : _editors)
             editor->OnModeUpdate(_editorMode);
 
-        // Bind switch editor keys
-        keybindGroup->AddKeyboardCallback("Switch Editor Mode", GLFW_KEY_SPACE, KeybindAction::Press, KeybindModifier::Shift, [this](i32 key, KeybindAction action, KeybindModifier modifier)
+        inputActions->RegisterAction(inputContext, "SwitchEditorMode", "Switch Editor Mode", "Editor",
+            InputBinding::Keyboard(Key::Space, InputModifier::Shift, ModifierMatch::AtLeast), [this](const InputActionEvent& event)
         {
+            if (event.phase != InputPhase::Pressed)
+                return InputReply::Handled;
+
             SaveLayout();
             _editorMode = !_editorMode;
             RestoreLayout();
@@ -79,39 +77,7 @@ namespace Editor
 
             _viewport->SetIsEditorMode(_editorMode);
 
-            return true;
-        });
-
-        imguiKeybindGroup->AddKeyboardInputValidator("KeyboardInputValidator", [](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
-        {
-            auto& io = ImGui::GetIO();
-            bool wasConsumedByImGui = io.WantCaptureKeyboard;
-
-            return wasConsumedByImGui;
-        });
-
-        imguiKeybindGroup->AddMouseInputValidator("MousedInputValidator", [](i32 key, KeybindAction action, KeybindModifier modifier) -> bool
-        {
-            auto& io = ImGui::GetIO();
-            bool wasConsumedByImGui = io.WantCaptureMouse || ImGuizmo::IsOver();
-
-            return wasConsumedByImGui;
-        });
-
-        imguiKeybindGroup->AddMousePositionValidator([this](f32 x, f32 y) -> bool
-        {
-            auto& io = ImGui::GetIO();
-            bool wasConsumedByImGui = _editorMode && io.MouseHoveredViewport;
-
-            return wasConsumedByImGui;
-        });
-
-        imguiKeybindGroup->AddMouseScrollValidator([this](f32 x, f32 y) -> bool
-        {
-            auto& io = ImGui::GetIO();
-            bool wasConsumedByImGui = (_editorMode && io.MouseHoveredViewport) || io.WantCaptureMouse || ImGuizmo::IsOver();
-
-            return wasConsumedByImGui;
+            return InputReply::Consumed;
         });
     }
 

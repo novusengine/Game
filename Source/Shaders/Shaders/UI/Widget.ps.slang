@@ -9,7 +9,7 @@ struct WidgetDrawData
     uint4 packed0; // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (int reinterpret)
     uint4 packed1; // Panel: x: textureIndex & additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
     float4 texCoord;            // Panel only
-    float4 slicingCoord;        // Panel only
+    float4 sliceCoords;         // Panel only
     float4 cornerRadiusAndBorder; // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
     uint4 packed2; // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
 };
@@ -29,22 +29,52 @@ struct WidgetMaskInfo
 [[vk::binding(6, PER_PASS)]] StructuredBuffer<float4> _widgetClipRects;
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<WidgetMaskInfo> _widgetMaskInfo;
 
-float NineSliceAxis(float coord, float pixelSizeUV, float texCoordMin, float texCoordMax, float borderSizeMin, float borderSizeMax)
+struct Constants
 {
-    // Branchless Version
-    float scaledBorderMin = texCoordMin + (borderSizeMin * pixelSizeUV);
-    float scaledBorderMax = texCoordMax - (borderSizeMax * pixelSizeUV);
+    float2 viewportSize;
+};
+[[vk::push_constant]] Constants _constants;
 
-    bool isBorderMin = coord < scaledBorderMin;
-    bool isCenter = !isBorderMin && coord < scaledBorderMax;
-    bool isBorderMax = !isBorderMin && !isCenter;
+float RemapRange(float value, float originalMin, float originalMax, float newMin, float newMax)
+{
+    float originalRange = originalMax - originalMin;
+    if (abs(originalRange) <= 1e-6f)
+        return newMin;
 
-    float originalMin = (texCoordMin * isBorderMin) + (scaledBorderMin * isCenter) + (scaledBorderMax * isBorderMax);
-    float originalMax = (scaledBorderMin * isBorderMin) + (scaledBorderMax * isCenter) + (texCoordMax * isBorderMax);
-    float newMin = (texCoordMin * isBorderMin) + ((texCoordMin + borderSizeMin) * isCenter) + ((texCoordMax - borderSizeMax) * isBorderMax);
-    float newMax = ((texCoordMin + borderSizeMin) * isBorderMin) + ((texCoordMax - borderSizeMax) * isCenter) + (texCoordMax * isBorderMax);
+    return ((value - originalMin) / originalRange) * (newMax - newMin) + newMin;
+}
 
-    return Map(coord, originalMin, originalMax, newMin, newMax);
+float NineSliceAxis(float coord, float texturePixelsPerWidgetPixel, float texCoordMin, float texCoordMax, float sliceCoordMin, float sliceCoordMax)
+{
+    float texCoordRange = texCoordMax - texCoordMin;
+    if (texCoordRange <= 1e-6f)
+        return texCoordMin;
+
+    float localCoord = saturate((coord - texCoordMin) / texCoordRange);
+    float destinationBorderMin = max((sliceCoordMin - texCoordMin) * texturePixelsPerWidgetPixel, 0.0f);
+    float destinationBorderMax = max((texCoordMax - sliceCoordMax) * texturePixelsPerWidgetPixel, 0.0f);
+
+    float destinationBorderTotal = destinationBorderMin + destinationBorderMax;
+    if (destinationBorderTotal > 1.0f)
+    {
+        float borderScale = 1.0f / destinationBorderTotal;
+        destinationBorderMin *= borderScale;
+        destinationBorderMax *= borderScale;
+    }
+
+    float destinationSliceMin = destinationBorderMin;
+    float destinationSliceMax = 1.0f - destinationBorderMax;
+
+    if (destinationBorderMin > 0.0f && localCoord < destinationSliceMin)
+        return RemapRange(localCoord, 0.0f, destinationSliceMin, texCoordMin, sliceCoordMin);
+
+    if (destinationBorderMax > 0.0f && localCoord > destinationSliceMax)
+        return RemapRange(localCoord, destinationSliceMax, 1.0f, sliceCoordMax, texCoordMax);
+
+    if (destinationSliceMax > destinationSliceMin)
+        return RemapRange(localCoord, destinationSliceMin, destinationSliceMax, sliceCoordMin, sliceCoordMax);
+
+    return localCoord <= destinationSliceMin ? sliceCoordMin : sliceCoordMax;
 }
 
 bool ShouldDiscard(float2 pos, float2 clipMin, float2 clipMax)
@@ -75,18 +105,15 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
     float2 uv = input.uvAndScreenPos.xy;
     float2 texCoordMin = drawData.texCoord.xy;
     float2 texCoordMax = drawData.texCoord.zw;
-    float2 slicingCoordMin = max(drawData.slicingCoord.xy, texCoordMin);
-    float2 slicingCoordMax = min(drawData.slicingCoord.zw, texCoordMax);
-
-    float2 borderSizeLeftTop = slicingCoordMin - texCoordMin;
-    float2 borderSizeRightBottom = texCoordMax - slicingCoordMax;
+    float2 sliceCoordMin = clamp(drawData.sliceCoords.xy, texCoordMin, texCoordMax);
+    float2 sliceCoordMax = clamp(drawData.sliceCoords.zw, sliceCoordMin, texCoordMax);
 
     uint packedTextureScaleToWidgetSize = drawData.packed1.w;
     float2 scale = float2(f16tof32(packedTextureScaleToWidgetSize), f16tof32(packedTextureScaleToWidgetSize >> 16));
 
     float2 scaledUV = float2(
-        NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, borderSizeLeftTop.x, borderSizeRightBottom.x),
-        NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, borderSizeLeftTop.y, borderSizeRightBottom.y)
+        NineSliceAxis(input.uvAndScreenPos.x, scale.x, texCoordMin.x, texCoordMax.x, sliceCoordMin.x, sliceCoordMax.x),
+        NineSliceAxis(input.uvAndScreenPos.y, scale.y, texCoordMin.y, texCoordMax.y, sliceCoordMin.y, sliceCoordMax.y)
     );
 
     uint textureIndex = drawData.packed1.x & 0xFFFF;
@@ -127,6 +154,10 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
 
     if (normalizedBorderSize.x > 0.0 || normalizedBorderSize.y > 0.0)
     {
+        // A logical UI pixel can cover less than one physical pixel when the reference UI is
+        // scaled to the viewport. Keep authored borders at least one fragment wide so subpixel
+        // movement, such as scrolling, cannot make individual edges disappear.
+        float2 effectiveBorderSize = max(normalizedBorderSize, fwidth(uv));
         float4 borderColor = PackedUnormsToFloat4(drawData.packed1.y);
         bool inBorder;
 
@@ -134,15 +165,14 @@ float4 ShadePanel(WidgetDrawData drawData, VertexOutput input)
         {
             // Corner zone: pixel is in the border ring if it lies outside
             // the inner corner ellipse (radii shrunken by borderSize).
-            float2 innerR = max(cornerRadius - normalizedBorderSize, float2(1e-5, 1e-5));
+            float2 innerR = max(cornerRadius - effectiveBorderSize, float2(1e-5, 1e-5));
             float2 toInner = 1.0 - edgeDist / innerR;
             bool insideInnerBox = toInner.x > 0.0 && toInner.y > 0.0;
             inBorder = !insideInnerBox || length(toInner) > 1.0;
         }
         else
         {
-            inBorder = edgeDist.x < normalizedBorderSize.x
-                || edgeDist.y < normalizedBorderSize.y;
+            inBorder = edgeDist.x < effectiveBorderSize.x || edgeDist.y < effectiveBorderSize.y;
         }
 
         if (inBorder)
@@ -190,7 +220,14 @@ float4 ShadeText(WidgetDrawData drawData, VertexOutput input)
 
     float innerOpacity = saturate(inner);
     float4 innerColor = textColor;
+
+    if (borderSize <= 0.0f)
+    {
+        return innerColor * innerOpacity;
+    }
+
     float outerOpacity = saturate(outer);
+    outerOpacity = max(outerOpacity, innerOpacity);
     float4 outerColor = float4(borderColor.rgb, 1.0f);
 
     return (innerColor * innerOpacity) + (outerColor * (outerOpacity - innerOpacity));
@@ -205,6 +242,12 @@ float4 main(VertexOutput input) : SV_Target
     float2 screenPos = input.uvAndScreenPos.zw;
     uint clipBoundsIndex = drawData.packed2.x;
     float4 clipRect = _widgetClipRects[clipBoundsIndex];
+    if (clipBoundsIndex != 0)
+    {
+        float2 clipPixelMin = round(clipRect.xy * _constants.viewportSize);
+        float2 clipPixelMax = max(round(clipRect.zw * _constants.viewportSize), clipPixelMin + 1.0f);
+        clipRect = float4(clipPixelMin, clipPixelMax) / float4(_constants.viewportSize, _constants.viewportSize);
+    }
     if (ShouldDiscard(screenPos, clipRect.xy, clipRect.zw))
     {
         discard;
@@ -215,6 +258,7 @@ float4 main(VertexOutput input) : SV_Target
     if (type == WIDGET_TYPE_PANEL)
     {
         color = ShadePanel(drawData, input);
+        color.rgb *= color.a;
     }
     else // WIDGET_TYPE_TEXT
     {
@@ -233,10 +277,9 @@ float4 main(VertexOutput input) : SV_Target
     {
         discard;
     }
-    color.a *= clipMask;
-
-    // Multiply the color channels by alpha for pre-multiplied alpha output
-    color.rgb *= color.a;
+    // Panel colors are converted to premultiplied alpha above. Text colors are already
+    // premultiplied by their MSDF coverage in ShadeText, so the clip mask must scale both.
+    color *= clipMask;
 
     return saturate(color);
 }

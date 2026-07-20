@@ -63,11 +63,18 @@ local function SetupComboBoxMethods(comboBoxTable)
         table.onValueChanged = func;
     end
 
-    comboBoxTable.ShowSelectionPanel = function()
-        comboBoxTable.selectionPanel:SetEnabled(true);
+    comboBoxTable.ShowSelectionPanel = function(table)
+        table.selectionPanel:SetEnabled(true);
     end
-    comboBoxTable.HideSelectionPanel = function()
-        comboBoxTable.selectionPanel:SetEnabled(false);
+    comboBoxTable.HideSelectionPanel = function(table)
+        table.selectionPanel:SetEnabled(false);
+    end
+    comboBoxTable.ToggleSelectionPanel = function(table)
+        if (table.selectionPanel:IsEnabled()) then
+            table:HideSelectionPanel();
+        else
+            table:ShowSelectionPanel();
+        end
     end
 
     comboBoxTable.SetAnchor = function(self, x, y)
@@ -151,14 +158,14 @@ function comboBoxAPI.NewComboBox(parent, posX, posY, sizeX, sizeY, layer, comboB
 
         comboBoxTable.selectionButtons[i]:SetOnMouseUp(function(eventID, widget, ...)
             comboBoxTable:SelectOption(i);
-            comboBoxTable.HideSelectionPanel();
+            comboBoxTable:HideSelectionPanel();
         end);
 
         yPos -= selectionButtonHeight;
     end
 
     comboBoxTable.button:SetOnMouseUp(function(eventID, widget, ...)
-        comboBoxTable.ShowSelectionPanel();
+        comboBoxTable:ToggleSelectionPanel();
     end);
 
     comboBoxTable = SetupComboBoxMethods(comboBoxTable);

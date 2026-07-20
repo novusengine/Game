@@ -225,6 +225,7 @@ ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _svsmPageTableDebugDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmPoolDebugDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
     CreatePermanentResources(resources);
 }
 
@@ -878,7 +879,9 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& dayNightCycle = registry->ctx().get<ECS::Singletons::DayNightCycle>();
     const f32 shadowTimeOfDay = ECS::Systems::GetShadowTimeOfDay(dayNightCycle.GetTimeInSecondsF32());
-    const vec3 lightDirection = ECS::Systems::UpdateAreaLights::GetLightDirection(shadowTimeOfDay);
+    // GetLightDirection points toward the sun (the shading convention); SVSM works with the
+    // direction the light travels
+    const vec3 lightDirection = -ECS::Systems::UpdateAreaLights::GetLightDirection(shadowTimeOfDay);
 
     u32 invalidateCause = 0;
     if (CVAR_SVSMInvalidateAll.Get() != 0 || _svsmForceInvalidateAll)
@@ -1077,6 +1080,8 @@ void ShadowRenderer::AddSVSMBindPass(Renderer::RenderGraph* renderGraph, RenderR
 
 void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
 {
+    ZoneScoped;
+
     SanitizeSVSMConfigCVars(SVSM_MAX_PAGE_TABLE_SIZE);
 
     // SVSM page table lifecycle

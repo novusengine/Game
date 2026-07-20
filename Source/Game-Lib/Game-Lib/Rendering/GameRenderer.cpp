@@ -22,7 +22,9 @@
 
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Viewport.h"
+#include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
+#include "Game-Lib/Util/JoltMemoryTelemetry.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
@@ -31,7 +33,9 @@
 
 #include <FileFormat/Novus/ShaderPack/ShaderPack.h>
 
-#include <Input/InputManager.h>
+#include <Filesystem/PactStorage.h>
+
+#include <Input/InputSystem.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderSettings.h>
@@ -50,9 +54,11 @@
 
 #include <gli/gli.hpp>
 #include <GLFW/glfw3.h>
+#include <glm/geometric.hpp>
 #include "RenderUtils.h"
 
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
+AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
 
 enum GlfwClientApi
 {
@@ -85,29 +91,71 @@ struct ImGui_ImplGlfw_Data
     ImGui_ImplGlfw_Data() { memset((void*)this, 0, sizeof(*this)); }
 };
 
-void KeyCallback(GLFWwindow* window, i32 key, i32 scancode, i32 action, i32 modifiers)
+InputPhase TranslateGlfwInputPhase(i32 action)
 {
-    ServiceLocator::GetInputManager()->KeyboardInputHandler(key, scancode, action, modifiers);
+    if (action == GLFW_RELEASE)
+        return InputPhase::Released;
+
+    if (action == GLFW_REPEAT)
+        return InputPhase::Repeated;
+
+    return InputPhase::Pressed;
 }
 
-void CharCallback(GLFWwindow* window, u32 unicodeKey)
+InputModifier TranslateGlfwInputModifiers(i32 modifiers)
 {
-    ServiceLocator::GetInputManager()->CharInputHandler(unicodeKey);
+    InputModifier result = InputModifier::None;
+
+    if ((modifiers & GLFW_MOD_SHIFT) != 0)
+        result |= InputModifier::Shift;
+
+    if ((modifiers & GLFW_MOD_CONTROL) != 0)
+        result |= InputModifier::Control;
+
+    if ((modifiers & GLFW_MOD_ALT) != 0)
+        result |= InputModifier::Alt;
+
+    if ((modifiers & GLFW_MOD_SUPER) != 0)
+        result |= InputModifier::Super;
+
+    return result;
 }
 
-void MouseCallback(GLFWwindow* window, i32 button, i32 action, i32 modifiers)
+void KeyCallback(GLFWwindow* /*window*/, i32 key, i32 /*scancode*/, i32 action, i32 modifiers)
 {
-    ServiceLocator::GetInputManager()->MouseInputHandler(button, action, modifiers);
+    if (key <= GLFW_KEY_UNKNOWN || key > GLFW_KEY_LAST)
+        return;
+
+    ServiceLocator::GetInputSystem()->QueueKeyboardEvent(static_cast<Key>(key), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers));
 }
 
-void CursorPositionCallback(GLFWwindow* window, f64 x, f64 y)
+void CharCallback(GLFWwindow* /*window*/, u32 unicodeKey)
 {
-    ServiceLocator::GetInputManager()->MousePositionHandler(static_cast<f32>(x), static_cast<f32>(y));
+    ServiceLocator::GetInputSystem()->QueueTextEvent(unicodeKey);
 }
 
-void ScrollCallback(GLFWwindow* window, f64 x, f64 y)
+void MouseCallback(GLFWwindow* /*window*/, i32 button, i32 action, i32 modifiers)
 {
-    ServiceLocator::GetInputManager()->MouseScrollHandler(static_cast<f32>(x), static_cast<f32>(y));
+    if (button < GLFW_MOUSE_BUTTON_1 || button > GLFW_MOUSE_BUTTON_LAST)
+        return;
+
+    ServiceLocator::GetInputSystem()->QueueMouseButtonEvent(static_cast<MouseButton>(button), TranslateGlfwInputPhase(action), TranslateGlfwInputModifiers(modifiers));
+}
+
+void CursorPositionCallback(GLFWwindow* /*window*/, f64 x, f64 y)
+{
+    ZoneScopedN("Game Cursor Position Callback");
+    ServiceLocator::GetGameRenderer()->HandleCursorPosition(x, y);
+}
+
+void ScrollCallback(GLFWwindow* /*window*/, f64 x, f64 y)
+{
+    ServiceLocator::GetInputSystem()->QueueScrollEvent(static_cast<f32>(x), static_cast<f32>(y));
+}
+
+void WindowFocusCallback(GLFWwindow* /*window*/, i32 focused)
+{
+    ServiceLocator::GetInputSystem()->QueueFocusEvent(focused == GLFW_TRUE);
 }
 
 void WindowIconifyCallback(GLFWwindow* window, int iconified)
@@ -116,11 +164,12 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
     userWindow->SetIsMinimized(iconified == 1);
 }
 
-GameRenderer::GameRenderer(InputManager* inputManager)
+GameRenderer::GameRenderer()
 {
+    NC_LOG_INFO("GameRenderer : Initializing");
     ServiceLocator::SetGameRenderer(this);
 
-    JPH::RegisterDefaultAllocator();
+    Util::JoltMemoryTelemetry::RegisterAllocator();
 
     _window = new Novus::Window();
     _window->Init(Renderer::Settings::SCREEN_WIDTH, Renderer::Settings::SCREEN_HEIGHT);
@@ -129,14 +178,12 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     if (CVAR_StartWindowMaximized.Get() == ShowFlag::ENABLED)
         glfwMaximizeWindow(_window->GetWindow());
 
-    KeybindGroup* debugKeybindGroup = inputManager->CreateKeybindGroup("Debug", 15);
-    debugKeybindGroup->SetActive(true);
-
     glfwSetKeyCallback(_window->GetWindow(), KeyCallback);
     glfwSetCharCallback(_window->GetWindow(), CharCallback);
     glfwSetMouseButtonCallback(_window->GetWindow(), MouseCallback);
     glfwSetCursorPosCallback(_window->GetWindow(), CursorPositionCallback);
     glfwSetScrollCallback(_window->GetWindow(), ScrollCallback);
+    glfwSetWindowFocusCallback(_window->GetWindow(), WindowFocusCallback);
     glfwSetWindowIconifyCallback(_window->GetWindow(), WindowIconifyCallback);
 
     _renderer = new Renderer::RendererVK(_window);
@@ -148,6 +195,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
 
     _renderer->InitWindow(_window);
     InitImgui();
+    ECS::Util::CameraUtil::InitializeCursorMode();
     _renderer->InitDebug();
 
     CreatePermanentResources();
@@ -185,6 +233,7 @@ GameRenderer::GameRenderer(InputManager* inputManager)
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
+    NC_LOG_INFO("GameRenderer : Initialized");
 }
 
 GameRenderer::~GameRenderer()
@@ -485,13 +534,18 @@ void GameRenderer::ReloadShaders(bool forceRecompileAll)
     _renderer->ReloadShaders(forceRecompileAll);
 }
 
-bool GameRenderer::AddCursor(u32 nameHash, const std::string& path)
+bool GameRenderer::AddCursor(u64 nameHash, u64 pathHash, const std::string& texturePath)
 {
     if (_nameHashToCursor.contains(nameHash))
         return false;
 
-    gli::texture texture = gli::load(path);
+    auto* pactStorage = ServiceLocator::GetPactStorage();
 
+    PACT::PactFileHandle fileHandle;
+    if (pactStorage->ReadFile(pathHash, fileHandle) != PACT::PactReadResult::Success)
+        return false;
+
+    gli::texture texture = gli::load(static_cast<const char*>(fileHandle.GetData()), fileHandle.GetSize());
     if (texture.empty())
         return false;
 
@@ -501,13 +555,14 @@ bool GameRenderer::AddCursor(u32 nameHash, const std::string& path)
     cursor.image->height = texture.extent().y;
     cursor.image->pixels = (unsigned char*)texture.data();
     cursor.cursor = glfwCreateCursor(cursor.image, 0, 0);
+    cursor.texturePath = texturePath;
 
     _nameHashToCursor[nameHash] = cursor;
 
     return true;
 }
 
-bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
+bool GameRenderer::SetCursor(u64 nameHash, u32 imguiMouseCursor /*= 0*/)
 {
     if (!_nameHashToCursor.contains(nameHash))
         return false;
@@ -519,7 +574,65 @@ bool GameRenderer::SetCursor(u32 nameHash, u32 imguiMouseCursor /*= 0*/)
     ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplGlfw_Data* glfwImguiData = reinterpret_cast<ImGui_ImplGlfw_Data*>(io.BackendPlatformUserData);
     glfwImguiData->MouseCursors[imguiMouseCursor] = cursor.cursor;
+
+    if (_currentCursorHash != nameHash)
+    {
+        _currentCursorHash = nameHash;
+        _cursorTexturePath = cursor.texturePath;
+        _cursorRevision++;
+    }
+
     return true;
+}
+
+void GameRenderer::HandleCursorPosition(f64 x, f64 y)
+{
+    InputSystem* inputSystem = ServiceLocator::GetInputSystem();
+    if (inputSystem->IsMouseCaptured())
+    {
+        inputSystem->QueueCursorPositionEvent(static_cast<f32>(x), static_cast<f32>(y));
+        return;
+    }
+
+    const vec2 position(static_cast<f32>(x), static_cast<f32>(y));
+    if (_cursorRestorePending)
+    {
+        if (glfwGetTime() <= _cursorRestoreDeadline)
+        {
+            // GLFW's disabled cursor implementation emits an exact window-center event when it
+            // performs its internal warp. Reject that synthetic position, but allow genuine
+            // post-release movement immediately instead of freezing the cursor for the guard.
+            i32 windowWidth;
+            i32 windowHeight;
+            glfwGetWindowSize(_window->GetWindow(), &windowWidth, &windowHeight);
+            const vec2 windowCenter(static_cast<f32>(windowWidth) * 0.5f, static_cast<f32>(windowHeight) * 0.5f);
+            const bool restoredToCenter = glm::distance(_cursorRestorePosition, windowCenter) <= 0.5f;
+            if (!restoredToCenter && glm::distance(position, windowCenter) <= 0.5f)
+                return;
+        }
+        else
+        {
+            _cursorRestorePending = false;
+        }
+    }
+
+    inputSystem->QueueCursorPositionEvent(position.x, position.y);
+}
+
+void GameRenderer::RestoreCursorPosition(const vec2& position)
+{
+    _cursorRestorePosition = position;
+    const f64 guardPeriod = static_cast<f64>(glm::max(CVAR_CursorRestoreGuardPeriod.GetFloat(), 0.0f)) / 1000.0;
+    _cursorRestoreDeadline = glfwGetTime() + guardPeriod;
+    _cursorRestorePending = true;
+
+    glfwSetCursorPos(_window->GetWindow(), static_cast<f64>(position.x), static_cast<f64>(position.y));
+    ServiceLocator::GetInputSystem()->SetMousePosition(position);
+}
+
+void GameRenderer::CancelCursorRestore()
+{
+    _cursorRestorePending = false;
 }
 
 const Renderer::ShaderEntry* GameRenderer::GetShaderEntry(u32 shaderNameHash, const std::string& debugName)

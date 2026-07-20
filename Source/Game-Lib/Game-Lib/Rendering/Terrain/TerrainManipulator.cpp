@@ -9,23 +9,12 @@
 #include "Game-Lib/Util/PhysicsUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
-#include <Input/InputManager.h>
-
-#include <GLFW/glfw3.h>
-
 TerrainManipulator::TerrainManipulator(TerrainRenderer& terrainRenderer, DebugRenderer& debugRenderer)
     : _terrainRenderer(terrainRenderer)
     , _debugRenderer(debugRenderer)
 {
-    InputManager* inputManager = ServiceLocator::GetInputManager();
-    KeybindGroup* keybindGroup = inputManager->GetKeybindGroupByHash("Imgui"_h);
+    ZoneScoped;
 
-    /*keybindGroup->AddKeyboardCallback("Manipulate", GLFW_MOUSE_BUTTON_LEFT, KeybindAction::Click, KeybindModifier::Any, [&](i32 key, KeybindAction action, KeybindModifier modifier)
-    {
-        _isManipulating = action == KeybindAction::Press;
-        _isLower = modifier == KeybindModifier::Shift;
-        return true;
-    });*/
 }
 
 TerrainManipulator::~TerrainManipulator()

@@ -22,12 +22,13 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-#include <Input/InputManager.h>
+#include <Filesystem/PactStorage.h>
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
@@ -39,8 +40,12 @@
 #include <entt/entt.hpp>
 #include <glm/gtx/euler_angles.hpp>
 
+#include <algorithm>
+#include <cstring>
+
 AutoCVar_Int CVAR_ModelRendererEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelEnabled", "enable modelrendering", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelCulling", "enable model culling", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_ModelTextureLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "modelTextureLoadsPerFrame", "maximum model textures loaded on the render thread per frame", 32, CVarFlags::None);
 AutoCVar_Int CVAR_ModelOcclusionCullingEnabled(CVarCategory::Client | CVarCategory::Rendering, "modelOcclusionCulling", "enable model occlusion culling", 1, CVarFlags::EditCheckbox);
 
 AutoCVar_Int CVAR_ModelDisableTwoStepCulling(CVarCategory::Client | CVarCategory::Rendering, "modelDisableTwoStepCulling", "disable two step culling and force all drawcalls into the geometry pass", 0, CVarFlags::EditCheckbox);
@@ -62,7 +67,10 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     , _debugRenderer(debugRenderer)
     , _svsmDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmDynamicDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _ownerThreadID(std::this_thread::get_id())
 {
+    ZoneScoped;
+
     _dynamicInstanceMask.SetDebugName("ModelDynamicInstanceMask");
     _dynamicInstanceMask.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
@@ -96,6 +104,11 @@ ModelRenderer::~ModelRenderer()
 void ModelRenderer::Update(f32 deltaTime)
 {
     ZoneScopedN("ModelRenderer::Update");
+
+    TracyPlot("Model Renderer Resident Models", static_cast<i64>(_modelManifests.size()));
+    TracyPlot("Model Renderer Resident Instances", static_cast<i64>(_instanceDatas.Count()));
+    TracyPlot("Model Texture Load Backlog", static_cast<i64>(_textureLoadRequests.size_approx()));
+    TracyPlot("Model Instances Dirty", static_cast<i64>(_instancesDirty));
 
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
@@ -362,32 +375,63 @@ void ModelRenderer::Update(f32 deltaTime)
         _transparentSkyboxCullingResources.Update(deltaTime, false);
     }
 
-    u32 numTextureLoads = static_cast<u32>(_textureLoadRequests.try_dequeue_bulk(_textureLoadWork.begin(), 256));
+    const u32 maxTextureLoadsPerFrame = static_cast<u32>(std::clamp(CVAR_ModelTextureLoadsPerFrame.Get(), 1, static_cast<i32>(_textureLoadWork.size())));
+    u32 numTextureLoads = static_cast<u32>(_textureLoadRequests.try_dequeue_bulk(_textureLoadWork.begin(), maxTextureLoadsPerFrame));
+    TracyPlot("Model Texture Loads Dequeued", static_cast<i64>(numTextureLoads));
+    u32 numTextureCacheHits = 0;
+    u32 numTexturePactReads = 0;
     if (numTextureLoads > 0)
     {
         ZoneScopedN("Texture Load Requests");
-    
+
+        auto* pactStorage = ServiceLocator::GetPactStorage();
+
         auto& textureSingleton = dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
-    
-        Renderer::TextureDesc textureDesc;
-        textureDesc.path.reserve(128);
-    
+
+        //Renderer::TextureDesc textureDesc;
+        //textureDesc.path.reserve(128);
+
+        Renderer::DataTextureDesc textureDesc;
+
         {
             ZoneScopedN("Texture Loading");
-    
+
             for (u32 i = 0; i < numTextureLoads; i++)
             {
                 ZoneScopedN("Texture Load");
                 const TextureLoadRequest& textureLoad = _textureLoadWork[i];
                 TextureUnit& textureUnit = _textureUnits[textureLoad.textureUnitOffset];
-    
-                if (!textureSingleton.textureHashToPath.contains(textureLoad.textureHash))
+
+                auto cachedTextureItr = _modelTextureHashToArrayIndex.find(textureLoad.textureHash);
+                if (cachedTextureItr != _modelTextureHashToArrayIndex.end())
+                {
+                    ZoneScopedN("Reuse Model Texture");
+                    textureUnit.textureIds[textureLoad.textureIndex] = cachedTextureItr->second;
+                    _dirtyTextureUnitOffsets.insert(textureLoad.textureUnitOffset);
+                    numTextureCacheHits++;
                     continue;
-    
-                textureDesc.path = textureSingleton.textureHashToPath[textureLoad.textureHash];
-    
-                Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
+                }
+
+                PACT::PactFileHandle fileHandle;
+                {
+                    ZoneScopedN("Read Model Texture From PACT");
+                    if (pactStorage->ReadFile(textureLoad.textureHash, fileHandle) != PACT::PactReadResult::Success)
+                        continue;
+                    numTexturePactReads++;
+                }
+
+                textureDesc.hash = textureLoad.textureHash;
+                textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+                textureDesc.size = fileHandle.GetSize();
+
+                Renderer::TextureID textureID;
+                {
+                    ZoneScopedN("Upload Model Texture To Array");
+                    textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
+                }
                 NC_ASSERT(textureUnit.textureIds[textureLoad.textureIndex] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
+
+                _modelTextureHashToArrayIndex[textureLoad.textureHash] = textureUnit.textureIds[textureLoad.textureIndex];
     
                 _dirtyTextureUnitOffsets.insert(textureLoad.textureUnitOffset);
             }
@@ -404,6 +448,8 @@ void ModelRenderer::Update(f32 deltaTime)
             _dirtyTextureUnitOffsets.clear();
         }
     }
+    TracyPlot("Model Texture Cache Hits", static_cast<i64>(numTextureCacheHits));
+    TracyPlot("Model Texture PACT Reads", static_cast<i64>(numTexturePactReads));
 
     u32 numChangeGroupRequests = static_cast<u32>(_changeGroupRequests.try_dequeue_bulk(_changeGroupWork.begin(), 256));
     if (numChangeGroupRequests > 0)
@@ -616,10 +662,31 @@ void ModelRenderer::Clear()
 
     _opaqueSkyboxCullingResources.Clear();
     _transparentSkyboxCullingResources.Clear();
-
     TextureLoadRequest textureLoadRequest;
     while (_textureLoadRequests.try_dequeue(textureLoadRequest)) {}
     _dirtyTextureUnitOffsets.clear();
+    _modelTextureHashToArrayIndex.clear();
+
+    ChangeGroupRequest changeGroupRequest;
+    while (_changeGroupRequests.try_dequeue(changeGroupRequest)) {}
+
+    ChangeSkinTextureRequest changeSkinTextureRequest;
+    while (_changeSkinTextureRequests.try_dequeue(changeSkinTextureRequest)) {}
+
+    ChangeHairTextureRequest changeHairTextureRequest;
+    while (_changeHairTextureRequests.try_dequeue(changeHairTextureRequest)) {}
+
+    ChangeVisibilityRequest changeVisibilityRequest;
+    while (_changeVisibilityRequests.try_dequeue(changeVisibilityRequest)) {}
+
+    ChangeTransparencyRequest changeTransparencyRequest;
+    while (_changeTransparencyRequests.try_dequeue(changeTransparencyRequest)) {}
+
+    ChangeHighlightRequest changeHighlightRequest;
+    while (_changeHighlightRequests.try_dequeue(changeHighlightRequest)) {}
+
+    ChangeSkyboxRequest changeSkyboxRequest;
+    while (_changeSkyboxRequests.try_dequeue(changeSkyboxRequest)) {}
 
     // Queued modelIDs/instanceIDs are invalid after a clear
     u32 drainedID;
@@ -651,7 +718,9 @@ void ModelRenderer::Clear()
 
     _renderer->UnloadTexturesInArray(_textures, 1);
 
+    _instancesDirty = true;
     SyncToGPU();
+    _instancesDirty = false;
 }
 
 void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -1704,85 +1773,109 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
 
 void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
 {
-    _instanceManifests.reserve(_instanceManifests.size() + reserveInfo.numInstances);
-    _instanceDatas.Reserve(reserveInfo.numInstances);
-    _instanceMatrices.Reserve(reserveInfo.numInstances);
+    ZoneScopedN("ModelRenderer::Reserve");
+    AssertOwnerThread();
 
-    _cullingDatas.Reserve(reserveInfo.numModels);
-    _modelIDToNumInstances.reserve(_modelIDToNumInstances.size() + reserveInfo.numModels);
-    _modelManifests.reserve(_modelManifests.size() + reserveInfo.numModels);
+    {
+        ZoneScopedN("Reserve Model Instances");
+        _instanceManifests.reserve(_instanceManifests.size() + reserveInfo.numInstances);
+        _instanceDatas.Reserve(reserveInfo.numInstances);
+        _instanceMatrices.Reserve(reserveInfo.numInstances);
+    }
 
-    _vertices.Reserve(reserveInfo.numVertices);
-    _indices.Reserve(reserveInfo.numIndices);
+    {
+        ZoneScopedN("Reserve Model Metadata");
+        _cullingDatas.Reserve(reserveInfo.numModels);
+        _modelIDToNumInstances.reserve(_modelIDToNumInstances.size() + reserveInfo.numModels);
+        _modelManifests.reserve(_modelManifests.size() + reserveInfo.numModels);
+    }
 
-    _textureDatas.Reserve(reserveInfo.numTextureUnits); // This might not be accurate
-    _textureUnits.Reserve(reserveInfo.numTextureUnits);
+    {
+        ZoneScopedN("Reserve Model Geometry");
+        _vertices.Reserve(reserveInfo.numVertices);
+        _indices.Reserve(reserveInfo.numIndices);
+    }
 
-    _boneMatrices.Reserve(reserveInfo.numBones);
-        
-    _textureTransformMatrices.Reserve(reserveInfo.numTextureTransforms);
+    {
+        ZoneScopedN("Reserve Model Textures");
+        _textureDatas.Reserve(reserveInfo.numTextureUnits); // This might not be accurate
+        _textureUnits.Reserve(reserveInfo.numTextureUnits);
+    }
 
-    _modelDecorationSets.reserve(_modelDecorationSets.size() + reserveInfo.numDecorationSets);
-    _modelDecorations.reserve(_modelDecorations.size() + reserveInfo.numDecorations);
+    {
+        ZoneScopedN("Reserve Model Animation");
+        _boneMatrices.Reserve(reserveInfo.numBones);
+        _textureTransformMatrices.Reserve(reserveInfo.numTextureTransforms);
+    }
 
-    _opaqueCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
-    _transparentCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
+    {
+        ZoneScopedN("Reserve Model Decorations");
+        _modelDecorationSets.reserve(_modelDecorationSets.size() + reserveInfo.numDecorationSets);
+        _modelDecorations.reserve(_modelDecorations.size() + reserveInfo.numDecorations);
+    }
 
-    _opaqueSkyboxCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
-    _transparentSkyboxCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
+    {
+        ZoneScopedN("Reserve Model Draw Calls");
+        _opaqueCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
+        _transparentCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
+
+        _opaqueSkyboxCullingResources.Reserve(reserveInfo.numOpaqueDrawcalls);
+        _transparentSkyboxCullingResources.Reserve(reserveInfo.numTransparentDrawcalls);
+    }
 }
 
 Renderer::TextureID ModelRenderer::LoadTexture(const std::string& path, u32& arrayIndex)
 {
     ZoneScopedN("ModelRenderer::LoadTexture");
-    
-    Renderer::TextureDesc textureDesc = 
-    {
-        .path = path,
-    };
 
-    return _renderer->LoadTextureIntoArray(textureDesc, _textures, arrayIndex);
+    u64 textureHash = Util::AssetPath::Hash(path);
+    PACT::PactFileHandle fileHandle;
+    if (ServiceLocator::GetPactStorage()->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+        return Renderer::TextureID::Invalid();
+
+    Renderer::DataTextureDesc textureDesc;
+    textureDesc.hash = textureHash;
+    textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+    textureDesc.size = fileHandle.GetSize();
+    return _renderer->LoadDataTextureIntoArray(textureDesc, _textures, arrayIndex);
 }
 
-u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model)
+u32 ModelRenderer::CommitPreparedModel(const ModelLoading::PreparedRenderModel& preparedModel)
 {
-    ZoneScopedN("ModelRenderer::LoadModel");
-
-    EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-    auto& textureSingleton = registries->dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
+    ZoneScopedN("ModelRenderer::CommitPreparedModel");
+    AssertOwnerThread();
 
     ModelOffsets modelOffsets;
-    AllocateModel(model, modelOffsets);
+    AllocateModel(preparedModel, modelOffsets);
 
     TextureUnitOffsets textureUnitsOffsets;
-    AllocateTextureUnits(model, textureUnitsOffsets);
+    AllocateTextureUnits(static_cast<u32>(preparedModel.textureUnits.size()), textureUnitsOffsets);
 
     // Add ModelManifest
     ModelManifest& modelManifest = _modelManifests[modelOffsets.modelIndex];
-    modelManifest.debugName = name;
+    modelManifest.debugName = preparedModel.debugName;
 
     // Add CullingData
     {
         ZoneScopedN("Add Culling Data");
 
         Model::ComplexModel::CullingData& cullingData = _cullingDatas[modelOffsets.modelIndex];
-        cullingData = model.cullingData;
+        cullingData = preparedModel.cullingData;
     }
 
     // Add vertices
     {
         ZoneScopedN("Add Vertex Data");
 
-        modelManifest.numVertices = model.modelHeader.numVertices;
+        modelManifest.numVertices = static_cast<u32>(preparedModel.vertices.size());
         modelManifest.vertexOffset = modelOffsets.verticesStartIndex;
 
         if (modelManifest.numVertices)
         {
-            u32 numModelVertices = static_cast<u32>(model.vertices.size());
-            assert(modelManifest.numVertices == numModelVertices);
+            u32 numModelVertices = static_cast<u32>(preparedModel.vertices.size());
 
             void* dst = &_vertices[modelManifest.vertexOffset];
-            void* src = model.vertices.data();
+            const void* src = preparedModel.vertices.data();
             size_t size = sizeof(Model::ComplexModel::Vertex) * numModelVertices;
 
             if (modelManifest.vertexOffset + numModelVertices > _vertices.Count())
@@ -1798,16 +1891,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     {
         ZoneScopedN("Add Index Data");
 
-        modelManifest.numIndices = model.modelHeader.numIndices;
+        modelManifest.numIndices = static_cast<u32>(preparedModel.indices.size());
         modelManifest.indexOffset = modelOffsets.indicesStartIndex;
 
         if (modelManifest.numIndices)
         {
             void* dst = &_indices[modelManifest.indexOffset];
-            void* src = model.modelData.indices.data();
-            size_t size = sizeof(u16) * model.modelData.indices.size();
+            const void* src = preparedModel.indices.data();
+            size_t size = sizeof(u16) * preparedModel.indices.size();
 
-            if (modelManifest.indexOffset + model.modelData.indices.size() > _indices.Count())
+            if (modelManifest.indexOffset + preparedModel.indices.size() > _indices.Count())
             {
                 NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy vertices outside array");
             }
@@ -1820,8 +1913,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     {
         ZoneScopedN("Add TextureUnits and DrawCalls");
 
-        modelManifest.numOpaqueDrawCalls = model.modelHeader.numOpaqueRenderBatches;
-        modelManifest.numTransparentDrawCalls = model.modelHeader.numTransparentRenderBatches;
+        modelManifest.numOpaqueDrawCalls = preparedModel.reserveInfo.numOpaqueDrawCalls;
+        modelManifest.numTransparentDrawCalls = preparedModel.reserveInfo.numTransparentDrawCalls;
 
         DrawCallOffsets drawCallOffsets;
         AllocateDrawCalls(modelOffsets.modelIndex, drawCallOffsets);
@@ -1835,14 +1928,10 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         const Renderer::GPUVector<Renderer::IndexedIndirectDraw>& transparentDrawCalls = _transparentCullingResources.GetDrawCalls();
         const Renderer::GPUVector<DrawCallData>& transparentDrawCallDatas = _transparentCullingResources.GetDrawCallDatas();
 
-        u32 numAddedIndices = 0;
-
         u32 numAddedOpaqueDrawCalls = 0;
         u32 numAddedTransparentDrawCalls = 0;
 
-        u32 textureTransformLookupTableSize = static_cast<u32>(model.textureTransformLookupTable.size());
-
-        u32 numRenderBatches = static_cast<u32>(model.modelData.renderBatches.size());
+        u32 numRenderBatches = static_cast<u32>(preparedModel.drawCalls.size());
 
         modelManifest.opaqueDrawIDToTextureDataID.reserve(numRenderBatches);
         modelManifest.transparentDrawIDToTextureDataID.reserve(numRenderBatches);
@@ -1854,80 +1943,28 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
         modelManifest.opaqueSkyboxDrawIDToGroupID.reserve(numRenderBatches);
         modelManifest.transparentSkyboxDrawIDToGroupID.reserve(numRenderBatches);
 
-        u32 numTexturesInModel = static_cast<u32>(model.textures.size());
+        if (!preparedModel.textureUnits.empty())
+        {
+            void* dst = &_textureUnits[textureUnitsOffsets.textureUnitsStartIndex];
+            const void* src = preparedModel.textureUnits.data();
+            const size_t size = sizeof(TextureUnit) * preparedModel.textureUnits.size();
+            std::memcpy(dst, src, size);
+        }
 
-        u32 textureUnitIndex = 0;
+        for (const ModelLoading::PreparedTextureLoadRequest& preparedTextureLoadRequest : preparedModel.textureLoadRequests)
+        {
+            _textureLoadRequests.enqueue({
+                .textureUnitOffset = textureUnitsOffsets.textureUnitsStartIndex + preparedTextureLoadRequest.textureUnitOffset,
+                .textureIndex = preparedTextureLoadRequest.textureIndex,
+                .textureHash = preparedTextureLoadRequest.textureHash,
+            });
+        }
+
         for (u32 renderBatchIndex = 0; renderBatchIndex < numRenderBatches; renderBatchIndex++)
         {
-            auto& renderBatch = model.modelData.renderBatches[renderBatchIndex];
+            const ModelLoading::PreparedDrawCall& renderBatch = preparedModel.drawCalls[renderBatchIndex];
 
-            u32 textureUnitStartIndex = textureUnitsOffsets.textureUnitsStartIndex + textureUnitIndex;
-            u16 numUnlitTextureUnits = 0;
-
-            for (u32 i = 0; i < renderBatch.textureUnits.size(); i++)
-            {
-                // Texture Unit
-                u32 textureUnitOffset = textureUnitsOffsets.textureUnitsStartIndex + (textureUnitIndex++);
-                TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
-
-                Model::ComplexModel::TextureUnit& cTextureUnit = renderBatch.textureUnits[i];
-                Model::ComplexModel::Material& cMaterial = model.materials[cTextureUnit.materialIndex];
-
-                u16 materialFlag = *reinterpret_cast<u16*>(&cMaterial.flags) << 5;
-                u16 blendingMode = static_cast<u16>(cMaterial.blendingMode) << 11;
-
-                textureUnit.data = static_cast<u16>(cTextureUnit.flags.IsProjectedTexture) | materialFlag | blendingMode;
-                textureUnit.materialType = cTextureUnit.shaderID;
-
-                u16 textureTransformID1 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
-                if (cTextureUnit.textureTransformIndexStart < textureTransformLookupTableSize)
-                    textureTransformID1 = model.textureTransformLookupTable[cTextureUnit.textureTransformIndexStart];
-
-                u16 textureTransformID2 = MODEL_INVALID_TEXTURE_TRANSFORM_ID;
-                if (cTextureUnit.textureCount > 1)
-                    if (cTextureUnit.textureTransformIndexStart + 1u < textureTransformLookupTableSize)
-                        textureTransformID2 = model.textureTransformLookupTable[cTextureUnit.textureTransformIndexStart + 1];
-
-                textureUnit.textureTransformIds[0] = textureTransformID1;
-                textureUnit.textureTransformIds[1] = textureTransformID2;
-
-                numUnlitTextureUnits += (materialFlag & 0x2) > 0;
-
-                // Textures
-                for (u32 j = 0; j < cTextureUnit.textureCount && j < 2; j++)
-                {
-                    u16 textureIndex = model.textureIndexLookupTable[cTextureUnit.textureIndexStart + j];
-                    if (textureIndex == 65535)
-                        continue;
-
-                    const Model::ComplexModel::Texture& cTexture = model.textures[textureIndex];
-                    if (cTexture.type == Model::ComplexModel::Texture::Type::None && cTexture.textureHash != std::numeric_limits<u32>().max())
-                    {
-                        TextureLoadRequest textureLoadRequest =
-                        {
-                            .textureUnitOffset = textureUnitOffset,
-                            .textureIndex = j,
-                            .textureHash = cTexture.textureHash,
-                        };
-
-                        _textureLoadRequests.enqueue(textureLoadRequest);
-                    }
-                    else
-                    {
-                        continue;
-                    }
-
-                    u8 textureSamplerIndex = 0;
-
-                    if (cTexture.flags.wrapX)
-                        textureSamplerIndex |= 0x1;
-
-                    if (cTexture.flags.wrapY)
-                        textureSamplerIndex |= 0x2;
-
-                    textureUnit.data |= textureSamplerIndex << (1 + (j * 2));
-                }
-            }
+            u32 textureUnitStartIndex = textureUnitsOffsets.textureUnitsStartIndex + renderBatch.textureUnitOffset;
 
             // Draw Calls
             u32& numAddedDrawCalls = (renderBatch.isTransparent) ? numAddedTransparentDrawCalls : numAddedOpaqueDrawCalls;
@@ -1937,8 +1974,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             Renderer::IndexedIndirectDraw& drawCall = (renderBatch.isTransparent) ? transparentDrawCalls[curDrawCallOffset] : opaqueDrawCalls[curDrawCallOffset];
             drawCall.indexCount = renderBatch.indexCount;
-            drawCall.firstIndex = modelManifest.indexOffset + renderBatch.indexStart;
-            drawCall.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexStart;
+            drawCall.firstIndex = modelManifest.indexOffset + renderBatch.firstIndex;
+            drawCall.vertexOffset = modelManifest.vertexOffset + renderBatch.vertexOffset;
             drawCall.firstInstance = 0; // Is set during Compact
             drawCall.instanceCount = 0; // Is set during Compact
 
@@ -1951,8 +1988,8 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
 
             TextureData& textureData = _textureDatas[textureDataOffsets.textureDatasStartIndex];
             textureData.textureUnitOffset = textureUnitStartIndex;
-            textureData.numTextureUnits = static_cast<u16>(renderBatch.textureUnits.size());
-            textureData.numUnlitTextureUnits = numUnlitTextureUnits;
+            textureData.numTextureUnits = renderBatch.numTextureUnits;
+            textureData.numUnlitTextureUnits = renderBatch.numUnlitTextureUnits;
 
             // Add to map to go from drawID to textureDataID
             robin_hood::unordered_map<u32, u32>& drawIDToTextureDataID = (renderBatch.isTransparent) ? modelManifest.transparentDrawIDToTextureDataID : modelManifest.opaqueDrawIDToTextureDataID;
@@ -1976,17 +2013,16 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     {
         ZoneScopedN("Set Animation Data");
 
-        modelManifest.numBones = static_cast<u32>(model.bones.size());
-        modelManifest.numTextureTransforms = static_cast<u32>(model.textureTransforms.size());
-
-        modelManifest.isAnimated = model.sequences.size() > 0 && modelManifest.numBones > 0;
+        modelManifest.numBones = preparedModel.reserveInfo.numBones;
+        modelManifest.numTextureTransforms = preparedModel.reserveInfo.numTextureTransforms;
+        modelManifest.isAnimated = preparedModel.isAnimated;
     }
 
     // Add Decoration Data
     {
         ZoneScopedN("Add Decoration Data");
 
-        modelManifest.numDecorationSets = model.modelHeader.numDecorationSets;
+        modelManifest.numDecorationSets = static_cast<u32>(preparedModel.decorationSets.size());
         modelManifest.decorationSetOffset = modelOffsets.decorationSetStartIndex;
 
         if (modelManifest.numDecorationSets)
@@ -1994,10 +2030,10 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             std::vector<Model::ComplexModel::DecorationSet>& decorationSets = _modelDecorationSets;
 
             void* dst = &decorationSets[modelManifest.decorationSetOffset];
-            void* src = model.decorationSets.data();
-            size_t size = sizeof(Model::ComplexModel::DecorationSet) * model.decorationSets.size();
+            const void* src = preparedModel.decorationSets.data();
+            size_t size = sizeof(Model::ComplexModel::DecorationSet) * preparedModel.decorationSets.size();
 
-            if (modelManifest.decorationSetOffset + model.decorationSets.size() > decorationSets.size())
+            if (modelManifest.decorationSetOffset + preparedModel.decorationSets.size() > decorationSets.size())
             {
                 NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy decorationSets outside array");
             }
@@ -2005,7 +2041,7 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             memcpy(dst, src, size);
         }
 
-        modelManifest.numDecorations = model.modelHeader.numDecorations;
+        modelManifest.numDecorations = static_cast<u32>(preparedModel.decorations.size());
         modelManifest.decorationOffset = modelOffsets.decorationStartIndex;
 
         if (modelManifest.numDecorations)
@@ -2013,10 +2049,10 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
             std::vector<Model::ComplexModel::Decoration>& decorations = _modelDecorations;
 
             void* dst = &decorations[modelManifest.decorationOffset];
-            void* src = model.decorations.data();
-            size_t size = sizeof(Model::ComplexModel::Decoration) * model.decorations.size();
+            const void* src = preparedModel.decorations.data();
+            size_t size = sizeof(Model::ComplexModel::Decoration) * preparedModel.decorations.size();
 
-            if (modelManifest.decorationOffset + model.decorations.size() > decorations.size())
+            if (modelManifest.decorationOffset + preparedModel.decorations.size() > decorations.size())
             {
                 NC_LOG_CRITICAL("ModelRenderer : Tried to memcpy decorations outside array");
             }
@@ -2028,8 +2064,10 @@ u32 ModelRenderer::LoadModel(const std::string& name, Model::ComplexModel& model
     return modelOffsets.modelIndex;
 }
 
-u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u32 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet)
+u32 ModelRenderer::AddPlacementInstance(entt::entity entityID, u32 modelID, u64 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet)
 {
+    ZoneScopedN("ModelRenderer::AddPlacementInstance");
+
     // Add Instance matrix
     mat4x4 rotationMatrix = glm::toMat4(rotation);
     mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(scale));
@@ -2139,8 +2177,13 @@ u32 ModelRenderer::DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u
 
 u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
+    ZoneScopedN("ModelRenderer::AddInstance");
+
     InstanceOffsets instanceOffsets;
-    AllocateInstance(modelID, instanceOffsets);
+    {
+        ZoneScopedN("Allocate Renderer Instance");
+        AllocateInstance(modelID, instanceOffsets);
+    }
 
     ModelManifest& manifest = _modelManifests[modelID];
 
@@ -2178,6 +2221,7 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
     if (model && displayInfoPacked != std::numeric_limits<u64>().max())
     {
+        ZoneScopedN("Build Instance Display Info");
         ReplaceTextureUnits(entityID, modelID, model, instanceOffsets.instanceIndex, displayInfoPacked);
     }
 
@@ -2203,8 +2247,11 @@ u32 ModelRenderer::AddInstance(entt::entity entityID, u32 modelID, Model::Comple
 
 void ModelRenderer::RemoveInstance(u32 instanceID)
 {
+    ZoneScopedN("ModelRenderer::RemoveInstance");
+
     InstanceData& instanceData = _instanceDatas[instanceID];
-    ModelManifest& manifest = _modelManifests[instanceData.modelID];
+    const u32 removedModelID = instanceData.modelID;
+    ModelManifest& manifest = _modelManifests[removedModelID];
 
     // Capture the shadow footprint before the instance data dies, its baked static shadow must go
     QueueShadowInvalidation(instanceID, _instanceMatrices[instanceID]);
@@ -2244,6 +2291,8 @@ void ModelRenderer::RemoveInstance(u32 instanceID)
 
 void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 modelID, Model::ComplexModel* model, const mat4x4& transformMatrix, u64 displayInfoPacked)
 {
+    ZoneScopedN("ModelRenderer::ModifyInstance");
+
     InstanceData& instanceData = _instanceDatas[instanceID];
 
     // The old shadow footprint's cached static pages must refresh, the new one queues below once
@@ -2289,8 +2338,6 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
                 instanceData.animatedVertexOffset = animatedVertexOffset;
             }
 
-            // Allocate new animation data
-            AddAnimationInstance(instanceID);
         }
     }
 
@@ -2309,6 +2356,7 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
     // Replace texture units
     if (model && displayInfoPacked != std::numeric_limits<u64>().max())
     {
+        ZoneScopedN("Rebuild Instance Display Info");
         ReplaceTextureUnits(entityID, modelID, model, instanceID, displayInfoPacked);
     }
 
@@ -2335,6 +2383,8 @@ void ModelRenderer::ModifyInstance(entt::entity entityID, u32 instanceID, u32 mo
 
 void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Model::ComplexModel* model, u32 instanceID, u64 displayInfoPacked)
 {
+    ZoneScopedN("ModelRenderer::ReplaceTextureUnits");
+
     entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
     auto& clientDBSingleton = dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
@@ -2354,6 +2404,20 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
     ECS::Components::UnitCustomization* unitCustomization = nullptr;
 
     ModelManifest& manifest = _modelManifests[modelID];
+    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
+    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
+    {
+        ZoneScopedN("Remove Previous Display Info Manifest");
+        bool wasDynamicModel = instanceManifest.isDynamic;
+
+        // Remove old dynamic displayInfoManifest if it exists
+        if (wasDynamicModel)
+        {
+            std::scoped_lock lock(_displayInfoManifestsMutex);
+            if (_uniqueDisplayInfoManifests.contains(instanceManifest.displayInfoPacked))
+                _uniqueDisplayInfoManifests.erase(instanceManifest.displayInfoPacked);
+        }
+    }
 
     auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((displayInfoPacked >> 32) & 0x7);
     u32 displayID = displayInfoPacked & 0xFFFFFFFF;
@@ -2365,6 +2429,8 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
     if (!displayInfoManifests->contains(displayInfoKey))
     {
+        ZoneScopedN("Build Display Info Manifest Cache Miss");
+
         switch (displayInfoType)
         {
             case Database::Unit::DisplayInfoType::Creature:
@@ -2462,8 +2528,8 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
         if (creatureDisplayInfoExtra)
         {
-            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
-            isPrebaked = textureSingleton.textureHashToPath.contains(bakedTextureHash);
+            u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+            isPrebaked = ServiceLocator::GetPactStorage()->FileExists(bakedTextureHash);
             useCustomSkin = !isPrebaked;
 
             unitRace = static_cast<GameDefine::UnitRace>(creatureDisplayInfoExtra->raceID);
@@ -2486,7 +2552,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
 
         // Allocate new texture units
         TextureUnitOffsets textureUnitOffsets;
-        AllocateTextureUnits(*model, textureUnitOffsets);
+        AllocateTextureUnits(model->modelHeader.numTextureUnits, textureUnitOffsets);
 
         DisplayInfoManifest displayInfoManifest;
         displayInfoManifest.overrideTextureDatas = true;
@@ -2540,7 +2606,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         continue;
 
                     Model::ComplexModel::Texture& cTexture = model->textures[textureIndex];
-                    u32 textureHash = cTexture.textureHash;
+                    u64 textureHash = cTexture.textureHash;
 
                     if (cTexture.type == Model::ComplexModel::Texture::Type::None)
                     {
@@ -2550,7 +2616,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                     {
                         if (isPrebaked)
                         {
-                            u32 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
+                            u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(creatureDisplayInfoExtra->bakedTexture);
                             textureHash = bakedTextureHash;
                         }
                         else if (useCustomSkin)
@@ -2579,7 +2645,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                                 {
                                     if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
                                     {
-                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        const std::vector<u64>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
                                         textureHash = textureHashes[0];
                                     }
                                 }
@@ -2601,7 +2667,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                                 {
                                     if (textureSingleton.materialResourcesIDToTextureHashes.contains(materialResourcesID))
                                     {
-                                        const std::vector<u32>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
+                                        const std::vector<u64>& textureHashes = textureSingleton.materialResourcesIDToTextureHashes[materialResourcesID];
                                         textureHash = textureHashes[0];
                                     }
                                 }
@@ -2634,8 +2700,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[0];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin2)
@@ -2643,8 +2708,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[1];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
                     else if (cTexture.type == Model::ComplexModel::Texture::Type::MonsterSkin3)
@@ -2652,12 +2716,11 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                         if (creatureDisplayInfo)
                         {
                             u32 textureStringIndex = creatureDisplayInfo->textureVariations[2];
-                            const std::string& texturePath = creatureDisplayInfoStorage->GetString(textureStringIndex);
-                            textureHash = StringUtils::fnv1a_32(texturePath.c_str(), texturePath.length());
+                            textureHash = creatureDisplayInfoStorage->GetStringHash(textureStringIndex);
                         }
                     }
 
-                    if (textureHash != std::numeric_limits<u32>().max())
+                    if (textureHash != std::numeric_limits<u64>().max())
                     {
                         TextureLoadRequest textureLoadRequest =
                         {
@@ -2703,19 +2766,6 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
         displayInfoManifests->insert({ displayInfoKey, std::move(displayInfoManifest) });
     }
 
-    InstanceManifest& instanceManifest = _instanceManifests[instanceID];
-    if (instanceManifest.displayInfoPacked != std::numeric_limits<u64>().max())
-    {
-        bool wasDynamicModel = (instanceManifest.displayInfoPacked >> 63) & 0x1;
-
-        // Remove old dynamic displayInfoManifest if it exists
-        if (wasDynamicModel)
-        {
-            std::scoped_lock lock(_displayInfoManifestsMutex);
-            if (_uniqueDisplayInfoManifests.contains(instanceManifest.displayInfoPacked))
-                _uniqueDisplayInfoManifests.erase(instanceManifest.displayInfoPacked);
-        }
-    }
     instanceManifest.displayInfoPacked = displayInfoKey;
     instanceManifest.isDynamic = isDynamicModel;
 }
@@ -2938,6 +2988,8 @@ bool ModelRenderer::SetUninstancedTextureTransformMatricesAsDirty(u32 modelID, u
 
 bool ModelRenderer::AddAnimationInstance(u32 instanceID)
 {
+    ZoneScopedN("ModelRenderer::AddAnimationInstance");
+
     if (instanceID >= _instanceDatas.Count())
     {
         return false;
@@ -3066,6 +3118,7 @@ bool ModelRenderer::SetTextureTransformMatricesAsDirty(u32 instanceID, u32 local
 void ModelRenderer::CreatePermanentResources()
 {
     ZoneScoped;
+
     CreateModelPipelines();
 
     RenderResources& resources = _gameRenderer->GetRenderResources();
@@ -3093,10 +3146,22 @@ void ModelRenderer::CreatePermanentResources()
     u32 arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
-    Renderer::TextureDesc debugTextureDesc;
-    debugTextureDesc.path = "Data/Texture/spells/frankcube.dds";
 
-    _renderer->LoadTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
+    u64 debugTextureHash = Util::AssetPath::Hash("texture/spells/frankcube.dds");
+    PACT::PactFileHandle fileHandle;
+    if (ServiceLocator::GetPactStorage()->ReadFile(debugTextureHash, fileHandle) == PACT::PactReadResult::Success)
+    {
+        Renderer::DataTextureDesc debugTextureDesc;
+        debugTextureDesc.hash = debugTextureHash;
+        debugTextureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+        debugTextureDesc.size = fileHandle.GetSize();
+
+        _renderer->LoadDataTextureIntoArray(debugTextureDesc, _textures, arrayIndex);
+    }
+    else
+    {
+        NC_LOG_ERROR("[ModelRenderer] : Failed to load Debug Texture");
+    }
 
     _textureLoadWork.resize(256);
     _dirtyTextureUnitOffsets.reserve(256);
@@ -3116,11 +3181,15 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
+        //samplerDesc.minLOD = 0;
+        //samplerDesc.maxLOD = 0;
 
         Renderer::SamplerID samplerID = _renderer->CreateSampler(samplerDesc);
         _samplers.push_back(samplerID);
@@ -3130,7 +3199,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressV = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -3144,7 +3215,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::CLAMP;
         samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -3158,7 +3231,9 @@ void ModelRenderer::CreatePermanentResources()
     {
         Renderer::SamplerDesc samplerDesc;
         samplerDesc.enabled = true;
-        samplerDesc.filter = Renderer::SamplerFilter::MIN_MAG_MIP_LINEAR;
+        samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
+        samplerDesc.maxAnisotropy = 16;
+        samplerDesc.mipLODBias = 0.0f;
         samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
         samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;
@@ -3481,8 +3556,15 @@ void ModelRenderer::InitDescriptorSets()
 
 }
 
-void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelOffsets& offsets)
+void ModelRenderer::AssertOwnerThread() const
 {
+    NC_ASSERT(std::this_thread::get_id() == _ownerThreadID, "ModelRenderer mutation must run on its owner thread");
+}
+
+void ModelRenderer::AllocateModel(const ModelLoading::PreparedRenderModel& preparedModel, ModelOffsets& offsets)
+{
+    ZoneScopedN("ModelRenderer::AllocateModel");
+
     std::scoped_lock lock(_modelOffsetsMutex);
 
     offsets.modelIndex = _cullingDatas.Add();
@@ -3491,32 +3573,38 @@ void ModelRenderer::AllocateModel(const Model::ComplexModel& model, ModelOffsets
     _modelManifests.resize(_modelManifests.size() + 1);
     _modelManifestsInstancesMutexes.push_back(std::make_unique<std::mutex>());
 
-    offsets.verticesStartIndex = _vertices.AddCount(model.modelHeader.numVertices);
-    offsets.indicesStartIndex = _indices.AddCount(model.modelHeader.numIndices);
+    offsets.verticesStartIndex = _vertices.AddCount(static_cast<u32>(preparedModel.vertices.size()));
+    offsets.indicesStartIndex = _indices.AddCount(static_cast<u32>(preparedModel.indices.size()));
 
     offsets.decorationSetStartIndex = static_cast<u32>(_modelDecorationSets.size());
-    _modelDecorationSets.resize(offsets.decorationSetStartIndex + model.modelHeader.numDecorationSets);
+    _modelDecorationSets.resize(offsets.decorationSetStartIndex + preparedModel.decorationSets.size());
 
     offsets.decorationStartIndex = static_cast<u32>(_modelDecorations.size());
-    _modelDecorations.resize(offsets.decorationStartIndex + model.modelHeader.numDecorations);
+    _modelDecorations.resize(offsets.decorationStartIndex + preparedModel.decorations.size());
 }
 
 void ModelRenderer::AllocateTextureData(u32 numTextureDatas, TextureDataOffsets& offsets)
 {
+    ZoneScopedN("ModelRenderer::AllocateTextureData");
+
     std::scoped_lock lock(_textureDataOffsetsMutex);
 
     offsets.textureDatasStartIndex = _textureDatas.AddCount(numTextureDatas);
 }
 
-void ModelRenderer::AllocateTextureUnits(const Model::ComplexModel& model, TextureUnitOffsets& offsets)
+void ModelRenderer::AllocateTextureUnits(u32 numTextureUnits, TextureUnitOffsets& offsets)
 {
+    ZoneScopedN("ModelRenderer::AllocateTextureUnits");
+
     std::scoped_lock lock(_textureOffsetsMutex);
 
-    offsets.textureUnitsStartIndex = _textureUnits.AddCount(model.modelHeader.numTextureUnits);
+    offsets.textureUnitsStartIndex = _textureUnits.AddCount(numTextureUnits);
 }
 
 void ModelRenderer::AllocateAnimation(u32 modelID, AnimationOffsets& offsets)
 {
+    ZoneScopedN("ModelRenderer::AllocateAnimation");
+
     std::scoped_lock lock(_animationOffsetsMutex);
 
     ModelManifest& manifest = _modelManifests[modelID];
@@ -3527,6 +3615,8 @@ void ModelRenderer::AllocateAnimation(u32 modelID, AnimationOffsets& offsets)
 
 void ModelRenderer::AllocateInstance(u32 modelID, InstanceOffsets& offsets)
 {
+    ZoneScopedN("ModelRenderer::AllocateInstance");
+
     std::scoped_lock lock(_instanceOffsetsMutex);
 
     ModelManifest& manifest = _modelManifests[modelID];
@@ -3544,6 +3634,8 @@ void ModelRenderer::AllocateInstance(u32 modelID, InstanceOffsets& offsets)
 
 void ModelRenderer::AllocateDrawCalls(u32 modelID, DrawCallOffsets& offsets)
 {
+    ZoneScopedN("ModelRenderer::AllocateDrawCalls");
+
     std::scoped_lock lock(_drawCallOffsetsMutex);
 
     ModelManifest& manifest = _modelManifests[modelID];
@@ -3885,6 +3977,7 @@ void ModelRenderer::CompactInstanceRefs()
                 drawData.baseInstanceLookupOffset = numTotalInstances;
                 numTotalInstances += numEnabledInstancesInDraw;
             }
+
         }
 
         u32 numInstanceRefs = instanceRefs.Count();
@@ -3903,10 +3996,14 @@ void ModelRenderer::SyncToGPU()
     ZoneScopedN("ModelRenderer::SyncToGPU");
     RenderResources& resources = _gameRenderer->GetRenderResources();
 
-    CulledRenderer::SyncToGPU();
+    {
+        ZoneScopedN("Sync Base Culled Renderer To GPU");
+        CulledRenderer::SyncToGPU();
+    }
 
     // Sync Vertex buffer to GPU
     {
+        ZoneScopedN("Sync Model Vertices To GPU");
         if (_vertices.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_packedModelVertices"_h, _vertices.GetBuffer());
@@ -3915,6 +4012,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync Animated Vertex buffer to GPU
     {
+        ZoneScopedN("Sync Animated Model Vertices To GPU");
         size_t currentSizeInBuffer = _animatedVertices.Size();
         size_t numAnimatedVertices = _animatedVerticesIndex;
         size_t byteSize = numAnimatedVertices * sizeof(PackedAnimatedVertexPositions);
@@ -3932,6 +4030,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync Index buffer to GPU
     {
+        ZoneScopedN("Sync Model Indices To GPU");
         if (_indices.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_modelIndices"_h, _indices.GetBuffer());
@@ -3940,6 +4039,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync TextureDatas buffer to GPU
     {
+        ZoneScopedN("Sync Model Texture Data To GPU");
         if (_textureDatas.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_packedModelTextureDatas"_h, _textureDatas.GetBuffer());
@@ -3948,6 +4048,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync TextureUnit buffer to GPU
     {
+        ZoneScopedN("Sync Model Texture Units To GPU");
         if (_textureUnits.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_modelTextureUnits"_h, _textureUnits.GetBuffer());
@@ -3956,6 +4057,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync InstanceDatas buffer to GPU
     {
+        ZoneScopedN("Sync Model Instance Data To GPU");
         if (_instanceDatas.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_modelInstanceDatas"_h, _instanceDatas.GetBuffer());
@@ -3964,6 +4066,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync InstanceMatrices buffer to GPU
     {
+        ZoneScopedN("Sync Model Instance Matrices To GPU");
         if (_instanceMatrices.SyncToGPU(_renderer))
         {
             _opaqueCullingResources.GetCullingDescriptorSet().Bind("_instanceMatrices"_h, _instanceMatrices.GetBuffer());
@@ -3975,6 +4078,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync BoneMatrices buffer to GPU
     {
+        ZoneScopedN("Sync Model Bone Matrices To GPU");
         if (_boneMatrices.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_instanceBoneMatrices"_h, _boneMatrices.GetBuffer());
@@ -3983,6 +4087,7 @@ void ModelRenderer::SyncToGPU()
 
     // Sync TextureTransformMatrices buffer to GPU
     {
+        ZoneScopedN("Sync Model Texture Transforms To GPU");
         if (_textureTransformMatrices.SyncToGPU(_renderer))
         {
             resources.modelDescriptorSet.Bind("_instanceTextureTransformMatrices"_h, _textureTransformMatrices.GetBuffer());
@@ -3990,15 +4095,21 @@ void ModelRenderer::SyncToGPU()
     }
 
     bool forceRecount = _instancesDirty;
-    _opaqueCullingResources.SyncToGPU(forceRecount);
-    _transparentCullingResources.SyncToGPU(forceRecount);
-    _opaqueSkyboxCullingResources.SyncToGPU(forceRecount);
-    _transparentSkyboxCullingResources.SyncToGPU(forceRecount);
+    {
+        ZoneScopedN("Sync Model Culling Resources To GPU");
+        _opaqueCullingResources.SyncToGPU(forceRecount);
+        _transparentCullingResources.SyncToGPU(forceRecount);
+        _opaqueSkyboxCullingResources.SyncToGPU(forceRecount);
+        _transparentSkyboxCullingResources.SyncToGPU(forceRecount);
+    }
 
-    BindCullingResource(_opaqueCullingResources);
-    BindCullingResource(_transparentCullingResources);
-    BindCullingResource(_opaqueSkyboxCullingResources);
-    BindCullingResource(_transparentSkyboxCullingResources);
+    {
+        ZoneScopedN("Bind Model Culling Resources");
+        BindCullingResource(_opaqueCullingResources);
+        BindCullingResource(_transparentCullingResources);
+        BindCullingResource(_opaqueSkyboxCullingResources);
+        BindCullingResource(_transparentSkyboxCullingResources);
+    }
 
     // Rebuild the SVSM dynamic instance mask from the classifier's live set (Update drained the
     // raw signals into it earlier this frame). Nothing live now and nothing masked last frame

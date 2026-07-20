@@ -13,7 +13,7 @@
 
 #include <FileFormat/Novus/Map/MapChunk.h>
 
-#include <Input/InputManager.h>
+#include <Filesystem/PactStorage.h>
 
 #include <Renderer/Renderer.h>
 #include <Renderer/RenderGraph.h>
@@ -45,6 +45,8 @@ TerrainRenderer::TerrainRenderer(Renderer::Renderer* renderer, GameRenderer* gam
     , _geometryFillPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmDrawDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
+    ZoneScoped;
+
     if (CVAR_TerrainValidateTransfers.Get())
     {
         _cellIndices.SetValidation(true);
@@ -819,7 +821,7 @@ void TerrainRenderer::AllocateChunks(u32 numChunks, TerrainReserveOffsets& reser
     reserveOffsets.vertexDataStartOffset = chunkVertexStartIndex;
 }
 
-u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos)
+u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos)
 {
     ZoneScoped;
 
@@ -829,23 +831,26 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
     return AddChunk(chunkHash, chunk, chunkGridPos, reserveOffsets.chunkDataStartOffset, reserveOffsets.cellDataStartOffset, reserveOffsets.vertexDataStartOffset);
 }
 
-u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset)
+u32 TerrainRenderer::AddChunk(u32 chunkHash, const Map::Chunk* chunk, ivec2 chunkGridPos, u32 chunkDataStartOffset, u32 cellDataStartOffset, u32 vertexDataStartOffset)
 {
     EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
-    auto& textureSingleton = registries->dbRegistry->ctx().get<ECS::Singletons::TextureSingleton>();
+    auto* pactStorage = ServiceLocator::GetPactStorage();
 
     // Load the chunk alpha map texture
     u32 alphaMapTextureIndex = 0;
 
-    u32 alphaMapStringID = static_cast<u32>(chunk->chunkAlphaMapTextureHash);
-    if (alphaMapStringID != std::numeric_limits<u32>().max())
+    u64 alphaMapStringID = chunk->chunkAlphaMapTextureHash;
+    if (alphaMapStringID != std::numeric_limits<u64>().max())
     {
-        if (textureSingleton.textureHashToPath.contains(alphaMapStringID))
+        PACT::PactFileHandle fileHandle;
+        if (pactStorage->ReadFile(alphaMapStringID, fileHandle) == PACT::PactReadResult::Success)
         {
-            Renderer::TextureDesc chunkAlphaMapDesc;
-            chunkAlphaMapDesc.path = textureSingleton.textureHashToPath[alphaMapStringID];
+            Renderer::DataTextureDesc textureDesc;
+            textureDesc.hash = alphaMapStringID;
+            textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+            textureDesc.size = fileHandle.GetSize();
 
-            _renderer->LoadTextureIntoArray(chunkAlphaMapDesc, _alphaTextures, alphaMapTextureIndex);
+            Renderer::TextureID textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _alphaTextures, alphaMapTextureIndex);
         }
     }
 
@@ -858,8 +863,8 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
 
     // Set up texture descriptor
     u32 maxDiffuseID = 0;
-    Renderer::TextureDesc textureDesc;
-    textureDesc.path.resize(512);
+
+    Renderer::DataTextureDesc textureDesc;
 
     // Then we do a shared lock for operations that only access existing data, letting us do this part in parallel
     {
@@ -886,23 +891,25 @@ u32 TerrainRenderer::AddChunk(u32 chunkHash, Map::Chunk* chunk, ivec2 chunkGridP
 
             // Handle textures
             u8 layerCount = 0;
-            for (const u32 layerTextureID : chunk->cellsData.layerTextureIDs[cellID])
+            for (const u64 layerTextureID : chunk->cellsData.layerTextureIDs[cellID])
             {
                 if (layerTextureID == 0 || layerTextureID == Terrain::TEXTURE_ID_INVALID)
                 {
                     break;
                 }
 
-                const std::string& texturePath = textureSingleton.textureHashToPath[layerTextureID];
-                if (texturePath.size() == 0)
+                PACT::PactFileHandle fileHandle;
+                if (pactStorage->ReadFile(layerTextureID, fileHandle) != PACT::PactReadResult::Success)
                     continue;
 
-                textureDesc.path = texturePath;
+                textureDesc.hash = layerTextureID;
+                textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+                textureDesc.size = fileHandle.GetSize();
 
                 u32 diffuseID = 0;
                 {
                     ZoneScopedN("LoadTexture");
-                    Renderer::TextureID textureID = _renderer->LoadTextureIntoArray(textureDesc, _textures, diffuseID);
+                    Renderer::TextureID textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, diffuseID);
                 }
 
                 cellData.diffuseIDs[layerCount++] = diffuseID;
@@ -995,6 +1002,7 @@ void TerrainRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuild
 void TerrainRenderer::CreatePermanentResources()
 {
     ZoneScoped;
+
     CreatePipelines();
     InitDescriptorSets();
 

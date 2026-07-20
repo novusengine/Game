@@ -44,23 +44,83 @@ local unitFrames : PlayerUnitFramesAPI =
     targetAuras = { }
 };
 
+local unitTargetIDs : { [number] : number } = {};
+
 local function RegisterTemplates()
+    local frameSliceInsets = Box.new(2, 2, 2, 2);
+
+    UI.RegisterPanelTemplate("UnitFrameOuter",
+    {
+        background = "texture/ui/fantasy/1x/border/panel-border-015.png",
+        nineSliceInsets = frameSliceInsets,
+        color = vector.create(0.44, 0.46, 0.43),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameBackground",
+    {
+        cornerRadius = 2.0,
+        color = vector.create(0.065, 0.07, 0.064),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameHeaderRule",
+    {
+        color = vector.create(0.44, 0.46, 0.43),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameBarTrack",
+    {
+        cornerRadius = 1.5,
+        color = vector.create(0.035, 0.04, 0.035),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameResourceBorder",
+    {
+        cornerRadius = 1.5,
+        color = vector.create(0.035, 0.04, 0.035),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameResourceTrack",
+    {
+        cornerRadius = 0.75,
+        color = vector.create(0.04, 0.043, 0.04),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameLevelBadge",
+    {
+        cornerRadius = 1.5,
+        color = vector.create(0.30, 0.32, 0.29),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameLevelBadgeFill",
+    {
+        cornerRadius = 0.5,
+        color = vector.create(0.05, 0.055, 0.049),
+    });
+
+    UI.RegisterTextTemplate("UnitFrameLevel",
+    {
+        font = "Data/Fonts/OpenSans-Regular.ttf",
+        size = 7.0,
+        color = vector.create(0.86, 0.82, 0.68),
+        borderSize = 1.0,
+        borderColor = vector.create(0.0, 0.0, 0.0),
+    });
+
     UI.RegisterTextTemplate("UnitFrameName",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
-        size = 9.0,
-        --color = vector.create(0.0/255.0, 132.0/255.0, 241.0/255.0),
+        size = 8.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("UnitFrameHealth",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
-        size = 10.0,
+        size = 9.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
@@ -69,7 +129,7 @@ local function RegisterTemplates()
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 8.0,
         color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
@@ -78,19 +138,31 @@ local function RegisterTemplates()
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 9.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
-        borderSize = 1.2,
+        borderSize = 1.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
     
     UI.RegisterPanelTemplate("UnitFrameHealthFill",
     {
-        cornerRadius = 0.0,
-        color = vector.create(0.0, 0.6, 0.0),
+        cornerRadius = 1.0,
+        color = vector.create(0.42, 0.55, 0.08),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameHealthDamageTrail",
+    {
+        cornerRadius = 1.0,
+        color = vector.create(0.68, 0.20, 0.055),
+    });
+
+    UI.RegisterPanelTemplate("UnitFrameHealthHealingTrail",
+    {
+        cornerRadius = 1.0,
+        color = vector.create(0.62, 0.90, 0.18),
     });
 
     UI.RegisterPanelTemplate("UnitFrameResourceFill",
     {
-        cornerRadius = 0.0,
+        cornerRadius = 1.0,
         color = vector.create(0.0, 0.4, 1.0),
     });
 
@@ -98,14 +170,11 @@ local function RegisterTemplates()
     {
         cornerRadius = 2.0,
         color = vector.create(0.33, 0.33, 0.33),
-        --borderSize = 1.0,
-        --borderColor = vector.create(0.0, 0.0, 0.0),
-        --background = "Data/Texture/interface/framegeneral/ui-background-marble.dds"
     });
 
     UI.RegisterTextTemplate("ActionBarButtonText",
     {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 1.0,
@@ -124,19 +193,29 @@ local function CreateUnitFrame(unitID : number, posX : number, posY : number, si
     return unitFrame;
 end
 
-local function UpdateUnitFrame(unitFrame : UIUnitFrame.UnitFrame)
+local function RefreshUnitFrameReaction(unitFrame : UIUnitFrame.UnitFrame)
     local unitID = unitFrame:GetUnitID();
+    local localUnitID = Unit.GetLocal();
+    if unitID == INVALID_UNIT_ID or localUnitID == INVALID_UNIT_ID then
+        return;
+    end
+
+    unitFrame:SetUnitReaction(Unit.GetReaction(unitID), Unit.GetLevel(localUnitID));
+end
+
+local function UpdateUnitFrame(unitFrame : UIUnitFrame.UnitFrame, deltaTime : number, smoothBars : boolean)
+    local unitID = unitFrame:GetUnitID();
+    local localUnitID = Unit.GetLocal();
+    local playerLevel = if localUnitID == INVALID_UNIT_ID then 0 else Unit.GetLevel(localUnitID);
+    unitFrame:SetUnitLevel(Unit.GetLevel(unitID), playerLevel);
 
     local health, maxHealth = Unit.GetHealth(unitID);
-    unitFrame:SetHealth(math.ceil(health));
-    unitFrame:SetMaxHealth(math.ceil(maxHealth));
-    unitFrame:UpdateHealth();
+    unitFrame:SetHealthValues(math.ceil(health), math.ceil(maxHealth));
 
     local resourceType = Unit.GetResourceType(unitID);
     local resource, maxResource = Unit.GetResource(unitID, resourceType);
-    unitFrame:SetResource(math.ceil(resource));
-    unitFrame:SetMaxResource(math.ceil(maxResource));
-    unitFrame:UpdateResource();
+    unitFrame:SetResourceValues(math.ceil(resource), math.ceil(maxResource));
+    unitFrame:UpdateBarFills(deltaTime, smoothBars);
 end
 
 local function AddAuraToTable(auraTable : AuraTable, unitID : number, auraID : number, spellID : number, duration : number, stacks : number)
@@ -190,7 +269,7 @@ local function AddAuraToTable(auraTable : AuraTable, unitID : number, auraID : n
     if iconInfo then
         aura.background:SetBackground(iconInfo.Texture);
     else
-        aura.background:SetBackground("Data/Textures/Interface/icons/inv_misc_questionmark.dds");
+        aura.background:SetBackground("texture/ui/icons/50x50/white/question.png");
     end
 
     aura.timerText = aura.background:NewText("", 0, 2, 1, "UnitFrameAuraText");
@@ -227,7 +306,6 @@ local function RemoveAuraFromTable(auraTable : AuraTable, auraID : number)
 
     local aura = auraTable.auraList[index];
     UI.DestroyWidget(aura.background);
-    UI.DestroyWidget(aura.timerText);
 
     table.remove(auraTable.auraList, index);
     auraTable.auraIDToIndex[auraID] = nil;
@@ -244,6 +322,46 @@ local function RemoveAuraFromTable(auraTable : AuraTable, auraID : number)
     end
 end
 
+local function ClearAuraTable(auraTable : AuraTable)
+    for _, aura in ipairs(auraTable.auraList) do
+        UI.DestroyWidget(aura.background);
+    end
+
+    auraTable.auraList = {};
+    auraTable.auraIDToIndex = {};
+end
+
+local function ClearTargetUnitFrame()
+    Unit.ClearTarget();
+    unitFrames.targetUnitFrame:SetEnabled(false);
+    unitFrames.targetUnitFrame:SetTargetingPlayer(false);
+    unitFrames.targetUnitFrame:SetUnitID(INVALID_UNIT_ID);
+    unitFrames.targetBuffBar.widget:SetEnabled(false);
+    ClearAuraTable(unitFrames.targetBuffBar);
+end
+
+local function InitializePlayerUnitFrame(unitID : number)
+    if unitFrames.playerUnitFrame == nil then
+        return;
+    end
+
+    if unitID == INVALID_UNIT_ID then
+        unitFrames.playerUnitFrame:SetEnabled(false);
+        unitFrames.playerUnitFrame:SetUnitID(INVALID_UNIT_ID);
+        return;
+    end
+
+    unitFrames.playerUnitFrame:SetUnitID(unitID);
+    unitFrames.playerUnitFrame:SetUnitName(Unit.GetName(unitID));
+    unitFrames.playerUnitFrame:SetTargetingPlayer(false);
+    RefreshUnitFrameReaction(unitFrames.playerUnitFrame);
+
+    local resourceType = Unit.GetResourceType(unitID);
+    unitFrames.playerUnitFrame:UpdateResourceFillColor(resourceType);
+    UpdateUnitFrame(unitFrames.playerUnitFrame, 0, false);
+    unitFrames.playerUnitFrame:SetEnabled(true);
+end
+
 local function OnGameLoaded(eventID : number, data : any)
     local isInWorld = IsInWorld();
 
@@ -251,19 +369,20 @@ local function OnGameLoaded(eventID : number, data : any)
 
     -- Ensure UnitFrames Canvas is created
     local canvas : Canvas = UI.GetCanvas("UnitFrames", 0, 0, 1920, 1080);
-    unitFrames.playerUnitFrame = CreateUnitFrame(INVALID_UNIT_ID, 750, 550, 150, 50);
+    unitFrames.playerUnitFrame = CreateUnitFrame(INVALID_UNIT_ID, 770, 500, 170, 50);
     unitFrames.playerUnitFrame:SetEnabled(false);
 
-    unitFrames.targetUnitFrame = CreateUnitFrame(INVALID_UNIT_ID, 1170, 550, 150, 50);
+    unitFrames.targetUnitFrame = CreateUnitFrame(INVALID_UNIT_ID, 1150, 500, 170, 50);
     unitFrames.targetUnitFrame:SetEnabled(false);
 
     unitFrames.playerBuffBar = {};
-    unitFrames.playerBuffBar.widget = canvas:NewWidget(675, 580, 1);
+    unitFrames.playerBuffBar.widget = canvas:NewWidget(685, 530, 1);
     unitFrames.playerBuffBar.auraList = {};
     unitFrames.playerBuffBar.auraIDToIndex = {};
 
     unitFrames.targetBuffBar = {};
-    unitFrames.targetBuffBar.widget = canvas:NewWidget(1095, 580, 1);
+    unitFrames.targetBuffBar.widget = canvas:NewWidget(1065, 530, 1);
+    unitFrames.targetBuffBar.widget:SetEnabled(false);
     unitFrames.targetBuffBar.auraList = {};
     unitFrames.targetBuffBar.auraIDToIndex = {};
 
@@ -282,9 +401,11 @@ local function OnGameLoaded(eventID : number, data : any)
     actionBar:SetKeyForButton(3, Input.GetKeyValue("3")); -- Key '3'
 
     local localUnitID = Unit.GetLocal();
-    if localUnitID == INVALID_UNIT_ID then
+    if not isInWorld or localUnitID == INVALID_UNIT_ID then
         return;
     end
+
+    InitializePlayerUnitFrame(localUnitID);
 
     local localAuraList = Unit.GetAuras(localUnitID);
     for _, auraInfo in ipairs(localAuraList) do
@@ -295,11 +416,33 @@ end
 local function OnGameUpdated(eventID : number, data : any)
     local isInWorld = IsInWorld();
     if not isInWorld then
+        if unitFrames.playerUnitFrame ~= nil then
+            unitFrames.playerUnitFrame:SetEnabled(false);
+        end
+        if unitFrames.targetUnitFrame ~= nil then
+            unitFrames.targetUnitFrame:SetEnabled(false);
+        end
+        if unitFrames.targetBuffBar.widget ~= nil then
+            unitFrames.targetBuffBar.widget:SetEnabled(false);
+        end
         return;
     end
 
+    if unitFrames.playerUnitFrame == nil or unitFrames.targetUnitFrame == nil then
+        return;
+    end
+
+    if not unitFrames.playerUnitFrame:IsEnabled() then
+        local localUnitID = Unit.GetLocal();
+        if localUnitID ~= INVALID_UNIT_ID then
+            InitializePlayerUnitFrame(localUnitID);
+        end
+    end
+
+    local smoothBars = UI.IsSmoothUnitFrameBarsEnabled();
+
     if unitFrames.playerUnitFrame:IsEnabled() then
-        UpdateUnitFrame(unitFrames.playerUnitFrame);
+        UpdateUnitFrame(unitFrames.playerUnitFrame, data.deltaTime, smoothBars);
         
         -- Update buffs
         for _, aura in ipairs(unitFrames.playerBuffBar.auraList) do
@@ -313,7 +456,7 @@ local function OnGameUpdated(eventID : number, data : any)
     end
 
     if unitFrames.targetUnitFrame:IsEnabled() then
-        UpdateUnitFrame(unitFrames.targetUnitFrame);
+        UpdateUnitFrame(unitFrames.targetUnitFrame, data.deltaTime, smoothBars);
 
         -- Update buffs
         for _, aura in ipairs(unitFrames.targetBuffBar.auraList) do
@@ -328,25 +471,19 @@ local function OnGameUpdated(eventID : number, data : any)
 end
         
 local function OnLocalMoverChanged(eventID : number, data : any)
-    local isInWorld = IsInWorld();
-    if not isInWorld then
+    if not IsInWorld() then
+        if unitFrames.playerUnitFrame ~= nil then
+            unitFrames.playerUnitFrame:SetEnabled(false);
+        end
         return;
     end
 
-     -- Clear existing player buffs
-    if data.moverID == INVALID_UNIT_ID then
-        unitFrames.playerUnitFrame:SetEnabled(false);
-    else
-        unitFrames.playerUnitFrame:SetUnitID(data.moverID);
-        unitFrames.playerUnitFrame:SetUnitName(Unit.GetName(data.moverID))
-        
-        local class = Unit.GetClass(data.moverID);
-        unitFrames.playerUnitFrame:UpdateHealthFillColor(class);
-        
-        local resourceType = Unit.GetResourceType(data.moverID);
-        unitFrames.playerUnitFrame:UpdateResourceFillColor(resourceType);
+    InitializePlayerUnitFrame(data.moverID);
 
-        unitFrames.playerUnitFrame:SetEnabled(true);
+    if unitFrames.targetUnitFrame ~= nil and unitFrames.targetUnitFrame:IsEnabled() then
+        local targetUnitID = unitFrames.targetUnitFrame:GetUnitID();
+        unitFrames.targetUnitFrame:SetTargetingPlayer(unitTargetIDs[targetUnitID] == data.moverID);
+        RefreshUnitFrameReaction(unitFrames.targetUnitFrame);
     end
 end
 
@@ -356,29 +493,30 @@ local function OnTargetChanged(eventID : number, data : any)
         return;
     end
 
+    unitTargetIDs[data.unitID] = data.targetID;
+
     local localUnitID = Unit.GetLocal();
+    if unitFrames.targetUnitFrame ~= nil and data.unitID == unitFrames.targetUnitFrame:GetUnitID() then
+        unitFrames.targetUnitFrame:SetTargetingPlayer(data.targetID == localUnitID);
+    end
+
     if data.unitID ~= localUnitID then
         return;
     end
 
-    -- Clear existing target buffs
-    for _, aura in ipairs(unitFrames.targetBuffBar.auraList) do
-        UI.DestroyWidget(aura.background);
-        UI.DestroyWidget(aura.timerText);
-    end
-    unitFrames.targetBuffBar.auraList = {};
-    unitFrames.targetBuffBar.auraIDToIndex = {};
-
     if data.targetID == INVALID_UNIT_ID then
-        unitFrames.targetUnitFrame:SetEnabled(false);
-        unitFrames.targetBuffBar.widget:SetEnabled(false);
+        ClearTargetUnitFrame();
     else
+        ClearAuraTable(unitFrames.targetBuffBar);
+
         local resourceType = Unit.GetResourceType(data.targetID);
         unitFrames.targetUnitFrame:UpdateResourceFillColor(resourceType)
 
         unitFrames.targetUnitFrame:SetUnitID(data.targetID);
         unitFrames.targetUnitFrame:SetUnitName(Unit.GetName(data.targetID))
-        UpdateUnitFrame(unitFrames.targetUnitFrame);
+        unitFrames.targetUnitFrame:SetTargetingPlayer(unitTargetIDs[data.targetID] == localUnitID);
+        RefreshUnitFrameReaction(unitFrames.targetUnitFrame);
+        UpdateUnitFrame(unitFrames.targetUnitFrame, 0, false);
 
         unitFrames.targetUnitFrame:SetEnabled(true);
         unitFrames.targetBuffBar.widget:SetEnabled(true);
@@ -388,6 +526,24 @@ local function OnTargetChanged(eventID : number, data : any)
         for _, auraInfo in ipairs(localAuraList) do
             AddAuraToTable(unitFrames.targetBuffBar, data.targetID, auraInfo.auraID, auraInfo.spellID, auraInfo.duration, auraInfo.stacks)
         end
+    end
+end
+
+local function OnUnitRemove(eventID : number, data : any)
+    unitTargetIDs[data.unitID] = nil;
+
+    if data.unitID == unitFrames.targetUnitFrame:GetUnitID() then
+        ClearTargetUnitFrame();
+    end
+end
+
+local function OnUnitReactionChanged(eventID : number, data : any)
+    if unitFrames.playerUnitFrame ~= nil and data.unitID == unitFrames.playerUnitFrame:GetUnitID() then
+        RefreshUnitFrameReaction(unitFrames.playerUnitFrame);
+    end
+
+    if unitFrames.targetUnitFrame ~= nil and data.unitID == unitFrames.targetUnitFrame:GetUnitID() then
+        RefreshUnitFrameReaction(unitFrames.targetUnitFrame);
     end
 end
 
@@ -429,7 +585,9 @@ end
 RegisterEvent(GameEvent.Loaded, OnGameLoaded);
 RegisterEvent(GameEvent.Updated, OnGameUpdated);
 RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged);
+RegisterEvent(UnitEvent.Remove, OnUnitRemove);
 RegisterEvent(UnitEvent.TargetChanged, OnTargetChanged);
+RegisterEvent(UnitEvent.ReactionChanged, OnUnitReactionChanged);
 RegisterEvent(UnitEvent.AuraAdd, OnAuraAdd)
 RegisterEvent(UnitEvent.AuraUpdate, OnAuraUpdate)
 RegisterEvent(UnitEvent.AuraRemove, OnAuraRemove)

@@ -1,20 +1,17 @@
 #pragma once
 #include <Base/Types.h>
-#include <entt/fwd.hpp>
+#include <entt/entity/entity.hpp>
 
 namespace ECS::Singletons
 {
     struct FreeflyingCameraSettings
     {
     public:
-        entt::entity entity;
+        entt::entity entity = entt::null;
 
-        bool captureMouse;
-        bool captureMouseHasMoved;
+        bool captureMouse = false;
+        bool captureMouseHasMoved = false;
 
-        vec2 prevMousePosition;
-
-        f32 mouseSensitivity = 0.05f;
         f32 cameraSpeed = 150.0f;
     };
 }

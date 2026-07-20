@@ -5,31 +5,58 @@ local OptionsContext = require("@src/API/OptionsContext")
 local nameplates = 
 {
     entries = {},
-    localTargetUnitID = nil,
+    deadByUnitID = {},
+    localMoverUnitID = nil,
 };
 
-local function RegisterTemplates()
-    UI.RegisterTextTemplate("PlayerName",
-    {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
-        size = 14.0,
-        color = vector.create(0.0/255.0, 112.0/255.0, 221.0/255.0),
-        borderSize = 0.5,
-        borderColor = vector.create(0.0, 0.0, 0.0),
-    });
+local LOCAL_PLAYER_NAME_COLOR = vector.create(96.0 / 255.0, 96.0 / 255.0, 255.0 / 255.0);
+local HOSTILE_UNIT_NAME_COLOR = vector.create(1.0, 0.0, 0.0);
+local UNFRIENDLY_UNIT_NAME_COLOR = vector.create(0.95, 0.48, 0.18);
+local NEUTRAL_UNIT_NAME_COLOR = vector.create(1.0, 1.0, 0.0);
+local FRIENDLY_UNIT_NAME_COLOR = vector.create(0.0, 1.0, 0.0);
+local DEAD_UNIT_NAME_COLOR = vector.create(0.5, 0.5, 0.5);
 
+local function GetUnitNameColor(unitID : number)
+    local localMoverUnitID = nameplates.localMoverUnitID or Unit.GetLocal();
+    if localMoverUnitID == unitID then
+        return LOCAL_PLAYER_NAME_COLOR;
+    end
+
+    local reaction = Unit.GetReaction(unitID);
+    if reaction == FactionReaction.Hostile then
+        return HOSTILE_UNIT_NAME_COLOR;
+    elseif reaction == FactionReaction.Unfriendly then
+        return UNFRIENDLY_UNIT_NAME_COLOR;
+    elseif reaction == FactionReaction.Friendly then
+        return FRIENDLY_UNIT_NAME_COLOR;
+    end
+    return NEUTRAL_UNIT_NAME_COLOR;
+end
+
+local function RefreshUnitNameColor(unitID : number, nameplate : any, force : boolean?)
+    local health = Unit.GetHealth(unitID);
+    local isDead = health == 0;
+    if not force and nameplates.deadByUnitID[unitID] == isDead then
+        return;
+    end
+
+    nameplates.deadByUnitID[unitID] = isDead;
+    nameplate:SetNameColor(if isDead then DEAD_UNIT_NAME_COLOR else GetUnitNameColor(unitID));
+end
+
+local function RegisterTemplates()
     UI.RegisterTextTemplate("NameplateName",
     {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
-        size = 12.0,
-        color = vector.create(240.0/255.0, 240.0/255.0, 240.0/255.0),
-        borderSize = 1.0,
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
+        size = 13.0,
+        color = NEUTRAL_UNIT_NAME_COLOR,
+        borderSize = 0.0,
         borderColor = vector.create(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("NameplateHealth",
     {
-        font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
+        font = "Data/Fonts/QTFrizQuad.otf", -- Obviously we want a different font
         size = 10.0,
         color = vector.create(240.0/240.0, 240.0/255.0, 240.0/255.0),
         borderSize = 1.0,
@@ -78,14 +105,11 @@ local textDisplayModeCancelCallback = textDisplayModeOption:RegisterOnValueChang
     return true;
 end);
 
-local playerNameTextWidget = nil
-
 local function OnGameLoaded(eventID : number, data : any)
     RegisterTemplates();
 
     -- Ensure Nameplates Canvas is created
-    local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
-    nameplates.localTargetUnitID = nil;
+    UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 end
 
 local function OnGameUpdated(eventID : number, data : any)
@@ -106,6 +130,7 @@ local function OnGameUpdated(eventID : number, data : any)
         end
 
         local unitID = nameplate:GetUnitID();
+        RefreshUnitNameColor(unitID, nameplate);
         nameplate:SetPosToUnit(unitID);
     end
 end
@@ -113,16 +138,23 @@ end
 local function OnUnitAdd(eventID : number, data : any)
     local canvas : Canvas = UI.GetCanvas("Nameplates", 0, 0, 1920, 1080);
 
+    local existingNameplate = nameplates.entries[data.unitID];
+    if existingNameplate ~= nil then
+        existingNameplate:Destroy();
+    end
+
     local nameplate = UINameplate.NewNameplate(canvas, 0, 0, 125, 20, 0, {
         panelTemplate = "DialogBox",
-        textTemplate = "DefaultButtonText",
+        textTemplate = "NameplateName",
 
         unitID = data.unitID,
         unitName = Unit.GetName(data.unitID)
     });
 
+    RefreshUnitNameColor(data.unitID, nameplate, true);
     nameplate:SetMaxHealth(50);
     nameplates.entries[data.unitID] = nameplate;
+    nameplate:SetPosToUnit(data.unitID);
 end
 
 local function OnUnitRemove(eventID : number, data : any)
@@ -133,27 +165,30 @@ local function OnUnitRemove(eventID : number, data : any)
 
     nameplate:Destroy();
     nameplates.entries[data.unitID] = nil;
+    nameplates.deadByUnitID[data.unitID] = nil;
 end
 
-local function OnUnitTargetChanged(eventID : number, data : any)
-    if Unit.GetLocal() == data.unitID then
-        -- Remove highlight from previous target
-        if nameplates.localTargetUnitID ~= nil then
-            local previousNameplate = nameplates.entries[nameplates.localTargetUnitID];
-            if previousNameplate ~= nil then
-                previousNameplate:SetHighlighted(false);
-            end
-        end
+local function OnUnitReactionChanged(eventID : number, data : any)
+    local nameplate = nameplates.entries[data.unitID];
+    if nameplate ~= nil then
+        RefreshUnitNameColor(data.unitID, nameplate, true);
+    end
+end
 
-        -- Highlight new target
-        if data.targetID ~= nil then
-            local newNameplate = nameplates.entries[data.targetID];
-            if newNameplate ~= nil then
-                newNameplate:SetHighlighted(true);
-            end
-        end
+local function OnLocalMoverChanged(eventID : number, data : any)
+    local previousMoverUnitID = nameplates.localMoverUnitID;
+    nameplates.localMoverUnitID = data.moverID;
 
-        nameplates.localTargetUnitID = data.targetID;
+    if previousMoverUnitID ~= nil and previousMoverUnitID ~= data.moverID then
+        local previousNameplate = nameplates.entries[previousMoverUnitID];
+        if previousNameplate ~= nil then
+            RefreshUnitNameColor(previousMoverUnitID, previousNameplate, true);
+        end
+    end
+
+    local localNameplate = nameplates.entries[data.moverID];
+    if localNameplate ~= nil then
+        RefreshUnitNameColor(data.moverID, localNameplate, true);
     end
 end
 
@@ -161,4 +196,5 @@ RegisterEvent(GameEvent.Loaded, OnGameLoaded)
 RegisterEvent(GameEvent.Updated, OnGameUpdated)
 RegisterEvent(UnitEvent.Add, OnUnitAdd)
 RegisterEvent(UnitEvent.Remove, OnUnitRemove)
-RegisterEvent(UnitEvent.TargetChanged, OnUnitTargetChanged)
+RegisterEvent(UnitEvent.ReactionChanged, OnUnitReactionChanged)
+RegisterEvent(GameEvent.LocalMoverChanged, OnLocalMoverChanged)

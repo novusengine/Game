@@ -10,10 +10,15 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
+#include <Filesystem/PactStorage.h>
+
 #include <entt/entt.hpp>
+
+#include <xxhash/xxhash64.h>
 
 #include <filesystem>
 
@@ -50,6 +55,7 @@ namespace ECSUtil::UnitCustomization
 
     bool Refresh()
     {
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
         auto& ctx = registry->ctx();
         auto& clientDBSingleton = ctx.get<ECS::Singletons::ClientDBSingleton>();
@@ -212,14 +218,20 @@ namespace ECSUtil::UnitCustomization
             if (!textureSingleton.materialResourcesIDToTextureHashes.contains(unitCustomizationMaterial.materialResourcesID))
                 return true;
 
-            u32 textureHash = textureSingleton.materialResourcesIDToTextureHashes[unitCustomizationMaterial.materialResourcesID][0];
+            u64 textureHash = textureSingleton.materialResourcesIDToTextureHashes[unitCustomizationMaterial.materialResourcesID][0];
 
-            Renderer::TextureDesc textureDesc =
+            PACT::PactFileHandle fileHandle;
+            if (pactStorage->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+                return true;
+
+            Renderer::DataTextureDesc textureDesc =
             {
-                .path = ECSUtil::Texture::GetTexturePath(textureSingleton, textureHash)
+                .hash = textureHash,
+                .data = reinterpret_cast<const u8*>(fileHandle.GetData()),
+                .size = fileHandle.GetSize()
             };
 
-            Renderer::TextureID texture = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadTexture(textureDesc);
+            Renderer::TextureID texture = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadDataTexture(textureDesc);
             unitCustomizationSingleton.customizationMaterialIDToTextureID[id] = texture;
             return true;
         });
@@ -315,9 +327,6 @@ namespace ECSUtil::UnitCustomization
             return true;
         });
 
-        static std::string textureFolderPath = "Data/Texture";
-        size_t textureFolderSubStr = textureFolderPath.length() + 1; // + 1 here for folder seperator
-
         unitCustomizationSingleton.unitCustomizationKeyToTextureHash.clear();
         unitCustomizationSingleton.unitCustomizationKeyToTextureHash.reserve(numUnitRaceCustomizationChoiceRows * 3);
 
@@ -389,51 +398,75 @@ namespace ECSUtil::UnitCustomization
 
                         if (choiceHasTexture[0])
                         {
-                            u32 textureHash = unitCustomizationSingleton.choiceIDToTextureHash1[choiceID];
-                            const std::string& texturePath = ECSUtil::Texture::GetTexturePath(textureSingleton, textureHash);
-                            std::filesystem::path baseTexturePath = std::filesystem::path(texturePath);
+                            u64 textureHash = unitCustomizationSingleton.choiceIDToTextureHash1[choiceID];
+                            const std::string* texturePath = pactStorage->GetFilePath(textureHash);
 
-                            extensionStrs[0] = baseTexturePath.extension().string();
-                            textureStrs[0] = baseTexturePath.string().substr(textureFolderSubStr);
-                            std::replace(textureStrs[0].begin(), textureStrs[0].end(), '\\', '/');
-
-                            if (!ParseFileName(textureStrs[0], parsedTextureNames[0]))
+                            if (texturePath)
                             {
-                                NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[0].c_str());
+                                std::filesystem::path baseTexturePath = std::filesystem::path(*texturePath);
+
+                                extensionStrs[0] = baseTexturePath.extension().string();
+                                textureStrs[0] = baseTexturePath.string();
+                                std::replace(textureStrs[0].begin(), textureStrs[0].end(), '\\', '/');
+
+                                if (!ParseFileName(textureStrs[0], parsedTextureNames[0]))
+                                {
+                                    NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[0].c_str());
+                                    choiceHasTexture[0] = false;
+                                }
+                            }
+                            else
+                            {
                                 choiceHasTexture[0] = false;
                             }
                         }
 
                         if (choiceHasTexture[1])
                         {
-                            u32 textureHash = unitCustomizationSingleton.choiceIDToTextureHash2[choiceID];
-                            const std::string& texturePath = ECSUtil::Texture::GetTexturePath(textureSingleton, textureHash);
-                            std::filesystem::path baseTexturePath = std::filesystem::path(texturePath);
+                            u64 textureHash = unitCustomizationSingleton.choiceIDToTextureHash2[choiceID];
+                            const std::string* texturePath = pactStorage->GetFilePath(textureHash);
 
-                            extensionStrs[1] = baseTexturePath.extension().string();
-                            textureStrs[1] = baseTexturePath.string().substr(textureFolderSubStr);
-                            std::replace(textureStrs[1].begin(), textureStrs[1].end(), '\\', '/');
-
-                            if (!ParseFileName(textureStrs[1], parsedTextureNames[1]))
+                            if (texturePath)
                             {
-                                NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[1].c_str());
+                                std::filesystem::path baseTexturePath = std::filesystem::path(*texturePath);
+
+                                extensionStrs[1] = baseTexturePath.extension().string();
+                                textureStrs[1] = baseTexturePath.string();
+                                std::replace(textureStrs[1].begin(), textureStrs[1].end(), '\\', '/');
+
+                                if (!ParseFileName(textureStrs[1], parsedTextureNames[1]))
+                                {
+                                    NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[1].c_str());
+                                    choiceHasTexture[1] = false;
+                                }
+                            }
+                            else
+                            {
                                 choiceHasTexture[1] = false;
                             }
                         }
 
                         if (choiceHasTexture[2])
                         {
-                            u32 textureHash = unitCustomizationSingleton.choiceIDToTextureHash3[choiceID];
-                            const std::string& texturePath = ECSUtil::Texture::GetTexturePath(textureSingleton, textureHash);
-                            std::filesystem::path baseTexturePath = std::filesystem::path(texturePath);
+                            u64 textureHash = unitCustomizationSingleton.choiceIDToTextureHash3[choiceID];
+                            const std::string* texturePath = pactStorage->GetFilePath(textureHash);
 
-                            extensionStrs[2] = baseTexturePath.extension().string();
-                            textureStrs[2] = baseTexturePath.string().substr(textureFolderSubStr);
-                            std::replace(textureStrs[2].begin(), textureStrs[2].end(), '\\', '/');
-
-                            if (!ParseFileName(textureStrs[2], parsedTextureNames[2]))
+                            if (texturePath)
                             {
-                                NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[2].c_str());
+                                std::filesystem::path baseTexturePath = std::filesystem::path(*texturePath);
+
+                                extensionStrs[2] = baseTexturePath.extension().string();
+                                textureStrs[2] = baseTexturePath.string();
+                                std::replace(textureStrs[2].begin(), textureStrs[2].end(), '\\', '/');
+
+                                if (!ParseFileName(textureStrs[2], parsedTextureNames[2]))
+                                {
+                                    NC_LOG_ERROR("Unit Customization Failed to Parse Texture \"{0}\"", textureStrs[2].c_str());
+                                    choiceHasTexture[2] = false;
+                                }
+                            }
+                            else
+                            {
                                 choiceHasTexture[2] = false;
                             }
                         }
@@ -488,8 +521,8 @@ namespace ECSUtil::UnitCustomization
                                         textureStr[baseOffset + 2] = '0' + variationOnes;
                                     }
 
-                                    u32 textureHash = StringUtils::fnv1a_32(textureStr.c_str(), textureStr.size());
-                                    if (!textureSingleton.textureHashToPath.contains(textureHash))
+                                    u64 textureHash = Util::AssetPath::Hash(textureStr);
+                                    if (!pactStorage->FileExists(textureHash))
                                     {
                                         NC_LOG_ERROR("Unit Customization Failed to find Texture \"{0}\"", textureStr.c_str());
                                         continue;
@@ -509,14 +542,20 @@ namespace ECSUtil::UnitCustomization
         for (const auto& pair : unitCustomizationSingleton.unitCustomizationKeyToTextureHash)
         {
             u32 key = pair.first;
-            u32 textureHash = pair.second;
+            u64 textureHash = pair.second;
 
-            Renderer::TextureDesc textureDesc =
+            PACT::PactFileHandle fileHandle;
+            if (pactStorage->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+                continue;
+
+            Renderer::DataTextureDesc textureDesc =
             {
-                .path = ECSUtil::Texture::GetTexturePath(textureSingleton, textureHash)
+                .hash = textureHash,
+                .data = reinterpret_cast<const u8*>(fileHandle.GetData()),
+                .size = fileHandle.GetSize()
             };
 
-            Renderer::TextureID texture = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadTexture(textureDesc);
+            Renderer::TextureID texture = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadDataTexture(textureDesc);
             unitCustomizationSingleton.unitCustomizationKeyToTextureID[key] = texture;
         }
 
@@ -600,11 +639,15 @@ namespace ECSUtil::UnitCustomization
         vec2 destMin = vec2(textureSection.position.x, textureSection.position.y) / skinTextureSize;
         vec2 destMax = vec2(textureSection.position.x + textureSection.size.x, textureSection.position.y + textureSection.size.y) / skinTextureSize;
 
+        if (textureID == Renderer::TextureID::Invalid() || skinTextureID == Renderer::TextureID::Invalid())
+            return;
+
         textureRenderer->RequestRenderTextureToTexture(skinTextureID, destMin, destMax, textureID, srcMin, srcMax);
     }
 
     void WriteItemToSkin(ECS::Singletons::TextureSingleton& textureSingleton, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::ItemSingleton& itemSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, ECS::Components::UnitCustomization& unitCustomization, u32 itemDisplayID)
     {
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
         TextureRenderer* textureRenderer = ServiceLocator::GetGameRenderer()->GetTextureRenderer();
 
         if (!itemSingleton.itemDisplayInfoToComponentSectionData.contains(itemDisplayID))
@@ -616,7 +659,7 @@ namespace ECSUtil::UnitCustomization
         for (const auto& pair : componentSectionData.componentSectionToTextureHash)
         {
             auto componentSection = static_cast<Database::Unit::TextureSectionType>(pair.first);
-            u32 textureHash = pair.second;
+            u64 textureHash = pair.second;
 
             Renderer::TextureID textureID = Renderer::TextureID::Invalid();
             if (unitCustomizationSingleton.itemTextureHashToTextureID.contains(textureHash))
@@ -625,13 +668,18 @@ namespace ECSUtil::UnitCustomization
             }
             else
             {
-                const auto& texturePath = textureSingleton.textureHashToPath[textureHash];
-                Renderer::TextureDesc textureDesc =
+                PACT::PactFileHandle fileHandle;
+                if (pactStorage->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+                    continue;
+
+                Renderer::DataTextureDesc textureDesc =
                 {
-                    .path = texturePath
+                    .hash = textureHash,
+                    .data = reinterpret_cast<const u8*>(fileHandle.GetData()),
+                    .size = fileHandle.GetSize()
                 };
 
-                textureID = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadTexture(textureDesc);
+                textureID = ServiceLocator::GetGameRenderer()->GetRenderer()->LoadDataTexture(textureDesc);
                 unitCustomizationSingleton.itemTextureHashToTextureID[textureHash] = textureID;
             }
 

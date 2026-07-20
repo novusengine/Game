@@ -8,8 +8,6 @@
 
 #include <array>
 
-class KeybindGroup;
-
 namespace Animation
 {
     enum class Type;
@@ -25,9 +23,6 @@ namespace ECS::Singletons
         f32 secondaryAttackTimer = 0.0f;
 
         JPH::CharacterVirtual* character = nullptr;
-        KeybindGroup* keybindGroup = nullptr;
-        KeybindGroup* cameraToggleKeybindGroup = nullptr;
-
         bool canControlInAir = true;
 
         entt::entity baseContainerEntity = entt::null;

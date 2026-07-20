@@ -4,6 +4,7 @@
 #include "Game-Lib/ECS/Systems/Editor/EditorTools.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/MapSingleton.h"
+#include "Game-Lib/ECS/Singletons/JoltState.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
@@ -12,12 +13,15 @@
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+#include "Game-Lib/Util/AssetPath.h"
 
 #include <Base/Memory/Bytebuffer.h>
 #include <Base/Memory/FileReader.h>
 
 #include <FileFormat/Novus/ClientDB/ClientDB.h>
 #include <FileFormat/Novus/Map/Map.h>
+
+#include <Filesystem/PactStorage.h>
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
@@ -31,19 +35,13 @@ using namespace ECS::Singletons;
 
 void MapLoader::Update(f32 deltaTime)
 {
-    bool discoveredModelsCompleteLastFrame = _discoveredModelsCompleteLastFrame;
-    bool discoveredModelsCompleteThisFrame = _modelLoader->DiscoveredModelsComplete();
-    if (!discoveredModelsCompleteThisFrame)
-        return;
-
-    _discoveredModelsCompleteLastFrame = true;
-    if (discoveredModelsCompleteThisFrame && !discoveredModelsCompleteLastFrame)
-        return;
-    
     ZoneScoped;
 
     if (!_loadRequest.isRequest)
         return;
+
+    // Request is being handled this frame
+    _loadRequest.isRequest = false;
 
     // Clear Map
     if (_loadRequest.internalMapNameHash == std::numeric_limits<u32>().max())
@@ -55,8 +53,6 @@ void MapLoader::Update(f32 deltaTime)
         ClearRenderersForMap();
 
         ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
-
-        _loadRequest.isRequest = false;
     }
     else
     {
@@ -76,27 +72,18 @@ void MapLoader::Update(f32 deltaTime)
 
         const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
         const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
+
+        auto* pactStorage = ServiceLocator::GetPactStorage();
+        std::string mapHeaderPath = Util::AssetPath::Map(mapInternalName + "/" + mapInternalName + Map::HEADER_FILE_EXTENSION);
         
-        fs::path relativeParentPath = "Data/Map";
-        fs::path absolutePath = std::filesystem::absolute(relativeParentPath).make_preferred();
-        std::string mapFile = ((absolutePath / mapInternalName / mapInternalName).replace_extension(Map::HEADER_FILE_EXTENSION)).string();
-        
-        if (!fs::exists(mapFile))
-        {
-            NC_LOG_ERROR("MapLoader : Failed to find map file '{0}'", mapFile);
+        PACT::PactFileHandle fileHandle;
+        if (pactStorage->ReadFile(mapHeaderPath, fileHandle) != PACT::PactReadResult::Success)
             return;
-        }
-        
-        FileReader fileReader(mapFile);
-        if (!fileReader.Open())
-            return;
-        
-        size_t bufferLength = fileReader.Length();
-        std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(bufferLength);
-        
-        fileReader.Read(buffer.get(), bufferLength);
-        
+
         Map::MapHeader mapHeader;
+        std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
+        buffer->writtenData = fileHandle.GetSize();
+
         if (!Map::MapHeader::Read(buffer, mapHeader))
             return;
         
@@ -108,6 +95,7 @@ void MapLoader::Update(f32 deltaTime)
             _currentMapID = mapID;
         
             ClearRenderersForMap();
+            ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapInternalName);
             _modelLoader->SetTerrainLoading(true);
             _modelLoader->LoadPlacement(mapHeader.placement);
         }
@@ -121,8 +109,6 @@ void MapLoader::Update(f32 deltaTime)
         
             _terrainLoader->AddInstance(loadDesc);
         }
-
-        _loadRequest.isRequest = false;
     }
 }
 

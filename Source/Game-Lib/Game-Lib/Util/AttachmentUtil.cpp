@@ -110,9 +110,11 @@ namespace Util::Attachment
         return matrix2 * matrix1;
     }
 
-    static mat4x4 CalculateBaseAttachmentMatrix(const Model::ComplexModel::Attachment& attachment, f32 scale = 1.0f)
+    static mat4x4 CalculateBaseAttachmentMatrix(const Model::ComplexModel::Attachment& attachment)
     {
-        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position * scale);
+        // Attachment matrices remain in model-local space. Entity scale is applied by
+        // the parent transform when the attachment's world transform is composed.
+        mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), attachment.position);
         mat4x4 rotationMatrix = glm::toMat4(quat(1.0f, 0.0f, 0.0f, 0.0f));
         mat4x4 scaleMatrix = glm::scale(mat4x4(1.0f), vec3(1.0f));
 
@@ -124,7 +126,7 @@ namespace Util::Attachment
         return attachmentMatrix;
     }
 
-    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance, f32 scaleMod)
+    void CalculateAttachmentMatrix(const Model::ComplexModel* modelInfo, const ECS::Components::AnimationData& animationData, ::Attachment::Defines::Type attachment, ECS::Components::AttachmentInstance& attachmentInstance)
     {
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
@@ -146,7 +148,7 @@ namespace Util::Attachment
             boneIndex = skeletonAttachment.bone;
 
         const mat4x4& parentBoneMatrix = animationData.boneTransforms[boneIndex];
-        mat4x4 attachmentMatrix = CalculateBaseAttachmentMatrix(skeletonAttachment, scaleMod);
+        mat4x4 attachmentMatrix = CalculateBaseAttachmentMatrix(skeletonAttachment);
         attachmentInstance.matrix = mul(attachmentMatrix, parentBoneMatrix);
 
         vec3 scale;
@@ -176,7 +178,7 @@ namespace Util::Attachment
         ECS::Singletons::RenderState& renderState = registry->ctx().get<ECS::Singletons::RenderState>();
 
         auto& attachmentInstance = attachmentData.attachmentToInstance[attachment];
-        CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance, model.scale);
+        CalculateAttachmentMatrix(modelInfo, animationData, attachment, attachmentInstance);
 
         return &attachmentInstance.matrix;
     }

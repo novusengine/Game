@@ -98,6 +98,14 @@ namespace ECS
             bool BuildCheatCreatureAdd(std::shared_ptr<Bytebuffer>& buffer, u32 creatureTemplateID);
             bool BuildCheatCreatureRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
             bool BuildCheatCreatureInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID guid);
+            bool BuildCheatFactionReaction(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID observerGUID, ObjectGUID targetGUID);
+            bool BuildCheatUnitSetFaction(std::shared_ptr<Bytebuffer>& buffer, u16 factionID);
+            bool BuildCheatFactionReputationInfo(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID);
+            bool BuildCheatFactionReputationSet(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, i32 value);
+            bool BuildCheatFactionReputationModify(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, i32 delta);
+            bool BuildCheatFactionReputationRemove(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID);
+            bool BuildCheatFactionReputationSetFlags(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, u16 flags);
+            bool BuildCheatFactionReputationLock(std::shared_ptr<Bytebuffer>& buffer, ObjectGUID characterGUID, u16 factionID, bool locked);
             bool BuildCheatMapAdd(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* mapStorage, u32 mapID, const MetaGen::Shared::ClientDB::MapRecord& map);
             bool BuildCheatGotoAdd(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddCommand& command);
             bool BuildCheatGotoAddHere(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoAddHereCommand& command);
@@ -113,6 +121,10 @@ namespace ECS
             bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureMove(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureFollow(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureWander(std::shared_ptr<Bytebuffer>& buffer);
+            bool BuildCreatureStop(std::shared_ptr<Bytebuffer>& buffer);
         }
     }
 }

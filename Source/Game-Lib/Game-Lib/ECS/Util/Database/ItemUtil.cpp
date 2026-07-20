@@ -235,12 +235,14 @@ namespace ECSUtil::Item
         }
 
         auto* modelFileDataStorage = clientDBSingleton.Get(ClientDBHash::ModelFileData);
+        itemSingleton.helmModelResourcesIDToModelMapping.clear();
+        itemSingleton.shoulderModelResourcesIDToModelMapping.clear();
         itemSingleton.helmModelResourcesIDToModelMapping.reserve(256);
         modelFileDataStorage->Each([&](u32 id, const MetaGen::Shared::ClientDB::ModelFileDataRecord& modelFileData) -> bool
         {
-            static constexpr const char* HelmPathPrefix = "item/objectcomponents/head/";
-            static constexpr const char* ShoulderPathPrefix = "item/objectcomponents/shoulder/";
-            static constexpr u32 ShoulderPathSubStrIndex = sizeof("item/objectcomponents/shoulder/") - 1;
+            static constexpr const char* HelmPathPrefix = "model/item/objectcomponents/head/";
+            static constexpr const char* ShoulderPathPrefix = "model/item/objectcomponents/shoulder/";
+            static constexpr u32 ShoulderPathSubStrIndex = sizeof("model/item/objectcomponents/shoulder/") - 1;
 
             const std::string& modelPath = modelFileDataStorage->GetString(modelFileData.model);
 
@@ -275,20 +277,20 @@ namespace ECSUtil::Item
                     u8 raceGenderMapping = (i * 2) + isFemale;
 
                     auto& helmMapping = itemSingleton.helmModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
-                    u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPathLength);
+                    u64 modelHash = modelFileDataStorage->GetStringHash(modelFileData.model);
 
                     helmMapping.raceGenderToModelHash[raceGenderMapping] = modelHash;
                     break;
                 }
             }
-            else if (StringUtils::BeginsWith(modelPath, "item/objectcomponents/shoulder/"))
+            else if (StringUtils::BeginsWith(modelPath, ShoulderPathPrefix))
             {
                 char sideIdentifier = *(modelPath.c_str() + ShoulderPathSubStrIndex);
 
                 auto& shoulderMapping = itemSingleton.shoulderModelResourcesIDToModelMapping[modelFileData.modelResourcesID];
 
                 bool isRightSide = sideIdentifier == 'r';
-                u32 modelHash = StringUtils::fnv1a_32(modelPath.c_str(), modelPath.length());
+                u64 modelHash = modelFileDataStorage->GetStringHash(modelFileData.model);
 
                 shoulderMapping.sideToModelHash[isRightSide] = modelHash;
             }
@@ -336,8 +338,8 @@ namespace ECSUtil::Item
                 auto& componentSectionData = itemSingleton.itemDisplayInfoToComponentSectionData[row.displayInfoID];
                 if (textureSingleton.materialResourcesIDToTextureHashes.contains(row.materialResourcesID))
                 {
-                    u32 textureHash = textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID][0];
-                    if (textureSingleton.textureHashToPath.contains(textureHash))
+                    u64 textureHash = textureSingleton.materialResourcesIDToTextureHashes[row.materialResourcesID][0];
+                    if (textureHash != 0)
                     {
                         componentSectionData.componentSectionToTextureHash[row.componentSection] = textureHash;
                     }
@@ -445,12 +447,12 @@ namespace ECSUtil::Item
         return &itemSingleton.itemEffectIDs[itemEffectMapping.indexIntoMap];
     }
     
-    u32 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8& variant)
+    u64 GetModelHashForHelm(ECS::Singletons::ItemSingleton& itemSingleton, u32 helmModelResourcesID, GameDefine::UnitRace race, GameDefine::UnitGender gender, u8& variant)
     {
         variant = 0;
 
         if (race == GameDefine::UnitRace::None || gender == GameDefine::UnitGender::None || !itemSingleton.helmModelResourcesIDToModelMapping.contains(helmModelResourcesID))
-            return std::numeric_limits<u32>().max();
+            return std::numeric_limits<u64>().max();
 
         auto& helmMapping = itemSingleton.helmModelResourcesIDToModelMapping[helmModelResourcesID];
 
@@ -458,26 +460,28 @@ namespace ECSUtil::Item
         bool isFemale = gender == GameDefine::UnitGender::Female;
 
         u32 identifier = raceIndex + isFemale;
-        u32 modelHash = helmMapping.raceGenderToModelHash[identifier];
+        u64 modelHash = helmMapping.raceGenderToModelHash[identifier];
 
         variant = identifier;
         if (modelHash == 0)
-            return std::numeric_limits<u32>().max();
+            return std::numeric_limits<u64>().max();
 
         return modelHash;
     }
-    void GetModelHashesForShoulders(ECS::Singletons::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u32& modelHashLeftShoulder, u32& modelHashRightShoulder)
+    void GetModelHashesForShoulders(ECS::Singletons::ItemSingleton& itemSingleton, u32 shoulderModelResourcesID, u64& modelHashLeftShoulder, u64& modelHashRightShoulder)
     {
-        modelHashLeftShoulder = std::numeric_limits<u32>().max();
-        modelHashRightShoulder = std::numeric_limits<u32>().max();
+        modelHashLeftShoulder = std::numeric_limits<u64>().max();
+        modelHashRightShoulder = std::numeric_limits<u64>().max();
 
         if (!itemSingleton.shoulderModelResourcesIDToModelMapping.contains(shoulderModelResourcesID))
             return;
 
         auto& shoulderMapping = itemSingleton.shoulderModelResourcesIDToModelMapping[shoulderModelResourcesID];
         
-        modelHashLeftShoulder = shoulderMapping.sideToModelHash[0];
-        modelHashRightShoulder = shoulderMapping.sideToModelHash[1];
+        if (shoulderMapping.sideToModelHash[0] != 0)
+            modelHashLeftShoulder = shoulderMapping.sideToModelHash[0];
+        if (shoulderMapping.sideToModelHash[1] != 0)
+            modelHashRightShoulder = shoulderMapping.sideToModelHash[1];
     }
 
     u64 CreateItemDisplayMaterialResourcesKey(u32 displayID, u8 componentSection, u32 materialResourcesID)

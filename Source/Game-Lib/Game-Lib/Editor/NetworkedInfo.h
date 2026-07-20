@@ -10,6 +10,7 @@ namespace Editor
 
         virtual const char* GetName() override { return "Networked Info"; }
 
+        virtual void Update(f32 deltaTime) override;
         virtual void DrawImGui() override;
 
     private:

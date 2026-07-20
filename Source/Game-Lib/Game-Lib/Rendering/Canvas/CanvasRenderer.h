@@ -86,7 +86,7 @@ private:
     void UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS::Components::Transform2D& transform, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, const vec2& canvasSize);
 
     void UpdatePanelData(entt::entity entity, ECS::Components::Transform2D& transform, ECS::Components::UI::Panel& panel, ECS::Components::UI::PanelTemplate& panelTemplate);
-    void UpdateTextData(entt::entity entity, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate);
+    void UpdateTextData(entt::entity entity, ECS::Components::UI::Text& text, ECS::Components::UI::TextTemplate& textTemplate, bool wasDrawable);
 
     vec2 PixelPosToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
     vec2 PixelSizeToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
@@ -134,7 +134,7 @@ private:
         uvec4 packed0 = uvec4(0, 0, 0, 0xFFFFFFFFu); // x: type, y: vertexBase, z: reserved, w: worldPositionIndex (i32 reinterpret as -1)
         uvec4 packed1 = uvec4(0, 0, 0, 0); // Panel: x: textureIndex|additiveTextureIndex, y: borderColor, z: color, w: textureScaleToWidgetSize (half2). Text: x: fontTextureIndex, z: textColor, w: borderColor
         vec4 texCoord = vec4(0.0f);                  // Panel only
-        vec4 slicingCoord = vec4(0.0f);              // Panel only
+        vec4 sliceCoords = vec4(0.0f);               // Panel only
         vec4 cornerRadiusAndBorder = vec4(0.0f);     // Panel: xy: cornerRadius, zw: borderSize (normalized per-axis). Text: x: borderSize, zw: unitRange
         uvec4 packed2 = uvec4(0, 0, 0, 0); // x: clipBoundsIndex (into _widgetClipRects), y: maskBoundsIndex (into _widgetMaskInfo), z/w: reserved
     };
@@ -156,13 +156,14 @@ private:
     Renderer::Font* _font;
     Renderer::SamplerID _sampler;
     Renderer::TextureArrayID _textures;
-    robin_hood::unordered_map<u32, u32> _textureNameHashToIndex;
+    robin_hood::unordered_map<u64, u32> _textureNameHashToIndex;
     robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToIndex;
 
     Renderer::TextureArrayID _fontTextures;
     robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToFontTexturesIndex;
 
     Renderer::GraphicsPipelineID _widgetPipeline;
+    Renderer::GraphicsPipelineID _worldWidgetPipeline;
 
     Renderer::DescriptorSet _widgetDescriptorSet;
 
@@ -179,14 +180,15 @@ private:
 
     // --- Per-bucket retained indirect-draw state ----------------------------------
     // One BucketResources per render-pass bucket: one per RT canvas that has ever existed,
-    // plus one static _mainBucket for all non-RT canvases merged together. finalSortedArgs
+    // plus separate screen-space and world-space buckets for all non-RT canvases. finalSortedArgs
     // is retained across frames; it's CPU-sorted and uploaded only when the bucket is dirty,
     // and consumed as-is by DrawIndirectCount every frame.
     struct BucketResources
     {
+    public:
         Renderer::BufferID finalSortedArgs = Renderer::BufferID::Invalid();
-        u32                finalSortedArgsCapacity = 0;
-        u32                drawCount = 0;
+        u32 finalSortedArgsCapacity = 0;
+        u32 drawCount = 0;
 
         // Single-element u32 count buffer for DrawIndirectCount.
         Renderer::BufferID finalCount = Renderer::BufferID::Invalid();
@@ -198,10 +200,19 @@ private:
 
     robin_hood::unordered_map<entt::entity, BucketResources> _rtBuckets; // key: RT canvas entity
     BucketResources _mainBucket;
+    BucketResources _mainWorldBucket;
 
     // CPU scratch for gather+sort+upload inside RefreshBucketCPU. Reused across refreshes;
     // `.clear()` preserves capacity.
-    struct SortEntry { u32 key; Renderer::IndirectDraw draw; entt::entity entity; };
-    std::vector<SortEntry>              _sortScratch;
+    struct SortEntry
+    {
+    public:
+        u32 key;
+        Renderer::IndirectDraw draw;
+        entt::entity entity;
+    };
+
+    std::vector<SortEntry> _sortScratch;
+    std::vector<SortEntry> _worldSortScratch;
     std::vector<Renderer::IndirectDraw> _uploadScratch;
 };

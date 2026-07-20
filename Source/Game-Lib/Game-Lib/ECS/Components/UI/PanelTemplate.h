@@ -22,7 +22,7 @@ namespace ECS::Components::UI
             u8 color : 1 = 0;
             u8 cornerRadius : 1 = 0;
             u8 texCoords : 1 = 0;
-            u8 nineSliceCoords : 1 = 0;
+            u8 nineSliceInsets : 1 = 0;
             u8 border : 1 = 0;
         };
         SetFlags setFlags;
@@ -36,7 +36,7 @@ namespace ECS::Components::UI
         Color borderColor = Color(0.0f, 0.0f, 0.0f, 1.0f);
         f32 borderSize = 0.0f;
         ::UI::Box texCoords;
-        ::UI::Box nineSliceCoords;
+        vec4 nineSliceInsets = vec4(0.0f); // Source pixels ordered left, top, right, bottom.
 
         std::string onClickTemplate;
         std::string onHoverTemplate;

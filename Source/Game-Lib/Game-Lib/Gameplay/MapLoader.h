@@ -38,7 +38,6 @@ private:
     ModelLoader* _modelLoader = nullptr;
     LiquidLoader* _liquidLoader = nullptr;
 
-    bool _discoveredModelsCompleteLastFrame = false;
     u32 _currentMapID = std::numeric_limits<u32>().max();
     LoadDesc _loadRequest;
 };
