@@ -411,13 +411,19 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     // SVSM block, runs after the main depth is complete so page marking can analyze the visible
-    // samples, then allocates, culls per clipmap view and renders the dirty pages the same frame
+    // samples, then allocates, culls per clipmap view and renders the dirty pages the same frame.
+    // The night gate skips the whole producer side while the sun is below the horizon (the
+    // material pass already samples nothing at strength 0); the bind pass stays, bindings must
+    // remain valid
     _shadowRenderer->AddSVSMUpdatePass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
-    _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
-    _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
-    _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+    if (_shadowRenderer->IsSVSMActive())
+    {
+        _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
+        _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
+        _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+        _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+    }
 
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
 

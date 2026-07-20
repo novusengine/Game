@@ -28,28 +28,14 @@ void main(CSInput input)
 
     float3 aabbMin = _dirtyAABBs[aabbIndex * 2 + 0].xyz;
     float3 aabbMax = _dirtyAABBs[aabbIndex * 2 + 1].xyz;
-    float3 center = (aabbMin + aabbMax) * 0.5f;
-    float3 halfExtents = (aabbMax - aabbMin) * 0.5f;
-
-    // Light-space XY rect of the world AABB, |R| trick for the extents
-    float3x3 lightRotation = BuildLightRotation(_constants.lightDirection.xyz);
-    float2 centerLS = mul(center, lightRotation).xy;
-    float2 halfLS = mul(halfExtents, float3x3(abs(lightRotation[0]), abs(lightRotation[1]), abs(lightRotation[2]))).xy;
 
     uint pageTableSize = _constants.pageTableSize;
     float pageWorld = _svsmData[0].pageWorld[clipmapIndex];
     int2 anchorPageMin = int2(_svsmData[0].anchorPageMinX[clipmapIndex], _svsmData[0].anchorPageMinY[clipmapIndex]);
 
-    // Same reconstruction Prepare used for camMinusWindowMin, deterministic vs the stored anchors
-    float2 windowMin = float2(anchorPageMin) * pageWorld;
-
-    // One page of pad so filter taps just outside the caster footprint refresh too
-    int2 pageMin = int2(floor((centerLS - halfLS - windowMin) / pageWorld)) - 1;
-    int2 pageMax = int2(floor((centerLS + halfLS - windowMin) / pageWorld)) + 1;
-    pageMin = max(pageMin, int2(0, 0));
-    pageMax = min(pageMax, int2(pageTableSize - 1, pageTableSize - 1));
-
-    if (any(pageMax < pageMin))
+    int2 pageMin;
+    int2 pageMax;
+    if (!SVSMComputeAABBPageRect(aabbMin, aabbMax, _constants.lightDirection.xyz, pageWorld, anchorPageMin, pageTableSize, pageMin, pageMax))
     {
         return; // Outside this clipmap's window
     }

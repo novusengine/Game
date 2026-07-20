@@ -33,6 +33,22 @@ void RenderUtils::Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
     }
 }
 
+void RenderUtils::SVSMGeometryProfiler::operator()(const char* stageName, u32 viewIndex, const std::function<void()>& work) const
+{
+    if (!_enabled)
+    {
+        work();
+        return;
+    }
+
+    Renderer::TimeQueryDesc timeQueryDesc;
+    timeQueryDesc.name = _namePrefix + " " + stageName + " v" + std::to_string(viewIndex);
+    Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
+    _commandList->BeginTimeQuery(timeQuery);
+    work();
+    _commandList->EndTimeQuery(timeQuery);
+}
+
 void RenderUtils::Blit(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const BlitParams& params)
 {
     commandList.PushMarker("Blit", Color::White);

@@ -73,11 +73,98 @@ bool SVSMIsDynamicPageResident(uint clipmapIndex, int2 virtualTexel, uint pageTa
     return (entry & SVSM_PAGE_RESIDENT) != 0;
 }
 
+// One ring of the SVSM PCF filter: the 4x4 texel block shared by all 9 bilinear taps spans at
+// most 2x2 pages, so their table entries resolve once and the taps only pay pool loads. One
+// implementation for both the static and dynamic halves of GetSVSMShadowFactor, parameterized on
+// the (table, pool, pool row count) pair and the missing-page policy:
+// - missingPagesReadLit = false (static cache): INVALID content may live in a dead depth mapping
+//   and counts as missing; any missing touched page aborts the ring (returns false, the caller
+//   falls back to a coarser clipmap, worst case ends lit).
+// - missingPagesReadLit = true (dynamic pool): non-resident pages read depth 0 = lit — correct,
+//   no dynamic caster covers that texel — and the ring always resolves.
+// The callers' containment margin keeps the whole block inside the window
+bool SVSMFilterRing(uint clipmapIndex, float2 texelPos, float compareDepth, uint pageTableSize, uint pageSize, uint poolPagesPerRow, bool missingPagesReadLit, StructuredBuffer<uint> pageTable, Texture2D<uint> pagePool, out float shadowFactor)
+{
+    shadowFactor = 1.0f;
+
+    float2 blockBaseF = floor(texelPos - 0.5f);
+    int2 blockBase = int2(blockBaseF) - 1;
+    float2 fracPart = texelPos - 0.5f - blockBaseF;
+
+    int2 anchorPageMin = int2(_svsmData[0].anchorPageMinX[clipmapIndex], _svsmData[0].anchorPageMinY[clipmapIndex]);
+    int2 basePage = blockBase / int(pageSize);
+    int2 baseRel = blockBase - basePage * int(pageSize);
+
+    bool pageResident[2][2];
+    uint2 pagePhysBase[2][2];
+
+    [unroll]
+    for (int py = 0; py < 2; py++)
+    {
+        [unroll]
+        for (int px = 0; px < 2; px++)
+        {
+            int2 slot = WrapPageSlot(anchorPageMin + basePage + int2(px, py), pageTableSize);
+            uint entry = pageTable[PageEntryIndex(clipmapIndex, slot, pageTableSize)];
+
+            pageResident[py][px] = missingPagesReadLit ? (entry & SVSM_PAGE_RESIDENT) != 0
+                                                       : (entry & (SVSM_PAGE_RESIDENT | SVSM_PAGE_INVALID)) == SVSM_PAGE_RESIDENT;
+            uint physicalPage = GetPagePhysical(entry);
+            pagePhysBase[py][px] = uint2(physicalPage % poolPagesPerRow, physicalPage / poolPagesPerRow) * pageSize;
+        }
+    }
+
+    if (!missingPagesReadLit)
+    {
+        bool2 crossesPage = bool2(baseRel.x + 3 >= int(pageSize), baseRel.y + 3 >= int(pageSize));
+        bool allResident = pageResident[0][0]
+            && (!crossesPage.x || pageResident[0][1])
+            && (!crossesPage.y || pageResident[1][0])
+            && (!(crossesPage.x && crossesPage.y) || pageResident[1][1]);
+        if (!allResident)
+        {
+            return false;
+        }
+    }
+
+    float lit[4][4];
+
+    [unroll]
+    for (int y = 0; y < 4; y++)
+    {
+        [unroll]
+        for (int x = 0; x < 4; x++)
+        {
+            int2 rel = baseRel + int2(x, y);
+            int2 pageSel = int2(rel.x >= int(pageSize) ? 1 : 0, rel.y >= int(pageSize) ? 1 : 0);
+            uint2 pageTexel = uint2(rel - pageSel * int(pageSize));
+            float storedDepth = pageResident[pageSel.y][pageSel.x] ? asfloat(pagePool[pagePhysBase[pageSel.y][pageSel.x] + pageTexel]) : 0.0f;
+            lit[y][x] = compareDepth > storedDepth ? 1.0f : 0.0f;
+        }
+    }
+
+    float factor = 0.0f;
+
+    [unroll]
+    for (int ty = 0; ty < 3; ty++)
+    {
+        [unroll]
+        for (int tx = 0; tx < 3; tx++)
+        {
+            float litX0 = lerp(lit[ty + 0][tx + 0], lit[ty + 0][tx + 1], fracPart.x);
+            float litX1 = lerp(lit[ty + 1][tx + 0], lit[ty + 1][tx + 1], fracPart.x);
+            factor += lerp(litX0, litX1, fracPart.y);
+        }
+    }
+    shadowFactor = factor / 9.0f;
+    return true;
+}
+
 // Software percentage-closer filtering over the sparse clipmaps: select the finest covering
 // clipmap, walk to coarser ones when a touched page is not resident, 3x3 bilinear-weighted taps
-// over a shared 4x4 texel block. Returns 1 (lit) when nothing is resident, the marking pass
-// guarantees residency for everything the main view actually sees. Static and dynamic resolve
-// their rings independently (see the dynamic block below) and combine via min
+// over a shared 4x4 texel block (SVSMFilterRing). Returns 1 (lit) when nothing is resident, the
+// marking pass guarantees residency for everything the main view actually sees. Static and
+// dynamic resolve their rings independently (see the dynamic block below) and combine via min
 float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings shadowSettings)
 {
     uint numClipmaps = _svsmData[0].configNumClipmaps;
@@ -137,77 +224,13 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
         // Positive bias moves the receiver toward the sun
         float compareDepth = (zHalf - (lightSpacePos.z + camMinusZAnchor)) / zRangeLength + compareBias;
 
-        // 4x4 texel block shared by all 9 bilinear taps
         float2 texelPos = windowPos / texelWorld;
-        float2 blockBaseF = floor(texelPos - 0.5f);
-        int2 blockBase = int2(blockBaseF) - 1;
-        float2 fracPart = texelPos - 0.5f - blockBaseF;
 
-        // The block spans at most 2x2 pages: resolve their table entries once, the taps then only
-        // pay pool loads. The containment margin keeps the whole block inside the window
-        int2 anchorPageMin = int2(_svsmData[0].anchorPageMinX[k], _svsmData[0].anchorPageMinY[k]);
-        int2 basePage = blockBase / int(pageSize);
-        int2 baseRel = blockBase - basePage * int(pageSize);
-        bool2 crossesPage = bool2(baseRel.x + 3 >= int(pageSize), baseRel.y + 3 >= int(pageSize));
-
-        bool pageResident[2][2];
-        uint2 pagePhysBase[2][2];
-
-        [unroll]
-        for (int py = 0; py < 2; py++)
-        {
-            [unroll]
-            for (int px = 0; px < 2; px++)
-            {
-                int2 slot = WrapPageSlot(anchorPageMin + basePage + int2(px, py), pageTableSize);
-                uint entry = _svsmPageTable[PageEntryIndex(k, slot, pageTableSize)];
-
-                // INVALID content may live in a dead depth mapping, never sample it
-                pageResident[py][px] = (entry & (SVSM_PAGE_RESIDENT | SVSM_PAGE_INVALID)) == SVSM_PAGE_RESIDENT;
-                uint physicalPage = GetPagePhysical(entry);
-                pagePhysBase[py][px] = uint2(physicalPage % poolPagesPerRow, physicalPage / poolPagesPerRow) * pageSize;
-            }
-        }
-
-        bool allResident = pageResident[0][0]
-            && (!crossesPage.x || pageResident[0][1])
-            && (!crossesPage.y || pageResident[1][0])
-            && (!(crossesPage.x && crossesPage.y) || pageResident[1][1]);
-        if (!allResident)
+        float shadowFactor;
+        if (!SVSMFilterRing(k, texelPos, compareDepth, pageTableSize, pageSize, poolPagesPerRow, false, _svsmPageTable, _svsmPagePool, shadowFactor))
         {
             continue; // Fall back to a coarser clipmap, worst case ends lit
         }
-
-        float lit[4][4];
-
-        [unroll]
-        for (int y = 0; y < 4; y++)
-        {
-            [unroll]
-            for (int x = 0; x < 4; x++)
-            {
-                int2 rel = baseRel + int2(x, y);
-                int2 pageSel = int2(rel.x >= int(pageSize) ? 1 : 0, rel.y >= int(pageSize) ? 1 : 0);
-                uint2 pageTexel = uint2(rel - pageSel * int(pageSize));
-                float storedDepth = asfloat(_svsmPagePool[pagePhysBase[pageSel.y][pageSel.x] + pageTexel]);
-                lit[y][x] = compareDepth > storedDepth ? 1.0f : 0.0f;
-            }
-        }
-
-        float shadowFactor = 0.0f;
-
-        [unroll]
-        for (int ty = 0; ty < 3; ty++)
-        {
-            [unroll]
-            for (int tx = 0; tx < 3; tx++)
-            {
-                float litX0 = lerp(lit[ty + 0][tx + 0], lit[ty + 0][tx + 1], fracPart.x);
-                float litX1 = lerp(lit[ty + 1][tx + 0], lit[ty + 1][tx + 1], fracPart.x);
-                shadowFactor += lerp(litX0, litX1, fracPart.y);
-            }
-        }
-        shadowFactor /= 9.0f;
 
         // Fade to unshadowed over the outer 15% of the coarsest window, beyond it there is no shadow data
         if (k == numClipmaps - 1)
@@ -254,64 +277,9 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
 
             float compareDepth = (zHalf - (lightSpacePos.z + camMinusZAnchor)) / zRangeLength + compareBias;
 
-            float2 blockBaseF = floor(texelPos - 0.5f);
-            int2 blockBase = int2(blockBaseF) - 1;
-            float2 fracPart = texelPos - 0.5f - blockBaseF;
-
-            // Same 2x2 page resolve as the static filter. Non-resident pages read depth 0 = lit,
-            // correct: no dynamic caster covers that texel
-            uint dynamicPoolPagesPerRow = _svsmData[0].configDynamicPoolPagesPerRow;
-            int2 anchorPageMin = int2(_svsmData[0].anchorPageMinX[kd], _svsmData[0].anchorPageMinY[kd]);
-            int2 basePage = blockBase / int(pageSize);
-            int2 baseRel = blockBase - basePage * int(pageSize);
-
-            bool pageResident[2][2];
-            uint2 pagePhysBase[2][2];
-
-            [unroll]
-            for (int py = 0; py < 2; py++)
-            {
-                [unroll]
-                for (int px = 0; px < 2; px++)
-                {
-                    int2 slot = WrapPageSlot(anchorPageMin + basePage + int2(px, py), pageTableSize);
-                    uint entry = _svsmDynamicPageTable[PageEntryIndex(kd, slot, pageTableSize)];
-                    pageResident[py][px] = (entry & SVSM_PAGE_RESIDENT) != 0;
-                    uint physicalPage = GetPagePhysical(entry);
-                    pagePhysBase[py][px] = uint2(physicalPage % dynamicPoolPagesPerRow, physicalPage / dynamicPoolPagesPerRow) * pageSize;
-                }
-            }
-
-            float lit[4][4];
-
-            [unroll]
-            for (int y = 0; y < 4; y++)
-            {
-                [unroll]
-                for (int x = 0; x < 4; x++)
-                {
-                    int2 rel = baseRel + int2(x, y);
-                    int2 pageSel = int2(rel.x >= int(pageSize) ? 1 : 0, rel.y >= int(pageSize) ? 1 : 0);
-                    uint2 pageTexel = uint2(rel - pageSel * int(pageSize));
-                    float storedDepth = pageResident[pageSel.y][pageSel.x] ? asfloat(_svsmDynamicPagePool[pagePhysBase[pageSel.y][pageSel.x] + pageTexel]) : 0.0f;
-                    lit[y][x] = compareDepth > storedDepth ? 1.0f : 0.0f;
-                }
-            }
-
-            float shadowFactor = 0.0f;
-
-            [unroll]
-            for (int ty = 0; ty < 3; ty++)
-            {
-                [unroll]
-                for (int tx = 0; tx < 3; tx++)
-                {
-                    float litX0 = lerp(lit[ty + 0][tx + 0], lit[ty + 0][tx + 1], fracPart.x);
-                    float litX1 = lerp(lit[ty + 1][tx + 0], lit[ty + 1][tx + 1], fracPart.x);
-                    shadowFactor += lerp(litX0, litX1, fracPart.y);
-                }
-            }
-            dynamicFactor = shadowFactor / 9.0f;
+            // Same filter as the static ring against the dynamic table/pool; non-resident pages
+            // read lit, so this always resolves
+            SVSMFilterRing(kd, texelPos, compareDepth, pageTableSize, pageSize, _svsmData[0].configDynamicPoolPagesPerRow, true, _svsmDynamicPageTable, _svsmDynamicPagePool, dynamicFactor);
             break;
         }
     }

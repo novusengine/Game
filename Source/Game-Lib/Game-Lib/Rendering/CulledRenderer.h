@@ -325,10 +325,33 @@ protected:
         // resident dynamic pages this frame get zero-group fills. Same-frame GPU truth — a
         // CPU/readback gate here is a frame late and flickers freshly acquired dynamic pages
         Renderer::BufferResource svsmFillArgsBuffer; // Finalize-written dispatch args, consumed read-only via DispatchIndirect
+
+        // Byte layout of svsmFillArgsBuffer (the ShadowRenderer's stride/offset constants),
+        // passed in by the pass owner so this shared base never depends on ShadowRenderer
+        u32 svsmFillArgsViewStride = 0;
+        u32 svsmFillArgsDynamicOffset = 0;
+        u32 svsmFillArgsStaticOverheadOffset = 0;
+        u32 svsmFillArgsDynamicOverheadOffset = 0;
     };
     void GeometryPass(GeometryPassParams& params);
     void RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic); // Shared-buffer rebuild from a view's bitmask slice
     void ClipmapCullingPass(CullingPassParams& params); // Instanced-only frustum cull of cascade views, no occlusion, no counter resets
+
+    // The instanced cull dispatch shared by CullingPass and ClipmapCullingPass: one thread per
+    // instance against the per-view frustums, writing bitmask slices and instance counts.
+    // occlusionCull/cullMainView/debugDrawColliders come from params; the clipmap pass overrides
+    // them before calling
+    void RunInstancedCullingDispatch(CullingPassParams& params, bool useBitmasks, bool bindDepthPyramid);
+
+    // The bitmask-driven instanced fill dispatch shared by OccluderPass (last frame's main-view
+    // bits) and RunInstancedGeometryFill (this frame's per-view slices, optionally gated through
+    // Finalize-written indirect args)
+    void DispatchInstancedFill(PassParams& params, const std::string& markerName, Renderer::DescriptorSetResource& fillSet, bool filtered, u32 currentBitmaskIndex, u32 bitmaskOffset, bool keepDynamic, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset);
+
+    // The CreateIndirectAfterCulling dispatch shared by the occluder, culling and geometry-fill
+    // paths: per-drawcall instance counts become indirect draw args (each count is cleared after
+    // consumption, keeping the counts buffer always-zero between uses). debugSet is optional
+    void DispatchCreateIndirect(PassParams& params, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset);
 
     void SyncToGPU();
     void BindCullingResource(CullingResourcesBase& resources);

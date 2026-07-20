@@ -124,6 +124,11 @@ private:
     };
     void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);
 
+    // The terrain cull dispatch shared by AddCullingPass and AddClipmapCullingPass: one thread
+    // per cell against the per-view frustums, writing the bitmask slices. The depth pyramid bind
+    // stays at the main culling callsite (the clipmap pass reuses the already-bound set)
+    void RunCullingDispatch(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u8 frameIndex, u32 numShadowViews, bool occlusionEnabled, bool cullMainView, Renderer::DescriptorSetResource& debugSet, Renderer::DescriptorSetResource& globalSet, Renderer::DescriptorSetResource& cullingSet);
+
 private:
     struct TerrainVertex
     {

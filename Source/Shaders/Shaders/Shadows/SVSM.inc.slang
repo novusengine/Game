@@ -34,7 +34,7 @@ struct SVSMConstants
     uint allocClipmap;      // UpdateB runs once per clipmap, finest first, so pool starvation always lands on the coarsest ring
     float casterMargin;     // Sun-side sweep on the near cull plane, depth clamp pancakes those casters
     float zHalfRange;       // Half depth range of every clipmap window around the quantized Z anchor
-    float padding0;
+    uint fillDrawCallCount; // Model draw calls this frame, Finalize sizes the per-view fill overhead args from it
     float padding1;
     float resolutionScale;  // Eye-distance clipmap floor scale, <= 0 disables
     uint dynamicPoolPagesPerRow; // Caster-split dynamic pool pages per row, 0 while the split is off
@@ -197,6 +197,31 @@ uint PageEntryIndex(uint clipmapIndex, int2 slot, uint pageTableSize)
     return clipmapIndex * pageTableSize * pageTableSize + uint(slot.y) * pageTableSize + uint(slot.x);
 }
 
+// Window-local page rect of a world AABB in one clipmap: light-space XY rect via the |R|
+// extents trick, one page of pad so filter taps just outside the caster footprint are covered
+// too, clamped to the window. Returns false when the AABB misses this clipmap's window.
+// Page granularity is coarse (quarter meters at the finest clipmap) so plain world-magnitude
+// light-space math is precise enough here. windowMin uses the same reconstruction Prepare used
+// for camMinusWindowMin, deterministic vs the stored anchors
+bool SVSMComputeAABBPageRect(float3 aabbMin, float3 aabbMax, float3 lightDirection, float pageWorld, int2 anchorPageMin, uint pageTableSize, out int2 pageMin, out int2 pageMax)
+{
+    float3 center = (aabbMin + aabbMax) * 0.5f;
+    float3 halfExtents = (aabbMax - aabbMin) * 0.5f;
+
+    float3x3 lightRotation = BuildLightRotation(lightDirection);
+    float2 centerLS = mul(center, lightRotation).xy;
+    float2 halfLS = mul(halfExtents, float3x3(abs(lightRotation[0]), abs(lightRotation[1]), abs(lightRotation[2]))).xy;
+
+    float2 windowMin = float2(anchorPageMin) * pageWorld;
+
+    pageMin = int2(floor((centerLS - halfLS - windowMin) / pageWorld)) - 1;
+    pageMax = int2(floor((centerLS + halfLS - windowMin) / pageWorld)) + 1;
+    pageMin = max(pageMin, int2(0, 0));
+    pageMax = min(pageMax, int2(pageTableSize - 1, pageTableSize - 1));
+
+    return all(pageMax >= pageMin);
+}
+
 // Finest clipmap whose window contains the position with margin to spare, -1 if none.
 // One shared function for marking and sampling: the margin guarantees the filter footprint and
 // the border page marks never leave the selected window. lightSpaceRelCam = mul(P - cam, R).xy
@@ -241,32 +266,49 @@ int SelectClipmap(float2 lightSpaceRelCam, float eyeDistance, StructuredBuffer<S
     return -1;
 }
 
-// Software depth write for the SVSM page render passes. svPosition comes straight from
-// SV_Position: xy are window-local virtual texel coordinates (the viewport spans the full virtual
-// texture), z is the reversed ortho depth. Fragments outside pages that render this frame exit
-// after one table load; depth clamp disables clipping so pancaked casters saturate here instead.
-// requiredFlags: static pages render only while DIRTY, dynamic pages render whenever RESIDENT
-void SVSMWritePageDepth(float3 svPosition, uint clipmapIndex, uint requiredFlags, uint poolPagesPerRow, StructuredBuffer<SVSMData> svsmData, StructuredBuffer<uint> pageTable, RWTexture2D<uint> pagePool)
+// The page-table entry under a page-render fragment. svPosition.xy comes straight from
+// SV_Position: window-local virtual texel coordinates (the viewport spans the full virtual
+// texture)
+uint SVSMLoadPageEntry(float2 svPositionXY, uint clipmapIndex, StructuredBuffer<SVSMData> svsmData, StructuredBuffer<uint> pageTable)
 {
     uint pageTableSize = svsmData[0].configPageTableSize;
     uint pageSize = svsmData[0].configPageSize;
 
-    int2 texel = int2(svPosition.xy);
+    int2 texel = int2(svPositionXY);
     int2 localPage = texel / int(pageSize);
     int2 anchorPageMin = int2(svsmData[0].anchorPageMinX[clipmapIndex], svsmData[0].anchorPageMinY[clipmapIndex]);
     int2 slot = WrapPageSlot(anchorPageMin + localPage, pageTableSize);
 
-    uint entry = pageTable[PageEntryIndex(clipmapIndex, slot, pageTableSize)];
+    return pageTable[PageEntryIndex(clipmapIndex, slot, pageTableSize)];
+}
+
+// Software depth write for the SVSM page render passes, taking a pre-loaded page entry (the pixel
+// shader may have fetched it for its early alpha-key skip). z is the reversed ortho depth; depth
+// clamp disables clipping so pancaked casters saturate here instead.
+// requiredFlags: static pages render only while DIRTY, dynamic pages render whenever RESIDENT
+void SVSMWritePageDepthEntry(float3 svPosition, uint entry, uint requiredFlags, uint poolPagesPerRow, StructuredBuffer<SVSMData> svsmData, RWTexture2D<uint> pagePool)
+{
     if ((entry & requiredFlags) != requiredFlags)
     {
         return;
     }
+
+    uint pageSize = svsmData[0].configPageSize;
+    int2 texel = int2(svPosition.xy);
+    int2 localPage = texel / int(pageSize);
 
     uint physicalPage = GetPagePhysical(entry);
     uint2 physicalBase = uint2(physicalPage % poolPagesPerRow, physicalPage / poolPagesPerRow) * pageSize;
     uint2 pageTexel = uint2(texel - localPage * int(pageSize));
 
     InterlockedMax(pagePool[physicalBase + pageTexel], asuint(saturate(svPosition.z)));
+}
+
+// Fragments outside pages that render this frame exit after one table load
+void SVSMWritePageDepth(float3 svPosition, uint clipmapIndex, uint requiredFlags, uint poolPagesPerRow, StructuredBuffer<SVSMData> svsmData, StructuredBuffer<uint> pageTable, RWTexture2D<uint> pagePool)
+{
+    uint entry = SVSMLoadPageEntry(svPosition.xy, clipmapIndex, svsmData, pageTable);
+    SVSMWritePageDepthEntry(svPosition, entry, requiredFlags, poolPagesPerRow, svsmData, pagePool);
 }
 
 #endif // SVSM_INCLUDED

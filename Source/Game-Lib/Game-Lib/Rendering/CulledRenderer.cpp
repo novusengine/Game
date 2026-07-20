@@ -3,11 +3,10 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
-#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 
-AutoCVar_Int CVAR_ShadowDebugCullingView(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView", "debug draw culling results for a view as AABBs (green = kept, red = culled), 0 = main view, 1..N = cascades, -1 = off", -1);
+AutoCVar_Int CVAR_ShadowDebugCullingView(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView", "debug draw culling results for a view as AABBs (green = kept, red = culled), 0 = main view, 1..N = clipmaps, -1 = off", -1);
 
 bool CulledRenderer::_pipelinesCreated = false;
 Renderer::ComputePipelineID CulledRenderer::_fillInstancedDrawCallsFromBitmaskPipeline[2]; // [0] = non-indexed, [1] = indexed
@@ -73,6 +72,104 @@ void CulledRenderer::Clear()
 
 }
 
+// One thread per instance against a view's bitmask slice, appending survivors to the shared
+// per-drawcall counts/lookup buffers. An indirect args buffer routes the dispatch through
+// Finalize-written per-view group counts instead of covering every instance
+void CulledRenderer::DispatchInstancedFill(PassParams& params, const std::string& markerName, Renderer::DescriptorSetResource& fillSet, bool filtered, u32 currentBitmaskIndex, u32 bitmaskOffset, bool keepDynamic, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset)
+{
+    const u32 numInstances = params.cullingResources->GetNumInstances();
+
+    params.commandList->PushMarker(params.passName + " " + markerName, Color::White);
+
+    Renderer::ComputePipelineID pipeline = filtered ? _fillInstancedDrawCallsFilteredPipeline[params.cullingResources->IsIndexed()]
+                                                    : _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
+    params.commandList->BeginPipeline(pipeline);
+
+    struct FillDrawCallConstants
+    {
+        u32 numTotalInstances;
+        u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+        u32 drawCallDataSize;
+        u32 currentBitmaskIndex;
+        u32 bitmaskOffset;
+        u32 keepDynamic;
+    };
+
+    FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
+    fillConstants->numTotalInstances = numInstances;
+    fillConstants->baseInstanceLookupOffset = baseInstanceLookupOffset;
+    fillConstants->drawCallDataSize = drawCallDataSize;
+    fillConstants->currentBitmaskIndex = currentBitmaskIndex;
+    fillConstants->bitmaskOffset = bitmaskOffset;
+    fillConstants->keepDynamic = keepDynamic;
+    params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
+
+    params.commandList->BindDescriptorSet(fillSet, params.frameIndex);
+
+    if (indirectArgsBuffer != Renderer::BufferResource::Invalid())
+    {
+        // Finalize zeroed the group count for rings with no page work this frame
+        params.commandList->DispatchIndirect(indirectArgsBuffer, indirectArgsByteOffset);
+    }
+    else
+    {
+        params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+    }
+
+    params.commandList->EndPipeline(pipeline);
+    params.commandList->PopMarker();
+}
+
+// Per-drawcall instance counts become indirect draw args, each count cleared after consumption
+// (the counts buffer is always zero between uses). An indirect args buffer applies the same
+// Finalize gate as the fill that produced the counts
+void CulledRenderer::DispatchCreateIndirect(PassParams& params, Renderer::DescriptorSetResource& createIndirectSet, Renderer::DescriptorSetResource* debugSet, u32 baseInstanceLookupOffset, u32 drawCallDataSize, Renderer::BufferResource indirectArgsBuffer, u32 indirectArgsByteOffset)
+{
+    const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
+    const bool debugOrdered = false; // Single-group ordered variant for determinism debugging
+
+    params.commandList->PushMarker(params.passName + " Create Indirect", Color::Yellow);
+
+    Renderer::ComputePipelineID pipeline = debugOrdered ? _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()]
+                                                        : _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
+    params.commandList->BeginPipeline(pipeline);
+
+    struct CreateIndirectConstants
+    {
+        u32 numTotalDrawCalls;
+        u32 baseInstanceLookupOffset;
+        u32 drawCallDataSize;
+    };
+    CreateIndirectConstants* createIndirectConstants = params.graphResources->FrameNew<CreateIndirectConstants>();
+    createIndirectConstants->numTotalDrawCalls = numDrawCalls;
+    createIndirectConstants->baseInstanceLookupOffset = baseInstanceLookupOffset;
+    createIndirectConstants->drawCallDataSize = drawCallDataSize;
+    params.commandList->PushConstant(createIndirectConstants, 0, sizeof(CreateIndirectConstants));
+
+    if (debugSet != nullptr)
+    {
+        params.commandList->BindDescriptorSet(*debugSet, params.frameIndex);
+    }
+    params.commandList->BindDescriptorSet(createIndirectSet, params.frameIndex);
+
+    if (indirectArgsBuffer != Renderer::BufferResource::Invalid())
+    {
+        // Zero groups for views with no page work this frame, same gate as the fill
+        params.commandList->DispatchIndirect(indirectArgsBuffer, indirectArgsByteOffset);
+    }
+    else if (debugOrdered)
+    {
+        params.commandList->Dispatch(1, 1, 1);
+    }
+    else
+    {
+        params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
+    }
+
+    params.commandList->EndPipeline(pipeline);
+    params.commandList->PopMarker();
+}
+
 void CulledRenderer::OccluderPass(OccluderPassParams& params)
 {
     NC_ASSERT(params.drawCallback != nullptr, "CulledRenderer : OccluderPass got params with invalid drawCallback");
@@ -94,8 +191,6 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
     
     if (params.cullingResources->IsInstanced())
     {
-        const bool debugOrdered = false;
-
         params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
         params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0); // CreateIndirect accumulates the surviving counts, reset or the readback stats carry over from last frame
         params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
@@ -110,92 +205,14 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
             params.commandList->BufferBarrier(params.culledDrawCallsBitMaskBuffer, Renderer::BufferPassUsage::TRANSFER);
         }
 
-        // Fill the occluders to draw
-        {
-            std::string debugName = params.passName + " Instanced Occlusion Fill";
-            params.commandList->PushMarker(debugName, Color::White);
-
-            Renderer::ComputePipelineID pipeline = _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
-            params.commandList->BeginPipeline(pipeline);
-
-            struct FillDrawCallConstants
-            {
-                u32 numTotalInstances;
-                u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
-                u32 drawCallDataSize;
-                u32 currentBitmaskIndex;
-                u32 bitmaskOffset;
-            };
-
-            FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
-            fillConstants->numTotalInstances = numInstances;
-            fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-            fillConstants->drawCallDataSize = params.drawCallDataSize;
-            fillConstants->currentBitmaskIndex = !params.frameIndex; // Occluders consume last frame's culling output
-            fillConstants->bitmaskOffset = 0; // Occluders only draw the main view
-
-            params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-            // Bind descriptorset
-            params.commandList->BindDescriptorSet(params.occluderFillDescriptorSet, params.frameIndex);
-
-            params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
-
-            params.commandList->EndPipeline(pipeline);
-
-            params.commandList->PopMarker();
-        }
+        // Fill the occluders to draw: last frame's main-view culling output
+        DispatchInstancedFill(params, "Instanced Occlusion Fill", params.occluderFillDescriptorSet, false, !params.frameIndex, 0, false, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
         params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
         params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
         // Create indirect argument buffer
-        {
-            std::string debugName = params.passName + " Create Indirect";
-            params.commandList->PushMarker(debugName, Color::Yellow);
-
-            Renderer::ComputePipelineDesc cullingPipelineDesc;
-            cullingPipelineDesc.debugName = debugName;
-            params.graphResources->InitializePipelineDesc(cullingPipelineDesc);
-
-            Renderer::ComputePipelineID pipeline;
-            if (debugOrdered)
-            {
-                pipeline = _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()];
-            }
-            else
-            {
-                pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
-            }
-            params.commandList->BeginPipeline(pipeline);
-
-            struct CullConstants
-            {
-                u32 numTotalDrawCalls;
-                u32 baseInstanceLookupOffset;
-                u32 drawCallDataSize;
-            };
-            CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-
-            cullConstants->numTotalDrawCalls = numDrawCalls;
-            cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-            cullConstants->drawCallDataSize = params.drawCallDataSize;
-            params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
-
-            params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
-
-            if (debugOrdered)
-            {
-                params.commandList->Dispatch(1, 1, 1);
-            }
-            else
-            {
-                params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
-            }
-
-            params.commandList->EndPipeline(pipeline);
-            params.commandList->PopMarker();
-        }
+        DispatchCreateIndirect(params, params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
         params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
 
@@ -320,6 +337,75 @@ void CulledRenderer::OccluderPass(OccluderPassParams& params)
     }
 }
 
+// The instanced cull dispatch shared by CullingPass and ClipmapCullingPass: one thread per
+// instance against the per-view frustums, writing bitmask slices and instance counts.
+// occlusionCull/cullMainView/debugDrawColliders come from params; the clipmap pass overrides
+// them before calling
+void CulledRenderer::RunInstancedCullingDispatch(CullingPassParams& params, bool useBitmasks, bool bindDepthPyramid)
+{
+    const u32 numInstances = params.cullingResources->GetNumInstances();
+
+    Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[useBitmasks];
+    params.commandList->BeginPipeline(pipeline);
+
+    vec2 viewportSize = _renderer->GetRenderSize();
+
+    struct CullConstants
+    {
+        u32 viewportSizeX;
+        u32 viewportSizeY;
+        u32 numTotalInstances;
+        u32 occlusionCull;
+        u32 instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
+        u32 drawCallSize;
+        u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
+        u32 modelIDOffset; // Byte offset into drawCallDatas where the modelID is stored
+        u32 drawCallDataSize;
+        u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
+        u32 debugDrawColliders;
+        u32 currentBitmaskIndex;
+        u32 numShadowViews;
+        u32 bitMaskBufferUintsPerView;
+        u32 debugDrawView;
+        u32 cullMainView;
+    };
+    CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
+    cullConstants->viewportSizeX = u32(viewportSize.x);
+    cullConstants->viewportSizeY = u32(viewportSize.y);
+    cullConstants->numTotalInstances = numInstances;
+    cullConstants->occlusionCull = params.occlusionCull;
+
+    u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, Renderer::IndexedIndirectDraw::instanceCount) : offsetof(Renderer::IndirectDraw, Renderer::IndirectDraw::instanceCount);
+    cullConstants->instanceCountOffset = instanceCountOffset;
+    cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
+
+    cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
+    cullConstants->modelIDOffset = params.modelIDOffset;
+    cullConstants->drawCallDataSize = params.drawCallDataSize;
+
+    cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
+    cullConstants->debugDrawColliders = params.debugDrawColliders;
+    cullConstants->currentBitmaskIndex = params.frameIndex;
+    cullConstants->numShadowViews = params.numShadowViews;
+    cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
+    cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
+    cullConstants->cullMainView = params.cullMainView;
+    params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
+
+    if (bindDepthPyramid)
+    {
+        params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
+    }
+
+    params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
+    params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
+    params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
+
+    params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
+
+    params.commandList->EndPipeline(pipeline);
+}
+
 void CulledRenderer::CullingPass(CullingPassParams& params)
 {
     NC_ASSERT(params.drawCallDataSize > 0, "CulledRenderer : CullingPass params provided an invalid drawCallDataSize");
@@ -331,8 +417,6 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
     {
         if (params.cullingResources->IsInstanced())
         {
-            const bool debugOrdered = false;
-
             params.commandList->PushMarker(params.passName + " Culling", Color::Yellow);
 
             // Reset the counters
@@ -351,112 +435,15 @@ void CulledRenderer::CullingPass(CullingPassParams& params)
                 std::string debugName = params.passName + " Instanced Culling";
                 params.commandList->PushMarker(debugName, Color::Yellow);
 
-                Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[!params.disableTwoStepCulling];
-                params.commandList->BeginPipeline(pipeline);
+                RunInstancedCullingDispatch(params, !params.disableTwoStepCulling, true);
 
-                vec2 viewportSize = _renderer->GetRenderSize();
-
-                struct CullConstants
-                {
-                    u32 viewportSizeX;
-                    u32 viewportSizeY;
-                    u32 numTotalInstances;
-                    u32 occlusionCull;
-                    u32 instanceCountOffset; // Byte offset into drawCalls where the instanceCount is stored
-                    u32 drawCallSize;
-                    u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
-                    u32 modelIDOffset; // Byte offset into drawCallDatas where the modelID is stored
-                    u32 drawCallDataSize;
-                    u32 cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
-                    u32 debugDrawColliders;
-                    u32 currentBitmaskIndex;
-                    u32 numShadowViews;
-                    u32 bitMaskBufferUintsPerView;
-                    u32 debugDrawView;
-                    u32 cullMainView;
-                };
-                CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-                cullConstants->viewportSizeX = u32(viewportSize.x);
-                cullConstants->viewportSizeY = u32(viewportSize.y);
-                cullConstants->numTotalInstances = numInstances;
-                cullConstants->occlusionCull = params.occlusionCull;
-
-                u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, Renderer::IndexedIndirectDraw::instanceCount) : offsetof(Renderer::IndirectDraw, Renderer::IndirectDraw::instanceCount);
-                cullConstants->instanceCountOffset = instanceCountOffset;
-                cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
-
-                cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-                cullConstants->modelIDOffset = params.modelIDOffset;
-                cullConstants->drawCallDataSize = params.drawCallDataSize;
-
-                cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
-                cullConstants->debugDrawColliders = params.debugDrawColliders;
-                cullConstants->currentBitmaskIndex = params.frameIndex;
-                cullConstants->numShadowViews = params.numShadowViews;
-                cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
-                cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
-                cullConstants->cullMainView = params.cullMainView;
-                params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
-
-                params.cullingDescriptorSet.Bind("_depthPyramid"_h, params.depthPyramid);
-
-                params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
-
-                params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
-
-                params.commandList->EndPipeline(pipeline);
                 params.commandList->PopMarker();
             }
 
             params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Create indirect argument buffer
-            {
-                std::string debugName = params.passName + " Create Indirect";
-                params.commandList->PushMarker(debugName, Color::Yellow);
-
-
-                Renderer::ComputePipelineID pipeline;
-                if (debugOrdered)
-                {
-                    pipeline = _createIndirectAfterCullingOrderedPipeline[params.cullingResources->IsIndexed()];
-                }
-                else
-                {
-                    pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
-                }
-                params.commandList->BeginPipeline(pipeline);
-
-                struct CullConstants
-                {
-                    u32 numTotalDrawCalls;
-                    u32 baseInstanceLookupOffset;
-                    u32 drawCallDataSize;
-                };
-                CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-
-                cullConstants->numTotalDrawCalls = numDrawCalls;
-                cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-                cullConstants->drawCallDataSize = params.drawCallDataSize;
-                params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
-
-                params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
-                params.commandList->BindDescriptorSet(params.createIndirectAfterCullSet, params.frameIndex);
-
-                if (debugOrdered)
-                {
-                    params.commandList->Dispatch(1, 1, 1);
-                }
-                else
-                {
-                    params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
-                }
-
-                params.commandList->EndPipeline(pipeline);
-                params.commandList->PopMarker();
-            }
+            DispatchCreateIndirect(params, params.createIndirectAfterCullSet, &params.debugDescriptorSet, params.baseInstanceLookupOffset, params.drawCallDataSize, Renderer::BufferResource::Invalid(), 0);
 
             params.commandList->PopMarker();
         }
@@ -554,67 +541,19 @@ void CulledRenderer::ClipmapCullingPass(CullingPassParams& params)
     if (numDrawCalls == 0 || numInstances == 0 || params.numShadowViews == 0)
         return;
 
-    // Frustum-only cull of the cascade views into their bitmask slices. No counter resets (the
-    // per-cascade fill in the geometry pass resets and rebuilds the shared draw sets), no occlusion
+    // Frustum-only cull of the clipmap views into their bitmask slices. No counter resets (the
+    // per-clipmap fill in the geometry pass resets and rebuilds the shared draw sets), no occlusion
     std::string debugName = params.passName + " Clipmap Culling";
     params.commandList->PushMarker(debugName, Color::Yellow);
 
-    Renderer::ComputePipelineID pipeline = _cullingInstancedPipeline[1]; // Cascades require the bitmask permutation
-    params.commandList->BeginPipeline(pipeline);
+    params.occlusionCull = false;
+    params.cullMainView = false;
+    params.debugDrawColliders = false;
 
-    vec2 viewportSize = _renderer->GetRenderSize();
+    // Clipmaps require the bitmask permutation; _depthPyramid stays bound from the main culling
+    // pass, rebinding here would rewrite an already-bound set
+    RunInstancedCullingDispatch(params, true, false);
 
-    struct CullConstants
-    {
-        u32 viewportSizeX;
-        u32 viewportSizeY;
-        u32 numTotalInstances;
-        u32 occlusionCull;
-        u32 instanceCountOffset;
-        u32 drawCallSize;
-        u32 baseInstanceLookupOffset;
-        u32 modelIDOffset;
-        u32 drawCallDataSize;
-        u32 cullingDataIsWorldspace;
-        u32 debugDrawColliders;
-        u32 currentBitmaskIndex;
-        u32 numShadowViews;
-        u32 bitMaskBufferUintsPerView;
-        u32 debugDrawView;
-        u32 cullMainView;
-    };
-    CullConstants* cullConstants = params.graphResources->FrameNew<CullConstants>();
-    cullConstants->viewportSizeX = u32(viewportSize.x);
-    cullConstants->viewportSizeY = u32(viewportSize.y);
-    cullConstants->numTotalInstances = numInstances;
-    cullConstants->occlusionCull = false;
-
-    u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, Renderer::IndexedIndirectDraw::instanceCount) : offsetof(Renderer::IndirectDraw, Renderer::IndirectDraw::instanceCount);
-    cullConstants->instanceCountOffset = instanceCountOffset;
-    cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
-
-    cullConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-    cullConstants->modelIDOffset = params.modelIDOffset;
-    cullConstants->drawCallDataSize = params.drawCallDataSize;
-
-    cullConstants->cullingDataIsWorldspace = params.cullingDataIsWorldspace;
-    cullConstants->debugDrawColliders = false;
-    cullConstants->currentBitmaskIndex = params.frameIndex;
-    cullConstants->numShadowViews = params.numShadowViews;
-    cullConstants->bitMaskBufferUintsPerView = params.cullingResources->GetBitMaskBufferUintsPerView();
-    cullConstants->debugDrawView = static_cast<u32>(CVAR_ShadowDebugCullingView.Get());
-    cullConstants->cullMainView = false;
-    params.commandList->PushConstant(cullConstants, 0, sizeof(CullConstants));
-
-    // _depthPyramid stays bound from the main culling pass, rebinding here would rewrite an already-bound set
-
-    params.commandList->BindDescriptorSet(params.debugDescriptorSet, params.frameIndex);
-    params.commandList->BindDescriptorSet(params.globalDescriptorSet, params.frameIndex);
-    params.commandList->BindDescriptorSet(params.cullingDescriptorSet, params.frameIndex);
-
-    params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
-
-    params.commandList->EndPipeline(pipeline);
     params.commandList->PopMarker();
 }
 
@@ -623,97 +562,43 @@ void CulledRenderer::ClipmapCullingPass(CullingPassParams& params)
 void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 viewIndex, bool filtered, bool keepDynamic)
 {
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
-    const u32 numInstances = params.cullingResources->GetNumInstances();
 
-    // Reset the counters and per-drawcall instance counts
-    params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+    // SVSM fills gate their drawcall-granularity setup (instance-count clear + CreateIndirect)
+    // on the Finalize-written per-view args; the counts buffer stays always-zero between uses
+    // because CreateIndirect clears after consumption. The args byte layout comes through params
+    // (the ShadowRenderer's stride/offset constants)
+    const bool gatedSetup = params.svsmPass && params.svsmFillArgsBuffer != Renderer::BufferResource::Invalid();
+    Renderer::BufferResource fillArgsBuffer = gatedSetup ? params.svsmFillArgsBuffer : Renderer::BufferResource::Invalid();
+    const u32 fillArgsOffset = gatedSetup ? (viewIndex - 1) * params.svsmFillArgsViewStride + (keepDynamic ? params.svsmFillArgsDynamicOffset : 0) : 0;
+    const u32 overheadArgsOffset = gatedSetup ? (viewIndex - 1) * params.svsmFillArgsViewStride + (keepDynamic ? params.svsmFillArgsDynamicOverheadOffset : params.svsmFillArgsStaticOverheadOffset) : 0;
+
+    // Reset the counters. The per-drawcall instance counts skip their FillBuffer in the gated
+    // path: CreateIndirect clears each count after consuming it, so the buffer is always zero
+    // between uses (and a gated-off CreateIndirect means nothing read the counts this view)
     params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
     params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
-    params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+    if (!gatedSetup)
+    {
+        params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+        params.commandList->FillBuffer(params.culledInstanceCountsBuffer, 0, sizeof(u32) * numDrawCalls, 0);
+        params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
+    }
     params.commandList->FillBuffer(params.drawCountBuffer, 0, sizeof(u32), 0);
     params.commandList->FillBuffer(params.triangleCountBuffer, 0, sizeof(u32), 0);
-    params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::TRANSFER);
     params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
     params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
     // Fill the instances visible in this view
-    {
-        std::string debugName = params.passName + " Instanced Geometry Fill";
-        params.commandList->PushMarker(debugName, Color::White);
-
-        Renderer::ComputePipelineID pipeline = filtered ? _fillInstancedDrawCallsFilteredPipeline[params.cullingResources->IsIndexed()]
-                                                        : _fillInstancedDrawCallsFromBitmaskPipeline[params.cullingResources->IsIndexed()];
-        params.commandList->BeginPipeline(pipeline);
-
-        struct FillDrawCallConstants
-        {
-            u32 numTotalInstances;
-            u32 baseInstanceLookupOffset; // Byte offset into drawCallDatas where the baseInstanceLookup is stored
-            u32 drawCallDataSize;
-            u32 currentBitmaskIndex;
-            u32 bitmaskOffset;
-            u32 keepDynamic;
-        };
-
-        FillDrawCallConstants* fillConstants = params.graphResources->FrameNew<FillDrawCallConstants>();
-        fillConstants->numTotalInstances = numInstances;
-        fillConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-        fillConstants->drawCallDataSize = params.drawCallDataSize;
-        fillConstants->currentBitmaskIndex = params.frameIndex;
-        fillConstants->bitmaskOffset = viewIndex * params.cullingResources->GetBitMaskBufferUintsPerView();
-        fillConstants->keepDynamic = keepDynamic;
-        params.commandList->PushConstant(fillConstants, 0, sizeof(FillDrawCallConstants));
-
-        params.commandList->BindDescriptorSet(params.fillDescriptorSet, params.frameIndex);
-
-        if (params.svsmPass && params.svsmFillArgsBuffer != Renderer::BufferResource::Invalid())
-        {
-            // Finalize zeroed the group count for rings with no page work this frame
-            u32 argsOffset = (viewIndex - 1) * ShadowRenderer::SVSM_FILL_ARGS_VIEW_STRIDE + (keepDynamic ? ShadowRenderer::SVSM_FILL_ARGS_DYNAMIC_OFFSET : 0);
-            params.commandList->DispatchIndirect(params.svsmFillArgsBuffer, argsOffset);
-        }
-        else
-        {
-            params.commandList->Dispatch((numInstances + 31) / 32, 1, 1);
-        }
-
-        params.commandList->EndPipeline(pipeline);
-        params.commandList->PopMarker();
-    }
+    DispatchInstancedFill(params, "Instanced Geometry Fill", params.fillDescriptorSet, filtered, params.frameIndex, viewIndex * params.cullingResources->GetBitMaskBufferUintsPerView(), keepDynamic, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, fillArgsOffset);
 
     params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
 
+    // The draws consume this count, a zero-work view must still draw zero
     params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
     params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
     // Create indirect argument buffer
-    {
-        std::string debugName = params.passName + " Create Indirect";
-        params.commandList->PushMarker(debugName, Color::Yellow);
-
-        Renderer::ComputePipelineID pipeline = _createIndirectAfterCullingPipeline[params.cullingResources->IsIndexed()];
-        params.commandList->BeginPipeline(pipeline);
-
-        struct CreateIndirectConstants
-        {
-            u32 numTotalDrawCalls;
-            u32 baseInstanceLookupOffset;
-            u32 drawCallDataSize;
-        };
-        CreateIndirectConstants* createIndirectConstants = params.graphResources->FrameNew<CreateIndirectConstants>();
-
-        createIndirectConstants->numTotalDrawCalls = numDrawCalls;
-        createIndirectConstants->baseInstanceLookupOffset = params.baseInstanceLookupOffset;
-        createIndirectConstants->drawCallDataSize = params.drawCallDataSize;
-        params.commandList->PushConstant(createIndirectConstants, 0, sizeof(CreateIndirectConstants));
-
-        params.commandList->BindDescriptorSet(params.createIndirectDescriptorSet, params.frameIndex);
-
-        params.commandList->Dispatch((numDrawCalls + 31) / 32, 1, 1);
-
-        params.commandList->EndPipeline(pipeline);
-        params.commandList->PopMarker();
-    }
+    DispatchCreateIndirect(params, params.createIndirectDescriptorSet, nullptr, params.baseInstanceLookupOffset, params.drawCallDataSize, fillArgsBuffer, overheadArgsOffset);
 
     params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::COMPUTE);
     params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::COMPUTE);
@@ -728,23 +613,9 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
     const u32 numDrawCalls = params.cullingResources->GetDrawCallCount();
 
     // svsmProfileGeometry: per-view fill/draw GPU timings, they surface in the perf editor's
-    // render pass list. Off by default, queries around tiny dispatches serialize slightly
+    // render pass list
     const bool profileSVSM = params.svsmPass && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry"_h) != 0;
-    auto Profiled = [&](const char* stageName, u32 viewIndex, auto&& work)
-    {
-        if (!profileSVSM)
-        {
-            work();
-            return;
-        }
-
-        Renderer::TimeQueryDesc timeQueryDesc;
-        timeQueryDesc.name = "SVSM " + std::string(stageName) + " v" + std::to_string(viewIndex);
-        Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
-        params.commandList->BeginTimeQuery(timeQuery);
-        work();
-        params.commandList->EndTimeQuery(timeQuery);
-    };
+    RenderUtils::SVSMGeometryProfiler Profiled(_renderer, *params.commandList, "SVSM", profileSVSM);
 
     for (u32 i = params.firstViewIndex; i < params.numShadowViews + 1; i++)
     {
@@ -868,25 +739,7 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
 
             const bool svsmClipRects = params.svsmPass && i > 0
                 && *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
-            if (svsmClipRects)
-            {
-                // One draw per clip rect (new X columns, new Y rows, other): the vertex shader
-                // clips fragments to the rect, so an L-shaped toroidal update rasterizes two thin
-                // stripes instead of its whole-window bounding box
-                Profiled("Draw", i, [&]
-                {
-                    for (u32 rectIndex = 0; rectIndex < 3; rectIndex++)
-                    {
-                        drawParams.svsmRectIndex = rectIndex;
-                        params.drawCallback(drawParams);
-                    }
-                });
-            }
-            else
-            {
-                // svsmClipRects 0: single draw, rect index stays at the disabled sentinel
-                Profiled("Draw", i, [&] { params.drawCallback(drawParams); });
-            }
+            Profiled("Draw", i, [&] { RenderUtils::DrawSVSMClipRects(svsmClipRects, drawParams, [&](DrawParams& rectDrawParams) { params.drawCallback(rectDrawParams); }); });
         }
 
         // Copy from our draw count buffer to the readback buffer

@@ -57,7 +57,7 @@ public:
     bool GetSVSMClipmapStats(u32 clipmapIndex, SVSMClipmapStats& outStats) const;
     void GetSVSMGlobalStats(u32& outFreePages, u32& outTotalPages, u32& outOverflow, u32& outInvalidationCause) const;
     void GetSVSMDynamicStats(u32& outLivePages, u32& outTotalPages, u32& outOverflow) const;
-    u32 GetSVSMBudgetUsed() const { return _svsmDataReadBack[216]; } // SVSMDataOffsets::StatsBudgetUsed
+    u32 GetSVSMBudgetUsed() const; // Defined in the .cpp next to the SVSMData mirror offsets
 
     // Binds the cameras buffer into every SVSM set that reads or writes it. Called at init
     // (buffer binds only reach the canonical descriptor copies at a later FlipFrame, so mid-frame
@@ -68,6 +68,10 @@ public:
     // entirely. Per-view skipping is GPU-driven (Finalize's fill dispatch args) — a readback-based
     // per-view skip is a frame late and drops freshly acquired dynamic pages' draws for a frame
     bool HasSVSMDynamicCasters() const { return !_svsmDynamicAABBs.empty(); }
+
+    // Shadows enabled and not night-gated: the single condition the clipmap culling and SVSM
+    // geometry passes gate on (freeze deliberately excluded, frozen frames keep recording draws)
+    bool IsSVSMActive() const;
 
     // CPU-side caster classification counts, rebuilt each Update from the ModelRenderer's
     // classifier: live set size, this frame's enter/leave transitions, and static-spilled casters
@@ -87,12 +91,16 @@ public:
     Renderer::BufferID GetSVSMDynamicPageTableBuffer() const { return _svsmDynamicPageTableBuffer; }
     Renderer::ImageID GetSVSMDynamicPagePool() const { return _svsmDynamicPagePool; }
 
-    // Finalize-written per-view fill dispatch args: per clipmap 3 x uvec3 (model static fill,
-    // model dynamic fill, terrain static fill), byte stride SVSM_FILL_ARGS_VIEW_STRIDE
+    // Finalize-written per-view fill dispatch args: per clipmap 5 x uvec3 (model static fill,
+    // model dynamic fill, terrain static fill, model static overhead, model dynamic overhead —
+    // the overhead args gate the drawcall-granularity clear + CreateIndirect companions),
+    // byte stride SVSM_FILL_ARGS_VIEW_STRIDE
     Renderer::BufferID GetSVSMFillArgsBuffer() const { return _svsmFillArgsBuffer; }
-    static constexpr u32 SVSM_FILL_ARGS_VIEW_STRIDE = 3 * 3 * sizeof(u32);
+    static constexpr u32 SVSM_FILL_ARGS_VIEW_STRIDE = 5 * 3 * sizeof(u32);
     static constexpr u32 SVSM_FILL_ARGS_DYNAMIC_OFFSET = 3 * sizeof(u32);
     static constexpr u32 SVSM_FILL_ARGS_TERRAIN_OFFSET = 6 * sizeof(u32);
+    static constexpr u32 SVSM_FILL_ARGS_STATIC_OVERHEAD_OFFSET = 9 * sizeof(u32);
+    static constexpr u32 SVSM_FILL_ARGS_DYNAMIC_OVERHEAD_OFFSET = 12 * sizeof(u32);
 
     // The single clipmap-count cap every clamp site uses. The camera buffer and bitmask slices
     // are laid out against the Engine's view cap, the two must stay equal
@@ -102,6 +110,11 @@ public:
     // Dynamic AABB buffer capacity; the ModelRenderer's classifier caps its emission against this
     // and spills the excess to the static path (never excluded from both pools)
     static constexpr u32 SVSM_MAX_DYNAMIC_AABBS = 4096;
+
+    // Scalar layout size of SVSMData in Shadows/SVSM.inc.slang. The .cpp mirrors the struct
+    // (SVSMDataMirror) and static_asserts against this so layout drift breaks the build instead
+    // of silently misreporting the readback. Tail: clipRect{MinX,MinY,MaxX,MaxY}[24] at 220..315
+    static constexpr u32 SVSM_DATA_UINT_COUNT = 316;
 
     // For the material pass LIGHT set bindings, which must stay valid before the pools exist.
     // Nothing samples the placeholder while the page tables have no resident entries
@@ -118,9 +131,6 @@ private:
     TerrainRenderer* _terrainRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
 
-    // SVSM: scalar layout of SVSMData in Shadows/SVSM.inc.slang, offsets in ShadowRenderer.cpp.
-    // Tail: clipRect{MinX,MinY,MaxX,MaxY}[24] at 220..315 (3 clip rects x 8 clipmaps)
-    static constexpr u32 SVSM_DATA_UINT_COUNT = 316;
     static constexpr u32 SVSM_MAX_PAGE_TABLE_SIZE = 64;   // Pages per row, buffers are sized for this cap
     static constexpr u32 SVSM_MAX_POOL_PAGES = 4096;      // Physical page index is 12 bits in the table entry
     static constexpr u32 SVSM_MAX_DIRTY_AABBS = 1024;
@@ -191,4 +201,9 @@ private:
     // age out while visible). Initialized to the cvar defaults so startup does not invalidate
     bool _svsmModelsCastShadow = true;
     bool _svsmTerrainCastShadow = true;
+
+    // Night gate: entered after shadowStrength sits at 0 for a sustained second (the dusk
+    // threshold must not flicker the cache), left immediately with a full re-bake
+    bool _svsmNightActive = false;
+    f32 _svsmNightTimer = 0.0f;
 };

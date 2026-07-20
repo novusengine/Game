@@ -22,7 +22,7 @@
 
 [[vk::binding(0, PER_PASS)]] RWStructuredBuffer<Camera> _rwCameras; // Same buffer as the global _cameras, element 0 = main camera
 [[vk::binding(1, PER_PASS)]] StructuredBuffer<SVSMData> _svsmData;
-[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _fillDispatchArgs; // Per clipmap: 3 x uvec3 (model static fill, model dynamic fill, terrain static fill)
+[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _fillDispatchArgs; // Per clipmap: 5 x uvec3 (model static fill, model dynamic fill, terrain static fill, model static overhead, model dynamic overhead)
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -32,16 +32,20 @@ void main()
     float3x3 lightRotation = BuildLightRotation(lightDirection);
     float3 upDir = StableUp(lightDirection);
 
-    // Per-view fill dispatch args, zero groups for rings with no page work this frame
+    // Per-view fill dispatch args, zero groups for rings with no page work this frame. The
+    // overhead args gate the fill's drawcall-granularity companions (instance-count clear +
+    // CreateIndirect) on the same bits — safe because a skipped CreateIndirect means nothing
+    // reads the stale instance counts, and the tiny per-fill counter reset stays unconditional
     uint modelFillGroups = (_constants.fillInstanceCount + 31) / 32;
     uint terrainFillGroups = (_constants.fillCellCount + 31) / 32;
+    uint modelOverheadGroups = (_constants.fillDrawCallCount + 31) / 32;
     for (uint k = 0; k < 8; k++)
     {
         bool inUse = k < _constants.numClipmaps;
         bool hasDirty = inUse && _svsmData[0].statsDirty[k] != 0;
         bool hasDynamic = inUse && _svsmData[0].statsDynamicLive[k] != 0;
 
-        uint base = k * 9;
+        uint base = k * 15;
         _fillDispatchArgs[base + 0] = hasDirty ? modelFillGroups : 0;
         _fillDispatchArgs[base + 1] = 1;
         _fillDispatchArgs[base + 2] = 1;
@@ -51,6 +55,12 @@ void main()
         _fillDispatchArgs[base + 6] = hasDirty ? terrainFillGroups : 0;
         _fillDispatchArgs[base + 7] = 1;
         _fillDispatchArgs[base + 8] = 1;
+        _fillDispatchArgs[base + 9] = hasDirty ? modelOverheadGroups : 0;
+        _fillDispatchArgs[base + 10] = 1;
+        _fillDispatchArgs[base + 11] = 1;
+        _fillDispatchArgs[base + 12] = hasDynamic ? modelOverheadGroups : 0;
+        _fillDispatchArgs[base + 13] = 1;
+        _fillDispatchArgs[base + 14] = 1;
     }
 
     float zRangeMin = _svsmData[0].zRangeMin;

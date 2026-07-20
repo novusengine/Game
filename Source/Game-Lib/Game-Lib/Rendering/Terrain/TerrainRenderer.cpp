@@ -318,47 +318,8 @@ void TerrainRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, RenderR
             commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             // Cull instances on GPU
-            Renderer::ComputePipelineID pipeline = _cullingPipeline;
-            commandList.BeginPipeline(pipeline);
-
-            struct CullConstants
-            {
-                u32 viewportSizeX;
-                u32 viewportSizeY;
-                u32 numShadowViews;
-                u32 occlusionEnabled;
-                u32 bitMaskBufferSizePerView;
-                u32 currentBitmaskIndex;
-                u32 debugDrawView;
-                u32 cullMainView;
-            };
-
-            vec2 viewportSize = _renderer->GetRenderSize();
-
-            CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
-            cullConstants->viewportSizeX = u32(viewportSize.x);
-            cullConstants->viewportSizeY = u32(viewportSize.y);
-            cullConstants->numShadowViews = numShadowViews;
-            cullConstants->occlusionEnabled = CVAR_OcclusionCullingEnabled.Get();
-            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
-            cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
-            cullConstants->currentBitmaskIndex = frameIndex;
-            cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
-            cullConstants->cullMainView = true;
-
-            commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
-
             data.cullingSet.Bind("_depthPyramid"_h, data.depthPyramid);
-
-            // Bind descriptorset
-            commandList.BindDescriptorSet(data.debugSet, frameIndex);
-            commandList.BindDescriptorSet(data.globalSet, frameIndex);
-            //commandList.BindDescriptorSet(Renderer::DescriptorSetSlot::SHADOWS, &resources.shadowDescriptorSet, frameIndex);
-            commandList.BindDescriptorSet(data.cullingSet, frameIndex);
-
-            commandList.Dispatch((cellCount + 31) / 32, 1, 1);
-
-            commandList.EndPipeline(pipeline);
+            RunCullingDispatch(graphResources, commandList, frameIndex, numShadowViews, CVAR_OcclusionCullingEnabled.Get() != 0, true, data.debugSet, data.globalSet, data.cullingSet);
         });
 }
 
@@ -530,48 +491,53 @@ void TerrainRenderer::AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, 
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, TerrainClipmapCulling);
 
-            // Frustum-only cull of the cascade views into their bitmask slices, no occlusion culling for cascades
-            Renderer::ComputePipelineID pipeline = _cullingPipeline;
-            commandList.BeginPipeline(pipeline);
-
-            struct CullConstants
-            {
-                u32 viewportSizeX;
-                u32 viewportSizeY;
-                u32 numShadowViews;
-                u32 occlusionEnabled;
-                u32 bitMaskBufferSizePerView;
-                u32 currentBitmaskIndex;
-                u32 debugDrawView;
-                u32 cullMainView;
-            };
-
-            vec2 viewportSize = _renderer->GetRenderSize();
-
-            const u32 cellCount = static_cast<u32>(_cellDatas.Count());
-
-            CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
-            cullConstants->viewportSizeX = u32(viewportSize.x);
-            cullConstants->viewportSizeY = u32(viewportSize.y);
-            cullConstants->numShadowViews = numShadowViews;
-            cullConstants->occlusionEnabled = false;
-            cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
-            cullConstants->currentBitmaskIndex = frameIndex;
-            cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
-            cullConstants->cullMainView = false;
-
-            commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
-
-            // _depthPyramid stays bound from the main culling pass, rebinding here would rewrite an already-bound set
-
-            commandList.BindDescriptorSet(data.debugSet, frameIndex);
-            commandList.BindDescriptorSet(data.globalSet, frameIndex);
-            commandList.BindDescriptorSet(data.cullingSet, frameIndex);
-
-            commandList.Dispatch((cellCount + 31) / 32, 1, 1);
-
-            commandList.EndPipeline(pipeline);
+            // Frustum-only cull of the clipmap views into their bitmask slices, no occlusion.
+            // _depthPyramid stays bound from the main culling pass, rebinding here would rewrite
+            // an already-bound set
+            RunCullingDispatch(graphResources, commandList, frameIndex, numShadowViews, false, false, data.debugSet, data.globalSet, data.cullingSet);
         });
+}
+
+void TerrainRenderer::RunCullingDispatch(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u8 frameIndex, u32 numShadowViews, bool occlusionEnabled, bool cullMainView, Renderer::DescriptorSetResource& debugSet, Renderer::DescriptorSetResource& globalSet, Renderer::DescriptorSetResource& cullingSet)
+{
+    Renderer::ComputePipelineID pipeline = _cullingPipeline;
+    commandList.BeginPipeline(pipeline);
+
+    struct CullConstants
+    {
+        u32 viewportSizeX;
+        u32 viewportSizeY;
+        u32 numShadowViews;
+        u32 occlusionEnabled;
+        u32 bitMaskBufferSizePerView;
+        u32 currentBitmaskIndex;
+        u32 debugDrawView;
+        u32 cullMainView;
+    };
+
+    vec2 viewportSize = _renderer->GetRenderSize();
+
+    const u32 cellCount = static_cast<u32>(_cellDatas.Count());
+
+    CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
+    cullConstants->viewportSizeX = u32(viewportSize.x);
+    cullConstants->viewportSizeY = u32(viewportSize.y);
+    cullConstants->numShadowViews = numShadowViews;
+    cullConstants->occlusionEnabled = occlusionEnabled;
+    cullConstants->bitMaskBufferSizePerView = RenderUtils::CalcCullingBitmaskUints(cellCount);
+    cullConstants->currentBitmaskIndex = frameIndex;
+    cullConstants->debugDrawView = static_cast<u32>(*CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowDebugCullingView"_h));
+    cullConstants->cullMainView = cullMainView;
+
+    commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
+
+    commandList.BindDescriptorSet(debugSet, frameIndex);
+    commandList.BindDescriptorSet(globalSet, frameIndex);
+    commandList.BindDescriptorSet(cullingSet, frameIndex);
+
+    commandList.Dispatch((cellCount + 31) / 32, 1, 1);
+
+    commandList.EndPipeline(pipeline);
 }
 
 void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer)
@@ -654,21 +620,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
 
             // svsmProfileGeometry: per-view fill/draw GPU timings for the perf editor's render pass list
             const bool profileSVSM = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry"_h) != 0;
-            auto Profiled = [&](const char* stageName, u32 viewIndex, auto&& work)
-            {
-                if (!profileSVSM)
-                {
-                    work();
-                    return;
-                }
-
-                Renderer::TimeQueryDesc timeQueryDesc;
-                timeQueryDesc.name = "Terrain SVSM " + std::string(stageName) + " v" + std::to_string(viewIndex);
-                Renderer::TimeQueryID timeQuery = _renderer->CreateTimeQuery(timeQueryDesc);
-                commandList.BeginTimeQuery(timeQuery);
-                work();
-                commandList.EndTimeQuery(timeQuery);
-            };
+            RenderUtils::SVSMGeometryProfiler Profiled(_renderer, commandList, "Terrain SVSM", profileSVSM);
 
             // _svsmData/_pageTable are bound once at init through BindSVSMBuffers, only the lazily
             // created pool binds per frame (image binds write the descriptor immediately)
@@ -727,25 +679,7 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                     drawParams.svsmDescriptorSet = data.svsmSet;
 
                     const bool svsmClipRects = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects"_h) != 0;
-                    if (svsmClipRects)
-                    {
-                        // One draw per clip rect (new X columns, new Y rows, other): the vertex
-                        // shader clips fragments to the rect, so an L-shaped toroidal update
-                        // rasterizes two thin stripes instead of its whole-window bounding box
-                        Profiled("Draw", i, [&]
-                        {
-                            for (u32 rectIndex = 0; rectIndex < 3; rectIndex++)
-                            {
-                                drawParams.svsmRectIndex = rectIndex;
-                                Draw(resources, frameIndex, graphResources, commandList, drawParams);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        // svsmClipRects 0: single draw, rect index stays at the disabled sentinel
-                        Profiled("Draw", i, [&] { Draw(resources, frameIndex, graphResources, commandList, drawParams); });
-                    }
+                    Profiled("Draw", i, [&] { RenderUtils::DrawSVSMClipRects(svsmClipRects, drawParams, [&](DrawParams& rectDrawParams) { Draw(resources, frameIndex, graphResources, commandList, rectDrawParams); }); });
 
                     commandList.PopMarker();
                 }

@@ -6,6 +6,7 @@ permutation SVSM_DYNAMIC = [0, 1]; // 1 = dynamic caster split pass, renders int
 #include "DescriptorSet/Model.inc.slang"
 
 #include "Include/Common.inc.slang"
+#include "Model/ModelAlphaKey.inc.slang"
 #include "Model/ModelShared.inc.slang"
 #include "Shadows/SVSM.inc.slang"
 
@@ -39,38 +40,27 @@ struct PSInput
 [shader("fragment")]
 void main(PSInput input)
 {
-    uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
+#if SVSM_DYNAMIC
+    const uint requiredFlags = SVSM_PAGE_RESIDENT;
+    const uint poolPagesPerRow = _svsmData[0].configDynamicPoolPagesPerRow;
+#else
+    const uint requiredFlags = SVSM_PAGE_RESIDENT | SVSM_PAGE_DIRTY;
+    const uint poolPagesPerRow = _svsmData[0].configPoolPagesPerRow;
+#endif
 
-    // Alpha-key discard, mirrors Model/Draw.ps without the visibility-buffer write
-    TextureData textureData = LoadModelTextureData(_packedModelTextureDatas, textureDataID);
-
-    for (uint textureUnitIndex = textureData.textureUnitOffset; textureUnitIndex < textureData.textureUnitOffset + textureData.numTextureUnits; textureUnitIndex++)
+    // Fragments over pages that don't render this frame skip the alpha-key sampling entirely.
+    // The skip diverges only along page borders, where a wrong implicit mip for one quad row in a
+    // depth-only alpha test is invisible — Sample stays Sample
+    uint pageEntry = SVSMLoadPageEntry(input.position.xy, _constants.viewIndex - 1, _svsmData, _pageTable);
+    if ((pageEntry & requiredFlags) != requiredFlags)
     {
-        ModelTextureUnit textureUnit = _modelTextureUnits[textureUnitIndex];
-
-        uint blendingMode = (textureUnit.data1 >> 11) & 0x7;
-
-        if (blendingMode != 1) // ALPHA KEY
-            continue;
-
-        uint texture0SamplerIndex = (textureUnit.data1 >> 1) & 0x3;
-        uint materialType = (textureUnit.data1 >> 16) & 0xFFFF;
-
-        if (materialType == 0x8000)
-            continue;
-
-        float4 texture1 = _modelTextures[NonUniformResourceIndex(textureUnit.textureIDs[0])].Sample(_samplers[texture0SamplerIndex], input.uv01.xy);
-
-        float minAlpha = texture1.a;
-        if (minAlpha < (128.0 / 255.0))
-        {
-            discard;
-        }
+        return;
     }
 
-#if SVSM_DYNAMIC
-    SVSMWritePageDepth(input.position.xyz, _constants.viewIndex - 1, SVSM_PAGE_RESIDENT, _svsmData[0].configDynamicPoolPagesPerRow, _svsmData, _pageTable, _pagePool);
-#else
-    SVSMWritePageDepth(input.position.xyz, _constants.viewIndex - 1, SVSM_PAGE_RESIDENT | SVSM_PAGE_DIRTY, _svsmData[0].configPoolPagesPerRow, _svsmData, _pageTable, _pagePool);
-#endif
+    uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
+
+    // Same alpha-key discard as Model/Draw.ps, without the visibility-buffer write
+    AlphaKeyDiscard(textureDataID, input.uv01.xy);
+
+    SVSMWritePageDepthEntry(input.position.xyz, pageEntry, requiredFlags, poolPagesPerRow, _svsmData, _pagePool);
 }

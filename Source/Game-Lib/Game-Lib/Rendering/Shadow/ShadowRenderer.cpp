@@ -24,6 +24,7 @@
 #include <entt/entt.hpp>
 
 #include <bit>
+#include <cstddef>
 
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 1, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_ShadowStrength(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength", "directional shadow strength, overwritten each frame from the sun elevation", 1.0f, CVarFlags::EditReadOnly);
@@ -50,24 +51,104 @@ AutoCVar_Float CVAR_SVSMZHalfRange(CVarCategory::Client | CVarCategory::Renderin
 AutoCVar_Float CVAR_SVSMConstantBias(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias", "SVSM compare bias toward the sun in world meters, the software depth path has no hardware bias", 0.15f);
 AutoCVar_Int CVAR_SVSMProfileGeometry(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry", "debug: per-view fill/draw GPU time queries in the SVSM geometry passes, shown in the render pass list", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMClipRects(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects", "clip the static page draws to the classified dirty rects (3 draws per view), 0 reverts to one unclipped draw for A/B", 1, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_SVSMNightGate(CVarCategory::Client | CVarCategory::Rendering, "svsmNightGate", "skip all SVSM update/render work while the sun is below the horizon (shadow strength 0), dawn resumes with a full re-bake", 1, CVarFlags::EditCheckbox);
 
-// u32 indices into the flat SVSMData readback, mirrors Shadows/SVSM.inc.slang
+// CPU mirror of SVSMData in Shadows/SVSM.inc.slang (scalar arrays only, so std430 matches this
+// exactly). Never read as a struct: it exists so the readback offsets below are compiler-derived
+// and the size tripwire fires when the two sides drift instead of the readback silently
+// misreporting. Insert/rename fields here in lockstep with the Slang struct
+struct SVSMDataMirror
+{
+    f32 prevLightDirection[4];
+
+    f32 zRangeMin;
+    f32 zRangeMax;
+    u32 frameInvalidationFlags;
+    u32 padding0;
+
+    i32 anchorPageMinX[8];
+    i32 anchorPageMinY[8];
+    i32 prevAnchorPageMinX[8];
+    i32 prevAnchorPageMinY[8];
+    f32 camMinusWindowMinX[8];
+    f32 camMinusWindowMinY[8];
+    f32 extent[8];
+    f32 pageWorld[8];
+    u32 clipmapInvalidate[8];
+
+    i32 dirtyRectMinX[8];
+    i32 dirtyRectMinY[8];
+    i32 dirtyRectMaxX[8];
+    i32 dirtyRectMaxY[8];
+
+    u32 statsMarked[8];
+    u32 statsResident[8];
+    u32 statsDirty[8];
+    u32 statsEvicted[8];
+    u32 statsInvalidated[8];
+    u32 statsOverflow;
+    u32 statsInvalidationCause;
+    u32 statsFreeListCount;
+
+    u32 configPageTableSize;
+    u32 configPageSize;
+    u32 configPoolPagesPerRow;
+    u32 configNumClipmaps;
+    f32 configMarkBorderTexels;
+    f32 configPadding0;
+    f32 configCamMinusZAnchor;
+    f32 configResolutionScale;
+    u32 padding3;
+
+    i32 dynamicRectMinX[8];
+    i32 dynamicRectMinY[8];
+    i32 dynamicRectMaxX[8];
+    i32 dynamicRectMaxY[8];
+
+    u32 statsDynamicLive[8];
+    u32 statsDynamicOverflow;
+    u32 statsDynamicTotal;
+    u32 configDynamicPoolPagesPerRow;
+    u32 padding4;
+
+    u32 statsDeferred[8];
+    u32 statsBudgetUsed;
+    u32 padding5;
+    u32 padding6;
+    u32 padding7;
+
+    i32 clipRectMinX[24];
+    i32 clipRectMinY[24];
+    i32 clipRectMaxX[24];
+    i32 clipRectMaxY[24];
+};
+static_assert(sizeof(SVSMDataMirror) == ShadowRenderer::SVSM_DATA_UINT_COUNT * sizeof(u32), "SVSMDataMirror drifted from SVSMData in Shadows/SVSM.inc.slang, update both sides and the uint count together");
+
+// u32 indices into the flat SVSMData readback, derived from the mirror so they cannot drift
+// from the layout independently
 namespace SVSMDataOffsets
 {
-    constexpr u32 Extent = 56;
-    constexpr u32 StatsMarked = 112;
-    constexpr u32 StatsResident = 120;
-    constexpr u32 StatsDirty = 128;
-    constexpr u32 StatsEvicted = 136;
-    constexpr u32 StatsInvalidated = 144;
-    constexpr u32 StatsOverflow = 152;
-    constexpr u32 StatsInvalidationCause = 153;
-    constexpr u32 StatsFreeListCount = 154;
-    constexpr u32 StatsDynamicLive = 196;
-    constexpr u32 StatsDynamicOverflow = 204;
-    constexpr u32 StatsDynamicTotal = 205;
-    constexpr u32 StatsDeferred = 208;
-    constexpr u32 StatsBudgetUsed = 216;
+    constexpr u32 Extent = offsetof(SVSMDataMirror, extent) / sizeof(u32);
+    constexpr u32 StatsMarked = offsetof(SVSMDataMirror, statsMarked) / sizeof(u32);
+    constexpr u32 StatsResident = offsetof(SVSMDataMirror, statsResident) / sizeof(u32);
+    constexpr u32 StatsDirty = offsetof(SVSMDataMirror, statsDirty) / sizeof(u32);
+    constexpr u32 StatsEvicted = offsetof(SVSMDataMirror, statsEvicted) / sizeof(u32);
+    constexpr u32 StatsInvalidated = offsetof(SVSMDataMirror, statsInvalidated) / sizeof(u32);
+    constexpr u32 StatsOverflow = offsetof(SVSMDataMirror, statsOverflow) / sizeof(u32);
+    constexpr u32 StatsInvalidationCause = offsetof(SVSMDataMirror, statsInvalidationCause) / sizeof(u32);
+    constexpr u32 StatsFreeListCount = offsetof(SVSMDataMirror, statsFreeListCount) / sizeof(u32);
+    constexpr u32 StatsDynamicLive = offsetof(SVSMDataMirror, statsDynamicLive) / sizeof(u32);
+    constexpr u32 StatsDynamicOverflow = offsetof(SVSMDataMirror, statsDynamicOverflow) / sizeof(u32);
+    constexpr u32 StatsDynamicTotal = offsetof(SVSMDataMirror, statsDynamicTotal) / sizeof(u32);
+    constexpr u32 StatsDeferred = offsetof(SVSMDataMirror, statsDeferred) / sizeof(u32);
+    constexpr u32 StatsBudgetUsed = offsetof(SVSMDataMirror, statsBudgetUsed) / sizeof(u32);
+}
+
+// Page table entry bits, mirrors Shadows/SVSM.inc.slang
+namespace SVSMPageEntry
+{
+    constexpr u32 PhysMask = 0xFFFu; // SVSM_PAGE_PHYS_MASK
+    constexpr u32 Resident = 1u << 25; // SVSM_PAGE_RESIDENT
 }
 
 // SVSM invalidation cause bits, shared with Shadows/SVSM.inc.slang
@@ -104,6 +185,26 @@ static bool SanitizeSVSMConfigCVars(u32 maxPageTableSize)
         corrected = true;
     }
     return corrected;
+}
+
+// The derived page/pool geometry every consumer must agree on: the update pass constants, the
+// debug overlay and the pool state reset all read this instead of re-deriving it from the cvars
+struct SVSMDerivedConfig
+{
+    u32 pageSize = 0;
+    u32 pageTableSize = 0;
+    u32 poolPagesPerRow = 0;
+    u32 dynamicPoolPagesPerRow = 0;
+};
+
+static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize)
+{
+    SVSMDerivedConfig config;
+    config.pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
+    config.pageTableSize = glm::clamp(static_cast<u32>(CVAR_SVSMVirtualSize.Get()) / config.pageSize, 16u, maxPageTableSize);
+    config.poolPagesPerRow = glm::min(static_cast<u32>(CVAR_SVSMPoolSize.Get()) / config.pageSize, maxPageTableSize);
+    config.dynamicPoolPagesPerRow = glm::min(static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) / config.pageSize, maxPageTableSize);
+    return config;
 }
 
 ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
@@ -182,6 +283,31 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         }
     }
 
+    // Night gate: below the horizon the material pass multiplies shadows to nothing
+    // (shadowStrength 0, and lightInfo.y already stops the sampler), so the whole producer side
+    // can sleep. Enter after a sustained second so the dusk threshold can't flicker the cache;
+    // leave immediately with a full re-bake — the sun moved all night, the cache is garbage at
+    // dawn regardless
+    {
+        if (CVAR_SVSMNightGate.Get() != 0 && CVAR_ShadowStrength.GetFloat() <= 0.0f)
+        {
+            _svsmNightTimer += deltaTime;
+            if (_svsmNightTimer > 1.0f)
+            {
+                _svsmNightActive = true;
+            }
+        }
+        else
+        {
+            if (_svsmNightActive)
+            {
+                _svsmForceInvalidateAll = true;
+            }
+            _svsmNightActive = false;
+            _svsmNightTimer = 0.0f;
+        }
+    }
+
     // SVSM: last frame's page table stats plus this frame's caster bounds. The ModelRenderer's
     // per-instance classifier owns the dynamic set (moved or bone-pushed within the grace window)
     // and its transition invalidations; this just copies the results and uploads. With the split
@@ -194,7 +320,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     _svsmCasterTransitionsOut = 0;
     _svsmDynamicAABBsDropped = 0;
     const bool frozen = CVAR_SVSMFreeze.Get() != 0;
-    if (CVAR_ShadowEnabled.Get() && !frozen)
+    if (CVAR_ShadowEnabled.Get() && !frozen && !_svsmNightActive)
     {
         // The pools are the SVSM VRAM cost, only allocated once shadows are actually used
         if (_svsmPagePool == Renderer::ImageID::Invalid())
@@ -248,11 +374,11 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
                 for (u32 i = 0; i < tableUints; i++)
                 {
                     u32 entry = validateData[i];
-                    if (entry == 0 || (entry & (1u << 25)) == 0) // SVSM_PAGE_RESIDENT
+                    if (entry == 0 || (entry & SVSMPageEntry::Resident) == 0)
                         continue;
 
                     numResident++;
-                    u32 physicalPage = entry & 0xFFFu; // SVSM_PAGE_PHYS_MASK
+                    u32 physicalPage = entry & SVSMPageEntry::PhysMask;
                     if (physicalPage >= poolPages)
                     {
                         numBadPhys++;
@@ -337,15 +463,21 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     }
     else
     {
-        // Shadows off or frozen (the update pass doesn't run, so nothing would consume the
-        // queue): spawn/despawn and classifier-transition invalidations would accumulate
-        // unboundedly. Discard them (maxPairs 0 appends nothing) and re-bake the whole cache on
-        // resume instead — the classifier keeps ticking meanwhile, so its state stays current
+        // Shadows off, frozen or night-gated (the update pass doesn't run, so nothing would
+        // consume the queue): spawn/despawn and classifier-transition invalidations would
+        // accumulate unboundedly. Discard them (maxPairs 0 appends nothing) and re-bake the whole
+        // cache on resume instead — the classifier keeps ticking meanwhile, so its state stays
+        // current
         if (_modelRenderer->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
         {
             _svsmForceInvalidateAll = true;
         }
     }
+}
+
+bool ShadowRenderer::IsSVSMActive() const
+{
+    return CVAR_ShadowEnabled.Get() != 0 && !_svsmNightActive;
 }
 
 void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -382,7 +514,7 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
     };
 
     const u32 numClipmaps = static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1, static_cast<i32>(SVSM_MAX_CLIPMAPS)));
-    const bool enabled = CVAR_ShadowEnabled.Get() && !CVAR_SVSMFreeze.Get();
+    const bool enabled = CVAR_ShadowEnabled.Get() && !CVAR_SVSMFreeze.Get() && !_svsmNightActive;
     if (!enabled || _svsmPagePool == Renderer::ImageID::Invalid())
         return;
 
@@ -464,7 +596,7 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
                 u32 allocClipmap;
                 f32 casterMargin;
                 f32 zHalfRange;
-                f32 padding0;
+                u32 fillDrawCallCount;
                 f32 padding1;
                 f32 resolutionScale;
                 u32 dynamicPoolPagesPerRow;
@@ -474,19 +606,15 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
                 u32 fillCellCount;
             };
 
-            const u32 pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
-            const u32 pageTableSize = glm::clamp(static_cast<u32>(CVAR_SVSMVirtualSize.Get()) / pageSize, 16u, SVSM_MAX_PAGE_TABLE_SIZE);
-            u32 poolPagesPerRow = static_cast<u32>(CVAR_SVSMPoolSize.Get()) / pageSize;
-            poolPagesPerRow = glm::min(poolPagesPerRow, SVSM_MAX_PAGE_TABLE_SIZE);
-            u32 dynamicPoolPagesPerRow = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) / pageSize;
-            dynamicPoolPagesPerRow = glm::min(dynamicPoolPagesPerRow, SVSM_MAX_PAGE_TABLE_SIZE);
+            const SVSMDerivedConfig config = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE);
+            const u32 pageTableSize = config.pageTableSize;
 
             SVSMConstants* constants = graphResources.FrameNew<SVSMConstants>();
             constants->lightDirection = vec4(lightDirection, 0.0f);
             constants->numClipmaps = numClipmaps;
-            constants->pageTableSize = pageTableSize;
-            constants->pageSize = pageSize;
-            constants->poolPagesPerRow = poolPagesPerRow;
+            constants->pageTableSize = config.pageTableSize;
+            constants->pageSize = config.pageSize;
+            constants->poolPagesPerRow = config.poolPagesPerRow;
             constants->clipmap0Extent = CVAR_SVSMClipmap0Extent.GetFloat();
             constants->markBorderTexels = CVAR_SVSMMarkBorderTexels.GetFloat();
             constants->evictAge = static_cast<u32>(glm::clamp(CVAR_SVSMPageEvictAge.Get(), 1, 254));
@@ -495,16 +623,16 @@ void ShadowRenderer::AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, Rende
             constants->allocClipmap = 0;
             constants->casterMargin = CVAR_ShadowCasterMargin.GetFloat();
             constants->zHalfRange = CVAR_SVSMZHalfRange.GetFloat();
-            constants->padding0 = 0.0f;
             constants->padding1 = 0.0f;
             constants->resolutionScale = CVAR_SVSMResolutionScale.GetFloat();
-            constants->dynamicPoolPagesPerRow = dynamicSplit ? dynamicPoolPagesPerRow : 0;
+            constants->dynamicPoolPagesPerRow = dynamicSplit ? config.dynamicPoolPagesPerRow : 0;
             constants->renderBudget = static_cast<u32>(glm::max(CVAR_SVSMRenderBudget.Get(), 0));
             constants->dynamicPhase = 0;
             // The same record-time counts the geometry passes size their fills from, Finalize
             // turns them into per-view indirect dispatch args gated on this frame's page stats
             constants->fillInstanceCount = _modelRenderer->GetOpaqueCullingResources().GetNumInstances();
             constants->fillCellCount = _terrainRenderer->GetNumDrawCalls();
+            constants->fillDrawCallCount = _modelRenderer->GetOpaqueCullingResources().GetDrawCallCount();
 
             if (_svsmPoolNeedsClear)
             {
@@ -751,8 +879,7 @@ void ShadowRenderer::AddSVSMDebugOverlayPass(Renderer::RenderGraph* renderGraph,
                     ivec2 screenOffset;
                 };
 
-                const u32 pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
-                const u32 pageTableSize = glm::clamp(static_cast<u32>(CVAR_SVSMVirtualSize.Get()) / pageSize, 16u, SVSM_MAX_PAGE_TABLE_SIZE);
+                const u32 pageTableSize = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE).pageTableSize;
                 const u32 cellSize = 8;
                 const u32 regionSize = pageTableSize * cellSize;
 
@@ -832,6 +959,11 @@ void ShadowRenderer::GetSVSMDynamicStats(u32& outLivePages, u32& outTotalPages, 
     outLivePages = _svsmDataReadBack[SVSMDataOffsets::StatsDynamicTotal];
     outTotalPages = _svsmDynamicPoolPages;
     outOverflow = _svsmDataReadBack[SVSMDataOffsets::StatsDynamicOverflow];
+}
+
+u32 ShadowRenderer::GetSVSMBudgetUsed() const
+{
+    return _svsmDataReadBack[SVSMDataOffsets::StatsBudgetUsed];
 }
 
 void ShadowRenderer::AddSVSMBindPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -998,8 +1130,9 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         // _srcCameras / _depth / _target / _rwCameras / _pagePool are bound per frame, those resources can be recreated
 
         // Per-view fill dispatch args written by Finalize, consumed by the geometry passes'
-        // DispatchIndirect: per clipmap 3 x uvec3 (model static, model dynamic, terrain static).
-        // Prefilled with zero groups so a pre-Finalize consumer launches nothing
+        // DispatchIndirect: per clipmap 5 x uvec3 (model static, model dynamic, terrain static,
+        // model static overhead, model dynamic overhead). Prefilled with zero groups so a
+        // pre-Finalize consumer launches nothing
         Renderer::BufferDesc fillArgsDesc;
         fillArgsDesc.name = "SVSMFillDispatchArgs";
         fillArgsDesc.size = SVSM_FILL_ARGS_VIEW_STRIDE * SVSM_MAX_CLIPMAPS;
@@ -1007,7 +1140,7 @@ void ShadowRenderer::CreatePermanentResources(RenderResources& resources)
         _svsmFillArgsBuffer = _renderer->CreateAndFillBuffer(_svsmFillArgsBuffer, fillArgsDesc, [](void* mappedMemory, size_t size)
         {
             u32* values = static_cast<u32*>(mappedMemory);
-            for (u32 i = 0; i < SVSM_MAX_CLIPMAPS * 9; i += 3)
+            for (u32 i = 0; i < SVSM_MAX_CLIPMAPS * 15; i += 3)
             {
                 values[i + 0] = 0;
                 values[i + 1] = 1;
@@ -1053,15 +1186,14 @@ void ShadowRenderer::ResetSVSMPoolState(RenderResources& resources)
     // past the frames in flight), so every consumer set rebinds below. The pool textures are NOT
     // recreated — their dimensions only depend on the pool size cvars, which are restart-only
     // once the pools exist (the Engine cannot destroy images)
-    _svsmAppliedPageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
+    const SVSMDerivedConfig config = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE);
+    _svsmAppliedPageSize = config.pageSize;
     _svsmAppliedPoolSize = static_cast<u32>(CVAR_SVSMPoolSize.Get());
     _svsmAppliedDynamicPoolSize = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get());
 
     // The physical page index is 12 bits in the table entry
-    const u32 poolPagesPerRow = _svsmAppliedPoolSize / _svsmAppliedPageSize;
-    _svsmPoolPages = glm::min(poolPagesPerRow * poolPagesPerRow, SVSM_MAX_POOL_PAGES);
-    const u32 dynamicPoolPagesPerRow = _svsmAppliedDynamicPoolSize / _svsmAppliedPageSize;
-    _svsmDynamicPoolPages = glm::min(dynamicPoolPagesPerRow * dynamicPoolPagesPerRow, SVSM_MAX_POOL_PAGES);
+    _svsmPoolPages = glm::min(config.poolPagesPerRow * config.poolPagesPerRow, SVSM_MAX_POOL_PAGES);
+    _svsmDynamicPoolPages = glm::min(config.dynamicPoolPagesPerRow * config.dynamicPoolPagesPerRow, SVSM_MAX_POOL_PAGES);
 
     Renderer::BufferDesc bufferDesc;
     bufferDesc.name = "SVSMData";

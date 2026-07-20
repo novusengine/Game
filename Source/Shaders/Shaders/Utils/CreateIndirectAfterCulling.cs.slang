@@ -33,7 +33,7 @@ typedef Draw DrawType;
 [[vk::push_constant]] Constants _constants;
 [[vk::binding(0, PER_PASS)]] StructuredBuffer<DrawType> _drawCalls;
 [[vk::binding(1, PER_PASS)]] ByteAddressBuffer _drawCallDatas;
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<uint> _culledInstanceCounts; // One uint per draw call
+[[vk::binding(2, PER_PASS)]] RWStructuredBuffer<uint> _culledInstanceCounts; // One uint per draw call, cleared after consumption
 
 [[vk::binding(3, PER_PASS)]] RWStructuredBuffer<DrawType> _culledDrawCalls;
 [[vk::binding(4, PER_PASS)]] RWByteAddressBuffer _culledDrawCallCount;
@@ -75,7 +75,9 @@ void main(CSInput input)
 
         DrawType drawCall = _drawCalls[drawCallID];
 
-        // Load instanceCount and baseInstanceLookup
+        // Load instanceCount and baseInstanceLookup. Clearing after consumption keeps the buffer
+        // always-zero between uses, so the per-fill FillBuffer reset can be skipped
+        // (svsmGatedFillSetup) — a fill only ever adds onto zeros
         uint instanceCount = _culledInstanceCounts[drawCallID];
         if (instanceCount == 0)
         {
@@ -85,6 +87,7 @@ void main(CSInput input)
             return;
 #endif
         }
+        _culledInstanceCounts[drawCallID] = 0;
 
         uint baseInstanceLookup = GetBaseInstanceLookup(drawCallID);
 
