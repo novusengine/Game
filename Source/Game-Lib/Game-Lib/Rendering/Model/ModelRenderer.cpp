@@ -1224,11 +1224,11 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
             data.svsmData = builder.Read(shadowRenderer->GetSVSMDataBuffer(), BufferUsage::GRAPHICS);
             data.pageTable = builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), BufferUsage::GRAPHICS);
             data.svsmFillArgsBuffer = builder.Read(shadowRenderer->GetSVSMFillArgsBuffer(), BufferUsage::COMPUTE); // Consumed read-only by DispatchIndirect in the per-view fills
+            builder.Read(_dynamicInstanceMask.GetBuffer(), BufferUsage::COMPUTE); // The static fills always run the filtered pipeline against the mask, split live or not
             if (splitFills)
             {
                 data.dynamicPagePool = builder.Write(shadowRenderer->GetSVSMDynamicPagePool(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
                 data.dynamicPageTable = builder.Read(shadowRenderer->GetSVSMDynamicPageTableBuffer(), BufferUsage::GRAPHICS);
-                builder.Read(_dynamicInstanceMask.GetBuffer(), BufferUsage::COMPUTE);
                 data.svsmDynamicDrawCountReadBackBuffer = builder.Write(_svsmDynamicDrawCountReadBackBuffer, BufferUsage::TRANSFER);
                 data.svsmDynamicSet = builder.Use(_svsmDynamicDrawDescriptorSet);
             }
@@ -4112,9 +4112,9 @@ void ModelRenderer::SyncToGPU()
     }
 
     // Rebuild the SVSM dynamic instance mask from the classifier's live set (Update drained the
-    // raw signals into it earlier this frame). Nothing live now and nothing masked last frame
-    // means every bit is already zero
-    if (!_dynamicCasterLiveIDs.empty() || !_dynamicInstanceIDs.empty())
+    // raw signals into it earlier this frame). The buffer always exists and stays bound — the
+    // SVSM fills always run the filtered pipeline against it (an all-zero mask with keepDynamic 0
+    // keeps everything); only the bit updates skip when nothing is live and nothing was masked
     {
         ZoneScopedN("Sync Dynamic Instance Mask");
 
@@ -4129,27 +4129,30 @@ void ModelRenderer::SyncToGPU()
             }
         }
 
-        // Clear last frame's bits, then set this frame's. The bit test doubles as dedupe
-        for (u32 instanceID : _dynamicInstanceIDs)
+        if (!_dynamicCasterLiveIDs.empty() || !_dynamicInstanceIDs.empty())
         {
-            u32 word = instanceID / 32;
-            _dynamicInstanceMask[word] &= ~(1u << (instanceID & 31));
-            _dynamicInstanceMask.SetDirtyElement(word);
-        }
-        _dynamicInstanceIDs.clear();
-
-        for (u32 instanceID : _dynamicCasterLiveIDs)
-        {
-            u32 word = instanceID / 32;
-            if (word >= wordsNeeded)
-                continue;
-
-            u32 bit = 1u << (instanceID & 31);
-            if ((_dynamicInstanceMask[word] & bit) == 0)
+            // Clear last frame's bits, then set this frame's. The bit test doubles as dedupe
+            for (u32 instanceID : _dynamicInstanceIDs)
             {
-                _dynamicInstanceMask[word] |= bit;
+                u32 word = instanceID / 32;
+                _dynamicInstanceMask[word] &= ~(1u << (instanceID & 31));
                 _dynamicInstanceMask.SetDirtyElement(word);
-                _dynamicInstanceIDs.push_back(instanceID);
+            }
+            _dynamicInstanceIDs.clear();
+
+            for (u32 instanceID : _dynamicCasterLiveIDs)
+            {
+                u32 word = instanceID / 32;
+                if (word >= wordsNeeded)
+                    continue;
+
+                u32 bit = 1u << (instanceID & 31);
+                if ((_dynamicInstanceMask[word] & bit) == 0)
+                {
+                    _dynamicInstanceMask[word] |= bit;
+                    _dynamicInstanceMask.SetDirtyElement(word);
+                    _dynamicInstanceIDs.push_back(instanceID);
+                }
             }
         }
 

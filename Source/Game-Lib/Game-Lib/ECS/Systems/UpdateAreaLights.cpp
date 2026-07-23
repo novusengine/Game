@@ -19,7 +19,7 @@
 #include <entt/entt.hpp>
 #include <glm/gtc/constants.hpp>
 
-AutoCVar_Int CVAR_SunDebugFullRotation(CVarCategory::Client | CVarCategory::Rendering, "sunDebugFullRotation", "debug: sun does a full rotation per day instead of the authored wobble", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_SunFullRotation(CVarCategory::Client | CVarCategory::Rendering, "sunFullRotation", "sun does a full rotation per day instead of the authored wobble, the sun sets at night", 1, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_ShadowSunUpdateInterval(CVarCategory::Client | CVarCategory::Rendering, "shadowSunUpdateInterval", "game seconds between shadow sun direction updates, a continuously rotating sun re-renders every shadow texel each frame and shimmers", 120.0f);
 
 namespace ECS::Systems
@@ -329,7 +329,7 @@ namespace ECS::Systems
         const vec3& ambientColor = areaLightInfo.finalColorData.ambientColor;
         vec3 groundAmbientColor = ambientColor * 1.0f;
         vec3 skyAmbientColor = ambientColor * 1.0f;
-        vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
+        const vec3& shadowColor = areaLightInfo.finalColorData.shadowColor; // Per-area authored tint, multiplied onto the shadowed directional term
         constexpr f32 ambientIntensity = 1.0f;
         
         if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor))
@@ -365,7 +365,7 @@ namespace ECS::Systems
 
         f32 progressDayAndNight = timeOfDay / 86400.0f;
 
-        if (CVAR_SunDebugFullRotation.Get())
+        if (CVAR_SunFullRotation.Get())
         {
             // Full rotation per day, midnight (progress 0) puts the sun straight down, noon straight up
             phiValue = progressDayAndNight * glm::two_pi<f32>();

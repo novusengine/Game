@@ -644,9 +644,10 @@ void TerrainRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Re
                 std::string markerName = "Clipmap " + std::to_string(i - 1);
                 commandList.PushMarker(markerName, Color::White);
 
-                // Reset the counters
+                // Reset the counters. The previous view's draw consumed the args at DRAW_INDIRECT
+                // and the fill wrote them in compute — the reset must wait on both (WAR/WAW)
                 {
-                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
+                    commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::GRAPHICS | Renderer::BufferPassUsage::COMPUTE | Renderer::BufferPassUsage::TRANSFER);
                     commandList.FillBuffer(data.argumentBuffer, 4, 16, 0); // Reset everything but indexCount to 0
                     commandList.BufferBarrier(data.argumentBuffer, Renderer::BufferPassUsage::TRANSFER);
                 }

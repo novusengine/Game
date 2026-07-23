@@ -365,7 +365,7 @@ void MaterialRenderer::CreatePermanentResources()
     samplerDesc.enabled = true;
     samplerDesc.filter = Renderer::SamplerFilter::ANISOTROPIC;
     samplerDesc.maxAnisotropy = 16;
-    samplerDesc.mipLODBias = -0.5f;
+    //samplerDesc.mipLODBias = -0.5f;
     samplerDesc.addressU = Renderer::TextureAddressMode::WRAP;
     samplerDesc.addressV = Renderer::TextureAddressMode::WRAP;
     samplerDesc.addressW = Renderer::TextureAddressMode::CLAMP;

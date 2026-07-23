@@ -574,7 +574,10 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
 
     // Reset the counters. The per-drawcall instance counts skip their FillBuffer in the gated
     // path: CreateIndirect clears each count after consuming it, so the buffer is always zero
-    // between uses (and a gated-off CreateIndirect means nothing read the counts this view)
+    // between uses (and a gated-off CreateIndirect means nothing read the counts this view).
+    // The previous view's draws consumed the culled args at DRAW_INDIRECT — this view's
+    // CreateIndirect rewrite needs the execution dependency against that read (WAR)
+    params.commandList->BufferBarrier(params.culledDrawCallsBuffer, Renderer::BufferPassUsage::GRAPHICS);
     params.commandList->BufferBarrier(params.drawCountBuffer, Renderer::BufferPassUsage::TRANSFER);
     params.commandList->BufferBarrier(params.triangleCountBuffer, Renderer::BufferPassUsage::TRANSFER);
     if (!gatedSetup)
@@ -593,7 +596,9 @@ void CulledRenderer::RunInstancedGeometryFill(GeometryPassParams& params, u32 vi
 
     params.commandList->BufferBarrier(params.culledInstanceCountsBuffer, Renderer::BufferPassUsage::COMPUTE);
 
-    // The draws consume this count, a zero-work view must still draw zero
+    // The draws consume this count, a zero-work view must still draw zero. The previous view's
+    // draws read it at DRAW_INDIRECT (and CreateIndirect wrote it in compute) — wait on both
+    params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::GRAPHICS | Renderer::BufferPassUsage::COMPUTE);
     params.commandList->FillBuffer(params.culledDrawCallCountBuffer, 0, sizeof(u32), 0);
     params.commandList->BufferBarrier(params.culledDrawCallCountBuffer, Renderer::BufferPassUsage::TRANSFER);
 
@@ -684,8 +689,12 @@ void CulledRenderer::GeometryPass(GeometryPassParams& params)
         else if (params.cullingResources->IsInstanced() && params.cullingResources->HasSupportForTwoStepCulling() && i > 0)
         {
             // The main view (i == 0) consumes the culling pass's output directly, cascades rebuild the
-            // shared instance counts/lookup/argument buffers from their bitmask slice before drawing
-            Profiled("Fill", i, [&] { RunInstancedGeometryFill(params, i, params.svsmSplitFills, false, fillMarkerName, createIndirectMarkerName); });
+            // shared instance counts/lookup/argument buffers from their bitmask slice before drawing.
+            // Always the FILTERED fill: the geometry fill set's Vk layout is the union of both fill
+            // permutations (it includes the dynamic mask binding), and the unfiltered pipeline's own
+            // layout is incompatible with it (VUID-00358). keepDynamic 0 against an all-zero mask
+            // keeps every instance, so this is the unfiltered behavior whenever the split is idle
+            Profiled("Fill", i, [&] { RunInstancedGeometryFill(params, i, true, false, fillMarkerName, createIndirectMarkerName); });
         }
 
         if (!params.cullingEnabled)

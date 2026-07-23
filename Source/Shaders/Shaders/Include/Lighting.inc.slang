@@ -61,12 +61,20 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
 
         // Directional Light
         float nDotL = saturate(dot(pixelVertexData.worldNormal, light.direction.xyz)); // Dot product between normal and light direction
-        float3 lightColor = light.color.rgb * light.color.a * nDotL;
 
-        // Directional Light Shadows
+        // The directional light fades out with the sun's elevation (shadowSettings.strength is
+        // clamp(sunElevationSin / 0.1), same ramp the shadow fade rides): below the horizon a
+        // Lambert term would light down-facing surfaces from underneath, ambient/skyband carry
+        // the night look instead. Like the shadow lerp below, this assumes light 0 is the sun
+        float3 lightColor = light.color.rgb * light.color.a * nDotL * shadowSettings.strength;
+
+        // Directional Light Shadows: shadowColor is a multiplicative tint on the directional
+        // term (fully shadowed keeps shadowColor's fraction of it), never a replacement — a
+        // constant floor exceeds the Lambert term at low sun/grazing angles and inverts the
+        // shadows. Shadowed can never exceed lit, and ambient carries shadowed areas
         if (shadowSettings.enableShadows)
         {
-            lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
+            lightColor *= lerp(light.shadowColor.rgb, float3(1.0f, 1.0f, 1.0f), shadowFactor);
         }
 
         directionalColor += lightColor;
