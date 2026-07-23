@@ -117,11 +117,11 @@ protected:
 
     u32 _numInstances = 0;
     u32 _numSurvivingOccluderInstances = 0;
-    u32 _numSurvivingInstances[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
+    u32 _numSurvivingInstances[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow clipmap view
     
     u32 _numTriangles = 0;
     u32 _numSurvivingOccluderTriangles = 0;
-    u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow cascade
+    u32 _numSurvivingTriangles[Renderer::Settings::MAX_VIEWS] = { 0 }; // One for the main view, then one per shadow clipmap view
 };
 
 class CullingResourcesIndexedBase : public CullingResourcesBase

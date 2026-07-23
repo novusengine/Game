@@ -542,21 +542,4 @@ float3 IDToColor3(uint ID)
     return color;
 }
 
-float3 CascadeIDToColor(uint cascadeID)
-{
-    const uint cascadeCount = 8;
-    static float3 cascadeColors[cascadeCount] =
-    {
-        float3(1.0f, 0.0f, 0.0f), // Red
-        float3(0.0f, 1.0f, 0.0f), // Green
-        float3(0.0f, 0.0f, 1.0f), // Blue
-        float3(1.0f, 1.0f, 0.0f), // Yellow
-        float3(1.0f, 0.0f, 1.0f), // Purple
-        float3(0.0f, 1.0f, 1.0f), // Cyan
-        float3(1.0f, 0.5f, 0.0f), // Orange
-        float3(0.0f, 0.5f, 1.0f)  // Light Blue
-    };
-
-    return cascadeColors[cascadeID % cascadeCount];
-}
 #endif // VISIBILITYBUFFERS_INCLUDED

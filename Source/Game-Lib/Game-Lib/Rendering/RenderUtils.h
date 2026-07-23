@@ -5,7 +5,10 @@
 #include <Renderer/RenderGraphResources.h>
 #include <Renderer/Descriptors/ImageDesc.h>
 #include <Renderer/Descriptors/SamplerDesc.h>
+#include <Renderer/Descriptors/TimeQueryDesc.h>
 #include <Renderer/DescriptorSet.h>
+
+#include <string>
 
 namespace Renderer
 {
@@ -143,6 +146,65 @@ public:
     static void CopyDepthToColor(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u32 frameIndex, const CopyDepthToColorParams& params);
 
     static Renderer::ComputePipelineID GetCopyDepthToColorPipeline() { return _copyDepthToColorPipeline; }
+
+    // svsmProfileGeometry: wraps a per-view SVSM fill/draw stage in a named GPU time query so it
+    // surfaces in the perf editor's render pass list. Off by default, queries around tiny
+    // dispatches serialize slightly
+    class SVSMGeometryProfiler
+    {
+    public:
+        SVSMGeometryProfiler(Renderer::Renderer* renderer, Renderer::CommandList& commandList, std::string namePrefix, bool enabled)
+            : _renderer(renderer)
+            , _commandList(&commandList)
+            , _namePrefix(std::move(namePrefix))
+            , _enabled(enabled)
+        {
+        }
+
+        template <typename Work>
+        void operator()(const char* stageName, u32 viewIndex, Work&& work) const
+        {
+            if (!_enabled)
+            {
+                work();
+                return;
+            }
+
+            Renderer::TimeQueryID timeQuery = BeginStage(stageName, viewIndex);
+            work();
+            EndStage(timeQuery);
+        }
+
+    private:
+        Renderer::TimeQueryID BeginStage(const char* stageName, u32 viewIndex) const;
+        void EndStage(Renderer::TimeQueryID timeQuery) const;
+
+        Renderer::Renderer* _renderer = nullptr;
+        Renderer::CommandList* _commandList = nullptr;
+        std::string _namePrefix;
+        bool _enabled = false;
+    };
+
+    // One draw per SVSM clip rect (new X columns, new Y rows, other): the vertex shader clips
+    // fragments to the rect, so an L-shaped toroidal update rasterizes two thin stripes instead
+    // of its whole-window bounding box. svsmClipRects 0: single draw, the rect index stays at the
+    // disabled sentinel
+    template <typename DrawParamsT, typename DrawFn>
+    static void DrawSVSMClipRects(bool clipRectsEnabled, DrawParamsT& drawParams, DrawFn&& draw)
+    {
+        if (clipRectsEnabled)
+        {
+            for (u32 rectIndex = 0; rectIndex < 3; rectIndex++)
+            {
+                drawParams.svsmRectIndex = rectIndex;
+                draw(drawParams);
+            }
+        }
+        else
+        {
+            draw(drawParams);
+        }
+    }
 private:
     static Renderer::Renderer* _renderer;
     static GameRenderer* _gameRenderer;

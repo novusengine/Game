@@ -13,7 +13,6 @@
 #include "Game-Lib/ECS/Systems/Animation.h"
 #include "Game-Lib/ECS/Systems/UpdateAreaLights.h"
 #include "Game-Lib/ECS/Systems/CalculateCameraMatrices.h"
-#include "Game-Lib/ECS/Systems/CalculateShadowCameraMatrices.h"
 #include "Game-Lib/ECS/Systems/CalculateTransformMatrices.h"
 #include "Game-Lib/ECS/Systems/UpdateDayNightCycle.h"
 #include "Game-Lib/ECS/Systems/DrawDebugMesh.h"
@@ -109,7 +108,6 @@ namespace ECS
         Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);
         Systems::CalculateCameraMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::CharacterControllerInput::UpdateHoveredUnit(gameRegistry, clampedDeltaTime);
-        Systems::CalculateShadowCameraMatrices::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateSkyboxes::Update(gameRegistry, clampedDeltaTime);
         Systems::UpdateAreaLights::Update(gameRegistry, clampedDeltaTime);
         Systems::Editor::EditorTools::Update(gameRegistry, clampedDeltaTime);

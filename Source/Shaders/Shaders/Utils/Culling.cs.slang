@@ -12,7 +12,7 @@ struct Constants
     uint viewportSizeX;
     uint viewportSizeY;
     uint maxDrawCount;
-    uint numCascades;
+    uint numShadowViews;
     uint occlusionCull;
     uint instanceIDOffset;
     uint modelIDOffset;
@@ -45,7 +45,7 @@ struct CullingData
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<PackedCullingData> _cullingDatas;
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<float4x4> _instanceMatrices;
 [[vk::binding(4, PER_PASS)]] SamplerState _depthSampler;
-[[vk::binding(5, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
+[[vk::binding(5, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow views?
 
 #if USE_BITMASKS
 // Both bitmask generations stay bound; currentBitmaskIndex selects which one is written this frame
@@ -322,10 +322,10 @@ void main(CSInput input)
 
     // Shadow is only supported if we USE_BITMASKS
 #if USE_BITMASKS
-    // Shadow cascades
-    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    // Shadow clipmap views
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
     {
-        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
+        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow views... yet?
 
         bitmaskInput.bitmaskOffset = _constants.bitMaskBufferUintsPerView * i;
 

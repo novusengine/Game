@@ -1,5 +1,4 @@
-permutation DEBUG_ID = [0, 1, 2, 3, 4];
-permutation SHADOW_FILTER_MODE = [0, 1, 2]; // Off, PCF, PCSS
+permutation DEBUG_ID = [0, 1, 2, 3, 4]; // Off, TypeID, ObjectID, TriangleID, SVSM compare margin
 permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 
 #include "DescriptorSet/Debug.inc.slang"
@@ -17,7 +16,7 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 struct Constants
 {
     float4 renderInfo; // x = Render Width, y = Render Height, z = 1/Width, w = 1/Height
-    uint4 lightInfo; // x = Num Directional Lights, y = Num Point Lights, z = Num Cascades, w = Shadows Enabled
+    uint4 lightInfo; // x = Num Directional Lights, y = Shadows Ready (enabled, strength > 0, pool created), zw = UNUSED
     uint4 tileInfo; // xy = Num Tiles
     float4 fogColor;
     float4 fogSettings; // x = Enabled, y = Begin Fog Blend Dist, z = End Fog Blend Dist, w = UNUSED
@@ -28,6 +27,7 @@ struct Constants
     float4 patchEdgeColor;
     float4 vertexColor;
     float4 brushColor;
+    float4 shadowSettings; // x = Shadow Strength, y = Normal Offset Bias, z = SVSM Constant Bias (world meters), w = UNUSED
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -136,18 +136,18 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     // Apply vertex color
     color.rgb *= pixelVertexData.color;
 
-    // TODO: Don't hardcode this
     ShadowSettings shadowSettings;
-    shadowSettings.enableShadows = _constants.lightInfo.w == 1;
-    shadowSettings.filterSize = 3.0f;
-    shadowSettings.penumbraFilterSize = 3.0f;
+    shadowSettings.enableShadows = _constants.lightInfo.y == 1;
+    shadowSettings.strength = _constants.shadowSettings.x;
+    shadowSettings.normalOffset = _constants.shadowSettings.y;
+    shadowSettings.svsmConstantBias = _constants.shadowSettings.z;
 
     // Apply lighting
-    color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
+    color.rgb = ApplyLighting(color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
 
     // Apply decals
     color.rgb += ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal);
-    
+
 /*#if EDITOR_MODE == 1
     // Get settings from push constants
     const float brushHardness = _constants.brushSettings.x;
@@ -282,14 +282,14 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
         color = BlendModel(blendingMode, color, shadedColor); // Or on this
     }
 
-    // TODO: Don't hardcode this
     ShadowSettings shadowSettings;
-    shadowSettings.enableShadows = _constants.lightInfo.w == 1;
-    shadowSettings.filterSize = 3.0f;
-    shadowSettings.penumbraFilterSize = 3.0f;
+    shadowSettings.enableShadows = _constants.lightInfo.y == 1;
+    shadowSettings.strength = _constants.shadowSettings.x;
+    shadowSettings.normalOffset = _constants.shadowSettings.y;
+    shadowSettings.svsmConstantBias = _constants.shadowSettings.z;
 
     // Apply lighting
-    color.rgb = ApplyLighting(screenUV, color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
+    color.rgb = ApplyLighting(color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
 
     // Apply highlight
     color.rgb *= pixelVertexData.highlightIntensity;
@@ -335,11 +335,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 debugColor = IDToColor3(vBuffer.triangleID);
     _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
-#elif DEBUG_ID == 4 // CascadeID
-    uint numCascades = _constants.lightInfo.z;
+#elif DEBUG_ID == 4 // SVSM compare margin
     PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);
-    uint cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
-    _resolvedColor[pixelPos] = float4(CascadeIDToColor(cascadeIndex), 1);
+    float3 debugColor = GetSVSMDebugColor(pixelVertexData.worldPos, pixelVertexData.worldNormal, _constants.shadowSettings.y, _constants.shadowSettings.z);
+    _resolvedColor[pixelPos] = float4(debugColor, 1);
     return;
 #endif
 

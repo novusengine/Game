@@ -229,7 +229,7 @@ GameRenderer::GameRenderer()
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
-    _shadowRenderer = new ShadowRenderer(_renderer, this, _debugRenderer, _terrainRenderer, _modelRenderer, _resources);
+    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _resources);
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
@@ -317,7 +317,10 @@ f32 GameRenderer::Render()
 
     if (_resources.cameras.SyncToGPU(_renderer))
     {
+        // Should never fire: the vector is prefilled to MAX_VIEWS at init. Kept as a safety net,
+        // note the rebinds only reach the shaders a frame-cycle later
         _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
+        _shadowRenderer->BindCameraBuffers(_resources);
     }
 
     // Create rendergraph
@@ -390,8 +393,6 @@ f32 GameRenderer::Render()
     _skyboxRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddSkyboxPass(&renderGraph, _resources, _frameIndex);
 
-    _shadowRenderer->AddShadowPass(&renderGraph, _resources, _frameIndex);
-
     // Occluder passes
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
@@ -458,6 +459,21 @@ f32 GameRenderer::Render()
     _liquidRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _liquidRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
+    // SVSM block, runs after the main depth is complete so page marking can analyze the visible
+    // samples, then allocates, culls per clipmap view and renders the dirty pages the same frame.
+    // The night gate skips the whole producer side while the sun is below the horizon (the
+    // material pass already samples nothing at strength 0); the bind pass stays, bindings must
+    // remain valid
+    _shadowRenderer->AddSVSMUpdatePass(&renderGraph, _resources, _frameIndex);
+    _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
+    if (_shadowRenderer->IsSVSMActive())
+    {
+        _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
+        _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
+        _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+        _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+    }
+
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
@@ -474,6 +490,7 @@ f32 GameRenderer::Render()
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
 
     _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);
+    _shadowRenderer->AddSVSMDebugOverlayPass(&renderGraph, _resources, _frameIndex);
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);
@@ -702,6 +719,13 @@ void GameRenderer::CreatePermanentResources()
     _resources.cameras.SetDebugName("Cameras");
     _resources.cameras.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     _resources.cameras.Add(Camera());
+
+    // Prefill to the runtime cap and create the buffer now: descriptor binds of it happen at init
+    // (mid-frame buffer binds only reach the canonical descriptor copies at a later FlipFrame),
+    // so the buffer must exist before the renderers bind it and must never resize
+    _resources.cameras.AddCount(Renderer::Settings::MAX_VIEWS - 1);
+    _resources.cameras.SyncToGPU(_renderer);
+    _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
 }
 
 void GameRenderer::CreateRenderTargets()

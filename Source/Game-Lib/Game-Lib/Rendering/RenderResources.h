@@ -51,8 +51,6 @@ public:
     Renderer::ImageID depthColorCopy;
     Renderer::DepthImageID skyboxDepth;
 
-    std::vector<Renderer::DepthImageID> shadowDepthCascades;
-
     Renderer::DepthImageID debugRendererDepth;
 
     Renderer::SemaphoreID sceneRenderedSemaphore; // This semaphore tells the present function when the scene is ready to be blitted and presented

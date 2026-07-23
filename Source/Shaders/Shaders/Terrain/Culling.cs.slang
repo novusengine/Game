@@ -11,10 +11,12 @@ struct Constants
 {
     uint viewportSizeX;
     uint viewportSizeY;
-    uint numCascades;
+    uint numShadowViews;
     uint occlusionCull;
     uint bitMaskBufferSizePerView;
     uint currentBitmaskIndex;
+    uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
+    uint cullMainView; // The late clipmap dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice
 };
 
 struct HeightRange
@@ -100,7 +102,8 @@ struct BitmaskInput
 
 void CullForCamera(DrawInput drawInput,
     Camera camera,
-    BitmaskInput bitmaskInput)
+    BitmaskInput bitmaskInput,
+    bool debugDrawResults)
 {
     bool isVisible = true;
 
@@ -131,19 +134,17 @@ void CullForCamera(DrawInput drawInput,
         }
     }
 
-    // Debug draw AABB boxes
-    /*float3 cameraPos = _cameras[0].eyePosition.xyz;
-    float3 aabbPos = (drawInput.aabb.min + drawInput.aabb.max) / 2.0f;
-    float distanceToCamera = distance(cameraPos, aabbPos);
-
-    if (isVisible)
+    if (debugDrawResults)
     {
-        DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        if (isVisible)
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        }
+        else
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::RED);
+        }
     }
-    else
-    {
-        DrawAABB3D(drawInput.aabb, DebugColor::RED);
-    }*/
 }
 
 [shader("compute")]
@@ -176,19 +177,21 @@ void main(CSInput input)
     bitmaskInput.bitmaskOffset = 0;
 
     // Main camera view
+    if (_constants.cullMainView)
     {
-        CullForCamera(drawInput, _cameras[0], bitmaskInput);
+        CullForCamera(drawInput, _cameras[0], bitmaskInput, _constants.debugDrawView == 0);
     }
 
-    // Shadow cascades
-    for (uint i = 1; i < _constants.numCascades + 1; i++)
+    // Shadow clipmap views
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
     {
-        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow cascades... yet?
+        drawInput.shouldOcclusionCull = false; // No occlusion culling for shadow views... yet?
 
         bitmaskInput.bitmaskOffset = _constants.bitMaskBufferSizePerView * i;
 
         CullForCamera(drawInput,
             _cameras[i],
-            bitmaskInput);
+            bitmaskInput,
+            _constants.debugDrawView == i);
     }
 }

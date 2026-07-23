@@ -111,7 +111,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
     //if (!CVAR_JoltDebugCullingEnabled.Get())
     //    return;
 
-    u32 numCascades = 0; // Debug meshes should never cast shadows
+    u32 numShadowViews = 0; // Debug meshes should never cast shadows
 
     struct Data
     {
@@ -173,7 +173,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth[0] = data.depth;
+                params.depth = data.depth;
 
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
@@ -246,7 +246,7 @@ void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.frameIndex = frameIndex;
                 params.rt0 = data.visibilityBuffer;
-                params.depth[0] = data.depth;
+                params.depth = data.depth;
 
                 params.culledDrawCallsBuffer = data.culledDrawCallsBuffer;
                 params.culledDrawCallCountBuffer = data.culledDrawCallCountBuffer;
@@ -291,7 +291,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
     //if (!CVAR_JoltDebugCullingEnabled.Get())
     //    return;
 
-    u32 numCascades = 0; // Debug meshes should never cast shadows
+    u32 numShadowViews = 0; // Debug meshes should never cast shadows
 
     struct Data
     {
@@ -363,7 +363,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.cullingDescriptorSet = data.cullingSet;
                 params.createIndirectAfterCullSet = data.createIndirectAfterCullSet;
 
-                params.numCascades = 0;
+                params.numShadowViews = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -424,7 +424,7 @@ void JoltDebugRenderer::AddCullingPass(Renderer::RenderGraph* renderGraph, Rende
                 params.globalDescriptorSet = data.globalSet;
                 params.cullingDescriptorSet = data.cullingSet;
 
-                params.numCascades = 0;
+                params.numShadowViews = 0;
                 params.occlusionCull = CVAR_JoltDebugOcclusionCullingEnabled.Get();
 
                 params.cullingDataIsWorldspace = false;
@@ -523,7 +523,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
-                params.numCascades = 0;
+                params.numShadowViews = 0;
 
                 GeometryPass(params);
 
@@ -603,7 +603,7 @@ void JoltDebugRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, Rend
 
                 params.enableDrawing = CVAR_JoltDebugDrawGeometry.Get();
                 params.cullingEnabled = cullingEnabled;
-                params.numCascades = 0;
+                params.numShadowViews = 0;
 
                 GeometryPass(params);
 

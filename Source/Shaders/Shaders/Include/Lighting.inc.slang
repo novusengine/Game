@@ -25,15 +25,26 @@ DirectionalLight LoadDirectionalLight(uint index)
     return light;
 }
 
-float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
+float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint4 lightInfo, ShadowSettings shadowSettings)
 {
     uint numDirectionalLights = lightInfo.x;
-    uint numCascades = lightInfo.z;
 
     float3 ambientColor = float3(0.0f, 0.0f, 0.0f);
     float3 directionalColor = float3(0.0f, 0.0f, 0.0f);
 
     float ambientOcclusion = _ambientOcclusion.Load(int3(pixelVertexData.pixelPos, 0)).r;
+
+    // Directional Light Shadows: clipmap selection, page walk and far fade all live in
+    // GetSVSMShadowFactor. Light-independent (the sun direction comes from the SVSM state, not
+    // the light), so it samples once outside the loop — it is the most expensive part of the pass
+    float shadowFactor = 1.0f;
+    if (shadowSettings.enableShadows && numDirectionalLights > 0)
+    {
+        shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
+
+        // Sun elevation strength, fades shadows out around dawn/dusk
+        shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);
+    }
 
     for (uint i = 0; i < numDirectionalLights; i++)
     {
@@ -50,18 +61,20 @@ float3 ApplyLighting(float2 uv, float3 materialColor, PixelVertexData pixelVerte
 
         // Directional Light
         float nDotL = saturate(dot(pixelVertexData.worldNormal, light.direction.xyz)); // Dot product between normal and light direction
-        float3 lightColor = light.color.rgb * light.color.a * nDotL;
-        
-        // Directional Light Shadows
+
+        // The directional light fades out with the sun's elevation (shadowSettings.strength is
+        // clamp(sunElevationSin / 0.1), same ramp the shadow fade rides): below the horizon a
+        // Lambert term would light down-facing surfaces from underneath, ambient/skyband carry
+        // the night look instead. Like the shadow lerp below, this assumes light 0 is the sun
+        float3 lightColor = light.color.rgb * light.color.a * nDotL * shadowSettings.strength;
+
+        // Directional Light Shadows: shadowColor is a multiplicative tint on the directional
+        // term (fully shadowed keeps shadowColor's fraction of it), never a replacement — a
+        // constant floor exceeds the Lambert term at low sun/grazing angles and inverts the
+        // shadows. Shadowed can never exceed lit, and ambient carries shadowed areas
         if (shadowSettings.enableShadows)
         {
-            shadowSettings.cascadeIndex = GetShadowCascadeIndexFromDepth(pixelVertexData.viewPos.z, numCascades);
-            Camera cascadeCamera = _cameras[shadowSettings.cascadeIndex + 1]; // +1 because the first camera is the main camera
-            
-            float4 shadowPosition = mul(float4(pixelVertexData.worldPos, 1.0f), cascadeCamera.worldToClip);
-            
-            float shadowFactor = GetShadowFactor(uv, shadowPosition, shadowSettings);
-            lightColor = lerp(light.shadowColor.rgb, lightColor, shadowFactor);
+            lightColor *= lerp(light.shadowColor.rgb, float3(1.0f, 1.0f, 1.0f), shadowFactor);
         }
 
         directionalColor += lightColor;

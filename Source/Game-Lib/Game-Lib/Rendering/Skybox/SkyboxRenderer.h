@@ -24,6 +24,7 @@ public:
         vec4 bottom = vec4(0.60f, 0.86f, 0.96f, 0.0f);
         vec4 aboveHorizon = vec4(0.69f, 0.85f, 0.88f, 0.0f);
         vec4 horizon = vec4(0.71f, 0.71f, 0.71f, 0.0f);
+        vec4 sunDirection = vec4(0.0f, 1.0f, 0.0f, 0.0f); // xyz = direction to the sun, w = enabled
     };
 
 public:
@@ -35,6 +36,7 @@ public:
     void AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     void SetSkybandColors(const vec3& skyTopColor, const vec3& skyMiddleColor, const vec3& skyBottomColor, const vec3& skyAboveHorizonColor, const vec3& skyHorizonColor);
+    void SetSunDirection(const vec3& directionToSun);
 
 private:
     void CreatePermanentResources();

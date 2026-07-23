@@ -157,8 +157,8 @@ bool CullingResourcesBase::SyncToGPU(bool forceRecount)
         {
             _occluderFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
             _cullingDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
+            _geometryFillDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer());
         }
-        //_geometryFillDescriptorSet.Bind2("_instanceRefTable"_h, _instanceRefs.GetBuffer());
         _geometryPassDescriptorSet.Bind("_instanceRefTable"_h, _instanceRefs.GetBuffer(), true);
         if (_materialPassDescriptorSet != nullptr)
         {
@@ -180,8 +180,8 @@ bool CullingResourcesBase::SyncToGPU(bool forceRecount)
             {
                 _occluderFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
                 _cullingDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
+                _geometryFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
             }
-            //_geometryFillDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer);
             _geometryPassDescriptorSet.Bind("_culledInstanceLookupTable"_h, _culledInstanceLookupTableBuffer, true);
             if (_materialPassDescriptorSet != nullptr)
             {

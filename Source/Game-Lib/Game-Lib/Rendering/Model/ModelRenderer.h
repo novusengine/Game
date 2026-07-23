@@ -22,6 +22,7 @@
 
 class DebugRenderer;
 class GameRenderer;
+class ShadowRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -106,6 +107,7 @@ public:
         robin_hood::unordered_set<u32> instances;
         robin_hood::unordered_set<u32> skyboxInstances;
         robin_hood::unordered_set<u32> originallyTransparentDrawIDs;
+
     };
 
     struct InstanceManifest
@@ -334,6 +336,12 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
+    void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
+
+    // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
+    // (they only reach the canonical descriptor copies at a later FlipFrame)
+    void BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer, Renderer::BufferID dynamicPageTableBuffer);
 
     void AddTransparencyCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddTransparencyGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -343,6 +351,20 @@ public:
     Renderer::GPUVector<mat4x4>& GetInstanceMatrices() { return _instanceMatrices; }
     const std::vector<ModelManifest>& GetModelManifests() { return _modelManifests; }
 
+    // SVSM: appends world (min, max) pairs of spawned/despawned instances, returns pairs appended
+    u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs);
+
+    // SVSM dynamic-caster classifier outputs, rebuilt each Update: world (min, max) pairs of the
+    // live set, its size, spill count, and this frame's enter/leave transitions
+    const std::vector<vec4>& GetDynamicCasterAABBs() const { return _dynamicCasterAABBs; }
+    u32 GetNumDynamicCasters() const { return static_cast<u32>(_dynamicCasterLiveIDs.size()); }
+    u32 GetNumDynamicCastersDropped() const { return _dynamicCastersDropped; }
+    void GetDynamicCasterTransitions(u32& outTransitionsIn, u32& outTransitionsOut) const
+    {
+        outTransitionsIn = _dynamicCasterTransitionsIn;
+        outTransitionsOut = _dynamicCasterTransitionsOut;
+    }
+
     CullingResourcesIndexed<DrawCallData>& GetOpaqueCullingResources() { return _opaqueCullingResources; }
     CullingResourcesIndexed<DrawCallData>& GetTransparentCullingResources() { return _transparentCullingResources; }
 
@@ -350,6 +372,7 @@ public:
     u32 GetNumDrawCalls() { return 0; }
     u32 GetNumOccluderDrawCalls() { return _numOccluderDrawCalls; }
     u32 GetNumSurvivingDrawCalls(u32 viewID) { return _numSurvivingDrawCalls[viewID]; }
+    u32 GetNumSVSMDynamicInstances(u32 viewID) { return _numSvsmDynamicInstances[viewID]; } // One frame old, view 0 unused
 
     // Triangle stats
     u32 GetNumTriangles() { return 0; }
@@ -374,6 +397,10 @@ private:
 
     void MakeInstanceTransparent(u32 instanceID, InstanceManifest& instanceManifest, ModelManifest& modelManifest);
     void MakeInstanceSkybox(u32 instanceID, InstanceManifest& instanceManifest, bool skybox);
+
+    void ComputeInstanceShadowAABB(u32 instanceID, const mat4x4& transformMatrix, vec3& outMin, vec3& outMax);
+    void QueueShadowInvalidation(u32 instanceID, const mat4x4& transformMatrix);
+    void QueueShadowInvalidation(const vec3& aabbMin, const vec3& aabbMax); // For callers holding a cached AABB
 
     void CompactInstanceRefs();
     void SyncToGPU();
@@ -428,10 +455,80 @@ private:
     CullingResourcesIndexed<DrawCallData> _transparentSkyboxCullingResources;
 
     Renderer::GraphicsPipelineID _drawPipeline;
-    Renderer::GraphicsPipelineID _drawShadowPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMDynamicPipeline;
     Renderer::GraphicsPipelineID _drawTransparentPipeline;
     Renderer::GraphicsPipelineID _drawSkyboxOpaquePipeline;
     Renderer::GraphicsPipelineID _drawSkyboxTransparentPipeline;
+
+    Renderer::DescriptorSet _svsmDrawDescriptorSet;
+    Renderer::DescriptorSet _svsmDynamicDrawDescriptorSet;
+
+    // SVSM static/dynamic caster split: instances that moved or pushed bone matrices this frame.
+    // Producers enqueue from any thread; Update drains them into the classifier below, SyncToGPU
+    // rebuilds the bit mask once per frame from the classifier's live set
+    moodycamel::ConcurrentQueue<u32> _dynamicInstanceQueue;
+    std::vector<u32> _dynamicInstanceIDs; // Last frame's masked set, backs the incremental bit updates
+    Renderer::GPUVector<u32> _dynamicInstanceMask;
+
+    // The single dynamic-caster classifier: instanceID -> accumulated-seconds stamp of its last
+    // dynamic signal (move or bone push). Instances stay classified for a grace period after the
+    // last signal so brief pauses don't churn the static cache; entering pulls the baked pose out
+    // of the static pages, expiring bakes it back. A despawned instance's stale entry expires
+    // within the grace and costs one spurious page refresh at worst (RemoveInstance already
+    // invalidated its real footprint).
+    // The shadow AABB is cached in the entry and recomputed only when it can change (classifier
+    // entry, transform update) — the per-frame tick reads it instead of redoing the glm math
+    struct DynamicCasterState
+    {
+        f32 lastSignal = 0.0f;
+        vec3 aabbMin = vec3(0.0f);
+        vec3 aabbMax = vec3(0.0f);
+    };
+    robin_hood::unordered_map<u32, DynamicCasterState> _dynamicCasterStates;
+    std::vector<u32> _dynamicCasterLiveIDs; // This frame's live set, feeds the mask sync
+    std::vector<vec4> _dynamicCasterAABBs;  // World (min, max) pairs of the live set, rebuilt each frame
+    f32 _dynamicCasterTime = 0.0f;
+    u32 _dynamicCastersDropped = 0;         // Spilled to static this frame (cap or oversize), never dropped from both pools
+    u32 _dynamicCasterTransitionsIn = 0;    // Running totals since map load, per-frame ticks are unreadable in the perf editor
+    u32 _dynamicCasterTransitionsOut = 0;
+
+    // Spawned/despawned/re-modeled instances must invalidate the cached static shadow pages under
+    // them, ShadowRenderer drains this each frame
+    struct ShadowInvalidation
+    {
+        vec4 min;
+        vec4 max;
+    };
+    moodycamel::ConcurrentQueue<ShadowInvalidation> _shadowInvalidationQueue;
+
+    // Per-view surviving dynamic-class instance counts of the SVSM dynamic fills, the instrument
+    // for diagnosing missing dynamic shadow draws
+    Renderer::BufferID _svsmDynamicDrawCountReadBackBuffer;
+    u32 _numSvsmDynamicInstances[Renderer::Settings::MAX_VIEWS] = { 0 };
+    bool _numSvsmDynamicInstancesZeroed = false; // One-shot zero of the stats when the readback is gated off
+
+    // Animated doodads (windmills, flags, swaying vegetation) share one uninstanced bone stream
+    // per model; the queue signals which models advanced their animation this frame so Update can
+    // promote their placements within svsmAnimatedCasterRange to per-instance dynamic signals.
+    // The full placement scan is expensive (large vegetation models have tens of thousands of
+    // placements), so each in-grace model caches its near-camera subset and rescans only when the
+    // camera moves past the hysteresis slack or the placement set changes
+    struct AnimatedModelState
+    {
+        f32 lastPushTime = 0.0f;        // Accumulated seconds of the last bone push
+        vec3 scanCameraPos = vec3(0.0f); // Camera position the cached subset was scanned from
+        bool scanned = false;
+        u32 lastSeenInstanceEpoch = 0;  // _instanceSetEpoch value the cached subset was scanned at
+        std::vector<u32> nearInstances; // Placements within leaveDist at scan time
+    };
+    moodycamel::ConcurrentQueue<u32> _uninstancedAnimatedModelQueue;
+    robin_hood::unordered_map<u32, AnimatedModelState> _animatedModelLastPushTime; // Keyed by modelID
+
+    // Bumped on every instance add/remove/re-model (any model, any thread). The animated-caster
+    // scan caches compare against it so the steady-state tick never takes a manifest mutex; an
+    // epoch bump from an unrelated model costs the few in-grace models one spare rescan
+    std::atomic<u32> _instanceSetEpoch = 0;
 
     // GPU-only workbuffers
     Renderer::BufferID _occluderArgumentBuffer;

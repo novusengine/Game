@@ -13,6 +13,7 @@
 
 class DebugRenderer;
 class GameRenderer;
+class ShadowRenderer;
 struct RenderResources;
 
 namespace Renderer
@@ -48,6 +49,12 @@ public:
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddClipmapCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex); // Per-clipmap-view frustum culling into the bitmask slices
+    void AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex, ShadowRenderer* shadowRenderer);
+
+    // Called once by ShadowRenderer at init, buffer binds must happen before the first frame
+    // (they only reach the canonical descriptor copies at a later FlipFrame)
+    void BindSVSMBuffers(Renderer::BufferID svsmDataBuffer, Renderer::BufferID pageTableBuffer);
 
     void Clear();
     void Reserve(u32 numChunks);
@@ -78,18 +85,21 @@ private:
     struct DrawParams
     {
     public:
-        bool shadowPass = false;
+        bool svsmPass = false; // Attachment-less page render, needs an explicit render area
+        u32 svsmRectIndex = 0xFFFFFFFFu; // Clip rect this draw renders (0-2), SVSM_CLIP_RECT_DISABLED = no clipping
         u32 viewIndex = 0;
         bool cullingEnabled = false;
 
         Renderer::ImageMutableResource visibilityBuffer;
         Renderer::DepthImageMutableResource depth;
+        uvec2 svsmExtent = uvec2(0, 0);
 
         Renderer::BufferResource instanceBuffer;
         Renderer::BufferResource argumentBuffer;
 
         Renderer::DescriptorSetResource globalDescriptorSet;
         Renderer::DescriptorSetResource drawDescriptorSet;
+        Renderer::DescriptorSetResource svsmDescriptorSet;
 
         u32 argumentsIndex = 0;
     };
@@ -98,7 +108,7 @@ private:
     struct FillDrawCallsParams
     {
     public:
-        std::string passName;
+        std::string markerName; // Full marker string, prebuilt by the caller (the SVSM pass fills per view)
 
         u32 cellCount;
         u32 viewIndex;
@@ -106,8 +116,18 @@ private:
         u32 currentBitmaskIndex = 0;
 
         Renderer::DescriptorSetResource fillSet;
+
+        // When set the fill dispatches indirectly from these GPU-written args (SVSM per-view
+        // gating), zero groups for views with no page work this frame
+        Renderer::BufferResource fillArgsBuffer; // Finalize-written dispatch args, consumed read-only via DispatchIndirect
+        u32 fillArgsByteOffset = 0;
     };
     void FillDrawCalls(u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, FillDrawCallsParams& params);
+
+    // The terrain cull dispatch shared by AddCullingPass and AddClipmapCullingPass: one thread
+    // per cell against the per-view frustums, writing the bitmask slices. The depth pyramid bind
+    // stays at the main culling callsite (the clipmap pass reuses the already-bound set)
+    void RunCullingDispatch(Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, u8 frameIndex, u32 numShadowViews, bool occlusionEnabled, bool cullMainView, Renderer::DescriptorSetResource& debugSet, Renderer::DescriptorSetResource& globalSet, Renderer::DescriptorSetResource& cullingSet);
 
 private:
     struct TerrainVertex
@@ -155,7 +175,7 @@ private:
     Renderer::ComputePipelineID _fillDrawCallsPipeline;
     Renderer::ComputePipelineID _cullingPipeline;
     Renderer::GraphicsPipelineID _drawPipeline;
-    Renderer::GraphicsPipelineID _drawShadowPipeline;
+    Renderer::GraphicsPipelineID _drawSVSMPipeline;
 
     Renderer::GPUVector<u16> _cellIndices;
     Renderer::GPUVector<TerrainVertex> _vertices;
@@ -188,6 +208,7 @@ private:
     Renderer::DescriptorSet _resetIndirectDescriptorSet;
     Renderer::DescriptorSet _cullingPassDescriptorSet;
     Renderer::DescriptorSet _geometryFillPassDescriptorSet;
+    Renderer::DescriptorSet _svsmDrawDescriptorSet;
 
     std::vector<Geometry::AABoundingBox> _cellBoundingBoxes;
     std::vector<Geometry::AABoundingBox> _chunkBoundingBoxes;

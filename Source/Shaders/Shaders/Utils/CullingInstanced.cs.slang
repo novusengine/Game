@@ -21,6 +21,10 @@ struct Constants
     uint cullingDataIsWorldspace; // TODO: This controls two things, are both needed? I feel like one counters the other but I'm not sure...
     uint debugDrawColliders;
     uint currentBitmaskIndex;
+    uint numShadowViews;
+    uint bitMaskBufferUintsPerView;
+    uint debugDrawView; // viewIndex of the view to debug draw culling results for, 0xFFFFFFFF = off
+    uint cullMainView; // The late clipmap dispatch must not re-cull view 0, it would overwrite the occlusion-culled bitmask slice and the instance lookup
 };
 
 struct InstanceRef
@@ -53,7 +57,7 @@ struct CullingData
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<PackedCullingData> _cullingDatas;
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<float4x4> _instanceMatrices;
 [[vk::binding(5, PER_PASS)]] SamplerState _depthSampler;
-[[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow cascades?
+[[vk::binding(6, PER_PASS)]] Texture2D<float> _depthPyramid; // TODO: Occlusion culling for shadow views?
 
 #if USE_BITMASKS
 // TODO: When instanceCounts resizes we need to invalidate (zero out) the prev bitmask since a single index in current and prev would point to different actual drawcalls
@@ -192,6 +196,34 @@ struct CullOutput
     uint baseInstanceLookup; // Used to index into instanceLookupTable, + atomic_add(instanceCounts[drawCallID])
     RWStructuredBuffer<uint> instanceLookupTable;
 };
+
+#if USE_BITMASKS
+// Shadow clipmap views only need the visibility bitmask, the per-view draw sets are filled from it later in the geometry pass
+void CullForClipmap(DrawInput drawInput, Camera camera, uint bitmaskOffset, bool debugDrawResults)
+{
+    bool isVisible = drawInput.instanceCount > 0 && IsSphereInsideFrustum(camera, drawInput.sphere);
+
+    uint bitMask = WaveActiveBallot(isVisible).x;
+
+    // The first thread writes the bitmask
+    if (drawInput.csInput.groupThreadID.x == 0)
+    {
+        WriteCurrentBitmask(drawInput.csInput.groupID.x + bitmaskOffset, bitMask);
+    }
+
+    if (debugDrawResults)
+    {
+        if (isVisible)
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::GREEN);
+        }
+        else
+        {
+            DrawAABB3D(drawInput.aabb, DebugColor::RED);
+        }
+    }
+}
+#endif
 
 void CullForCamera(DrawInput drawInput,
     Camera camera,
@@ -375,6 +407,7 @@ void main(CSInput input)
     cullOutput.instanceLookupTable = _culledInstanceLookupTable;
     
     // Cull Main Camera
+    if (_constants.cullMainView)
     {
         CullForCamera(drawInput,
             _cameras[0],
@@ -383,4 +416,13 @@ void main(CSInput input)
 #endif
             cullOutput);
     }
+
+#if USE_BITMASKS
+    // Shadow clipmap views
+    for (uint i = 1; i < _constants.numShadowViews + 1; i++)
+    {
+        bool debugDrawResults = (_constants.debugDrawView == i);
+        CullForClipmap(drawInput, _cameras[i], _constants.bitMaskBufferUintsPerView * i, debugDrawResults);
+    }
+#endif
 }

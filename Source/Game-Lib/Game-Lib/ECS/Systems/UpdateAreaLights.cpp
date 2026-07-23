@@ -17,9 +17,24 @@
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
+#include <glm/gtc/constants.hpp>
+
+AutoCVar_Int CVAR_SunFullRotation(CVarCategory::Client | CVarCategory::Rendering, "sunFullRotation", "sun does a full rotation per day instead of the authored wobble, the sun sets at night", 1, CVarFlags::EditCheckbox);
+AutoCVar_Float CVAR_ShadowSunUpdateInterval(CVarCategory::Client | CVarCategory::Rendering, "shadowSunUpdateInterval", "game seconds between shadow sun direction updates, a continuously rotating sun re-renders every shadow texel each frame and shimmers", 120.0f);
 
 namespace ECS::Systems
 {
+    // The shadow sun steps in discrete intervals, the visual sun stays smooth. A continuously
+    // rotating light invalidates the whole texel grid every frame, which snapping cannot hide
+    f32 GetShadowTimeOfDay(f32 timeOfDay)
+    {
+        f32 interval = CVAR_ShadowSunUpdateInterval.GetFloat();
+        if (interval <= 0.0f)
+            return timeOfDay;
+
+        return glm::floor(timeOfDay / interval) * interval;
+    }
+
     vec3 UnpackU32BGRToColor(u32 bgr)
     {
         vec3 result;
@@ -314,7 +329,7 @@ namespace ECS::Systems
         const vec3& ambientColor = areaLightInfo.finalColorData.ambientColor;
         vec3 groundAmbientColor = ambientColor * 1.0f;
         vec3 skyAmbientColor = ambientColor * 1.0f;
-        vec3 shadowColor = vec3(77.f/255.f, 77.f/255.f, 77.f/255.f);
+        const vec3& shadowColor = areaLightInfo.finalColorData.shadowColor; // Per-area authored tint, multiplied onto the shadowed directional term
         constexpr f32 ambientIntensity = 1.0f;
         
         if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor))
@@ -324,8 +339,14 @@ namespace ECS::Systems
         
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
         skyboxRenderer->SetSkybandColors(areaLightInfo.finalColorData.skybandTopColor, areaLightInfo.finalColorData.skybandMiddleColor, areaLightInfo.finalColorData.skybandBottomColor, areaLightInfo.finalColorData.skybandAboveHorizonColor, areaLightInfo.finalColorData.skybandHorizonColor);
+        skyboxRenderer->SetSunDirection(direction); // direction points toward the sun
 
-        *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);     
+        // Fade shadows out as the sun approaches the horizon, below it the shadow views would project the underside of the world
+        f32 sunElevationSin = direction.y; // Positive while the sun is above the horizon
+        f32 shadowStrength = glm::clamp(sunElevationSin / 0.1f, 0.0f, 1.0f);
+        *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"_h) = shadowStrength;
+
+        *CVarSystem::Get()->GetVecFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogColor"_h) = vec4(areaLightInfo.finalColorData.fogColor, 1.0f);
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendBegin"_h) = areaLightInfo.finalColorData.fogEnd * areaLightInfo.finalColorData.fogScaler;
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h) = areaLightInfo.finalColorData.fogEnd;
     }
@@ -343,24 +364,33 @@ namespace ECS::Systems
         };
 
         f32 progressDayAndNight = timeOfDay / 86400.0f;
-        u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
-        u32 nextPhiIndex = 0;
 
-        if (currentPhiIndex < 3)
-            nextPhiIndex = currentPhiIndex + 1;
-
-        // Lerp between the current value of phi and the next value of phi
+        if (CVAR_SunFullRotation.Get())
         {
-            f32 currentTimestamp = currentPhiIndex * 0.25f;
-            f32 nextTimestamp = nextPhiIndex * 0.25f;
+            // Full rotation per day, midnight (progress 0) puts the sun straight down, noon straight up
+            phiValue = progressDayAndNight * glm::two_pi<f32>();
+        }
+        else
+        {
+            u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
+            u32 nextPhiIndex = 0;
 
-            f32 transitionTime = 0.25f;
-            f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
+            if (currentPhiIndex < 3)
+                nextPhiIndex = currentPhiIndex + 1;
 
-            f32 currentPhiValue = phiTable[currentPhiIndex];
-            f32 nextPhiValue = phiTable[nextPhiIndex];
+            // Lerp between the current value of phi and the next value of phi
+            {
+                f32 currentTimestamp = currentPhiIndex * 0.25f;
+                f32 nextTimestamp = nextPhiIndex * 0.25f;
 
-            phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
+                f32 transitionTime = 0.25f;
+                f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
+
+                f32 currentPhiValue = phiTable[currentPhiIndex];
+                f32 nextPhiValue = phiTable[nextPhiIndex];
+
+                phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
+            }
         }
 
         // Convert from Spherical Position to Cartesian coordinates
@@ -374,6 +404,8 @@ namespace ECS::Systems
         f32 lightDirZ = sinPhi * sinTheta;
         f32 lightDirY = cosPhi;
 
+        // Points toward the sun (the shading convention); SVSM consumers negate this to get the
+        // direction the light travels
         return vec3(lightDirX, -lightDirY, -lightDirZ);
     }
 }
