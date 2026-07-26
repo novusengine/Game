@@ -30,6 +30,9 @@ local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_
             { label = "Hierarchy", enabled = true, onClick = function() EditorRegistry.Toggle("Hierarchy") end },
             { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
             { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
+            { label = "Skybox", enabled = true, onClick = function() EditorRegistry.Toggle("Skybox") end },
+            { label = "Networked Info", enabled = true, onClick = function() EditorRegistry.Toggle("NetworkedInfo") end },
+            { label = "Performance", enabled = true, onClick = function() EditorRegistry.Toggle("Performance") end },
         }},
         { label = "Editor", items = {
             { label = "(none)", enabled = false },

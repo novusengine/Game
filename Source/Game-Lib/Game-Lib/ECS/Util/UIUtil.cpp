@@ -516,6 +516,18 @@ namespace ECS::Util
 
         void RefreshTemplate(entt::registry* registry, entt::entity entity, ECS::Components::UI::EventInputInfo& eventInputInfo)
         {
+            // With no interaction-state templates there is nothing state-dependent to (re)apply, so
+            // ResetTemplate would only discard runtime overrides (SetColor/SetAlpha/SetBorder/...) back to
+            // the base template. Skip it so those survive interactability/hover/click transitions -- e.g.
+            // a solid-colored panel that also calls SetInteractable(false) keeps its color. (The unset
+            // sentinel for these hashes is 0 -- their default -- not -1.)
+            if (eventInputInfo.onHoverTemplateHash == 0 &&
+                eventInputInfo.onClickTemplateHash == 0 &&
+                eventInputInfo.onUninteractableTemplateHash == 0)
+            {
+                return;
+            }
+
             ResetTemplate(registry, entity);
             if (eventInputInfo.isHovered && eventInputInfo.onHoverTemplateHash != -1)
             {

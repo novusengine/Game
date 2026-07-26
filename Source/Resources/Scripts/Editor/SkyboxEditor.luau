@@ -1,6 +1,14 @@
 --[[
-MapEditor — Lua port of the C++ ImGui Map selector. Two sections (List with
-filter, Actions). Right-click row opens a ContextMenu with Load/Unload.
+SkyboxEditor -- Lua port of the C++ ImGui Skybox selector, styled like the Map editor: a List collapsible
+(filter + scroll list) and an Actions collapsible (Load/Unload), in an auto-sized window. Left-click selects
+a row, double-click (or Actions > Load, or right-click > Load) loads it; the loaded skybox is highlighted
+green and named in the "Current:" line.
+
+Data goes through the dev-only Skybox handler (Skybox.Enumerate / GetCurrent / Load / Unload). Skybox.Load
+is an async model load, so GetCurrent lags a few frames after a load; rather than poll, we track the current
+path optimistically at the click site (the only thing that changes it) and reconcile with GetCurrent on Show.
+
+Layer 1100 sits above the dev top bar (1000).
 ]]
 
 local Collapsible = require("@src/API/UI/Collapsible")
@@ -12,48 +20,34 @@ local ScrollBox = require("@src/API/UI/ScrollBox")
 
 require("@src/API/UI/MenuBar")
 
-local PANEL_W       = 320
+local PANEL_W       = 300
 local TITLE_H       = 16
 local CURRENT_H     = 16
 local ROW_H         = 18
-local ICON_SIZE     = 14
 local BUTTON_H      = 20
 local SIDE_PAD      = 6
 local SECTION_PAD   = 2
 local BOTTOM_PAD    = 6
 local LIST_H        = 200
+local FILTER_H      = 20
 local LAYER         = 1100
 local CONTEXT_LAYER = LAYER + 50
 local BTN_TEXT_TPL  = "DevToolsText"
 local DOUBLE_CLICK_S = 0.4
 
-local WINDOW_BG_COLOR  = vector.create(0.10, 0.10, 0.12)
-local WINDOW_BG_ALPHA  = 0.96
-local BORDER_COLOR     = vector.create(0.30, 0.30, 0.35)
-local BORDER_SIZE      = 1
-local LABEL_TINT       = vector.create(0.82, 0.82, 0.88)
-local SELECTED_COLOR   = vector.create(0.30, 0.55, 0.85)
-local SELECTED_ALPHA   = 0.55
-local CURRENT_COLOR    = vector.create(0.30, 0.85, 0.55)
-local CURRENT_ALPHA    = 0.45
+local WINDOW_BG_COLOR     = vector.create(0.10, 0.10, 0.12)
+local WINDOW_BG_ALPHA     = 0.96
+local BORDER_COLOR        = vector.create(0.30, 0.30, 0.35)
+local BORDER_SIZE         = 1
+local LABEL_TINT          = vector.create(0.82, 0.82, 0.88)
+local SELECTED_COLOR      = vector.create(0.30, 0.55, 0.85)
+local SELECTED_ALPHA      = 0.55
+local CURRENT_COLOR       = vector.create(0.30, 0.85, 0.55)
+local CURRENT_ALPHA       = 0.45
 local DEFAULT_HOVER_COLOR = vector.create(0.30, 0.55, 0.85)
 local DEFAULT_HOVER_ALPHA = 0.45
 
--- 0=OpenWorld, 1=Dungeon, 2=Raid, 3=Battleground, 4=Arena. Filled in MapSelector.cpp.
-local ICON_TEMPLATES = {
-    [0] = "MapIcon_OpenWorld",
-    [1] = "MapIcon_Dungeon",
-    [2] = "MapIcon_Raid",
-    [3] = "MapIcon_Battleground",
-    [4] = "MapIcon_Arena",
-}
-local DEFAULT_ICON_TEMPLATE = ICON_TEMPLATES[0]
-
-UI.RegisterPanelTemplate("MapIcon_OpenWorld",    { background = "Data/Texture/interface/worldmap/worldmap-icon.dds",          cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Dungeon",      { background = "Data/Texture/interface/minimap/dungeon_icon.dds",            cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Raid",         { background = "Data/Texture/interface/minimap/raid_icon.dds",               cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Battleground", { background = "Data/Texture/interface/battlefieldframe/ui-battlefield-icon.dds", cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Arena",        { background = "Data/Texture/interface/calendar/ui-calendar-event-pvp.dds",  cornerRadius = 0.0 })
+local LIST_INNER_W = PANEL_W - SIDE_PAD * 2
 
 local function MakeBtnOpts(text)
     return {
@@ -64,9 +58,9 @@ local function MakeBtnOpts(text)
     }
 end
 
-local canvas = UI.GetCanvas("MapEditor", 0, 0, 1920, 1080, false)
+local canvas = UI.GetCanvas("SkyboxEditor", 0, 0, 1920, 1080, false)
 
-local windowPanel = canvas:NewPanel(820, -80, PANEL_W, TITLE_H, LAYER, "DebugDarkGrey")
+local windowPanel = canvas:NewPanel(620, -140, PANEL_W, TITLE_H + CURRENT_H, LAYER, "DebugDarkGrey")
 windowPanel:SetAnchor(0.0, 1.0)
 windowPanel:SetRelativePoint(0.0, 1.0)
 windowPanel:SetVisible(false)
@@ -81,7 +75,7 @@ titleBar:SetRelativePoint(0.0, 1.0)
 titleBar:SetColor(vector.create(0.06, 0.06, 0.08))
 titleBar:SetAlpha(WINDOW_BG_ALPHA)
 
-local titleText = titleBar:NewText("Map", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
+local titleText = titleBar:NewText("Skybox", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
 titleText:SetAnchor(0.0, 0.5)
 titleText:SetRelativePoint(0.0, 0.5)
 titleText:SetInteractable(false)
@@ -94,21 +88,19 @@ closeBtn.text:SetPosX(1)
 
 windowPanel:MakeDraggable(titleBar)
 
--- ---- current map label (under the title bar) ----
+-- ---- current skybox label (under the title bar) ----
 local currentText = windowPanel:NewText("Current: -", SIDE_PAD, -(TITLE_H + 2), 1, BTN_TEXT_TPL)
 currentText:SetAnchor(0.0, 1.0)
 currentText:SetRelativePoint(0.0, 1.0)
 currentText:SetColor(LABEL_TINT)
 currentText:SetInteractable(false)
 
-local listSection = Collapsible.NewCollapsible(windowPanel, 0, -TITLE_H, PANEL_W, 1, {
+-- ---- List section: filter + scroll list ----
+local listSection = Collapsible.NewCollapsible(windowPanel, 0, 0, PANEL_W, 1, {
     title = "List",
     expanded = true,
 })
-
 local listBody = listSection.body
-local LIST_INNER_W = PANEL_W - SIDE_PAD * 2
-local FILTER_H = 20
 
 local filterInput = InputBox.NewInputBox(listBody, SIDE_PAD, -2, LIST_INNER_W, FILTER_H, 1, {
     panelTemplate = "DebugDarkGrey",
@@ -129,22 +121,21 @@ local scrollBox = ScrollBox.NewScrollBox(listBody, SIDE_PAD, -(2 + FILTER_H + 4)
 scrollBox:SetAnchor(0.0, 1.0)
 scrollBox:SetRelativePoint(0.0, 1.0)
 
-local LIST_BODY_H = 2 + FILTER_H + 4 + LIST_H + 4
-listSection:SetBodyContentHeight(LIST_BODY_H)
+listSection:SetBodyContentHeight(2 + FILTER_H + 4 + LIST_H + 4)
 
+-- ---- Actions section: Load / Unload ----
 local actionsSection = Collapsible.NewCollapsible(windowPanel, 0, 0, PANEL_W, 1, {
     title = "Actions",
     expanded = true,
 })
-
 local actionsBody = actionsSection.body
 local ACTION_BTN_W = (LIST_INNER_W - 4) / 2
 
-local loadBtn = EditorButton.NewEditorButton(actionsBody, SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Load Map"))
+local loadBtn = EditorButton.NewEditorButton(actionsBody, SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Load"))
 loadBtn:SetAnchor(0.0, 1.0)
 loadBtn:SetRelativePoint(0.0, 1.0)
 
-local unloadBtn = EditorButton.NewEditorButton(actionsBody, -SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Unload Map"))
+local unloadBtn = EditorButton.NewEditorButton(actionsBody, -SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Unload"))
 unloadBtn:SetAnchor(1.0, 1.0)
 unloadBtn:SetRelativePoint(1.0, 1.0)
 
@@ -166,10 +157,11 @@ Restack()
 
 local rowMenu = ContextMenu.New(canvas, { items = {}, layer = CONTEXT_LAYER })
 
-local allMaps = nil
+local skyboxes = {}
 local rowBtns = {}
-local selectedRowID = nil
-local lastClickRowID = nil
+local selectedPath = nil
+local currentPath = nil            -- item.path of the loaded skybox (optimistic; set at the click site)
+local lastClickPath = nil
 local lastClickTime = 0
 
 local function ContainsCI(haystack, needle)
@@ -177,14 +169,25 @@ local function ContainsCI(haystack, needle)
     return string.find(string.lower(haystack), string.lower(needle), 1, true) ~= nil
 end
 
--- EditorButton's SetHighlighted re-applies the row's _hoverColor, so tint by overriding that (a plain
--- SetColor would be clobbered by it): loaded row = green, selected row = blue.
-local function PaintRow(row, currentInternalName)
-    if row.data.internalName == currentInternalName then
+-- GetCurrent returns the loaded model's full name; match it back to an enumerated entry so Show can seed
+-- the current highlight/label from whatever was already loaded.
+local function MatchCurrent(cur)
+    if cur == nil then return nil end
+    for _, item in skyboxes do
+        if item.path == cur or item.name == cur then return item.path end
+    end
+    for _, item in skyboxes do
+        if string.find(cur, item.name, 1, true) then return item.path end
+    end
+    return nil
+end
+
+local function PaintRow(row)
+    if row.data.path == currentPath then
         row._hoverColor = CURRENT_COLOR
         row._hoverAlpha = CURRENT_ALPHA
         row:SetHighlighted(true)
-    elseif row.data.id == selectedRowID then
+    elseif row.data.path == selectedPath then
         row._hoverColor = SELECTED_COLOR
         row._hoverAlpha = SELECTED_ALPHA
         row:SetHighlighted(true)
@@ -195,78 +198,75 @@ local function PaintRow(row, currentInternalName)
     end
 end
 
--- The friendly name for a current internalName (falls back to the raw name, or "-" when nothing loaded).
-local function MapNameFor(internalName)
-    if internalName == nil or internalName == "" then return "-" end
-    if allMaps ~= nil then
-        for _, m in allMaps do
-            if m.internalName == internalName then return m.name end
+local function RefreshHighlights()
+    for _, row in rowBtns do PaintRow(row) end
+end
+
+local function RefreshCurrent()
+    local name = "-"
+    if currentPath ~= nil then
+        for _, item in skyboxes do
+            if item.path == currentPath then name = item.name break end
         end
     end
-    return internalName
+    currentText:SetText("Current: " .. name)
+    RefreshHighlights()
 end
 
-local function RefreshHighlights()
-    local current = Map.GetCurrent()
-    currentText:SetText("Current: " .. MapNameFor(current))
-    for _, row in rowBtns do
-        PaintRow(row, current)
-    end
+local function LoadPath(path)
+    Skybox.Load(path)
+    currentPath = path
+    RefreshCurrent()
 end
 
-local function OpenRowMenu(rowData, mouseX, mouseY)
-    local current = Map.GetCurrent()
+local function UnloadCurrent()
+    Skybox.Unload()
+    currentPath = nil
+    RefreshCurrent()
+end
+
+local function OpenRowMenu(item, mouseX, mouseY)
     rowMenu:SetItems({
-        { label = "Load",   onClick = function() Map.Load(rowData.internalName) end },
-        { label = "Unload", onClick = function() Map.Unload() end, enabled = current ~= "" },
+        { label = "Load",   onClick = function() LoadPath(item.path) end },
+        { label = "Unload", onClick = function() UnloadCurrent() end, enabled = currentPath ~= nil },
     })
     rowMenu:Open(mouseX, mouseY)
 end
 
 local function BuildRows(filterText)
-    for _, row in rowBtns do
-        UI.DestroyWidget(row.panel)
-    end
+    for _, row in rowBtns do UI.DestroyWidget(row.panel) end
     rowBtns = {}
-
-    if allMaps == nil then return end
 
     local content = scrollBox.content
     local visibleIndex = 0
-    for _, mapData in allMaps do
-        if ContainsCI(mapData.name, filterText) or ContainsCI(mapData.internalName, filterText) then
+    for _, item in skyboxes do
+        if ContainsCI(item.name, filterText) then
             local btn = EditorButton.NewEditorButton(content, 2, -(visibleIndex * ROW_H) - 1, LIST_INNER_W - 14, ROW_H, 1, {
-                text = mapData.name,
+                text = item.name,
                 textTemplate = BTN_TEXT_TPL,
                 textAlign = "left",
-                textPadX = ICON_SIZE + 8,
+                textPadX = 6,
             })
             btn:SetAnchor(0.0, 1.0)
             btn:SetRelativePoint(0.0, 1.0)
-            btn.data = mapData
-
-            local iconTemplate = ICON_TEMPLATES[mapData.instanceType] or DEFAULT_ICON_TEMPLATE
-            local icon = btn.panel:NewPanel(4, 0, ICON_SIZE, ICON_SIZE, 1, iconTemplate)
-            icon:SetAnchor(0.0, 0.5)
-            icon:SetRelativePoint(0.0, 0.5)
-            icon:SetInteractable(false)
+            btn.data = item
 
             btn.panel:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
                 if button == 1 then
-                    selectedRowID = mapData.id
+                    selectedPath = item.path
                     RefreshHighlights()
-                    OpenRowMenu(mapData, mouseX, mouseY)
+                    OpenRowMenu(item, mouseX, mouseY)
                     return
                 end
                 local now = os.clock()
-                if lastClickRowID == mapData.id and (now - lastClickTime) <= DOUBLE_CLICK_S then
-                    Map.Load(mapData.internalName)
-                    lastClickRowID = nil
+                if lastClickPath == item.path and (now - lastClickTime) <= DOUBLE_CLICK_S then
+                    LoadPath(item.path)
+                    lastClickPath = nil
                 else
-                    lastClickRowID = mapData.id
+                    lastClickPath = item.path
                 end
                 lastClickTime = now
-                selectedRowID = mapData.id
+                selectedPath = item.path
                 RefreshHighlights()
             end)
 
@@ -279,37 +279,29 @@ local function BuildRows(filterText)
     RefreshHighlights()
 end
 
-filterInput:SetOnTextChanged(function(t)
-    BuildRows(t.text)
-end)
+filterInput:SetOnTextChanged(function() BuildRows(filterInput.text) end)
 
 loadBtn:SetOnMouseUp(function()
-    if selectedRowID == nil then return end
-    for _, row in rowBtns do
-        if row.data.id == selectedRowID then
-            Map.Load(row.data.internalName)
-            break
-        end
-    end
+    if selectedPath ~= nil then LoadPath(selectedPath) end
 end)
 
 unloadBtn:SetOnMouseUp(function()
-    Map.Unload()
+    UnloadCurrent()
 end)
 
 local methods = {}
 
 function methods:Show()
     windowPanel:SetVisible(true)
-    allMaps = Map.GetList()
+    skyboxes = Skybox.Enumerate() or {}
+    currentPath = MatchCurrent(Skybox.GetCurrent())
     BuildRows(filterInput.text)
-    Map.SetOnCurrentMapChanged(RefreshHighlights)
+    RefreshCurrent()
 end
 
 function methods:Hide()
     windowPanel:SetVisible(false)
     rowMenu:Close()
-    Map.SetOnCurrentMapChanged(nil)
 end
 
 function methods:IsVisible()
@@ -318,4 +310,4 @@ end
 
 closeBtn:SetOnMouseUp(function() methods:Hide() end)
 
-EditorRegistry.Register("Map", methods)
+EditorRegistry.Register("Skybox", methods)

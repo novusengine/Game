@@ -160,6 +160,12 @@ local function SetupScrollBoxMethods(scrollBoxTable : ScrollBox)
     end
 
     scrollBoxTable.SetContentHeight = function(self : ScrollBox, height : number)
+        -- No-op when unchanged: this runs ScrollToStart() below, so a caller updating every frame would
+        -- otherwise reset the scroll position each frame (looks fine mid-drag, snaps to top on release).
+        if (self.contentSizeY == height) then
+            return;
+        end
+
         self.contentSizeY = height;
         self.content:SetHeight(height);
 

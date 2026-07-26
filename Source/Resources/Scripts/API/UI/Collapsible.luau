@@ -67,19 +67,25 @@ function collapsibleAPI.NewCollapsible(parent, posX, posY, width, layer, opts)
     bodyPanel:SetVisible(expanded)
 
     local self = {
-        panel       = rootPanel,
-        body        = bodyPanel,
-        headerBtn   = headerBtn,
-        _title      = title,
-        _expanded   = expanded,
-        _bodyHeight = 0,
-        _padding    = bodyPadding,
-        _width      = width,
-        _onToggle   = onToggle,
+        panel        = rootPanel,
+        body         = bodyPanel,
+        headerBtn    = headerBtn,
+        _title       = title,
+        _lastHeaderText = nil,
+        _expanded    = expanded,
+        _bodyHeight  = 0,
+        _padding     = bodyPadding,
+        _width       = width,
+        _onToggle    = onToggle,
     }
 
+    -- Composes the header as "<chevron><title>". Skips the SetText when the string is unchanged, so a
+    -- caller can drive SetTitle every frame (e.g. to show a live value on a collapsed section) cheaply.
     local function RefreshHeaderText()
-        headerBtn:SetText((self._expanded and CHEVRON_OPEN or CHEVRON_CLOSED) .. self._title)
+        local text = (self._expanded and CHEVRON_OPEN or CHEVRON_CLOSED) .. self._title
+        if text == self._lastHeaderText then return end
+        self._lastHeaderText = text
+        headerBtn:SetText(text)
     end
 
     function self:GetTotalHeight()
@@ -91,6 +97,15 @@ function collapsibleAPI.NewCollapsible(parent, posX, posY, width, layer, opts)
 
     function self:IsExpanded()
         return self._expanded
+    end
+
+    -- Change the header title in place -- no widget rebuild, keeps the current expanded/collapsed state
+    -- and chevron. Cheap to call every frame (RefreshHeaderText skips unchanged text).
+    function self:SetTitle(title)
+        title = title or ""
+        if self._title == title then return end
+        self._title = title
+        RefreshHeaderText()
     end
 
     function self:SetBodyContentHeight(h)

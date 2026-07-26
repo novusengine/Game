@@ -34,6 +34,9 @@
 #include "Game-Lib/Scripting/Handlers/SceneHandler.h"
 #include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
 #include "Game-Lib/Scripting/Handlers/AssetHandler.h"
+#include "Game-Lib/Scripting/Handlers/SkyboxHandler.h"
+#include "Game-Lib/Scripting/Handlers/NetworkHandler.h"
+#include "Game-Lib/Scripting/Handlers/PerfHandler.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Util/TextureUtil.h"
@@ -370,6 +373,9 @@ bool Application::Init()
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scene, new Scripting::Scene::SceneHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Editor, new Scripting::Editor::EditorToolHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Asset, new Scripting::Asset::AssetHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Skybox, new Scripting::Skybox::SkyboxHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Network, new Scripting::Network::NetworkHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Perf, new Scripting::Perf::PerfHandler());
 
         auto globalKey = Scripting::ZenithInfoKey::MakeGlobal(0, 0);
         _luaManager->GetZenithStateManager().Add(globalKey);
