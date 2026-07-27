@@ -3,6 +3,8 @@
 #include "Application.h"
 #include "Message.h"
 
+#include <Base/Util/DebugHandler.h>
+
 void ConsoleCommands::CommandPrint(Application& app, std::vector<std::string>& subCommands)
 {
     if (subCommands.size() == 0)
@@ -52,6 +54,18 @@ void ConsoleCommands::CommandDoString(Application& app, std::vector<std::string>
         message.data += subCommands[i];
     }
 
+    app.PassMessage(message);
+}
+
+void ConsoleCommands::CommandAutomationRun(Application& app, std::vector<std::string>& subCommands)
+{
+    if (subCommands.size() != 2)
+    {
+        NC_LOG_ERROR("Usage: automation_run <request-id> Scripts/<path>.luau");
+        return;
+    }
+
+    MessageInbound message(MessageInbound::Type::AutomationRun, subCommands[1], subCommands[0]);
     app.PassMessage(message);
 }
 

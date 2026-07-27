@@ -66,6 +66,8 @@ namespace Scripting
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataUpdated>(MetaGen::Game::Lua::GameEvent::Updated);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataCharacterListChanged>(MetaGen::Game::Lua::GameEvent::CharacterListChanged);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataMapLoading>(MetaGen::Game::Lua::GameEvent::MapLoading);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataMapLoaded>(MetaGen::Game::Lua::GameEvent::MapLoaded);
+        zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataMapLoadFailed>(MetaGen::Game::Lua::GameEvent::MapLoadFailed);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataChatMessageReceived>(MetaGen::Game::Lua::GameEvent::ChatMessageReceived);
         zenith->RegisterEventTypeID<MetaGen::Game::Lua::GameEventDataLocalMoverChanged>(MetaGen::Game::Lua::GameEvent::LocalMoverChanged);
 

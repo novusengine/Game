@@ -12,6 +12,23 @@ namespace ECS::Components
         u32 mapId;
     };
 
+    enum class MapLoadFailureReason : u8
+    {
+        MissingDatabaseRecord,
+        MissingHeader,
+        InvalidHeader,
+        MissingBaseModel,
+        NoChunks,
+        NoAvailableChunks,
+    };
+
+    struct MapLoadFailedEvent
+    {
+    public:
+        u32 mapId;
+        MapLoadFailureReason reason;
+    };
+
     struct ModelLoadedEventFlags
     {
     public:

@@ -12,6 +12,8 @@ declare class GameEvent
     Updated                 : number
     CharacterListChanged    : number
     MapLoading              : number
+    MapLoaded               : number
+    MapLoadFailed           : number
     ChatMessageReceived     : number
     LocalMoverChanged       : number
     Count                   : number
@@ -90,6 +92,18 @@ declare StatTypeEnum : StatTypeEnum
 
 type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
 
+type GameEventDataMapLoaded = {
+    mapID : number,
+    mapInternalName : string,
+    isLoaded : boolean,
+}
+
+type GameEventDataMapLoadFailed = {
+    mapID : number,
+    mapInternalName : string,
+    reason : string,
+}
+
 declare class ContainerItemEventData
     slotIndex   : number
     itemID      : number
@@ -109,6 +123,14 @@ declare class CharacterList
 end
 
 declare function RegisterEvent(eventID : Event, callback : ((eventID : Event, data : any) -> any)) : ()
+declare Game : {
+    IsLoaded : () -> boolean,
+}
+declare Scheduler : {
+    AfterSeconds : (seconds : number, callback : () -> ()) -> number,
+    AfterFrames : (frames : number, callback : () -> ()) -> number,
+    Cancel : (handle : number) -> boolean,
+}
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
 type MapInfo = {
@@ -129,6 +151,17 @@ declare Map : {
     LoadByID : (id : number) -> boolean,
     Unload : () -> boolean,
     SetOnCurrentMapChanged : (fn : (() -> ())?) -> (),
+}
+declare RenderTarget : {
+    Dump : (debugName : string, artifactPath : string) -> (boolean, string),
+}
+declare RenderDoc : {
+    IsAvailable : () -> boolean,
+    CaptureNextFrame : (artifactPath : string) -> (boolean, string),
+}
+declare Tracy : {
+    IsConnected : () -> boolean,
+    Message : (message : string) -> (),
 }
 declare function EquipItem(itemID : number, slotIndex : number) : boolean
 declare function UnequipItem(slotIndex : number) : boolean

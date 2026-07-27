@@ -64,11 +64,17 @@ void MapLoader::Update(f32 deltaTime)
         const robin_hood::unordered_map<u32, u32>& internalNameHashToID = mapSingleton.mapInternalNameHashToID;
 
         if (!internalNameHashToID.contains(_loadRequest.internalMapNameHash))
+        {
+            ReportLoadFailure(std::numeric_limits<u32>().max(), ECS::Components::MapLoadFailureReason::MissingDatabaseRecord);
             return;
+        }
 
         u32 mapID = internalNameHashToID.at(_loadRequest.internalMapNameHash);
         if (!mapStorage->Has(mapID))
+        {
+            ReportLoadFailure(mapID, ECS::Components::MapLoadFailureReason::MissingDatabaseRecord);
             return;
+        }
 
         const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
         const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
@@ -78,19 +84,28 @@ void MapLoader::Update(f32 deltaTime)
         
         PACT::PactFileHandle fileHandle;
         if (pactStorage->ReadFile(mapHeaderPath, fileHandle) != PACT::PactReadResult::Success)
+        {
+            ReportLoadFailure(mapID, ECS::Components::MapLoadFailureReason::MissingHeader);
             return;
+        }
 
         Map::MapHeader mapHeader;
         std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
         buffer->writtenData = fileHandle.GetSize();
 
         if (!Map::MapHeader::Read(buffer, mapHeader))
+        {
+            ReportLoadFailure(mapID, ECS::Components::MapLoadFailureReason::InvalidHeader);
             return;
+        }
         
         if (mapHeader.flags.UseMapObjectAsBase)
         {
             if (!_modelLoader->ContainsDiscoveredModel(mapHeader.placement.nameHash))
+            {
+                ReportLoadFailure(mapID, ECS::Components::MapLoadFailureReason::MissingBaseModel);
                 return;
+            }
 
             _currentMapID = mapID;
         
@@ -134,6 +149,12 @@ void MapLoader::LoadMap(u32 mapHash)
 {
     _loadRequest.isRequest = true;
     _loadRequest.internalMapNameHash = mapHash;
+}
+
+void MapLoader::ReportLoadFailure(u32 mapID, ECS::Components::MapLoadFailureReason reason)
+{
+    NC_LOG_ERROR("MapLoader : Failed to load map ID {0} (reason {1})", mapID, static_cast<u32>(reason));
+    ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadFailedEvent{ mapID, reason });
 }
 
 void MapLoader::ClearRenderersForMap()

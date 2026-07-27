@@ -21,6 +21,20 @@ return D.Definitions
         D.Field("mapInternalName", Type.STRING)
     }),
 
+    D.LuaEvent("GameEventDataMapLoaded",
+    {
+        D.Field("mapID", Type.U32),
+        D.Field("mapInternalName", Type.STRING),
+        D.Field("isLoaded", Type.BOOL)
+    }),
+
+    D.LuaEvent("GameEventDataMapLoadFailed",
+    {
+        D.Field("mapID", Type.U32),
+        D.Field("mapInternalName", Type.STRING),
+        D.Field("reason", Type.STRING)
+    }),
+
     D.LuaEvent("GameEventDataChatMessageReceived",
     {
         D.Field("sender", Type.STRING),

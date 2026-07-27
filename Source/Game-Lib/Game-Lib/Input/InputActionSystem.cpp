@@ -217,13 +217,13 @@ InputActionContextHandle InputActionSystem::CreateContext(const InputActionConte
     auto existingContext = _contextHashToIndex.find(nameHash);
     if (existingContext != _contextHashToIndex.end())
     {
-        NC_LOG_CRITICAL("InputActionSystem: Cannot create context '{}'; hash is already used by context '{}'", desc.name, _contexts[existingContext->second].info.name);
+        NC_LOG_WARNING("InputActionSystem: Cannot create context '{}'; hash is already used by context '{}'", desc.name, _contexts[existingContext->second].info.name);
         return {};
     }
 
     if (_contexts.size() >= MAX_CONTEXTS)
     {
-        NC_LOG_CRITICAL("InputActionSystem: Cannot create context '{}'; the action context capacity has been reached", desc.name);
+        NC_LOG_WARNING("InputActionSystem: Cannot create context '{}'; the action context capacity has been reached", desc.name);
         return {};
     }
 
@@ -307,13 +307,13 @@ InputActionHandle InputActionSystem::RegisterAction(InputActionContextHandle con
     if (existingAction != _actionHashToIndex.end())
     {
         const Action& action = _actions[existingAction->second];
-        NC_LOG_CRITICAL("InputActionSystem: Cannot register action '{}'; hash is already used by action '{}'", desc.name, action.info.name);
+        NC_LOG_WARNING("InputActionSystem: Cannot register action '{}'; hash is already used by action '{}'", desc.name, action.info.name);
         return {};
     }
 
     if (_actions.size() >= std::numeric_limits<u16>::max())
     {
-        NC_LOG_CRITICAL("InputActionSystem: Cannot register action '{}'; the action capacity has been reached", desc.name);
+        NC_LOG_WARNING("InputActionSystem: Cannot register action '{}'; the action capacity has been reached", desc.name);
         return {};
     }
 
@@ -563,7 +563,8 @@ InputBindingChangeResult InputActionSystem::SetBinding(InputActionHandle actionH
     if (binding)
         result.conflicts = FindBindingConflicts(actionHandle, bindingSlot, *binding);
 
-    if (action.info.bindings[bindingSlot] == binding)
+    if (action.info.bindings[bindingSlot] == binding
+        && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
     {
         result.status = result.conflicts.empty() ? InputBindingChangeStatus::Applied : InputBindingChangeStatus::AppliedWithConflicts;
         return result;
@@ -1074,7 +1075,8 @@ InputBindingChangeResult InputActionSystem::ApplyBindingChange(InputActionHandle
     if (binding)
         result.conflicts = FindBindingConflicts(actionHandle, bindingSlot, *binding);
 
-    if (action.info.bindings[bindingSlot] == binding)
+    if (action.info.bindings[bindingSlot] == binding
+        && (result.conflicts.empty() || policy == InputBindingConflictPolicy::Allow))
     {
         result.status = result.conflicts.empty() ? InputBindingChangeStatus::Applied : InputBindingChangeStatus::AppliedWithConflicts;
         return result;

@@ -42,6 +42,8 @@ class UIRenderer;
 class PixelQuery;
 class EffectRenderer;
 class ShadowRenderer;
+class RenderTargetCapture;
+class RenderDocCapture;
 
 struct ImGuiTheme
 {
@@ -53,7 +55,7 @@ public:
 class GameRenderer
 {
 public:
-    GameRenderer();
+    explicit GameRenderer(bool enableRenderDoc = false);
     ~GameRenderer();
 
     bool UpdateWindow(f32 deltaTime);
@@ -92,6 +94,8 @@ public:
 
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
+    RenderTargetCapture* GetRenderTargetCapture() { return _renderTargetCapture; }
+    RenderDocCapture* GetRenderDocCapture() { return _renderDocCapture; }
 
     const Renderer::ShaderEntry* GetShaderEntry(u32 shaderNameHash, const std::string& debugName);
     Renderer::GraphicsPipelineID GetBlitPipeline(u32 shaderNameHash);
@@ -128,6 +132,8 @@ private:
     Renderer::Renderer* _renderer = nullptr;
     Novus::Window* _window = nullptr;
     PixelQuery* _pixelQuery = nullptr;
+    RenderTargetCapture* _renderTargetCapture = nullptr;
+    RenderDocCapture* _renderDocCapture = nullptr;
 
     Memory::StackAllocator* _frameAllocator[2];
 

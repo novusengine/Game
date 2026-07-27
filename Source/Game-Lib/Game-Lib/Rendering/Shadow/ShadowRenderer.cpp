@@ -39,7 +39,7 @@ AutoCVar_Int CVAR_SVSMPageEvictAge(CVarCategory::Client | CVarCategory::Renderin
 AutoCVar_Float CVAR_SVSMMarkBorderTexels(CVarCategory::Client | CVarCategory::Rendering, "svsmMarkBorderTexels", "filter footprint margin in texels, samples near a page border also mark the neighbor page", 4.0f);
 AutoCVar_Float CVAR_SVSMResolutionScale(CVarCategory::Client | CVarCategory::Rendering, "svsmResolutionScale", "eye-distance clipmap floor: skip rings finer than the sample's screen footprint times this, 0 disables, lower = sharper distant shadows for more pages. Below ~0.25 the pool pressure-evicts and churns", 1.0f);
 AutoCVar_Int CVAR_SVSMDynamicSplit(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicSplit", "static/dynamic caster split: animated and moving casters render into a transient dynamic pool instead of churning the static cache, 0 reverts to v1 behavior", 1, CVarFlags::EditCheckbox);
-AutoCVar_Int CVAR_SVSMDynamicPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicPoolSize", "dynamic page pool texture resolution, restart-only once shadows have been enabled", 2048);
+AutoCVar_Int CVAR_SVSMDynamicPoolSize(CVarCategory::Client | CVarCategory::Rendering, "svsmDynamicPoolSize", "dynamic page pool texture resolution, restart-only once shadows have been enabled", 3072);
 AutoCVar_Int CVAR_SVSMRenderBudget(CVarCategory::Client | CVarCategory::Rendering, "svsmRenderBudget", "static pages rendered per frame, 0 = unlimited; overflow refines over following frames coarse-to-fine, the coarsest two rings are exempt", 0);
 AutoCVar_Float CVAR_SVSMAnimatedCasterRange(CVarCategory::Client | CVarCategory::Rendering, "svsmAnimatedCasterRange", "camera range in meters within which animated doodads (windmills, flags) cast dynamic shadows, beyond it their pose bakes static, 0 disables", 128.0f);
 AutoCVar_Int CVAR_SVSMFreeze(CVarCategory::Client | CVarCategory::Rendering, "svsmFreeze", "freeze SVSM page marking and lifecycle to inspect the cached state. Stale dirty state stays live and pages never clear, so dynamic content ghost-accumulates while frozen; unfreezing re-bakes the cache if anything spawned/despawned meanwhile", 0, CVarFlags::EditCheckbox);
@@ -197,14 +197,19 @@ struct SVSMDerivedConfig
     u32 dynamicPoolPagesPerRow = 0;
 };
 
-static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize)
+static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize, u32 poolSize, u32 dynamicPoolSize)
 {
     SVSMDerivedConfig config;
     config.pageSize = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16));
     config.pageTableSize = glm::clamp(static_cast<u32>(CVAR_SVSMVirtualSize.Get()) / config.pageSize, 16u, maxPageTableSize);
-    config.poolPagesPerRow = glm::min(static_cast<u32>(CVAR_SVSMPoolSize.Get()) / config.pageSize, maxPageTableSize);
-    config.dynamicPoolPagesPerRow = glm::min(static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) / config.pageSize, maxPageTableSize);
+    config.poolPagesPerRow = glm::min(poolSize / config.pageSize, maxPageTableSize);
+    config.dynamicPoolPagesPerRow = glm::min(dynamicPoolSize / config.pageSize, maxPageTableSize);
     return config;
+}
+
+static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize)
+{
+    return DeriveSVSMConfig(maxPageTableSize, static_cast<u32>(CVAR_SVSMPoolSize.Get()), static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()));
 }
 
 ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
@@ -243,21 +248,31 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
     }
 
     // Live config edits: a pageSize change reshapes the pool page counts and free lists in place
-    // (the pool textures keep their dimensions, only the page grid over them changes). The pool
-    // size cvars are restart-only once the pool images exist — the Engine cannot destroy images,
-    // so recreating them at new dimensions would leak the old texture — and revert with a warning
+    // (the pool textures keep their dimensions, only the page grid over them changes). Pool-size
+    // edits remain pending in the cvars so they persist and apply next restart; live consumers
+    // continue using the dimensions of the images that were actually allocated
     {
-        if (_svsmPagePool != Renderer::ImageID::Invalid() &&
-            (static_cast<u32>(CVAR_SVSMPoolSize.Get()) != _svsmAppliedPoolSize || static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) != _svsmAppliedDynamicPoolSize))
+        const bool poolsExist = _svsmPagePool != Renderer::ImageID::Invalid();
+        const u32 requestedPoolSize = static_cast<u32>(CVAR_SVSMPoolSize.Get());
+        const u32 requestedDynamicPoolSize = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get());
+        const bool poolSizeChanged = requestedPoolSize != _svsmAppliedPoolSize || requestedDynamicPoolSize != _svsmAppliedDynamicPoolSize;
+
+        if (poolsExist && poolSizeChanged &&
+            (requestedPoolSize != _svsmPendingPoolSize || requestedDynamicPoolSize != _svsmPendingDynamicPoolSize))
         {
-            NC_LOG_WARNING("SVSM: svsmPoolSize/svsmDynamicPoolSize changes need a restart once the pools exist, reverting to {0}/{1}", _svsmAppliedPoolSize, _svsmAppliedDynamicPoolSize);
-            CVAR_SVSMPoolSize.Set(static_cast<i32>(_svsmAppliedPoolSize));
-            CVAR_SVSMDynamicPoolSize.Set(static_cast<i32>(_svsmAppliedDynamicPoolSize));
+            NC_LOG_WARNING("SVSM: svsmPoolSize/svsmDynamicPoolSize change to {0}/{1} is pending and will apply after restart; currently using {2}/{3}",
+                requestedPoolSize, requestedDynamicPoolSize, _svsmAppliedPoolSize, _svsmAppliedDynamicPoolSize);
+            _svsmPendingPoolSize = requestedPoolSize;
+            _svsmPendingDynamicPoolSize = requestedDynamicPoolSize;
+        }
+        else if (!poolSizeChanged)
+        {
+            _svsmPendingPoolSize = requestedPoolSize;
+            _svsmPendingDynamicPoolSize = requestedDynamicPoolSize;
         }
 
         const bool configChanged = static_cast<u32>(glm::max(CVAR_SVSMPageSize.Get(), 16)) != _svsmAppliedPageSize
-            || static_cast<u32>(CVAR_SVSMPoolSize.Get()) != _svsmAppliedPoolSize
-            || static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()) != _svsmAppliedDynamicPoolSize;
+            || (!poolsExist && poolSizeChanged);
         if (configChanged)
         {
             ResetSVSMPoolState(resources);
@@ -328,7 +343,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         {
             Renderer::ImageDesc poolDesc;
             poolDesc.debugName = "SVSMPagePool";
-            poolDesc.dimensions = vec2(CVAR_SVSMPoolSize.Get(), CVAR_SVSMPoolSize.Get());
+            poolDesc.dimensions = vec2(_svsmAppliedPoolSize, _svsmAppliedPoolSize);
             poolDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
             poolDesc.format = Renderer::ImageFormat::R32_UINT;
             poolDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
@@ -337,7 +352,7 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
             _svsmPagePool = _renderer->CreateImage(poolDesc);
 
             poolDesc.debugName = "SVSMDynamicPagePool";
-            poolDesc.dimensions = vec2(CVAR_SVSMDynamicPoolSize.Get(), CVAR_SVSMDynamicPoolSize.Get());
+            poolDesc.dimensions = vec2(_svsmAppliedDynamicPoolSize, _svsmAppliedDynamicPoolSize);
             _svsmDynamicPagePool = _renderer->CreateImage(poolDesc);
 
             _svsmPoolNeedsClear = true; // Fresh VRAM is garbage that must never be sampled, zero both once
@@ -616,7 +631,7 @@ ShadowRenderer::SVSMUpdateRecorder::SVSMUpdateRecorder(ShadowRenderer& owner, SV
     , numDirtyAABBs(numDirtyAABBs)
     , numDynamicAABBs(numDynamicAABBs)
     , dynamicSplit(dynamicSplit)
-    , config(DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE))
+    , config(DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE, owner._svsmAppliedPoolSize, owner._svsmAppliedDynamicPoolSize))
     , tableCapacity(SVSM_MAX_CLIPMAPS * SVSM_MAX_PAGE_TABLE_SIZE * SVSM_MAX_PAGE_TABLE_SIZE)
     , constants(graphResources.FrameNew<Constants>())
 {
@@ -996,7 +1011,7 @@ void ShadowRenderer::AddSVSMDebugOverlayPass(Renderer::RenderGraph* renderGraph,
                 const u32 regionSize = 512;
 
                 PoolDebugConstants* constants = graphResources.FrameNew<PoolDebugConstants>();
-                constants->poolSize = static_cast<u32>(poolMode == 2 ? CVAR_SVSMDynamicPoolSize.Get() : CVAR_SVSMPoolSize.Get());
+                constants->poolSize = poolMode == 2 ? _svsmAppliedDynamicPoolSize : _svsmAppliedPoolSize;
                 constants->regionSize = regionSize;
                 constants->screenOffset = ivec2(glm::max(static_cast<i32>(targetDimensions.x) - static_cast<i32>(regionSize) - 8, 0), glm::max(static_cast<i32>(targetDimensions.y) - static_cast<i32>(regionSize) - 8, 0));
 
@@ -1271,10 +1286,13 @@ void ShadowRenderer::ResetSVSMPoolState(RenderResources& resources)
     // past the frames in flight), so every consumer set rebinds below. The pool textures are NOT
     // recreated — their dimensions only depend on the pool size cvars, which are restart-only
     // once the pools exist (the Engine cannot destroy images)
-    const SVSMDerivedConfig config = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE);
+    const bool poolsExist = _svsmPagePool != Renderer::ImageID::Invalid();
+    const u32 poolSize = poolsExist ? _svsmAppliedPoolSize : static_cast<u32>(CVAR_SVSMPoolSize.Get());
+    const u32 dynamicPoolSize = poolsExist ? _svsmAppliedDynamicPoolSize : static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get());
+    const SVSMDerivedConfig config = DeriveSVSMConfig(SVSM_MAX_PAGE_TABLE_SIZE, poolSize, dynamicPoolSize);
     _svsmAppliedPageSize = config.pageSize;
-    _svsmAppliedPoolSize = static_cast<u32>(CVAR_SVSMPoolSize.Get());
-    _svsmAppliedDynamicPoolSize = static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get());
+    _svsmAppliedPoolSize = poolSize;
+    _svsmAppliedDynamicPoolSize = dynamicPoolSize;
 
     // The physical page index is 12 bits in the table entry
     _svsmPoolPages = glm::min(config.poolPagesPerRow * config.poolPagesPerRow, SVSM_MAX_POOL_PAGES);

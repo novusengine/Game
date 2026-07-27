@@ -46,3 +46,11 @@ CMakeSettings.json
 *.patch
 .claude/
 images/
+/Source/Resources/Automation/Artifacts/
+/Source/Resources/Automation/Reports/
+
+# Local validation findings
+/ISSUES.md
+
+# Local agent guidance
+/AGENTS.md

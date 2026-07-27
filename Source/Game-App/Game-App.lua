@@ -9,6 +9,7 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
     local projFile = mod.Path .. "/" .. mod.Name .. ".lua"
     local files = Solution.Util.GetFilesForCpp(mod.Path)
     table.insert(files, projFile)
+    table.insert(files, mod.Path .. "/Game-App/Resources/renderdoc.json")
 
     Solution.Util.SetFiles(files)
     Solution.Util.SetIncludes(mod.Path)
@@ -22,9 +23,14 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
         }
         Solution.Util.SetFiles(appIconFiles)
 
+        postbuildcommands
+        {
+            '{COPYFILE} "' .. mod.Path .. '/Game-App/Resources/renderdoc.json" "%{cfg.targetdir}/renderdoc.json"'
+        }
+
         vpaths 
         {
-            ['Resources/*'] = { '*.rc', '**.ico' },
+            ['Resources/*'] = { '*.rc', '**.ico', '**.json' },
             ["/*"] = { "*.lua", mod.Name .. "/**" }
         }
     end)

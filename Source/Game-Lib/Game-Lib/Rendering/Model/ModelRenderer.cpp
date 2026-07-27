@@ -292,9 +292,8 @@ void ModelRenderer::Update(f32 deltaTime)
             }
         }
 
-        // Oversized casters would exceed the dynamic marker's 1024-page cutoff in EVERY clipmap
-        // ring (span quarters per coarser ring) and must never rely on the dynamic pool: extent
-        // beyond 32 pages of the coarsest ring routes to the static path instead
+        // World-scale casters wider than half the coarsest clipmap remain on the static path
+        // instead of consuming the transient dynamic pool across the entire shadow window.
         const u32 numClipmaps = static_cast<u32>(glm::clamp(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps"_h), 1, 8));
         const f32 clipmap0Extent = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmClipmap0Extent"_h));
         const f32 oversizeLimit = clipmap0Extent * static_cast<f32>(1u << (numClipmaps - 1)) * 0.5f;

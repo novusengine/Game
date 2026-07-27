@@ -34,11 +34,13 @@
 #include "Game-Lib/Scripting/Handlers/GameHandler.h"
 #include "Game-Lib/Scripting/Handlers/UnitHandler.h"
 #include "Game-Lib/Scripting/Handlers/TimeHandler.h"
+#include "Game-Lib/Scripting/Handlers/SchedulerHandler.h"
 #include "Game-Lib/Scripting/Handlers/CameraHandler.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
 #include "Game-Lib/Scripting/Handlers/SceneHandler.h"
 #include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
 #include "Game-Lib/Scripting/Handlers/AssetHandler.h"
+#include "Game-Lib/Util/AutomationUtil.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
@@ -119,7 +121,9 @@ namespace
     }
 }
 
-Application::Application() : _messagesInbound(256), _messagesOutbound(256)
+Application::Application()
+    : _messagesInbound(256)
+    , _messagesOutbound(256)
 {
     ServiceLocator::SetApplication(this);
 }
@@ -136,7 +140,7 @@ Application::~Application()
     delete _assetWriter;
 }
 
-void Application::Start(bool startInSeparateThread)
+void Application::Start(bool startInSeparateThread, bool enableRenderDoc)
 {
     if (_isRunning)
         return;
@@ -145,12 +149,13 @@ void Application::Start(bool startInSeparateThread)
     {
         _isRunning = true;
 
-        std::thread applicationThread = std::thread(&Application::Run, this);
+        std::thread applicationThread =
+            std::thread(&Application::Run, this, enableRenderDoc);
         applicationThread.detach();
     }
     else
     {
-        _isRunning = Init();
+        _isRunning = Init(enableRenderDoc);
     }
 }
 
@@ -224,11 +229,11 @@ bool Application::TryGetMessageOutbound(MessageOutbound& message)
     return messageFound;
 }
 
-void Application::Run()
+void Application::Run(bool enableRenderDoc)
 {
     tracy::SetThreadName("Application Thread");
 
-    if (Init())
+    if (Init(enableRenderDoc))
     {
         Timer timer;
         Timer updateTimer;
@@ -325,7 +330,7 @@ void Application::Run()
     Stop();
 }
 
-bool Application::Init()
+bool Application::Init(bool enableRenderDoc)
 {
     _registries.gameRegistry = new entt::registry();
     _registries.uiRegistry = new entt::registry();
@@ -431,7 +436,7 @@ bool Application::Init()
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer();
+    _gameRenderer = new GameRenderer(enableRenderDoc);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");
@@ -461,6 +466,7 @@ bool Application::Init()
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Time, new Scripting::Time::TimeHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scheduler, new Scripting::Scheduler::SchedulerHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Camera, new Scripting::Camera::CameraHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Map, new Scripting::Map::MapHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scene, new Scripting::Scene::SceneHandler());
@@ -552,6 +558,12 @@ bool Application::Tick(f32 deltaTime)
                     NC_LOG_ERROR("Failed to run Lua DoString");
                 }
 
+                break;
+            }
+
+            case MessageInbound::Type::AutomationRun:
+            {
+                Util::Automation::ExecuteScript(*_luaManager, message.requestId, message.data);
                 break;
             }
 

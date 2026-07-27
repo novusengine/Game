@@ -1,6 +1,9 @@
 #pragma once
 #include <Base/Types.h>
 
+#include <string>
+#include <utility>
+
 struct MessageInbound
 {
 public:
@@ -10,6 +13,7 @@ public:
         Print,
         Ping,
         DoString,
+        AutomationRun,
         ReloadScripts,
         RefreshDB,
         Exit
@@ -17,10 +21,12 @@ public:
 
 public:
     MessageInbound() { }
-    MessageInbound(Type inType, std::string inData = "") : type(inType), data(inData) { }
+    MessageInbound(Type inType, std::string inData = "", std::string inRequestId = "")
+        : type(inType), data(std::move(inData)), requestId(std::move(inRequestId)) { }
 
     Type type = Type::Invalid;
     std::string data = "";
+    std::string requestId = "";
 };
 
 struct MessageOutbound

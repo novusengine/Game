@@ -12,6 +12,7 @@ return D.Definitions
         D.Field("Game"),
         D.Field("Unit"),
         D.Field("Time"),
+        D.Field("Scheduler"),
         D.Field("Camera"),
         D.Field("Map"),
         D.Field("Scene"),
@@ -30,6 +31,8 @@ return D.Definitions
         D.Field("Updated"),
         D.Field("CharacterListChanged"),
         D.Field("MapLoading"),
+        D.Field("MapLoaded"),
+        D.Field("MapLoadFailed"),
         D.Field("ChatMessageReceived"),
         D.Field("LocalMoverChanged"),
         D.Field("Count")

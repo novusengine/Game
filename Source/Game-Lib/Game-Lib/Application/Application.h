@@ -43,7 +43,7 @@ public:
     Application();
     ~Application();
 
-    void Start(bool startInSeparateThread);
+    void Start(bool startInSeparateThread, bool enableRenderDoc = false);
     void Stop();
     void RequestExit();
 
@@ -54,9 +54,9 @@ public:
     bool Tick(f32 deltaTime);
 
 private:
-    void Run();
+    void Run(bool enableRenderDoc);
 
-    bool Init();
+    bool Init(bool enableRenderDoc);
     bool Render(f32 deltaTime, f32& timeSpentWaiting);
 
     void DatabaseReload();
