@@ -139,15 +139,14 @@ struct RenderDocCapture::Api
 #endif
 };
 
-RenderDocCapture::RenderDocCapture(bool enableRenderDoc)
+RenderDocCapture::RenderDocCapture()
 {
 #if defined(_WIN32)
     HMODULE module = GetModuleHandleW(L"renderdoc.dll");
     if (!module)
     {
-        _availabilityError = enableRenderDoc
-            ? "-renderdoc was specified, but the RenderDoc Vulkan layer did not load"
-            : "RenderDoc is not injected and -renderdoc was not specified";
+        _availabilityError =
+            "-renderdoc was specified, but the RenderDoc Vulkan layer did not load";
         return;
     }
 

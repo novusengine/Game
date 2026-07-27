@@ -200,9 +200,12 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     ECS::Util::CameraUtil::InitializeCursorMode();
     _renderer->InitDebug();
 
-    // The Vulkan loader initializes RenderDoc's capture layer while the renderer
-    // is created. Bind the in-application API afterward so both use the same DLL.
-    _renderDocCapture = new RenderDocCapture(enableRenderDoc);
+    if (enableRenderDoc)
+    {
+        // The Vulkan loader initializes RenderDoc's capture layer while the renderer
+        // is created. Bind the in-application API afterward so both use the same DLL.
+        _renderDocCapture = new RenderDocCapture();
+    }
 
     CreatePermanentResources();
     _renderTargetCapture = new RenderTargetCapture(_renderer);
@@ -298,7 +301,8 @@ f32 GameRenderer::Render()
         return 0.0f;
     }
 
-    _renderDocCapture->BeginFrame();
+    if (_renderDocCapture)
+        _renderDocCapture->BeginFrame();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
@@ -530,7 +534,8 @@ f32 GameRenderer::Render()
     _renderTargetCapture->ProcessPending();
 
     _renderer->Present(_window, finalTarget, _resources.sceneRenderedSemaphore);
-    _renderDocCapture->EndFrame();
+    if (_renderDocCapture)
+        _renderDocCapture->EndFrame();
 
     // Render is done; re-open staging uploads for the next frame's Update phase. Uploads are locked
     // from FlipFrame's ExecuteUploadTasks until here, so anything trying to upload during render-graph

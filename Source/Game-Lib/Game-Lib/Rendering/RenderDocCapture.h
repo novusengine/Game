@@ -8,7 +8,7 @@
 class RenderDocCapture
 {
 public:
-    explicit RenderDocCapture(bool enableRenderDoc = false);
+    RenderDocCapture();
     ~RenderDocCapture();
 
     bool IsAvailable() const { return _api != nullptr; }

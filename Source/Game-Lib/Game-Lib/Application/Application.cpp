@@ -121,9 +121,8 @@ namespace
     }
 }
 
-Application::Application(bool enableRenderDoc)
-    : _enableRenderDoc(enableRenderDoc)
-    , _messagesInbound(256)
+Application::Application()
+    : _messagesInbound(256)
     , _messagesOutbound(256)
 {
     ServiceLocator::SetApplication(this);
@@ -141,7 +140,7 @@ Application::~Application()
     delete _assetWriter;
 }
 
-void Application::Start(bool startInSeparateThread)
+void Application::Start(bool startInSeparateThread, bool enableRenderDoc)
 {
     if (_isRunning)
         return;
@@ -150,12 +149,13 @@ void Application::Start(bool startInSeparateThread)
     {
         _isRunning = true;
 
-        std::thread applicationThread = std::thread(&Application::Run, this);
+        std::thread applicationThread =
+            std::thread(&Application::Run, this, enableRenderDoc);
         applicationThread.detach();
     }
     else
     {
-        _isRunning = Init();
+        _isRunning = Init(enableRenderDoc);
     }
 }
 
@@ -229,11 +229,11 @@ bool Application::TryGetMessageOutbound(MessageOutbound& message)
     return messageFound;
 }
 
-void Application::Run()
+void Application::Run(bool enableRenderDoc)
 {
     tracy::SetThreadName("Application Thread");
 
-    if (Init())
+    if (Init(enableRenderDoc))
     {
         Timer timer;
         Timer updateTimer;
@@ -330,7 +330,7 @@ void Application::Run()
     Stop();
 }
 
-bool Application::Init()
+bool Application::Init(bool enableRenderDoc)
 {
     _registries.gameRegistry = new entt::registry();
     _registries.uiRegistry = new entt::registry();
@@ -436,7 +436,7 @@ bool Application::Init()
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer(_enableRenderDoc);
+    _gameRenderer = new GameRenderer(enableRenderDoc);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");

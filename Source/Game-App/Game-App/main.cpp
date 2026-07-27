@@ -48,8 +48,8 @@ i32 main(i32 argc, char* argv[])
     auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1", false);
     quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime, quill::ClockSourceType::System);
     
-    Application app(enableRenderDoc);
-    app.Start(true);
+    Application app;
+    app.Start(true, enableRenderDoc);
 
     ConsoleCommandHandler commandHandler;
 #if WIN32
