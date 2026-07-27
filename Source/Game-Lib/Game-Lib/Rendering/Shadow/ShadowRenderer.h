@@ -198,6 +198,8 @@ private:
     u32 _svsmAppliedPageSize = 0;
     u32 _svsmAppliedPoolSize = 0;
     u32 _svsmAppliedDynamicPoolSize = 0;
+    u32 _svsmPendingPoolSize = 0;
+    u32 _svsmPendingDynamicPoolSize = 0;
 
     // Caster-toggle cvar states as of last Update: a flip must re-bake the whole static cache,
     // resident pages keep the toggled class's baked depth forever otherwise (marked pages never
