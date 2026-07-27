@@ -479,6 +479,14 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     const std::string& mapName = request.mapName;
     if (mapName == _currentMapInternalName)
     {
+        // The requested map is already current, so do not load it again.
+        // If it has finished loading, notify this caller immediately. Otherwise,
+        // the load already in progress will send MapLoadedEvent when it finishes.
+        if (!_modelLoader->IsTerrainLoading())
+        {
+            const u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+            ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
+        }
         return false;
     }
 
@@ -488,19 +496,29 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
 
     PACT::PactFileHandle fileHandle;
     if (pactStorage->ReadFile(mapHeaderPath, fileHandle) != PACT::PactReadResult::Success)
+    {
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->ReportLoadFailure(mapLoader->GetCurrentMapID(), ECS::Components::MapLoadFailureReason::MissingHeader);
         return false;
+    }
 
     Map::MapHeader mapHeader;
     std::shared_ptr<Bytebuffer> mapHeaderBuffer = std::make_shared<Bytebuffer>(const_cast<void*>(fileHandle.GetData()), fileHandle.GetSize());
     mapHeaderBuffer->writtenData = fileHandle.GetSize();
 
     if (!Map::MapHeader::Read(mapHeaderBuffer, mapHeader))
+    {
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->ReportLoadFailure(mapLoader->GetCurrentMapID(), ECS::Components::MapLoadFailureReason::InvalidHeader);
         return false;
+    }
 
     u32 numChunks = static_cast<u32>(mapHeader.chunkHashes.size());
     if (numChunks == 0)
     {
         NC_LOG_ERROR("TerrainLoader : Map '{0}' has no chunks", request.mapName);
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->ReportLoadFailure(mapLoader->GetCurrentMapID(), ECS::Components::MapLoadFailureReason::NoChunks);
         return false;
     }
 
@@ -543,6 +561,8 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     if (numChunksToLoad == 0)
     {
         NC_LOG_ERROR("TerrainLoader : Map '{0}' could not prepare chunks", request.mapName);
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        mapLoader->ReportLoadFailure(mapLoader->GetCurrentMapID(), ECS::Components::MapLoadFailureReason::NoAvailableChunks);
         return false;
     }
 

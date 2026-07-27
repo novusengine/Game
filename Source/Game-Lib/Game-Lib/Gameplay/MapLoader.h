@@ -1,4 +1,5 @@
 #pragma once
+#include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 
@@ -27,6 +28,7 @@ public:
     void UnloadMap();
     void UnloadMapImmediately();
     void LoadMap(u32 mapHash);
+    void ReportLoadFailure(u32 mapID, ECS::Components::MapLoadFailureReason reason);
 
     const u32 GetCurrentMapID() { return _currentMapID; }
 

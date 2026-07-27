@@ -60,6 +60,10 @@ function loadingScreenAPI.SetLoadingScreen(texturePath)
     __LoadingScreenData.loadingScreenPanel:SetEnabled(true)
 end
 
+function loadingScreenAPI.IsVisible() : boolean
+    return __LoadingScreenData.loadingScreenPanel:IsEnabled()
+end
+
 local function OnGameUpdated(eventID : number, data : any)
     local progress = __LoadingScreenData.loadingBarSlider:GetProgress()
     if (progress >= 1.0) then

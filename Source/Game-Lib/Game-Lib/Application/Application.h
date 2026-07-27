@@ -40,7 +40,7 @@ namespace Util
 class Application
 {
 public:
-    Application();
+    Application(bool enableRenderDoc = false);
     ~Application();
 
     void Start(bool startInSeparateThread);
@@ -65,6 +65,7 @@ private:
     void Cleanup();
 
 private:
+    bool _enableRenderDoc = false;
     std::atomic_bool _isRunning = false;
     std::atomic_bool _exitRequested = false;
 

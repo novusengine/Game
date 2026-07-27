@@ -126,6 +126,7 @@ public:
 public: // Load Request Helpers
     void SetTerrainLoader(TerrainLoader* terrainLoader) { _terrainLoader = terrainLoader; }
     void SetTerrainLoading(bool loading) { _terrainLoading = loading; }
+    bool IsTerrainLoading() const { return _terrainLoading; }
 
     f32 GetLoadingProgress() const;
 

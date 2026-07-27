@@ -34,11 +34,13 @@
 #include "Game-Lib/Scripting/Handlers/GameHandler.h"
 #include "Game-Lib/Scripting/Handlers/UnitHandler.h"
 #include "Game-Lib/Scripting/Handlers/TimeHandler.h"
+#include "Game-Lib/Scripting/Handlers/SchedulerHandler.h"
 #include "Game-Lib/Scripting/Handlers/CameraHandler.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
 #include "Game-Lib/Scripting/Handlers/SceneHandler.h"
 #include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
 #include "Game-Lib/Scripting/Handlers/AssetHandler.h"
+#include "Game-Lib/Util/AutomationUtil.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Util/ClientDBUtil.h"
@@ -119,7 +121,10 @@ namespace
     }
 }
 
-Application::Application() : _messagesInbound(256), _messagesOutbound(256)
+Application::Application(bool enableRenderDoc)
+    : _enableRenderDoc(enableRenderDoc)
+    , _messagesInbound(256)
+    , _messagesOutbound(256)
 {
     ServiceLocator::SetApplication(this);
 }
@@ -431,7 +436,7 @@ bool Application::Init()
     Util::Texture::DiscoverAll();
     Util::ClientDB::DiscoverAll();
 
-    _gameRenderer = new GameRenderer();
+    _gameRenderer = new GameRenderer(_enableRenderDoc);
     _imguiInputBridge = new ImGuiInputBridge(*_inputSystem);
 
     NC_LOG_INFO("EditorHandler : Initializing");
@@ -461,6 +466,7 @@ bool Application::Init()
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Game, new Scripting::Game::GameHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Unit, new Scripting::Unit::UnitHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Time, new Scripting::Time::TimeHandler());
+        _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scheduler, new Scripting::Scheduler::SchedulerHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Camera, new Scripting::Camera::CameraHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Map, new Scripting::Map::MapHandler());
         _luaManager->SetLuaHandler((Scripting::LuaHandlerID)MetaGen::Game::Lua::LuaHandlerTypeEnum::Scene, new Scripting::Scene::SceneHandler());
@@ -552,6 +558,12 @@ bool Application::Tick(f32 deltaTime)
                     NC_LOG_ERROR("Failed to run Lua DoString");
                 }
 
+                break;
+            }
+
+            case MessageInbound::Type::AutomationRun:
+            {
+                Util::Automation::ExecuteScript(*_luaManager, message.requestId, message.data);
                 break;
             }
 

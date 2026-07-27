@@ -10,6 +10,7 @@ ConsoleCommandHandler::ConsoleCommandHandler()
     RegisterCommand("ping"_h, &ConsoleCommands::CommandPing);
     RegisterCommand("lua"_h, &ConsoleCommands::CommandDoString);
     RegisterCommand("eval"_h, &ConsoleCommands::CommandDoString);
+    RegisterCommand("automation_run"_h, &ConsoleCommands::CommandAutomationRun);
     RegisterCommand("r"_h, &ConsoleCommands::CommandReloadScripts);
     RegisterCommand("reload"_h, &ConsoleCommands::CommandReloadScripts);
     RegisterCommand("reloadscripts"_h, &ConsoleCommands::CommandReloadScripts);

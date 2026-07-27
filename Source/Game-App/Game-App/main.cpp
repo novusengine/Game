@@ -10,7 +10,9 @@
 #include <quill/Backend.h>
 
 #include <atomic>
+#include <cstdio>
 #include <iostream>
+#include <string_view>
 #include <thread>
 
 #if WIN32
@@ -22,40 +24,48 @@
 #include <unistd.h>
 #endif
 
-i32 main()
+i32 main(i32 argc, char* argv[])
 {
+    // MCPTools redirects the process streams to pipes. The C runtime otherwise
+    // block-buffers plain Luau print output, hiding automation progress until
+    // the buffer fills or the process exits.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+
 #if WIN32
     timeBeginPeriod(1);
 #endif
 
+    bool enableRenderDoc = false;
+    for (i32 argumentIndex = 1; argumentIndex < argc; argumentIndex++)
+    {
+        if (std::string_view(argv[argumentIndex]) == "-renderdoc")
+            enableRenderDoc = true;
+    }
+
     quill::Backend::start();
 
-    auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1");
+    auto console_sink = quill::Frontend::create_or_get_sink<quill::ConsoleSink>("console_sink_1", false);
     quill::Logger* logger = quill::Frontend::create_or_get_logger("root", std::move(console_sink), "%(time:<16) LOG_%(log_level:<11) %(message)", "%H:%M:%S.%Qms", quill::Timezone::LocalTime, quill::ClockSourceType::System);
     
-    Application app;
+    Application app(enableRenderDoc);
     app.Start(true);
 
     ConsoleCommandHandler commandHandler;
 #if WIN32
     moodycamel::ConcurrentQueue<std::string> consoleCommands;
     std::atomic_bool consoleInputRunning = true;
-    HANDLE consoleInput = GetStdHandle(STD_INPUT_HANDLE);
-    std::thread consoleInputThread;
-    if (consoleInput != nullptr && consoleInput != INVALID_HANDLE_VALUE)
+    std::thread consoleInputThread([&consoleCommands, &consoleInputRunning]()
     {
-        consoleInputThread = std::thread([&consoleCommands, &consoleInputRunning]()
+        while (consoleInputRunning)
         {
-            while (consoleInputRunning)
-            {
-                std::string command = StringUtils::GetLineFromCin();
-                if (!consoleInputRunning || std::cin.fail())
-                    break;
+            std::string command = StringUtils::GetLineFromCin();
+            if (!consoleInputRunning || std::cin.fail())
+                break;
 
-                consoleCommands.enqueue(std::move(command));
-            }
-        });
-    }
+            consoleCommands.enqueue(std::move(command));
+        }
+    });
 #else
     pollfd consoleInput =
     {

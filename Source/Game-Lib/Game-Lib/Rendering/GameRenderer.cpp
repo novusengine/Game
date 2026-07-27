@@ -17,6 +17,8 @@
 #include "Editor/EditorRenderer.h"
 #include "Effect/EffectRenderer.h"
 #include "Shadow/ShadowRenderer.h"
+#include "RenderTargetCapture.h"
+#include "RenderDocCapture.h"
 #include "PixelQuery.h"
 #include "CullUtils.h"
 
@@ -164,7 +166,7 @@ void WindowIconifyCallback(GLFWwindow* window, int iconified)
     userWindow->SetIsMinimized(iconified == 1);
 }
 
-GameRenderer::GameRenderer()
+GameRenderer::GameRenderer(bool enableRenderDoc)
 {
     NC_LOG_INFO("GameRenderer : Initializing");
     ServiceLocator::SetGameRenderer(this);
@@ -198,7 +200,12 @@ GameRenderer::GameRenderer()
     ECS::Util::CameraUtil::InitializeCursorMode();
     _renderer->InitDebug();
 
+    // The Vulkan loader initializes RenderDoc's capture layer while the renderer
+    // is created. Bind the in-application API afterward so both use the same DLL.
+    _renderDocCapture = new RenderDocCapture(enableRenderDoc);
+
     CreatePermanentResources();
+    _renderTargetCapture = new RenderTargetCapture(_renderer);
 
     RenderUtils::Init(_renderer, this);
     DepthPyramidUtils::Init(_renderer, this);
@@ -238,7 +245,9 @@ GameRenderer::GameRenderer()
 
 GameRenderer::~GameRenderer()
 {
+    delete _renderTargetCapture;
     delete _renderer;
+    delete _renderDocCapture;
 }
 
 bool GameRenderer::UpdateWindow(f32 deltaTime)
@@ -288,6 +297,8 @@ f32 GameRenderer::Render()
         
         return 0.0f;
     }
+
+    _renderDocCapture->BeginFrame();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
     bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
@@ -516,8 +527,10 @@ f32 GameRenderer::Render()
 
     renderGraph.Setup();
     renderGraph.Execute();
+    _renderTargetCapture->ProcessPending();
 
     _renderer->Present(_window, finalTarget, _resources.sceneRenderedSemaphore);
+    _renderDocCapture->EndFrame();
 
     // Render is done; re-open staging uploads for the next frame's Update phase. Uploads are locked
     // from FlipFrame's ExecuteUploadTasks until here, so anything trying to upload during render-graph
@@ -762,6 +775,8 @@ void GameRenderer::CreateRenderTargets()
     sceneColorDesc.clearColor = Color(0.52f, 0.80f, 0.92f, 1.0f); // Sky blue
 
     _resources.sceneColor = _renderer->CreateImage(sceneColorDesc);
+
+    sceneColorDesc.debugName = "SkyboxColor";
     _resources.skyboxColor = _renderer->CreateImage(sceneColorDesc);
 
     sceneColorDesc.debugName = "FinalColor";
@@ -832,7 +847,11 @@ void GameRenderer::CreateRenderTargets()
     mainDepthDesc.depthClearValue = 0.0f;
 
     _resources.depth = _renderer->CreateDepthImage(mainDepthDesc);
+
+    mainDepthDesc.debugName = "SkyboxDepth";
     _resources.skyboxDepth = _renderer->CreateDepthImage(mainDepthDesc);
+
+    mainDepthDesc.debugName = "DebugRendererDepth";
     _resources.debugRendererDepth = _renderer->CreateDepthImage(mainDepthDesc);
 
     // Copy of the depth, as a color rendertarget
