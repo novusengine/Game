@@ -3,6 +3,7 @@
 #include "UIRenderer.h"
 #include "Debug/DebugRenderer.h"
 #include "Debug/JoltDebugRenderer.h"
+#include "Debug/MeshShaderSmoke.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -215,6 +216,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
     _debugRenderer = new DebugRenderer(_renderer, this);
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
+    _meshShaderSmoke = new MeshShaderSmoke(_renderer, this);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
@@ -503,6 +505,7 @@ f32 GameRenderer::Render()
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
+    _meshShaderSmoke->AddPass(&renderGraph, _resources);
 
     _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);
     _shadowRenderer->AddSVSMDebugOverlayPass(&renderGraph, _resources, _frameIndex);
@@ -904,7 +907,7 @@ void GameRenderer::InitDescriptorSets()
    Renderer::VertexShaderID vertexShader = _renderer->LoadShader(vertexShaderDesc);
 
    Renderer::GraphicsPipelineDesc graphicsPipelineDesc;
-   graphicsPipelineDesc.states.vertexShader = vertexShader;
+   graphicsPipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = vertexShader };
 
    _allDescriptorSetGraphicsPipeline = _renderer->CreatePipeline(graphicsPipelineDesc);
 }
@@ -979,7 +982,7 @@ void GameRenderer::CreateBlitPipelines()
     };
 
     Renderer::GraphicsPipelineDesc pipelineDesc;
-    pipelineDesc.states.vertexShader = vertexShader;
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = vertexShader };
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::FrontFaceState::COUNTERCLOCKWISE;
     pipelineDesc.states.renderTargetFormats[0] = _renderer->GetSwapChainImageFormat();

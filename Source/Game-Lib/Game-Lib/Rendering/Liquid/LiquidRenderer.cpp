@@ -644,7 +644,7 @@ void LiquidRenderer::CreatePipelines()
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.vs"_h, "Liquid/Draw.vs");
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Liquid/Draw.ps"_h, "Liquid/Draw.ps");

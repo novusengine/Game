@@ -113,7 +113,7 @@ void SkyboxRenderer::CreatePermanentResources()
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("PostProcess/FullscreenTriangle.vs"_h, "PostProcess/FullscreenTriangle.vs");
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Skybox/Skybox.ps"_h, "Skybox/Skybox.ps");

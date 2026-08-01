@@ -44,6 +44,7 @@ class EffectRenderer;
 class ShadowRenderer;
 class RenderTargetCapture;
 class RenderDocCapture;
+class MeshShaderSmoke;
 
 struct ImGuiTheme
 {
@@ -172,6 +173,7 @@ private:
     UIRenderer* _uiRenderer = nullptr;
     EffectRenderer* _effectRenderer = nullptr;
     ShadowRenderer* _shadowRenderer = nullptr;
+    MeshShaderSmoke* _meshShaderSmoke = nullptr;
 
     u32 _currentThemeHash = std::numeric_limits<u32>().max();
     std::vector<ImGuiTheme> _imguiThemes;

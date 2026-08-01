@@ -909,7 +909,7 @@ void CanvasRenderer::CreatePipelines()
     // Shader
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Widget.vs"_h, "UI/Widget.vs");
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("UI/Widget.ps"_h, "UI/Widget.ps");

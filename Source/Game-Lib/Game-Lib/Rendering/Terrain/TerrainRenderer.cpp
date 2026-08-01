@@ -1200,7 +1200,7 @@ void TerrainRenderer::CreatePipelines()
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
             vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+            pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
         }
 
         Renderer::PixelShaderDesc pixelShaderDesc;
@@ -1240,7 +1240,7 @@ void TerrainRenderer::CreatePipelines()
             };
             u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Terrain/Draw.vs", permutationFields);
             vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Terrain/Draw.vs");
-            pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+            pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
         }
 
         Renderer::PixelShaderDesc pixelShaderDesc;

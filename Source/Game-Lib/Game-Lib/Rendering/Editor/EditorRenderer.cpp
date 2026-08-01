@@ -111,7 +111,7 @@ void EditorRenderer::CreatePermanentResources()
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.vs"_h, "Editor/WorldGrid.vs");
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Editor/WorldGrid.ps"_h, "Editor/WorldGrid.ps");

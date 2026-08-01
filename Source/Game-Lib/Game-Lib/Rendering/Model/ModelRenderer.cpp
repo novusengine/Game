@@ -3330,7 +3330,7 @@ void ModelRenderer::CreateModelPipelines()
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
             
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/Draw.ps"_h, "Model/Draw.ps");
@@ -3356,7 +3356,7 @@ void ModelRenderer::CreateModelPipelines()
         };
         u32 shaderEntryNameHash = Renderer::GetShaderEntryNameHash("Model/Draw.vs", vertexPermutationFields);
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry(shaderEntryNameHash, "Model/Draw.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         for (u32 dynamic = 0; dynamic < 2; dynamic++)
         {
@@ -3418,7 +3418,7 @@ void ModelRenderer::CreateModelPipelines()
 
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawTransparent.vs"_h, "Model/DrawTransparent.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
             
 
         Renderer::PixelShaderDesc pixelShaderDesc;
@@ -3446,7 +3446,7 @@ void ModelRenderer::CreateModelPipelines()
 
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawSkybox.vs"_h, "Model/DrawSkybox.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =
@@ -3498,7 +3498,7 @@ void ModelRenderer::CreateModelPipelines()
 
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Model/DrawSkybox.vs"_h, "Model/DrawSkybox.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         std::vector<Renderer::PermutationField> pixelPermutationFields =

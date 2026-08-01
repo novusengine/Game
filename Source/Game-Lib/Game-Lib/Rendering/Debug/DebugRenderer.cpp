@@ -130,7 +130,7 @@ void DebugRenderer::CreatePipelines()
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.vs"_h, "Debug/Debug2D.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug2D.ps"_h, "Debug/Debug2D.ps");
@@ -147,7 +147,7 @@ void DebugRenderer::CreatePipelines()
         // Shader
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.vs"_h, "Debug/DebugSolid3D.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/DebugSolid3D.ps"_h, "Debug/DebugSolid3D.ps");
@@ -180,7 +180,7 @@ void DebugRenderer::CreatePipelines()
     {
         Renderer::VertexShaderDesc vertexShaderDesc;
         vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.vs"_h, "Debug/Debug3D.vs");
-        pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+        pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
         Renderer::PixelShaderDesc pixelShaderDesc;
         pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Debug/Debug3D.ps"_h, "Debug/Debug3D.ps");

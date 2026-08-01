@@ -920,7 +920,7 @@ void JoltDebugRenderer::CreatePipelines()
     // Shader
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.vs"_h, "Jolt/Draw.vs");
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Jolt/Draw.ps"_h, "Jolt/Draw.ps");

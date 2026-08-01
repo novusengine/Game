@@ -430,7 +430,7 @@ Renderer::GraphicsPipelineID TextureRenderer::CreatePipeline(Renderer::ImageForm
     // Shaders
     Renderer::VertexShaderDesc vertexShaderDesc;
     vertexShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/Blit.vs"_h, "Blitting/Blit.vs");;
-    pipelineDesc.states.vertexShader = _renderer->LoadShader(vertexShaderDesc);
+    pipelineDesc.shaderStages = Renderer::VertexPipelineStages{ .vertexShader = _renderer->LoadShader(vertexShaderDesc) };
 
     Renderer::PixelShaderDesc pixelShaderDesc;
     pixelShaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Blitting/BlitSampleTexArray.ps"_h, "Blitting/BlitSampleTexArray.ps");
