@@ -9,6 +9,7 @@ namespace MaterialLoading
     using ResolveTextureCallback = std::function<u32(FileFormat::AssetID, bool)>;
 
     // Builds CPU-side material parameter blocks by patching their declared bindings with GPU texture indices.
+    // It converts portable AssetID bindings into the runtime texture references required by shaders.
     class MaterialInstancePatcher
     {
       public:

@@ -47,6 +47,7 @@ namespace ModelLoading
     };
 
     // Decodes CPU-side model payloads into borrowed CPU-side asset views and records reference limitations.
+    // Borrowed views expose offline-prepared geometry without copying or rebuilding its arrays.
     class ModelAssetReader
     {
       public:

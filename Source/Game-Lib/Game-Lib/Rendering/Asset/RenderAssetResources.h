@@ -28,6 +28,7 @@ namespace RenderAssets
     };
 
     // Coordinates the CPU-side registries and GPU-side storage for model, material, and texture assets.
+    // It keeps dependent asset loading and GPU publication behind one renderer-owned synchronization point.
     class RenderAssetResources
     {
       public:

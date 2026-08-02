@@ -49,6 +49,7 @@ namespace MaterialLoading
     };
 
     // Owns CPU-side staging and GPU-side buffers for materials, material instances, parameter blocks, and material tables.
+    // Its stable handles allow incremental uploads without invalidating live Scene material references.
     class MaterialStorage
     {
       public:

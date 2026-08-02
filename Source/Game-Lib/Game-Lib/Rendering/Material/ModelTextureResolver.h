@@ -26,6 +26,7 @@ namespace MaterialLoading
     };
 
     // Maintains a CPU-side AssetID cache and populates the GPU-side bindless model texture array.
+    // It converts portable texture AssetIDs into the runtime bindless indices required by shaders.
     class ModelTextureResolver
     {
       public:

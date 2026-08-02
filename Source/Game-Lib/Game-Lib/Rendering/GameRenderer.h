@@ -51,6 +51,16 @@ namespace RenderAssets
     class RenderAssetResources;
 }
 
+namespace RenderScenes
+{
+    class RenderScene;
+}
+
+namespace ModelScene
+{
+    class ModelSceneBridge;
+}
+
 struct ImGuiTheme
 {
 public:
@@ -104,6 +114,8 @@ public:
     RenderTargetCapture* GetRenderTargetCapture() { return _renderTargetCapture; }
     RenderDocCapture* GetRenderDocCapture() { return _renderDocCapture; }
     RenderAssets::RenderAssetResources* GetRenderAssetResources() { return _renderAssetResources; }
+    RenderScenes::RenderScene* GetWorldRenderScene() { return _worldRenderScene; }
+    ModelScene::ModelSceneBridge* GetModelSceneBridge() { return _modelSceneBridge; }
 
     const Renderer::ShaderEntry* GetShaderEntry(u32 shaderNameHash, const std::string& debugName);
     Renderer::GraphicsPipelineID GetBlitPipeline(u32 shaderNameHash);
@@ -182,6 +194,8 @@ private:
     ShadowRenderer* _shadowRenderer = nullptr;
     MeshShaderSmoke* _meshShaderSmoke = nullptr;
     RenderAssets::RenderAssetResources* _renderAssetResources = nullptr;
+    RenderScenes::RenderScene* _worldRenderScene = nullptr;
+    ModelScene::ModelSceneBridge* _modelSceneBridge = nullptr;
 
     u32 _currentThemeHash = std::numeric_limits<u32>().max();
     std::vector<ImGuiTheme> _imguiThemes;

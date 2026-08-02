@@ -1,0 +1,277 @@
+#include "ModelInstanceStore.h"
+
+#include <Renderer/Renderer.h>
+
+#include <algorithm>
+
+namespace ModelScene
+{
+    ModelInstanceStore::ModelInstanceStore(bool validateTransfers)
+        : _records(validateTransfers)
+    {
+        _records.SetDebugName("Scene Model Instances");
+        _records.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+    }
+
+    RenderScenes::ModelInstanceHandle ModelInstanceStore::Create(const ModelInstanceCreateInfo& info)
+    {
+        u32 slotIndex = 0;
+        if (_freeSlots.empty())
+        {
+            slotIndex = static_cast<u32>(_slots.size());
+            _slots.emplace_back();
+            _records.Add();
+        }
+        else
+        {
+            slotIndex = _freeSlots.back();
+            _freeSlots.pop_back();
+        }
+
+        Slot& slot = _slots[slotIndex];
+        slot.resources = { info.model, info.materialTable, info.geometryGroupMask, info.meshletHistory };
+        slot.state = SlotState::Pending;
+        slot.desiredVisible = info.visible;
+
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        record = {};
+        record.currentWorld = info.worldTransform;
+        record.previousWorld = info.worldTransform;
+        record.modelIndex = static_cast<RenderAssets::ModelHandle::type>(info.model);
+        record.materialTableOffset = info.materialTableOffset;
+        record.materialTableCount = info.materialTableCount;
+        record.geometryGroupWordOffset = info.geometryGroupWordOffset;
+        record.geometryGroupWordCount = info.geometryGroupWordCount;
+        record.meshletHistoryWordOffset = info.meshletHistory.wordOffset;
+        record.meshletHistoryWordCount = info.meshletHistory.wordCount;
+        record.generation = slot.generation;
+        record.flags = ModelInstanceFlagPendingPublication;
+        if (info.privateMaterials)
+            record.flags |= ModelInstanceFlagPrivateMaterials;
+        _records.SetDirtyElement(slotIndex);
+
+        _pendingSlotClears.push_back(slotIndex);
+        _pendingInstances++;
+        return RenderScenes::MakeModelInstanceHandle(slotIndex, slot.generation);
+    }
+
+    bool ModelInstanceStore::Destroy(RenderScenes::ModelInstanceHandle handle, ModelInstanceResources& outResources)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        outResources = slot->resources;
+        if (slot->state == SlotState::Live)
+            _liveInstances--;
+        else
+            _pendingInstances--;
+
+        slot->state = SlotState::Free;
+        slot->desiredVisible = false;
+        slot->resources = {};
+        slot->generation++;
+        if (slot->generation == 0)
+            slot->generation = 1;
+
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        record.flags = 0;
+        record.generation = slot->generation;
+        _records.SetDirtyElement(slotIndex);
+        _freeSlots.push_back(slotIndex);
+        return true;
+    }
+
+    bool ModelInstanceStore::SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported,
+                                          bool& outNeedsHistoryClear)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        ModelInstanceGPURecord& record = _records[RenderScenes::GetModelInstanceSlot(handle)];
+        record.currentWorld = transform;
+        outNeedsHistoryClear = teleported;
+        if (teleported)
+        {
+            record.previousWorld = transform;
+            record.flags |= ModelInstanceFlagTeleported;
+            record.flags &= ~ModelInstanceFlagMotionValid;
+            if (std::find(_pendingSlotClears.begin(), _pendingSlotClears.end(), RenderScenes::GetModelInstanceSlot(handle)) ==
+                _pendingSlotClears.end())
+            {
+                _pendingSlotClears.push_back(RenderScenes::GetModelInstanceSlot(handle));
+            }
+        }
+        else if (slot->state == SlotState::Pending)
+        {
+            record.previousWorld = transform;
+        }
+        _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    bool ModelInstanceStore::SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        outNeedsHistoryClear = false;
+        if (slot->desiredVisible == visible)
+            return true;
+
+        slot->desiredVisible = visible;
+        ModelInstanceGPURecord& record = _records[RenderScenes::GetModelInstanceSlot(handle)];
+        if (!visible)
+        {
+            record.flags &= ~(ModelInstanceFlagVisible | ModelInstanceFlagMotionValid);
+        }
+        else if (slot->state == SlotState::Live)
+        {
+            record.previousWorld = record.currentWorld;
+            record.flags |= ModelInstanceFlagVisible | ModelInstanceFlagNew;
+            record.flags &= ~ModelInstanceFlagMotionValid;
+            outNeedsHistoryClear = true;
+            if (std::find(_pendingSlotClears.begin(), _pendingSlotClears.end(), RenderScenes::GetModelInstanceSlot(handle)) ==
+                _pendingSlotClears.end())
+            {
+                _pendingSlotClears.push_back(RenderScenes::GetModelInstanceSlot(handle));
+            }
+        }
+        _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    bool ModelInstanceStore::SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
+                                              u32 offset, u32 count, bool isPrivate)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        slot->resources.materialTable = table;
+        ModelInstanceGPURecord& record = _records[RenderScenes::GetModelInstanceSlot(handle)];
+        record.materialTableOffset = offset;
+        record.materialTableCount = count;
+        if (isPrivate)
+            record.flags |= ModelInstanceFlagPrivateMaterials;
+        else
+            record.flags &= ~ModelInstanceFlagPrivateMaterials;
+        _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    void ModelInstanceStore::AdvanceFrame()
+    {
+        for (u32 slotIndex = 0; slotIndex < _slots.size(); ++slotIndex)
+        {
+            Slot& slot = _slots[slotIndex];
+            if (slot.state != SlotState::Live)
+                continue;
+
+            ModelInstanceGPURecord& record = _records[slotIndex];
+            record.previousWorld = record.currentWorld;
+            record.flags &= ~(ModelInstanceFlagNew | ModelInstanceFlagTeleported);
+            if (slot.desiredVisible)
+                record.flags |= ModelInstanceFlagMotionValid;
+            _records.SetDirtyElement(slotIndex);
+        }
+    }
+
+    void ModelInstanceStore::PublishPending()
+    {
+        for (u32 slotIndex = 0; slotIndex < _slots.size(); ++slotIndex)
+        {
+            Slot& slot = _slots[slotIndex];
+            if (slot.state != SlotState::Pending)
+                continue;
+
+            slot.state = SlotState::Live;
+            ModelInstanceGPURecord& record = _records[slotIndex];
+            record.flags &= ~ModelInstanceFlagPendingPublication;
+            record.flags |= ModelInstanceFlagNew;
+            if (slot.desiredVisible)
+                record.flags |= ModelInstanceFlagVisible;
+            _records.SetDirtyElement(slotIndex);
+            _pendingInstances--;
+            _liveInstances++;
+        }
+    }
+
+    void ModelInstanceStore::SyncToGPU(Renderer::Renderer* renderer)
+    {
+        _records.SyncToGPU(renderer);
+    }
+
+    bool ModelInstanceStore::IsAlive(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot && slot->state == SlotState::Live;
+    }
+
+    bool ModelInstanceStore::IsPending(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot && slot->state == SlotState::Pending;
+    }
+
+    const ModelInstanceGPURecord* ModelInstanceStore::GetRecord(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot ? &_records[RenderScenes::GetModelInstanceSlot(handle)] : nullptr;
+    }
+
+    const ModelInstanceResources* ModelInstanceStore::GetResources(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot ? &slot->resources : nullptr;
+    }
+
+    ModelInstanceStoreStats ModelInstanceStore::GetStats() const
+    {
+        return {
+            .liveInstances = _liveInstances,
+            .pendingInstances = _pendingInstances,
+            .freeSlots = static_cast<u32>(_freeSlots.size()),
+            .slotCapacity = static_cast<u32>(_slots.size()),
+            .pendingSlotClears = static_cast<u32>(_pendingSlotClears.size()),
+            .staleHandleRejects = _staleHandleRejects
+        };
+    }
+
+    ModelInstanceStore::Slot* ModelInstanceStore::GetSlot(RenderScenes::ModelInstanceHandle handle)
+    {
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        const u32 generation = RenderScenes::GetModelInstanceGeneration(handle);
+        if (slotIndex >= _slots.size())
+            return nullptr;
+
+        Slot& slot = _slots[slotIndex];
+        return slot.state != SlotState::Free && slot.generation == generation ? &slot : nullptr;
+    }
+
+    const ModelInstanceStore::Slot* ModelInstanceStore::GetSlot(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        const u32 generation = RenderScenes::GetModelInstanceGeneration(handle);
+        if (slotIndex >= _slots.size())
+            return nullptr;
+
+        const Slot& slot = _slots[slotIndex];
+        return slot.state != SlotState::Free && slot.generation == generation ? &slot : nullptr;
+    }
+} // namespace ModelScene

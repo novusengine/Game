@@ -31,6 +31,7 @@ namespace MaterialLoading
     };
 
     // Maintains CPU-side AssetID caches that load materials and allocate handles in GPU-backed material storage.
+    // It avoids duplicate loads while resolving asset dependencies to stable runtime handles.
     class MaterialRegistry
     {
       public:

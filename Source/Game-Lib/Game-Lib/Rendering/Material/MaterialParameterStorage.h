@@ -24,6 +24,7 @@ namespace MaterialLoading
     };
 
     // Deduplicates aligned material parameter blocks on the CPU and stores them in a GPU-side buffer.
+    // Deduplication reduces GPU memory use while stable offsets keep live material-instance references valid.
     class MaterialParameterStorage
     {
       public:

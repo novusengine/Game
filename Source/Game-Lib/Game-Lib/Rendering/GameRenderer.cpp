@@ -5,6 +5,8 @@
 #include "Debug/JoltDebugRenderer.h"
 #include "Debug/MeshShaderSmoke.h"
 #include "Asset/RenderAssetResources.h"
+#include "Scene/RenderScene.h"
+#include "Model/Scene/ModelSceneBridge.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -226,6 +228,10 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _renderAssetResources =
         new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
     NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
+    _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetGeometryStorage(),
+                                                       &_renderAssetResources->GetMaterialStorage(),
+                                                       CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
@@ -259,6 +265,8 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
+    delete _modelSceneBridge;
+    delete _worldRenderScene;
     delete _renderAssetResources;
     delete _renderTargetCapture;
     delete _renderer;
@@ -307,6 +315,7 @@ void GameRenderer::UploadRenderers()
     ZoneScoped;
 
     _renderAssetResources->SyncToGPU();
+    _worldRenderScene->SyncToGPU(_renderer);
 
     if (_resources.cameras.SyncToGPU(_renderer))
     {
@@ -577,6 +586,7 @@ f32 GameRenderer::Render()
     _renderer->UnlockUploads();
 
     // Flip the frameIndex between 0 and 1
+    _worldRenderScene->AdvanceFrame();
     _frameIndex = !_frameIndex;
     return timeWaited;
 }

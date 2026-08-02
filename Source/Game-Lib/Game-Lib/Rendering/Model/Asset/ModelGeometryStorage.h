@@ -63,6 +63,7 @@ namespace ModelLoading
     };
 
     // Owns CPU-side staging and GPU-side buffers for model records, geometry, skinning data, and embedded instances.
+    // Stable handles and base indices allow incremental uploads without relocating live model data.
     class ModelGeometryStorage
     {
       public:
@@ -74,6 +75,10 @@ namespace ModelLoading
         const ModelGPURecord& GetRecord(RenderAssets::ModelHandle handle) const
         {
             return _records[static_cast<RenderAssets::ModelHandle::type>(handle)];
+        }
+        bool HasModel(RenderAssets::ModelHandle handle) const
+        {
+            return static_cast<RenderAssets::ModelHandle::type>(handle) < _records.Count();
         }
         ModelGeometryStorageStats GetStats() const;
 

@@ -8,6 +8,7 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -23,6 +24,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -231,6 +233,7 @@ namespace Scripting::Asset
     i32 AssetHandler::GetRenderAssetStats(Zenith* zenith)
     {
         const RenderAssets::RenderAssetResourceStats stats = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetStats();
+        const RenderScenes::RenderSceneStats sceneStats = ServiceLocator::GetGameRenderer()->GetWorldRenderScene()->GetStats();
         zenith->CreateTable();
         zenith->AddTableField("models", stats.geometry.numModels);
         zenith->AddTableField("usedBytes", stats.geometry.usedBytes + stats.materialStorage.usedBytes);
@@ -240,6 +243,94 @@ namespace Scripting::Asset
         zenith->AddTableField("materialFailures", stats.materials.materialFailures + stats.materials.materialInstanceFailures);
         zenith->AddTableField("textureFailures", stats.textures.fallbackTextures);
         zenith->AddTableField("resolvedTextures", stats.textures.resolvedTextures);
+        zenith->AddTableField("sceneInstances", sceneStats.instances.liveInstances);
+        zenith->AddTableField("scenePendingInstances", sceneStats.instances.pendingInstances);
+        zenith->AddTableField("sceneInstanceSlots", sceneStats.instances.slotCapacity);
+        zenith->AddTableField("sceneStaleHandleRejects", sceneStats.instances.staleHandleRejects);
+        zenith->AddTableField("sceneMaterialTables", sceneStats.materialTables.sharedTables + sceneStats.materialTables.privateTables);
+        zenith->AddTableField("sceneGeometryGroupMaskWords", sceneStats.geometryGroupMasks.liveWords);
+        zenith->AddTableField("sceneHistoryWords", sceneStats.meshletHistory.liveWords);
+        zenith->AddTableField("sceneHistoryAddressWords", sceneStats.meshletHistory.addressSpaceWords);
+        zenith->AddTableField("sceneHistoryRetiredWords", sceneStats.meshletHistory.retiredWords);
+        zenith->AddTableField("sceneHistoryClearRanges", sceneStats.meshletHistory.pendingClearRanges);
+        return 1;
+    }
+
+    i32 AssetHandler::StressRenderSceneLifecycle(Zenith* zenith)
+    {
+        constexpr u32 MAX_INSTANCES = 4096;
+        constexpr u32 MAX_ITERATIONS = 256;
+
+        const RenderAssets::ModelHandle model(zenith->CheckVal<u32>(1));
+        const u32 instanceCount = zenith->CheckVal<u32>(2);
+        const u32 iterationCount = zenith->CheckVal<u32>(3);
+        if (instanceCount == 0 || instanceCount > MAX_INSTANCES || iterationCount == 0 || iterationCount > MAX_ITERATIONS)
+        {
+            NC_LOG_ERROR("RENDER_SCENE lifecycle_stress_invalid instances={} iterations={}", instanceCount, iterationCount);
+            zenith->Push(false);
+            return 1;
+        }
+
+        RenderScenes::RenderScene* scene = ServiceLocator::GetGameRenderer()->GetWorldRenderScene();
+        std::vector<RenderScenes::ModelInstanceHandle> handles(instanceCount);
+        bool succeeded = true;
+
+        for (u32 iteration = 0; iteration < iterationCount && succeeded; ++iteration)
+        {
+            for (u32 instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
+            {
+                RenderScenes::ModelInstanceDesc desc;
+                desc.model = model;
+                desc.worldTransform[3] = vec4(static_cast<f32>(instanceIndex % 64), 0.0f,
+                                              static_cast<f32>(instanceIndex / 64), 1.0f);
+                handles[instanceIndex] = scene->CreateModelInstance(desc);
+                succeeded &= scene->IsPending(handles[instanceIndex]);
+            }
+
+            const RenderScenes::SceneClearRequests clearRequests = scene->GetPendingClearRequests();
+            succeeded &= clearRequests.instanceSlots.size() >= instanceCount;
+            succeeded &= clearRequests.meshletHistoryRanges.size() >= instanceCount;
+            scene->AcknowledgeClearsAndPublish();
+
+            for (u32 instanceIndex = 0; instanceIndex < instanceCount; ++instanceIndex)
+            {
+                const RenderScenes::ModelInstanceHandle handle = handles[instanceIndex];
+                succeeded &= scene->IsAlive(handle);
+
+                if ((instanceIndex & 1u) == 0)
+                {
+                    mat4x4 transform(1.0f);
+                    transform[3] = vec4(static_cast<f32>(instanceIndex % 64), 1.0f,
+                                        static_cast<f32>(instanceIndex / 64), 1.0f);
+                    succeeded &= scene->SetModelTransform(handle, transform, true);
+                }
+                else
+                {
+                    succeeded &= scene->SetModelVisible(handle, false);
+                    succeeded &= scene->SetModelVisible(handle, true);
+                }
+            }
+
+            scene->AcknowledgeClearsAndPublish();
+            for (const RenderScenes::ModelInstanceHandle handle : handles)
+                succeeded &= scene->DestroyModelInstance(handle, iteration + 1u);
+
+            scene->ReleaseRetiredHistory(iteration);
+            succeeded &= scene->GetStats().meshletHistory.retiredWords != 0;
+            scene->ReleaseRetiredHistory(iteration + 1u);
+        }
+
+        const RenderScenes::RenderSceneStats stats = scene->GetStats();
+        succeeded &= stats.instances.liveInstances == 0;
+        succeeded &= stats.instances.pendingInstances == 0;
+        succeeded &= stats.meshletHistory.liveWords == 0;
+        succeeded &= stats.meshletHistory.retiredWords == 0;
+        succeeded &= stats.meshletHistory.addressSpaceWords == 0;
+
+        NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={}",
+                    succeeded, instanceCount, iterationCount, stats.instances.slotCapacity,
+                    stats.instances.staleHandleRejects, stats.meshletHistory.highWaterWords);
+        zenith->Push(succeeded);
         return 1;
     }
 }

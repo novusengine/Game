@@ -31,6 +31,7 @@ namespace ModelLoading
     };
 
     // Maintains a CPU-side AssetID cache that loads model dependencies and allocates handles in GPU-backed geometry storage.
+    // It avoids duplicate loads while resolving model dependencies to stable runtime handles.
     class ModelAssetRegistry
     {
       public:

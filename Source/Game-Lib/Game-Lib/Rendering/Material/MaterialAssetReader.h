@@ -37,6 +37,7 @@ namespace MaterialLoading
     };
 
     // Decodes CPU-side material and material-instance payloads into borrowed CPU-side asset views.
+    // Borrowed views expose offline-prepared material data without copying its parameter payloads.
     class MaterialAssetReader
     {
       public:

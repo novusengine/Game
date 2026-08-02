@@ -11,6 +11,8 @@ namespace Renderer
     class RenderGraph;
 }
 
+// Owns the GPU-side bring-up pipeline for the opt-in mesh-shader smoke draw.
+// It emits a known triangle used to verify mesh-pipeline creation and mesh-task dispatch.
 class MeshShaderSmoke
 {
 public:
