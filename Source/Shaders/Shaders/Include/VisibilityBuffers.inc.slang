@@ -4,6 +4,7 @@
 #include "DescriptorSet/Global.inc.slang"
 #include "DescriptorSet/Model.inc.slang"
 
+#include "Include/TypedVisibility.inc.slang"
 #include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
@@ -141,26 +142,28 @@ BarycentricDeriv CalcFullBary(float4 pt0, float4 pt1, float4 pt2, float2 pixelNd
 }
 
 #if GEOMETRY_PASS
-uint2 PackVisibilityBuffer(uint typeID, uint instanceID, uint triangleID)
+uint PackTerrainVisibility(uint instanceID, uint triangleID)
 {
-    // VisibilityBuffer is 4 uints packed like this:
-    // X
-    //      TriangleID 8 bits (out of 16), we had to split this to fit
-    //      InstanceID 20 bits, different types can have the same InstanceID
-    //      TypeID 4 bits
-    // Y
-    //      TriangleID 8 bits (out of 16), the remainder
-    //      UNUSED 24 bits
+    uint recordID = (instanceID << 1u) | (triangleID >> TYPED_VISIBILITY_TRIANGLE_BITS);
+    return PackTypedVisibility(TYPED_VISIBILITY_TERRAIN, recordID,
+                               triangleID & TYPED_VISIBILITY_MAX_TRIANGLE_ID);
+}
 
-    uint2 packedVisBuffer;
-    // X
-    packedVisBuffer.x = (triangleID & 0xFF);
-    packedVisBuffer.x |= instanceID << 8;
-    packedVisBuffer.x |= typeID << 28;
-    // Y
-    packedVisBuffer.y = (triangleID >> 8);
+uint PackLegacyModelVisibility(uint recordBase, uint triangleID)
+{
+    uint recordID = recordBase + (triangleID >> TYPED_VISIBILITY_TRIANGLE_BITS);
+    if (recordBase == 0xFFFFFFFFu || recordID > TYPED_VISIBILITY_MAX_RECORD_ID)
+        return TYPED_VISIBILITY_INVALID;
+    return PackTypedVisibility(TYPED_VISIBILITY_LEGACY_MODEL, recordID,
+                               triangleID & TYPED_VISIBILITY_MAX_TRIANGLE_ID);
+}
 
-    return packedVisBuffer;
+uint PackJoltDebugVisibility(float4 color)
+{
+    uint packedColor = Float4ToPackedUnorms(float4(color.rgb, 1.0f)) & 0x00FFFFFFu;
+    return PackTypedVisibility(TYPED_VISIBILITY_JOLT_DEBUG,
+                               packedColor >> TYPED_VISIBILITY_TRIANGLE_BITS,
+                               packedColor & TYPED_VISIBILITY_MAX_TRIANGLE_ID);
 }
 
 float2 _NBLCalculateBarycentrics(in float3 positionRelativeToV0, in float2x3 edges)
@@ -184,7 +187,7 @@ float2 NBLCalculateBarycentrics(in float3 pointPosition, in float3x3 vertexPosit
 
 #else // GEOMETRY_PASS
 
-[[vk::binding(2, PER_PASS)]] Texture2D<uint2> _visibilityBuffer;
+[[vk::binding(2, PER_PASS)]] Texture2D<uint> _visibilityBuffer;
 
 struct Barycentrics
 {
@@ -201,29 +204,49 @@ struct VisibilityBuffer
     uint triangleID;
 };
 
-uint2 LoadVisibilityBuffer(uint2 pixelPos)
+uint LoadVisibilityBuffer(uint2 pixelPos)
 {
     return _visibilityBuffer[pixelPos];
 }
 
-const VisibilityBuffer UnpackVisibilityBuffer(uint2 data)
+const VisibilityBuffer UnpackVisibilityBuffer(uint data)
 {
-    // VisibilityBuffer is 2 uints packed like this:
-    // X
-    //      TriangleID 8 bits (out of 16), we had to split this to fit
-    //      InstanceID 20 bits, different types can have the same InstanceID
-    //      TypeID 4 bits
-    // Y
-    //      TriangleID 8 bits (out of 16), the remainder
-    //      UNUSED 24 bits
-
     VisibilityBuffer vBuffer;
-    vBuffer.typeID = data.x >> 28;
-    vBuffer.instanceID = (data.x & 0x0FFFFF00) >> 8;
+    vBuffer.typeID = ObjectType::Skybox;
+    vBuffer.instanceID = 0u;
+    vBuffer.padding = 0u;
+    vBuffer.triangleID = 0u;
 
-    vBuffer.triangleID = (data.x & 0xFF) | ((data.y & 0xFF) << 8);
+    if (data == TYPED_VISIBILITY_INVALID)
+        return vBuffer;
+
+    TypedVisibilityPayload payload = UnpackTypedVisibility(data);
+    if (payload.geometryTypeID == TYPED_VISIBILITY_TERRAIN)
+    {
+        vBuffer.typeID = ObjectType::Terrain;
+        vBuffer.instanceID = payload.recordID >> 1u;
+        vBuffer.triangleID = payload.triangleID | ((payload.recordID & 1u) << TYPED_VISIBILITY_TRIANGLE_BITS);
+    }
+    else if (payload.geometryTypeID == TYPED_VISIBILITY_LEGACY_MODEL)
+    {
+        LegacyModelVisibilityRecord record = _legacyModelVisibilityRecords[payload.recordID];
+        vBuffer.typeID = ObjectType::ModelOpaque;
+        vBuffer.instanceID = record.instanceRefID;
+        vBuffer.triangleID = record.triangleBase + payload.triangleID;
+    }
+    else if (payload.geometryTypeID == TYPED_VISIBILITY_JOLT_DEBUG)
+    {
+        vBuffer.typeID = ObjectType::JoltDebug;
+    }
 
     return vBuffer;
+}
+
+float4 DecodeJoltDebugColor(uint data)
+{
+    TypedVisibilityPayload payload = UnpackTypedVisibility(data);
+    uint packedColor = (payload.recordID << TYPED_VISIBILITY_TRIANGLE_BITS) | payload.triangleID;
+    return PackedUnormsToFloat4(packedColor | 0xFF000000u);
 }
 
 uint GetObjectID(uint typeID, uint instanceID)
@@ -331,10 +354,10 @@ FullBary3 CalcFullBary3(Barycentrics barycentrics, float3 v0, float3 v1, float3 
 }
 
 // Shared helper for reconstructing barycentrics (plane vs ray path).
-Barycentrics ReconstructBarycentrics(float2 pixelPos, float2 renderSize, float3 wP0, float3 wP1, float3 wP2, uint cameraIndex)
+Barycentrics ReconstructBarycentricsAtSample(float2 samplePosition, float2 renderSize, float3 wP0, float3 wP1,
+                                             float3 wP2, uint cameraIndex)
 {
-    float2 pixelCenter = pixelPos + 0.5f;
-    float2 pixelNdc = pixelCenter / renderSize * 2.0f - 1.0f;
+    float2 pixelNdc = samplePosition / renderSize * 2.0f - 1.0f;
     pixelNdc.y *= -1.0f; // flip once if screen Y-down
     float2 twoOverScreenSize = 2.0f / renderSize;
 
@@ -362,6 +385,12 @@ Barycentrics ReconstructBarycentrics(float2 pixelPos, float2 renderSize, float3 
     useBary.ddxBary = bd.m_ddx.xy;
     useBary.ddyBary = bd.m_ddy.xy;
     return useBary;
+}
+
+Barycentrics ReconstructBarycentrics(float2 pixelPos, float2 renderSize, float3 wP0, float3 wP1, float3 wP2,
+                                     uint cameraIndex)
+{
+    return ReconstructBarycentricsAtSample(pixelPos + 0.5f, renderSize, wP0, wP1, wP2, cameraIndex);
 }
 
 struct PixelVertexData

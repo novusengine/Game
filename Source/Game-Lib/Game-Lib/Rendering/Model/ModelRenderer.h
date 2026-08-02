@@ -2,6 +2,7 @@
 #include "Game-Lib/Rendering/CulledRenderer.h"
 #include "Game-Lib/Rendering/CullingResources.h"
 #include "Game-Lib/Rendering/Model/ModelLoadTypes.h"
+#include "Game-Lib/Rendering/Visibility/LegacyModelVisibilityRecords.h"
 
 #include <Base/Types.h>
 #include <Base/Container/ConcurrentQueue.h>
@@ -452,6 +453,8 @@ private:
 
     CullingResourcesIndexed<DrawCallData> _opaqueSkyboxCullingResources;
     CullingResourcesIndexed<DrawCallData> _transparentSkyboxCullingResources;
+
+    Visibility::LegacyModelVisibilityRecords _legacyVisibilityRecords;
 
     Renderer::GraphicsPipelineID _drawPipeline;
     Renderer::GraphicsPipelineID _drawSVSMPipeline;

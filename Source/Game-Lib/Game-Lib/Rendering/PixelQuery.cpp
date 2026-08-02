@@ -2,6 +2,7 @@
 #include "GameRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Model/ModelRenderer.h"
+#include "Model/ModelRenderSystem.h"
 #include "../Util/ServiceLocator.h"
 
 #include <Renderer/RenderGraph.h>
@@ -42,6 +43,7 @@ void PixelQuery::CreatePermanentResources()
 
     _queryDescriptorSet.RegisterPipeline(_renderer, _queryPipeline);
     _queryDescriptorSet.Init(_renderer);
+    _queryDescriptorSet.Bind("_result"_h, _pixelResultBuffer);
 }
 
 void PixelQuery::Update(f32 deltaTime)
@@ -67,7 +69,16 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
             const PixelData& pixelData = results[i];
 
             // Store Result & Remove Token from _requestTokens
-            _results[*tokenItr] = pixelData;
+            if (_diagnosticTokens.erase(*tokenItr) > 0)
+            {
+                // TODO: Remove this bring-up trace after RenderScene model picking is integrated with editor selection.
+                NC_LOG_INFO("MODEL_VISIBILITY pick type={} value={} generation={}", pixelData.type,
+                            pixelData.value, pixelData.generation);
+            }
+            else
+            {
+                _results[*tokenItr] = pixelData;
+            }
             tokenItr = _requestTokens[_frameIndex].erase(tokenItr);
         }
 
@@ -105,10 +116,12 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
 
                 terrainRenderer->RegisterMaterialPassBufferUsage(builder);
                 modelRenderer->RegisterMaterialPassBufferUsage(builder);
+                gameRenderer->GetModelRenderSystem()->RegisterPixelQueryResources(builder);
+                gameRenderer->GetModelRenderSystem()->BindPixelQueryResources(_queryDescriptorSet);
 
                 return true; // Return true from setup to enable this pass, return false to disable it
             },
-            [this](PixelQueryPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+            [this, frameIndex](PixelQueryPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
             {
                 u32 numRequests = static_cast<u32>(_requests[_frameIndex].size());
                 if (numRequests > 0)
@@ -132,14 +145,14 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                         QueryRequestConstant* queryRequests = graphResources.FrameNew<QueryRequestConstant>();
 
                         queryRequests->numRequests = numRequests;
+                        queryRequests->resourceIndex = frameIndex;
                         std::memcpy(&queryRequests->pixelCoords[0], _requests[_frameIndex].data(), sizeof(QueryRequest) * numRequests);
                         commandList.PushConstant(queryRequests, 0, sizeof(QueryRequestConstant));
                     }
 
                     data.querySet.Bind("_visibilityBuffer", data.visibilityBuffer);
-                    data.querySet.Bind("_result", data.pixelResultBuffer);
 
-                    commandList.BindDescriptorSet(data.querySet, _frameIndex);
+                    commandList.BindDescriptorSet(data.querySet, frameIndex);
                     commandList.BindDescriptorSet(data.terrainSet, _frameIndex);
                     commandList.BindDescriptorSet(data.modelSet, _frameIndex);
 
@@ -200,6 +213,13 @@ u32 PixelQuery::PerformQuery(uvec2 pixelCoords)
     }
     _requestMutex.unlock();
 
+    return token;
+}
+
+u32 PixelQuery::PerformDiagnosticQuery(uvec2 pixelCoords)
+{
+    const u32 token = PerformQuery(pixelCoords);
+    _diagnosticTokens.insert(token);
     return token;
 }
 

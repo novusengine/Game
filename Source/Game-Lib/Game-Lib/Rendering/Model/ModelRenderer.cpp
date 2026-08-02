@@ -775,6 +775,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::GRAPHICS);
 
             OccluderPassSetup(data, builder, &_opaqueCullingResources, frameIndex);
             data.culledDrawCallCountBuffer = builder.Write(_opaqueCullingResources.GetCulledDrawCallCountBuffer(), BufferUsage::TRANSFER | BufferUsage::COMPUTE | BufferUsage::GRAPHICS);
@@ -984,6 +985,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
             builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::GRAPHICS);
             builder.Read(_boneMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
             builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
+            _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::GRAPHICS);
             
             builder.Write(_animatedVertices.GetBuffer(), BufferUsage::GRAPHICS | BufferUsage::COMPUTE);
 
@@ -1488,6 +1490,7 @@ void ModelRenderer::AddTransparencyGeometryPass(Renderer::RenderGraph* renderGra
 
             GeometryPassSetup(data, builder, &_transparentCullingResources, frameIndex);
             builder.Read(_transparentCullingResources.GetDrawCallDatas().GetBuffer(), BufferUsage::GRAPHICS);
+            _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::GRAPHICS);
 
             data.globalSet = builder.Use(resources.globalDescriptorSet);
             data.modelSet = builder.Use(resources.modelDescriptorSet);
@@ -1597,6 +1600,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 data.triangleCountBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.drawCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
                 data.triangleCountReadBackBuffer = builder.Write(_opaqueSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+                _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::GRAPHICS);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
                 data.modelSet = builder.Use(resources.modelDescriptorSet);
@@ -1696,6 +1700,7 @@ void ModelRenderer::AddSkyboxPass(Renderer::RenderGraph* renderGraph, RenderReso
                 data.triangleCountBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountBuffer(), BufferUsage::TRANSFER | BufferUsage::GRAPHICS);
                 data.drawCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetDrawCountReadBackBuffer(), BufferUsage::TRANSFER);
                 data.triangleCountReadBackBuffer = builder.Write(_transparentSkyboxCullingResources.GetTriangleCountReadBackBuffer(), BufferUsage::TRANSFER);
+                _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::GRAPHICS);
 
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
                 data.modelSet = builder.Use(resources.modelDescriptorSet);
@@ -1763,6 +1768,7 @@ void ModelRenderer::RegisterMaterialPassBufferUsage(Renderer::RenderGraphBuilder
     builder.Read(_instanceMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_boneMatrices.GetBuffer(), BufferUsage::COMPUTE);
     builder.Read(_textureTransformMatrices.GetBuffer(), BufferUsage::COMPUTE);
+    _legacyVisibilityRecords.RegisterUsage(builder, BufferUsage::COMPUTE);
     builder.Write(_animatedVertices.GetBuffer(), BufferUsage::COMPUTE);
 }
 
@@ -3315,7 +3321,7 @@ void ModelRenderer::CreateModelPipelines()
         pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
         pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
-        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer format
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32_UINT; // Visibility buffer format
         pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
         Renderer::VertexShaderDesc vertexShaderDesc;
@@ -3824,6 +3830,8 @@ void ModelRenderer::CompactInstanceRefs()
     if (!_instancesDirty)
         return;
 
+    _legacyVisibilityRecords.Clear();
+
     // Create array of culling resources that we can loop over
     CullingResourcesIndexed<DrawCallData>* cullingResources[] = {
         &_opaqueCullingResources,
@@ -3960,6 +3968,10 @@ void ModelRenderer::CompactInstanceRefs()
                     instanceRef.drawID = drawID;
                     instanceRef.instanceID = instanceID;
                     instanceRef.extraID = textureDataID;
+                    instanceRef.padding = i == 0
+                        ? _legacyVisibilityRecords.AddInstance(numTotalInstances + numEnabledInstancesInDraw,
+                                                               draw.indexCount / 3u)
+                        : 0u;
                     numEnabledInstancesInDraw++;
                 }
             }
@@ -3990,6 +4002,8 @@ void ModelRenderer::Upload()
 {
     ZoneScoped;
     RenderResources& resources = _gameRenderer->GetRenderResources();
+
+    _legacyVisibilityRecords.Upload(_renderer, resources.modelDescriptorSet);
 
     {
         ZoneScopedN("Sync Base Culled Renderer To GPU");

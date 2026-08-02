@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Game-Lib/Rendering/Model/View/ModelViewWork.h"
+
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/Descriptors/ComputePipelineDesc.h>
 
@@ -30,6 +32,58 @@ namespace ModelPipeline
                      const RenderScenes::RenderScene& scene, u8 frameIndex, bool resetHistory, i32 forcedLOD);
 
       private:
+        struct ExpandFrameBindings
+        {
+            Renderer::BufferID chunkQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID workStats = Renderer::BufferID::Invalid();
+        };
+
+        struct ExpandBindings
+        {
+            Renderer::BufferID viewInputs = Renderer::BufferID::Invalid();
+            Renderer::BufferID lodHistory = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelInstances = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelRecords = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelMeshes = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelLODs = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelSubmeshes = Renderer::BufferID::Invalid();
+            Renderer::BufferID geometryGroupMasks = Renderer::BufferID::Invalid();
+            Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
+            Renderer::BufferID materialInstances = Renderer::BufferID::Invalid();
+            Renderer::BufferID materials = Renderer::BufferID::Invalid();
+            ExpandFrameBindings frames[ModelView::MODEL_VIEW_FRAME_COUNT];
+        };
+
+        struct ExpandFinalizeFrameBindings
+        {
+            Renderer::BufferID workStats = Renderer::BufferID::Invalid();
+            Renderer::BufferID chunkArguments = Renderer::BufferID::Invalid();
+        };
+
+        struct CullFrameBindings
+        {
+            Renderer::BufferID chunkQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID oneSidedQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID twoSidedQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID workStats = Renderer::BufferID::Invalid();
+            Renderer::BufferID visibilityRecords = Renderer::BufferID::Invalid();
+        };
+
+        struct CullBindings
+        {
+            Renderer::BufferID modelInstances = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelRecords = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelMeshes = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelMeshlets = Renderer::BufferID::Invalid();
+            CullFrameBindings frames[ModelView::MODEL_VIEW_FRAME_COUNT];
+        };
+
+        struct FinalizeFrameBindings
+        {
+            Renderer::BufferID workStats = Renderer::BufferID::Invalid();
+            Renderer::BufferID indirectArguments = Renderer::BufferID::Invalid();
+        };
+
         bool Bind(Renderer::DescriptorSet& descriptorSet, StringUtils::StringHash name, Renderer::BufferID buffer,
                   Renderer::BufferID& current);
 
@@ -42,10 +96,10 @@ namespace ModelPipeline
         Renderer::ComputePipelineID _expandFinalizePipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _cullPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _finalizePipeline = Renderer::ComputePipelineID::Invalid();
-        Renderer::BufferID _expandBoundBuffers[15] = {};
-        Renderer::BufferID _expandFinalizeBoundBuffers[4] = {};
-        Renderer::BufferID _cullBoundBuffers[12] = {};
-        Renderer::BufferID _finalizeBoundBuffers[4] = {};
+        ExpandBindings _expandBindings;
+        ExpandFinalizeFrameBindings _expandFinalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
+        CullBindings _cullBindings;
+        FinalizeFrameBindings _finalizeBindings[ModelView::MODEL_VIEW_FRAME_COUNT];
         u32 _descriptorWarmupFrames = 0;
     };
 } // namespace ModelPipeline

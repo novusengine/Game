@@ -1,5 +1,8 @@
 
+#define GEOMETRY_PASS 1
+
 #include "Include/Common.inc.slang"
+#include "Include/VisibilityBuffers.inc.slang"
 
 struct PSInput
 {
@@ -9,7 +12,7 @@ struct PSInput
 
 struct PSOutput
 {
-	uint4 vBuffer : SV_Target0;
+	uint vBuffer : SV_Target0;
 };
 
 [shader("fragment")]
@@ -23,8 +26,6 @@ PSOutput main(PSInput input) : SV_Target0
 	}
 
 	PSOutput output;
-	output.vBuffer.xzw = 0;
-	output.vBuffer.x |= uint(ObjectType::JoltDebug) << 28;
-	output.vBuffer.y = Float4ToPackedUnorms(color);
+	output.vBuffer = PackJoltDebugVisibility(color);
 	return output;
 }

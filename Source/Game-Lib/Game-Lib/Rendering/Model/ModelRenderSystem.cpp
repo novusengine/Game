@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <Base/CVarSystem/CVarSystem.h>
+#include <Renderer/DescriptorSet.h>
+#include <Renderer/RenderGraph.h>
 
 AutoCVar_Int CVAR_ModelForceLOD(CVarCategory::Client | CVarCategory::Rendering, "modelForceLOD",
                                 "Force model LOD (-1 automatic, values clamp to each Mesh)", -1);
@@ -24,7 +26,7 @@ namespace ModelRendering
               .depthTarget = resources.depth,
               .lifetime = RenderScenes::RenderViewLifetime::Persistent }),
           _mainViewState(validateTransfers), _mainViewWork(renderer), _viewWorkPass(renderer, gameRenderer),
-          _diagnosticPass(renderer, gameRenderer)
+          _visibilityPass(renderer, gameRenderer), _visibilityResolvePass(renderer, gameRenderer)
     {
     }
 
@@ -47,7 +49,8 @@ namespace ModelRendering
         _mainViewState.SyncToGPU(_renderer);
     }
 
-    void ModelRenderSystem::AddPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+    void ModelRenderSystem::AddVisibilityPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                u8 frameIndex)
     {
         _mainViewWork.ReadbackStats(frameIndex);
         const u32 queueOverflows = _mainViewWork.GetStats().queueOverflows;
@@ -62,7 +65,8 @@ namespace ModelRendering
         }
         const bool descriptorsReady = _viewWorkPass.Upload(
             _mainViewState, _mainViewWork, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
-        _diagnosticPass.Upload(_mainViewWork, _assets->GetGeometryStorage(), *_scene);
+        _visibilityPass.Upload(_mainViewWork, _assets->GetGeometryStorage(), *_scene);
+        _visibilityResolvePass.Upload(_mainViewWork, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
         if (!descriptorsReady)
             return;
         const u32 temporalReset = _mainView.GetTemporalResetGeneration();
@@ -71,13 +75,55 @@ namespace ModelRendering
                               temporalReset != _handledTemporalReset, _lastForcedLOD);
         _mainViewWork.MarkSubmitted(frameIndex);
         _handledTemporalReset = temporalReset;
-        _diagnosticPass.AddPass(renderGraph, resources, _mainView, _mainViewWork,
+        _visibilityPass.AddPass(renderGraph, resources, _mainView, _mainViewWork,
                                 _assets->GetGeometryStorage(), *_scene, frameIndex);
+    }
+
+    void ModelRenderSystem::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                              u8 frameIndex)
+    {
+        _visibilityResolvePass.AddPreEffectsPass(renderGraph, resources, _mainView, _mainViewWork,
+                                                 _assets->GetGeometryStorage(), *_scene, frameIndex);
+    }
+
+    void ModelRenderSystem::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                     u8 frameIndex)
+    {
+        _visibilityResolvePass.AddDiagnosticPass(renderGraph, resources, _mainView, _mainViewWork,
+                                                 _assets->GetGeometryStorage(), _assets->GetMaterialStorage(),
+                                                 *_scene, frameIndex);
+    }
+
+    void ModelRenderSystem::RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const
+    {
+        using Usage = Renderer::BufferPassUsage;
+        builder.Read(_mainViewWork.GetVisibilityRecords(0), Usage::COMPUTE);
+        builder.Read(_mainViewWork.GetVisibilityRecords(1), Usage::COMPUTE);
+        builder.Read(_scene->GetModelInstances().GetRecords().GetBuffer(), Usage::COMPUTE);
+    }
+
+    void ModelRenderSystem::BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet)
+    {
+        auto bind = [&descriptorSet](StringUtils::StringHash name, Renderer::BufferID buffer,
+                                     Renderer::BufferID& current) {
+            if (buffer == current)
+                return;
+            descriptorSet.Bind(name, buffer);
+            current = buffer;
+        };
+
+        bind("_queryModelVisibilityRecords0"_h, _mainViewWork.GetVisibilityRecords(0),
+             _pixelQueryBindings.visibilityRecords0);
+        bind("_queryModelVisibilityRecords1"_h, _mainViewWork.GetVisibilityRecords(1),
+             _pixelQueryBindings.visibilityRecords1);
+        bind("_queryModelInstances"_h, _scene->GetModelInstances().GetRecords().GetBuffer(),
+             _pixelQueryBindings.modelInstances);
     }
 
     RenderScenes::ModelInstanceHandle ModelRenderSystem::SetDiagnosticModel(RenderAssets::ModelHandle model,
                                                                             const vec3& worldBoundsCenter,
-                                                                            f32 worldBoundsRadius)
+                                                                            f32 worldBoundsRadius,
+                                                                            bool geometryGroupsEnabled)
     {
         const ModelLoading::ModelGeometryStorage& geometry = _assets->GetGeometryStorage();
         if (!geometry.HasModel(model) || worldBoundsRadius <= 0.0f)
@@ -100,6 +146,7 @@ namespace ModelRendering
         _diagnosticInstance = _scene->CreateModelInstance(desc);
         if (!_scene->IsPending(_diagnosticInstance))
             return RenderScenes::InvalidModelInstanceHandle();
+        _scene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
 
         // No temporal View buffers exist during diagnostic bring-up, so acknowledging these ranges publishes
         // the instance after its complete record is uploaded and before it can be consumed by this pass.

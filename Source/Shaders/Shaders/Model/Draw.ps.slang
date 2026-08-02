@@ -17,19 +17,19 @@ struct PSInput
 
 struct PSOutput
 {
-    uint2 visibilityBuffer : SV_Target0;
+    uint visibilityBuffer : SV_Target0;
 };
 
 [shader("fragment")]
 PSOutput main(PSInput input)
 {
     uint textureDataID = input.drawIDInstanceIDTextureDataIDInstanceRefID.z;
-    uint instanceRefID = input.drawIDInstanceIDTextureDataIDInstanceRefID.w;
+    uint visibilityRecordBase = input.drawIDInstanceIDTextureDataIDInstanceRefID.w;
 
     AlphaKeyDiscard(textureDataID, input.uv01.xy);
 
     PSOutput output;
-    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::ModelOpaque, instanceRefID, input.triangleID);
+    output.visibilityBuffer = PackLegacyModelVisibility(visibilityRecordBase, input.triangleID);
 
     return output;
 }

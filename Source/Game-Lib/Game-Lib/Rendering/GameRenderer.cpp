@@ -516,6 +516,8 @@ f32 GameRenderer::Render()
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
+    _modelRenderSystem->AddVisibilityPasses(&renderGraph, _resources, _frameIndex);
+
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
 
@@ -541,9 +543,11 @@ f32 GameRenderer::Render()
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
     _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddDiagnosticResolvePass(&renderGraph, _resources, _frameIndex);
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
@@ -552,7 +556,6 @@ f32 GameRenderer::Render()
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderSystem->AddPasses(&renderGraph, _resources, _frameIndex);
     _meshShaderSmoke->AddPass(&renderGraph, _resources);
 
     _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);
@@ -805,7 +808,7 @@ void GameRenderer::CreateRenderTargets()
     visibilityBufferDesc.debugName = "VisibilityBuffer";
     visibilityBufferDesc.dimensions = vec2(1.0f, 1.0f);
     visibilityBufferDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
-    visibilityBufferDesc.format = Renderer::ImageFormat::R32G32_UINT;
+    visibilityBufferDesc.format = Renderer::ImageFormat::R32_UINT;
     visibilityBufferDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
     visibilityBufferDesc.clearUInts = uvec4(0, 0, 0, 0);
 

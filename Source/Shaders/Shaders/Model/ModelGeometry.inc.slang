@@ -1,21 +1,5 @@
-#ifndef MODEL_DIAGNOSTIC_INCLUDED
-#define MODEL_DIAGNOSTIC_INCLUDED
-
-struct DiagnosticMeshletWork
-{
-    uint instanceIndex;
-    uint meshletIndex;
-    uint positionBase;
-    uint vertexAttributeBase;
-
-    uint meshletVertexIndexBase;
-    uint meshletTriangleBase;
-    uint colorSeed;
-    uint reserved;
-
-    float4 positionDecodeOffset;
-    float4 positionDecodeExtent;
-};
+#ifndef MODEL_GEOMETRY_INCLUDED
+#define MODEL_GEOMETRY_INCLUDED
 
 struct ModelInstanceRecord
 {
@@ -45,26 +29,27 @@ struct ModelMeshlet
     uint packedCounts;
 };
 
-#ifndef MODEL_DIAGNOSTIC_NO_RESOURCES
-[[vk::binding(0, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkOneSided0;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkTwoSided0;
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _modelInstances;
-[[vk::binding(3, PER_PASS)]] StructuredBuffer<ModelMeshlet> _modelMeshlets;
-[[vk::binding(4, PER_PASS)]] StructuredBuffer<uint2> _modelPositions;
-[[vk::binding(5, PER_PASS)]] StructuredBuffer<uint4> _modelVertexAttributes;
-[[vk::binding(6, PER_PASS)]] StructuredBuffer<uint> _modelMeshletVertexIndices;
-[[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _modelMeshletTriangles;
-[[vk::binding(8, PER_PASS)]] StructuredBuffer<uint> _modelWorkStats0;
-[[vk::binding(9, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkOneSided1;
-[[vk::binding(10, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkTwoSided1;
-[[vk::binding(11, PER_PASS)]] StructuredBuffer<uint> _modelWorkStats1;
-#endif
+uint ModelMeshletVertexCount(ModelMeshlet meshlet)
+{
+    return meshlet.packedCounts & 0xFFFFu;
+}
 
-float3 DecodePosition(uint2 packedPosition, DiagnosticMeshletWork work)
+uint ModelMeshletTriangleCount(ModelMeshlet meshlet)
+{
+    return meshlet.packedCounts >> 16u;
+}
+
+uint3 DecodeModelMeshletTriangle(uint packedTriangle)
+{
+    return uint3(packedTriangle & 0xFFu, (packedTriangle >> 8u) & 0xFFu,
+                 (packedTriangle >> 16u) & 0xFFu);
+}
+
+float3 DecodePosition(uint2 packedPosition, float3 decodeOffset, float3 decodeExtent)
 {
     uint3 quantized = uint3(packedPosition.x & 0xFFFFu, packedPosition.x >> 16u,
                             packedPosition.y & 0xFFFFu);
-    return work.positionDecodeOffset.xyz + (float3(quantized) / 65535.0f) * work.positionDecodeExtent.xyz;
+    return decodeOffset + (float3(quantized) / 65535.0f) * decodeExtent;
 }
 
 float3 DecodeOctahedralSnorm(uint packedNormal)
@@ -100,4 +85,4 @@ float3 SeedColor(uint seed)
     return 0.25f + 0.75f * float3(seed & 0xFFu, (seed >> 8u) & 0xFFu, (seed >> 16u) & 0xFFu) / 255.0f;
 }
 
-#endif // MODEL_DIAGNOSTIC_INCLUDED
+#endif // MODEL_GEOMETRY_INCLUDED

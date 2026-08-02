@@ -17,12 +17,13 @@ namespace ModelView
             _chunkArguments[frame] = Renderer::BufferID::Invalid();
             _statsBuffers[frame] = Renderer::BufferID::Invalid();
             _statsReadbacks[frame] = Renderer::BufferID::Invalid();
+            _visibilityRecords[frame] = Renderer::BufferID::Invalid();
             for (Renderer::BufferID& queue : _queues[frame])
                 queue = Renderer::BufferID::Invalid();
         }
         Renderer::BufferDesc desc;
         desc.name = "Model View Indirect Arguments";
-        desc.size = sizeof(u32) * 3 * MODEL_RASTER_CLASS_COUNT;
+        desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
         desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER |
                      Renderer::BufferUsage::TRANSFER_SOURCE | Renderer::BufferUsage::TRANSFER_DESTINATION;
         for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
@@ -33,12 +34,12 @@ namespace ModelView
             });
 
             desc.name = "Model View Chunk Indirect Arguments " + std::to_string(frame);
-            desc.size = sizeof(u32) * 3;
+            desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT;
             _chunkArguments[frame] =
                 _renderer->CreateAndFillBuffer(_chunkArguments[frame], desc, [](void* memory, size_t size) {
                     std::memset(memory, 0, size);
                 });
-            desc.size = sizeof(u32) * 3 * MODEL_RASTER_CLASS_COUNT;
+            desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
         }
 
         desc.name = "Model View Work Stats";
@@ -72,6 +73,8 @@ namespace ModelView
             for (Renderer::BufferID queue : _queues[frame])
                 if (queue != Renderer::BufferID::Invalid())
                     _renderer->QueueDestroyBuffer(queue);
+            if (_visibilityRecords[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_visibilityRecords[frame]);
             if (_chunkQueues[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_chunkQueues[frame]);
             _renderer->QueueDestroyBuffer(_chunkArguments[frame]);
@@ -88,7 +91,7 @@ namespace ModelView
 
         _queueCapacity = std::bit_ceil(meshletCount);
         Renderer::BufferDesc desc;
-        desc.size = sizeof(MeshletWork) * _queueCapacity;
+        desc.size = sizeof(u32) * _queueCapacity;
         desc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
         for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
         {
@@ -96,7 +99,11 @@ namespace ModelView
             desc.size = sizeof(MeshletChunk) * _queueCapacity;
             _chunkQueues[frame] = _renderer->CreateBuffer(_chunkQueues[frame], desc);
 
-            desc.size = sizeof(MeshletWork) * _queueCapacity;
+            desc.name = "Model Visibility Records " + std::to_string(frame);
+            desc.size = sizeof(VisibilityRecord) * _queueCapacity;
+            _visibilityRecords[frame] = _renderer->CreateBuffer(_visibilityRecords[frame], desc);
+
+            desc.size = sizeof(u32) * _queueCapacity;
             for (u32 rasterClass = 0; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
             {
                 desc.name = (rasterClass == 0 ? "Model View One Sided Queue " : "Model View Two Sided Queue ") +

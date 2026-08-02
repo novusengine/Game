@@ -931,7 +931,7 @@ void JoltDebugRenderer::CreatePipelines()
     pipelineDesc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
     pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
-    pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer
+    pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32_UINT; // Visibility buffer
 
     pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 

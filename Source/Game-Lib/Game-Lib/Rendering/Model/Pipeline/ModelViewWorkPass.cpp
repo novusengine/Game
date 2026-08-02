@@ -58,14 +58,6 @@ namespace ModelPipeline
         _cullDescriptorSet.Init(renderer);
         _finalizeDescriptorSet.RegisterPipeline(renderer, _finalizePipeline);
         _finalizeDescriptorSet.Init(renderer);
-        for (Renderer::BufferID& buffer : _expandBoundBuffers)
-            buffer = Renderer::BufferID::Invalid();
-        for (Renderer::BufferID& buffer : _expandFinalizeBoundBuffers)
-            buffer = Renderer::BufferID::Invalid();
-        for (Renderer::BufferID& buffer : _cullBoundBuffers)
-            buffer = Renderer::BufferID::Invalid();
-        for (Renderer::BufferID& buffer : _finalizeBoundBuffers)
-            buffer = Renderer::BufferID::Invalid();
     }
 
     bool ModelViewWorkPass::Bind(Renderer::DescriptorSet& descriptorSet, StringUtils::StringHash name,
@@ -88,10 +80,14 @@ namespace ModelPipeline
         const bool queuesRecreated = work.EnsureQueueCapacity(viewState.GetQueueCapacity());
         if (queuesRecreated)
         {
-            _expandBoundBuffers[11] = Renderer::BufferID::Invalid();
-            _expandBoundBuffers[13] = Renderer::BufferID::Invalid();
-            for (u32 binding : { 4u, 5u, 6u, 8u, 9u, 10u })
-                _cullBoundBuffers[binding] = Renderer::BufferID::Invalid();
+            for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
+            {
+                _expandBindings.frames[frame].chunkQueue = Renderer::BufferID::Invalid();
+                _cullBindings.frames[frame].chunkQueue = Renderer::BufferID::Invalid();
+                _cullBindings.frames[frame].oneSidedQueue = Renderer::BufferID::Invalid();
+                _cullBindings.frames[frame].twoSidedQueue = Renderer::BufferID::Invalid();
+                _cullBindings.frames[frame].visibilityRecords = Renderer::BufferID::Invalid();
+            }
         }
 
         bool bindingsChanged = false;
@@ -107,70 +103,78 @@ namespace ModelPipeline
             return _descriptorWarmupFrames == 0;
         };
 
-        bind(_expandDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _expandBoundBuffers[11]);
-        bind(_expandDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _expandBoundBuffers[12]);
-        bind(_expandDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _expandBoundBuffers[13]);
-        bind(_expandDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _expandBoundBuffers[14]);
+        bind(_expandDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _expandBindings.frames[0].chunkQueue);
+        bind(_expandDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _expandBindings.frames[0].workStats);
+        bind(_expandDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _expandBindings.frames[1].chunkQueue);
+        bind(_expandDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _expandBindings.frames[1].workStats);
 
         bind(_expandFinalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0),
-             _expandFinalizeBoundBuffers[0]);
+             _expandFinalizeBindings[0].workStats);
         bind(_expandFinalizeDescriptorSet, "_chunkArguments0"_h, work.GetChunkArguments(0),
-             _expandFinalizeBoundBuffers[1]);
+             _expandFinalizeBindings[0].chunkArguments);
         bind(_expandFinalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1),
-             _expandFinalizeBoundBuffers[2]);
+             _expandFinalizeBindings[1].workStats);
         bind(_expandFinalizeDescriptorSet, "_chunkArguments1"_h, work.GetChunkArguments(1),
-             _expandFinalizeBoundBuffers[3]);
+             _expandFinalizeBindings[1].chunkArguments);
 
-        bind(_cullDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _cullBoundBuffers[4]);
-        bind(_cullDescriptorSet, "_oneSidedQueue0"_h, work.GetQueue(0, 0), _cullBoundBuffers[5]);
-        bind(_cullDescriptorSet, "_twoSidedQueue0"_h, work.GetQueue(1, 0), _cullBoundBuffers[6]);
-        bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBoundBuffers[7]);
-        bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBoundBuffers[8]);
-        bind(_cullDescriptorSet, "_oneSidedQueue1"_h, work.GetQueue(0, 1), _cullBoundBuffers[9]);
-        bind(_cullDescriptorSet, "_twoSidedQueue1"_h, work.GetQueue(1, 1), _cullBoundBuffers[10]);
-        bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBoundBuffers[11]);
+        bind(_cullDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _cullBindings.frames[0].chunkQueue);
+        bind(_cullDescriptorSet, "_oneSidedQueue0"_h, work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, 0),
+             _cullBindings.frames[0].oneSidedQueue);
+        bind(_cullDescriptorSet, "_twoSidedQueue0"_h, work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, 0),
+             _cullBindings.frames[0].twoSidedQueue);
+        bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBindings.frames[0].workStats);
+        bind(_cullDescriptorSet, "_visibilityRecords0"_h, work.GetVisibilityRecords(0),
+             _cullBindings.frames[0].visibilityRecords);
+        bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBindings.frames[1].chunkQueue);
+        bind(_cullDescriptorSet, "_oneSidedQueue1"_h, work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, 1),
+             _cullBindings.frames[1].oneSidedQueue);
+        bind(_cullDescriptorSet, "_twoSidedQueue1"_h, work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, 1),
+             _cullBindings.frames[1].twoSidedQueue);
+        bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBindings.frames[1].workStats);
+        bind(_cullDescriptorSet, "_visibilityRecords1"_h, work.GetVisibilityRecords(1),
+             _cullBindings.frames[1].visibilityRecords);
 
-        bind(_finalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _finalizeBoundBuffers[0]);
-        bind(_finalizeDescriptorSet, "_indirectArguments0"_h, work.GetArguments(0), _finalizeBoundBuffers[1]);
-        bind(_finalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _finalizeBoundBuffers[2]);
-        bind(_finalizeDescriptorSet, "_indirectArguments1"_h, work.GetArguments(1), _finalizeBoundBuffers[3]);
+        bind(_finalizeDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _finalizeBindings[0].workStats);
+        bind(_finalizeDescriptorSet, "_indirectArguments0"_h, work.GetArguments(0),
+             _finalizeBindings[0].indirectArguments);
+        bind(_finalizeDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _finalizeBindings[1].workStats);
+        bind(_finalizeDescriptorSet, "_indirectArguments1"_h, work.GetArguments(1),
+             _finalizeBindings[1].indirectArguments);
 
         if (viewState.GetInputs().IsEmpty())
             return finish();
 
-        u32 binding = 0;
         bind(_expandDescriptorSet, "_viewInputs"_h, viewState.GetInputs().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.viewInputs);
         bind(_expandDescriptorSet, "_lodHistory"_h, viewState.GetLODHistory().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.lodHistory);
         bind(_expandDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.modelInstances);
         bind(_expandDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.modelRecords);
         bind(_expandDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.modelMeshes);
         bind(_expandDescriptorSet, "_modelLODs"_h, geometry.GetMeshLODs().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.modelLODs);
         bind(_expandDescriptorSet, "_modelSubmeshes"_h, geometry.GetSubmeshes().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.modelSubmeshes);
         bind(_expandDescriptorSet, "_geometryGroupMasks"_h, scene.GetGeometryGroupMasks().GetMasks().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.geometryGroupMasks);
         bind(_expandDescriptorSet, "_materialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.materialTable);
         bind(_expandDescriptorSet, "_materialInstances"_h, materials.GetMaterialInstances().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.materialInstances);
         bind(_expandDescriptorSet, "_materials"_h, materials.GetMaterials().GetBuffer(),
-             _expandBoundBuffers[binding++]);
+             _expandBindings.materials);
 
-        binding = 0;
         bind(_cullDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
-             _cullBoundBuffers[binding++]);
+             _cullBindings.modelInstances);
         bind(_cullDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
-             _cullBoundBuffers[binding++]);
+             _cullBindings.modelRecords);
         bind(_cullDescriptorSet, "_modelMeshes"_h, geometry.GetMeshes().GetBuffer(),
-             _cullBoundBuffers[binding++]);
+             _cullBindings.modelMeshes);
         bind(_cullDescriptorSet, "_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(),
-             _cullBoundBuffers[binding++]);
+             _cullBindings.modelMeshlets);
         return finish();
     }
 
@@ -195,6 +199,7 @@ namespace ModelPipeline
             Renderer::BufferMutableResource chunkArguments;
             Renderer::BufferMutableResource oneSided;
             Renderer::BufferMutableResource twoSided;
+            Renderer::BufferMutableResource visibilityRecords;
             Renderer::BufferMutableResource stats;
             Renderer::BufferMutableResource arguments;
             Renderer::BufferMutableResource readback;
@@ -208,6 +213,7 @@ namespace ModelPipeline
         renderGraph->AddPass<Data>("Model View Work",
             [&resources, &viewState, &work, &geometry, &materials, &scene, frameIndex, inputCount, this](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
+                const u8 inactiveFrameIndex = (frameIndex + 1u) % ModelView::MODEL_VIEW_FRAME_COUNT;
                 if (inputCount > 0)
                 {
                     builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);
@@ -225,13 +231,19 @@ namespace ModelPipeline
                     builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                     data.chunks = builder.Write(work.GetChunkQueue(frameIndex), Usage::COMPUTE);
                     data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE);
-                    data.oneSided = builder.Write(work.GetQueue(0, frameIndex), Usage::COMPUTE);
-                    data.twoSided = builder.Write(work.GetQueue(1, frameIndex), Usage::COMPUTE);
+                    data.oneSided =
+                        builder.Write(work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, frameIndex), Usage::COMPUTE);
+                    data.twoSided =
+                        builder.Write(work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, frameIndex), Usage::COMPUTE);
+                    data.visibilityRecords = builder.Write(work.GetVisibilityRecords(frameIndex), Usage::COMPUTE);
                     // Both generations are RW shader bindings; resourceIndex selects the active generation.
-                    builder.Write(work.GetChunkQueue(!frameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetChunkArguments(!frameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetQueue(0, !frameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetQueue(1, !frameIndex), Usage::COMPUTE);
+                    builder.Write(work.GetChunkQueue(inactiveFrameIndex), Usage::COMPUTE);
+                    builder.Write(work.GetChunkArguments(inactiveFrameIndex), Usage::COMPUTE);
+                    builder.Write(work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, inactiveFrameIndex),
+                                  Usage::COMPUTE);
+                    builder.Write(work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, inactiveFrameIndex),
+                                  Usage::COMPUTE);
+                    builder.Write(work.GetVisibilityRecords(inactiveFrameIndex), Usage::COMPUTE);
                     data.globalSet = builder.Use(resources.globalDescriptorSet);
                     data.expandSet = builder.Use(_expandDescriptorSet);
                     data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
@@ -330,7 +342,8 @@ namespace ModelPipeline
                 commandList.BufferBarrier(data.stats, Renderer::BufferPassUsage::COMPUTE);
                 commandList.CopyBuffer(data.readback, 0, data.stats, 0, sizeof(ModelView::WorkStats));
                 commandList.CopyBuffer(data.readback, sizeof(ModelView::WorkStats), data.arguments, 0,
-                                       sizeof(u32) * ModelView::MODEL_RASTER_CLASS_COUNT * 3);
+                                       sizeof(u32) * ModelView::MODEL_RASTER_CLASS_COUNT *
+                                           ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
             });
     }
 } // namespace ModelPipeline

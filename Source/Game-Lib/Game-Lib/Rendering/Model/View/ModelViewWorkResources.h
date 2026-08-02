@@ -16,7 +16,7 @@ namespace ModelView
     class ModelViewWorkResources
     {
       public:
-        static constexpr u32 FRAME_COUNT = 2;
+        static constexpr u32 FRAME_COUNT = MODEL_VIEW_FRAME_COUNT;
         explicit ModelViewWorkResources(Renderer::Renderer* renderer);
         ~ModelViewWorkResources();
 
@@ -25,6 +25,7 @@ namespace ModelView
         void MarkSubmitted(u8 frameIndex) { _hasReadback[frameIndex] = true; }
 
         Renderer::BufferID GetQueue(u32 rasterClass, u8 frameIndex) const { return _queues[frameIndex][rasterClass]; }
+        Renderer::BufferID GetVisibilityRecords(u8 frameIndex) const { return _visibilityRecords[frameIndex]; }
         Renderer::BufferID GetChunkQueue(u8 frameIndex) const { return _chunkQueues[frameIndex]; }
         Renderer::BufferID GetChunkArguments(u8 frameIndex) const { return _chunkArguments[frameIndex]; }
         Renderer::BufferID GetArguments(u8 frameIndex) const { return _arguments[frameIndex]; }
@@ -38,13 +39,14 @@ namespace ModelView
       private:
         Renderer::Renderer* _renderer = nullptr;
         Renderer::BufferID _queues[FRAME_COUNT][MODEL_RASTER_CLASS_COUNT] = {};
+        Renderer::BufferID _visibilityRecords[FRAME_COUNT] = {};
         Renderer::BufferID _chunkQueues[FRAME_COUNT] = {};
         Renderer::BufferID _chunkArguments[FRAME_COUNT] = {};
         Renderer::BufferID _arguments[FRAME_COUNT] = {};
         Renderer::BufferID _statsBuffers[FRAME_COUNT] = {};
         Renderer::BufferID _statsReadbacks[FRAME_COUNT] = {};
         WorkStats _stats;
-        u32 _argumentSnapshot[MODEL_RASTER_CLASS_COUNT * 3] = {};
+        u32 _argumentSnapshot[MODEL_RASTER_CLASS_COUNT * MODEL_DISPATCH_ARGUMENT_COUNT] = {};
         u32 _queueCapacity = 0;
         u32 _queueGeneration = 0;
         bool _hasReadback[FRAME_COUNT] = {};

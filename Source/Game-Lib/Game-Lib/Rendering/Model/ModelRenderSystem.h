@@ -1,7 +1,8 @@
 #pragma once
 
-#include "Game-Lib/Rendering/Model/Pipeline/ModelDiagnosticPass.h"
 #include "Game-Lib/Rendering/Model/Pipeline/ModelViewWorkPass.h"
+#include "Game-Lib/Rendering/Model/Pipeline/ModelVisibilityPass.h"
+#include "Game-Lib/Rendering/Model/Pipeline/ModelVisibilityResolvePass.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewState.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
@@ -22,7 +23,9 @@ namespace RenderScenes
 
 namespace Renderer
 {
+    class DescriptorSet;
     class RenderGraph;
+    class RenderGraphBuilder;
     class Renderer;
 }
 
@@ -39,17 +42,29 @@ namespace ModelRendering
 
         void Update();
         void Upload();
-        void AddPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddVisibilityPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const;
+        void BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet);
 
         // TODO: Remove this development-only selection hook after GPU work expansion replaces diagnostic work.
         RenderScenes::ModelInstanceHandle SetDiagnosticModel(RenderAssets::ModelHandle model,
-                                                             const vec3& worldBoundsCenter, f32 worldBoundsRadius);
+                                                             const vec3& worldBoundsCenter, f32 worldBoundsRadius,
+                                                             bool geometryGroupsEnabled = true);
         const ModelView::WorkStats& GetDiagnosticStats() const
         {
             return _mainViewWork.GetStats();
         }
 
       private:
+        struct PixelQueryBindings
+        {
+            Renderer::BufferID visibilityRecords0 = Renderer::BufferID::Invalid();
+            Renderer::BufferID visibilityRecords1 = Renderer::BufferID::Invalid();
+            Renderer::BufferID modelInstances = Renderer::BufferID::Invalid();
+        };
+
         Renderer::Renderer* _renderer = nullptr;
         RenderAssets::RenderAssetResources* _assets = nullptr;
         RenderScenes::RenderScene* _scene = nullptr;
@@ -57,10 +72,12 @@ namespace ModelRendering
         ModelView::ModelViewState _mainViewState;
         ModelView::ModelViewWorkResources _mainViewWork;
         ModelPipeline::ModelViewWorkPass _viewWorkPass;
-        ModelPipeline::ModelDiagnosticPass _diagnosticPass;
+        ModelPipeline::ModelVisibilityPass _visibilityPass;
+        ModelPipeline::ModelVisibilityResolvePass _visibilityResolvePass;
         RenderScenes::ModelInstanceHandle _diagnosticInstance = RenderScenes::InvalidModelInstanceHandle();
         i32 _lastForcedLOD = -1;
         u32 _handledTemporalReset = 0;
         bool _reportedQueueOverflow = false;
+        PixelQueryBindings _pixelQueryBindings;
     };
 } // namespace ModelRendering

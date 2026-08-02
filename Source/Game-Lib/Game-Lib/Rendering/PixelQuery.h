@@ -26,6 +26,8 @@ public:
     public:
         u32 type = 0;
         u32 value = 0;
+        u32 generation = 0;
+        u32 reserved = 0;
     };
 
 public:
@@ -35,6 +37,7 @@ public:
     void AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     u32 PerformQuery(uvec2 pixelCoords);
+    u32 PerformDiagnosticQuery(uvec2 pixelCoords);
     bool GetQueryResult(u32 token, PixelQuery::PixelData& pixelData);
     bool FreeToken(u32 token);
 
@@ -54,6 +57,7 @@ private:
     public:
         uvec2 pixelCoords[MaxQueryRequestPerFrame];
         u32 numRequests;
+        u32 resourceIndex;
     };
 
     u32 _frameIndex = 0;
@@ -61,6 +65,7 @@ private:
 
     std::vector<QueryRequest> _requests[2];
     std::set<u32> _requestTokens[2];
+    std::set<u32> _diagnosticTokens;
 
     robin_hood::unordered_map<u32, PixelData> _results;
 

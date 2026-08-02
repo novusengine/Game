@@ -81,7 +81,8 @@ VSOutput main(VSInput input)
 #endif
 
 #if !EDITOR_PASS
-    output.drawIDInstanceIDTextureDataIDInstanceRefID = int4(drawID, instanceID, instanceRef.extraID, instanceRefID);
+    output.drawIDInstanceIDTextureDataIDInstanceRefID = int4(drawID, instanceID, instanceRef.extraID,
+                                                              instanceRef.padding);
 
     float4 UVs = vertex.uv01;
 

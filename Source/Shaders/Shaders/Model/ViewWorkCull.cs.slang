@@ -1,7 +1,5 @@
 #include "DescriptorSet/Global.inc.slang"
-#define MODEL_DIAGNOSTIC_NO_RESOURCES
-#include "Model/ModelDiagnostic.inc.slang"
-#include "Model/ModelViewWork.inc.slang"
+#include "Model/ModelVisibility.inc.slang"
 
 struct Constants
 {
@@ -16,13 +14,15 @@ struct Constants
 [[vk::binding(2, PER_PASS)]] StructuredBuffer<ModelRecord> _modelRecords;
 [[vk::binding(3, PER_PASS)]] StructuredBuffer<ModelMesh> _modelMeshes;
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<ModelMeshlet> _modelMeshlets;
-[[vk::binding(5, PER_PASS)]] RWStructuredBuffer<DiagnosticMeshletWork> _oneSidedQueue0;
-[[vk::binding(6, PER_PASS)]] RWStructuredBuffer<DiagnosticMeshletWork> _twoSidedQueue0;
+[[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _oneSidedQueue0;
+[[vk::binding(6, PER_PASS)]] RWStructuredBuffer<uint> _twoSidedQueue0;
 [[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
 [[vk::binding(8, PER_PASS)]] StructuredBuffer<ModelMeshletChunk> _chunkQueue1;
-[[vk::binding(9, PER_PASS)]] RWStructuredBuffer<DiagnosticMeshletWork> _oneSidedQueue1;
-[[vk::binding(10, PER_PASS)]] RWStructuredBuffer<DiagnosticMeshletWork> _twoSidedQueue1;
+[[vk::binding(9, PER_PASS)]] RWStructuredBuffer<uint> _oneSidedQueue1;
+[[vk::binding(10, PER_PASS)]] RWStructuredBuffer<uint> _twoSidedQueue1;
 [[vk::binding(11, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
+[[vk::binding(12, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords0;
+[[vk::binding(13, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords1;
 
 void AddStat(uint index, uint value)
 {
@@ -41,44 +41,43 @@ ModelMeshletChunk LoadChunk(uint index)
     return _constants.resourceIndex == 0u ? _chunkQueue0[index] : _chunkQueue1[index];
 }
 
-void StoreWork(uint rasterClass, uint index, DiagnosticMeshletWork work)
+void StoreWork(uint rasterClass, uint index, uint recordID)
 {
     if (_constants.resourceIndex == 0u)
     {
-        if (rasterClass == 0u) _oneSidedQueue0[index] = work;
-        else _twoSidedQueue0[index] = work;
+        if (rasterClass == MODEL_RASTER_ONE_SIDED) _oneSidedQueue0[index] = recordID;
+        else _twoSidedQueue0[index] = recordID;
     }
     else
     {
-        if (rasterClass == 0u) _oneSidedQueue1[index] = work;
-        else _twoSidedQueue1[index] = work;
+        if (rasterClass == MODEL_RASTER_ONE_SIDED) _oneSidedQueue1[index] = recordID;
+        else _twoSidedQueue1[index] = recordID;
     }
 }
 
-uint MixSeed(uint seed, uint value)
+void StoreVisibilityRecord(uint index, ModelVisibilityRecord record)
 {
-    seed ^= value + 0x9E3779B9u + (seed << 6u) + (seed >> 2u);
-    seed ^= seed >> 16u;
-    seed *= 0x7FEB352Du;
-    return seed ^ (seed >> 15u);
+    if (_constants.resourceIndex == 0u) _visibilityRecords0[index] = record;
+    else _visibilityRecords1[index] = record;
 }
 
 [shader("compute")]
-[numthreads(32, 1, 1)]
+[numthreads(MODEL_CHUNK_MESHLET_COUNT, 1, 1)]
 void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
 {
     ModelMeshletChunk chunk = LoadChunk(GroupID.x);
-    uint meshletCount = chunk.packedCountRasterAndLOD & 0x3Fu;
+    uint meshletCount = chunk.packedCountRasterAndLOD & MODEL_CHUNK_MESHLET_COUNT_MASK;
     if (GroupThreadID.x == 0u)
     {
-        AddStat(4u, 1u);
-        AddStat(5u, meshletCount);
+        AddStat(MODEL_WORK_STAT_TESTED_CHUNKS, 1u);
+        AddStat(MODEL_WORK_STAT_TESTED_MESHLETS, meshletCount);
     }
 
     uint meshletIndex = chunk.meshletBase + GroupThreadID.x;
     ModelInstanceRecord instance = _modelInstances[chunk.instanceIndex];
     Camera camera = _cameras[_constants.viewIndex];
-    uint rasterClass = (chunk.packedCountRasterAndLOD >> 6u) & 0x1u;
+    uint rasterClass =
+        (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_RASTER_CLASS_SHIFT) & MODEL_CHUNK_RASTER_CLASS_MASK;
     bool visible = GroupThreadID.x < meshletCount;
     ModelMeshlet meshlet;
     if (visible)
@@ -87,50 +86,53 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
         float4 sphere = TransformSphere(meshlet.boundsCenter, meshlet.boundsRadius, instance.currentWorld);
         if (!ModelSphereInsideFrustum(camera, sphere))
         {
-            AddStat(6u, 1u);
+            AddStat(MODEL_WORK_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
             visible = false;
         }
-        else if (rasterClass == 0u && ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter,
+        else if (rasterClass == MODEL_RASTER_ONE_SIDED &&
+                 ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter,
                                                           meshlet.boundsRadius, instance.currentWorld,
                                                           camera.eyePosition.xyz))
         {
-            AddStat(7u, 1u);
+            AddStat(MODEL_WORK_STAT_REJECTED_CONE_MESHLETS, 1u);
             visible = false;
         }
     }
 
     uint visibleCount = WaveActiveCountBits(visible);
     uint waveOffset = 0u;
-    uint countIndex = rasterClass == 0u ? 9u : 10u;
+    uint recordOffset = 0u;
+    uint committedCount = 0u;
+    uint countIndex = rasterClass == MODEL_RASTER_ONE_SIDED
+                          ? MODEL_WORK_STAT_ONE_SIDED_MESHLETS
+                          : MODEL_WORK_STAT_TWO_SIDED_MESHLETS;
     if (WaveIsFirstLane())
     {
         AddStat(countIndex, visibleCount, waveOffset);
-        uint committedCount = min(visibleCount, _constants.queueCapacity - min(waveOffset, _constants.queueCapacity));
-        if (committedCount < visibleCount)
-            AddStat(11u, visibleCount - committedCount);
+        AddStat(MODEL_WORK_STAT_VISIBILITY_RECORDS, visibleCount, recordOffset);
+        uint queueCommitted = min(visibleCount, _constants.queueCapacity - min(waveOffset, _constants.queueCapacity));
+        uint recordCommitted = min(visibleCount, _constants.queueCapacity - min(recordOffset, _constants.queueCapacity));
+        committedCount = min(queueCommitted, recordCommitted);
+        if (queueCommitted < visibleCount)
+            AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, visibleCount - queueCommitted);
+        if (recordCommitted < visibleCount)
+            AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, visibleCount - recordCommitted);
     }
     waveOffset = WaveReadLaneFirst(waveOffset);
+    recordOffset = WaveReadLaneFirst(recordOffset);
+    committedCount = WaveReadLaneFirst(committedCount);
 
     if (!visible)
         return;
-    uint queueIndex = waveOffset + WavePrefixCountBits(visible);
-    if (queueIndex >= _constants.queueCapacity)
+    uint waveIndex = WavePrefixCountBits(visible);
+    if (waveIndex >= committedCount)
         return;
 
     ModelRecord model = _modelRecords[instance.modelIndex];
-    uint localLOD = chunk.packedCountRasterAndLOD >> 8u;
-    DiagnosticMeshletWork work;
-    work.instanceIndex = chunk.instanceIndex;
-    work.meshletIndex = meshletIndex;
-    work.positionBase = chunk.positionBase;
-    work.vertexAttributeBase = chunk.vertexAttributeBase;
-    work.meshletVertexIndexBase = chunk.meshletVertexIndexBase;
-    work.meshletTriangleBase = chunk.meshletTriangleBase;
-    work.colorSeed = MixSeed(MixSeed(MixSeed(MixSeed(0xA511E9B3u, instance.modelIndex), chunk.meshIndex),
-                                     localLOD), meshletIndex);
-    work.reserved = localLOD;
-    ModelMesh mesh = _modelMeshes[model.meshBase + chunk.meshIndex];
-    work.positionDecodeOffset = float4(mesh.positionDecodeOffset, 0.0f);
-    work.positionDecodeExtent = float4(mesh.positionDecodeExtent, 0.0f);
-    StoreWork(rasterClass, queueIndex, work);
+    uint localLOD = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_LOD_SHIFT) & MODEL_CHUNK_LOD_MASK;
+    uint submeshIndex = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_SUBMESH_SHIFT) & MODEL_CHUNK_SUBMESH_MASK;
+    uint recordID = recordOffset + waveIndex;
+    StoreVisibilityRecord(recordID, PackModelVisibilityRecord(chunk.instanceIndex, chunk.meshIndex, localLOD,
+                                                               submeshIndex, meshletIndex - model.meshletBase));
+    StoreWork(rasterClass, waveOffset + waveIndex, recordID);
 }

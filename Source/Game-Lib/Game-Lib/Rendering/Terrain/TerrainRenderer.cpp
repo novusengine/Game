@@ -1217,7 +1217,7 @@ void TerrainRenderer::CreatePipelines()
         pipelineDesc.states.rasterizerState.frontFaceMode = Renderer::Settings::FRONT_FACE_STATE;
 
         // Render targets
-        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32G32_UINT; // Visibility buffer format
+        pipelineDesc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32_UINT; // Visibility buffer format
         pipelineDesc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
 
         _drawPipeline = _renderer->CreatePipeline(pipelineDesc);

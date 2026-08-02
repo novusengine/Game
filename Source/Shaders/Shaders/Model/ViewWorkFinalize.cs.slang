@@ -1,3 +1,5 @@
+#include "Model/ModelViewWork.inc.slang"
+
 struct Constants
 {
     uint viewIndex;
@@ -25,26 +27,46 @@ void main()
     uint twoSidedCount;
     if (_constants.resourceIndex == 0u)
     {
-        _workStats0[0] = _constants.inputCount;
-        oneSidedCount = min(_workStats0[9], _constants.queueCapacity);
-        twoSidedCount = min(_workStats0[10], _constants.queueCapacity);
-        _indirectArguments0[0] = min(oneSidedCount, 1024u);
-        _indirectArguments0[1] = oneSidedCount == 0u ? 0u : (oneSidedCount + 1023u) / 1024u;
-        _indirectArguments0[2] = oneSidedCount == 0u ? 0u : 1u;
-        _indirectArguments0[3] = min(twoSidedCount, 1024u);
-        _indirectArguments0[4] = twoSidedCount == 0u ? 0u : (twoSidedCount + 1023u) / 1024u;
-        _indirectArguments0[5] = twoSidedCount == 0u ? 0u : 1u;
+        _workStats0[MODEL_WORK_STAT_SELECTED_INSTANCES] = _constants.inputCount;
+        _workStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS] =
+            min(_workStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
+        oneSidedCount = min(_workStats0[MODEL_WORK_STAT_ONE_SIDED_MESHLETS], _constants.queueCapacity);
+        twoSidedCount = min(_workStats0[MODEL_WORK_STAT_TWO_SIDED_MESHLETS], _constants.queueCapacity);
+        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
+            min(oneSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
+            oneSidedCount == 0u ? 0u : (oneSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
+                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
+            oneSidedCount == 0u ? 0u : 1u;
+        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
+            min(twoSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
+            twoSidedCount == 0u ? 0u : (twoSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
+                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
+            twoSidedCount == 0u ? 0u : 1u;
     }
     else
     {
-        _workStats1[0] = _constants.inputCount;
-        oneSidedCount = min(_workStats1[9], _constants.queueCapacity);
-        twoSidedCount = min(_workStats1[10], _constants.queueCapacity);
-        _indirectArguments1[0] = min(oneSidedCount, 1024u);
-        _indirectArguments1[1] = oneSidedCount == 0u ? 0u : (oneSidedCount + 1023u) / 1024u;
-        _indirectArguments1[2] = oneSidedCount == 0u ? 0u : 1u;
-        _indirectArguments1[3] = min(twoSidedCount, 1024u);
-        _indirectArguments1[4] = twoSidedCount == 0u ? 0u : (twoSidedCount + 1023u) / 1024u;
-        _indirectArguments1[5] = twoSidedCount == 0u ? 0u : 1u;
+        _workStats1[MODEL_WORK_STAT_SELECTED_INSTANCES] = _constants.inputCount;
+        _workStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS] =
+            min(_workStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
+        oneSidedCount = min(_workStats1[MODEL_WORK_STAT_ONE_SIDED_MESHLETS], _constants.queueCapacity);
+        twoSidedCount = min(_workStats1[MODEL_WORK_STAT_TWO_SIDED_MESHLETS], _constants.queueCapacity);
+        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
+            min(oneSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
+            oneSidedCount == 0u ? 0u : (oneSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
+                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
+            oneSidedCount == 0u ? 0u : 1u;
+        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
+            min(twoSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
+            twoSidedCount == 0u ? 0u : (twoSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
+                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
+            twoSidedCount == 0u ? 0u : 1u;
     }
 }

@@ -11,6 +11,7 @@
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/PixelQuery.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -279,10 +280,21 @@ namespace Scripting::Asset
         const RenderAssets::ModelHandle model(zenith->CheckVal<u32>(1));
         const vec3 worldBoundsCenter = zenith->CheckVal<vec3>(2);
         const f32 worldBoundsRadius = zenith->CheckVal<f32>(3);
+        // TODO: Remove this optional geometry-group state with the temporary diagnostic model hook.
+        const bool geometryGroupsEnabled = zenith->GetTop() < 4 || zenith->CheckVal<bool>(4);
         const RenderScenes::ModelInstanceHandle instance =
             ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->SetDiagnosticModel(
-                model, worldBoundsCenter, worldBoundsRadius);
+                model, worldBoundsCenter, worldBoundsRadius, geometryGroupsEnabled);
         zenith->Push(static_cast<RenderScenes::ModelInstanceHandle::type>(instance));
+        return 1;
+    }
+
+    i32 AssetHandler::QueryRenderModelPixel(Zenith* zenith)
+    {
+        const u32 x = zenith->CheckVal<u32>(1);
+        const u32 y = zenith->CheckVal<u32>(2);
+        const u32 token = ServiceLocator::GetGameRenderer()->GetPixelQuery()->PerformDiagnosticQuery(uvec2(x, y));
+        zenith->Push(token);
         return 1;
     }
 

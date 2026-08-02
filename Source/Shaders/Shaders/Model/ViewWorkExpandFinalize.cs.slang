@@ -1,3 +1,5 @@
+#include "Model/ModelViewWork.inc.slang"
+
 struct Constants
 {
     uint queueCapacity;
@@ -14,18 +16,20 @@ struct Constants
 [numthreads(1, 1, 1)]
 void main()
 {
-    uint count = min(_constants.resourceIndex == 0u ? _workStats0[3] : _workStats1[3],
+    uint count = min(_constants.resourceIndex == 0u
+                         ? _workStats0[MODEL_WORK_STAT_EXPANDED_CHUNKS]
+                         : _workStats1[MODEL_WORK_STAT_EXPANDED_CHUNKS],
                      _constants.queueCapacity);
     if (_constants.resourceIndex == 0u)
     {
-        _chunkArguments0[0] = count;
-        _chunkArguments0[1] = count == 0u ? 0u : 1u;
-        _chunkArguments0[2] = count == 0u ? 0u : 1u;
+        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_X] = count;
+        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u : 1u;
+        _chunkArguments0[MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
     }
     else
     {
-        _chunkArguments1[0] = count;
-        _chunkArguments1[1] = count == 0u ? 0u : 1u;
-        _chunkArguments1[2] = count == 0u ? 0u : 1u;
+        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_X] = count;
+        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u : 1u;
+        _chunkArguments1[MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
     }
 }

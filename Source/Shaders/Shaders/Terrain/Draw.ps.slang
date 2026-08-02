@@ -14,7 +14,7 @@ struct PSInput
 
 struct PSOutput
 {
-    uint2 visibilityBuffer : SV_Target0;
+    uint visibilityBuffer : SV_Target0;
 };
 
 [shader("fragment")]
@@ -22,6 +22,6 @@ PSOutput main(PSInput input)
 {
     PSOutput output;
 
-    output.visibilityBuffer = PackVisibilityBuffer(ObjectType::Terrain, input.instanceID, input.triangleID);
+    output.visibilityBuffer = PackTerrainVisibility(input.instanceID, input.triangleID);
     return output;
 }

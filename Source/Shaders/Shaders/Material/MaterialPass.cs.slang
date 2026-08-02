@@ -9,6 +9,7 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Include/Editor.inc.slang"
 #include "Include/Lighting.inc.slang"
 #include "Include/VisibilityBuffers.inc.slang"
+#include "Include/TypedVisibility.inc.slang"
 #include "Light/LightShared.inc.slang"
 #include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
@@ -312,7 +313,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint2 vBufferData = LoadVisibilityBuffer(pixelPos);
+    uint vBufferData = LoadVisibilityBuffer(pixelPos);
+    // Model visibility is reconstructed by the typed diagnostic resolve until the production material path lands.
+    if (IsModelVisibility(vBufferData))
+    {
+        _resolvedColor[pixelPos] = float4(0, 0, 0, 1);
+        return;
+    }
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
 #if DEBUG_ID != 0
@@ -355,8 +362,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
     else if (vBuffer.typeID == ObjectType::JoltDebug)
     {
-        // These are passthrough and only write a color packed into vBufferData.y
-        color = PackedUnormsToFloat4(vBufferData.y);
+        color = DecodeJoltDebugColor(vBufferData);
     }
     else if (vBuffer.typeID == ObjectType::Terrain)
     {

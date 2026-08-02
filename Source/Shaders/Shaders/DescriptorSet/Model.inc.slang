@@ -21,6 +21,7 @@
 [[vk::binding(10, MODEL)]] StructuredBuffer<uint> _modelIndices;
 [[vk::binding(11, MODEL)]] StructuredBuffer<ModelTextureUnit> _modelTextureUnits;
 [[vk::binding(12, MODEL)]] SamplerState _samplers[MAX_MODEL_SAMPLERS];
-[[vk::binding(13, MODEL)]] Texture2D<float4> _modelTextures[]; // IMPORTANT: This has to be the last element in this set!
+[[vk::binding(13, MODEL)]] StructuredBuffer<LegacyModelVisibilityRecord> _legacyModelVisibilityRecords;
+[[vk::binding(14, MODEL)]] Texture2D<float4> _modelTextures[]; // IMPORTANT: This has to be the last element in this set!
 
 #endif // MODEL_SET_INCLUDED

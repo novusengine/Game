@@ -2,6 +2,7 @@
 #include "DescriptorSet/Global.inc.slang"
 
 #include "Include/Common.inc.slang"
+#include "Include/TypedVisibility.inc.slang"
 #include "Include/VisibilityBuffers.inc.slang"
 
 struct Constants
@@ -25,7 +26,12 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint2 vBufferData = LoadVisibilityBuffer(pixelPos);
+    uint vBufferData = LoadVisibilityBuffer(pixelPos);
+    // Model V2 pixels are reconstructed by the typed-visibility pre-effects pass.
+    if (IsModelVisibility(vBufferData))
+    {
+        return;
+    }
     const VisibilityBuffer vBuffer = UnpackVisibilityBuffer(vBufferData);
 
     PixelVertexData pixelVertexData = GetPixelVertexData(pixelPos, vBuffer, 0, _constants.renderInfo.xy);

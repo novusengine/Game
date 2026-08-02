@@ -1,7 +1,6 @@
 #include "DescriptorSet/Global.inc.slang"
-#define MODEL_DIAGNOSTIC_NO_RESOURCES
-#include "Model/ModelDiagnostic.inc.slang"
 #include "Model/ModelViewWork.inc.slang"
+#include "Model/ModelVisibility.inc.slang"
 
 struct Constants
 {
@@ -108,10 +107,10 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     ViewInstanceInput input = _viewInputs[DispatchThreadID.x];
     ModelInstanceRecord instance = _modelInstances[input.instanceIndex];
-    AddStat(1u, 1u);
+    AddStat(MODEL_WORK_STAT_TESTED_INSTANCES, 1u);
     if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u)
     {
-        AddStat(2u, 1u);
+        AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;
     }
 
@@ -120,7 +119,7 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     if (!ModelSphereInsideFrustum(camera, TransformSphere(model.bounds.center, model.bounds.sphereRadius,
                                                            instance.currentWorld)))
     {
-        AddStat(2u, 1u);
+        AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;
     }
 
@@ -135,17 +134,25 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
         if ((lod.flags & MODEL_LOD_HAS_SKINNING) != 0u &&
             (lod.flags & MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE) == 0u)
         {
-            AddStat(12u, 1u);
+            AddStat(MODEL_WORK_STAT_SKIPPED_SKINNED_LODS, 1u);
             continue;
         }
-        AddStat(13u + min(localLOD, 7u), 1u);
+        AddStat(MODEL_WORK_STAT_LOD_SELECTION_BASE + min(localLOD, MODEL_WORK_STAT_LOD_SELECTION_COUNT - 1u), 1u);
 
         for (uint submeshIndex = 0u; submeshIndex < lod.numSubmeshes; ++submeshIndex)
         {
             ModelSubmesh submesh = _modelSubmeshes[model.submeshBase + lod.submeshOffset + submeshIndex];
+            if (meshIndex >= (1u << MODEL_VISIBILITY_MESH_BITS) ||
+                localLOD >= (1u << MODEL_VISIBILITY_LOD_BITS) ||
+                submeshIndex >= (1u << MODEL_VISIBILITY_SUBMESH_BITS) ||
+                submesh.meshletOffset + submesh.numMeshlets > (1u << MODEL_VISIBILITY_MESHLET_BITS))
+            {
+                AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, submesh.numMeshlets);
+                continue;
+            }
             if (!GeometryGroupEnabled(instance, submesh.geometryGroupID))
             {
-                AddStat(8u, submesh.numMeshlets);
+                AddStat(MODEL_WORK_STAT_REJECTED_GEOMETRY_GROUP_MESHLETS, submesh.numMeshlets);
                 continue;
             }
 
@@ -154,22 +161,25 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
             uint rasterClass =
                 (_materials[_materialInstances[materialInstanceIndex].materialIndex].flags & MATERIAL_TWO_SIDED) != 0u;
 
-            uint numChunks = (submesh.numMeshlets + 31u) / 32u;
+            uint numChunks = (submesh.numMeshlets + MODEL_CHUNK_MESHLET_COUNT - 1u) / MODEL_CHUNK_MESHLET_COUNT;
             uint chunkBase;
-            AddStat(3u, numChunks, chunkBase);
+            AddStat(MODEL_WORK_STAT_EXPANDED_CHUNKS, numChunks, chunkBase);
             uint committedChunks = min(numChunks, _constants.queueCapacity - min(chunkBase, _constants.queueCapacity));
             if (committedChunks < numChunks)
-                AddStat(11u, numChunks - committedChunks);
+                AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, numChunks - committedChunks);
 
             for (uint localChunk = 0u; localChunk < committedChunks; ++localChunk)
             {
-                uint chunkOffset = localChunk * 32u;
+                uint chunkOffset = localChunk * MODEL_CHUNK_MESHLET_COUNT;
                 ModelMeshletChunk chunk;
                 chunk.instanceIndex = input.instanceIndex;
                 chunk.meshIndex = meshIndex;
                 chunk.meshletBase = model.meshletBase + submesh.meshletOffset + chunkOffset;
-                uint meshletCount = min(submesh.numMeshlets - chunkOffset, 32u);
-                chunk.packedCountRasterAndLOD = meshletCount | (rasterClass << 6u) | (localLOD << 8u);
+                uint meshletCount = min(submesh.numMeshlets - chunkOffset, MODEL_CHUNK_MESHLET_COUNT);
+                chunk.packedCountRasterAndLOD = meshletCount |
+                    (rasterClass << MODEL_CHUNK_RASTER_CLASS_SHIFT) |
+                    (localLOD << MODEL_CHUNK_LOD_SHIFT) |
+                    (submeshIndex << MODEL_CHUNK_SUBMESH_SHIFT);
                 chunk.positionBase = model.positionBase + lod.vertexOffset;
                 chunk.vertexAttributeBase = model.vertexAttributeBase + lod.vertexAttributeOffset;
                 chunk.meshletVertexIndexBase = model.meshletVertexIndexBase;
