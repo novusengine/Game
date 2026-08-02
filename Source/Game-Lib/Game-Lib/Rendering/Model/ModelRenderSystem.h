@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Game-Lib/Rendering/Model/Pipeline/ModelDiagnosticPass.h"
+#include "Game-Lib/Rendering/Model/Pipeline/ModelViewWorkPass.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewState.h"
+#include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
 
 struct RenderResources;
@@ -42,9 +44,9 @@ namespace ModelRendering
         // TODO: Remove this development-only selection hook after GPU work expansion replaces diagnostic work.
         RenderScenes::ModelInstanceHandle SetDiagnosticModel(RenderAssets::ModelHandle model,
                                                              const vec3& worldBoundsCenter, f32 worldBoundsRadius);
-        const ModelView::DiagnosticWorkStats& GetDiagnosticStats() const
+        const ModelView::WorkStats& GetDiagnosticStats() const
         {
-            return _mainViewState.GetDiagnosticStats();
+            return _mainViewWork.GetStats();
         }
 
       private:
@@ -53,7 +55,12 @@ namespace ModelRendering
         RenderScenes::RenderScene* _scene = nullptr;
         RenderScenes::RenderView _mainView;
         ModelView::ModelViewState _mainViewState;
+        ModelView::ModelViewWorkResources _mainViewWork;
+        ModelPipeline::ModelViewWorkPass _viewWorkPass;
         ModelPipeline::ModelDiagnosticPass _diagnosticPass;
         RenderScenes::ModelInstanceHandle _diagnosticInstance = RenderScenes::InvalidModelInstanceHandle();
+        i32 _lastForcedLOD = -1;
+        u32 _handledTemporalReset = 0;
+        bool _reportedQueueOverflow = false;
     };
 } // namespace ModelRendering

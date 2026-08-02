@@ -1,11 +1,14 @@
 #include "ModelRenderSystem.h"
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
-#include "Game-Lib/Rendering/Model/Pipeline/ModelDiagnosticWorkBuilder.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
 #include <algorithm>
+#include <Base/CVarSystem/CVarSystem.h>
+
+AutoCVar_Int CVAR_ModelForceLOD(CVarCategory::Client | CVarCategory::Rendering, "modelForceLOD",
+                                "Force model LOD (-1 automatic, values clamp to each Mesh)", -1);
 
 namespace ModelRendering
 {
@@ -20,29 +23,55 @@ namespace ModelRendering
               .colorTarget = resources.sceneColor,
               .depthTarget = resources.depth,
               .lifetime = RenderScenes::RenderViewLifetime::Persistent }),
-          _mainViewState(validateTransfers), _diagnosticPass(renderer, gameRenderer)
+          _mainViewState(validateTransfers), _mainViewWork(renderer), _viewWorkPass(renderer, gameRenderer),
+          _diagnosticPass(renderer, gameRenderer)
     {
     }
 
     void ModelRenderSystem::Update()
     {
-        if (!_mainViewState.IsWorkDirty())
-            return;
+        if (_mainViewState.IsWorkDirty())
+            _mainViewState.PrepareInputs(*_scene, _assets->GetGeometryStorage());
 
-        ModelPipeline::DiagnosticWorkBuildResult work = ModelPipeline::ModelDiagnosticWorkBuilder::Build(
-            *_scene, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(),
-            _mainViewState.GetDiagnosticSelection());
-        _mainViewState.SetDiagnosticWork(work.oneSided, work.twoSided, work.stats);
+        const i32 forcedLOD = std::max(CVAR_ModelForceLOD.Get(), -1);
+        if (forcedLOD != _lastForcedLOD)
+        {
+            _lastForcedLOD = forcedLOD;
+            _mainView.RequestTemporalReset();
+            _mainViewState.ResetLODHistory();
+        }
     }
 
     void ModelRenderSystem::Upload()
     {
-        _diagnosticPass.Upload(_mainViewState, _assets->GetGeometryStorage(), *_scene);
+        _mainViewState.SyncToGPU(_renderer);
     }
 
     void ModelRenderSystem::AddPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
     {
-        _diagnosticPass.AddPass(renderGraph, resources, _mainView, _mainViewState,
+        _mainViewWork.ReadbackStats(frameIndex);
+        const u32 queueOverflows = _mainViewWork.GetStats().queueOverflows;
+        if (queueOverflows > 0 && !_reportedQueueOverflow)
+        {
+            NC_LOG_ERROR("MODEL_VIEW queue_overflow dropped={}", queueOverflows);
+            _reportedQueueOverflow = true;
+        }
+        else if (queueOverflows == 0)
+        {
+            _reportedQueueOverflow = false;
+        }
+        const bool descriptorsReady = _viewWorkPass.Upload(
+            _mainViewState, _mainViewWork, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
+        _diagnosticPass.Upload(_mainViewWork, _assets->GetGeometryStorage(), *_scene);
+        if (!descriptorsReady)
+            return;
+        const u32 temporalReset = _mainView.GetTemporalResetGeneration();
+        _viewWorkPass.AddPass(renderGraph, resources, _mainView, _mainViewState, _mainViewWork,
+                              _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex,
+                              temporalReset != _handledTemporalReset, _lastForcedLOD);
+        _mainViewWork.MarkSubmitted(frameIndex);
+        _handledTemporalReset = temporalReset;
+        _diagnosticPass.AddPass(renderGraph, resources, _mainView, _mainViewWork,
                                 _assets->GetGeometryStorage(), *_scene, frameIndex);
     }
 

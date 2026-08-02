@@ -254,12 +254,23 @@ namespace Scripting::Asset
         zenith->AddTableField("sceneHistoryAddressWords", sceneStats.meshletHistory.addressSpaceWords);
         zenith->AddTableField("sceneHistoryRetiredWords", sceneStats.meshletHistory.retiredWords);
         zenith->AddTableField("sceneHistoryClearRanges", sceneStats.meshletHistory.pendingClearRanges);
-        const ModelView::DiagnosticWorkStats& diagnosticStats =
+        const ModelView::WorkStats& diagnosticStats =
             ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetDiagnosticStats();
         zenith->AddTableField("diagnosticSelectedInstances", diagnosticStats.selectedInstances);
         zenith->AddTableField("diagnosticOneSidedMeshlets", diagnosticStats.oneSidedMeshlets);
         zenith->AddTableField("diagnosticTwoSidedMeshlets", diagnosticStats.twoSidedMeshlets);
         zenith->AddTableField("diagnosticSkippedSkinnedLODs", diagnosticStats.skippedSkinnedLODs);
+        zenith->AddTableField("modelTestedInstances", diagnosticStats.testedInstances);
+        zenith->AddTableField("modelRejectedInstances", diagnosticStats.rejectedInstances);
+        zenith->AddTableField("modelExpandedChunks", diagnosticStats.expandedChunks);
+        zenith->AddTableField("modelTestedChunks", diagnosticStats.testedChunks);
+        zenith->AddTableField("modelTestedMeshlets", diagnosticStats.testedMeshlets);
+        zenith->AddTableField("modelQueueOverflows", diagnosticStats.queueOverflows);
+        for (u32 lod = 0; lod < 8; ++lod)
+        {
+            const std::string field = "modelLOD" + std::to_string(lod);
+            zenith->AddTableField(field.c_str(), diagnosticStats.lodSelections[lod]);
+        }
         return 1;
     }
 

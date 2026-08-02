@@ -3,10 +3,10 @@
 
 struct Constants
 {
-    uint workOffset;
+    uint queueIndex;
     uint viewIndex;
     uint debugMode;
-    uint reserved;
+    uint resourceIndex;
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -23,7 +23,21 @@ struct MeshVertex
 void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
           out vertices MeshVertex vertices[64], out indices uint3 triangles[124])
 {
-    DiagnosticMeshletWork work = _diagnosticWork[_constants.workOffset + groupID.x];
+    uint queueIndex = groupID.x + groupID.y * 1024u;
+    uint countIndex = _constants.queueIndex == 0u ? 9u : 10u;
+    uint queueCount = _constants.resourceIndex == 0u ? _modelWorkStats0[countIndex] : _modelWorkStats1[countIndex];
+    if (queueIndex >= queueCount)
+    {
+        SetMeshOutputCounts(0, 0);
+        return;
+    }
+    DiagnosticMeshletWork work;
+    if (_constants.resourceIndex == 0u)
+        work = _constants.queueIndex == 0u ? _diagnosticWorkOneSided0[queueIndex]
+                                           : _diagnosticWorkTwoSided0[queueIndex];
+    else
+        work = _constants.queueIndex == 0u ? _diagnosticWorkOneSided1[queueIndex]
+                                           : _diagnosticWorkTwoSided1[queueIndex];
     ModelMeshlet meshlet = _modelMeshlets[work.meshletIndex];
     uint vertexCount = meshlet.packedCounts & 0xFFFFu;
     uint triangleCount = meshlet.packedCounts >> 16u;

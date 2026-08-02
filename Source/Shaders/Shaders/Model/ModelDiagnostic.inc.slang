@@ -45,13 +45,20 @@ struct ModelMeshlet
     uint packedCounts;
 };
 
-[[vk::binding(0, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWork;
-[[vk::binding(1, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _modelInstances;
-[[vk::binding(2, PER_PASS)]] StructuredBuffer<ModelMeshlet> _modelMeshlets;
-[[vk::binding(3, PER_PASS)]] StructuredBuffer<uint2> _modelPositions;
-[[vk::binding(4, PER_PASS)]] StructuredBuffer<uint4> _modelVertexAttributes;
-[[vk::binding(5, PER_PASS)]] StructuredBuffer<uint> _modelMeshletVertexIndices;
-[[vk::binding(6, PER_PASS)]] StructuredBuffer<uint> _modelMeshletTriangles;
+#ifndef MODEL_DIAGNOSTIC_NO_RESOURCES
+[[vk::binding(0, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkOneSided0;
+[[vk::binding(1, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkTwoSided0;
+[[vk::binding(2, PER_PASS)]] StructuredBuffer<ModelInstanceRecord> _modelInstances;
+[[vk::binding(3, PER_PASS)]] StructuredBuffer<ModelMeshlet> _modelMeshlets;
+[[vk::binding(4, PER_PASS)]] StructuredBuffer<uint2> _modelPositions;
+[[vk::binding(5, PER_PASS)]] StructuredBuffer<uint4> _modelVertexAttributes;
+[[vk::binding(6, PER_PASS)]] StructuredBuffer<uint> _modelMeshletVertexIndices;
+[[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _modelMeshletTriangles;
+[[vk::binding(8, PER_PASS)]] StructuredBuffer<uint> _modelWorkStats0;
+[[vk::binding(9, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkOneSided1;
+[[vk::binding(10, PER_PASS)]] StructuredBuffer<DiagnosticMeshletWork> _diagnosticWorkTwoSided1;
+[[vk::binding(11, PER_PASS)]] StructuredBuffer<uint> _modelWorkStats1;
+#endif
 
 float3 DecodePosition(uint2 packedPosition, DiagnosticMeshletWork work)
 {

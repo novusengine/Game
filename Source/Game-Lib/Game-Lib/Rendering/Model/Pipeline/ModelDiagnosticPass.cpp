@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewState.h"
+#include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
@@ -56,6 +57,12 @@ namespace ModelPipeline
         _descriptorSet.RegisterPipeline(_renderer, _oneSidedPipeline);
         _descriptorSet.RegisterPipeline(_renderer, _twoSidedPipeline);
         _descriptorSet.Init(_renderer);
+        for (u32 frame = 0; frame < ModelView::ModelViewWorkResources::FRAME_COUNT; ++frame)
+        {
+            _oneSidedWorkBuffers[frame] = Renderer::BufferID::Invalid();
+            _twoSidedWorkBuffers[frame] = Renderer::BufferID::Invalid();
+            _statsBuffers[frame] = Renderer::BufferID::Invalid();
+        }
     }
 
     void ModelDiagnosticPass::BindIfChanged(StringUtils::StringHash name, Renderer::BufferID buffer,
@@ -68,12 +75,32 @@ namespace ModelPipeline
         current = buffer;
     }
 
-    void ModelDiagnosticPass::Upload(ModelView::ModelViewState& viewState,
+    void ModelDiagnosticPass::Upload(const ModelView::ModelViewWorkResources& work,
                                      const ModelLoading::ModelGeometryStorage& geometry,
                                      const RenderScenes::RenderScene& scene)
     {
-        viewState.SyncToGPU(_renderer);
-        BindIfChanged("_diagnosticWork"_h, viewState.GetDiagnosticWork().GetBuffer(), _workBuffer);
+        if (_queueGeneration != work.GetQueueGeneration())
+        {
+            _queueGeneration = work.GetQueueGeneration();
+            for (Renderer::BufferID& buffer : _oneSidedWorkBuffers)
+                buffer = Renderer::BufferID::Invalid();
+            for (Renderer::BufferID& buffer : _twoSidedWorkBuffers)
+                buffer = Renderer::BufferID::Invalid();
+        }
+
+        const StringUtils::StringHash oneSidedBindings[2] = {
+            "_diagnosticWorkOneSided0"_h, "_diagnosticWorkOneSided1"_h
+        };
+        const StringUtils::StringHash twoSidedBindings[2] = {
+            "_diagnosticWorkTwoSided0"_h, "_diagnosticWorkTwoSided1"_h
+        };
+        const StringUtils::StringHash statsBindings[2] = { "_modelWorkStats0"_h, "_modelWorkStats1"_h };
+        for (u32 frame = 0; frame < ModelView::ModelViewWorkResources::FRAME_COUNT; ++frame)
+        {
+            BindIfChanged(oneSidedBindings[frame], work.GetQueue(0, frame), _oneSidedWorkBuffers[frame]);
+            BindIfChanged(twoSidedBindings[frame], work.GetQueue(1, frame), _twoSidedWorkBuffers[frame]);
+            BindIfChanged(statsBindings[frame], work.GetStatsBuffer(frame), _statsBuffers[frame]);
+        }
         BindIfChanged("_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(), _instanceBuffer);
         BindIfChanged("_modelMeshlets"_h, geometry.GetMeshlets().GetBuffer(), _meshletBuffer);
         BindIfChanged("_modelPositions"_h, geometry.GetPositions().GetBuffer(), _positionBuffer);
@@ -85,41 +112,47 @@ namespace ModelPipeline
 
     void ModelDiagnosticPass::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                       const RenderScenes::RenderView& view,
-                                      const ModelView::ModelViewState& viewState,
+                                      const ModelView::ModelViewWorkResources& work,
                                       const ModelLoading::ModelGeometryStorage& geometry,
                                       const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        const u32 oneSidedCount = viewState.GetOneSidedCount();
-        const u32 twoSidedCount = viewState.GetTwoSidedCount();
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED || oneSidedCount + twoSidedCount == 0)
+        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
             return;
 
         struct Data
         {
             Renderer::ImageMutableResource color;
             Renderer::DepthImageMutableResource depth;
+            Renderer::BufferResource arguments;
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource diagnosticSet;
         };
 
         renderGraph->AddPass<Data>("Model Diagnostic Meshlets",
-            [this, &resources, &viewState, &geometry, &scene, &view](Data& data, Renderer::RenderGraphBuilder& builder) {
+            [this, &resources, &work, &geometry, &scene, &view, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using BufferUsage = Renderer::BufferPassUsage;
                 data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
                 data.depth = builder.Write(view.GetDepthTarget(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
                 builder.Read(resources.cameras.GetBuffer(), BufferUsage::GRAPHICS);
-                builder.Read(viewState.GetDiagnosticWork().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(work.GetQueue(0, frameIndex), BufferUsage::GRAPHICS);
+                builder.Read(work.GetQueue(1, frameIndex), BufferUsage::GRAPHICS);
+                // Both generations stay bound; resourceIndex selects the active generation.
+                builder.Read(work.GetQueue(0, !frameIndex), BufferUsage::GRAPHICS);
+                builder.Read(work.GetQueue(1, !frameIndex), BufferUsage::GRAPHICS);
+                data.arguments = builder.Read(work.GetArguments(frameIndex), BufferUsage::GRAPHICS);
                 builder.Read(scene.GetModelInstances().GetRecords().GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(geometry.GetMeshlets().GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(geometry.GetPositions().GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(geometry.GetVertexAttributes().GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(geometry.GetMeshletVertexIndices().GetBuffer(), BufferUsage::GRAPHICS);
                 builder.Read(geometry.GetMeshletTriangles().GetBuffer(), BufferUsage::GRAPHICS);
+                builder.Read(work.GetStatsBuffer(frameIndex), BufferUsage::GRAPHICS);
+                builder.Read(work.GetStatsBuffer(!frameIndex), BufferUsage::GRAPHICS);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
                 data.diagnosticSet = builder.Use(_descriptorSet);
                 return true;
             },
-            [this, &view, oneSidedCount, twoSidedCount, frameIndex](
+            [this, &view, &work, frameIndex](
                 Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelDiagnosticMeshlets);
 
@@ -131,31 +164,28 @@ namespace ModelPipeline
 
                 struct Constants
                 {
-                    u32 workOffset;
+                    u32 queueIndex;
                     u32 viewIndex;
                     u32 debugMode;
-                    u32 reserved;
+                    u32 resourceIndex;
                 };
 
-                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 workOffset, u32 workCount) {
-                    if (workCount == 0)
-                        return;
-
+                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex) {
                     Constants* constants = graphResources.FrameNew<Constants>();
-                    constants->workOffset = workOffset;
+                    constants->queueIndex = queueIndex;
                     constants->viewIndex = view.GetCameraIndex();
                     constants->debugMode = static_cast<u32>(glm::clamp(CVAR_ModelMeshletDebugMode.Get(), 0, 4));
-                    constants->reserved = 0;
+                    constants->resourceIndex = frameIndex;
                     commandList.BeginPipeline(pipeline);
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
                     commandList.BindDescriptorSet(data.diagnosticSet, frameIndex);
-                    commandList.DrawMeshTasks(workCount, 1, 1);
+                    commandList.DrawMeshTasksIndirect(data.arguments, queueIndex * sizeof(u32) * 3);
                     commandList.EndPipeline(pipeline);
                 };
 
-                draw(_oneSidedPipeline, 0, oneSidedCount);
-                draw(_twoSidedPipeline, oneSidedCount, twoSidedCount);
+                draw(_oneSidedPipeline, 0);
+                draw(_twoSidedPipeline, 1);
                 commandList.EndRenderPass(renderPassDesc);
             });
     }

@@ -1,14 +1,19 @@
 #include "ModelViewState.h"
 
+#include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
+#include "Game-Lib/Rendering/Scene/RenderScene.h"
+
 #include <Renderer/Renderer.h>
 
 namespace ModelView
 {
     ModelViewState::ModelViewState(bool validateTransfers)
-        : _diagnosticWork(validateTransfers)
+        : _inputs(validateTransfers), _lodHistory(validateTransfers)
     {
-        _diagnosticWork.SetDebugName("Model Diagnostic Meshlet Work");
-        _diagnosticWork.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        _inputs.SetDebugName("Model View Instance Inputs");
+        _inputs.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+        _lodHistory.SetDebugName("Model View LOD History");
+        _lodHistory.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
 
     void ModelViewState::SetDiagnosticSelection(RenderScenes::ModelInstanceHandle instance)
@@ -23,26 +28,49 @@ namespace ModelView
         _workDirty = true;
     }
 
-    void ModelViewState::SetDiagnosticWork(std::span<const DiagnosticMeshletWork> oneSided,
-                                           std::span<const DiagnosticMeshletWork> twoSided,
-                                           const DiagnosticWorkStats& stats)
+    void ModelViewState::PrepareInputs(const RenderScenes::RenderScene& scene,
+                                       const ModelLoading::ModelGeometryStorage& geometry)
     {
-        _diagnosticWork.Clear();
-        _oneSidedCount = static_cast<u32>(oneSided.size());
-        _twoSidedCount = static_cast<u32>(twoSided.size());
+        _inputs.Clear();
+        _lodHistory.Clear();
+        _queueCapacity = 1;
 
-        const u32 workBase = _diagnosticWork.AddCount(_oneSidedCount + _twoSidedCount);
-        for (u32 index = 0; index < _oneSidedCount; ++index)
-            _diagnosticWork[workBase + index] = oneSided[index];
-        for (u32 index = 0; index < _twoSidedCount; ++index)
-            _diagnosticWork[workBase + _oneSidedCount + index] = twoSided[index];
+        for (const RenderScenes::ModelInstanceHandle handle : _diagnosticSelection)
+        {
+            const ModelScene::ModelInstanceGPURecord* instance = scene.GetModelInstance(handle);
+            if (!scene.IsAlive(handle) || !instance)
+                continue;
 
-        _stats = stats;
+            const RenderAssets::ModelHandle model(instance->modelIndex);
+            if (!geometry.HasModel(model))
+                continue;
+
+            const ModelLoading::ModelGPURecord& modelRecord = geometry.GetRecord(model);
+            ViewInstanceInput input;
+            input.instanceIndex = RenderScenes::GetModelInstanceSlot(handle);
+            input.lodHistoryOffset = _lodHistory.Count();
+            _inputs.Add(input);
+
+            const u32 historyBase = _lodHistory.AddCount(modelRecord.numMeshes);
+            for (u32 meshIndex = 0; meshIndex < modelRecord.numMeshes; ++meshIndex)
+                _lodHistory[historyBase + meshIndex] = INVALID_LOD_HISTORY;
+            _queueCapacity += modelRecord.numMeshlets;
+        }
+
         _workDirty = false;
+    }
+
+    void ModelViewState::ResetLODHistory()
+    {
+        for (u32 index = 0; index < _lodHistory.Count(); ++index)
+            _lodHistory[index] = INVALID_LOD_HISTORY;
+        _lodHistory.SetDirty();
     }
 
     bool ModelViewState::SyncToGPU(Renderer::Renderer* renderer)
     {
-        return _diagnosticWork.SyncToGPU(renderer);
+        const bool inputsChanged = _inputs.SyncToGPU(renderer);
+        const bool historyChanged = _lodHistory.SyncToGPU(renderer);
+        return inputsChanged || historyChanged;
     }
 } // namespace ModelView
