@@ -35,6 +35,9 @@ MeshShaderSmoke::MeshShaderSmoke(Renderer::Renderer* renderer, GameRenderer* gam
 
 void MeshShaderSmoke::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources)
 {
+    if (CVAR_MeshShaderSmoke.Get() != ShowFlag::ENABLED)
+        return;
+
     struct Data
     {
         Renderer::ImageMutableResource color;
@@ -44,7 +47,7 @@ void MeshShaderSmoke::AddPass(Renderer::RenderGraph* renderGraph, RenderResource
         [&resources](Data& data, Renderer::RenderGraphBuilder& builder)
         {
             data.color = builder.Write(resources.sceneColor, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-            return CVAR_MeshShaderSmoke.Get() == ShowFlag::ENABLED;
+            return true;
         },
         [this](Data& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
         {

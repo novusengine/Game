@@ -7,6 +7,7 @@
 #include "Asset/RenderAssetResources.h"
 #include "Scene/RenderScene.h"
 #include "Model/Scene/ModelSceneBridge.h"
+#include "Model/ModelRenderSystem.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -232,6 +233,9 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
                                                        &_renderAssetResources->GetMaterialStorage(),
                                                        CVAR_RenderAssetValidateTransfers.Get() != 0);
     _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
+    _modelRenderSystem = new ModelRendering::ModelRenderSystem(
+        _renderer, this, _renderAssetResources, _worldRenderScene, _resources,
+        CVAR_RenderAssetValidateTransfers.Get() != 0);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
@@ -265,6 +269,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
+    delete _modelRenderSystem;
     delete _modelSceneBridge;
     delete _worldRenderScene;
     delete _renderAssetResources;
@@ -305,6 +310,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
+    _modelRenderSystem->Update();
 
     // Last: collects debug verts emitted by the other renderer updates.
     _debugRenderer->Update(deltaTime);
@@ -316,6 +322,7 @@ void GameRenderer::UploadRenderers()
 
     _renderAssetResources->SyncToGPU();
     _worldRenderScene->SyncToGPU(_renderer);
+    _modelRenderSystem->Upload();
 
     if (_resources.cameras.SyncToGPU(_renderer))
     {
@@ -545,6 +552,7 @@ f32 GameRenderer::Render()
 
     _canvasRenderer->AddCanvasPass(&renderGraph, _resources, _frameIndex);
     _debugRenderer->Add2DPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddPasses(&renderGraph, _resources, _frameIndex);
     _meshShaderSmoke->AddPass(&renderGraph, _resources);
 
     _lightRenderer->AddDebugPass(&renderGraph, _resources, _frameIndex);

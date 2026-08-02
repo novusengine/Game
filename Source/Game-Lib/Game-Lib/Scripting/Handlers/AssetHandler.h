@@ -26,6 +26,8 @@ namespace Scripting::Asset
         static i32 BeginDragSpawn(Zenith* zenith);
         static i32 LoadRenderModel(Zenith* zenith);
         static i32 GetRenderAssetStats(Zenith* zenith);
+        // TODO: Remove this development-only diagnostic placement hook after the renderer refactor bring-up is complete.
+        static i32 ShowRenderModel(Zenith* zenith);
         // TODO: Remove this development-only lifecycle stress hook after the renderer refactor bring-up is complete.
         static i32 StressRenderSceneLifecycle(Zenith* zenith);
 
@@ -42,6 +44,7 @@ namespace Scripting::Asset
         { "BeginDragSpawn", AssetHandler::BeginDragSpawn, Scripting::LuaMethodFlags::DeveloperOnly },
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetRenderAssetStats", AssetHandler::GetRenderAssetStats, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ShowRenderModel", AssetHandler::ShowRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "StressRenderSceneLifecycle", AssetHandler::StressRenderSceneLifecycle, Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

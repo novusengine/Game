@@ -9,6 +9,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -253,6 +254,24 @@ namespace Scripting::Asset
         zenith->AddTableField("sceneHistoryAddressWords", sceneStats.meshletHistory.addressSpaceWords);
         zenith->AddTableField("sceneHistoryRetiredWords", sceneStats.meshletHistory.retiredWords);
         zenith->AddTableField("sceneHistoryClearRanges", sceneStats.meshletHistory.pendingClearRanges);
+        const ModelView::DiagnosticWorkStats& diagnosticStats =
+            ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetDiagnosticStats();
+        zenith->AddTableField("diagnosticSelectedInstances", diagnosticStats.selectedInstances);
+        zenith->AddTableField("diagnosticOneSidedMeshlets", diagnosticStats.oneSidedMeshlets);
+        zenith->AddTableField("diagnosticTwoSidedMeshlets", diagnosticStats.twoSidedMeshlets);
+        zenith->AddTableField("diagnosticSkippedSkinnedLODs", diagnosticStats.skippedSkinnedLODs);
+        return 1;
+    }
+
+    i32 AssetHandler::ShowRenderModel(Zenith* zenith)
+    {
+        const RenderAssets::ModelHandle model(zenith->CheckVal<u32>(1));
+        const vec3 worldBoundsCenter = zenith->CheckVal<vec3>(2);
+        const f32 worldBoundsRadius = zenith->CheckVal<f32>(3);
+        const RenderScenes::ModelInstanceHandle instance =
+            ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->SetDiagnosticModel(
+                model, worldBoundsCenter, worldBoundsRadius);
+        zenith->Push(static_cast<RenderScenes::ModelInstanceHandle::type>(instance));
         return 1;
     }
 

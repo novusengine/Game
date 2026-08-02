@@ -72,6 +72,14 @@ namespace MaterialLoading
         {
             return _materialInstances[static_cast<RenderAssets::MaterialInstanceHandle::type>(handle)];
         }
+        bool HasMaterial(RenderAssets::MaterialHandle handle) const
+        {
+            return static_cast<RenderAssets::MaterialHandle::type>(handle) < _materials.Count();
+        }
+        bool HasMaterialInstance(RenderAssets::MaterialInstanceHandle handle) const
+        {
+            return static_cast<RenderAssets::MaterialInstanceHandle::type>(handle) < _materialInstances.Count();
+        }
         u32 GetMaterialTableEntry(u32 offset) const { return _materialTable[offset]; }
         MaterialStorageStats GetStats() const;
 

@@ -13,6 +13,7 @@ namespace Renderer
 
 // Owns the GPU-side bring-up pipeline for the opt-in mesh-shader smoke draw.
 // It emits a known triangle used to verify mesh-pipeline creation and mesh-task dispatch.
+// TODO: Remove this development-only smoke path after the meshlet renderer bring-up is complete.
 class MeshShaderSmoke
 {
 public:
