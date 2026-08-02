@@ -21,6 +21,7 @@ public:
     ~DebugRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
 
     void AddStartFramePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -62,9 +63,6 @@ public:
     void RegisterCullingPassBufferUsage(Renderer::RenderGraphBuilder& builder);
 
 private:
-    // Uploads the CPU vertex buffers. Called from Update() (before FlipFrame) so they land this frame.
-    void SyncToGPU();
-
     void CreatePermanentResources();
     void CreatePipelines();
     void InitDescriptorSets();

@@ -46,6 +46,11 @@ class RenderTargetCapture;
 class RenderDocCapture;
 class MeshShaderSmoke;
 
+namespace RenderAssets
+{
+    class RenderAssetResources;
+}
+
 struct ImGuiTheme
 {
 public:
@@ -61,6 +66,7 @@ public:
 
     bool UpdateWindow(f32 deltaTime);
     void UpdateRenderers(f32 deltaTime);
+    void UploadRenderers();
     f32 Render();
 
     void ReloadShaders(bool forceRecompileAll);
@@ -97,6 +103,7 @@ public:
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
     RenderTargetCapture* GetRenderTargetCapture() { return _renderTargetCapture; }
     RenderDocCapture* GetRenderDocCapture() { return _renderDocCapture; }
+    RenderAssets::RenderAssetResources* GetRenderAssetResources() { return _renderAssetResources; }
 
     const Renderer::ShaderEntry* GetShaderEntry(u32 shaderNameHash, const std::string& debugName);
     Renderer::GraphicsPipelineID GetBlitPipeline(u32 shaderNameHash);
@@ -174,6 +181,7 @@ private:
     EffectRenderer* _effectRenderer = nullptr;
     ShadowRenderer* _shadowRenderer = nullptr;
     MeshShaderSmoke* _meshShaderSmoke = nullptr;
+    RenderAssets::RenderAssetResources* _renderAssetResources = nullptr;
 
     u32 _currentThemeHash = std::numeric_limits<u32>().max();
     std::vector<ImGuiTheme> _imguiThemes;

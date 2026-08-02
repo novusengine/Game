@@ -36,12 +36,15 @@ namespace MaterialLoading
         }
     };
 
+    // Decodes CPU-side material and material-instance payloads into borrowed CPU-side asset views.
     class MaterialAssetReader
     {
       public:
         // Returned spans borrow payload and remain valid only while it remains alive.
         static MaterialAssetReadResult<MaterialAssetView> ReadMaterial(
             std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        // Dependency-free structural decode used to discover the referenced Material before optional cross-asset validation.
+        static MaterialAssetReadResult<MaterialInstanceAssetView> DecodeMaterialInstance(std::span<const u8> payload);
         static MaterialAssetReadResult<MaterialInstanceAssetView> ReadMaterialInstance(
             std::span<const u8> payload, const MaterialAssetView& material,
             AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);

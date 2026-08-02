@@ -234,12 +234,12 @@ void DebugRenderer::Update(f32 deltaTime)
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(100.0f, 0.0f, 0.0f), Color::Red);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 100.0f, 0.0f), Color::Green);
     DrawLine3D(vec3(0.0f, 0.0f, 0.0f), vec3(0.0f, 0.0f, 100.0f), Color::Blue);
-
-    SyncToGPU();
 }
 
-void DebugRenderer::SyncToGPU()
+void DebugRenderer::Upload()
 {
+    ZoneScoped;
+
     if (_debugVertices2D.SyncToGPU(_renderer))
     {
         _draw2DDescriptorSet.Bind("_vertices", _debugVertices2D.GetBuffer());
@@ -291,7 +291,7 @@ void DebugRenderer::AddStartFramePass(Renderer::RenderGraph* renderGraph, Render
 
 void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    // Buffers are uploaded in SyncToGPU() during the Update phase (see its comment), not here.
+    // Buffers are uploaded during the Upload phase, not while building the render graph.
 
     struct Data
     {
@@ -385,7 +385,7 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
 
 void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
 {
-    // Buffers are uploaded in SyncToGPU() during the Update phase (see its comment), not here.
+    // Buffers are uploaded during the Upload phase, not while building the render graph.
 
     struct Data
     {

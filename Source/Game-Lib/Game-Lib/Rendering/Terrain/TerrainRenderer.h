@@ -45,6 +45,7 @@ public:
     ~TerrainRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
 
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddCullingPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -79,8 +80,6 @@ private:
     void CreatePermanentResources();
     void CreatePipelines();
     void InitDescriptorSets();
-
-    void SyncToGPU();
 
     struct DrawParams
     {

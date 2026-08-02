@@ -77,6 +77,7 @@ public:
     ~LiquidRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
     void Clear();
 
     void Reserve(const ReserveInfo& info, LiquidReserveOffsets& reserveOffsets);
@@ -124,8 +125,6 @@ private:
     void CreatePermanentResources();
     void CreatePipelines();
     void InitDescriptorSets();
-
-    void SyncToGPU();
 
     void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
 

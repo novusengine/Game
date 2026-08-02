@@ -11,6 +11,7 @@ namespace ECS::Singletons
     {
         f32 deltaTimeS;
         f32 simulationFrameTimeS;
+        f32 uploadFrameTimeS;
         f32 renderFrameTimeS;
         f32 renderWaitTimeS;
         f32 gpuFrameTimeMS;
@@ -23,11 +24,12 @@ namespace ECS::Singletons
 
         robin_hood::unordered_map<u32, std::deque<f32>> namedStats;
 
-        void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 renderFrameTimeS, f32 renderWaitTimeS, f32 gpuFrameTimeMS)
+        void AddTimings(f32 deltaTimeS, f32 simulationFrameTimeS, f32 uploadFrameTimeS, f32 renderFrameTimeS, f32 renderWaitTimeS, f32 gpuFrameTimeMS)
         {
             FrameTimes newFrame;
             newFrame.deltaTimeS = deltaTimeS;
             newFrame.simulationFrameTimeS = simulationFrameTimeS;
+            newFrame.uploadFrameTimeS = uploadFrameTimeS;
             newFrame.renderFrameTimeS = renderFrameTimeS;
             newFrame.renderWaitTimeS = renderWaitTimeS;
             newFrame.gpuFrameTimeMS = gpuFrameTimeMS;
@@ -72,6 +74,7 @@ namespace ECS::Singletons
 
                     averaged.deltaTimeS += f.deltaTimeS;
                     averaged.simulationFrameTimeS += f.simulationFrameTimeS;
+                    averaged.uploadFrameTimeS += f.uploadFrameTimeS;
                     averaged.renderFrameTimeS += f.renderFrameTimeS;
                     averaged.renderWaitTimeS += f.renderWaitTimeS;
                     averaged.gpuFrameTimeMS += f.gpuFrameTimeMS;
@@ -79,6 +82,7 @@ namespace ECS::Singletons
 
                 averaged.deltaTimeS /= count;
                 averaged.simulationFrameTimeS /= count;
+                averaged.uploadFrameTimeS /= count;
                 averaged.renderFrameTimeS /= count;
                 averaged.renderWaitTimeS /= count;
                 averaged.gpuFrameTimeMS /= count;
@@ -87,7 +91,7 @@ namespace ECS::Singletons
             }
             else
             {
-                return FrameTimes{ 0.f,0.f,0.f,0.f,0.f };
+                return FrameTimes{ 0.f,0.f,0.f,0.f,0.f,0.f };
             }
         }
 

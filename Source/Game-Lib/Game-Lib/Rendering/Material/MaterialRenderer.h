@@ -25,6 +25,7 @@ public:
     ~MaterialRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
 
     // Resolves normals for the effect passes
     void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -36,8 +37,6 @@ public:
 private:
     void CreatePermanentResources();
     void CreateMaterialPipeline();
-
-    void SyncToGPU();
 
     struct DirectionalLight
     {

@@ -237,6 +237,7 @@ void Application::Run(bool enableRenderDoc)
     {
         Timer timer;
         Timer updateTimer;
+        Timer uploadTimer;
         Timer renderTimer;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
@@ -268,6 +269,11 @@ void Application::Run(bool enableRenderDoc)
                 break;
 
             timings.simulationFrameTimeS = updateTimer.GetLifeTime();
+
+            uploadTimer.Reset();
+            _gameRenderer->UploadRenderers();
+            timings.uploadFrameTimeS = uploadTimer.GetLifeTime();
+
             renderTimer.Reset();
 
             ServiceLocator::GetGameConsole()->Render(deltaTime);
@@ -305,7 +311,8 @@ void Application::Run(bool enableRenderDoc)
                     timings.gpuFrameTimeMS = 0;
                 }
 
-                engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.renderFrameTimeS, timings.renderWaitTimeS, timings.gpuFrameTimeMS);
+                engineStats.AddTimings(timings.deltaTimeS, timings.simulationFrameTimeS, timings.uploadFrameTimeS, timings.renderFrameTimeS,
+                                       timings.renderWaitTimeS, timings.gpuFrameTimeMS);
             }
 
             {

@@ -25,6 +25,7 @@ public:
     JoltDebugRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, ::DebugRenderer* debugRenderer);
 
     void Update(f32 deltaTime);
+    void Upload();
     void Clear();
 
     void AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -68,7 +69,6 @@ private:
     void CreatePipelines();
     void InitDescriptorSets();
 
-    void SyncToGPU();
     void Compact();
 
 #ifdef JPH_DEBUG_RENDERER

@@ -573,6 +573,11 @@ namespace Editor
                 ImGui::Text("%.3f", average.simulationFrameTimeS * 1000);
                 ImGui::TableNextColumn();
 
+                ImGui::Text("   Upload");
+                ImGui::TableNextColumn();
+                ImGui::Text("%.3f", average.uploadFrameTimeS * 1000);
+                ImGui::TableNextColumn();
+
                 ImGui::Text("   Render CPU");
                 ImGui::TableNextColumn();
                 ImGui::Text("%.3f", average.renderFrameTimeS * 1000);
@@ -680,6 +685,9 @@ namespace Editor
             std::vector<f32> updateTimes;
             updateTimes.reserve(stats.frameStats.size());
 
+            std::vector<f32> uploadTimes;
+            uploadTimes.reserve(stats.frameStats.size());
+
             std::vector<f32> renderTimes;
             renderTimes.reserve(stats.frameStats.size());
 
@@ -693,6 +701,7 @@ namespace Editor
             {
                 totalTimes.push_back(stats.frameStats[i].deltaTimeS * 1000);
                 updateTimes.push_back(stats.frameStats[i].simulationFrameTimeS * 1000);
+                uploadTimes.push_back(stats.frameStats[i].uploadFrameTimeS * 1000);
                 renderTimes.push_back(stats.frameStats[i].renderFrameTimeS * 1000);
                 waitTimes.push_back(stats.frameStats[i].renderWaitTimeS * 1000);
                 gpuTimes.push_back(stats.frameStats[i].gpuFrameTimeMS);
@@ -709,6 +718,7 @@ namespace Editor
 
                 ImPlot::PlotLine("Total", totalTimes.data(), static_cast<i32>(totalTimes.size()));
                 ImPlot::PlotLine("Update", updateTimes.data(), static_cast<i32>(updateTimes.size()));
+                ImPlot::PlotLine("Upload", uploadTimes.data(), static_cast<i32>(uploadTimes.size()));
                 ImPlot::PlotLine("Render", renderTimes.data(), static_cast<i32>(renderTimes.size()));
                 ImPlot::PlotLine("CPU wait For GPU", waitTimes.data(), static_cast<i32>(waitTimes.size()));
                 ImPlot::PlotLine("GPU", gpuTimes.data(), static_cast<i32>(gpuTimes.size()));

@@ -181,8 +181,6 @@ void LightRenderer::Update(f32 deltaTime)
         }
     }
 
-    SyncToGPU();
-
     // Debug draw decals as wireframes
     if (CVAR_DebugLightTiles.Get() == ShowFlag::ENABLED)
     {
@@ -451,8 +449,10 @@ void LightRenderer::RecreateBuffer(const vec2& size)
     resources.lightDescriptorSet.Bind("_entityTiles", _entityTilesBuffer);
 }
 
-void LightRenderer::SyncToGPU()
+void LightRenderer::Upload()
 {
+    ZoneScoped;
+
     if (_decals.SyncToGPU(_renderer))
     {
         RenderResources& resources = _gameRenderer->GetRenderResources();

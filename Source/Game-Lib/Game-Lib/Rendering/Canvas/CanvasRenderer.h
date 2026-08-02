@@ -50,6 +50,7 @@ public:
     void Clear();
 
     void Update(f32 deltaTime);
+    void Upload();
 
     //CanvasTextureID AddTexture(Renderer::TextureID textureID);
 

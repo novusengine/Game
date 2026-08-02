@@ -83,8 +83,6 @@ void JoltDebugRenderer::Update(f32 deltaTime)
     const bool cullingEnabled = true;//CVAR_JoltDebugCullingEnabled.Get();
     _indexedCullingResources.Update(deltaTime, cullingEnabled);
     _cullingResources.Update(deltaTime, cullingEnabled);
-
-    SyncToGPU();
 }
 
 void JoltDebugRenderer::Clear()
@@ -99,8 +97,6 @@ void JoltDebugRenderer::Clear()
     _cullingDatas.Clear();
     _indexedCullingResources.Clear();
     _cullingResources.Clear();
-
-    SyncToGPU();
 }
 
 void JoltDebugRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -910,7 +906,7 @@ void JoltDebugRenderer::CreatePermanentResources()
     _cullingResources.Init(initParams);
 
     InitDescriptorSets();
-    SyncToGPU();
+    Upload();
 }
 
 void JoltDebugRenderer::CreatePipelines()
@@ -957,7 +953,7 @@ void JoltDebugRenderer::InitDescriptorSets()
     }
 }
 
-void JoltDebugRenderer::SyncToGPU()
+void JoltDebugRenderer::Upload()
 {
     ZoneScoped;
 

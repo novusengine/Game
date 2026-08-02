@@ -63,6 +63,17 @@ TEST_CASE("Material readers accept matching flat material assets", "[Rendering][
     CHECK(instance.view.resourceBindings.size() == 1);
 }
 
+TEST_CASE("Material instance structural decode discovers its dependency without material validation", "[Rendering][MaterialAssetReader]")
+{
+    MaterialPayloads payloads = MakeMaterialPayloads();
+    ++At<Material::MaterialInstanceAsset>(payloads.instance, 0).parameterLayoutHash;
+
+    const auto decoded = MaterialLoading::MaterialAssetReader::DecodeMaterialInstance(payloads.instance);
+    REQUIRE(decoded);
+    CHECK(decoded.view.root.materialAssetID == 77);
+    CHECK(decoded.view.parameterData.size() == 32);
+}
+
 TEST_CASE("Material reader rejects invalid parameter patches and compatibility", "[Rendering][MaterialAssetReader]")
 {
     SECTION("Resource patch outside its parameter")

@@ -301,6 +301,7 @@ public:
     ~ModelRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
     void Clear();
 
     void Reserve(const ReserveInfo& reserveInfo);
@@ -403,8 +404,6 @@ private:
     void QueueShadowInvalidation(const vec3& aabbMin, const vec3& aabbMax); // For callers holding a cached AABB
 
     void CompactInstanceRefs();
-    void SyncToGPU();
-
     void Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
     void DrawTransparent(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params);
     void DrawSkybox(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params, bool isTransparent);

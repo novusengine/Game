@@ -7,8 +7,12 @@
 #include "Game-Lib/ECS/Singletons/EditorSelection.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
+
+#include <Base/Util/DebugHandler.h>
 
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
@@ -195,5 +199,47 @@ namespace Scripting::Asset
         selection.dragSpawnModelPath = relativeRaw;
 
         return 0;
+    }
+
+    i32 AssetHandler::LoadRenderModel(Zenith* zenith)
+    {
+        const char* pathRaw = zenith->CheckVal<const char*>(1);
+        if (!pathRaw)
+            return 0;
+
+        std::string path = pathRaw;
+        std::replace(path.begin(), path.end(), '\\', '/');
+        std::transform(path.begin(), path.end(), path.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+
+        RenderAssets::RenderAssetResources* resources = ServiceLocator::GetGameRenderer()->GetRenderAssetResources();
+        const FileFormat::AssetID assetID = Util::AssetPath::Hash(path);
+        const RenderAssets::ModelHandle handle = resources->LoadModel(assetID);
+        const bool usedFallback = handle == resources->GetFallbackModel();
+        const RenderAssets::RenderAssetResourceStats stats = resources->GetStats();
+        NC_LOG_INFO("MODEL_ASSET debug_load path={} asset={} handle={} fallback={} models={} meshes={} meshlets={} materials={} instances={} textures={}",
+                    path, assetID, static_cast<RenderAssets::ModelHandle::type>(handle), usedFallback, stats.geometry.numModels,
+                    stats.geometry.numMeshes, stats.geometry.numMeshlets,
+                    stats.materialStorage.numMaterials, stats.materialStorage.numMaterialInstances, stats.textures.resolvedTextures);
+
+        zenith->Push(static_cast<RenderAssets::ModelHandle::type>(handle));
+        zenith->Push(usedFallback);
+        return 2;
+    }
+
+    i32 AssetHandler::GetRenderAssetStats(Zenith* zenith)
+    {
+        const RenderAssets::RenderAssetResourceStats stats = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetStats();
+        zenith->CreateTable();
+        zenith->AddTableField("models", stats.geometry.numModels);
+        zenith->AddTableField("usedBytes", stats.geometry.usedBytes + stats.materialStorage.usedBytes);
+        zenith->AddTableField("reservedBytes", stats.geometry.reservedBytes + stats.materialStorage.reservedBytes);
+        zenith->AddTableField("growths", stats.geometry.bufferGrowths + stats.materialStorage.bufferGrowths);
+        zenith->AddTableField("modelFailures", stats.models.failures);
+        zenith->AddTableField("materialFailures", stats.materials.materialFailures + stats.materials.materialInstanceFailures);
+        zenith->AddTableField("textureFailures", stats.textures.fallbackTextures);
+        zenith->AddTableField("resolvedTextures", stats.textures.resolvedTextures);
+        return 1;
     }
 }

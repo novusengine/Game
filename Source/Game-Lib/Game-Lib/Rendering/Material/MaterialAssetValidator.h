@@ -3,6 +3,7 @@
 
 namespace MaterialLoading
 {
+    // Performs opt-in CPU-side structural and semantic validation of decoded material assets.
     class MaterialAssetValidator
     {
       public:

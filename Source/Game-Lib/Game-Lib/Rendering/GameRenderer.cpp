@@ -4,6 +4,7 @@
 #include "Debug/DebugRenderer.h"
 #include "Debug/JoltDebugRenderer.h"
 #include "Debug/MeshShaderSmoke.h"
+#include "Asset/RenderAssetResources.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -62,6 +63,10 @@
 
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Int CVAR_RenderAssetValidateTransfers(CVarCategory::Client | CVarCategory::Rendering, "renderAssetValidateGPUVectors",
+                                               "if enabled ON START we will validate render asset GPUVector uploads", 0, CVarFlags::EditCheckbox);
+AutoCVar_Int CVAR_RenderAssetCaptureBuffers(CVarCategory::Client | CVarCategory::Rendering, "renderAssetCaptureBuffers",
+                                            "reference render asset buffers for GPU capture inspection", 0, CVarFlags::EditCheckbox);
 
 enum GlfwClientApi
 {
@@ -218,6 +223,10 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
     _meshShaderSmoke = new MeshShaderSmoke(_renderer, this);
 
+    _renderAssetResources =
+        new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
+    NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
+
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
     _modelLoader = new ModelLoader(_modelRenderer, _lightRenderer);
@@ -250,6 +259,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
+    delete _renderAssetResources;
     delete _renderTargetCapture;
     delete _renderer;
     delete _renderDocCapture;
@@ -288,8 +298,34 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _effectRenderer->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
 
-    // Last: uploads debug verts, so it must run after other renderers' debug draws and before FlipFrame.
+    // Last: collects debug verts emitted by the other renderer updates.
     _debugRenderer->Update(deltaTime);
+}
+
+void GameRenderer::UploadRenderers()
+{
+    ZoneScoped;
+
+    _renderAssetResources->SyncToGPU();
+
+    if (_resources.cameras.SyncToGPU(_renderer))
+    {
+        // Should never fire: the vector is prefilled to MAX_VIEWS at init. Kept as a safety net,
+        // note the rebinds only reach the shaders a frame-cycle later.
+        _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
+        _shadowRenderer->BindCameraBuffers(_resources);
+    }
+
+    _terrainRenderer->Upload();
+    _modelRenderer->Upload();
+    _liquidRenderer->Upload();
+    _materialRenderer->Upload();
+    _joltDebugRenderer->Upload();
+    _lightRenderer->Upload();
+    _canvasRenderer->Upload();
+
+    // Last: includes debug geometry emitted by every renderer during Update.
+    _debugRenderer->Upload();
 }
 
 f32 GameRenderer::Render()
@@ -330,14 +366,6 @@ f32 GameRenderer::Render()
             _renderer->SetRenderSize(viewportSize);
             _lastWindowSize = viewportSize;
         }
-    }
-
-    if (_resources.cameras.SyncToGPU(_renderer))
-    {
-        // Should never fire: the vector is prefilled to MAX_VIEWS at init. Kept as a safety net,
-        // note the rebinds only reach the shaders a frame-cycle later
-        _resources.globalDescriptorSet.Bind("_cameras", _resources.cameras.GetBuffer());
-        _shadowRenderer->BindCameraBuffers(_resources);
     }
 
     // Create rendergraph
@@ -404,6 +432,9 @@ f32 GameRenderer::Render()
             });
     }
     _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
+
+    if (CVAR_RenderAssetCaptureBuffers.Get() != 0)
+        _renderAssetResources->AddCapturePass(renderGraph);
 
     _textureRenderer->AddTexturePass(&renderGraph, _resources, _frameIndex);
 

@@ -621,8 +621,6 @@ void ModelRenderer::Update(f32 deltaTime)
     }
 
     CompactInstanceRefs();
-    SyncToGPU();
-    _instancesDirty = false;
 }
 
 void ModelRenderer::Clear()
@@ -718,8 +716,6 @@ void ModelRenderer::Clear()
     _renderer->UnloadTexturesInArray(_textures, 1);
 
     _instancesDirty = true;
-    SyncToGPU();
-    _instancesDirty = false;
 }
 
 void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -3990,9 +3986,9 @@ void ModelRenderer::CompactInstanceRefs()
     }
 }
 
-void ModelRenderer::SyncToGPU()
+void ModelRenderer::Upload()
 {
-    ZoneScopedN("ModelRenderer::SyncToGPU");
+    ZoneScoped;
     RenderResources& resources = _gameRenderer->GetRenderResources();
 
     {
@@ -4160,6 +4156,8 @@ void ModelRenderer::SyncToGPU()
             _opaqueCullingResources.GetGeometryFillDescriptorSet().Bind("_dynamicInstanceMask"_h, _dynamicInstanceMask.GetBuffer());
         }
     }
+
+    _instancesDirty = false;
 }
 
 void ModelRenderer::Draw(const RenderResources& resources, u8 frameIndex, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList, const DrawParams& params)

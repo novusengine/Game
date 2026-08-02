@@ -69,8 +69,6 @@ void LiquidRenderer::Update(f32 deltaTime)
 
     const bool cullingEnabled = CVAR_LiquidCullingEnabled.Get();
     _cullingResources.Update(deltaTime, cullingEnabled);
-
-    SyncToGPU();
 }
 
 void LiquidRenderer::Clear()
@@ -696,8 +694,10 @@ void LiquidRenderer::InitDescriptorSets()
     _copyDescriptorSet.Init(_renderer);
 }
 
-void LiquidRenderer::SyncToGPU()
+void LiquidRenderer::Upload()
 {
+    ZoneScoped;
+
     CulledRenderer::SyncToGPU();
 
     // Sync Vertex buffer to GPU

@@ -411,44 +411,6 @@ void CanvasRenderer::Update(f32 deltaTime)
         }
     });
 
-    {
-        ZoneScopedN("CanvasRenderer::SyncToGPU");
-        if (_vertices.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_vertices", _vertices.GetBuffer());
-        }
-
-        if (_widgetDrawDatas.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetDrawDatas", _widgetDrawDatas.GetBuffer());
-        }
-
-        if (_widgetWorldPositions.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
-        }
-
-        if (_widgetLocalMatrices.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetLocalMatrices", _widgetLocalMatrices.GetBuffer());
-        }
-
-        if (_widgetParentSlots.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetParentSlots", _widgetParentSlots.GetBuffer());
-        }
-
-        if (_widgetClipRects.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetClipRects", _widgetClipRects.GetBuffer());
-        }
-
-        if (_widgetMaskInfo.SyncToGPU(_renderer))
-        {
-            _widgetDescriptorSet.Bind("_widgetMaskInfo", _widgetMaskInfo.GetBuffer());
-        }
-    }
-
     // Rebuild sort-keys + refresh dirty buckets in one combined pass.
     //
     // DirtyCanvasSort is set by every operation that changes a canvas's draw ORDER (widget
@@ -499,6 +461,46 @@ void CanvasRenderer::Update(f32 deltaTime)
     uiRegistry->clear<DirtyWidgetFlags>();
     uiRegistry->clear<DirtyChildClipper>();
     uiRegistry->clear<DirtyClipper>();
+}
+
+void CanvasRenderer::Upload()
+{
+    ZoneScoped;
+
+    if (_vertices.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_vertices", _vertices.GetBuffer());
+    }
+
+    if (_widgetDrawDatas.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetDrawDatas", _widgetDrawDatas.GetBuffer());
+    }
+
+    if (_widgetWorldPositions.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetWorldPositions", _widgetWorldPositions.GetBuffer());
+    }
+
+    if (_widgetLocalMatrices.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetLocalMatrices", _widgetLocalMatrices.GetBuffer());
+    }
+
+    if (_widgetParentSlots.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetParentSlots", _widgetParentSlots.GetBuffer());
+    }
+
+    if (_widgetClipRects.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetClipRects", _widgetClipRects.GetBuffer());
+    }
+
+    if (_widgetMaskInfo.SyncToGPU(_renderer))
+    {
+        _widgetDescriptorSet.Bind("_widgetMaskInfo", _widgetMaskInfo.GetBuffer());
+    }
 }
 
 u32 CanvasRenderer::ReserveWorldTransform()

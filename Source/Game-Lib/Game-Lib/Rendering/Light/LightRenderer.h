@@ -32,6 +32,7 @@ public:
     ~LightRenderer();
 
     void Update(f32 deltaTime);
+    void Upload();
     void Clear();
 
     void AddClassificationPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -50,8 +51,6 @@ private:
     void CreatePermanentResources();
     
     void RecreateBuffer(const vec2& size);
-
-    void SyncToGPU();
 
 public:
     enum DecalFlags

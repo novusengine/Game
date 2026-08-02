@@ -46,6 +46,7 @@ namespace ModelLoading
         }
     };
 
+    // Decodes CPU-side model payloads into borrowed CPU-side asset views and records reference limitations.
     class ModelAssetReader
     {
       public:

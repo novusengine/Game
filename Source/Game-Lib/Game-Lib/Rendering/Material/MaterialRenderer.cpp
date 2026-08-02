@@ -49,8 +49,6 @@ void MaterialRenderer::Update(f32 deltaTime)
 {
     ZoneScoped;
 
-    SyncToGPU();
-
     Editor::Viewport* viewport = ServiceLocator::GetEditorHandler()->GetViewport();
     Util::Physics::GetMouseWorldPosition(viewport, _mouseWorldPosition);
 }
@@ -412,8 +410,10 @@ void MaterialRenderer::CreateMaterialPipeline()
     _materialPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
-void MaterialRenderer::SyncToGPU()
+void MaterialRenderer::Upload()
 {
+    ZoneScoped;
+
     if (_directionalLights.SyncToGPU(_renderer))
     {
         _materialPassDescriptorSet.Bind("_directionalLights", _directionalLights.GetBuffer());

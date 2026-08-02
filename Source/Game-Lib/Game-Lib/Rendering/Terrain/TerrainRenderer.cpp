@@ -111,8 +111,6 @@ void TerrainRenderer::Update(f32 deltaTime)
             _renderer->UnmapBuffer(_drawCountReadBackBuffer);
         }
     }
-
-    SyncToGPU();
 }
 
 void TerrainRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -1276,7 +1274,7 @@ void TerrainRenderer::InitDescriptorSets()
     _svsmDrawDescriptorSet.Init(_renderer);
 }
 
-void TerrainRenderer::SyncToGPU()
+void TerrainRenderer::Upload()
 {
     ZoneScoped;
     RenderResources& resources = _gameRenderer->GetRenderResources();

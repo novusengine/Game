@@ -80,8 +80,7 @@ namespace MaterialLoading
         return result;
     }
 
-    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ReadMaterialInstance(
-        std::span<const u8> payload, const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
+    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::DecodeMaterialInstance(std::span<const u8> payload)
     {
         if (payload.size() < sizeof(Material::MaterialInstanceAsset))
             return Fail<MaterialInstanceAssetView>(DiagnosticCode::PayloadTooSmall, "MaterialInstanceAsset", Diagnostic::NO_INDEX, payload.size(),
@@ -113,9 +112,16 @@ namespace MaterialLoading
         result.view.resourceBindings = GetRootSection<Material::ResourceBinding>(payload, root.resourceBindingsOffset, root.numResourceBindings);
         result.view.animationBindings = GetRootSection<Material::MaterialAnimationBinding>(payload, root.animationBindingsOffset, root.numAnimationBindings);
 
-        if (AssetLoading::ShouldPerformFullValidation(validationMode))
-            return MaterialAssetValidator::ValidateMaterialInstance(result, material);
-
         return result;
+    }
+
+    MaterialAssetReadResult<MaterialInstanceAssetView> MaterialAssetReader::ReadMaterialInstance(
+        std::span<const u8> payload, const MaterialAssetView& material, AssetLoading::ValidationMode validationMode)
+    {
+        MaterialAssetReadResult<MaterialInstanceAssetView> result = DecodeMaterialInstance(payload);
+        if (!result || !AssetLoading::ShouldPerformFullValidation(validationMode))
+            return result;
+
+        return MaterialAssetValidator::ValidateMaterialInstance(result, material);
     }
 } // namespace MaterialLoading
