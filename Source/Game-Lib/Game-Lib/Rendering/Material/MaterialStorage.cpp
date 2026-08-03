@@ -24,6 +24,12 @@ namespace MaterialLoading
         Configure(_materials, "Material Records");
         Configure(_materialInstances, "Material Instance Records");
         Configure(_materialTable, "Model Default Material Table");
+        for (u32 group = 0; group < MATERIAL_EXECUTION_GROUP_COUNT; ++group)
+        {
+            _groupMaterialTables[group].SetDebugName("Material Execution Group " + std::to_string(group));
+            _groupMaterialTables[group].SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
+            _groupMaterialTables[group].Add(std::numeric_limits<u32>::max());
+        }
     }
 
     bool MaterialStorage::InitializeFallback(u32 checkerboardTextureIndex)
@@ -31,8 +37,12 @@ namespace MaterialLoading
         if (_materials.Count() != 0 || _materialInstances.Count() != 0)
             return false;
 
-        std::array<u8, 16> parameters = {};
-        std::memcpy(parameters.data(), &checkerboardTextureIndex, sizeof(checkerboardTextureIndex));
+        std::array<u8, 96> parameters = {};
+        constexpr std::array<f32, 4> BASE_COLOR = {1.0f, 1.0f, 1.0f, 1.0f};
+        constexpr f32 ALPHA_CUTOFF = 0.5f;
+        std::memcpy(parameters.data(), BASE_COLOR.data(), sizeof(BASE_COLOR));
+        std::memcpy(parameters.data() + 16, &checkerboardTextureIndex, sizeof(checkerboardTextureIndex));
+        std::memcpy(parameters.data() + 84, &ALPHA_CUTOFF, sizeof(ALPHA_CUTOFF));
         u32 parameterOffset = 0;
         if (!_parameterStorage.Append(parameters, 16, parameterOffset))
             return false;
@@ -44,8 +54,11 @@ namespace MaterialLoading
         material.flags = FileFormat::Material::MaterialFlags_TwoSided;
         material.lightingModelID = 1;
         material.materialExecutionGroupID = 0;
+        material.groupLocalMaterialID = static_cast<u16>(_groupMaterialTables[0].Add(0));
         material.rasterClass = static_cast<u8>(FileFormat::Material::RasterClass::Solid);
         _fallbackMaterial = RenderAssets::MaterialHandle(_materials.Add(material));
+        _groupMaterialTables[0][material.groupLocalMaterialID] =
+            static_cast<RenderAssets::MaterialHandle::type>(_fallbackMaterial);
         _parameterAlignments.push_back(16);
 
         MaterialInstanceGPURecord instance;
@@ -70,14 +83,21 @@ namespace MaterialLoading
         record.flags = view.root.flags;
         record.lightingModelID = view.root.lightingModelID;
         record.materialExecutionGroupID = view.root.materialExecutionGroupID;
+        if (record.materialExecutionGroupID >= MATERIAL_EXECUTION_GROUP_COUNT ||
+            _groupMaterialTables[record.materialExecutionGroupID].Count() >= INVALID_GROUP_LOCAL_MATERIAL_ID)
+            return false;
+        record.groupLocalMaterialID =
+            static_cast<u16>(_groupMaterialTables[record.materialExecutionGroupID].Count());
         record.rasterClass = static_cast<u8>(view.root.rasterClass);
         outHandle = RenderAssets::MaterialHandle(_materials.Add(record));
+        _groupMaterialTables[record.materialExecutionGroupID].Add(
+            static_cast<RenderAssets::MaterialHandle::type>(outHandle));
         _parameterAlignments.push_back(view.root.parameterBlockAlignment);
         return outHandle != RenderAssets::MaterialHandle::Invalid();
     }
 
     bool MaterialStorage::AppendMaterialInstance(RenderAssets::MaterialHandle material, std::span<const u8> patchedParameterData,
-                                                 RenderAssets::MaterialInstanceHandle& outHandle)
+                                                 RenderAssets::MaterialInstanceHandle& outHandle, u32 packedSamplerIDs)
     {
         const RenderAssets::MaterialHandle::type materialIndex = static_cast<RenderAssets::MaterialHandle::type>(material);
         if (material == RenderAssets::MaterialHandle::Invalid() || materialIndex >= _materials.Count() || materialIndex >= _parameterAlignments.size())
@@ -93,7 +113,8 @@ namespace MaterialLoading
 
         const u64 key = (static_cast<u64>(materialIndex) << 32u) | parameterOffset;
         const auto existing = _instanceKeyToHandle.find(key);
-        if (existing != _instanceKeyToHandle.end())
+        if (existing != _instanceKeyToHandle.end() &&
+            _materialInstances[static_cast<RenderAssets::MaterialInstanceHandle::type>(existing->second)].packedSamplerIDs == packedSamplerIDs)
         {
             outHandle = existing->second;
             ++_instanceDedupHits;
@@ -103,6 +124,7 @@ namespace MaterialLoading
         MaterialInstanceGPURecord record;
         record.parameterOffset = parameterOffset;
         record.materialIndex = materialIndex;
+        record.packedSamplerIDs = packedSamplerIDs;
         outHandle = RenderAssets::MaterialInstanceHandle(_materialInstances.Add(record));
         _instanceKeyToHandle[key] = outHandle;
         return outHandle != RenderAssets::MaterialInstanceHandle::Invalid();
@@ -136,6 +158,8 @@ namespace MaterialLoading
         _bufferGrowths += _materials.SyncToGPU(renderer) ? 1u : 0u;
         _bufferGrowths += _materialInstances.SyncToGPU(renderer) ? 1u : 0u;
         _bufferGrowths += _materialTable.SyncToGPU(renderer) ? 1u : 0u;
+        for (Renderer::GPUVector<u32>& table : _groupMaterialTables)
+            _bufferGrowths += table.SyncToGPU(renderer) ? 1u : 0u;
         _parameterStorage.SyncToGPU(renderer);
     }
 
@@ -149,6 +173,12 @@ namespace MaterialLoading
         stats.bufferGrowths = _bufferGrowths;
         stats.usedBytes = _materials.UsedBytes() + _materialInstances.UsedBytes() + _materialTable.UsedBytes();
         stats.reservedBytes = _materials.TotalBytes() + _materialInstances.TotalBytes() + _materialTable.TotalBytes();
+        for (const Renderer::GPUVector<u32>& table : _groupMaterialTables)
+        {
+            stats.numGroupMaterialEntries += table.Count();
+            stats.usedBytes += table.UsedBytes();
+            stats.reservedBytes += table.TotalBytes();
+        }
         stats.parameters = _parameterStorage.GetStats();
         stats.usedBytes += stats.parameters.usedBytes;
         stats.reservedBytes += stats.parameters.reservedBytes;

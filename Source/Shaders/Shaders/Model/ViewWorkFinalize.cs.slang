@@ -1,3 +1,4 @@
+#include "DescriptorSet/Global.inc.slang"
 #include "Model/ModelViewWork.inc.slang"
 
 struct Constants
@@ -23,50 +24,34 @@ struct Constants
 [numthreads(1, 1, 1)]
 void main()
 {
-    uint oneSidedCount;
-    uint twoSidedCount;
     if (_constants.resourceIndex == 0u)
     {
         _workStats0[MODEL_WORK_STAT_SELECTED_INSTANCES] = _constants.inputCount;
         _workStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS] =
             min(_workStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
-        oneSidedCount = min(_workStats0[MODEL_WORK_STAT_ONE_SIDED_MESHLETS], _constants.queueCapacity);
-        twoSidedCount = min(_workStats0[MODEL_WORK_STAT_TWO_SIDED_MESHLETS], _constants.queueCapacity);
-        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
-            min(oneSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
-        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
-            oneSidedCount == 0u ? 0u : (oneSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
-                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-        _indirectArguments0[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
-            oneSidedCount == 0u ? 0u : 1u;
-        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
-            min(twoSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
-        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
-            twoSidedCount == 0u ? 0u : (twoSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
-                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-        _indirectArguments0[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
-            twoSidedCount == 0u ? 0u : 1u;
+        for (uint rasterClass = 0u; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+        {
+            uint count = min(_workStats0[MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass], _constants.queueCapacity);
+            uint offset = rasterClass * MODEL_MESH_DISPATCH_ARGUMENT_COUNT;
+            _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_X] = min(count, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+            _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u :
+                (count + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) / MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+            _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
+        }
     }
     else
     {
         _workStats1[MODEL_WORK_STAT_SELECTED_INSTANCES] = _constants.inputCount;
         _workStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS] =
             min(_workStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
-        oneSidedCount = min(_workStats1[MODEL_WORK_STAT_ONE_SIDED_MESHLETS], _constants.queueCapacity);
-        twoSidedCount = min(_workStats1[MODEL_WORK_STAT_TWO_SIDED_MESHLETS], _constants.queueCapacity);
-        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
-            min(oneSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
-        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
-            oneSidedCount == 0u ? 0u : (oneSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
-                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-        _indirectArguments1[MODEL_ONE_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
-            oneSidedCount == 0u ? 0u : 1u;
-        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_X] =
-            min(twoSidedCount, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
-        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Y] =
-            twoSidedCount == 0u ? 0u : (twoSidedCount + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) /
-                                              MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-        _indirectArguments1[MODEL_TWO_SIDED_ARGUMENT_OFFSET + MODEL_DISPATCH_ARGUMENT_Z] =
-            twoSidedCount == 0u ? 0u : 1u;
+        for (uint rasterClass = 0u; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+        {
+            uint count = min(_workStats1[MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass], _constants.queueCapacity);
+            uint offset = rasterClass * MODEL_MESH_DISPATCH_ARGUMENT_COUNT;
+            _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_X] = min(count, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
+            _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u :
+                (count + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) / MODEL_MESH_DISPATCH_MAX_GROUPS_X;
+            _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
+        }
     }
 }

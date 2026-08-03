@@ -1,6 +1,6 @@
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
-#include "Game-Lib/Rendering/Material/ModelTextureResolver.h"
+#include "Game-Lib/Rendering/Material/MaterialTextureRegistry.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelAssetRegistry.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 
@@ -42,17 +42,18 @@ TEST_CASE("Render asset registries publish stable fallbacks once per failed asse
     CHECK(modelStats.references == 2);
 }
 
-TEST_CASE("Texture resolver caches a failed load transition at the fallback index", "[Rendering][RenderAssetRegistry]")
+TEST_CASE("Material texture registry caches a failed load transition at the fallback index",
+          "[Rendering][RenderAssetRegistry]")
 {
-    MaterialLoading::ModelTextureResolver textureResolver(nullptr, nullptr);
+    MaterialLoading::MaterialTextureRegistry textureRegistry(nullptr, nullptr);
 
-    const u32 first = textureResolver.Resolve(FileFormat::INVALID_ASSET_ID, 42, true);
-    const u32 cached = textureResolver.Resolve(FileFormat::INVALID_ASSET_ID, 42, true);
+    const u32 first = textureRegistry.Resolve(FileFormat::INVALID_ASSET_ID, 42, true);
+    const u32 cached = textureRegistry.Resolve(FileFormat::INVALID_ASSET_ID, 42, true);
 
-    CHECK(first == textureResolver.GetFallbackTextureIndex());
+    CHECK(first == textureRegistry.GetFallbackTextureIndex());
     CHECK(cached == first);
 
-    const MaterialLoading::ModelTextureResolverStats stats = textureResolver.GetStats();
+    const MaterialLoading::MaterialTextureRegistryStats stats = textureRegistry.GetStats();
     CHECK(stats.fallbackTextures == 1);
     CHECK(stats.cacheHits == 1);
 }

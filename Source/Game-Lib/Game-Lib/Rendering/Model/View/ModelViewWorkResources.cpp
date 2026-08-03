@@ -106,8 +106,10 @@ namespace ModelView
             desc.size = sizeof(u32) * _queueCapacity;
             for (u32 rasterClass = 0; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
             {
-                desc.name = (rasterClass == 0 ? "Model View One Sided Queue " : "Model View Two Sided Queue ") +
-                            std::to_string(frame);
+                static constexpr const char* NAMES[MODEL_RASTER_CLASS_COUNT] = {
+                    "Model View Solid One Sided Queue ", "Model View Solid Two Sided Queue ",
+                    "Model View Alpha Test One Sided Queue ", "Model View Alpha Test Two Sided Queue " };
+                desc.name = NAMES[rasterClass] + std::to_string(frame);
                 _queues[frame][rasterClass] = _renderer->CreateBuffer(_queues[frame][rasterClass], desc);
             }
         }

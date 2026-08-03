@@ -4,6 +4,7 @@
 #include "ModelGeometryStorage.h"
 
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
+#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 
@@ -65,6 +66,8 @@ namespace ModelLoading
 
         if (assetID == FileFormat::INVALID_ASSET_ID)
             return RecordFailure(assetID, "invalid_asset_id");
+        if (AssetLoading::ShouldInjectFailure(AssetLoading::FailureInjection::Model))
+            return RecordFailure(assetID, "injected_failure");
 
         PACT::PactFileHandle file;
         const PACT::PactReadResult readResult = _pactStorage->ReadFile(assetID, file);

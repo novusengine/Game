@@ -63,8 +63,7 @@ namespace ModelPipeline
         struct CullFrameBindings
         {
             Renderer::BufferID chunkQueue = Renderer::BufferID::Invalid();
-            Renderer::BufferID oneSidedQueue = Renderer::BufferID::Invalid();
-            Renderer::BufferID twoSidedQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID rasterQueues[ModelView::MODEL_RASTER_CLASS_COUNT] = {};
             Renderer::BufferID workStats = Renderer::BufferID::Invalid();
             Renderer::BufferID visibilityRecords = Renderer::BufferID::Invalid();
         };

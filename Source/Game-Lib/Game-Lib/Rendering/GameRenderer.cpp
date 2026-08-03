@@ -229,7 +229,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _renderAssetResources =
         new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
     NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
-    _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetGeometryStorage(),
+    _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(),
                                                        &_renderAssetResources->GetMaterialStorage(),
                                                        CVAR_RenderAssetValidateTransfers.Get() != 0);
     _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
@@ -547,7 +547,7 @@ f32 GameRenderer::Render()
     _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
-    _modelRenderSystem->AddDiagnosticResolvePass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddMaterialResolvePass(&renderGraph, _resources, _frameIndex);
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 

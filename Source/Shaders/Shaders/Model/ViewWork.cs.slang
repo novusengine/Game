@@ -158,8 +158,11 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             uint materialInstanceIndex =
                 _materialTable[instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex];
-            uint rasterClass =
-                (_materials[_materialInstances[materialInstanceIndex].materialIndex].flags & MATERIAL_TWO_SIDED) != 0u;
+            MaterialRecord material = _materials[_materialInstances[materialInstanceIndex].materialIndex];
+            uint materialRasterClass = MaterialRasterClass(material);
+            if (materialRasterClass > 1u)
+                continue;
+            uint rasterClass = materialRasterClass * 2u + ((material.flags & MATERIAL_TWO_SIDED) != 0u);
 
             uint numChunks = (submesh.numMeshlets + MODEL_CHUNK_MESHLET_COUNT - 1u) / MODEL_CHUNK_MESHLET_COUNT;
             uint chunkBase;

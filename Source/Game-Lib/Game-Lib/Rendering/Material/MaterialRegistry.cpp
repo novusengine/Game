@@ -1,9 +1,10 @@
 #include "MaterialRegistry.h"
 
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
+#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 #include "MaterialInstancePatcher.h"
 #include "MaterialStorage.h"
-#include "ModelTextureResolver.h"
+#include "MaterialTextureRegistry.h"
 
 #include <Base/Util/DebugHandler.h>
 
@@ -29,8 +30,9 @@ namespace
 
 namespace MaterialLoading
 {
-    MaterialRegistry::MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, ModelTextureResolver* textureResolver)
-        : _pactStorage(pactStorage), _storage(storage), _textureResolver(textureResolver)
+    MaterialRegistry::MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage,
+                                       MaterialTextureRegistry* textureRegistry)
+        : _pactStorage(pactStorage), _storage(storage), _textureRegistry(textureRegistry)
     {
     }
 
@@ -46,6 +48,8 @@ namespace MaterialLoading
 
         if (assetID == FileFormat::INVALID_ASSET_ID)
             return RecordMaterialFailure(assetID, "invalid_asset_id");
+        if (AssetLoading::ShouldInjectFailure(AssetLoading::FailureInjection::Material))
+            return RecordMaterialFailure(assetID, "injected_failure");
 
         PACT::PactFileHandle file;
         const PACT::PactReadResult readResult = _pactStorage->ReadFile(assetID, file);
@@ -85,6 +89,8 @@ namespace MaterialLoading
 
         if (assetID == FileFormat::INVALID_ASSET_ID)
             return RecordMaterialInstanceFailure(assetID, FileFormat::INVALID_ASSET_ID, "invalid_asset_id");
+        if (AssetLoading::ShouldInjectFailure(AssetLoading::FailureInjection::MaterialInstance))
+            return RecordMaterialInstanceFailure(assetID, FileFormat::INVALID_ASSET_ID, "injected_failure");
 
         PACT::PactFileHandle file;
         const PACT::PactReadResult readResult = _pactStorage->ReadFile(assetID, file);
@@ -114,16 +120,17 @@ namespace MaterialLoading
         }
 
         std::vector<u8> parameters;
+        u32 packedSamplerIDs = 0;
         const bool patched = MaterialInstancePatcher::Patch(result.view,
             [this, assetID](FileFormat::AssetID textureAssetID, bool optional) {
-                return _textureResolver->Resolve(textureAssetID, assetID, optional);
+                return _textureRegistry->Resolve(textureAssetID, assetID, optional);
             },
-            parameters);
+            parameters, &packedSamplerIDs);
         if (!patched)
             return RecordMaterialInstanceFailure(assetID, materialAssetID, "resource_patch_failed");
 
         RenderAssets::MaterialInstanceHandle handle;
-        if (!_storage->AppendMaterialInstance(material, parameters, handle))
+        if (!_storage->AppendMaterialInstance(material, parameters, handle, packedSamplerIDs))
             return RecordMaterialInstanceFailure(assetID, materialAssetID, "storage_append_failed");
 
         _materialInstances.emplace(assetID, MaterialInstanceEntry{handle, 1, false});

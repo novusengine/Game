@@ -10,8 +10,8 @@
 namespace RenderAssets
 {
     RenderAssetResources::RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, bool validateTransfers)
-        : _renderer(renderer), _textureResolver(renderer, pactStorage), _materialStorage(validateTransfers),
-          _materialRegistry(pactStorage, &_materialStorage, &_textureResolver), _geometryStorage(validateTransfers),
+        : _renderer(renderer), _textureRegistry(renderer, pactStorage), _materialStorage(validateTransfers),
+          _materialRegistry(pactStorage, &_materialStorage, &_textureRegistry), _geometryStorage(validateTransfers),
           _modelRegistry(pactStorage, &_geometryStorage, &_materialStorage, &_materialRegistry), _captureScratch(validateTransfers)
     {
         _captureScratch.SetDebugName("Render Asset Capture Scratch");
@@ -24,7 +24,8 @@ namespace RenderAssets
         if (_initialized)
             return false;
 
-        if (!_textureResolver.Initialize() || !_materialStorage.InitializeFallback(_textureResolver.GetFallbackTextureIndex()) ||
+        if (!_textureRegistry.Initialize() ||
+            !_materialStorage.InitializeFallback(_textureRegistry.GetFallbackTextureIndex()) ||
             !_modelRegistry.InitializeFallback())
         {
             NC_LOG_CRITICAL("MODEL_ASSET fallback_initialization_failed resource=render_assets reason=bootstrap_failed");
@@ -44,7 +45,7 @@ namespace RenderAssets
         _materialStorage.SyncToGPU(_renderer);
         _geometryStorage.SyncToGPU(_renderer);
         _captureScratch.SyncToGPU(_renderer);
-        _textureResolver.FlushDescriptors();
+        _textureRegistry.FlushDescriptors();
     }
 
     void RenderAssetResources::AddCapturePass(Renderer::RenderGraph& renderGraph)
@@ -100,11 +101,11 @@ namespace RenderAssets
     RenderAssetResourceStats RenderAssetResources::GetStats() const
     {
         RenderAssetResourceStats stats;
-        stats.geometry = _geometryStorage.GetStats();
+        stats.modelGeometry = _geometryStorage.GetStats();
         stats.models = _modelRegistry.GetStats();
         stats.materialStorage = _materialStorage.GetStats();
         stats.materials = _materialRegistry.GetStats();
-        stats.textures = _textureResolver.GetStats();
+        stats.textures = _textureRegistry.GetStats();
         return stats;
     }
 } // namespace RenderAssets

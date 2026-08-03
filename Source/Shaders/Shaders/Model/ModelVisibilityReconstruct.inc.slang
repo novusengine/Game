@@ -37,6 +37,9 @@ struct ReconstructedModelPixel
     float3 worldPosition;
     float3 worldNormal;
     float2 uv0;
+    float2 uv0DDX;
+    float2 uv0DDY;
+    bool frontFacing;
 };
 
 bool LoadResolvedModelRecord(uint recordID, uint resourceIndex, out ModelVisibilityRecord record)
@@ -96,7 +99,19 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
                                                          worldPositions[1], worldPositions[2], cameraIndex);
     result.worldPosition = InterpolateVertexAttribute(bary, worldPositions[0], worldPositions[1], worldPositions[2]);
     result.worldNormal = normalize(InterpolateVertexAttribute(bary, worldNormals[0], worldNormals[1], worldNormals[2]));
-    result.uv0 = InterpolateVertexAttribute(bary, uvs[0], uvs[1], uvs[2]);
+    FullBary2 fullUV = CalcFullBary2(bary, uvs[0], uvs[1], uvs[2]);
+    result.uv0 = fullUV.value;
+    result.uv0DDX = fullUV.ddx;
+    result.uv0DDY = fullUV.ddy;
+    float2 screenPositions[3];
+    for (uint screenVertex = 0u; screenVertex < 3u; ++screenVertex)
+    {
+        float4 clip = mul(float4(worldPositions[screenVertex], 1.0f), _cameras[cameraIndex].worldToClip);
+        screenPositions[screenVertex] = clip.xy / clip.w;
+    }
+    float2 edge0 = screenPositions[1] - screenPositions[0];
+    float2 edge1 = screenPositions[2] - screenPositions[0];
+    result.frontFacing = edge0.x * edge1.y - edge0.y * edge1.x >= 0.0f;
 #ifndef MODEL_VISIBILITY_NO_MATERIAL
     result.materialInstanceIndex = _resolvedModelMaterialTable[result.instance.materialTableOffset +
         result.mesh.materialSlotOffset + result.submesh.materialSlotIndex];

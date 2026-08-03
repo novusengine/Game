@@ -7,8 +7,11 @@
 #define MATERIAL_TWO_SIDED (1u << 0u)
 #define INVALID_LOD_HISTORY 0xFFFFFFFFu
 
-#define MODEL_RASTER_ONE_SIDED 0u
-#define MODEL_RASTER_TWO_SIDED 1u
+#define MODEL_RASTER_SOLID_ONE_SIDED 0u
+#define MODEL_RASTER_SOLID_TWO_SIDED 1u
+#define MODEL_RASTER_ALPHA_TEST_ONE_SIDED 2u
+#define MODEL_RASTER_ALPHA_TEST_TWO_SIDED 3u
+#define MODEL_RASTER_CLASS_COUNT 4u
 
 #define MODEL_WORK_STAT_SELECTED_INSTANCES 0u
 #define MODEL_WORK_STAT_TESTED_INSTANCES 1u
@@ -21,18 +24,21 @@
 #define MODEL_WORK_STAT_REJECTED_GEOMETRY_GROUP_MESHLETS 8u
 #define MODEL_WORK_STAT_ONE_SIDED_MESHLETS 9u
 #define MODEL_WORK_STAT_TWO_SIDED_MESHLETS 10u
-#define MODEL_WORK_STAT_QUEUE_OVERFLOWS 11u
-#define MODEL_WORK_STAT_SKIPPED_SKINNED_LODS 12u
-#define MODEL_WORK_STAT_LOD_SELECTION_BASE 13u
+#define MODEL_WORK_STAT_ALPHA_TEST_ONE_SIDED_MESHLETS 11u
+#define MODEL_WORK_STAT_ALPHA_TEST_TWO_SIDED_MESHLETS 12u
+#define MODEL_WORK_STAT_RASTER_MESHLETS_BASE MODEL_WORK_STAT_ONE_SIDED_MESHLETS
+#define MODEL_WORK_STAT_QUEUE_OVERFLOWS 13u
+#define MODEL_WORK_STAT_SKIPPED_SKINNED_LODS 14u
+#define MODEL_WORK_STAT_LOD_SELECTION_BASE 15u
 #define MODEL_WORK_STAT_LOD_SELECTION_COUNT 8u
-#define MODEL_WORK_STAT_VISIBILITY_RECORDS 21u
-#define MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS 22u
+#define MODEL_WORK_STAT_VISIBILITY_RECORDS 23u
+#define MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS 24u
 
 #define MODEL_CHUNK_MESHLET_COUNT 32u
 #define MODEL_CHUNK_MESHLET_COUNT_BITS 6u
 #define MODEL_CHUNK_MESHLET_COUNT_MASK ((1u << MODEL_CHUNK_MESHLET_COUNT_BITS) - 1u)
 #define MODEL_CHUNK_RASTER_CLASS_SHIFT MODEL_CHUNK_MESHLET_COUNT_BITS
-#define MODEL_CHUNK_RASTER_CLASS_MASK 0x1u
+#define MODEL_CHUNK_RASTER_CLASS_MASK 0x3u
 #define MODEL_CHUNK_LOD_SHIFT 8u
 #define MODEL_CHUNK_LOD_MASK 0x7u
 #define MODEL_CHUNK_SUBMESH_SHIFT 11u
@@ -42,6 +48,8 @@
 #define MODEL_MESH_DISPATCH_ARGUMENT_COUNT 3u
 #define MODEL_ONE_SIDED_ARGUMENT_OFFSET 0u
 #define MODEL_TWO_SIDED_ARGUMENT_OFFSET MODEL_MESH_DISPATCH_ARGUMENT_COUNT
+#define MODEL_ALPHA_TEST_ONE_SIDED_ARGUMENT_OFFSET (2u * MODEL_MESH_DISPATCH_ARGUMENT_COUNT)
+#define MODEL_ALPHA_TEST_TWO_SIDED_ARGUMENT_OFFSET (3u * MODEL_MESH_DISPATCH_ARGUMENT_COUNT)
 #define MODEL_DISPATCH_ARGUMENT_X 0u
 #define MODEL_DISPATCH_ARGUMENT_Y 1u
 #define MODEL_DISPATCH_ARGUMENT_Z 2u
@@ -152,7 +160,13 @@ struct ModelSubmesh
     uint flags;
 };
 
-struct MaterialInstanceRecord { uint parameterOffset; uint materialIndex; };
+struct MaterialInstanceRecord
+{
+    uint parameterOffset;
+    uint materialIndex;
+    uint packedSamplerIDs;
+    uint reserved;
+};
 struct MaterialRecord
 {
     uint defaultParameterOffset;
@@ -160,8 +174,13 @@ struct MaterialRecord
     uint programID;
     uint flags;
     uint packedClassification;
-    uint reserved;
+    uint packedRasterAndGroupMaterial;
 };
+
+uint MaterialLightingModel(MaterialRecord material) { return material.packedClassification & 0xFFFFu; }
+uint MaterialExecutionGroup(MaterialRecord material) { return material.packedClassification >> 16u; }
+uint MaterialGroupLocalID(MaterialRecord material) { return material.packedRasterAndGroupMaterial & 0xFFFFu; }
+uint MaterialRasterClass(MaterialRecord material) { return (material.packedRasterAndGroupMaterial >> 16u) & 0xFFu; }
 
 float MaxWorldScale(float4x4 transform)
 {

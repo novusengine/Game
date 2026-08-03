@@ -36,7 +36,7 @@ TEST_CASE("Model geometry storage bulk appends immutable file-local arrays", "[R
     CHECK(firstRecord.meshBase == 0);
     CHECK(secondRecord.meshBase == 1);
     CHECK(firstRecord.positionBase == 0);
-    CHECK(secondRecord.positionBase == 8);
+    CHECK(secondRecord.positionBase == fallback.positions.size());
     CHECK(firstRecord.defaultMaterialTableOffset == 3);
     CHECK(secondRecord.defaultMaterialTableOffset == 7);
 

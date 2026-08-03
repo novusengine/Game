@@ -5,9 +5,11 @@
 namespace ModelView
 {
     inline constexpr u32 MODEL_VIEW_FRAME_COUNT = 2;
-    inline constexpr u32 MODEL_RASTER_ONE_SIDED = 0;
-    inline constexpr u32 MODEL_RASTER_TWO_SIDED = 1;
-    inline constexpr u32 MODEL_RASTER_CLASS_COUNT = 2;
+    inline constexpr u32 MODEL_RASTER_SOLID_ONE_SIDED = 0;
+    inline constexpr u32 MODEL_RASTER_SOLID_TWO_SIDED = 1;
+    inline constexpr u32 MODEL_RASTER_ALPHA_TEST_ONE_SIDED = 2;
+    inline constexpr u32 MODEL_RASTER_ALPHA_TEST_TWO_SIDED = 3;
+    inline constexpr u32 MODEL_RASTER_CLASS_COUNT = 4;
     inline constexpr u32 MODEL_DISPATCH_ARGUMENT_COUNT = 3;
     inline constexpr u32 MODEL_MESHLET_CHUNK_SIZE = 32;
     inline constexpr u32 MODEL_LOD_SELECTION_COUNT = 8;
@@ -97,6 +99,8 @@ namespace ModelView
         u32 rejectedGeometryGroupMeshlets = 0;
         u32 oneSidedMeshlets = 0;
         u32 twoSidedMeshlets = 0;
+        u32 alphaTestOneSidedMeshlets = 0;
+        u32 alphaTestTwoSidedMeshlets = 0;
         u32 queueOverflows = 0;
         u32 skippedSkinnedLODs = 0;
         u32 lodSelections[MODEL_LOD_SELECTION_COUNT] = {};

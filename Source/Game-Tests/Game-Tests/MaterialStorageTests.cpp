@@ -14,6 +14,7 @@ namespace
         view.root.programID = 42;
         view.root.lightingModelID = 1;
         view.root.materialExecutionGroupID = 2;
+        view.root.rasterClass = FileFormat::Material::RasterClass::AlphaTest;
         view.root.parameterBlockSize = static_cast<u32>(defaultData.size());
         view.root.parameterBlockAlignment = alignment;
         view.defaultParameterData = defaultData;
@@ -45,10 +46,10 @@ TEST_CASE("Material instances preserve their material parameter alignment", "[Re
 
 TEST_CASE("Material instance patcher writes only declared resource words", "[Rendering][MaterialStorage]")
 {
-    std::array<u8, 16> parameters = {};
+    std::array<u8, 32> parameters = {};
     constexpr std::array<FileFormat::Material::ResourceBinding, 2> bindings = {{
-        {55, 4, 0, FileFormat::Material::ResourceType::Texture2D, FileFormat::Material::ResourceBindingFlags_None},
-        {FileFormat::INVALID_ASSET_ID, 12, 7, FileFormat::Material::ResourceType::Sampler, FileFormat::Material::ResourceBindingFlags_None}
+        {55, 16, 3, FileFormat::Material::ResourceType::Texture2D, FileFormat::Material::ResourceBindingFlags_None},
+        {FileFormat::INVALID_ASSET_ID, 28, 7, FileFormat::Material::ResourceType::Sampler, FileFormat::Material::ResourceBindingFlags_None}
     }};
 
     MaterialLoading::MaterialInstanceAssetView view;
@@ -56,6 +57,7 @@ TEST_CASE("Material instance patcher writes only declared resource words", "[Ren
     view.resourceBindings = bindings;
 
     u32 resolvedAsset = 0;
+    u32 packedSamplerIDs = 0;
     std::vector<u8> patched;
     REQUIRE(MaterialLoading::MaterialInstancePatcher::Patch(
         view,
@@ -64,15 +66,16 @@ TEST_CASE("Material instance patcher writes only declared resource words", "[Ren
             resolvedAsset = static_cast<u32>(assetID);
             return 23u;
         },
-        patched));
+        patched, &packedSamplerIDs));
 
     u32 textureIndex = 0;
     u32 samplerIndex = 0;
-    std::memcpy(&textureIndex, patched.data() + 4, sizeof(textureIndex));
-    std::memcpy(&samplerIndex, patched.data() + 12, sizeof(samplerIndex));
+    std::memcpy(&textureIndex, patched.data() + 16, sizeof(textureIndex));
+    std::memcpy(&samplerIndex, patched.data() + 28, sizeof(samplerIndex));
     CHECK(resolvedAsset == 55);
     CHECK(textureIndex == 23);
     CHECK(samplerIndex == 7);
+    CHECK(packedSamplerIDs == 3);
     CHECK(patched[0] == 0);
 }
 
@@ -89,6 +92,9 @@ TEST_CASE("Material storage bootstraps fallbacks and deduplicates instances", "[
     RenderAssets::MaterialHandle material;
     REQUIRE(storage.AppendMaterial(MakeMaterialView(parameters), material));
     CHECK(static_cast<RenderAssets::MaterialHandle::type>(material) == 1);
+    CHECK(storage.GetMaterial(material).groupLocalMaterialID == 1);
+    CHECK(storage.GetMaterial(material).rasterClass ==
+          static_cast<u8>(FileFormat::Material::RasterClass::AlphaTest));
 
     RenderAssets::MaterialInstanceHandle first;
     RenderAssets::MaterialInstanceHandle duplicate;

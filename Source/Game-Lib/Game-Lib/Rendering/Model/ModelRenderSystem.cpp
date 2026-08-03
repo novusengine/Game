@@ -25,15 +25,16 @@ namespace ModelRendering
               .colorTarget = resources.sceneColor,
               .depthTarget = resources.depth,
               .lifetime = RenderScenes::RenderViewLifetime::Persistent }),
-          _mainViewState(validateTransfers), _mainViewWork(renderer), _viewWorkPass(renderer, gameRenderer),
-          _visibilityPass(renderer, gameRenderer), _visibilityResolvePass(renderer, gameRenderer)
+          _mainViewState(validateTransfers), _mainViewWork(renderer), _mainViewMaterialResources(renderer),
+          _viewWorkPass(renderer, gameRenderer), _visibilityPass(renderer, gameRenderer),
+          _materialResolvePass(renderer, gameRenderer), _visibilityResolvePass(renderer, gameRenderer)
     {
     }
 
     void ModelRenderSystem::Update()
     {
         if (_mainViewState.IsWorkDirty())
-            _mainViewState.PrepareInputs(*_scene, _assets->GetGeometryStorage());
+            _mainViewState.PrepareInputs(*_scene, _assets->GetModelGeometryStorage());
 
         const i32 forcedLOD = std::max(CVAR_ModelForceLOD.Get(), -1);
         if (forcedLOD != _lastForcedLOD)
@@ -53,6 +54,7 @@ namespace ModelRendering
                                                 u8 frameIndex)
     {
         _mainViewWork.ReadbackStats(frameIndex);
+        _mainViewMaterialResources.ReadbackStats(frameIndex);
         const u32 queueOverflows = _mainViewWork.GetStats().queueOverflows;
         if (queueOverflows > 0 && !_reportedQueueOverflow)
         {
@@ -64,33 +66,49 @@ namespace ModelRendering
             _reportedQueueOverflow = false;
         }
         const bool descriptorsReady = _viewWorkPass.Upload(
-            _mainViewState, _mainViewWork, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
-        _visibilityPass.Upload(_mainViewWork, _assets->GetGeometryStorage(), *_scene);
-        _visibilityResolvePass.Upload(_mainViewWork, _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
-        if (!descriptorsReady)
+            _mainViewState, _mainViewWork, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
+        _visibilityPass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
+                               _assets->GetTextureRegistry(), *_scene);
+        _visibilityResolvePass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(),
+                                      _assets->GetMaterialStorage(), *_scene);
+        const bool materialDescriptorsReady = _materialResolvePass.Upload(
+            _mainViewWork, _mainViewMaterialResources, _assets->GetModelGeometryStorage(),
+            _assets->GetMaterialStorage(), _assets->GetTextureRegistry(), *_scene);
+        if (!descriptorsReady || !materialDescriptorsReady)
             return;
         const u32 temporalReset = _mainView.GetTemporalResetGeneration();
         _viewWorkPass.AddPass(renderGraph, resources, _mainView, _mainViewState, _mainViewWork,
-                              _assets->GetGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex,
+                              _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex,
                               temporalReset != _handledTemporalReset, _lastForcedLOD);
         _mainViewWork.MarkSubmitted(frameIndex);
         _handledTemporalReset = temporalReset;
         _visibilityPass.AddPass(renderGraph, resources, _mainView, _mainViewWork,
-                                _assets->GetGeometryStorage(), *_scene, frameIndex);
+                                _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex);
+        _materialResolvePass.AddClassificationPass(
+            renderGraph, resources, _mainView, _mainViewWork, _mainViewMaterialResources,
+            _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex);
     }
 
     void ModelRenderSystem::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                               u8 frameIndex)
     {
         _visibilityResolvePass.AddPreEffectsPass(renderGraph, resources, _mainView, _mainViewWork,
-                                                 _assets->GetGeometryStorage(), *_scene, frameIndex);
+                                                 _assets->GetModelGeometryStorage(), *_scene, frameIndex);
+    }
+
+    void ModelRenderSystem::AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                   u8 frameIndex)
+    {
+        _materialResolvePass.AddResolvePass(renderGraph, resources, _mainView, _mainViewWork,
+                                            _mainViewMaterialResources, _assets->GetModelGeometryStorage(),
+                                            _assets->GetMaterialStorage(), *_scene, frameIndex);
     }
 
     void ModelRenderSystem::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                      u8 frameIndex)
     {
         _visibilityResolvePass.AddDiagnosticPass(renderGraph, resources, _mainView, _mainViewWork,
-                                                 _assets->GetGeometryStorage(), _assets->GetMaterialStorage(),
+                                                 _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
                                                  *_scene, frameIndex);
     }
 
@@ -125,7 +143,7 @@ namespace ModelRendering
                                                                             f32 worldBoundsRadius,
                                                                             bool geometryGroupsEnabled)
     {
-        const ModelLoading::ModelGeometryStorage& geometry = _assets->GetGeometryStorage();
+        const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
         if (!geometry.HasModel(model) || worldBoundsRadius <= 0.0f)
             return RenderScenes::InvalidModelInstanceHandle();
 

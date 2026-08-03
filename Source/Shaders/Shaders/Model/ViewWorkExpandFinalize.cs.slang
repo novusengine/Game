@@ -1,3 +1,4 @@
+#include "DescriptorSet/Global.inc.slang"
 #include "Model/ModelViewWork.inc.slang"
 
 struct Constants

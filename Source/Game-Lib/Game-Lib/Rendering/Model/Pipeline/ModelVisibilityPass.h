@@ -9,6 +9,7 @@ struct RenderResources;
 class GameRenderer;
 
 namespace ModelLoading { class ModelGeometryStorage; }
+namespace MaterialLoading { class MaterialStorage; class MaterialTextureRegistry; }
 namespace ModelView { class ModelViewWorkResources; }
 namespace RenderScenes { class RenderScene; class RenderView; }
 namespace Renderer { class RenderGraph; class Renderer; }
@@ -23,17 +24,19 @@ namespace ModelPipeline
         ModelVisibilityPass(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
         void Upload(const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
+                    const MaterialLoading::MaterialStorage& materials,
+                    const MaterialLoading::MaterialTextureRegistry& textures,
                     const RenderScenes::RenderScene& scene);
         void AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                      const RenderScenes::RenderView& view, const ModelView::ModelViewWorkResources& work,
-                     const ModelLoading::ModelGeometryStorage& geometry, const RenderScenes::RenderScene& scene,
+                     const ModelLoading::ModelGeometryStorage& geometry,
+                     const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene,
                      u8 frameIndex);
 
       private:
         struct FrameBindings
         {
-            Renderer::BufferID oneSidedQueue = Renderer::BufferID::Invalid();
-            Renderer::BufferID twoSidedQueue = Renderer::BufferID::Invalid();
+            Renderer::BufferID rasterQueues[ModelView::MODEL_RASTER_CLASS_COUNT] = {};
             Renderer::BufferID visibilityRecords = Renderer::BufferID::Invalid();
             Renderer::BufferID workStats = Renderer::BufferID::Invalid();
         };
@@ -51,6 +54,11 @@ namespace ModelPipeline
             Renderer::BufferID vertexAttributes = Renderer::BufferID::Invalid();
             Renderer::BufferID vertexIndices = Renderer::BufferID::Invalid();
             Renderer::BufferID triangles = Renderer::BufferID::Invalid();
+            Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
+            Renderer::BufferID materialInstances = Renderer::BufferID::Invalid();
+            Renderer::BufferID materials = Renderer::BufferID::Invalid();
+            Renderer::BufferID materialParameters = Renderer::BufferID::Invalid();
+            Renderer::TextureArrayID textures = Renderer::TextureArrayID::Invalid();
         };
 
         void BindIfChanged(StringUtils::StringHash name, Renderer::BufferID buffer, Renderer::BufferID& current);
@@ -59,6 +67,9 @@ namespace ModelPipeline
         Renderer::DescriptorSet _descriptorSet;
         Renderer::GraphicsPipelineID _oneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _twoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _alphaTestOneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _alphaTestTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::SamplerID _samplers[4] = {};
         Bindings _bindings;
         u32 _queueGeneration = 0;
     };

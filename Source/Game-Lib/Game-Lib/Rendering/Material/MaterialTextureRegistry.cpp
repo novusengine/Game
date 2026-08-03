@@ -1,4 +1,6 @@
-#include "ModelTextureResolver.h"
+#include "MaterialTextureRegistry.h"
+
+#include "Game-Lib/Rendering/Asset/AssetValidation.h"
 
 #include <Base/Util/DebugHandler.h>
 
@@ -12,7 +14,9 @@
 
 namespace
 {
-    constexpr u32 CHECKER_SIZE = 8;
+    constexpr u32 CHECKER_TILE_COUNT = 4;
+    constexpr u32 CHECKER_TILE_SIZE = 16;
+    constexpr u32 CHECKER_SIZE = CHECKER_TILE_COUNT * CHECKER_TILE_SIZE;
 
     constexpr std::array<u8, CHECKER_SIZE * CHECKER_SIZE * 4> MakeCheckerboard()
     {
@@ -21,7 +25,7 @@ namespace
         {
             for (u32 x = 0; x < CHECKER_SIZE; ++x)
             {
-                const bool purple = ((x / 2u) + (y / 2u)) % 2u == 0;
+                const bool purple = ((x / CHECKER_TILE_SIZE) + (y / CHECKER_TILE_SIZE)) % 2u == 0;
                 const u32 offset = (y * CHECKER_SIZE + x) * 4u;
                 pixels[offset + 0] = purple ? 190 : 255;
                 pixels[offset + 1] = purple ? 0 : 255;
@@ -50,12 +54,12 @@ namespace
 
 namespace MaterialLoading
 {
-    ModelTextureResolver::ModelTextureResolver(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage)
+    MaterialTextureRegistry::MaterialTextureRegistry(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage)
         : _renderer(renderer), _pactStorage(pactStorage)
     {
     }
 
-    bool ModelTextureResolver::Initialize()
+    bool MaterialTextureRegistry::Initialize()
     {
         Renderer::TextureArrayDesc arrayDesc;
         arrayDesc.size = Renderer::Settings::MAX_TEXTURES;
@@ -80,7 +84,7 @@ namespace MaterialLoading
         return true;
     }
 
-    u32 ModelTextureResolver::Resolve(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID, bool optional)
+    u32 MaterialTextureRegistry::Resolve(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID, bool optional)
     {
         const auto existing = _entries.find(textureAssetID);
         if (existing != _entries.end())
@@ -91,6 +95,8 @@ namespace MaterialLoading
 
         if (textureAssetID == FileFormat::INVALID_ASSET_ID)
             return RecordFailure(textureAssetID, ownerAssetID, "invalid_asset_id", optional);
+        if (AssetLoading::ShouldInjectFailure(AssetLoading::FailureInjection::Texture))
+            return RecordFailure(textureAssetID, ownerAssetID, "injected_failure", optional);
 
         PACT::PactFileHandle file;
         const PACT::PactReadResult readResult = _pactStorage->ReadFile(textureAssetID, file);
@@ -114,7 +120,7 @@ namespace MaterialLoading
         return arrayIndex;
     }
 
-    void ModelTextureResolver::FlushDescriptors()
+    void MaterialTextureRegistry::FlushDescriptors()
     {
         if (!_descriptorsDirty)
             return;
@@ -123,7 +129,8 @@ namespace MaterialLoading
         _descriptorsDirty = false;
     }
 
-    u32 ModelTextureResolver::RecordFailure(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID, const char* reason, bool optional)
+    u32 MaterialTextureRegistry::RecordFailure(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID,
+                                               const char* reason, bool optional)
     {
         NC_LOG_ERROR("MODEL_ASSET texture_fallback owner={} dependency={} optional={} reason={}", ownerAssetID, textureAssetID, optional, reason);
         _entries[textureAssetID] = {_fallbackTextureIndex, true};

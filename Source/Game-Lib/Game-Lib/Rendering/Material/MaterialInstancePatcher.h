@@ -13,6 +13,7 @@ namespace MaterialLoading
     class MaterialInstancePatcher
     {
       public:
-        static bool Patch(const MaterialInstanceAssetView& instance, const ResolveTextureCallback& resolveTexture, std::vector<u8>& outParameterData);
+        static bool Patch(const MaterialInstanceAssetView& instance, const ResolveTextureCallback& resolveTexture,
+                          std::vector<u8>& outParameterData, u32* outPackedSamplerIDs = nullptr);
     };
 } // namespace MaterialLoading

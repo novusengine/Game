@@ -16,13 +16,17 @@ struct Constants
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<ModelMeshlet> _modelMeshlets;
 [[vk::binding(5, PER_PASS)]] RWStructuredBuffer<uint> _oneSidedQueue0;
 [[vk::binding(6, PER_PASS)]] RWStructuredBuffer<uint> _twoSidedQueue0;
-[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
-[[vk::binding(8, PER_PASS)]] StructuredBuffer<ModelMeshletChunk> _chunkQueue1;
-[[vk::binding(9, PER_PASS)]] RWStructuredBuffer<uint> _oneSidedQueue1;
-[[vk::binding(10, PER_PASS)]] RWStructuredBuffer<uint> _twoSidedQueue1;
-[[vk::binding(11, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
-[[vk::binding(12, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords0;
-[[vk::binding(13, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords1;
+[[vk::binding(7, PER_PASS)]] RWStructuredBuffer<uint> _alphaTestOneSidedQueue0;
+[[vk::binding(8, PER_PASS)]] RWStructuredBuffer<uint> _alphaTestTwoSidedQueue0;
+[[vk::binding(9, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
+[[vk::binding(10, PER_PASS)]] StructuredBuffer<ModelMeshletChunk> _chunkQueue1;
+[[vk::binding(11, PER_PASS)]] RWStructuredBuffer<uint> _oneSidedQueue1;
+[[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _twoSidedQueue1;
+[[vk::binding(13, PER_PASS)]] RWStructuredBuffer<uint> _alphaTestOneSidedQueue1;
+[[vk::binding(14, PER_PASS)]] RWStructuredBuffer<uint> _alphaTestTwoSidedQueue1;
+[[vk::binding(15, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
+[[vk::binding(16, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords0;
+[[vk::binding(17, PER_PASS)]] RWStructuredBuffer<ModelVisibilityRecord> _visibilityRecords1;
 
 void AddStat(uint index, uint value)
 {
@@ -45,13 +49,17 @@ void StoreWork(uint rasterClass, uint index, uint recordID)
 {
     if (_constants.resourceIndex == 0u)
     {
-        if (rasterClass == MODEL_RASTER_ONE_SIDED) _oneSidedQueue0[index] = recordID;
-        else _twoSidedQueue0[index] = recordID;
+        if (rasterClass == MODEL_RASTER_SOLID_ONE_SIDED) _oneSidedQueue0[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_SOLID_TWO_SIDED) _twoSidedQueue0[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_ALPHA_TEST_ONE_SIDED) _alphaTestOneSidedQueue0[index] = recordID;
+        else _alphaTestTwoSidedQueue0[index] = recordID;
     }
     else
     {
-        if (rasterClass == MODEL_RASTER_ONE_SIDED) _oneSidedQueue1[index] = recordID;
-        else _twoSidedQueue1[index] = recordID;
+        if (rasterClass == MODEL_RASTER_SOLID_ONE_SIDED) _oneSidedQueue1[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_SOLID_TWO_SIDED) _twoSidedQueue1[index] = recordID;
+        else if (rasterClass == MODEL_RASTER_ALPHA_TEST_ONE_SIDED) _alphaTestOneSidedQueue1[index] = recordID;
+        else _alphaTestTwoSidedQueue1[index] = recordID;
     }
 }
 
@@ -89,7 +97,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
             AddStat(MODEL_WORK_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
             visible = false;
         }
-        else if (rasterClass == MODEL_RASTER_ONE_SIDED &&
+        else if ((rasterClass & 1u) == 0u &&
                  ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter,
                                                           meshlet.boundsRadius, instance.currentWorld,
                                                           camera.eyePosition.xyz))
@@ -103,9 +111,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
     uint waveOffset = 0u;
     uint recordOffset = 0u;
     uint committedCount = 0u;
-    uint countIndex = rasterClass == MODEL_RASTER_ONE_SIDED
-                          ? MODEL_WORK_STAT_ONE_SIDED_MESHLETS
-                          : MODEL_WORK_STAT_TWO_SIDED_MESHLETS;
+    uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass;
     if (WaveIsFirstLane())
     {
         AddStat(countIndex, visibleCount, waveOffset);

@@ -27,9 +27,9 @@ namespace
     constexpr std::array<Model::MeshLOD, 1> MESH_LODS = {{
         {
             .vertexOffset = 0,
-            .numVertices = 8,
+            .numVertices = 24,
             .vertexAttributeOffset = 0,
-            .numVertexAttributes = 8,
+            .numVertexAttributes = 24,
             .submeshOffset = 0,
             .numSubmeshes = 1,
             .meshletOffset = 0,
@@ -53,24 +53,31 @@ namespace
             .boundsRadius = 0.8660254f,
             .vertexOffset = 0,
             .triangleOffset = 0,
-            .vertexCount = 8,
+            .vertexCount = 24,
             .triangleCount = 12
         }
     }};
 
-    constexpr std::array<Model::PackedPosition, 8> POSITIONS = {{
-        {0, 0, 0, 0},
-        {65535, 0, 0, 0},
-        {65535, 65535, 0, 0},
-        {0, 65535, 0, 0},
-        {0, 0, 65535, 0},
-        {65535, 0, 65535, 0},
-        {65535, 65535, 65535, 0},
-        {0, 65535, 65535, 0}
+    constexpr std::array<Model::PackedPosition, 24> POSITIONS = {{
+        {0, 0, 0, 0}, {65535, 0, 0, 0}, {65535, 65535, 0, 0}, {0, 65535, 0, 0},
+        {0, 0, 65535, 0}, {65535, 0, 65535, 0}, {65535, 65535, 65535, 0}, {0, 65535, 65535, 0},
+        {0, 0, 0, 0}, {65535, 0, 0, 0}, {65535, 0, 65535, 0}, {0, 0, 65535, 0},
+        {65535, 0, 0, 0}, {65535, 65535, 0, 0}, {65535, 65535, 65535, 0}, {65535, 0, 65535, 0},
+        {65535, 65535, 0, 0}, {0, 65535, 0, 0}, {0, 65535, 65535, 0}, {65535, 65535, 65535, 0},
+        {0, 65535, 0, 0}, {0, 0, 0, 0}, {0, 0, 65535, 0}, {0, 65535, 65535, 0}
     }};
 
-    constexpr std::array<Model::PackedVertexAttributes, 8> VERTEX_ATTRIBUTES = {};
-    constexpr std::array<u32, 8> MESHLET_VERTEX_INDICES = {0, 1, 2, 3, 4, 5, 6, 7};
+    constexpr u32 HALF_ONE = 0x3C00u;
+    constexpr std::array<Model::PackedVertexAttributes, 24> VERTEX_ATTRIBUTES = {{
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u},
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u},
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u},
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u},
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u},
+        {.uv0 = 0}, {.uv0 = HALF_ONE}, {.uv0 = HALF_ONE | (HALF_ONE << 16u)}, {.uv0 = HALF_ONE << 16u}
+    }};
+    constexpr std::array<u32, 24> MESHLET_VERTEX_INDICES = {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23};
 
     constexpr u32 PackTriangle(u32 a, u32 b, u32 c)
     {
@@ -80,10 +87,10 @@ namespace
     constexpr std::array<Model::PackedMeshletTriangle, 12> MESHLET_TRIANGLES = {{
         {PackTriangle(0, 2, 1)}, {PackTriangle(0, 3, 2)},
         {PackTriangle(4, 5, 6)}, {PackTriangle(4, 6, 7)},
-        {PackTriangle(0, 1, 5)}, {PackTriangle(0, 5, 4)},
-        {PackTriangle(1, 2, 6)}, {PackTriangle(1, 6, 5)},
-        {PackTriangle(2, 3, 7)}, {PackTriangle(2, 7, 6)},
-        {PackTriangle(3, 0, 4)}, {PackTriangle(3, 4, 7)}
+        {PackTriangle(8, 9, 10)}, {PackTriangle(8, 10, 11)},
+        {PackTriangle(12, 13, 14)}, {PackTriangle(12, 14, 15)},
+        {PackTriangle(16, 17, 18)}, {PackTriangle(16, 18, 19)},
+        {PackTriangle(20, 21, 22)}, {PackTriangle(20, 22, 23)}
     }};
 
     constexpr std::array<Model::MaterialSlot, 1> MATERIAL_SLOTS = {{

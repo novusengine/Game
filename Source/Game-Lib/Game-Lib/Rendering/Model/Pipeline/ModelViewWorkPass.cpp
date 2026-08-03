@@ -84,8 +84,8 @@ namespace ModelPipeline
             {
                 _expandBindings.frames[frame].chunkQueue = Renderer::BufferID::Invalid();
                 _cullBindings.frames[frame].chunkQueue = Renderer::BufferID::Invalid();
-                _cullBindings.frames[frame].oneSidedQueue = Renderer::BufferID::Invalid();
-                _cullBindings.frames[frame].twoSidedQueue = Renderer::BufferID::Invalid();
+                for (Renderer::BufferID& queue : _cullBindings.frames[frame].rasterQueues)
+                    queue = Renderer::BufferID::Invalid();
                 _cullBindings.frames[frame].visibilityRecords = Renderer::BufferID::Invalid();
             }
         }
@@ -118,18 +118,18 @@ namespace ModelPipeline
              _expandFinalizeBindings[1].chunkArguments);
 
         bind(_cullDescriptorSet, "_chunkQueue0"_h, work.GetChunkQueue(0), _cullBindings.frames[0].chunkQueue);
-        bind(_cullDescriptorSet, "_oneSidedQueue0"_h, work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, 0),
-             _cullBindings.frames[0].oneSidedQueue);
-        bind(_cullDescriptorSet, "_twoSidedQueue0"_h, work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, 0),
-             _cullBindings.frames[0].twoSidedQueue);
+        static constexpr StringUtils::StringHash QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT]
+                                                                 [ModelView::MODEL_RASTER_CLASS_COUNT] = {
+            {"_oneSidedQueue0"_h, "_twoSidedQueue0"_h, "_alphaTestOneSidedQueue0"_h, "_alphaTestTwoSidedQueue0"_h},
+            {"_oneSidedQueue1"_h, "_twoSidedQueue1"_h, "_alphaTestOneSidedQueue1"_h, "_alphaTestTwoSidedQueue1"_h}};
+        for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
+            for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+                bind(_cullDescriptorSet, QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
+                     _cullBindings.frames[frame].rasterQueues[rasterClass]);
         bind(_cullDescriptorSet, "_workStats0"_h, work.GetStatsBuffer(0), _cullBindings.frames[0].workStats);
         bind(_cullDescriptorSet, "_visibilityRecords0"_h, work.GetVisibilityRecords(0),
              _cullBindings.frames[0].visibilityRecords);
         bind(_cullDescriptorSet, "_chunkQueue1"_h, work.GetChunkQueue(1), _cullBindings.frames[1].chunkQueue);
-        bind(_cullDescriptorSet, "_oneSidedQueue1"_h, work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, 1),
-             _cullBindings.frames[1].oneSidedQueue);
-        bind(_cullDescriptorSet, "_twoSidedQueue1"_h, work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, 1),
-             _cullBindings.frames[1].twoSidedQueue);
         bind(_cullDescriptorSet, "_workStats1"_h, work.GetStatsBuffer(1), _cullBindings.frames[1].workStats);
         bind(_cullDescriptorSet, "_visibilityRecords1"_h, work.GetVisibilityRecords(1),
              _cullBindings.frames[1].visibilityRecords);
@@ -197,8 +197,7 @@ namespace ModelPipeline
             Renderer::BufferMutableResource history;
             Renderer::BufferMutableResource chunks;
             Renderer::BufferMutableResource chunkArguments;
-            Renderer::BufferMutableResource oneSided;
-            Renderer::BufferMutableResource twoSided;
+            Renderer::BufferMutableResource rasterQueues[ModelView::MODEL_RASTER_CLASS_COUNT];
             Renderer::BufferMutableResource visibilityRecords;
             Renderer::BufferMutableResource stats;
             Renderer::BufferMutableResource arguments;
@@ -231,18 +230,14 @@ namespace ModelPipeline
                     builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                     data.chunks = builder.Write(work.GetChunkQueue(frameIndex), Usage::COMPUTE);
                     data.chunkArguments = builder.Write(work.GetChunkArguments(frameIndex), Usage::COMPUTE);
-                    data.oneSided =
-                        builder.Write(work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, frameIndex), Usage::COMPUTE);
-                    data.twoSided =
-                        builder.Write(work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, frameIndex), Usage::COMPUTE);
+                    for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+                        data.rasterQueues[rasterClass] = builder.Write(work.GetQueue(rasterClass, frameIndex), Usage::COMPUTE);
                     data.visibilityRecords = builder.Write(work.GetVisibilityRecords(frameIndex), Usage::COMPUTE);
                     // Both generations are RW shader bindings; resourceIndex selects the active generation.
                     builder.Write(work.GetChunkQueue(inactiveFrameIndex), Usage::COMPUTE);
                     builder.Write(work.GetChunkArguments(inactiveFrameIndex), Usage::COMPUTE);
-                    builder.Write(work.GetQueue(ModelView::MODEL_RASTER_ONE_SIDED, inactiveFrameIndex),
-                                  Usage::COMPUTE);
-                    builder.Write(work.GetQueue(ModelView::MODEL_RASTER_TWO_SIDED, inactiveFrameIndex),
-                                  Usage::COMPUTE);
+                    for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
+                        builder.Write(work.GetQueue(rasterClass, inactiveFrameIndex), Usage::COMPUTE);
                     builder.Write(work.GetVisibilityRecords(inactiveFrameIndex), Usage::COMPUTE);
                     data.globalSet = builder.Use(resources.globalDescriptorSet);
                     data.expandSet = builder.Use(_expandDescriptorSet);

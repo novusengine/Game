@@ -223,8 +223,8 @@ namespace Scripting::Asset
         const bool usedFallback = handle == resources->GetFallbackModel();
         const RenderAssets::RenderAssetResourceStats stats = resources->GetStats();
         NC_LOG_INFO("MODEL_ASSET debug_load path={} asset={} handle={} fallback={} models={} meshes={} meshlets={} materials={} instances={} textures={}",
-                    path, assetID, static_cast<RenderAssets::ModelHandle::type>(handle), usedFallback, stats.geometry.numModels,
-                    stats.geometry.numMeshes, stats.geometry.numMeshlets,
+                    path, assetID, static_cast<RenderAssets::ModelHandle::type>(handle), usedFallback,
+                    stats.modelGeometry.numModels, stats.modelGeometry.numMeshes, stats.modelGeometry.numMeshlets,
                     stats.materialStorage.numMaterials, stats.materialStorage.numMaterialInstances, stats.textures.resolvedTextures);
 
         zenith->Push(static_cast<RenderAssets::ModelHandle::type>(handle));
@@ -237,10 +237,10 @@ namespace Scripting::Asset
         const RenderAssets::RenderAssetResourceStats stats = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetStats();
         const RenderScenes::RenderSceneStats sceneStats = ServiceLocator::GetGameRenderer()->GetWorldRenderScene()->GetStats();
         zenith->CreateTable();
-        zenith->AddTableField("models", stats.geometry.numModels);
-        zenith->AddTableField("usedBytes", stats.geometry.usedBytes + stats.materialStorage.usedBytes);
-        zenith->AddTableField("reservedBytes", stats.geometry.reservedBytes + stats.materialStorage.reservedBytes);
-        zenith->AddTableField("growths", stats.geometry.bufferGrowths + stats.materialStorage.bufferGrowths);
+        zenith->AddTableField("models", stats.modelGeometry.numModels);
+        zenith->AddTableField("usedBytes", stats.modelGeometry.usedBytes + stats.materialStorage.usedBytes);
+        zenith->AddTableField("reservedBytes", stats.modelGeometry.reservedBytes + stats.materialStorage.reservedBytes);
+        zenith->AddTableField("growths", stats.modelGeometry.bufferGrowths + stats.materialStorage.bufferGrowths);
         zenith->AddTableField("modelFailures", stats.models.failures);
         zenith->AddTableField("materialFailures", stats.materials.materialFailures + stats.materials.materialInstanceFailures);
         zenith->AddTableField("textureFailures", stats.textures.fallbackTextures);

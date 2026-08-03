@@ -7,6 +7,7 @@
 
 #include <robinhood/robinhood.h>
 
+#include <array>
 #include <vector>
 
 namespace Renderer
@@ -17,6 +18,8 @@ namespace Renderer
 namespace MaterialLoading
 {
     inline constexpr u32 FALLBACK_MATERIAL_PROGRAM_ID = 0xFFFFFFFFu;
+    inline constexpr u32 MATERIAL_EXECUTION_GROUP_COUNT = 6;
+    inline constexpr u16 INVALID_GROUP_LOCAL_MATERIAL_ID = 0xFFFFu;
 
     struct MaterialGPURecord
     {
@@ -26,21 +29,27 @@ namespace MaterialLoading
         u32 flags = 0;
         u16 lightingModelID = 0;
         u16 materialExecutionGroupID = 0;
+        u16 groupLocalMaterialID = INVALID_GROUP_LOCAL_MATERIAL_ID;
         u8 rasterClass = 0;
-        u8 reserved[3] = {};
+        u8 reserved = 0;
     };
 
     struct MaterialInstanceGPURecord
     {
         u32 parameterOffset = 0;
         u32 materialIndex = 0;
+        u32 packedSamplerIDs = 0;
+        u32 reserved = 0;
     };
+    static_assert(sizeof(MaterialGPURecord) == 24);
+    static_assert(sizeof(MaterialInstanceGPURecord) == 16);
 
     struct MaterialStorageStats
     {
         u32 numMaterials = 0;
         u32 numMaterialInstances = 0;
         u32 numMaterialTableEntries = 0;
+        u32 numGroupMaterialEntries = 0;
         u32 instanceDedupHits = 0;
         u32 bufferGrowths = 0;
         u64 usedBytes = 0;
@@ -58,7 +67,7 @@ namespace MaterialLoading
         bool InitializeFallback(u32 checkerboardTextureIndex);
         bool AppendMaterial(const MaterialAssetView& view, RenderAssets::MaterialHandle& outHandle);
         bool AppendMaterialInstance(RenderAssets::MaterialHandle material, std::span<const u8> patchedParameterData,
-                                    RenderAssets::MaterialInstanceHandle& outHandle);
+                                    RenderAssets::MaterialInstanceHandle& outHandle, u32 packedSamplerIDs = 0);
         bool AppendMaterialTable(std::span<const RenderAssets::MaterialInstanceHandle> materials, u32& outOffset);
         void SyncToGPU(Renderer::Renderer* renderer);
 
@@ -86,12 +95,17 @@ namespace MaterialLoading
         const Renderer::GPUVector<MaterialGPURecord>& GetMaterials() const { return _materials; }
         const Renderer::GPUVector<MaterialInstanceGPURecord>& GetMaterialInstances() const { return _materialInstances; }
         const Renderer::GPUVector<u32>& GetMaterialTable() const { return _materialTable; }
+        const Renderer::GPUVector<u32>& GetGroupMaterialTable(u32 executionGroup) const
+        {
+            return _groupMaterialTables[executionGroup];
+        }
         const MaterialParameterStorage& GetParameterStorage() const { return _parameterStorage; }
 
       private:
         Renderer::GPUVector<MaterialGPURecord> _materials;
         Renderer::GPUVector<MaterialInstanceGPURecord> _materialInstances;
         Renderer::GPUVector<u32> _materialTable;
+        std::array<Renderer::GPUVector<u32>, MATERIAL_EXECUTION_GROUP_COUNT> _groupMaterialTables;
         MaterialParameterStorage _parameterStorage;
         std::vector<u32> _parameterAlignments;
         robin_hood::unordered_map<u64, RenderAssets::MaterialInstanceHandle> _instanceKeyToHandle;

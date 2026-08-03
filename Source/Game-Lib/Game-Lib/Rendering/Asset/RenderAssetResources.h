@@ -1,7 +1,7 @@
 #pragma once
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
-#include "Game-Lib/Rendering/Material/ModelTextureResolver.h"
+#include "Game-Lib/Rendering/Material/MaterialTextureRegistry.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelAssetRegistry.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 
@@ -20,11 +20,11 @@ namespace RenderAssets
 {
     struct RenderAssetResourceStats
     {
-        ModelLoading::ModelGeometryStorageStats geometry;
+        ModelLoading::ModelGeometryStorageStats modelGeometry;
         ModelLoading::ModelAssetRegistryStats models;
         MaterialLoading::MaterialStorageStats materialStorage;
         MaterialLoading::MaterialRegistryStats materials;
-        MaterialLoading::ModelTextureResolverStats textures;
+        MaterialLoading::MaterialTextureRegistryStats textures;
     };
 
     // Coordinates the CPU-side registries and GPU-side storage for model, material, and texture assets.
@@ -43,14 +43,14 @@ namespace RenderAssets
         MaterialHandle GetFallbackMaterial() const { return _materialStorage.GetFallbackMaterial(); }
         MaterialInstanceHandle GetFallbackMaterialInstance() const { return _materialStorage.GetFallbackMaterialInstance(); }
 
-        const ModelLoading::ModelGeometryStorage& GetGeometryStorage() const { return _geometryStorage; }
+        const ModelLoading::ModelGeometryStorage& GetModelGeometryStorage() const { return _geometryStorage; }
         const MaterialLoading::MaterialStorage& GetMaterialStorage() const { return _materialStorage; }
-        const MaterialLoading::ModelTextureResolver& GetTextureResolver() const { return _textureResolver; }
+        const MaterialLoading::MaterialTextureRegistry& GetTextureRegistry() const { return _textureRegistry; }
         RenderAssetResourceStats GetStats() const;
 
       private:
         Renderer::Renderer* _renderer = nullptr;
-        MaterialLoading::ModelTextureResolver _textureResolver;
+        MaterialLoading::MaterialTextureRegistry _textureRegistry;
         MaterialLoading::MaterialStorage _materialStorage;
         MaterialLoading::MaterialRegistry _materialRegistry;
         ModelLoading::ModelGeometryStorage _geometryStorage;
