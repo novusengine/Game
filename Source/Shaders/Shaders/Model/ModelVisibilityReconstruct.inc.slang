@@ -2,6 +2,9 @@
 #define MODEL_VISIBILITY_RECONSTRUCT_INCLUDED
 
 #include "Model/ModelVisibility.inc.slang"
+#ifndef MODEL_VISIBILITY_NO_MATERIAL
+#include "DescriptorSet/Material.inc.slang"
+#endif
 
 [[vk::binding(4, PER_PASS)]] StructuredBuffer<ModelVisibilityRecord> _resolvedModelVisibilityRecords0;
 [[vk::binding(5, PER_PASS)]] StructuredBuffer<uint> _resolvedModelVisibilityStats0;
@@ -19,7 +22,6 @@
 [[vk::binding(17, PER_PASS)]] StructuredBuffer<uint> _resolvedModelTriangles;
 #ifndef MODEL_VISIBILITY_NO_MATERIAL
 [[vk::binding(18, PER_PASS)]] StructuredBuffer<uint> _resolvedModelMaterialTable;
-[[vk::binding(19, PER_PASS)]] StructuredBuffer<MaterialInstanceRecord> _resolvedMaterialInstances;
 #endif
 
 struct ReconstructedModelPixel
@@ -115,7 +117,7 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
 #ifndef MODEL_VISIBILITY_NO_MATERIAL
     result.materialInstanceIndex = _resolvedModelMaterialTable[result.instance.materialTableOffset +
         result.mesh.materialSlotOffset + result.submesh.materialSlotIndex];
-    result.materialIndex = _resolvedMaterialInstances[result.materialInstanceIndex].materialIndex;
+    result.materialIndex = _materialInstances[result.materialInstanceIndex].materialIndex;
 #else
     result.materialInstanceIndex = 0u;
     result.materialIndex = 0u;

@@ -1,9 +1,11 @@
 #include "MaterialResolvePass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
-#include "Game-Lib/Rendering/Material/MaterialTextureRegistry.h"
+#include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
@@ -13,7 +15,6 @@
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Renderer.h>
 
-extern AutoCVar_ShowFlag CVAR_ModelMeshlets;
 AutoCVar_Int CVAR_MaterialDebugMode(
     CVarCategory::Client | CVarCategory::Rendering, "materialDebugMode",
     "Material debug: 0 shaded, 1 material, 2 program, 3 execution group, 4 lighting model, 5 texture", 0);
@@ -39,44 +40,37 @@ namespace MaterialRendering
         desc.computeShader = renderer->LoadShader(shader);
         _finalizePipeline = renderer->CreatePipeline(desc);
 
-        shader.shaderEntry = gameRenderer->GetShaderEntry("Material/MaterialResolve.cs"_h,
-                                                           "Material/MaterialResolve.cs");
-        desc.debugName = "Material Resolve";
-        desc.computeShader = renderer->LoadShader(shader);
-        _resolvePipeline = renderer->CreatePipeline(desc);
+        for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
+        {
+            const FileFormat::Material::MaterialExecutionGroup* cookedGroup =
+                gameRenderer->GetRenderAssetResources()->GetMaterialProgramLibrary().GetExecutionGroup(
+                    static_cast<u16>(group));
+            if (cookedGroup == nullptr)
+                continue;
+            shader.shaderEntry = gameRenderer->GetShaderEntry(
+                cookedGroup->resolveShaderPermutationHash, "Generated/MaterialResolve.cs");
+            desc.debugName = "Material Resolve Group " + std::to_string(group);
+            desc.computeShader = renderer->LoadShader(shader);
+            _resolvePipelines[group] = renderer->CreatePipeline(desc);
+            _activeResolveGroups[group] = true;
+        }
 
         _classificationSet.RegisterPipeline(renderer, _classificationPipeline);
         _classificationSet.Init(renderer);
         _finalizeSet.RegisterPipeline(renderer, _finalizePipeline);
         _finalizeSet.Init(renderer);
 
-        for (u32 samplerIndex = 0; samplerIndex < 4; ++samplerIndex)
+        for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
         {
-            Renderer::SamplerDesc sampler;
-            sampler.enabled = true;
-            sampler.filter = Renderer::SamplerFilter::ANISOTROPIC;
-            sampler.maxAnisotropy = 16;
-            sampler.addressU = (samplerIndex & 1u) != 0u ? Renderer::TextureAddressMode::WRAP
-                                                         : Renderer::TextureAddressMode::CLAMP;
-            sampler.addressV = (samplerIndex & 2u) != 0u ? Renderer::TextureAddressMode::WRAP
-                                                         : Renderer::TextureAddressMode::CLAMP;
-            sampler.addressW = Renderer::TextureAddressMode::CLAMP;
-            sampler.shaderVisibility = Renderer::ShaderVisibility::ALL;
-            _samplers[samplerIndex] = renderer->CreateSampler(sampler);
+            if (_activeResolveGroups[group])
+                _resolveSet.RegisterPipeline(renderer, _resolvePipelines[group]);
         }
-
-        _resolveSet.RegisterPipeline(renderer, _resolvePipeline);
         _resolveSet.Init(renderer);
-        _resolveSet.Bind("_materialSampler0"_h, _samplers[0]);
-        _resolveSet.Bind("_materialSampler1"_h, _samplers[1]);
-        _resolveSet.Bind("_materialSampler2"_h, _samplers[2]);
-        _resolveSet.Bind("_materialSampler3"_h, _samplers[3]);
     }
 
     void MaterialResolvePass::BindModelResources(Renderer::DescriptorSet& set, ModelBindings& bindings,
                                                  const ModelView::ModelViewWorkResources& work,
                                                  const ModelLoading::ModelGeometryStorage& geometry,
-                                                 const MaterialLoading::MaterialStorage& materials,
                                                  const RenderScenes::RenderScene& scene, bool& changed)
     {
         auto bind = [&set, &changed](StringUtils::StringHash name, Renderer::BufferID buffer,
@@ -103,15 +97,11 @@ namespace MaterialRendering
         bind("_resolvedModelTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), bindings.triangles);
         bind("_resolvedModelMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
              bindings.materialTable);
-        bind("_resolvedMaterialInstances"_h, materials.GetMaterialInstances().GetBuffer(),
-             bindings.materialInstances);
     }
 
     bool MaterialResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
                                      MaterialResolveResources& resources,
                                      const ModelLoading::ModelGeometryStorage& geometry,
-                                     const MaterialLoading::MaterialStorage& materials,
-                                     const MaterialLoading::MaterialTextureRegistry& textures,
                                      const RenderScenes::RenderScene& scene)
     {
         const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
@@ -120,9 +110,9 @@ namespace MaterialRendering
         resources.EnsureTileCapacity(tilesX * tilesY);
 
         bool changed = false;
-        BindModelResources(_classificationSet, _classificationBindings.model, work, geometry, materials, scene,
+        BindModelResources(_classificationSet, _classificationBindings.model, work, geometry, scene,
                            changed);
-        BindModelResources(_resolveSet, _resolveBindings.model, work, geometry, materials, scene, changed);
+        BindModelResources(_resolveSet, _resolveBindings.model, work, geometry, scene, changed);
 
         auto bind = [&changed](Renderer::DescriptorSet& set, StringUtils::StringHash name, Renderer::BufferID buffer,
                                Renderer::BufferID& current) {
@@ -132,9 +122,6 @@ namespace MaterialRendering
             current = buffer;
             changed = true;
         };
-        bind(_classificationSet, "_classifiedMaterials"_h, materials.GetMaterials().GetBuffer(),
-             _classificationBindings.materials);
-
         static constexpr StringUtils::StringHash TILE_QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT] = {
             "_materialTileQueue0"_h, "_materialTileQueue1"_h};
         static constexpr StringUtils::StringHash COUNTER_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT] = {
@@ -153,23 +140,6 @@ namespace MaterialRendering
                  _finalizeBindings.arguments[frame]);
             bind(_resolveSet, TILE_QUEUE_NAMES[frame], resources.GetTileQueue(frame),
                  _resolveBindings.tileQueues[frame]);
-        }
-
-        bind(_resolveSet, "_materials"_h, materials.GetMaterials().GetBuffer(),
-             _resolveBindings.materials);
-        bind(_resolveSet, "_materialParameters"_h,
-             materials.GetParameterStorage().GetBuffer().GetBuffer(), _resolveBindings.parameters);
-        static constexpr StringUtils::StringHash GROUP_NAMES[MATERIAL_EXECUTION_GROUP_COUNT] = {
-            "_materialGroupMaterials0"_h, "_materialGroupMaterials1"_h, "_materialGroupMaterials2"_h,
-            "_materialGroupMaterials3"_h, "_materialGroupMaterials4"_h, "_materialGroupMaterials5"_h};
-        for (u32 group = 0; group < MATERIAL_EXECUTION_GROUP_COUNT; ++group)
-            bind(_resolveSet, GROUP_NAMES[group], materials.GetGroupMaterialTable(group).GetBuffer(),
-                 _resolveBindings.groupMaterials[group]);
-        if (_resolveBindings.textures != textures.GetTextureArray())
-        {
-            _resolveSet.Bind("_materialTextures"_h, textures.GetTextureArray());
-            _resolveBindings.textures = textures.GetTextureArray();
-            changed = true;
         }
 
         if (changed)
@@ -203,6 +173,8 @@ namespace MaterialRendering
         builder.Read(geometry.GetMeshletTriangles().GetBuffer(), Usage::COMPUTE);
         builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Usage::COMPUTE);
         builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::COMPUTE);
+        builder.Read(materials.GetTextureIndices().GetBuffer(), Usage::COMPUTE);
+        builder.Read(materials.GetSamplerIDs().GetBuffer(), Usage::COMPUTE);
     }
 
     void MaterialResolvePass::AddClassificationPass(
@@ -211,7 +183,7 @@ namespace MaterialRendering
         const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
+        if (!ModelRendering::UseMeshletModelRenderer())
             return;
         struct Data
         {
@@ -222,6 +194,7 @@ namespace MaterialRendering
             Renderer::BufferMutableResource arguments;
             Renderer::BufferMutableResource readback;
             Renderer::DescriptorSetResource classificationSet;
+            Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource finalizeSet;
         };
         renderGraph->AddPass<Data>("Material Classification",
@@ -250,6 +223,7 @@ namespace MaterialRendering
                 }
                 data.readback = builder.Write(resources.GetReadback(frameIndex), Usage::TRANSFER);
                 data.classificationSet = builder.Use(_classificationSet);
+                data.materialSet = builder.Use(renderResources.materialDescriptorSet);
                 data.finalizeSet = builder.Use(_finalizeSet);
                 return true;
             },
@@ -258,7 +232,8 @@ namespace MaterialRendering
                 GPU_SCOPED_PROFILER_ZONE(commandList, MaterialClassification);
                 commandList.FillBuffer(data.counters, 0, sizeof(MaterialClassificationStats), 0);
                 commandList.FillBuffer(data.arguments, 0,
-                    sizeof(u32) * MATERIAL_EXECUTION_GROUP_COUNT * MATERIAL_DISPATCH_ARGUMENT_COUNT, 0);
+                    sizeof(u32) * FileFormat::Material::ABI::EXECUTION_GROUP_COUNT *
+                        MATERIAL_DISPATCH_ARGUMENT_COUNT, 0);
                 commandList.BufferBarrier(data.counters, Renderer::BufferPassUsage::COMPUTE);
                 commandList.BufferBarrier(data.arguments, Renderer::BufferPassUsage::COMPUTE);
 
@@ -282,6 +257,7 @@ namespace MaterialRendering
                 data.classificationSet.Bind("_visibilityBuffer"_h, data.visibility);
                 data.classificationSet.Bind("_materialIDs"_h, data.materialIDs);
                 commandList.PushConstant(constants, 0, sizeof(Constants));
+                commandList.BindDescriptorSet(data.materialSet, frameIndex);
                 commandList.BindDescriptorSet(data.classificationSet, frameIndex);
                 commandList.Dispatch(tilesX, tilesY, 1);
                 commandList.EndPipeline(_classificationPipeline);
@@ -310,7 +286,7 @@ namespace MaterialRendering
         const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
+        if (!ModelRendering::UseMeshletModelRenderer())
             return;
         struct Data
         {
@@ -319,6 +295,7 @@ namespace MaterialRendering
             Renderer::ImageMutableResource color;
             Renderer::BufferResource arguments;
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
         renderGraph->AddPass<Data>("Material Resolve",
@@ -333,12 +310,11 @@ namespace MaterialRendering
                 RegisterModelUsage(builder, work, geometry, materials, scene);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::COMPUTE);
-                for (u32 group = 0; group < MATERIAL_EXECUTION_GROUP_COUNT; ++group)
-                    builder.Read(materials.GetGroupMaterialTable(group).GetBuffer(), Usage::COMPUTE);
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
                     builder.Read(resources.GetTileQueue(frame), Usage::COMPUTE);
                 data.arguments = builder.Read(resources.GetArguments(frameIndex), Usage::COMPUTE);
                 data.globalSet = builder.Use(renderResources.globalDescriptorSet);
+                data.materialSet = builder.Use(renderResources.materialDescriptorSet);
                 data.resolveSet = builder.Use(_resolveSet);
                 return true;
             },
@@ -353,29 +329,30 @@ namespace MaterialRendering
                     u32 resourceIndex;
                     u32 tileCapacity;
                     u32 tilesX;
-                    u32 executionGroup;
                     u32 debugMode;
                 };
-                commandList.BeginPipeline(_resolvePipeline);
                 data.resolveSet.Bind("_visibilityBuffer"_h, data.visibility);
                 data.resolveSet.Bind("_materialIDs"_h, data.materialIDs);
                 data.resolveSet.Bind("_materialColor"_h, data.color);
-                commandList.BindDescriptorSet(data.globalSet, frameIndex);
-                commandList.BindDescriptorSet(data.resolveSet, frameIndex);
-                for (u32 group = 0; group < MATERIAL_EXECUTION_GROUP_COUNT; ++group)
+                for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
                 {
+                    if (!_activeResolveGroups[group])
+                        continue;
+                    commandList.BeginPipeline(_resolvePipelines[group]);
+                    commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
+                    commandList.BindDescriptorSet(data.resolveSet, frameIndex);
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
                     constants->resourceIndex = frameIndex;
                     constants->tileCapacity = resources.GetTileCapacity();
                     constants->tilesX = tilesX;
-                    constants->executionGroup = group;
                     constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.DispatchIndirect(
                         data.arguments, group * sizeof(u32) * MATERIAL_DISPATCH_ARGUMENT_COUNT);
+                    commandList.EndPipeline(_resolvePipelines[group]);
                 }
-                commandList.EndPipeline(_resolvePipeline);
             });
     }
 } // namespace MaterialRendering

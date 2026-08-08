@@ -24,7 +24,7 @@ namespace ModelPipeline
         ModelViewWorkPass(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
         bool Upload(const ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work,
-                    const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
+                    const ModelLoading::ModelGeometryStorage& geometry,
                     const RenderScenes::RenderScene& scene);
         void AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view,
                      const ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work,
@@ -49,8 +49,6 @@ namespace ModelPipeline
             Renderer::BufferID modelSubmeshes = Renderer::BufferID::Invalid();
             Renderer::BufferID geometryGroupMasks = Renderer::BufferID::Invalid();
             Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
-            Renderer::BufferID materialInstances = Renderer::BufferID::Invalid();
-            Renderer::BufferID materials = Renderer::BufferID::Invalid();
             ExpandFrameBindings frames[ModelView::MODEL_VIEW_FRAME_COUNT];
         };
 

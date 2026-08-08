@@ -75,16 +75,19 @@ namespace ModelScene
         u32 staleHandleRejects = 0;
     };
 
-    // Owns CPU-side generation-checked instance slots and their GPU-side transform and resource records.
-    // It keeps generation-safe CPU lifetime state aligned with dense GPU culling inputs.
+    // Owns CPU-side generation-checked instance slots and their GPU-side transform
+    // and resource records. It keeps generation-safe CPU lifetime state aligned
+    // with dense GPU culling inputs.
     class ModelInstanceStore
     {
       public:
         explicit ModelInstanceStore(bool validateTransfers = false);
 
+        void Reserve(u32 instanceCount);
         RenderScenes::ModelInstanceHandle Create(const ModelInstanceCreateInfo& info);
         bool Destroy(RenderScenes::ModelInstanceHandle handle, ModelInstanceResources& outResources);
-        bool SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported, bool& outNeedsHistoryClear);
+        bool SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported,
+                          bool& outNeedsHistoryClear);
         bool SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear);
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
@@ -96,10 +99,24 @@ namespace ModelScene
         bool IsPending(RenderScenes::ModelInstanceHandle handle) const;
         const ModelInstanceGPURecord* GetRecord(RenderScenes::ModelInstanceHandle handle) const;
         const ModelInstanceResources* GetResources(RenderScenes::ModelInstanceHandle handle) const;
-        std::span<const u32> GetPendingSlotClears() const { return _pendingSlotClears; }
-        void AcknowledgePendingSlotClears() { _pendingSlotClears.clear(); }
+        void CollectActiveHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const;
+        std::span<const u32> GetPendingSlotClears() const
+        {
+            return _pendingSlotClears;
+        }
+        void AcknowledgePendingSlotClears()
+        {
+            _pendingSlotClears.clear();
+        }
         ModelInstanceStoreStats GetStats() const;
-        const Renderer::GPUVector<ModelInstanceGPURecord>& GetRecords() const { return _records; }
+        const Renderer::GPUVector<ModelInstanceGPURecord>& GetRecords() const
+        {
+            return _records;
+        }
+        u64 GetMembershipRevision() const
+        {
+            return _membershipRevision;
+        }
 
       private:
         enum class SlotState : u8
@@ -115,18 +132,32 @@ namespace ModelScene
             u32 generation = 1;
             SlotState state = SlotState::Free;
             bool desiredVisible = false;
+            bool frameAdvanceQueued = false;
+        };
+
+        struct SlotGenerationEntry
+        {
+            u32 slotIndex = 0;
+            u32 generation = 0;
         };
 
         Slot* GetSlot(RenderScenes::ModelInstanceHandle handle);
         const Slot* GetSlot(RenderScenes::ModelInstanceHandle handle) const;
-        void RecordStaleHandle() const { _staleHandleRejects++; }
+        void QueueFrameAdvance(u32 slotIndex);
+        void RecordStaleHandle() const
+        {
+            _staleHandleRejects++;
+        }
 
         Renderer::GPUVector<ModelInstanceGPURecord> _records;
         std::vector<Slot> _slots;
         std::vector<u32> _freeSlots;
         std::vector<u32> _pendingSlotClears;
+        std::vector<SlotGenerationEntry> _pendingPublications;
+        std::vector<SlotGenerationEntry> _frameAdvanceEntries;
         u32 _liveInstances = 0;
         u32 _pendingInstances = 0;
         mutable u32 _staleHandleRejects = 0;
+        u64 _membershipRevision = 0;
     };
 } // namespace ModelScene

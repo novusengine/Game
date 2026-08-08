@@ -2,10 +2,20 @@
 
 #include <algorithm>
 
+#include <tracy/Tracy.hpp>
+
 namespace ModelScene
 {
+    void MeshletHistoryAllocator::Reserve(u32 rangeCount)
+    {
+        _pendingClears.reserve(_pendingClears.size() + rangeCount);
+        _retiredRanges.reserve(_retiredRanges.size() + rangeCount);
+    }
+
     MeshletHistoryRange MeshletHistoryAllocator::Allocate(u32 wordCount)
     {
+        ZoneScopedN("MeshletHistoryAllocator::Allocate");
+
         if (wordCount == 0)
             return {};
 

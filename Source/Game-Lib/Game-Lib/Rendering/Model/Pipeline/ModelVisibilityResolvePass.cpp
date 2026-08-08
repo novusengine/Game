@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
@@ -12,7 +13,6 @@
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Renderer.h>
 
-extern AutoCVar_ShowFlag CVAR_ModelMeshlets;
 AutoCVar_Int CVAR_ModelVisibilityDebugMode(
     CVarCategory::Client | CVarCategory::Rendering, "modelVisibilityDebugMode",
     "Model visibility debug: 0 instance, 1 material, 2 LOD, 3 submesh, 4 meshlet, 5 triangle, 6 normal, 7 UV", 4);
@@ -78,7 +78,6 @@ namespace ModelPipeline
 
     void ModelVisibilityResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
                                             const ModelLoading::ModelGeometryStorage& geometry,
-                                            const MaterialLoading::MaterialStorage& materials,
                                             const RenderScenes::RenderScene& scene)
     {
         BindCommon(_preEffectsSet, _preEffectsBindings, work, geometry, scene);
@@ -88,12 +87,6 @@ namespace ModelPipeline
         {
             _diagnosticSet.Bind("_resolvedModelMaterialTable"_h, materialTable);
             _diagnosticBindings.materialTable = materialTable;
-        }
-        const Renderer::BufferID materialInstances = materials.GetMaterialInstances().GetBuffer();
-        if (_diagnosticBindings.materialInstances != materialInstances)
-        {
-            _diagnosticSet.Bind("_resolvedMaterialInstances"_h, materialInstances);
-            _diagnosticBindings.materialInstances = materialInstances;
         }
     }
 
@@ -125,7 +118,7 @@ namespace ModelPipeline
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
+        if (!ModelRendering::UseMeshletModelRenderer())
             return;
         struct Data
         {
@@ -169,13 +162,14 @@ namespace ModelPipeline
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
+        if (!ModelRendering::UseMeshletModelRenderer())
             return;
         struct Data
         {
             Renderer::ImageResource visibility;
             Renderer::ImageMutableResource color;
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
         renderGraph->AddPass<Data>("Model Visibility Resolve",
@@ -187,6 +181,7 @@ namespace ModelPipeline
                 builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.materialSet = builder.Use(resources.materialDescriptorSet);
                 data.resolveSet = builder.Use(_diagnosticSet);
                 return true;
             },
@@ -197,6 +192,7 @@ namespace ModelPipeline
                 data.resolveSet.Bind("_visibilityBuffer"_h, data.visibility);
                 data.resolveSet.Bind("_modelVisibilityResolvedColor"_h, data.color);
                 commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                commandList.BindDescriptorSet(data.materialSet, frameIndex);
                 commandList.BindDescriptorSet(data.resolveSet, frameIndex);
                 const vec2 size = static_cast<vec2>(_renderer->GetImageDimensions(resources.sceneColor, 0));
                 struct Constants { vec4 renderInfo; u32 resourceIndex; u32 debugMode; };

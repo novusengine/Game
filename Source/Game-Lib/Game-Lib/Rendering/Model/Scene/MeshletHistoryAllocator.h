@@ -31,6 +31,7 @@ namespace ModelScene
     class MeshletHistoryAllocator
     {
       public:
+        void Reserve(u32 rangeCount);
         MeshletHistoryRange Allocate(u32 wordCount);
         void Retire(MeshletHistoryRange range, u64 retireValue);
         void ReleaseRetired(u64 completedValue);

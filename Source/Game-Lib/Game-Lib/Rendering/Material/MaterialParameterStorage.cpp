@@ -18,6 +18,8 @@ namespace MaterialLoading
 
     bool MaterialParameterStorage::Append(std::span<const u8> bytes, u32 alignment, u32& outOffset)
     {
+        ZoneScopedN("MaterialParameterStorage::Append");
+
         if (alignment == 0 || (alignment & (alignment - 1)) != 0)
             return false;
 
@@ -47,11 +49,12 @@ namespace MaterialLoading
         if (requiredSize > std::numeric_limits<u32>::max())
             return false;
 
-        _bytes.AddCount(static_cast<u32>(alignedOffset) - _bytes.Count());
+        const u32 appendSize = static_cast<u32>(requiredSize) - _bytes.Count();
+        _bytes.Reserve(appendSize);
+        _bytes.AddCount(appendSize);
         outOffset = static_cast<u32>(alignedOffset);
         if (!bytes.empty())
         {
-            _bytes.AddCount(static_cast<u32>(bytes.size()));
             std::memcpy(&_bytes[outOffset], bytes.data(), bytes.size());
         }
 

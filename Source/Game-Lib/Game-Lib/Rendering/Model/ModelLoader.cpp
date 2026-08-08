@@ -1,6 +1,8 @@
 #include "ModelLoader.h"
 #include "ModelBuilder.h"
 #include "ModelRenderer.h"
+#include "ModelPlacementLoader.h"
+#include "ModelRendererMode.h"
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ItemSingleton.h"
@@ -16,8 +18,12 @@
 #include "Game-Lib/ECS/Util/Database/ItemUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
+#include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
+#include "Game-Lib/Rendering/Model/DisplayResolver.h"
+#include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/JoltStream.h"
@@ -45,15 +51,36 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <execution>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace fs = std::filesystem;
 
 static const fs::path dataPath = fs::path("Data/");
 static const fs::path complexModelPath = dataPath / "ComplexModel";
+
+namespace
+{
+    FileFormat::AssetID ResolveModelV2AssetID(u64 sourceReference)
+    {
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+        const std::string* sourcePath = pactStorage->GetFilePath(sourceReference);
+        if (!sourcePath)
+            return FileFormat::INVALID_ASSET_ID;
+
+        fs::path modelPath(*sourcePath);
+        modelPath.replace_extension(".model");
+        std::string normalized = modelPath.generic_string();
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        return Util::AssetPath::Hash(normalized);
+    }
+}
 
 AutoCVar_Int CVAR_ModelAsyncPrepare(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncPrepare", "prepare model CPU data on EnkiTS workers", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_ModelAsyncMaxInFlight(CVarCategory::Client | CVarCategory::Rendering, "modelAsyncMaxInFlight", "maximum in-flight model preparation jobs", 8, CVarFlags::None);
@@ -677,11 +704,17 @@ void ModelLoader::Update(f32 deltaTime)
 
     const bool modelPreparationIdle = _activeModelPrepareJobs.empty() && _preparedModelResults.size_approx() == 0 && _pendingPreparedModelCommits.empty();
     const bool terrainRequestQueuesIdle = _pendingTerrainLoadRequests.size_approx() == 0 && _internalLoadRequests.size_approx() == 0;
-    if (_terrainLoading && _numTerrainModelsLoaded == _numTerrainModelsToLoad && modelPreparationIdle && terrainRequestQueuesIdle)
+    GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+    const bool terrainIdle = !gameRenderer->GetTerrainLoader()->IsLoading();
+    const bool placementLoadingIdle = !ModelRendering::UseMeshletModelRenderer() ||
+                                      !gameRenderer->GetModelPlacementLoader()->IsLoading();
+    if (_terrainLoading && terrainIdle && placementLoadingIdle &&
+        _numTerrainModelsLoaded == _numTerrainModelsToLoad && modelPreparationIdle && terrainRequestQueuesIdle)
     {
         SetTerrainLoading(false);
 
-        u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+        MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+        u32 mapID = mapLoader->GetCurrentMapID();
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
         joltState.LogPhysicsTelemetrySummary("Map Loaded");
@@ -898,6 +931,10 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
     _entityToLatestRequestID.erase(entt::to_integral(entity));
 
     _unloadRequests.enqueue(unloadRequest);
+
+    GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+    if (gameRenderer->GetModelSceneBridge()->Remove(entity, 0))
+        gameRenderer->GetWorldRenderScene()->ReleaseRetiredHistory(0);
 }
 
 void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
@@ -918,6 +955,10 @@ void ModelLoader::SetModelVisible(const ECS::Components::Model& model, bool visi
         return;
 
     _modelRenderer->RequestChangeVisibility(model.instanceID, visible);
+
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetVisible(entity, visible);
 }
 
 void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f32 opacity)
@@ -1632,6 +1673,47 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 
     model.modelID = modelID;
     model.instanceID = instanceID;
+
+    if (ModelRendering::UseMeshletModelRenderer())
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        RenderAssets::RenderAssetResources* assets = gameRenderer->GetRenderAssetResources();
+        ModelScene::ModelSceneBridge* sceneBridge = gameRenderer->GetModelSceneBridge();
+        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        const FileFormat::AssetID modelAssetID = ResolveModelV2AssetID(request.modelHash);
+        const RenderAssets::ModelHandle modelHandle = assets->LoadModel(modelAssetID);
+
+        if (sceneBridge->Remove(entityID, 0))
+            scene->ReleaseRetiredHistory(0);
+        const RenderScenes::ModelInstanceHandle sceneInstance =
+            sceneBridge->Add(entityID, modelHandle, transform.GetMatrix());
+
+        if (request.type == LoadRequestType::DisplayID && scene->IsPending(sceneInstance))
+        {
+            const auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((request.extraData1 >> 32u) & 0x7u);
+            const u32 displayID = static_cast<u32>(request.extraData1);
+            const u8 modelVariant = static_cast<u8>((request.extraData1 >> 35u) & 0x3Fu);
+            std::optional<ModelLoading::DisplaySource> source;
+            if (displayInfoType == Database::Unit::DisplayInfoType::Creature)
+                source = ModelLoading::DisplaySource::CreatureDisplayInfo;
+            else if (displayInfoType == Database::Unit::DisplayInfoType::Item)
+                source = ModelLoading::DisplaySource::ItemDisplayInfo;
+
+            if (source)
+            {
+                const ModelLoading::DisplayApplyResult result =
+                    gameRenderer->GetDisplayResolver()->Apply(
+                        *scene, sceneInstance, modelHandle, modelAssetID, *source, displayID, modelVariant);
+                if (result != ModelLoading::DisplayApplyResult::Applied &&
+                    result != ModelLoading::DisplayApplyResult::SelectionNotFound)
+                {
+                    NC_LOG_ERROR("MODEL_DISPLAY_MATERIAL apply_failed source={} display={} variant={} model={} reason={}",
+                                 static_cast<u32>(*source), displayID, modelVariant, modelAssetID,
+                                 static_cast<u32>(result));
+                }
+            }
+        }
+    }
 
     const ECS::Components::AABB& modelAABB = _modelIDToAABB[modelID];
     auto& aabb = registry->get<ECS::Components::AABB>(entityID);

@@ -13,6 +13,7 @@
 
 class ModelLoader;
 class LiquidLoader;
+namespace ModelRendering { class ModelPlacementLoader; }
 
 namespace Map
 {
@@ -69,7 +70,8 @@ private:
     };
 
 public:
-    TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader);
+    TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader,
+                  ModelRendering::ModelPlacementLoader* modelPlacementLoader, LiquidLoader* liquidLoader);
     
     void Shutdown();
     void Clear();
@@ -91,6 +93,7 @@ private:
     std::string _currentMapInternalName = "";
 
     ModelLoader* _modelLoader = nullptr;
+    ModelRendering::ModelPlacementLoader* _modelPlacementLoader = nullptr;
     LiquidLoader* _liquidLoader = nullptr;
 
     u32 _numChunksToLoad = 0;

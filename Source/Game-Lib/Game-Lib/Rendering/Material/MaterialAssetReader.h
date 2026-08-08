@@ -19,7 +19,7 @@ namespace MaterialLoading
     {
         FileFormat::Material::MaterialInstanceAsset root;
         std::span<const u8> parameterData;
-        std::span<const FileFormat::Material::ResourceBinding> resourceBindings;
+        std::span<const FileFormat::Material::TextureBinding> textureBindings;
         std::span<const FileFormat::Material::MaterialAnimationBinding> animationBindings;
     };
 
@@ -42,12 +42,10 @@ namespace MaterialLoading
     {
       public:
         // Returned spans borrow payload and remain valid only while it remains alive.
-        static MaterialAssetReadResult<MaterialAssetView> ReadMaterial(
-            std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static MaterialAssetReadResult<MaterialAssetView> ReadMaterial(std::span<const u8> payload, AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
         // Dependency-free structural decode used to discover the referenced Material before optional cross-asset validation.
         static MaterialAssetReadResult<MaterialInstanceAssetView> DecodeMaterialInstance(std::span<const u8> payload);
-        static MaterialAssetReadResult<MaterialInstanceAssetView> ReadMaterialInstance(
-            std::span<const u8> payload, const MaterialAssetView& material,
-            AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static MaterialAssetReadResult<MaterialInstanceAssetView> ReadMaterialInstance(std::span<const u8> payload, const MaterialAssetView& material,
+                                                                                       AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
     };
 } // namespace MaterialLoading

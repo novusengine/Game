@@ -1,5 +1,6 @@
 #include "ModelAssetValidator.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace
@@ -73,6 +74,38 @@ namespace ModelLoading
                 return Fail(DiagnosticCode::MissingRequiredReference, "materialSlots.defaultMaterialInstanceAssetID", index);
             if (slot.reserved != 0)
                 return Fail(DiagnosticCode::ReservedValueNonZero, "materialSlots.reserved", index, slot.reserved, 0);
+        }
+        for (u32 index = 0; index < result.view.parameters.size(); ++index)
+        {
+            const Model::Parameter& parameter = result.view.parameters[index];
+            if (parameter.type > Model::ParameterType::Texture2D)
+                return Fail(DiagnosticCode::UnsupportedEnum, "parameters.type", index,
+                            static_cast<u8>(parameter.type));
+            if (parameter.reserved0 != 0 || parameter.reserved1 != 0)
+                return Fail(DiagnosticCode::ReservedValueNonZero, "parameters.reserved", index);
+            for (u32 previous = 0; previous < index; ++previous)
+                if (result.view.parameters[previous].stableID == parameter.stableID)
+                    return Fail(DiagnosticCode::DuplicateParameter, "parameters.stableID", index,
+                                parameter.stableID);
+        }
+        for (u32 index = 0; index < result.view.parameterBindings.size(); ++index)
+        {
+            const Model::ParameterBinding& binding = result.view.parameterBindings[index];
+            if (binding.target > Model::ParameterBindingTarget::TextureSlot)
+                return Fail(DiagnosticCode::UnsupportedEnum, "parameterBindings.target", index,
+                            static_cast<u8>(binding.target));
+            if (binding.reserved0 != 0 || binding.reserved1 != 0)
+                return Fail(DiagnosticCode::ReservedValueNonZero, "parameterBindings.reserved", index);
+            const bool parameterFound = std::any_of(result.view.parameters.begin(), result.view.parameters.end(),
+                [&binding](const Model::Parameter& parameter) {
+                    return parameter.stableID == binding.parameterStableID;
+                });
+            const bool materialSlotFound = std::any_of(result.view.materialSlots.begin(), result.view.materialSlots.end(),
+                [&binding](const Model::MaterialSlot& slot) {
+                    return slot.stableID == binding.materialSlotStableID;
+                });
+            if (!parameterFound || !materialSlotFound)
+                return Fail(DiagnosticCode::MissingRequiredReference, "parameterBindings.reference", index);
         }
 
         for (u32 meshIndex = 0; meshIndex < result.view.meshes.size(); ++meshIndex)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <FileFormat/Novus/Model/MaterialABI.h>
 #include <Renderer/Descriptors/BufferDesc.h>
 #include <Renderer/Descriptors/ImageDesc.h>
 #include <Renderer/FrameResource.h>
@@ -8,14 +9,13 @@ namespace Renderer { class Renderer; }
 
 namespace MaterialRendering
 {
-    inline constexpr u32 MATERIAL_EXECUTION_GROUP_COUNT = 6;
     inline constexpr u32 MATERIAL_TILE_SIZE = 8;
     inline constexpr u32 MATERIAL_DISPATCH_ARGUMENT_COUNT = 3;
 
     struct MaterialClassificationStats
     {
-        u32 groupTileCounts[MATERIAL_EXECUTION_GROUP_COUNT] = {};
-        u32 groupPixelCounts[MATERIAL_EXECUTION_GROUP_COUNT] = {};
+        u32 groupTileCounts[FileFormat::Material::ABI::EXECUTION_GROUP_COUNT] = {};
+        u32 groupPixelCounts[FileFormat::Material::ABI::EXECUTION_GROUP_COUNT] = {};
     };
 
     // Owns GPU-side material-ID, tile-list, counter, and indirect-dispatch storage for one View.

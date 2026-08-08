@@ -21,6 +21,11 @@ namespace Renderer
     class Renderer;
 }
 
+namespace Map
+{
+    struct ModelAllocationHints;
+}
+
 namespace RenderScenes
 {
     struct ModelInstanceDesc
@@ -54,11 +59,14 @@ namespace RenderScenes
         RenderScene(u64 sceneID, const ModelLoading::ModelGeometryStorage* geometryStorage,
                     const MaterialLoading::MaterialStorage* materialStorage, bool validateTransfers = false);
 
+        void ReserveModelResources(const Map::ModelAllocationHints& hints);
         ModelInstanceHandle CreateModelInstance(const ModelInstanceDesc& desc);
         bool DestroyModelInstance(ModelInstanceHandle handle, u64 retireValue);
         bool SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported = false);
         bool SetModelVisible(ModelInstanceHandle handle, bool visible);
         bool SetModelMaterial(ModelInstanceHandle handle, u32 slot, RenderAssets::MaterialInstanceHandle material);
+        bool SetModelMaterials(ModelInstanceHandle handle,
+                               std::span<const RenderAssets::MaterialInstanceHandle> materials);
         bool ResetModelMaterials(ModelInstanceHandle handle);
         bool SetGeometryGroupEnabled(ModelInstanceHandle handle, u32 groupID, bool enabled);
         bool SetAllGeometryGroups(ModelInstanceHandle handle, bool enabled);

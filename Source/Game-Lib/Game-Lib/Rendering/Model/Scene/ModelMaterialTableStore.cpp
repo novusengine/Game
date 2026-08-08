@@ -2,6 +2,9 @@
 
 #include <Renderer/Renderer.h>
 
+#include <tracy/Tracy.hpp>
+#include <xxhash/xxhash64.h>
+
 namespace ModelScene
 {
     ModelMaterialTableStore::ModelMaterialTableStore(bool validateTransfers)
@@ -11,20 +14,36 @@ namespace ModelScene
         _entries.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
 
-    RenderScenes::ModelMaterialTableHandle ModelMaterialTableStore::AcquireShared(RenderAssets::ModelHandle model, std::span<const u32> materials)
+    void ModelMaterialTableStore::Reserve(u32 tableCount, u32 entryCount)
     {
-        const u32 modelIndex = static_cast<RenderAssets::ModelHandle::type>(model);
-        const auto existing = _sharedTables.find(modelIndex);
+        if (entryCount > _entries.Count())
+            _entries.Reserve(entryCount - _entries.Count());
+        _tables.reserve(std::max(_tables.size(), static_cast<size_t>(tableCount)));
+        _sharedTables.reserve(_sharedTables.size() + tableCount);
+    }
+
+    RenderScenes::ModelMaterialTableHandle ModelMaterialTableStore::AcquireShared(std::span<const u32> materials)
+    {
+        ZoneScopedN("ModelMaterialTableStore::AcquireShared");
+
+        const u64 hash = XXHash64::hash(materials.data(), materials.size_bytes(), materials.size());
+        const auto existing = _sharedTables.find(hash);
         if (existing != _sharedTables.end())
         {
-            GetTable(existing->second)->referenceCount++;
-            return existing->second;
+            for (const RenderScenes::ModelMaterialTableHandle candidate : existing->second)
+            {
+                if (!Matches(candidate, materials))
+                    continue;
+
+                GetTable(candidate)->referenceCount++;
+                return candidate;
+            }
         }
 
         const RenderScenes::ModelMaterialTableHandle handle = AddTable(materials, false);
         if (IsValid(handle))
         {
-            _sharedTables[modelIndex] = handle;
+            _sharedTables[hash].push_back(handle);
             _sharedTableCount++;
         }
         return handle;
@@ -126,10 +145,13 @@ namespace ModelScene
     RenderScenes::ModelMaterialTableHandle ModelMaterialTableStore::AddTable(std::span<const u32> materials, bool isPrivate)
     {
         const RenderScenes::StableRange range = _entryAllocator.Allocate(static_cast<u32>(materials.size()));
+        const u32 previousEntryCount = _entries.Count();
+        if (range.offset + range.count > previousEntryCount)
+            _entries.Reserve(range.offset + range.count - previousEntryCount);
         EnsureEntryCapacity(range.offset + range.count);
         for (u32 index = 0; index < range.count; ++index)
             _entries[range.offset + index] = materials[index];
-        if (range.count != 0)
+        if (range.count != 0 && range.offset < previousEntryCount)
             _entries.SetDirtyElements(range.offset, range.count);
 
         u32 tableIndex = 0;
@@ -147,6 +169,21 @@ namespace ModelScene
         _tables[tableIndex] = { range, 1, isPrivate, true };
         _liveEntryCount += range.count;
         return RenderScenes::ModelMaterialTableHandle(tableIndex);
+    }
+
+    bool ModelMaterialTableStore::Matches(RenderScenes::ModelMaterialTableHandle table,
+                                          std::span<const u32> materials) const
+    {
+        const Table* record = GetTable(table);
+        if (!record || record->range.count != materials.size())
+            return false;
+
+        for (u32 index = 0; index < record->range.count; ++index)
+        {
+            if (_entries[record->range.offset + index] != materials[index])
+                return false;
+        }
+        return true;
     }
 
     ModelMaterialTableStore::Table* ModelMaterialTableStore::GetTable(RenderScenes::ModelMaterialTableHandle table)

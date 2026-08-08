@@ -5,6 +5,7 @@
 #include "Debug.inc.slang"
 #include "Global.inc.slang"
 #include "Light.inc.slang"
+#include "Material.inc.slang"
 #include "Model.inc.slang"
 #include "Terrain.inc.slang"
 

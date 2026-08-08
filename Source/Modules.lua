@@ -10,8 +10,10 @@ end
 Solution.Util.SetGroup(Solution.ModuleGroup)
 local modules =
 {
+    "MaterialCooker/MaterialCooker.lua",
     "ShaderCookerStandalone/ShaderCookerStandalone.lua",
     "Shaders/Shaders.lua",
+    "Materials/Materials.lua",
     "Game-Lib/Game-Lib.lua",
     "Game-App/Game-App.lua"
 }

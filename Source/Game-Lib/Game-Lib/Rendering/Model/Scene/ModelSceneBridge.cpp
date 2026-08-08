@@ -1,6 +1,9 @@
 #include "ModelSceneBridge.h"
 
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "Game-Lib/ECS/Util/Transforms.h"
+
+#include <entt/entt.hpp>
 
 namespace ModelScene
 {
@@ -48,6 +51,17 @@ namespace ModelScene
     {
         const auto existing = _instances.find(entity);
         return _scene && existing != _instances.end() && _scene->SetGeometryGroupEnabled(existing->second, groupID, enabled);
+    }
+
+    void ModelSceneBridge::SyncTransforms(entt::registry& registry)
+    {
+        registry.view<ECS::Components::Transform, ECS::Components::DirtyTransform>().each(
+            [this](entt::entity entity, const ECS::Components::Transform& transform,
+                   const ECS::Components::DirtyTransform&) {
+                const auto existing = _instances.find(entity);
+                if (_scene && existing != _instances.end())
+                    _scene->SetModelTransform(existing->second, transform.GetMatrix());
+            });
     }
 
     RenderScenes::ModelInstanceHandle ModelSceneBridge::Get(entt::entity entity) const

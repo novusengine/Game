@@ -17,6 +17,8 @@ class ClientDBLoader;
 
 enum class ClientDBHash : u64
 {
+    DisplayRegistration                          = XXHash64::hashLiteral("clientdb/displayregistration.cdb"),
+    DisplayParameter                 = XXHash64::hashLiteral("clientdb/displayparameter.cdb"),
     TextureFileData                     = XXHash64::hashLiteral("clientdb/texturefiledata.cdb"),
     ModelFileData                       = XXHash64::hashLiteral("clientdb/modelfiledata.cdb"),
     Map                                 = XXHash64::hashLiteral("clientdb/map.cdb"),
@@ -68,8 +70,10 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 42> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 44> ClientDBHashes =
 {{
+    { ClientDBHash::DisplayRegistration, "DisplayRegistration" },
+    { ClientDBHash::DisplayParameter, "DisplayParameter" },
     { ClientDBHash::TextureFileData, "TextureFileData" },
     { ClientDBHash::ModelFileData, "ModelFileData" },
     { ClientDBHash::Map, "Map" },

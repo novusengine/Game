@@ -1,4 +1,5 @@
 #include "DescriptorSet/Global.inc.slang"
+#include "DescriptorSet/Material.inc.slang"
 #include "Model/ModelViewWork.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
 
@@ -25,8 +26,6 @@ struct Constants
 [[vk::binding(6, PER_PASS)]] StructuredBuffer<ModelSubmesh> _modelSubmeshes;
 [[vk::binding(7, PER_PASS)]] StructuredBuffer<uint> _geometryGroupMasks;
 [[vk::binding(8, PER_PASS)]] StructuredBuffer<uint> _materialTable;
-[[vk::binding(9, PER_PASS)]] StructuredBuffer<MaterialInstanceRecord> _materialInstances;
-[[vk::binding(10, PER_PASS)]] StructuredBuffer<MaterialRecord> _materials;
 [[vk::binding(11, PER_PASS)]] RWStructuredBuffer<ModelMeshletChunk> _chunkQueue0;
 [[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
 [[vk::binding(13, PER_PASS)]] RWStructuredBuffer<ModelMeshletChunk> _chunkQueue1;
@@ -147,7 +146,7 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
                 submeshIndex >= (1u << MODEL_VISIBILITY_SUBMESH_BITS) ||
                 submesh.meshletOffset + submesh.numMeshlets > (1u << MODEL_VISIBILITY_MESHLET_BITS))
             {
-                AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS, submesh.numMeshlets);
+                AddStat(MODEL_WORK_STAT_VISIBILITY_RECORD_PACKING_FAILURES, submesh.numMeshlets);
                 continue;
             }
             if (!GeometryGroupEnabled(instance, submesh.geometryGroupID))
@@ -158,11 +157,11 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
 
             uint materialInstanceIndex =
                 _materialTable[instance.materialTableOffset + mesh.materialSlotOffset + submesh.materialSlotIndex];
-            MaterialRecord material = _materials[_materialInstances[materialInstanceIndex].materialIndex];
-            uint materialRasterClass = MaterialRasterClass(material);
+            MaterialInstanceRecord materialInstance = _materialInstances[materialInstanceIndex];
+            uint materialRasterClass = MaterialRasterClass(materialInstance);
             if (materialRasterClass > 1u)
                 continue;
-            uint rasterClass = materialRasterClass * 2u + ((material.flags & MATERIAL_TWO_SIDED) != 0u);
+            uint rasterClass = materialRasterClass * 2u + ((materialInstance.flags & MATERIAL_TWO_SIDED) != 0u);
 
             uint numChunks = (submesh.numMeshlets + MODEL_CHUNK_MESHLET_COUNT - 1u) / MODEL_CHUNK_MESHLET_COUNT;
             uint chunkBase;

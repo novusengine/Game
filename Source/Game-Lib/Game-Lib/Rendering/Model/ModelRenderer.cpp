@@ -75,6 +75,7 @@ ModelRenderer::ModelRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
     _dynamicInstanceMask.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
 
     CreatePermanentResources();
+    _legacyVisibilityRecords.Upload(_renderer, _gameRenderer->GetRenderResources().modelDescriptorSet);
 
     if (CVAR_ModelValidateTransfers.Get())
     {

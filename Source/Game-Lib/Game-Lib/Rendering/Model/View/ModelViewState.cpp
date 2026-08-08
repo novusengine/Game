@@ -35,7 +35,14 @@ namespace ModelView
         _lodHistory.Clear();
         _queueCapacity = 1;
 
-        for (const RenderScenes::ModelInstanceHandle handle : _diagnosticSelection)
+        const std::span<const RenderScenes::ModelInstanceHandle> selection = [&]() {
+            if (!_diagnosticSelection.empty())
+                return std::span<const RenderScenes::ModelInstanceHandle>(_diagnosticSelection);
+            scene.GetModelInstances().CollectActiveHandles(_sceneSelection);
+            return std::span<const RenderScenes::ModelInstanceHandle>(_sceneSelection);
+        }();
+
+        for (const RenderScenes::ModelInstanceHandle handle : selection)
         {
             const ModelScene::ModelInstanceGPURecord* instance = scene.GetModelInstance(handle);
             if (!scene.IsAlive(handle) || !instance)
@@ -57,6 +64,7 @@ namespace ModelView
             _queueCapacity += modelRecord.numMeshlets;
         }
 
+        _preparedSceneRevision = scene.GetModelInstances().GetMembershipRevision();
         _workDirty = false;
     }
 

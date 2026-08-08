@@ -86,3 +86,18 @@ TEST_CASE("Model View diagnostic selection replaces the previous instance", "[Re
     REQUIRE(view.GetInputs().Count() == 1);
     CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
 }
+
+TEST_CASE("Model View prepares every active Scene instance without a diagnostic override", "[Rendering][ModelView]")
+{
+    ViewFixture fixture;
+    const RenderScenes::ModelInstanceHandle first = fixture.AddInstance();
+    const RenderScenes::ModelInstanceHandle second = fixture.AddInstance();
+
+    ModelView::ModelViewState view;
+    view.PrepareInputs(fixture.scene, fixture.geometry);
+
+    REQUIRE(view.GetInputs().Count() == 2);
+    CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(first));
+    CHECK(view.GetInputs()[1].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
+    CHECK(view.GetPreparedSceneRevision() == fixture.scene.GetModelInstances().GetMembershipRevision());
+}

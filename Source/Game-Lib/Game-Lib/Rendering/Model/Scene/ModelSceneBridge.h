@@ -2,7 +2,7 @@
 #include "Game-Lib/Rendering/Asset/RenderAssetHandles.h"
 #include "Game-Lib/Rendering/Scene/RenderSceneHandles.h"
 
-#include <entt/entity/entity.hpp>
+#include <entt/entt.hpp>
 
 #include <robinhood/robinhood.h>
 
@@ -26,6 +26,7 @@ namespace ModelScene
         bool SetTransform(entt::entity entity, const mat4x4& transform, bool teleported = false);
         bool SetVisible(entt::entity entity, bool visible);
         bool SetGeometryGroupEnabled(entt::entity entity, u32 groupID, bool enabled);
+        void SyncTransforms(entt::registry& registry);
         RenderScenes::ModelInstanceHandle Get(entt::entity entity) const;
 
       private:

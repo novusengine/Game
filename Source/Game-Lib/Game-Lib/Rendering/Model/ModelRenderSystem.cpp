@@ -4,10 +4,10 @@
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
-#include <algorithm>
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Renderer/DescriptorSet.h>
 #include <Renderer/RenderGraph.h>
+#include <algorithm>
 
 AutoCVar_Int CVAR_ModelForceLOD(CVarCategory::Client | CVarCategory::Rendering, "modelForceLOD",
                                 "Force model LOD (-1 automatic, values clamp to each Mesh)", -1);
@@ -18,13 +18,12 @@ namespace ModelRendering
                                          RenderAssets::RenderAssetResources* assets, RenderScenes::RenderScene* scene,
                                          RenderResources& resources, bool validateTransfers)
         : _renderer(renderer), _assets(assets), _scene(scene),
-          _mainView(RenderScenes::RenderViewDesc{
-              .viewID = 1,
-              .scene = scene,
-              .cameraIndex = 0,
-              .colorTarget = resources.sceneColor,
-              .depthTarget = resources.depth,
-              .lifetime = RenderScenes::RenderViewLifetime::Persistent }),
+          _mainView(RenderScenes::RenderViewDesc{.viewID = 1,
+                                                 .scene = scene,
+                                                 .cameraIndex = 0,
+                                                 .colorTarget = resources.sceneColor,
+                                                 .depthTarget = resources.depth,
+                                                 .lifetime = RenderScenes::RenderViewLifetime::Persistent}),
           _mainViewState(validateTransfers), _mainViewWork(renderer), _mainViewMaterialResources(renderer),
           _viewWorkPass(renderer, gameRenderer), _visibilityPass(renderer, gameRenderer),
           _materialResolvePass(renderer, gameRenderer), _visibilityResolvePass(renderer, gameRenderer)
@@ -33,7 +32,16 @@ namespace ModelRendering
 
     void ModelRenderSystem::Update()
     {
-        if (_mainViewState.IsWorkDirty())
+        if (!_scene->GetPendingClearRequests().IsEmpty())
+        {
+            // Meshlet history is not consumed until the occlusion phase. Publishing
+            // here makes the fully uploaded instance records visible without
+            // introducing a temporary per-placement path.
+            _scene->AcknowledgeClearsAndPublish();
+        }
+
+        if (_mainViewState.IsWorkDirty() ||
+            _mainViewState.GetPreparedSceneRevision() != _scene->GetModelInstances().GetMembershipRevision())
             _mainViewState.PrepareInputs(*_scene, _assets->GetModelGeometryStorage());
 
         const i32 forcedLOD = std::max(CVAR_ModelForceLOD.Get(), -1);
@@ -65,15 +73,37 @@ namespace ModelRendering
         {
             _reportedQueueOverflow = false;
         }
-        const bool descriptorsReady = _viewWorkPass.Upload(
-            _mainViewState, _mainViewWork, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene);
-        _visibilityPass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(),
-                               _assets->GetTextureRegistry(), *_scene);
-        _visibilityResolvePass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(),
-                                      _assets->GetMaterialStorage(), *_scene);
-        const bool materialDescriptorsReady = _materialResolvePass.Upload(
-            _mainViewWork, _mainViewMaterialResources, _assets->GetModelGeometryStorage(),
-            _assets->GetMaterialStorage(), _assets->GetTextureRegistry(), *_scene);
+        const ModelView::WorkStats& workStats = _mainViewWork.GetStats();
+        if (workStats.visibilityRecordOverflows > 0 && !_reportedVisibilityRecordOverflow)
+        {
+            u32 committedMeshlets = 0;
+            for (u32 count : workStats.committedRasterMeshlets)
+                committedMeshlets += count;
+            NC_LOG_ERROR("MODEL_VIEW visibility_record_overflow dropped={} "
+                         "committed={} capacity={}",
+                         workStats.visibilityRecordOverflows, committedMeshlets, workStats.visibilityRecords);
+            _reportedVisibilityRecordOverflow = true;
+        }
+        else if (workStats.visibilityRecordOverflows == 0)
+        {
+            _reportedVisibilityRecordOverflow = false;
+        }
+        if (workStats.visibilityRecordPackingFailures > 0 && !_reportedVisibilityRecordPackingFailure)
+        {
+            NC_LOG_ERROR("MODEL_VIEW visibility_record_packing_failure dropped={}",
+                         workStats.visibilityRecordPackingFailures);
+            _reportedVisibilityRecordPackingFailure = true;
+        }
+        else if (workStats.visibilityRecordPackingFailures == 0)
+        {
+            _reportedVisibilityRecordPackingFailure = false;
+        }
+        const bool descriptorsReady =
+            _viewWorkPass.Upload(_mainViewState, _mainViewWork, _assets->GetModelGeometryStorage(), *_scene);
+        _visibilityPass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(), *_scene);
+        _visibilityResolvePass.Upload(_mainViewWork, _assets->GetModelGeometryStorage(), *_scene);
+        const bool materialDescriptorsReady = _materialResolvePass.Upload(_mainViewWork, _mainViewMaterialResources,
+                                                                          _assets->GetModelGeometryStorage(), *_scene);
         if (!descriptorsReady || !materialDescriptorsReady)
             return;
         const u32 temporalReset = _mainView.GetTemporalResetGeneration();
@@ -82,11 +112,11 @@ namespace ModelRendering
                               temporalReset != _handledTemporalReset, _lastForcedLOD);
         _mainViewWork.MarkSubmitted(frameIndex);
         _handledTemporalReset = temporalReset;
-        _visibilityPass.AddPass(renderGraph, resources, _mainView, _mainViewWork,
-                                _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex);
-        _materialResolvePass.AddClassificationPass(
-            renderGraph, resources, _mainView, _mainViewWork, _mainViewMaterialResources,
-            _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), *_scene, frameIndex);
+        _visibilityPass.AddPass(renderGraph, resources, _mainView, _mainViewWork, _assets->GetModelGeometryStorage(),
+                                _assets->GetMaterialStorage(), *_scene, frameIndex);
+        _materialResolvePass.AddClassificationPass(renderGraph, resources, _mainView, _mainViewWork,
+                                                   _mainViewMaterialResources, _assets->GetModelGeometryStorage(),
+                                                   _assets->GetMaterialStorage(), *_scene, frameIndex);
     }
 
     void ModelRenderSystem::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -166,8 +196,9 @@ namespace ModelRendering
             return RenderScenes::InvalidModelInstanceHandle();
         _scene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
 
-        // No temporal View buffers exist during diagnostic bring-up, so acknowledging these ranges publishes
-        // the instance after its complete record is uploaded and before it can be consumed by this pass.
+        // No temporal View buffers exist during diagnostic bring-up, so acknowledging
+        // these ranges publishes the instance after its complete record is uploaded
+        // and before it can be consumed by this pass.
         _scene->AcknowledgeClearsAndPublish();
         _mainViewState.SetDiagnosticSelection(_diagnosticInstance);
         return _diagnosticInstance;

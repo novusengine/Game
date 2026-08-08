@@ -1,8 +1,7 @@
 #include "Include/TypedVisibility.inc.slang"
 #include "DescriptorSet/Global.inc.slang"
-#include "Material/MaterialEvaluation.inc.slang"
-
-[[vk::binding(23, PER_PASS)]] StructuredBuffer<MaterialInstanceRecord> _modelVisibilityMaterialInstances;
+#include "Material/MaterialAuthoring.inc.slang"
+#include "Generated/MaterialAlphaTestGroups.inc.slang"
 
 struct Constants
 {
@@ -21,16 +20,33 @@ struct PSInput
 };
 
 [shader("fragment")]
-uint main(PSInput input) : SV_Target0
+uint main(PSInput input, bool frontFacing : SV_IsFrontFace) : SV_Target0
 {
-    if (_constants.queueIndex >= 2u)
-    {
-        MaterialInstanceRecord instance = _modelVisibilityMaterialInstances[input.materialInstanceIndex];
-        MaterialRecord material = _materials[instance.materialIndex];
-        MaterialParameters parameters = LoadMaterialParameters(instance.parameterOffset);
-        float4 color = EvaluateMaterial(material, instance, parameters, input.uv0, ddx(input.uv0), ddy(input.uv0));
-        if (!MaterialCoverage(color.a, parameters))
-            discard;
-    }
+    MaterialInstanceRecord instance = _materialInstances[input.materialInstanceIndex];
+    MaterialRecord material = _materials[instance.materialIndex];
+    MaterialInput materialInput;
+    materialInput.worldPosition = 0.0f;
+    materialInput.geometricNormal = float3(0.0f, 1.0f, 0.0f);
+    materialInput.uv0 = input.uv0;
+    materialInput.uv0DDX = ddx(input.uv0);
+    materialInput.uv0DDY = ddy(input.uv0);
+    materialInput.frontFacing = frontFacing;
+    MaterialEvaluationContext context;
+    context.input = materialInput;
+    context.instance = instance;
+    context.textureOffset = 0u;
+
+    uint executionGroup = MaterialExecutionGroup(instance);
+    uint localProgramID = MaterialGroupLocalProgramID(material, MaterialRasterClass(instance));
+    float coverage = EvaluateAlphaTestMaterialCoverage(
+        executionGroup, localProgramID, context);
+    if (coverage < 0.0f)
+        discard;
+    coverage = saturate(coverage);
+    float alphaCutoff = asfloat(_materialParameters.Load(
+        instance.parameterOffset + MATERIAL_ALPHA_CUTOFF_OFFSET));
+    if (coverage < alphaCutoff)
+        discard;
+
     return PackTypedVisibility(TYPED_VISIBILITY_MODEL, input.recordID, input.triangleID);
 }

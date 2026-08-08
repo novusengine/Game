@@ -21,6 +21,14 @@ namespace ModelLoading
 {
     class ModelGeometryStorage;
 
+    enum class EmbeddedModelLoadStatus : u8
+    {
+        Loaded,
+        InvalidReference,
+        MissingRenderableGeometry,
+        Failed
+    };
+
     struct ModelAssetRegistryStats
     {
         u32 residentModels = 0;
@@ -36,10 +44,17 @@ namespace ModelLoading
     {
       public:
         ModelAssetRegistry(PACT::PactStorage* pactStorage, ModelGeometryStorage* geometryStorage,
-                           MaterialLoading::MaterialStorage* materialStorage, MaterialLoading::MaterialRegistry* materialRegistry);
+                           MaterialLoading::MaterialStorage* materialStorage,
+                           MaterialLoading::MaterialRegistry* materialRegistry);
 
         bool InitializeFallback();
+        void Reserve(u32 modelCount)
+        {
+            _entries.reserve(_entries.size() + modelCount);
+            _missingEmbeddedModels.reserve(_missingEmbeddedModels.size() + modelCount);
+        }
         RenderAssets::ModelHandle Load(FileFormat::AssetID assetID);
+        EmbeddedModelLoadStatus LoadEmbedded(FileFormat::AssetID assetID, RenderAssets::ModelHandle& outHandle);
         RenderAssets::ModelHandle GetFallbackModel() const { return _fallbackModel; }
         ModelAssetRegistryStats GetStats() const;
 
@@ -49,15 +64,19 @@ namespace ModelLoading
             RenderAssets::ModelHandle handle;
             u32 referenceCount = 0;
             bool usedFallback = false;
+            bool sourceFileMissing = false;
         };
 
-        RenderAssets::ModelHandle RecordFailure(FileFormat::AssetID assetID, const char* reason);
+        RenderAssets::ModelHandle RecordFailure(FileFormat::AssetID assetID, const char* reason,
+                                                bool sourceFileMissing = false);
+        RenderAssets::ModelHandle LoadPayload(FileFormat::AssetID assetID, std::span<const u8> payload);
 
         PACT::PactStorage* _pactStorage = nullptr;
         ModelGeometryStorage* _geometryStorage = nullptr;
         MaterialLoading::MaterialStorage* _materialStorage = nullptr;
         MaterialLoading::MaterialRegistry* _materialRegistry = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, Entry> _entries;
+        robin_hood::unordered_set<FileFormat::AssetID> _missingEmbeddedModels;
         RenderAssets::ModelHandle _fallbackModel;
         u32 _cacheHits = 0;
         u32 _failures = 0;

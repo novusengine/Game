@@ -24,14 +24,16 @@ namespace
         materialData.defaultParameterData.resize(32);
 
         Material::MaterialAsset material;
+        material.programKey = 1;
         material.parameterBlockSize = 32;
         material.parameterBlockAlignment = 16;
+        material.textureSlotCount = 1;
         std::shared_ptr<Bytebuffer> materialBuffer = Bytebuffer::BorrowRuntime(material.GetSerializedSize(materialData));
         REQUIRE(material.Save(materialBuffer, materialData));
 
         Material::MaterialInstanceData instanceData;
         instanceData.parameterData.resize(32);
-        instanceData.resourceBindings.push_back({42, 0, 0, Material::ResourceType::Texture2D, Material::ResourceBindingFlags_None});
+        instanceData.textureBindings.push_back({42, 0, 0, Material::ResourceType::Texture2D, Material::ResourceBindingFlags_None});
 
         Material::MaterialInstanceAsset instance;
         instance.materialAssetID = 77;
@@ -60,7 +62,7 @@ TEST_CASE("Material readers accept matching flat material assets", "[Rendering][
         MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full);
     REQUIRE(instance);
     CHECK(instance.view.parameterData.size() == 32);
-    CHECK(instance.view.resourceBindings.size() == 1);
+    CHECK(instance.view.textureBindings.size() == 1);
 }
 
 TEST_CASE("Material instance structural decode discovers its dependency without material validation", "[Rendering][MaterialAssetReader]")
@@ -76,13 +78,13 @@ TEST_CASE("Material instance structural decode discovers its dependency without 
 
 TEST_CASE("Material reader rejects invalid parameter patches and compatibility", "[Rendering][MaterialAssetReader]")
 {
-    SECTION("Resource patch outside its parameter")
+    SECTION("Texture binding outside the declared slot table")
     {
         MaterialPayloads payloads = MakeMaterialPayloads();
         const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
         REQUIRE(material);
         const Material::MaterialInstanceAsset& root = At<Material::MaterialInstanceAsset>(payloads.instance, 0);
-        At<Material::ResourceBinding>(payloads.instance, root.resourceBindingsOffset).parameterByteOffset = 32;
+        At<Material::TextureBinding>(payloads.instance, root.textureBindingsOffset).textureSlot = 1;
         CHECK(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full)
                   .diagnostic.code ==
               AssetLoading::DiagnosticCode::InvalidRange);
@@ -105,7 +107,7 @@ TEST_CASE("Material reader rejects invalid parameter patches and compatibility",
         const auto material = MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full);
         REQUIRE(material);
         const Material::MaterialInstanceAsset& root = At<Material::MaterialInstanceAsset>(payloads.instance, 0);
-        At<Material::ResourceBinding>(payloads.instance, root.resourceBindingsOffset).resourceAssetID = FileFormat::INVALID_ASSET_ID;
+        At<Material::TextureBinding>(payloads.instance, root.textureBindingsOffset).resourceAssetID = FileFormat::INVALID_ASSET_ID;
         CHECK(MaterialLoading::MaterialAssetReader::ReadMaterialInstance(payloads.instance, material.view, AssetLoading::ValidationMode::Full)
                   .diagnostic.code ==
               AssetLoading::DiagnosticCode::MissingRequiredReference);

@@ -8,12 +8,12 @@ namespace MaterialLoading
 {
     using ResolveTextureCallback = std::function<u32(FileFormat::AssetID, bool)>;
 
-    // Builds CPU-side material parameter blocks by patching their declared bindings with GPU texture indices.
-    // It converts portable AssetID bindings into the runtime texture references required by shaders.
+    // Builds CPU-side material parameter blocks and generic texture-slot tables for one material instance.
+    // It resolves portable texture AssetIDs while keeping texture selection independent of parameter layout.
     class MaterialInstancePatcher
     {
       public:
-        static bool Patch(const MaterialInstanceAssetView& instance, const ResolveTextureCallback& resolveTexture,
-                          std::vector<u8>& outParameterData, u32* outPackedSamplerIDs = nullptr);
+        static bool Patch(const MaterialInstanceAssetView& instance, const ResolveTextureCallback& resolveTexture, u32 textureSlotCount, u32 fallbackTextureIndex, std::vector<u8>& outParameterData,
+                          std::vector<u32>& outTextureIndices, std::vector<u32>& outSamplerIDs);
     };
 } // namespace MaterialLoading

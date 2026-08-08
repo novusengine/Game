@@ -1,5 +1,7 @@
 #include "StableRangeAllocator.h"
 
+#include <tracy/Tracy.hpp>
+
 #include <algorithm>
 
 namespace RenderScenes
@@ -30,6 +32,8 @@ namespace RenderScenes
 
     void StableRangeAllocator::Free(StableRange range)
     {
+        ZoneScopedN("StableRangeAllocator::Free");
+
         if (!range)
             return;
 
@@ -48,6 +52,8 @@ namespace RenderScenes
 
     void StableRangeAllocator::Coalesce()
     {
+        ZoneScopedN("StableRangeAllocator::Coalesce");
+
         std::sort(_freeRanges.begin(), _freeRanges.end(), [](const StableRange& left, const StableRange& right) {
             return left.offset < right.offset;
         });

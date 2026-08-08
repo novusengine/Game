@@ -3,11 +3,14 @@
 #include "MaterialAssetReader.h"
 #include "MaterialParameterStorage.h"
 
+#include <FileFormat/Novus/Model/MaterialABI.h>
+#include <FileFormat/Novus/Model/MaterialPack.h>
 #include <Renderer/GPUVector.h>
 
 #include <robinhood/robinhood.h>
 
 #include <array>
+#include <cstddef>
 #include <vector>
 
 namespace Renderer
@@ -18,8 +21,8 @@ namespace Renderer
 namespace MaterialLoading
 {
     inline constexpr u32 FALLBACK_MATERIAL_PROGRAM_ID = 0xFFFFFFFFu;
-    inline constexpr u32 MATERIAL_EXECUTION_GROUP_COUNT = 6;
-    inline constexpr u16 INVALID_GROUP_LOCAL_MATERIAL_ID = 0xFFFFu;
+    inline constexpr u16 INVALID_MATERIAL_HANDLE = 0xFFFFu;
+    inline constexpr u16 INVALID_GROUP_LOCAL_PROGRAM_ID = 0xFFFFu;
 
     struct MaterialGPURecord
     {
@@ -27,29 +30,37 @@ namespace MaterialLoading
         u32 parameterBlockSize = 0;
         u32 programID = 0;
         u32 flags = 0;
-        u16 lightingModelID = 0;
-        u16 materialExecutionGroupID = 0;
-        u16 groupLocalMaterialID = INVALID_GROUP_LOCAL_MATERIAL_ID;
-        u8 rasterClass = 0;
-        u8 reserved = 0;
+        u32 packedProgramRouting01 = 0;
+        u32 packedProgramRouting2AndBaseGroup = 0;
     };
 
     struct MaterialInstanceGPURecord
     {
         u32 parameterOffset = 0;
         u32 materialIndex = 0;
-        u32 packedSamplerIDs = 0;
-        u32 reserved = 0;
+        u32 textureOffset = 0;
+        u32 textureCount = 0;
+        u32 flags = 0;
+        u32 packedClassification = 0;
+        u32 materialHandle = 0;
+        u32 samplerOffset = 0;
     };
     static_assert(sizeof(MaterialGPURecord) == 24);
-    static_assert(sizeof(MaterialInstanceGPURecord) == 16);
+    static_assert(sizeof(MaterialInstanceGPURecord) == 32);
+
+    struct MaterialTextureOverride
+    {
+        u32 textureSlot = 0;
+        u32 textureIndex = 0;
+        u32 samplerID = 0;
+        bool overrideSampler = false;
+    };
 
     struct MaterialStorageStats
     {
         u32 numMaterials = 0;
         u32 numMaterialInstances = 0;
         u32 numMaterialTableEntries = 0;
-        u32 numGroupMaterialEntries = 0;
         u32 instanceDedupHits = 0;
         u32 bufferGrowths = 0;
         u64 usedBytes = 0;
@@ -65,9 +76,10 @@ namespace MaterialLoading
         explicit MaterialStorage(bool validateTransfers = false);
 
         bool InitializeFallback(u32 checkerboardTextureIndex);
-        bool AppendMaterial(const MaterialAssetView& view, RenderAssets::MaterialHandle& outHandle);
-        bool AppendMaterialInstance(RenderAssets::MaterialHandle material, std::span<const u8> patchedParameterData,
-                                    RenderAssets::MaterialInstanceHandle& outHandle, u32 packedSamplerIDs = 0);
+        bool AppendMaterial(const MaterialAssetView& view, const FileFormat::Material::MaterialProgramRecord& program, RenderAssets::MaterialHandle& outHandle);
+        bool AppendMaterialInstance(RenderAssets::MaterialHandle material, const FileFormat::Material::MaterialInstanceAsset& configuration, std::span<const u8> parameterData,
+                                    std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle);
+        bool DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureOverride> overrides, RenderAssets::MaterialInstanceHandle& outHandle);
         bool AppendMaterialTable(std::span<const RenderAssets::MaterialInstanceHandle> materials, u32& outOffset);
         void SyncToGPU(Renderer::Renderer* renderer);
 
@@ -95,23 +107,30 @@ namespace MaterialLoading
         const Renderer::GPUVector<MaterialGPURecord>& GetMaterials() const { return _materials; }
         const Renderer::GPUVector<MaterialInstanceGPURecord>& GetMaterialInstances() const { return _materialInstances; }
         const Renderer::GPUVector<u32>& GetMaterialTable() const { return _materialTable; }
-        const Renderer::GPUVector<u32>& GetGroupMaterialTable(u32 executionGroup) const
-        {
-            return _groupMaterialTables[executionGroup];
-        }
+        const Renderer::GPUVector<u32>& GetTextureIndices() const { return _textureIndices; }
+        const Renderer::GPUVector<u32>& GetSamplerIDs() const { return _samplerIDs; }
         const MaterialParameterStorage& GetParameterStorage() const { return _parameterStorage; }
 
       private:
+        struct MaterialRouting
+        {
+            u16 baseExecutionGroupID = 0;
+        };
+
         Renderer::GPUVector<MaterialGPURecord> _materials;
         Renderer::GPUVector<MaterialInstanceGPURecord> _materialInstances;
         Renderer::GPUVector<u32> _materialTable;
-        std::array<Renderer::GPUVector<u32>, MATERIAL_EXECUTION_GROUP_COUNT> _groupMaterialTables;
+        Renderer::GPUVector<u32> _textureIndices;
+        Renderer::GPUVector<u32> _samplerIDs;
         MaterialParameterStorage _parameterStorage;
         std::vector<u32> _parameterAlignments;
-        robin_hood::unordered_map<u64, RenderAssets::MaterialInstanceHandle> _instanceKeyToHandle;
+        std::vector<MaterialRouting> _materialRouting;
+        robin_hood::unordered_map<u64, std::vector<RenderAssets::MaterialInstanceHandle>> _instanceKeyToHandles;
         RenderAssets::MaterialHandle _fallbackMaterial;
         RenderAssets::MaterialInstanceHandle _fallbackMaterialInstance;
         u32 _instanceDedupHits = 0;
         u32 _bufferGrowths = 0;
+
+        bool AppendInstanceRecord(MaterialInstanceGPURecord record, std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle);
     };
 } // namespace MaterialLoading

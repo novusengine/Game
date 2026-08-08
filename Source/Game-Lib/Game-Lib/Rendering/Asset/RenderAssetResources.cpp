@@ -2,16 +2,21 @@
 
 #include <Base/Util/DebugHandler.h>
 
+#include <FileFormat/Novus/Map/Map.h>
+
 #include <Renderer/RenderGraph.h>
 
 #include <algorithm>
 #include <array>
+#include <limits>
 
 namespace RenderAssets
 {
-    RenderAssetResources::RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, bool validateTransfers)
+    RenderAssetResources::RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, Renderer::DescriptorSet* materialDescriptorSet, bool validateTransfers)
         : _renderer(renderer), _textureRegistry(renderer, pactStorage), _materialStorage(validateTransfers),
-          _materialRegistry(pactStorage, &_materialStorage, &_textureRegistry), _geometryStorage(validateTransfers),
+          _materialBindings(renderer, materialDescriptorSet),
+          _materialRegistry(pactStorage, &_materialStorage, &_materialProgramLibrary, &_textureRegistry),
+          _geometryStorage(validateTransfers),
           _modelRegistry(pactStorage, &_geometryStorage, &_materialStorage, &_materialRegistry), _captureScratch(validateTransfers)
     {
         _captureScratch.SetDebugName("Render Asset Capture Scratch");
@@ -23,6 +28,12 @@ namespace RenderAssets
     {
         if (_initialized)
             return false;
+
+        std::string materialPackError;
+        if (!_materialProgramLibrary.Load("Data/Shaders/Materials.matpack", materialPackError))
+        {
+            NC_LOG_ERROR("MATERIAL_PACK load_failed path=Data/Shaders/Materials.matpack reason={}", materialPackError);
+        }
 
         if (!_textureRegistry.Initialize() ||
             !_materialStorage.InitializeFallback(_textureRegistry.GetFallbackTextureIndex()) ||
@@ -37,8 +48,23 @@ namespace RenderAssets
         return true;
     }
 
+    void RenderAssetResources::ReserveModelResources(const Map::ModelResourceAllocationHints& hints)
+    {
+        if (hints.models > std::numeric_limits<u32>::max())
+        {
+            NC_LOG_WARNING("MODEL_ALLOCATION_HINT ignored resource=model_registry count={} max={}", hints.models, std::numeric_limits<u32>::max());
+        }
+        else
+        {
+            _modelRegistry.Reserve(static_cast<u32>(hints.models));
+        }
+        _geometryStorage.Reserve(hints);
+    }
+
     void RenderAssetResources::SyncToGPU()
     {
+        ZoneScopedN("RenderAssetResources::SyncToGPU");
+
         if (!_initialized)
             return;
 
@@ -46,6 +72,7 @@ namespace RenderAssets
         _geometryStorage.SyncToGPU(_renderer);
         _captureScratch.SyncToGPU(_renderer);
         _textureRegistry.FlushDescriptors();
+        _materialBindings.Upload(_materialStorage, _textureRegistry);
     }
 
     void RenderAssetResources::AddCapturePass(Renderer::RenderGraph& renderGraph)
@@ -104,6 +131,8 @@ namespace RenderAssets
         stats.modelGeometry = _geometryStorage.GetStats();
         stats.models = _modelRegistry.GetStats();
         stats.materialStorage = _materialStorage.GetStats();
+        stats.materialPrograms = _materialProgramLibrary.GetStats();
+        stats.materialBindings = _materialBindings.GetStats();
         stats.materials = _materialRegistry.GetStats();
         stats.textures = _textureRegistry.GetStats();
         return stats;

@@ -28,6 +28,7 @@ namespace ModelScene
       public:
         explicit GeometryGroupMaskStore(bool validateTransfers = false);
 
+        void Reserve(u32 maskCount, u32 wordCount);
         RenderScenes::GeometryGroupMaskHandle Create(u32 groupCount, bool enabledByDefault = true);
         void Release(RenderScenes::GeometryGroupMaskHandle handle);
         bool SetEnabled(RenderScenes::GeometryGroupMaskHandle handle, u32 groupID, bool enabled);

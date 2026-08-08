@@ -6,6 +6,7 @@ struct Constants
     uint viewIndex;
     uint queueCapacity;
     uint resourceIndex;
+    uint enableConeCulling;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -97,7 +98,7 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
             AddStat(MODEL_WORK_STAT_REJECTED_FRUSTUM_MESHLETS, 1u);
             visible = false;
         }
-        else if ((rasterClass & 1u) == 0u &&
+        else if (_constants.enableConeCulling != 0u && (rasterClass & 1u) == 0u &&
                  ModelConeBackfacing(meshlet.packedNormalCone, meshlet.boundsCenter,
                                                           meshlet.boundsRadius, instance.currentWorld,
                                                           camera.eyePosition.xyz))
@@ -127,6 +128,8 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
     waveOffset = WaveReadLaneFirst(waveOffset);
     recordOffset = WaveReadLaneFirst(recordOffset);
     committedCount = WaveReadLaneFirst(committedCount);
+    if (WaveIsFirstLane() && committedCount > 0u)
+        AddStat(MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + rasterClass, committedCount);
 
     if (!visible)
         return;

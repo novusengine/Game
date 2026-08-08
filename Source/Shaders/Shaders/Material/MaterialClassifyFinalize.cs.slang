@@ -1,4 +1,5 @@
-#define MATERIAL_EXECUTION_GROUP_COUNT 6u
+#include "Material/MaterialABI.inc.slang"
+
 #define MATERIAL_DISPATCH_ARGUMENT_COUNT 3u
 
 struct Constants

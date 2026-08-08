@@ -4,6 +4,8 @@
 
 #include <algorithm>
 
+#include <tracy/Tracy.hpp>
+
 namespace ModelScene
 {
     GeometryGroupMaskStore::GeometryGroupMaskStore(bool validateTransfers)
@@ -13,10 +15,22 @@ namespace ModelScene
         _masks.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
     }
 
+    void GeometryGroupMaskStore::Reserve(u32 maskCount, u32 wordCount)
+    {
+        if (wordCount > _masks.Count())
+            _masks.Reserve(wordCount - _masks.Count());
+        _records.reserve(std::max(_records.size(), static_cast<size_t>(maskCount)));
+    }
+
     RenderScenes::GeometryGroupMaskHandle GeometryGroupMaskStore::Create(u32 groupCount, bool enabledByDefault)
     {
+        ZoneScopedN("GeometryGroupMaskStore::Create");
+
         const u32 wordCount = (groupCount + 31u) / 32u;
         const RenderScenes::StableRange range = _wordAllocator.Allocate(wordCount);
+        const u32 previousWordCount = _masks.Count();
+        if (range.offset + range.count > previousWordCount)
+            _masks.Reserve(range.offset + range.count - previousWordCount);
         EnsureWordCapacity(range.offset + range.count);
 
         u32 recordIndex = 0;
@@ -36,12 +50,19 @@ namespace ModelScene
         _liveWords += wordCount;
 
         const RenderScenes::GeometryGroupMaskHandle handle(recordIndex);
-        SetAll(handle, enabledByDefault);
+        for (u32 index = 0; index < range.count; ++index)
+            _masks[range.offset + index] = enabledByDefault ? 0xFFFFFFFFu : 0u;
+        if (enabledByDefault && range.count != 0 && (groupCount % 32u) != 0)
+            _masks[range.offset + range.count - 1] = (1u << (groupCount % 32u)) - 1u;
+        if (range.count != 0 && range.offset < previousWordCount)
+            _masks.SetDirtyElements(range.offset, range.count);
         return handle;
     }
 
     void GeometryGroupMaskStore::Release(RenderScenes::GeometryGroupMaskHandle handle)
     {
+        ZoneScopedN("GeometryGroupMaskStore::Release");
+
         Mask* mask = GetMask(handle);
         if (!mask)
             return;

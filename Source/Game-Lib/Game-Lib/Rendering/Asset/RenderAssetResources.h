@@ -1,5 +1,7 @@
 #pragma once
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
+#include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
+#include "Game-Lib/Rendering/Material/MaterialResourceBindings.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Material/MaterialTextureRegistry.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelAssetRegistry.h"
@@ -16,6 +18,11 @@ namespace Renderer
     class RenderGraph;
 }
 
+namespace Map
+{
+    struct ModelResourceAllocationHints;
+}
+
 namespace RenderAssets
 {
     struct RenderAssetResourceStats
@@ -23,6 +30,8 @@ namespace RenderAssets
         ModelLoading::ModelGeometryStorageStats modelGeometry;
         ModelLoading::ModelAssetRegistryStats models;
         MaterialLoading::MaterialStorageStats materialStorage;
+        MaterialLoading::MaterialProgramLibraryStats materialPrograms;
+        MaterialLoading::MaterialResourceBindingStats materialBindings;
         MaterialLoading::MaterialRegistryStats materials;
         MaterialLoading::MaterialTextureRegistryStats textures;
     };
@@ -32,19 +41,36 @@ namespace RenderAssets
     class RenderAssetResources
     {
       public:
-        RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, bool validateTransfers);
+        RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, Renderer::DescriptorSet* materialDescriptorSet, bool validateTransfers);
 
         bool Initialize();
+        void ReserveModelResources(const Map::ModelResourceAllocationHints& hints);
         void SyncToGPU();
         void AddCapturePass(Renderer::RenderGraph& renderGraph);
 
         ModelHandle LoadModel(FileFormat::AssetID assetID) { return _modelRegistry.Load(assetID); }
+        MaterialInstanceHandle LoadMaterialInstance(FileFormat::AssetID assetID)
+        {
+            return _materialRegistry.LoadMaterialInstance(assetID);
+        }
+        MaterialInstanceHandle DeriveMaterialInstance(MaterialInstanceHandle base, std::span<const MaterialLoading::MaterialTextureAssetOverride> overrides, FileFormat::AssetID ownerAssetID)
+        {
+            return _materialRegistry.DeriveMaterialInstance(base, overrides, ownerAssetID);
+        }
+        ModelLoading::EmbeddedModelLoadStatus LoadEmbeddedModel(FileFormat::AssetID assetID, ModelHandle& outHandle)
+        {
+            return _modelRegistry.LoadEmbedded(assetID, outHandle);
+        }
         ModelHandle GetFallbackModel() const { return _modelRegistry.GetFallbackModel(); }
         MaterialHandle GetFallbackMaterial() const { return _materialStorage.GetFallbackMaterial(); }
         MaterialInstanceHandle GetFallbackMaterialInstance() const { return _materialStorage.GetFallbackMaterialInstance(); }
 
         const ModelLoading::ModelGeometryStorage& GetModelGeometryStorage() const { return _geometryStorage; }
         const MaterialLoading::MaterialStorage& GetMaterialStorage() const { return _materialStorage; }
+        const MaterialLoading::MaterialProgramLibrary& GetMaterialProgramLibrary() const
+        {
+            return _materialProgramLibrary;
+        }
         const MaterialLoading::MaterialTextureRegistry& GetTextureRegistry() const { return _textureRegistry; }
         RenderAssetResourceStats GetStats() const;
 
@@ -52,6 +78,8 @@ namespace RenderAssets
         Renderer::Renderer* _renderer = nullptr;
         MaterialLoading::MaterialTextureRegistry _textureRegistry;
         MaterialLoading::MaterialStorage _materialStorage;
+        MaterialLoading::MaterialResourceBindings _materialBindings;
+        MaterialLoading::MaterialProgramLibrary _materialProgramLibrary;
         MaterialLoading::MaterialRegistry _materialRegistry;
         ModelLoading::ModelGeometryStorage _geometryStorage;
         ModelLoading::ModelAssetRegistry _modelRegistry;

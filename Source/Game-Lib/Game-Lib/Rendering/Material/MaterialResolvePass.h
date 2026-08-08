@@ -9,7 +9,7 @@
 struct RenderResources;
 class GameRenderer;
 
-namespace MaterialLoading { class MaterialStorage; class MaterialTextureRegistry; }
+namespace MaterialLoading { class MaterialStorage; }
 namespace ModelLoading { class ModelGeometryStorage; }
 namespace ModelView { class ModelViewWorkResources; }
 namespace RenderScenes { class RenderScene; class RenderView; }
@@ -26,8 +26,6 @@ namespace MaterialRendering
 
         bool Upload(const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
                     const ModelLoading::ModelGeometryStorage& geometry,
-                    const MaterialLoading::MaterialStorage& materials,
-                    const MaterialLoading::MaterialTextureRegistry& textures,
                     const RenderScenes::RenderScene& scene);
         void AddClassificationPass(Renderer::RenderGraph* renderGraph, RenderResources& renderResources,
                                    const RenderScenes::RenderView& view,
@@ -60,13 +58,11 @@ namespace MaterialRendering
             Renderer::BufferID indices = Renderer::BufferID::Invalid();
             Renderer::BufferID triangles = Renderer::BufferID::Invalid();
             Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
-            Renderer::BufferID materialInstances = Renderer::BufferID::Invalid();
         };
 
         struct ClassificationBindings
         {
             ModelBindings model;
-            Renderer::BufferID materials = Renderer::BufferID::Invalid();
             Renderer::BufferID tileQueues[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
             Renderer::BufferID counters[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         };
@@ -74,11 +70,7 @@ namespace MaterialRendering
         struct ResolveBindings
         {
             ModelBindings model;
-            Renderer::BufferID materials = Renderer::BufferID::Invalid();
-            Renderer::BufferID parameters = Renderer::BufferID::Invalid();
             Renderer::BufferID tileQueues[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
-            Renderer::BufferID groupMaterials[MATERIAL_EXECUTION_GROUP_COUNT] = {};
-            Renderer::TextureArrayID textures = Renderer::TextureArrayID::Invalid();
         };
 
         struct FinalizeBindings
@@ -90,7 +82,6 @@ namespace MaterialRendering
         void BindModelResources(Renderer::DescriptorSet& set, ModelBindings& bindings,
                                 const ModelView::ModelViewWorkResources& work,
                                 const ModelLoading::ModelGeometryStorage& geometry,
-                                const MaterialLoading::MaterialStorage& materials,
                                 const RenderScenes::RenderScene& scene, bool& changed);
         void RegisterModelUsage(Renderer::RenderGraphBuilder& builder,
                                 const ModelView::ModelViewWorkResources& work,
@@ -104,8 +95,9 @@ namespace MaterialRendering
         Renderer::DescriptorSet _resolveSet;
         Renderer::ComputePipelineID _classificationPipeline = Renderer::ComputePipelineID::Invalid();
         Renderer::ComputePipelineID _finalizePipeline = Renderer::ComputePipelineID::Invalid();
-        Renderer::ComputePipelineID _resolvePipeline = Renderer::ComputePipelineID::Invalid();
-        Renderer::SamplerID _samplers[4] = {};
+        std::array<Renderer::ComputePipelineID, FileFormat::Material::ABI::EXECUTION_GROUP_COUNT>
+            _resolvePipelines = {};
+        std::array<bool, FileFormat::Material::ABI::EXECUTION_GROUP_COUNT> _activeResolveGroups = {};
         ClassificationBindings _classificationBindings;
         FinalizeBindings _finalizeBindings;
         ResolveBindings _resolveBindings;

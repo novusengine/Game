@@ -10,6 +10,7 @@
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
+#include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/PixelQuery.h"
 #include "Game-Lib/Util/AssetPath.h"
@@ -236,8 +237,12 @@ namespace Scripting::Asset
     {
         const RenderAssets::RenderAssetResourceStats stats = ServiceLocator::GetGameRenderer()->GetRenderAssetResources()->GetStats();
         const RenderScenes::RenderSceneStats sceneStats = ServiceLocator::GetGameRenderer()->GetWorldRenderScene()->GetStats();
+        const ModelRendering::ModelPlacementLoaderStats placementStats =
+            ServiceLocator::GetGameRenderer()->GetModelPlacementLoader()->GetStats();
         zenith->CreateTable();
         zenith->AddTableField("models", stats.modelGeometry.numModels);
+        zenith->AddTableField("residentModels", stats.models.residentModels);
+        zenith->AddTableField("modelReferences", stats.models.references);
         zenith->AddTableField("usedBytes", stats.modelGeometry.usedBytes + stats.materialStorage.usedBytes);
         zenith->AddTableField("reservedBytes", stats.modelGeometry.reservedBytes + stats.materialStorage.reservedBytes);
         zenith->AddTableField("growths", stats.modelGeometry.bufferGrowths + stats.materialStorage.bufferGrowths);
@@ -255,6 +260,14 @@ namespace Scripting::Asset
         zenith->AddTableField("sceneHistoryAddressWords", sceneStats.meshletHistory.addressSpaceWords);
         zenith->AddTableField("sceneHistoryRetiredWords", sceneStats.meshletHistory.retiredWords);
         zenith->AddTableField("sceneHistoryClearRanges", sceneStats.meshletHistory.pendingClearRanges);
+        zenith->AddTableField("mapPlacements", placementStats.livePlacements);
+        zenith->AddTableField("mapPlacementDuplicates", placementStats.duplicatePlacements);
+        zenith->AddTableField("mapPlacementResolutionFailures", placementStats.sourceResolutionFailures);
+        zenith->AddTableField("mapPlacementFallbacks", placementStats.modelFallbackPlacements);
+        zenith->AddTableField("embeddedInstances", placementStats.embedded.spawnedInstances);
+        zenith->AddTableField("embeddedInvalidReferenceSkips", placementStats.embedded.invalidReferenceSkips);
+        zenith->AddTableField("embeddedMissingGeometrySkips", placementStats.embedded.missingGeometrySkips);
+        zenith->AddTableField("embeddedDependencyFailures", placementStats.embedded.unexpectedDependencyFailures);
         const ModelView::WorkStats& diagnosticStats =
             ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->GetDiagnosticStats();
         zenith->AddTableField("diagnosticSelectedInstances", diagnosticStats.selectedInstances);

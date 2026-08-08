@@ -31,7 +31,7 @@ namespace MaterialRendering
             });
 
             buffer.name = "Material Indirect Arguments " + std::to_string(frame);
-            buffer.size = sizeof(u32) * MATERIAL_EXECUTION_GROUP_COUNT * MATERIAL_DISPATCH_ARGUMENT_COUNT;
+            buffer.size = sizeof(u32) * FileFormat::Material::ABI::EXECUTION_GROUP_COUNT * MATERIAL_DISPATCH_ARGUMENT_COUNT;
             buffer.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::INDIRECT_ARGUMENT_BUFFER |
                            Renderer::BufferUsage::TRANSFER_DESTINATION;
             _arguments.Get(frame) = renderer->CreateAndFillBuffer(_arguments.Get(frame), buffer,
@@ -65,7 +65,7 @@ namespace MaterialRendering
             return false;
         _tileCapacity = std::bit_ceil(tileCount);
         Renderer::BufferDesc buffer;
-        buffer.size = sizeof(u32) * _tileCapacity * MATERIAL_EXECUTION_GROUP_COUNT;
+        buffer.size = sizeof(u32) * _tileCapacity * FileFormat::Material::ABI::EXECUTION_GROUP_COUNT;
         buffer.usage = Renderer::BufferUsage::STORAGE_BUFFER;
         for (u32 frame = 0; frame < _tileQueues.Num; ++frame)
         {

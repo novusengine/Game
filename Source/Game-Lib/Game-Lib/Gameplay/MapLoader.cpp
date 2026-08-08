@@ -10,6 +10,8 @@
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/ModelRenderer.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -26,9 +28,11 @@
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 
 #include <entt/entt.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <memory>
 #include <filesystem>
+#include <string>
 namespace fs = std::filesystem;
 
 using namespace ECS::Singletons;
@@ -36,6 +40,10 @@ using namespace ECS::Singletons;
 void MapLoader::Update(f32 deltaTime)
 {
     ZoneScoped;
+
+    const bool transitionBusy = _terrainLoader->IsLoading() || _modelLoader->IsTerrainLoading() || _modelPlacementLoader->IsLoading();
+    if (_mapLoadTraceActive && !transitionBusy)
+        CompleteTransitionTrace();
 
     if (!_loadRequest.isRequest)
         return;
@@ -49,8 +57,12 @@ void MapLoader::Update(f32 deltaTime)
         if (_currentMapID == std::numeric_limits<u32>().max())
             return;
 
+        CompleteTransitionTrace();
         _currentMapID = std::numeric_limits<u32>().max();
-        ClearRenderersForMap();
+        {
+            ZoneScopedN("Map Unload");
+            ClearRenderersForMap();
+        }
 
         ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ _currentMapID });
     }
@@ -78,6 +90,10 @@ void MapLoader::Update(f32 deltaTime)
 
         const auto& currentMap = mapStorage->Get<MetaGen::Shared::ClientDB::MapRecord>(mapID);
         const std::string& mapInternalName = mapStorage->GetString(currentMap.nameInternal);
+        CompleteTransitionTrace();
+        FrameMarkStart("Map Load");
+        TracyMessage(mapInternalName.data(), mapInternalName.size());
+        _mapLoadTraceActive = true;
 
         auto* pactStorage = ServiceLocator::GetPactStorage();
         std::string mapHeaderPath = Util::AssetPath::Map(mapInternalName + "/" + mapInternalName + Map::HEADER_FILE_EXTENSION);
@@ -110,9 +126,13 @@ void MapLoader::Update(f32 deltaTime)
             _currentMapID = mapID;
         
             ClearRenderersForMap();
+            ServiceLocator::GetGameRenderer()->ReserveModelResources(mapHeader.modelAllocationHints);
             ServiceLocator::GetEnttRegistries()->gameRegistry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapInternalName);
             _modelLoader->SetTerrainLoading(true);
-            _modelLoader->LoadPlacement(mapHeader.placement);
+            if (ModelRendering::UseMeshletModelRenderer())
+                _modelPlacementLoader->QueuePlacement(mapHeader.placement);
+            else
+                _modelLoader->LoadPlacement(mapHeader.placement);
         }
         else
         {
@@ -138,6 +158,9 @@ void MapLoader::UnloadMapImmediately()
     if (_currentMapID == std::numeric_limits<u32>().max())
         return;
 
+    CompleteTransitionTrace();
+    ZoneScopedN("Map Unload");
+
     _currentMapID = std::numeric_limits<u32>().max();
     ClearRenderersForMap();
 
@@ -153,8 +176,18 @@ void MapLoader::LoadMap(u32 mapHash)
 
 void MapLoader::ReportLoadFailure(u32 mapID, ECS::Components::MapLoadFailureReason reason)
 {
+    CompleteTransitionTrace();
     NC_LOG_ERROR("MapLoader : Failed to load map ID {0} (reason {1})", mapID, static_cast<u32>(reason));
     ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadFailedEvent{ mapID, reason });
+}
+
+void MapLoader::CompleteTransitionTrace()
+{
+    if (!_mapLoadTraceActive)
+        return;
+
+    FrameMarkEnd("Map Load");
+    _mapLoadTraceActive = false;
 }
 
 void MapLoader::ClearRenderersForMap()

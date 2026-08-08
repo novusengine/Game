@@ -10,6 +10,7 @@
 class TerrainLoader;
 class ModelLoader;
 class ModelRenderer;
+namespace ModelRendering { class ModelPlacementLoader; }
 class MapLoader
 {
 private:
@@ -21,7 +22,8 @@ private:
     };
 
 public:
-    MapLoader(TerrainLoader* terrainLoader, ModelLoader* modelLoader, LiquidLoader* liquidLoader) : _terrainLoader(terrainLoader), _modelLoader(modelLoader), _liquidLoader(liquidLoader) { }
+    MapLoader(TerrainLoader* terrainLoader, ModelLoader* modelLoader, ModelRendering::ModelPlacementLoader* modelPlacementLoader, LiquidLoader* liquidLoader)
+        : _terrainLoader(terrainLoader), _modelLoader(modelLoader), _modelPlacementLoader(modelPlacementLoader), _liquidLoader(liquidLoader) { }
 
     void Update(f32 deltaTime);
 
@@ -29,6 +31,7 @@ public:
     void UnloadMapImmediately();
     void LoadMap(u32 mapHash);
     void ReportLoadFailure(u32 mapID, ECS::Components::MapLoadFailureReason reason);
+    void CompleteTransitionTrace();
 
     const u32 GetCurrentMapID() { return _currentMapID; }
 
@@ -38,8 +41,10 @@ private:
 private:
     TerrainLoader* _terrainLoader = nullptr;
     ModelLoader* _modelLoader = nullptr;
+    ModelRendering::ModelPlacementLoader* _modelPlacementLoader = nullptr;
     LiquidLoader* _liquidLoader = nullptr;
 
     u32 _currentMapID = std::numeric_limits<u32>().max();
     LoadDesc _loadRequest;
+    bool _mapLoadTraceActive = false;
 };

@@ -10,6 +10,8 @@
 #include <Renderer/Renderer.h>
 #include <Renderer/Descriptors/TextureDesc.h>
 
+#include <tracy/Tracy.hpp>
+
 #include <array>
 
 namespace
@@ -86,6 +88,8 @@ namespace MaterialLoading
 
     u32 MaterialTextureRegistry::Resolve(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID, bool optional)
     {
+        ZoneScopedN("MaterialTextureRegistry::Resolve");
+
         const auto existing = _entries.find(textureAssetID);
         if (existing != _entries.end())
         {
@@ -99,7 +103,11 @@ namespace MaterialLoading
             return RecordFailure(textureAssetID, ownerAssetID, "injected_failure", optional);
 
         PACT::PactFileHandle file;
-        const PACT::PactReadResult readResult = _pactStorage->ReadFile(textureAssetID, file);
+        PACT::PactReadResult readResult;
+        {
+            ZoneScopedN("Read Texture From PACT");
+            readResult = _pactStorage->ReadFile(textureAssetID, file);
+        }
         if (readResult != PACT::PactReadResult::Success)
             return RecordFailure(textureAssetID, ownerAssetID, ToReason(readResult), optional);
 
@@ -110,7 +118,11 @@ namespace MaterialLoading
         textureDesc.debugName = "Model Texture";
 
         u32 arrayIndex = _fallbackTextureIndex;
-        const Renderer::TextureID texture = _renderer->LoadDataTextureIntoArray(textureDesc, _textureArray, arrayIndex);
+        Renderer::TextureID texture;
+        {
+            ZoneScopedN("Decode And Create Texture");
+            texture = _renderer->LoadDataTextureIntoArray(textureDesc, _textureArray, arrayIndex);
+        }
         if (texture == Renderer::TextureID::Invalid())
             return RecordFailure(textureAssetID, ownerAssetID, "texture_decode_failed", optional);
 

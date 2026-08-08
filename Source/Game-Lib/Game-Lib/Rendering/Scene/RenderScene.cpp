@@ -3,10 +3,32 @@
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 
+#include <Base/Util/DebugHandler.h>
+
+#include <FileFormat/Novus/Map/Map.h>
+
 #include <vector>
+#include <limits>
+
+#include <tracy/Tracy.hpp>
 
 namespace RenderScenes
 {
+    namespace
+    {
+        bool ToSceneCount(u64 value, const char* name, u32& out)
+        {
+            if (value > std::numeric_limits<u32>::max())
+            {
+                NC_LOG_WARNING("MODEL_ALLOCATION_HINT ignored resource={} count={} max={}", name, value,
+                               std::numeric_limits<u32>::max());
+                return false;
+            }
+            out = static_cast<u32>(value);
+            return true;
+        }
+    }
+
     RenderScene::RenderScene(u64 sceneID, const ModelLoading::ModelGeometryStorage* geometryStorage,
                              const MaterialLoading::MaterialStorage* materialStorage, bool validateTransfers)
         : _sceneID(sceneID), _geometryStorage(geometryStorage), _materialStorage(materialStorage),
@@ -14,18 +36,52 @@ namespace RenderScenes
     {
     }
 
+    void RenderScene::ReserveModelResources(const Map::ModelAllocationHints& hints)
+    {
+        u32 instanceCount = 0;
+        if (ToSceneCount(hints.scene.totalModelInstances, "scene_instances", instanceCount))
+        {
+            _instances.Reserve(instanceCount);
+            _meshletHistory.Reserve(instanceCount);
+        }
+
+        u32 groupWords = 0;
+        if (ToSceneCount(hints.scene.geometryGroupMaskWords, "geometry_group_mask_words", groupWords))
+            _geometryGroupMasks.Reserve(instanceCount, groupWords);
+
+        u32 modelCount = 0;
+        u32 materialSlots = 0;
+        if (ToSceneCount(hints.resources.models, "scene_model_tables", modelCount) &&
+            ToSceneCount(hints.resources.materialSlots, "scene_material_table_entries", materialSlots))
+            _materialTables.Reserve(modelCount, materialSlots);
+    }
+
     ModelInstanceHandle RenderScene::CreateModelInstance(const ModelInstanceDesc& desc)
     {
+        ZoneScopedN("RenderScene::CreateModelInstance");
+
         if (!_geometryStorage || !_materialStorage || !_geometryStorage->HasModel(desc.model))
             return InvalidModelInstanceHandle();
 
         const ModelLoading::ModelGPURecord& model = _geometryStorage->GetRecord(desc.model);
-        const ModelMaterialTableHandle materialTable = AcquireDefaultMaterialTable(desc.model);
+        ModelMaterialTableHandle materialTable;
+        {
+            ZoneScopedN("Acquire Instance Material Table");
+            materialTable = AcquireDefaultMaterialTable(desc.model);
+        }
         if (!_materialTables.IsValid(materialTable))
             return InvalidModelInstanceHandle();
 
-        const GeometryGroupMaskHandle groupMask = _geometryGroupMasks.Create(model.geometryGroupCount);
-        const ModelScene::MeshletHistoryRange history = _meshletHistory.Allocate((model.numMeshlets + 31u) / 32u);
+        GeometryGroupMaskHandle groupMask;
+        {
+            ZoneScopedN("Allocate Instance Geometry Groups");
+            groupMask = _geometryGroupMasks.Create(model.geometryGroupCount);
+        }
+        ModelScene::MeshletHistoryRange history;
+        {
+            ZoneScopedN("Allocate Instance Meshlet History");
+            history = _meshletHistory.Allocate((model.numMeshlets + 31u) / 32u);
+        }
 
         ModelScene::ModelInstanceCreateInfo createInfo;
         createInfo.model = desc.model;
@@ -38,7 +94,10 @@ namespace RenderScenes
         createInfo.geometryGroupWordCount = _geometryGroupMasks.GetWordCount(groupMask);
         createInfo.meshletHistory = history;
         createInfo.visible = desc.visible;
-        return _instances.Create(createInfo);
+        {
+            ZoneScopedN("Create Instance Record");
+            return _instances.Create(createInfo);
+        }
     }
 
     bool RenderScene::DestroyModelInstance(ModelInstanceHandle handle, u64 retireValue)
@@ -110,6 +169,37 @@ namespace RenderScenes
         return _materialTables.SetMaterial(table, slot, material);
     }
 
+    bool RenderScene::SetModelMaterials(ModelInstanceHandle handle,
+                                        std::span<const RenderAssets::MaterialInstanceHandle> materials)
+    {
+        const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+        if (!resources || materials.size() != _materialTables.GetCount(resources->materialTable))
+            return false;
+
+        std::vector<u32> entries;
+        entries.reserve(materials.size());
+        for (const RenderAssets::MaterialInstanceHandle material : materials)
+        {
+            if (!_materialStorage->HasMaterialInstance(material))
+                return false;
+            entries.push_back(static_cast<RenderAssets::MaterialInstanceHandle::type>(material));
+        }
+
+        const ModelMaterialTableHandle oldTable = resources->materialTable;
+        const ModelMaterialTableHandle sharedTable = _materialTables.AcquireShared(entries);
+        if (!_materialTables.IsValid(sharedTable))
+            return false;
+
+        if (!_instances.SetMaterialTable(handle, sharedTable, _materialTables.GetOffset(sharedTable),
+                                         _materialTables.GetCount(sharedTable), false))
+        {
+            _materialTables.Release(sharedTable);
+            return false;
+        }
+        _materialTables.Release(oldTable);
+        return true;
+    }
+
     bool RenderScene::ResetModelMaterials(ModelInstanceHandle handle)
     {
         const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
@@ -167,9 +257,19 @@ namespace RenderScenes
 
     void RenderScene::SyncToGPU(Renderer::Renderer* renderer)
     {
-        _materialTables.SyncToGPU(renderer);
-        _geometryGroupMasks.SyncToGPU(renderer);
-        _instances.SyncToGPU(renderer);
+        ZoneScopedN("RenderScene::SyncToGPU");
+        {
+            ZoneScopedN("Sync Scene Material Tables");
+            _materialTables.SyncToGPU(renderer);
+        }
+        {
+            ZoneScopedN("Sync Scene Geometry Groups");
+            _geometryGroupMasks.SyncToGPU(renderer);
+        }
+        {
+            ZoneScopedN("Sync Scene Instances");
+            _instances.SyncToGPU(renderer);
+        }
     }
 
     RenderSceneStats RenderScene::GetStats() const
@@ -183,6 +283,6 @@ namespace RenderScenes
         std::vector<u32> materials(record.defaultMaterialTableCount);
         for (u32 index = 0; index < record.defaultMaterialTableCount; ++index)
             materials[index] = _materialStorage->GetMaterialTableEntry(record.defaultMaterialTableOffset + index);
-        return _materialTables.AcquireShared(model, materials);
+        return _materialTables.AcquireShared(materials);
     }
 } // namespace RenderScenes

@@ -24,7 +24,7 @@ namespace ModelPipeline
         ModelVisibilityResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
         void Upload(const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
-                    const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene);
+                    const RenderScenes::RenderScene& scene);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                const RenderScenes::RenderView& view, const ModelView::ModelViewWorkResources& work,
                                const ModelLoading::ModelGeometryStorage& geometry,
@@ -62,7 +62,6 @@ namespace ModelPipeline
         {
             CommonBindings common;
             Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
-            Renderer::BufferID materialInstances = Renderer::BufferID::Invalid();
         };
 
         void BindCommon(Renderer::DescriptorSet& set, CommonBindings& bindings,

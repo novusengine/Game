@@ -17,6 +17,8 @@
 #include "Game-Lib/Rendering/Debug/JoltDebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
@@ -56,9 +58,12 @@ namespace fs = std::filesystem;
 
 AutoCVar_Int CVAR_TerrainChunkLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "terrainChunkLoadsPerFrame", "maximum terrain chunks prepared and committed per frame", 8, CVarFlags::None);
 
-TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader)
+TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader,
+                             ModelRendering::ModelPlacementLoader* modelPlacementLoader,
+                             LiquidLoader* liquidLoader)
     : _terrainRenderer(terrainRenderer)
     , _modelLoader(modelLoader)
+    , _modelPlacementLoader(modelPlacementLoader)
     , _liquidLoader(liquidLoader)
     , _requests()
     , _pendingWorkRequests()
@@ -133,6 +138,7 @@ void TerrainLoader::Clear()
     _chunkIDToChunkInfo.clear();
     
     ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
+    _modelPlacementLoader->Clear();
     ServiceLocator::GetGameRenderer()->GetLiquidLoader()->Clear();
     ServiceLocator::GetGameRenderer()->GetJoltDebugRenderer()->Clear();
     _terrainRenderer->Clear();
@@ -347,7 +353,10 @@ void TerrainLoader::Update(f32 deltaTime)
                         for (u32 placementIndex = 0; placementIndex < numPlacements; placementIndex++)
                         {
                             auto* placement = chunk->placementHeader.GetPlacement(workRequest.buffer, placementIndex);
-                            _modelLoader->LoadPlacement(*placement);
+                            if (ModelRendering::UseMeshletModelRenderer())
+                                _modelPlacementLoader->QueuePlacement(*placement);
+                            else
+                                _modelLoader->LoadPlacement(*placement);
                         }
                     }
 
@@ -464,7 +473,10 @@ void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)
         {
             u64 placementDataOffset = chunk->placementHeader.dataOffset + (placementIndex * sizeof(Terrain::Placement));
             const auto* placement = reinterpret_cast<const Terrain::Placement*>(static_cast<const u8*>(partialChunk.file.GetData()) + placementDataOffset);
-            _modelLoader->LoadPlacement(*placement);
+            if (ModelRendering::UseMeshletModelRenderer())
+                _modelPlacementLoader->QueuePlacement(*placement);
+            else
+                _modelLoader->LoadPlacement(*placement);
         }
     }
 }
@@ -484,7 +496,9 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
         // the load already in progress will send MapLoadedEvent when it finishes.
         if (!_modelLoader->IsTerrainLoading())
         {
-            const u32 mapID = ServiceLocator::GetGameRenderer()->GetMapLoader()->GetCurrentMapID();
+            MapLoader* mapLoader = ServiceLocator::GetGameRenderer()->GetMapLoader();
+            const u32 mapID = mapLoader->GetCurrentMapID();
+            mapLoader->CompleteTransitionTrace();
             ECS::Util::EventUtil::PushEvent(ECS::Components::MapLoadedEvent{ mapID });
         }
         return false;
@@ -569,6 +583,7 @@ bool TerrainLoader::LoadFullMapRequest(const LoadRequestInternal& request)
     auto* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
 
     Clear();
+    ServiceLocator::GetGameRenderer()->ReserveModelResources(mapHeader.modelAllocationHints);
 
     _currentMapInternalName = mapName;
     registry->ctx().get<ECS::Singletons::JoltState>().ResetPhysicsTelemetry(mapName);

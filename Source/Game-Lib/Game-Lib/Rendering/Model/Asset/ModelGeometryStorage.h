@@ -4,9 +4,17 @@
 
 #include <Renderer/GPUVector.h>
 
+#include <span>
+#include <vector>
+
 namespace Renderer
 {
     class Renderer;
+}
+
+namespace Map
+{
+    struct ModelResourceAllocationHints;
 }
 
 namespace ModelLoading
@@ -69,6 +77,7 @@ namespace ModelLoading
       public:
         explicit ModelGeometryStorage(bool validateTransfers = false);
 
+        void Reserve(const Map::ModelResourceAllocationHints& hints);
         bool Append(const ModelAssetView& view, u32 materialTableOffset, u32 materialTableCount, RenderAssets::ModelHandle& outHandle);
         void SyncToGPU(Renderer::Renderer* renderer);
 
@@ -80,6 +89,9 @@ namespace ModelLoading
         {
             return static_cast<RenderAssets::ModelHandle::type>(handle) < _records.Count();
         }
+        bool FindMaterialSlot(RenderAssets::ModelHandle handle, u32 stableID, u32& outSlot) const;
+        std::span<const FileFormat::Model::Parameter> GetParameters(RenderAssets::ModelHandle handle) const;
+        std::span<const FileFormat::Model::ParameterBinding> GetParameterBindings(RenderAssets::ModelHandle handle) const;
         ModelGeometryStorageStats GetStats() const;
 
         const Renderer::GPUVector<ModelGPURecord>& GetRecords() const { return _records; }
@@ -98,6 +110,14 @@ namespace ModelLoading
         const Renderer::GPUVector<FileFormat::Model::EmbeddedInstance>& GetEmbeddedInstances() const { return _embeddedInstances; }
 
       private:
+        struct ParameterRange
+        {
+            u32 parameterOffset = 0;
+            u32 parameterCount = 0;
+            u32 bindingOffset = 0;
+            u32 bindingCount = 0;
+        };
+
         Renderer::GPUVector<ModelGPURecord> _records;
         Renderer::GPUVector<FileFormat::Model::Mesh> _meshes;
         Renderer::GPUVector<FileFormat::Model::MeshLOD> _meshLODs;
@@ -112,6 +132,9 @@ namespace ModelLoading
         Renderer::GPUVector<FileFormat::Model::MaterialSlot> _materialSlots;
         Renderer::GPUVector<FileFormat::Model::EmbeddedInstanceSet> _embeddedInstanceSets;
         Renderer::GPUVector<FileFormat::Model::EmbeddedInstance> _embeddedInstances;
+        std::vector<ParameterRange> _parameterRanges;
+        std::vector<FileFormat::Model::Parameter> _parameters;
+        std::vector<FileFormat::Model::ParameterBinding> _parameterBindings;
         u32 _bufferGrowths = 0;
     };
 } // namespace ModelLoading

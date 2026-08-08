@@ -22,6 +22,8 @@ namespace ModelLoading
         std::span<const FileFormat::Model::PackedMeshletTriangle> meshletTriangles;
         std::span<const u16> jointPaletteRemaps;
         std::span<const FileFormat::Model::MaterialSlot> materialSlots;
+        std::span<const FileFormat::Model::Parameter> parameters;
+        std::span<const FileFormat::Model::ParameterBinding> parameterBindings;
         std::span<const FileFormat::Model::EmbeddedInstanceSet> embeddedInstanceSets;
         std::span<const FileFormat::Model::EmbeddedInstance> embeddedInstances;
     };

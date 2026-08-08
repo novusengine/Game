@@ -1,5 +1,9 @@
 #include "ModelGeometryStorage.h"
 
+#include <Base/Util/DebugHandler.h>
+
+#include <FileFormat/Novus/Map/Map.h>
+
 #include <Renderer/Renderer.h>
 
 #include <cstring>
@@ -22,6 +26,26 @@ namespace
         const u32 base = destination.AddCount(static_cast<u32>(source.size()));
         std::memcpy(&destination[base], source.data(), source.size_bytes());
         return base;
+    }
+
+    template <typename T>
+    void ReserveSpan(Renderer::GPUVector<T>& destination, std::span<const T> source)
+    {
+        destination.Reserve(static_cast<u32>(source.size()));
+    }
+
+    template <typename T>
+    void ReserveHint(Renderer::GPUVector<T>& destination, u64 count, const char* name)
+    {
+        constexpr u64 MAX_COUNT = std::numeric_limits<u32>::max() / sizeof(T);
+        if (count > MAX_COUNT)
+        {
+            NC_LOG_WARNING("MODEL_ALLOCATION_HINT ignored resource={} count={} max={}", name, count,
+                           MAX_COUNT);
+            return;
+        }
+
+        destination.Reserve(static_cast<u32>(count));
     }
 
     template <typename T>
@@ -56,8 +80,30 @@ namespace ModelLoading
         Configure(_embeddedInstances, "Model Embedded Instances");
     }
 
+    void ModelGeometryStorage::Reserve(const Map::ModelResourceAllocationHints& hints)
+    {
+        ZoneScopedN("ModelGeometryStorage::Reserve");
+
+        ReserveHint(_records, hints.models, "models");
+        ReserveHint(_meshes, hints.meshes, "meshes");
+        ReserveHint(_meshLODs, hints.meshLODs, "mesh_lods");
+        ReserveHint(_submeshes, hints.submeshes, "submeshes");
+        ReserveHint(_meshlets, hints.meshlets, "meshlets");
+        ReserveHint(_positions, hints.positions, "positions");
+        ReserveHint(_vertexAttributes, hints.vertexAttributes, "vertex_attributes");
+        ReserveHint(_skinningData, hints.skinningRecords, "skinning_records");
+        ReserveHint(_meshletVertexIndices, hints.meshletVertexIndices, "meshlet_vertex_indices");
+        ReserveHint(_meshletTriangles, hints.meshletTriangleRecords, "meshlet_triangles");
+        ReserveHint(_jointPaletteRemaps, hints.jointPaletteRemaps, "joint_palette_remaps");
+        ReserveHint(_materialSlots, hints.materialSlots, "material_slots");
+        ReserveHint(_embeddedInstanceSets, hints.embeddedInstanceSets, "embedded_instance_sets");
+        ReserveHint(_embeddedInstances, hints.embeddedInstanceRecords, "embedded_instances");
+    }
+
     bool ModelGeometryStorage::Append(const ModelAssetView& view, u32 materialTableOffset, u32 materialTableCount, RenderAssets::ModelHandle& outHandle)
     {
+        ZoneScopedN("ModelGeometryStorage::Append");
+
         if (_records.Count() == std::numeric_limits<u32>::max() || !CanAppendSpan(_meshes, view.meshes) || !CanAppendSpan(_meshLODs, view.meshLODs) ||
             !CanAppendSpan(_submeshes, view.submeshes) || !CanAppendSpan(_meshlets, view.meshlets) || !CanAppendSpan(_positions, view.positions) ||
             !CanAppendSpan(_vertexAttributes, view.vertexAttributes) || !CanAppendSpan(_skinningData, view.skinningData) ||
@@ -65,6 +111,21 @@ namespace ModelLoading
             !CanAppendSpan(_jointPaletteRemaps, view.jointPaletteRemaps) || !CanAppendSpan(_materialSlots, view.materialSlots) ||
             !CanAppendSpan(_embeddedInstanceSets, view.embeddedInstanceSets) || !CanAppendSpan(_embeddedInstances, view.embeddedInstances))
             return false;
+
+        _records.Reserve(1);
+        ReserveSpan(_meshes, view.meshes);
+        ReserveSpan(_meshLODs, view.meshLODs);
+        ReserveSpan(_submeshes, view.submeshes);
+        ReserveSpan(_meshlets, view.meshlets);
+        ReserveSpan(_positions, view.positions);
+        ReserveSpan(_vertexAttributes, view.vertexAttributes);
+        ReserveSpan(_skinningData, view.skinningData);
+        ReserveSpan(_meshletVertexIndices, view.meshletVertexIndices);
+        ReserveSpan(_meshletTriangles, view.meshletTriangles);
+        ReserveSpan(_jointPaletteRemaps, view.jointPaletteRemaps);
+        ReserveSpan(_materialSlots, view.materialSlots);
+        ReserveSpan(_embeddedInstanceSets, view.embeddedInstanceSets);
+        ReserveSpan(_embeddedInstances, view.embeddedInstances);
 
         ModelGPURecord record;
         record.bounds = view.root.bounds;
@@ -101,6 +162,15 @@ namespace ModelLoading
         record.geometryGroupCount = view.root.geometryGroupCount;
 
         outHandle = RenderAssets::ModelHandle(_records.Add(record));
+        const ParameterRange range{
+            .parameterOffset = static_cast<u32>(_parameters.size()),
+            .parameterCount = static_cast<u32>(view.parameters.size()),
+            .bindingOffset = static_cast<u32>(_parameterBindings.size()),
+            .bindingCount = static_cast<u32>(view.parameterBindings.size())};
+        _parameters.insert(_parameters.end(), view.parameters.begin(), view.parameters.end());
+        _parameterBindings.insert(_parameterBindings.end(), view.parameterBindings.begin(),
+                                  view.parameterBindings.end());
+        _parameterRanges.push_back(range);
         return outHandle != RenderAssets::ModelHandle::Invalid();
     }
 
@@ -122,6 +192,43 @@ namespace ModelLoading
         SYNC_BUFFER(_embeddedInstanceSets);
         SYNC_BUFFER(_embeddedInstances);
 #undef SYNC_BUFFER
+    }
+
+    bool ModelGeometryStorage::FindMaterialSlot(RenderAssets::ModelHandle handle, u32 stableID, u32& outSlot) const
+    {
+        if (!HasModel(handle))
+            return false;
+
+        const ModelGPURecord& model = GetRecord(handle);
+        for (u32 slot = 0; slot < model.numMaterialSlots; ++slot)
+        {
+            if (_materialSlots[model.materialSlotBase + slot].stableID != stableID)
+                continue;
+
+            outSlot = slot;
+            return true;
+        }
+        return false;
+    }
+
+    std::span<const FileFormat::Model::Parameter> ModelGeometryStorage::GetParameters(
+        RenderAssets::ModelHandle handle) const
+    {
+        const u32 index = static_cast<RenderAssets::ModelHandle::type>(handle);
+        if (!HasModel(handle) || index >= _parameterRanges.size())
+            return {};
+        const ParameterRange& range = _parameterRanges[index];
+        return {_parameters.data() + range.parameterOffset, range.parameterCount};
+    }
+
+    std::span<const FileFormat::Model::ParameterBinding> ModelGeometryStorage::GetParameterBindings(
+        RenderAssets::ModelHandle handle) const
+    {
+        const u32 index = static_cast<RenderAssets::ModelHandle::type>(handle);
+        if (!HasModel(handle) || index >= _parameterRanges.size())
+            return {};
+        const ParameterRange& range = _parameterRanges[index];
+        return {_parameterBindings.data() + range.bindingOffset, range.bindingCount};
     }
 
     ModelGeometryStorageStats ModelGeometryStorage::GetStats() const

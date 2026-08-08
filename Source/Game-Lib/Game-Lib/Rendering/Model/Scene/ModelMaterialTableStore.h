@@ -33,7 +33,8 @@ namespace ModelScene
       public:
         explicit ModelMaterialTableStore(bool validateTransfers = false);
 
-        RenderScenes::ModelMaterialTableHandle AcquireShared(RenderAssets::ModelHandle model, std::span<const u32> materials);
+        void Reserve(u32 tableCount, u32 entryCount);
+        RenderScenes::ModelMaterialTableHandle AcquireShared(std::span<const u32> materials);
         RenderScenes::ModelMaterialTableHandle CreatePrivate(RenderScenes::ModelMaterialTableHandle source);
         bool SetMaterial(RenderScenes::ModelMaterialTableHandle table, u32 slot, RenderAssets::MaterialInstanceHandle material);
         void Release(RenderScenes::ModelMaterialTableHandle table);
@@ -57,6 +58,7 @@ namespace ModelScene
         };
 
         RenderScenes::ModelMaterialTableHandle AddTable(std::span<const u32> materials, bool isPrivate);
+        bool Matches(RenderScenes::ModelMaterialTableHandle table, std::span<const u32> materials) const;
         Table* GetTable(RenderScenes::ModelMaterialTableHandle table);
         const Table* GetTable(RenderScenes::ModelMaterialTableHandle table) const;
         void EnsureEntryCapacity(u32 count);
@@ -65,7 +67,7 @@ namespace ModelScene
         RenderScenes::StableRangeAllocator _entryAllocator;
         std::vector<Table> _tables;
         std::vector<u32> _freeTableIndices;
-        robin_hood::unordered_map<u32, RenderScenes::ModelMaterialTableHandle> _sharedTables;
+        robin_hood::unordered_map<u64, std::vector<RenderScenes::ModelMaterialTableHandle>> _sharedTables;
         u32 _sharedTableCount = 0;
         u32 _privateTableCount = 0;
         u32 _liveEntryCount = 0;

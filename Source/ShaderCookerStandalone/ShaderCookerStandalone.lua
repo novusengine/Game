@@ -1,4 +1,4 @@
-local mod = Solution.Util.CreateModuleTable("ShaderCookerStandalone", { "shadercooker", "base" })
+local mod = Solution.Util.CreateModuleTable("ShaderCookerStandalone", { "shadercooker", "materialcooker", "base", "vulkan" })
 
 Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.Dependencies, function()
     local defines = { "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS", "_SILENCE_ALL_MS_EXT_DEPRECATION_WARNINGS", "SLANG_STATIC" }

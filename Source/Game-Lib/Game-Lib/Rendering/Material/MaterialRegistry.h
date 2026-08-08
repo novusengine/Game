@@ -17,7 +17,14 @@ namespace PACT
 namespace MaterialLoading
 {
     class MaterialStorage;
+    class MaterialProgramLibrary;
     class MaterialTextureRegistry;
+
+    struct MaterialTextureAssetOverride
+    {
+        u32 textureSlot = 0;
+        FileFormat::AssetID textureAssetID = FileFormat::INVALID_ASSET_ID;
+    };
 
     struct MaterialRegistryStats
     {
@@ -35,11 +42,11 @@ namespace MaterialLoading
     class MaterialRegistry
     {
       public:
-        MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage,
-                         MaterialTextureRegistry* textureRegistry);
+        MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, MaterialProgramLibrary* programLibrary, MaterialTextureRegistry* textureRegistry);
 
         RenderAssets::MaterialHandle LoadMaterial(FileFormat::AssetID assetID);
         RenderAssets::MaterialInstanceHandle LoadMaterialInstance(FileFormat::AssetID assetID);
+        RenderAssets::MaterialInstanceHandle DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureAssetOverride> overrides, FileFormat::AssetID ownerAssetID);
         bool AppendDefaultMaterialTable(std::span<const FileFormat::Model::MaterialSlot> materialSlots, u32& outOffset);
 
         MaterialRegistryStats GetStats() const;
@@ -62,12 +69,12 @@ namespace MaterialLoading
         };
 
         RenderAssets::MaterialHandle RecordMaterialFailure(FileFormat::AssetID assetID, const char* reason);
-        RenderAssets::MaterialInstanceHandle RecordMaterialInstanceFailure(FileFormat::AssetID assetID, FileFormat::AssetID dependencyAssetID,
-                                                                           const char* reason);
+        RenderAssets::MaterialInstanceHandle RecordMaterialInstanceFailure(FileFormat::AssetID assetID, FileFormat::AssetID dependencyAssetID, const char* reason);
         MaterialAssetView GetMaterialView(const MaterialEntry& entry) const;
 
         PACT::PactStorage* _pactStorage = nullptr;
         MaterialStorage* _storage = nullptr;
+        MaterialProgramLibrary* _programLibrary = nullptr;
         MaterialTextureRegistry* _textureRegistry = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, MaterialEntry> _materials;
         robin_hood::unordered_map<FileFormat::AssetID, MaterialInstanceEntry> _materialInstances;

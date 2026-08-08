@@ -16,7 +16,7 @@ namespace
         SceneFixture()
         {
             REQUIRE(materials.InitializeFallback(7));
-            const std::array defaultMaterials = { materials.GetFallbackMaterialInstance() };
+            const std::array defaultMaterials = {materials.GetFallbackMaterialInstance()};
             u32 materialTableOffset = 0;
             REQUIRE(materials.AppendMaterialTable(defaultMaterials, materialTableOffset));
             REQUIRE(geometry.Append(ModelLoading::GetFallbackModelAssetView(), materialTableOffset,
@@ -34,7 +34,7 @@ namespace
         transform[3].x = x;
         return transform;
     }
-}
+} // namespace
 
 TEST_CASE("Render scene rejects stale generations after slot reuse", "[Rendering][RenderScene]")
 {
@@ -62,10 +62,30 @@ TEST_CASE("Render scene rejects stale generations after slot reuse", "[Rendering
     scene.AcknowledgeClearsAndPublish();
     CHECK(scene.IsAlive(second));
     CHECK_FALSE(scene.IsAlive(first));
+    scene.AdvanceFrame();
+    CHECK((scene.GetModelInstance(second)->flags & ModelScene::ModelInstanceFlagMotionValid) != 0);
 
     const auto stats = scene.GetStats();
     CHECK(stats.instances.staleHandleRejects == 1);
     CHECK(stats.meshletHistory.retiredWords == 1);
+}
+
+TEST_CASE("Render scene ignores stale queued publication slots after pending reuse", "[Rendering][RenderScene]")
+{
+    SceneFixture fixture;
+    RenderScenes::RenderScene scene(18, &fixture.geometry, &fixture.materials);
+
+    RenderScenes::ModelInstanceDesc desc;
+    desc.model = fixture.model;
+    const RenderScenes::ModelInstanceHandle stale = scene.CreateModelInstance(desc);
+    REQUIRE(scene.DestroyModelInstance(stale, 0));
+    const RenderScenes::ModelInstanceHandle replacement = scene.CreateModelInstance(desc);
+    REQUIRE(RenderScenes::GetModelInstanceSlot(stale) == RenderScenes::GetModelInstanceSlot(replacement));
+
+    scene.AcknowledgeClearsAndPublish();
+    CHECK_FALSE(scene.IsAlive(stale));
+    CHECK(scene.IsAlive(replacement));
+    CHECK(scene.GetStats().instances.liveInstances == 1);
 }
 
 TEST_CASE("Meshlet history reuse is deferred, coalesced, trimmed, and cleared", "[Rendering][RenderScene]")
@@ -100,7 +120,9 @@ TEST_CASE("Meshlet history reuse is deferred, coalesced, trimmed, and cleared", 
     CHECK(stats.highWaterWords == 8);
 }
 
-TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and private materials", "[Rendering][RenderScene]")
+TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and "
+          "private materials",
+          "[Rendering][RenderScene]")
 {
     SceneFixture fixture;
     RenderScenes::RenderScene scene(21, &fixture.geometry, &fixture.materials);
@@ -150,7 +172,8 @@ TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and pr
           static_cast<RenderAssets::MaterialInstanceHandle::type>(fixture.materials.GetFallbackMaterialInstance()));
 
     REQUIRE(scene.ResetModelMaterials(instance));
-    CHECK_FALSE(scene.GetModelMaterialTables().IsPrivate(scene.GetModelInstances().GetResources(instance)->materialTable));
+    CHECK_FALSE(
+        scene.GetModelMaterialTables().IsPrivate(scene.GetModelInstances().GetResources(instance)->materialTable));
 }
 
 TEST_CASE("Render scene survives heavy slot churn without publishing uncleared reuse", "[Rendering][RenderScene]")
@@ -202,4 +225,23 @@ TEST_CASE("Model scene bridge keeps gameplay entity adaptation outside scene sto
     REQUIRE(bridge.Remove(entity, 2));
     CHECK(RenderScenes::GetModelInstanceSlot(bridge.Get(entity)) == RenderScenes::INVALID_SCENE_INDEX);
     CHECK_FALSE(scene.IsAlive(instance));
+}
+
+TEST_CASE("Render scene shares identical complete material tables", "[Rendering][RenderScene]")
+{
+    SceneFixture fixture;
+    RenderScenes::RenderScene scene(43, &fixture.geometry, &fixture.materials);
+    RenderScenes::ModelInstanceDesc desc;
+    desc.model = fixture.model;
+
+    const RenderScenes::ModelInstanceHandle first = scene.CreateModelInstance(desc);
+    const RenderScenes::ModelInstanceHandle second = scene.CreateModelInstance(desc);
+    const std::array completeTable = {fixture.materials.GetFallbackMaterialInstance()};
+    REQUIRE(scene.SetModelMaterials(first, completeTable));
+    REQUIRE(scene.SetModelMaterials(second, completeTable));
+
+    const auto firstTable = scene.GetModelInstances().GetResources(first)->materialTable;
+    const auto secondTable = scene.GetModelInstances().GetResources(second)->materialTable;
+    CHECK(firstTable == secondTable);
+    CHECK_FALSE(scene.GetModelMaterialTables().IsPrivate(firstTable));
 }

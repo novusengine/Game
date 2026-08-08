@@ -18,8 +18,10 @@ namespace ModelView
     inline constexpr u32 MODEL_VISIBILITY_INSTANCE_BITS = 22;
     inline constexpr u32 MODEL_VISIBILITY_MESH_BITS = 10;
     inline constexpr u32 MODEL_VISIBILITY_LOD_BITS = 3;
-    inline constexpr u32 MODEL_VISIBILITY_SUBMESH_BITS = 10;
-    inline constexpr u32 MODEL_VISIBILITY_MESHLET_BITS = 19;
+    inline constexpr u32 MODEL_VISIBILITY_SUBMESH_BITS = 12;
+    inline constexpr u32 MODEL_VISIBILITY_MESHLET_BITS = 17;
+    static_assert(MODEL_VISIBILITY_INSTANCE_BITS + MODEL_VISIBILITY_MESH_BITS == 32);
+    static_assert(MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS + MODEL_VISIBILITY_MESHLET_BITS == 32);
 
     struct VisibilityRecord
     {
@@ -37,19 +39,18 @@ namespace ModelView
         u32 meshletIndex = 0;
     };
 
-    inline bool PackVisibilityRecord(u32 instanceIndex, u32 meshIndex, u32 lodIndex, u32 submeshIndex,
-                                     u32 meshletIndex, VisibilityRecord& outRecord)
+    inline bool PackVisibilityRecord(u32 instanceIndex, u32 meshIndex, u32 lodIndex, u32 submeshIndex, u32 meshletIndex,
+                                     VisibilityRecord& outRecord)
     {
         if (instanceIndex >= (1u << MODEL_VISIBILITY_INSTANCE_BITS) ||
-            meshIndex >= (1u << MODEL_VISIBILITY_MESH_BITS) ||
-            lodIndex >= (1u << MODEL_VISIBILITY_LOD_BITS) ||
+            meshIndex >= (1u << MODEL_VISIBILITY_MESH_BITS) || lodIndex >= (1u << MODEL_VISIBILITY_LOD_BITS) ||
             submeshIndex >= (1u << MODEL_VISIBILITY_SUBMESH_BITS) ||
             meshletIndex >= (1u << MODEL_VISIBILITY_MESHLET_BITS))
             return false;
 
         outRecord.packedInstanceAndMesh = instanceIndex | (meshIndex << MODEL_VISIBILITY_INSTANCE_BITS);
-        outRecord.packedLODSubmeshAndMeshlet = lodIndex |
-            (submeshIndex << MODEL_VISIBILITY_LOD_BITS) |
+        outRecord.packedLODSubmeshAndMeshlet =
+            lodIndex | (submeshIndex << MODEL_VISIBILITY_LOD_BITS) |
             (meshletIndex << (MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS));
         return true;
     }
@@ -62,8 +63,8 @@ namespace ModelView
         result.lodIndex = record.packedLODSubmeshAndMeshlet & ((1u << MODEL_VISIBILITY_LOD_BITS) - 1u);
         result.submeshIndex = (record.packedLODSubmeshAndMeshlet >> MODEL_VISIBILITY_LOD_BITS) &
                               ((1u << MODEL_VISIBILITY_SUBMESH_BITS) - 1u);
-        result.meshletIndex = record.packedLODSubmeshAndMeshlet >>
-                              (MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS);
+        result.meshletIndex =
+            record.packedLODSubmeshAndMeshlet >> (MODEL_VISIBILITY_LOD_BITS + MODEL_VISIBILITY_SUBMESH_BITS);
         return result;
     }
 
@@ -106,5 +107,7 @@ namespace ModelView
         u32 lodSelections[MODEL_LOD_SELECTION_COUNT] = {};
         u32 visibilityRecords = 0;
         u32 visibilityRecordOverflows = 0;
+        u32 committedRasterMeshlets[MODEL_RASTER_CLASS_COUNT] = {};
+        u32 visibilityRecordPackingFailures = 0;
     };
 } // namespace ModelView

@@ -8,6 +8,9 @@
 #include "Scene/RenderScene.h"
 #include "Model/Scene/ModelSceneBridge.h"
 #include "Model/ModelRenderSystem.h"
+#include "Model/ModelPlacementLoader.h"
+#include "Model/ModelRendererMode.h"
+#include "Model/DisplayResolver.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -30,6 +33,8 @@
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
+#include "Game-Lib/Application/EnttRegistries.h"
+#include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
 #include "Game-Lib/Util/JoltMemoryTelemetry.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -39,6 +44,7 @@
 #include <Base/Memory/FileReader.h>
 
 #include <FileFormat/Novus/ShaderPack/ShaderPack.h>
+#include <FileFormat/Novus/Map/Map.h>
 
 #include <Filesystem/PactStorage.h>
 
@@ -63,6 +69,8 @@
 #include <GLFW/glfw3.h>
 #include <glm/geometric.hpp>
 #include "RenderUtils.h"
+
+#include <limits>
 
 AutoCVar_ShowFlag CVAR_StartWindowMaximized(CVarCategory::Client, "startWindowMaximized", "determines if the window should be maximized on launch", ShowFlag::ENABLED);
 AutoCVar_Float CVAR_CursorRestoreGuardPeriod(CVarCategory::Client, "cursorRestoreGuardPeriod", "Time in milliseconds to reject stale cursor events after restoring a captured cursor", 100.0f, CVarFlags::EditFloatDrag);
@@ -226,16 +234,16 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _joltDebugRenderer = new JoltDebugRenderer(_renderer, this, _debugRenderer);
     _meshShaderSmoke = new MeshShaderSmoke(_renderer, this);
 
-    _renderAssetResources =
-        new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _renderAssetResources = new RenderAssets::RenderAssetResources(_renderer, ServiceLocator::GetPactStorage(), &_resources.materialDescriptorSet, CVAR_RenderAssetValidateTransfers.Get() != 0);
     NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
-    _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(),
-                                                       &_renderAssetResources->GetMaterialStorage(),
-                                                       CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(), &_renderAssetResources->GetMaterialStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _displayResolver = new ModelLoading::DisplayResolver(_renderAssetResources);
+    auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+    if (clientDBSingleton.Has(ClientDBHash::DisplayRegistration) && clientDBSingleton.Has(ClientDBHash::DisplayParameter))
+        _displayResolver->Initialize(*clientDBSingleton.Get(ClientDBHash::DisplayRegistration), *clientDBSingleton.Get(ClientDBHash::DisplayParameter));
     _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
-    _modelRenderSystem = new ModelRendering::ModelRenderSystem(
-        _renderer, this, _renderAssetResources, _worldRenderScene, _resources,
-        CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _modelRenderSystem = new ModelRendering::ModelRenderSystem(_renderer, this, _renderAssetResources, _worldRenderScene, _resources, CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _modelPlacementLoader = new ModelRendering::ModelPlacementLoader(ServiceLocator::GetPactStorage(), _renderAssetResources, _worldRenderScene);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
     _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
@@ -246,13 +254,13 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _liquidLoader = new LiquidLoader(_liquidRenderer);
 
     _terrainRenderer = new TerrainRenderer(_renderer, this, _debugRenderer);
-    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
+    _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _modelPlacementLoader, _liquidLoader);
     _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
     _textureRenderer = new TextureRenderer(_renderer, this, _debugRenderer);
 
     _modelLoader->SetTerrainLoader(_terrainLoader);
 
-    _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _liquidLoader);
+    _mapLoader = new MapLoader(_terrainLoader, _modelLoader, _modelPlacementLoader, _liquidLoader);
     
     _materialRenderer = new MaterialRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _lightRenderer);
     _skyboxRenderer = new SkyboxRenderer(_renderer, this, _debugRenderer);
@@ -270,7 +278,9 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 GameRenderer::~GameRenderer()
 {
     delete _modelRenderSystem;
+    delete _modelPlacementLoader;
     delete _modelSceneBridge;
+    delete _displayResolver;
     delete _worldRenderScene;
     delete _renderAssetResources;
     delete _renderTargetCapture;
@@ -282,6 +292,23 @@ bool GameRenderer::UpdateWindow(f32 deltaTime)
 {
     ZoneScoped;
     return _window->Update(deltaTime);
+}
+
+void GameRenderer::ReserveModelResources(const Map::ModelAllocationHints& hints)
+{
+    if (!ModelRendering::UseMeshletModelRenderer())
+        return;
+
+    _renderAssetResources->ReserveModelResources(hints.resources);
+    _worldRenderScene->ReserveModelResources(hints);
+    if (hints.scene.rootPlacements <= std::numeric_limits<u32>::max() && hints.resources.models <= std::numeric_limits<u32>::max())
+    {
+        _modelPlacementLoader->Reserve(static_cast<u32>(hints.scene.rootPlacements), static_cast<u32>(hints.resources.models));
+    }
+    else
+    {
+        NC_LOG_WARNING("MODEL_ALLOCATION_HINT ignored resource=placement_lookup roots={} models={}", hints.scene.rootPlacements, hints.resources.models);
+    }
 }
 
 void GameRenderer::UpdateRenderers(f32 deltaTime)
@@ -297,6 +324,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
     _terrainManipulator->Update(deltaTime);
+    _modelPlacementLoader->Update();
     _modelLoader->Update(deltaTime);
     _modelRenderer->Update(deltaTime);
     _liquidLoader->Update(deltaTime);
@@ -310,6 +338,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
+    _modelSceneBridge->SyncTransforms(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _modelRenderSystem->Update();
 
     // Last: collects debug verts emitted by the other renderer updates.
@@ -944,7 +973,8 @@ void GameRenderer::InitDescriptorSets()
        &_resources.globalDescriptorSet,
        &_resources.lightDescriptorSet,
        &_resources.terrainDescriptorSet,
-       &_resources.modelDescriptorSet
+       &_resources.modelDescriptorSet,
+       &_resources.materialDescriptorSet
    };
 
    for(Renderer::DescriptorSet* descriptorSet : descriptorSets)

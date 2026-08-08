@@ -210,9 +210,13 @@ TEST_CASE("Client faction packet state is absolute idempotent and supports delet
     entt::registry registry;
     ECS::Util::Faction::Initialize(registry, BuildRuntimeData(MakeContent()));
 
+    const entt::entity local = registry.create();
     const entt::entity unit = registry.create();
+    REQUIRE(ECS::Util::Faction::AttachUnit(registry, local));
     REQUIRE(ECS::Util::Faction::AttachUnit(registry, unit));
     const u8 fullBounds = ReactionBounds{ Reaction::Hostile, Reaction::Friendly }.Pack();
+    REQUIRE(ECS::Util::Faction::ApplyUnitUpdate(registry, local, 10, fullBounds));
+    ECS::Util::Faction::SetLocalPlayer(registry, local);
     REQUIRE(ECS::Util::Faction::ApplyUnitUpdate(registry, unit, 20, fullBounds));
     CHECK_FALSE(ECS::Util::Faction::ApplyUnitUpdate(registry, unit, 20, fullBounds));
 

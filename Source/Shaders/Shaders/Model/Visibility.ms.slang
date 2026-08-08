@@ -1,4 +1,5 @@
 #include "DescriptorSet/Global.inc.slang"
+#include "DescriptorSet/Material.inc.slang"
 #include "Model/ModelVisibility.inc.slang"
 
 struct Constants
@@ -32,8 +33,6 @@ struct Constants
 [[vk::binding(20, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityVertexIndices;
 [[vk::binding(21, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityTriangles;
 [[vk::binding(22, PER_PASS)]] StructuredBuffer<uint> _modelVisibilityMaterialTable;
-[[vk::binding(23, PER_PASS)]] StructuredBuffer<MaterialInstanceRecord> _modelVisibilityMaterialInstances;
-
 struct MeshVertex
 {
     float4 position : SV_Position;
@@ -70,7 +69,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
           out primitives MeshPrimitive primitives[124])
 {
     uint queueIndex = groupID.x + groupID.y * MODEL_MESH_DISPATCH_MAX_GROUPS_X;
-    uint countIndex = MODEL_WORK_STAT_RASTER_MESHLETS_BASE + _constants.queueIndex;
+    uint countIndex = MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + _constants.queueIndex;
     uint queueCount = _constants.resourceIndex == 0u ? _modelVisibilityStats0[countIndex]
                                                       : _modelVisibilityStats1[countIndex];
     if (queueIndex >= queueCount)

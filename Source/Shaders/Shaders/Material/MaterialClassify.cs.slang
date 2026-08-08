@@ -1,8 +1,7 @@
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
+#include "DescriptorSet/Material.inc.slang"
 #include "Model/ModelVisibilityReconstruct.inc.slang"
-
-#define MATERIAL_EXECUTION_GROUP_COUNT 6u
 
 struct Constants
 {
@@ -14,7 +13,6 @@ struct Constants
 [[vk::push_constant]] Constants _constants;
 
 [[vk::binding(3, PER_PASS)]] RWTexture2D<uint> _materialIDs;
-[[vk::binding(20, PER_PASS)]] StructuredBuffer<MaterialRecord> _classifiedMaterials;
 [[vk::binding(21, PER_PASS)]] RWStructuredBuffer<uint> _materialTileQueue0;
 [[vk::binding(22, PER_PASS)]] RWStructuredBuffer<uint> _materialTileQueue1;
 [[vk::binding(23, PER_PASS)]] RWStructuredBuffer<uint> _materialCounters0;
@@ -61,11 +59,11 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID,
                 ModelSubmesh submesh = _resolvedModelSubmeshes[model.submeshBase + lod.submeshOffset + record.submeshIndex];
                 uint instanceIndex = _resolvedModelMaterialTable[instance.materialTableOffset +
                     mesh.materialSlotOffset + submesh.materialSlotIndex];
-                MaterialRecord material = _classifiedMaterials[_resolvedMaterialInstances[instanceIndex].materialIndex];
-                uint executionGroup = MaterialExecutionGroup(material);
+                MaterialInstanceRecord materialInstance = _materialInstances[instanceIndex];
+                uint executionGroup = MaterialExecutionGroup(materialInstance);
                 if (executionGroup < MATERIAL_EXECUTION_GROUP_COUNT)
                 {
-                    _materialIDs[pixelPos] = MaterialGroupLocalID(material);
+                    _materialIDs[pixelPos] = MaterialHandle(materialInstance);
                     InterlockedOr(_groupMask, 1u << executionGroup);
                     uint ignored;
                     AddCounter(MATERIAL_EXECUTION_GROUP_COUNT + executionGroup, 1u, ignored);

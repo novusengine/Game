@@ -31,7 +31,7 @@ void main()
             min(_workStats0[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
         for (uint rasterClass = 0u; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
         {
-            uint count = min(_workStats0[MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass], _constants.queueCapacity);
+            uint count = _workStats0[MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + rasterClass];
             uint offset = rasterClass * MODEL_MESH_DISPATCH_ARGUMENT_COUNT;
             _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_X] = min(count, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
             _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u :
@@ -46,7 +46,7 @@ void main()
             min(_workStats1[MODEL_WORK_STAT_VISIBILITY_RECORDS], _constants.queueCapacity);
         for (uint rasterClass = 0u; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
         {
-            uint count = min(_workStats1[MODEL_WORK_STAT_RASTER_MESHLETS_BASE + rasterClass], _constants.queueCapacity);
+            uint count = _workStats1[MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + rasterClass];
             uint offset = rasterClass * MODEL_MESH_DISPATCH_ARGUMENT_COUNT;
             _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_X] = min(count, MODEL_MESH_DISPATCH_MAX_GROUPS_X);
             _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_Y] = count == 0u ? 0u :

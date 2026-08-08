@@ -1,9 +1,9 @@
 #include "ModelVisibilityPass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
-#include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
-#include "Game-Lib/Rendering/Material/MaterialTextureRegistry.h"
+#include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
@@ -12,9 +12,6 @@
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Renderer.h>
-
-AutoCVar_ShowFlag CVAR_ModelMeshlets(CVarCategory::Client | CVarCategory::Rendering, "modelMeshlets",
-                                     "Draw models through the meshlet visibility renderer", ShowFlag::DISABLED);
 
 namespace ModelPipeline
 {
@@ -29,14 +26,16 @@ namespace ModelPipeline
 
         Renderer::MeshShaderDesc meshShader;
         meshShader.shaderEntry = gameRenderer->GetShaderEntry("Model/Visibility.ms"_h, "Model/Visibility.ms");
+        Renderer::PixelShaderDesc solidPixelShader;
+        solidPixelShader.shaderEntry = gameRenderer->GetShaderEntry("Model/Visibility.ps"_h, "Model/Visibility.ps");
         Renderer::PixelShaderDesc pixelShader;
-        pixelShader.shaderEntry = gameRenderer->GetShaderEntry("Model/VisibilityAlphaTest.ps"_h,
-                                                                "Model/VisibilityAlphaTest.ps");
+        pixelShader.shaderEntry =
+            gameRenderer->GetShaderEntry("Model/VisibilityAlphaTest.ps"_h, "Model/VisibilityAlphaTest.ps");
 
         Renderer::GraphicsPipelineDesc desc;
         desc.debugName = "Model Visibility One Sided";
-        desc.shaderStages = Renderer::MeshPipelineStages{ .meshShader = renderer->LoadShader(meshShader) };
-        desc.states.pixelShader = renderer->LoadShader(pixelShader);
+        desc.shaderStages = Renderer::MeshPipelineStages{.meshShader = renderer->LoadShader(meshShader)};
+        desc.states.pixelShader = renderer->LoadShader(solidPixelShader);
         desc.states.renderTargetFormats[0] = Renderer::ImageFormat::R32_UINT;
         desc.states.depthStencilFormat = Renderer::DepthImageFormat::D32_FLOAT;
         desc.states.depthStencilState.depthEnable = true;
@@ -51,40 +50,22 @@ namespace ModelPipeline
         _twoSidedPipeline = renderer->CreatePipeline(desc);
 
         desc.debugName = "Model Visibility Alpha Test One Sided";
+        desc.states.pixelShader = renderer->LoadShader(pixelShader);
         desc.states.rasterizerState.cullMode = Renderer::CullMode::BACK;
         _alphaTestOneSidedPipeline = renderer->CreatePipeline(desc);
         desc.debugName = "Model Visibility Alpha Test Two Sided";
         desc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         _alphaTestTwoSidedPipeline = renderer->CreatePipeline(desc);
 
-        for (u32 samplerIndex = 0; samplerIndex < 4; ++samplerIndex)
-        {
-            Renderer::SamplerDesc sampler;
-            sampler.enabled = true;
-            sampler.filter = Renderer::SamplerFilter::ANISOTROPIC;
-            sampler.maxAnisotropy = 16;
-            sampler.addressU = (samplerIndex & 1u) != 0u ? Renderer::TextureAddressMode::WRAP
-                                                         : Renderer::TextureAddressMode::CLAMP;
-            sampler.addressV = (samplerIndex & 2u) != 0u ? Renderer::TextureAddressMode::WRAP
-                                                         : Renderer::TextureAddressMode::CLAMP;
-            sampler.addressW = Renderer::TextureAddressMode::CLAMP;
-            sampler.shaderVisibility = Renderer::ShaderVisibility::PIXEL;
-            _samplers[samplerIndex] = renderer->CreateSampler(sampler);
-        }
-
         _descriptorSet.RegisterPipeline(renderer, _oneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _twoSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestOneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestTwoSidedPipeline);
         _descriptorSet.Init(renderer);
-        _descriptorSet.Bind("_materialSampler0"_h, _samplers[0]);
-        _descriptorSet.Bind("_materialSampler1"_h, _samplers[1]);
-        _descriptorSet.Bind("_materialSampler2"_h, _samplers[2]);
-        _descriptorSet.Bind("_materialSampler3"_h, _samplers[3]);
     }
 
     void ModelVisibilityPass::BindIfChanged(StringUtils::StringHash name, Renderer::BufferID buffer,
-                                             Renderer::BufferID& current)
+                                            Renderer::BufferID& current)
     {
         if (buffer == current)
             return;
@@ -94,8 +75,6 @@ namespace ModelPipeline
 
     void ModelVisibilityPass::Upload(const ModelView::ModelViewWorkResources& work,
                                      const ModelLoading::ModelGeometryStorage& geometry,
-                                     const MaterialLoading::MaterialStorage& materials,
-                                     const MaterialLoading::MaterialTextureRegistry& textures,
                                      const RenderScenes::RenderScene& scene)
     {
         if (_queueGeneration != work.GetQueueGeneration())
@@ -110,12 +89,12 @@ namespace ModelPipeline
             }
         }
 
-        static constexpr StringUtils::StringHash QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT]
-                                                                 [ModelView::MODEL_RASTER_CLASS_COUNT] = {
-            {"_modelRasterQueueSolidOneSided0"_h, "_modelRasterQueueSolidTwoSided0"_h,
-             "_modelRasterQueueAlphaTestOneSided0"_h, "_modelRasterQueueAlphaTestTwoSided0"_h},
-            {"_modelRasterQueueSolidOneSided1"_h, "_modelRasterQueueSolidTwoSided1"_h,
-             "_modelRasterQueueAlphaTestOneSided1"_h, "_modelRasterQueueAlphaTestTwoSided1"_h}};
+        static constexpr StringUtils::StringHash
+            QUEUE_NAMES[ModelView::MODEL_VIEW_FRAME_COUNT][ModelView::MODEL_RASTER_CLASS_COUNT] = {
+                {"_modelRasterQueueSolidOneSided0"_h, "_modelRasterQueueSolidTwoSided0"_h,
+                 "_modelRasterQueueAlphaTestOneSided0"_h, "_modelRasterQueueAlphaTestTwoSided0"_h},
+                {"_modelRasterQueueSolidOneSided1"_h, "_modelRasterQueueSolidTwoSided1"_h,
+                 "_modelRasterQueueAlphaTestOneSided1"_h, "_modelRasterQueueAlphaTestTwoSided1"_h}};
         for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
             for (u32 rasterClass = 0; rasterClass < ModelView::MODEL_RASTER_CLASS_COUNT; ++rasterClass)
                 BindIfChanged(QUEUE_NAMES[frame][rasterClass], work.GetQueue(rasterClass, frame),
@@ -139,20 +118,9 @@ namespace ModelPipeline
                       _bindings.vertexAttributes);
         BindIfChanged("_modelVisibilityVertexIndices"_h, geometry.GetMeshletVertexIndices().GetBuffer(),
                       _bindings.vertexIndices);
-        BindIfChanged("_modelVisibilityTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(),
-                      _bindings.triangles);
+        BindIfChanged("_modelVisibilityTriangles"_h, geometry.GetMeshletTriangles().GetBuffer(), _bindings.triangles);
         BindIfChanged("_modelVisibilityMaterialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
                       _bindings.materialTable);
-        BindIfChanged("_modelVisibilityMaterialInstances"_h, materials.GetMaterialInstances().GetBuffer(),
-                      _bindings.materialInstances);
-        BindIfChanged("_materials"_h, materials.GetMaterials().GetBuffer(), _bindings.materials);
-        BindIfChanged("_materialParameters"_h, materials.GetParameterStorage().GetBuffer().GetBuffer(),
-                      _bindings.materialParameters);
-        if (_bindings.textures != textures.GetTextureArray())
-        {
-            _descriptorSet.Bind("_materialTextures"_h, textures.GetTextureArray());
-            _bindings.textures = textures.GetTextureArray();
-        }
     }
 
     void ModelVisibilityPass::AddPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
@@ -162,7 +130,7 @@ namespace ModelPipeline
                                       const MaterialLoading::MaterialStorage& materials,
                                       const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
-        if (CVAR_ModelMeshlets.Get() != ShowFlag::ENABLED)
+        if (!ModelRendering::UseMeshletModelRenderer())
             return;
 
         struct Data
@@ -171,14 +139,19 @@ namespace ModelPipeline
             Renderer::DepthImageMutableResource depth;
             Renderer::BufferResource arguments;
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource visibilitySet;
         };
 
-        renderGraph->AddPass<Data>("Model Visibility",
-            [this, &resources, &view, &work, &geometry, &materials, &scene, frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) {
+        renderGraph->AddPass<Data>(
+            "Model Visibility",
+            [this, &resources, &view, &work, &geometry, &materials, &scene,
+             frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
-                data.visibility = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-                data.depth = builder.Write(view.GetDepthTarget(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                data.visibility = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS,
+                                                Renderer::LoadMode::LOAD);
+                data.depth =
+                    builder.Write(view.GetDepthTarget(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
                 builder.Read(resources.cameras.GetBuffer(), Usage::GRAPHICS);
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
                 {
@@ -202,12 +175,15 @@ namespace ModelPipeline
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::GRAPHICS);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::GRAPHICS);
+                builder.Read(materials.GetTextureIndices().GetBuffer(), Usage::GRAPHICS);
+                builder.Read(materials.GetSamplerIDs().GetBuffer(), Usage::GRAPHICS);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
+                data.materialSet = builder.Use(resources.materialDescriptorSet);
                 data.visibilitySet = builder.Use(_descriptorSet);
                 return true;
             },
             [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
-                                     Renderer::CommandList& commandList) {
+                                      Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelVisibility);
                 Renderer::RenderPassDesc pass;
                 graphResources.InitializeRenderPassDesc(pass);
@@ -215,8 +191,13 @@ namespace ModelPipeline
                 pass.depthStencil = data.depth;
                 commandList.BeginRenderPass(pass);
 
-                struct Constants { u32 queueIndex; u32 viewIndex; u32 resourceIndex; };
-                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex) {
+                struct Constants
+                {
+                    u32 queueIndex;
+                    u32 viewIndex;
+                    u32 resourceIndex;
+                };
+                auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool usesMaterials) {
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->queueIndex = queueIndex;
                     constants->viewIndex = view.GetCameraIndex();
@@ -224,15 +205,17 @@ namespace ModelPipeline
                     commandList.BeginPipeline(pipeline);
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    if (usesMaterials)
+                        commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     commandList.BindDescriptorSet(data.visibilitySet, frameIndex);
-                    commandList.DrawMeshTasksIndirect(
-                        data.arguments, queueIndex * sizeof(u32) * ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
+                    commandList.DrawMeshTasksIndirect(data.arguments, queueIndex * sizeof(u32) *
+                                                                          ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED);
-                draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED);
-                draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED);
-                draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED);
+                draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
+                draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
+                draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
                 commandList.EndRenderPass(pass);
             });
     }

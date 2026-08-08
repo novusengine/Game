@@ -45,12 +45,15 @@ namespace ModelView
         const Renderer::GPUVector<ViewInstanceInput>& GetInputs() const { return _inputs; }
         const Renderer::GPUVector<u32>& GetLODHistory() const { return _lodHistory; }
         u32 GetQueueCapacity() const { return _queueCapacity; }
+        u64 GetPreparedSceneRevision() const { return _preparedSceneRevision; }
 
       private:
         std::vector<RenderScenes::ModelInstanceHandle> _diagnosticSelection;
+        std::vector<RenderScenes::ModelInstanceHandle> _sceneSelection;
         Renderer::GPUVector<ViewInstanceInput> _inputs;
         Renderer::GPUVector<u32> _lodHistory;
         u32 _queueCapacity = 1;
         bool _workDirty = true;
+        u64 _preparedSceneRevision = 0;
     };
 } // namespace ModelView

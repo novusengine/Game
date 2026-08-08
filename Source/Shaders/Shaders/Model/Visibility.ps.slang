@@ -3,6 +3,8 @@
 struct PSInput
 {
     nointerpolation uint recordID : TEXCOORD0;
+    nointerpolation uint materialInstanceIndex : TEXCOORD1;
+    float2 uv0 : TEXCOORD2;
     uint triangleID : SV_PrimitiveID;
 };
 

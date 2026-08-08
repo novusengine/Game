@@ -51,11 +51,11 @@ namespace ModelLoading
 
         Model::ModelAsset root;
         std::memcpy(&root, payload.data(), sizeof(root));
-        if (root.header.type != Model::FILE_TYPE || root.header.version != Model::DEVELOPMENT_VERSION)
+        if (root.header.type != Model::FILE_TYPE || root.header.version != Model::VERSION)
             return Fail(DiagnosticCode::InvalidHeader, "ModelAsset.header");
 
-#define VALIDATE_ROOT_SECTION(member, countMember, type)                                                                                                       \
-    if (!IsRootSectionValid<type>(payload, root.member##Offset, root.countMember))                                                                             \
+#define VALIDATE_ROOT_SECTION(member, countMember, type)                           \
+    if (!IsRootSectionValid<type>(payload, root.member##Offset, root.countMember)) \
     return Fail(DiagnosticCode::InvalidRootSection, #member, Diagnostic::NO_INDEX, root.member##Offset, root.countMember)
 
         VALIDATE_ROOT_SECTION(meshes, numMeshes, Model::Mesh);
@@ -69,6 +69,8 @@ namespace ModelLoading
         VALIDATE_ROOT_SECTION(meshletTriangles, numMeshletTriangles, Model::PackedMeshletTriangle);
         VALIDATE_ROOT_SECTION(jointPaletteRemaps, numJointPaletteRemaps, u16);
         VALIDATE_ROOT_SECTION(materialSlots, numMaterialSlots, Model::MaterialSlot);
+        VALIDATE_ROOT_SECTION(parameters, numParameters, Model::Parameter);
+        VALIDATE_ROOT_SECTION(parameterBindings, numParameterBindings, Model::ParameterBinding);
         VALIDATE_ROOT_SECTION(embeddedInstanceSets, numEmbeddedInstanceSets, Model::EmbeddedInstanceSet);
         VALIDATE_ROOT_SECTION(embeddedInstances, numEmbeddedInstances, Model::EmbeddedInstance);
 #undef VALIDATE_ROOT_SECTION
@@ -93,6 +95,8 @@ namespace ModelLoading
         SET_ROOT_SECTION(meshletTriangles, numMeshletTriangles, Model::PackedMeshletTriangle);
         SET_ROOT_SECTION(jointPaletteRemaps, numJointPaletteRemaps, u16);
         SET_ROOT_SECTION(materialSlots, numMaterialSlots, Model::MaterialSlot);
+        SET_ROOT_SECTION(parameters, numParameters, Model::Parameter);
+        SET_ROOT_SECTION(parameterBindings, numParameterBindings, Model::ParameterBinding);
         SET_ROOT_SECTION(embeddedInstanceSets, numEmbeddedInstanceSets, Model::EmbeddedInstanceSet);
         SET_ROOT_SECTION(embeddedInstances, numEmbeddedInstances, Model::EmbeddedInstance);
 #undef SET_ROOT_SECTION

@@ -15,9 +15,20 @@
 #include <Renderer/RenderGraph.h>
 #include <Renderer/Renderer.h>
 
+namespace
+{
+    constexpr i32 DEFAULT_MODEL_MESHLET_QUEUE_CAPACITY = 1024 * 1024;
+}
+
 AutoCVar_Int CVAR_ModelMeshletQueueLimit(
     CVarCategory::Client | CVarCategory::Rendering, "modelMeshletQueueLimit",
     "Limit model meshlet queue capacity for overflow testing (0 automatic)", 0);
+AutoCVar_Int CVAR_ModelMeshletQueueCapacity(
+    CVarCategory::Client | CVarCategory::Rendering, "modelMeshletQueueCapacity",
+    "Maximum allocated model meshlet queue entries per View", DEFAULT_MODEL_MESHLET_QUEUE_CAPACITY);
+AutoCVar_Int CVAR_ModelMeshletConeCulling(
+    CVarCategory::Client | CVarCategory::Rendering, "modelMeshletConeCulling",
+    "Cull one-sided model meshlets whose normal cones face away from the View", 1, CVarFlags::EditCheckbox);
 
 namespace ModelPipeline
 {
@@ -74,10 +85,11 @@ namespace ModelPipeline
 
     bool ModelViewWorkPass::Upload(const ModelView::ModelViewState& viewState, ModelView::ModelViewWorkResources& work,
                                    const ModelLoading::ModelGeometryStorage& geometry,
-                                   const MaterialLoading::MaterialStorage& materials,
                                    const RenderScenes::RenderScene& scene)
     {
-        const bool queuesRecreated = work.EnsureQueueCapacity(viewState.GetQueueCapacity());
+        const u32 configuredCapacity = static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
+        const bool queuesRecreated =
+            work.EnsureQueueCapacity(std::min(viewState.GetQueueCapacity(), configuredCapacity));
         if (queuesRecreated)
         {
             for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
@@ -162,11 +174,6 @@ namespace ModelPipeline
              _expandBindings.geometryGroupMasks);
         bind(_expandDescriptorSet, "_materialTable"_h, scene.GetModelMaterialTables().GetEntries().GetBuffer(),
              _expandBindings.materialTable);
-        bind(_expandDescriptorSet, "_materialInstances"_h, materials.GetMaterialInstances().GetBuffer(),
-             _expandBindings.materialInstances);
-        bind(_expandDescriptorSet, "_materials"_h, materials.GetMaterials().GetBuffer(),
-             _expandBindings.materials);
-
         bind(_cullDescriptorSet, "_modelInstances"_h, scene.GetModelInstances().GetRecords().GetBuffer(),
              _cullBindings.modelInstances);
         bind(_cullDescriptorSet, "_modelRecords"_h, geometry.GetRecords().GetBuffer(),
@@ -188,9 +195,11 @@ namespace ModelPipeline
     {
         const u32 inputCount = viewState.GetInputs().Count();
         const i32 configuredQueueLimit = CVAR_ModelMeshletQueueLimit.Get();
-        const u32 queueCapacity = configuredQueueLimit > 0
-                                      ? std::min(work.GetQueueCapacity(), static_cast<u32>(configuredQueueLimit))
-                                      : work.GetQueueCapacity();
+        const u32 configuredQueueCapacity =
+            static_cast<u32>(std::max(CVAR_ModelMeshletQueueCapacity.Get(), 1));
+        u32 queueCapacity = std::min(work.GetQueueCapacity(), configuredQueueCapacity);
+        if (configuredQueueLimit > 0)
+            queueCapacity = std::min(queueCapacity, static_cast<u32>(configuredQueueLimit));
 
         struct Data
         {
@@ -203,6 +212,7 @@ namespace ModelPipeline
             Renderer::BufferMutableResource arguments;
             Renderer::BufferMutableResource readback;
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource expandSet;
             Renderer::DescriptorSetResource expandFinalizeSet;
             Renderer::DescriptorSetResource cullSet;
@@ -240,6 +250,7 @@ namespace ModelPipeline
                         builder.Write(work.GetQueue(rasterClass, inactiveFrameIndex), Usage::COMPUTE);
                     builder.Write(work.GetVisibilityRecords(inactiveFrameIndex), Usage::COMPUTE);
                     data.globalSet = builder.Use(resources.globalDescriptorSet);
+                    data.materialSet = builder.Use(resources.materialDescriptorSet);
                     data.expandSet = builder.Use(_expandDescriptorSet);
                     data.expandFinalizeSet = builder.Use(_expandFinalizeDescriptorSet);
                     data.cullSet = builder.Use(_cullDescriptorSet);
@@ -287,6 +298,7 @@ namespace ModelPipeline
                     commandList.BeginPipeline(_expandPipeline);
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     commandList.BindDescriptorSet(data.expandSet, frameIndex);
                     commandList.Dispatch(inputCount, 1, 1);
                     commandList.EndPipeline(_expandPipeline);
@@ -314,11 +326,13 @@ namespace ModelPipeline
                         u32 viewIndex;
                         u32 queueCapacity;
                         u32 resourceIndex;
+                        u32 enableConeCulling;
                     };
                     CullConstants* cullConstants = graphResources.FrameNew<CullConstants>();
                     cullConstants->viewIndex = view.GetCameraIndex();
                     cullConstants->queueCapacity = queueCapacity;
                     cullConstants->resourceIndex = frameIndex;
+                    cullConstants->enableConeCulling = CVAR_ModelMeshletConeCulling.Get() != 0 ? 1u : 0u;
                     commandList.BeginPipeline(_cullPipeline);
                     commandList.PushConstant(cullConstants, 0, sizeof(CullConstants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);

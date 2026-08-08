@@ -1,10 +1,11 @@
 #ifndef MODEL_VIEW_WORK_INCLUDED
 #define MODEL_VIEW_WORK_INCLUDED
 
+#include "Material/MaterialShared.inc.slang"
+
 #define MODEL_INSTANCE_VISIBLE (1u << 0u)
 #define MODEL_LOD_HAS_SKINNING (1u << 0u)
 #define MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE (1u << 1u)
-#define MATERIAL_TWO_SIDED (1u << 0u)
 #define INVALID_LOD_HISTORY 0xFFFFFFFFu
 
 #define MODEL_RASTER_SOLID_ONE_SIDED 0u
@@ -33,6 +34,8 @@
 #define MODEL_WORK_STAT_LOD_SELECTION_COUNT 8u
 #define MODEL_WORK_STAT_VISIBILITY_RECORDS 23u
 #define MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS 24u
+#define MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE 25u
+#define MODEL_WORK_STAT_VISIBILITY_RECORD_PACKING_FAILURES 29u
 
 #define MODEL_CHUNK_MESHLET_COUNT 32u
 #define MODEL_CHUNK_MESHLET_COUNT_BITS 6u
@@ -41,8 +44,9 @@
 #define MODEL_CHUNK_RASTER_CLASS_MASK 0x3u
 #define MODEL_CHUNK_LOD_SHIFT 8u
 #define MODEL_CHUNK_LOD_MASK 0x7u
+#define MODEL_SUBMESH_INDEX_BITS 12u
 #define MODEL_CHUNK_SUBMESH_SHIFT 11u
-#define MODEL_CHUNK_SUBMESH_MASK 0x3FFu
+#define MODEL_CHUNK_SUBMESH_MASK ((1u << MODEL_SUBMESH_INDEX_BITS) - 1u)
 
 #define MODEL_MESH_DISPATCH_MAX_GROUPS_X 1024u
 #define MODEL_MESH_DISPATCH_ARGUMENT_COUNT 3u
@@ -160,28 +164,6 @@ struct ModelSubmesh
     uint flags;
 };
 
-struct MaterialInstanceRecord
-{
-    uint parameterOffset;
-    uint materialIndex;
-    uint packedSamplerIDs;
-    uint reserved;
-};
-struct MaterialRecord
-{
-    uint defaultParameterOffset;
-    uint parameterBlockSize;
-    uint programID;
-    uint flags;
-    uint packedClassification;
-    uint packedRasterAndGroupMaterial;
-};
-
-uint MaterialLightingModel(MaterialRecord material) { return material.packedClassification & 0xFFFFu; }
-uint MaterialExecutionGroup(MaterialRecord material) { return material.packedClassification >> 16u; }
-uint MaterialGroupLocalID(MaterialRecord material) { return material.packedRasterAndGroupMaterial & 0xFFFFu; }
-uint MaterialRasterClass(MaterialRecord material) { return (material.packedRasterAndGroupMaterial >> 16u) & 0xFFu; }
-
 float MaxWorldScale(float4x4 transform)
 {
     return max(length(transform[0].xyz), max(length(transform[1].xyz), length(transform[2].xyz)));
@@ -217,7 +199,9 @@ bool ModelConeBackfacing(uint packedCone, float3 center, float radius, float4x4 
         return false;
 
     float3 worldCenter = mul(float4(center, 1.0f), transform).xyz;
-    float3 worldAxis = normalize(mul(float4(localAxis, 0.0f), transform).xyz);
+    // Vulkan's negative-height viewport makes framebuffer-space CCW fronts correspond to the
+    // opposite side of meshoptimizer's object-space triangle winding.
+    float3 worldAxis = -normalize(mul(float4(localAxis, 0.0f), transform).xyz);
     float3 view = worldCenter - eye;
     return dot(view, worldAxis) >= cutoff * length(view) + radius * MaxWorldScale(transform);
 }
