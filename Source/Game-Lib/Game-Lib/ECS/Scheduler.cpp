@@ -102,7 +102,6 @@ namespace ECS
         Systems::DrawDebugMesh::Update(gameRegistry, clampedDeltaTime);
         Systems::Animation::Update(gameRegistry, clampedDeltaTime);
         Systems::CharacterController::Update(gameRegistry, clampedDeltaTime);
-        Systems::CharacterControllerInput::UpdateAutoAttack(gameRegistry, clampedDeltaTime);
         Systems::UpdateUnitEntities::Update(gameRegistry, clampedDeltaTime);
         Systems::FreeflyingCamera::Update(gameRegistry, clampedDeltaTime);
         Systems::OrbitalCamera::Update(gameRegistry, clampedDeltaTime);

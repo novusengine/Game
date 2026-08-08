@@ -19,6 +19,7 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/Liquid/LiquidLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
+#include "Game-Lib/Util/AssetWriter.h"
 #include "Game-Lib/Scripting/Handlers/MapHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/JoltStream.h"
@@ -49,12 +50,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
 namespace fs = std::filesystem;
 
-AutoCVar_Int CVAR_TerrainChunkLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "terrainChunkLoadsPerFrame", "maximum terrain chunks prepared and committed per frame", 8, CVarFlags::None);
+AutoCVar_Int CVAR_TerrainChunkLoadsPerFrame(CVarCategory::Client | CVarCategory::Rendering, "terrainChunkLoadsPerFrame", "maximum terrain chunks prepared and committed per frame", 32, CVarFlags::None);
 
 TerrainLoader::TerrainLoader(TerrainRenderer* terrainRenderer, ModelLoader* modelLoader, LiquidLoader* liquidLoader)
     : _terrainRenderer(terrainRenderer)
@@ -130,7 +132,11 @@ void TerrainLoader::Clear()
     _chunkIDToLoadedID.clear();
     _chunkIDToBodyID.clear();
 
-    _chunkIDToChunkInfo.clear();
+    {
+        std::scoped_lock lock(_chunkLoadingMutex);
+        _chunkIDToChunkInfo.clear();
+        _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    }
     
     ServiceLocator::GetGameRenderer()->GetModelLoader()->Clear();
     ServiceLocator::GetGameRenderer()->GetLiquidLoader()->Clear();
@@ -312,11 +318,9 @@ void TerrainLoader::Update(f32 deltaTime)
                     if (body)
                     {
                         ZoneScopedN("Add Body");
-                        body->SetUserData(std::numeric_limits<JPH::uint64>().max());
-                        body->SetFriction(0.8f);
+                        body->SetUserData(Jolt::PhysicsBodyUserData::Pack(entt::null, Jolt::PhysicsSurfaceType::Terrain, Jolt::PhysicsBodyFlags::CanSupport | Jolt::PhysicsBodyFlags::CanSnapTo));
 
                         JPH::BodyID bodyID = body->GetID();
-
                         bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
                         physicsBodyID = bodyID.GetIndexAndSequenceNumber();
                     }
@@ -335,6 +339,7 @@ void TerrainLoader::Update(f32 deltaTime)
                         std::scoped_lock lock(_chunkLoadingMutex);
                         _chunkIDToChunkInfo[workRequest.chunkID] = { .chunk = chunk, .buffer = workRequest.buffer, .fileHandle = std::move(workRequest.fileHandle) };
                         _chunkIDToLoadedID[workRequest.chunkID] = chunkDataID;
+                        _contentGeneration.fetch_add(1, std::memory_order_relaxed);
 
                         if (physicsBodyID != JPH::BodyID::cInvalidBodyID)
                             _chunkIDToBodyID[workRequest.chunkID] = physicsBodyID;
@@ -412,6 +417,153 @@ f32 TerrainLoader::GetLoadingProgress() const
 
     f32 progress = static_cast<f32>(_numChunksLoaded) / static_cast<f32>(_numChunksToLoad);
     return progress;
+}
+
+void TerrainLoader::GetLoadedChunks(std::vector<LoadedChunkView>& outChunks) const
+{
+    std::scoped_lock lock(_chunkLoadingMutex);
+    outChunks.clear();
+    outChunks.reserve(_chunkIDToChunkInfo.size());
+
+    for (const auto& [chunkID, chunkInfo] : _chunkIDToChunkInfo)
+    {
+        auto loadedIDItr = _chunkIDToLoadedID.find(chunkID);
+        if (loadedIDItr == _chunkIDToLoadedID.end())
+            continue;
+
+        outChunks.push_back({
+            .chunk = chunkInfo.editableChunk ? chunkInfo.editableChunk.get() : chunkInfo.chunk,
+            .chunkID = chunkID,
+            .rendererChunkIndex = loadedIDItr->second,
+            .revision = chunkInfo.revision
+        });
+    }
+}
+
+bool TerrainLoader::GetEditableChunk(u32 chunkID, LoadedChunkView& outChunk)
+{
+    std::scoped_lock lock(_chunkLoadingMutex);
+    auto chunkInfoItr = _chunkIDToChunkInfo.find(chunkID);
+    auto loadedIDItr = _chunkIDToLoadedID.find(chunkID);
+    if (chunkInfoItr == _chunkIDToChunkInfo.end() || loadedIDItr == _chunkIDToLoadedID.end() || !chunkInfoItr->second.chunk)
+        return false;
+
+    ChunkInfo& chunkInfo = chunkInfoItr->second;
+    if (!chunkInfo.editableChunk)
+    {
+        chunkInfo.editableChunk = std::make_shared<Map::Chunk>(*chunkInfo.chunk);
+        _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    outChunk = {
+        .chunk = chunkInfo.editableChunk.get(),
+        .chunkID = chunkID,
+        .rendererChunkIndex = loadedIDItr->second,
+        .revision = chunkInfo.revision
+    };
+    return true;
+}
+
+bool TerrainLoader::MarkChunkEdited(u32 chunkID)
+{
+    std::scoped_lock lock(_chunkLoadingMutex);
+    auto itr = _chunkIDToChunkInfo.find(chunkID);
+    if (itr == _chunkIDToChunkInfo.end() || !itr->second.editableChunk)
+        return false;
+
+    itr->second.revision++;
+    _contentGeneration.fetch_add(1, std::memory_order_relaxed);
+    return true;
+}
+
+bool TerrainLoader::SaveEditableChunks(const std::vector<u32>& chunkIDs, std::vector<u32>& outSavedChunkIDs)
+{
+    struct ChunkSaveSnapshot
+    {
+    public:
+        u32 chunkID = Terrain::CHUNK_INVALID_ID;
+        u64 revision = 0;
+        std::string virtualPath;
+        std::vector<u8> editedChunkBytes;
+        std::vector<u8> bytes;
+    };
+
+    outSavedChunkIDs.clear();
+    if (chunkIDs.empty())
+        return true;
+
+    std::vector<ChunkSaveSnapshot> snapshots;
+    snapshots.reserve(chunkIDs.size());
+    {
+        std::scoped_lock lock(_chunkLoadingMutex);
+        if (_currentMapInternalName.empty())
+            return false;
+
+        for (u32 chunkID : chunkIDs)
+        {
+            auto itr = _chunkIDToChunkInfo.find(chunkID);
+            if (itr == _chunkIDToChunkInfo.end())
+                continue;
+
+            const ChunkInfo& chunkInfo = itr->second;
+            if (!chunkInfo.editableChunk)
+                continue;
+
+            const u32 chunkX = chunkID % Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+            const u32 chunkY = chunkID / Terrain::CHUNK_NUM_PER_MAP_STRIDE;
+            ChunkSaveSnapshot& snapshot = snapshots.emplace_back();
+            snapshot.chunkID = chunkID;
+            snapshot.revision = chunkInfo.revision;
+            snapshot.virtualPath = Util::AssetPath::Map(_currentMapInternalName + "/" + _currentMapInternalName + "_" + std::to_string(chunkX) + "_" + std::to_string(chunkY) + ".chunk");
+            snapshot.editedChunkBytes.resize(sizeof(Map::Chunk));
+            std::memcpy(snapshot.editedChunkBytes.data(), chunkInfo.editableChunk.get(), snapshot.editedChunkBytes.size());
+        }
+    }
+
+    Util::AssetWriter* assetWriter = ServiceLocator::GetAssetWriter();
+    PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+    if (!assetWriter || !pactStorage)
+        return false;
+
+    bool savedAllChunks = snapshots.size() == chunkIDs.size();
+    for (ChunkSaveSnapshot& snapshot : snapshots)
+    {
+        PACT::PactFileHandle sourceFile;
+        if (pactStorage->ReadFile(snapshot.virtualPath, sourceFile) != PACT::PactReadResult::Success || sourceFile.GetSize() < sizeof(Map::Chunk))
+        {
+            savedAllChunks = false;
+            continue;
+        }
+
+        snapshot.bytes.resize(sourceFile.GetSize());
+        std::memcpy(snapshot.bytes.data(), sourceFile.GetData(), snapshot.bytes.size());
+        std::memcpy(snapshot.bytes.data(), snapshot.editedChunkBytes.data(), snapshot.editedChunkBytes.size());
+        snapshot.editedChunkBytes.clear();
+    }
+
+    for (const ChunkSaveSnapshot& snapshot : snapshots)
+    {
+        if (snapshot.bytes.empty())
+            continue;
+
+        if (!assetWriter->WriteBytes(snapshot.virtualPath, snapshot.bytes, Util::AssetWriteTarget::PactOverlay))
+        {
+            savedAllChunks = false;
+            continue;
+        }
+
+        std::scoped_lock lock(_chunkLoadingMutex);
+        auto itr = _chunkIDToChunkInfo.find(snapshot.chunkID);
+        if (itr == _chunkIDToChunkInfo.end() || itr->second.revision != snapshot.revision)
+        {
+            savedAllChunks = false;
+            continue;
+        }
+
+        outSavedChunkIDs.push_back(snapshot.chunkID);
+    }
+
+    return savedAllChunks;
 }
 
 void TerrainLoader::LoadPartialMapRequest(const LoadRequestInternal& request)

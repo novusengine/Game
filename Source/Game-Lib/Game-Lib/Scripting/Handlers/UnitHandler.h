@@ -35,6 +35,7 @@ namespace Scripting::Unit
         static i32 GetPersistentStanding(Zenith* zenith);
         static i32 GetEffectiveStanding(Zenith* zenith);
         static i32 ClearTarget(Zenith* zenith);
+        static i32 SetTarget(Zenith* zenith);
 
         static i32 SetWidgetToNamePos(Zenith* zenith);
     };
@@ -60,6 +61,7 @@ namespace Scripting::Unit
         { "GetPersistentStanding", UnitHandler::GetPersistentStanding },
         { "GetEffectiveStanding", UnitHandler::GetEffectiveStanding },
         { "ClearTarget", UnitHandler::ClearTarget },
+        { "SetTarget", UnitHandler::SetTarget },
 
         { "SetWidgetToNamePos", UnitHandler::SetWidgetToNamePos }
     };

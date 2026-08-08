@@ -1,3 +1,4 @@
+local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
 Inspector — Lua port of the C++ ImGui Inspector. Shows the selected entity's
 components (Name, Transform, Scene Node, AABB, Model, Decal, Unit) and lets you
@@ -13,13 +14,12 @@ Layer 1100 sits above the dev top bar (1000).
 ]]
 
 local DragInput = require("@src/API/UI/DragInput")
-local EditorButton = require("@src/API/UI/EditorButton")
-local EditorRegistry = require("@src/API/UI/EditorRegistry")
+local Button = require("@src/API/UI/Button")
+local EditorRegistry = require("@src/API/Editor/Registry")
 local InputBox = require("@src/API/UI/InputBox")
 local ScrollBox = require("@src/API/UI/ScrollBox")
-local Selection = require("@src/API/UI/EditorSelection")
+local Selection = require("@src/API/Editor/Selection")
 
-require("@src/API/UI/MenuBar")
 
 local PANEL_W      = 320
 local TITLE_H      = 16
@@ -30,15 +30,15 @@ local SIDE_PAD     = 6
 local TOP_PAD      = 4
 local BOTTOM_PAD   = 6
 local LABEL_W      = 70
-local LAYER        = 1100
+local LAYER        = 1100i
 local BTN_TEXT_TPL = "DevToolsText"
 
-local WINDOW_BG_COLOR = vector.create(0.10, 0.10, 0.12)
+local WINDOW_BG_COLOR = vec.New(0.10, 0.10, 0.12)
 local WINDOW_BG_ALPHA = 0.96
-local BORDER_COLOR    = vector.create(0.30, 0.30, 0.35)
+local BORDER_COLOR    = vec.New(0.30, 0.30, 0.35)
 local BORDER_SIZE     = 1
-local HEADER_TINT     = vector.create(0.55, 0.75, 1.00)
-local LABEL_TINT      = vector.create(0.82, 0.82, 0.88)
+local HEADER_TINT     = vec.New(0.55, 0.75, 1.00)
+local LABEL_TINT      = vec.New(0.82, 0.82, 0.88)
 
 local INNER_W = PANEL_W - SIDE_PAD * 2
 
@@ -51,59 +51,37 @@ local function MakeBtnOpts(text)
     }
 end
 
-local canvas = UI.GetCanvas("InspectorEditor", 0, 0, 1920, 1080, false)
+local canvas = UI.GetCanvas("InspectorEditor", vec.New(0, 0), vec.New(1920, 1080), false)
 
-local windowPanel = canvas:NewPanel(950, -80, PANEL_W, TITLE_H, LAYER, "DebugDarkGrey")
-windowPanel:SetAnchor(0.0, 1.0)
-windowPanel:SetRelativePoint(0.0, 1.0)
-windowPanel:SetVisible(false)
-windowPanel:SetColor(WINDOW_BG_COLOR)
-windowPanel:SetAlpha(WINDOW_BG_ALPHA)
-windowPanel:SetBorderColor(BORDER_COLOR)
-windowPanel:SetBorderSize(BORDER_SIZE)
-
-local titleBar = windowPanel:NewPanel(0, 0, PANEL_W, TITLE_H, 1, "DebugDarkGrey")
-titleBar:SetAnchor(0.0, 1.0)
-titleBar:SetRelativePoint(0.0, 1.0)
-titleBar:SetColor(vector.create(0.06, 0.06, 0.08))
-titleBar:SetAlpha(WINDOW_BG_ALPHA)
-
-local titleText = titleBar:NewText("Inspector", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
-titleText:SetAnchor(0.0, 0.5)
-titleText:SetRelativePoint(0.0, 0.5)
-titleText:SetInteractable(false)
-
-local CLOSE_BTN_SIZE = 12
-local closeBtn = EditorButton.NewEditorButton(titleBar, -2, 0, CLOSE_BTN_SIZE, CLOSE_BTN_SIZE, 1, MakeBtnOpts("X"))
-closeBtn:SetAnchor(1.0, 0.5)
-closeBtn:SetRelativePoint(1.0, 0.5)
-closeBtn.text:SetPosX(1)
-
-windowPanel:MakeDraggable(titleBar)
+local editorWindow = EditorWindow.New(canvas, vec.New(950, -80), vec.New(PANEL_W, TITLE_H), LAYER, { title = "Inspector" })
+local windowPanel = editorWindow.root
+local titleBar = editorWindow.titleBar
+local titleText = editorWindow.title
+local closeBtn = editorWindow.closeButton
 
 -- ---- gizmo control bar (persistent, below the title bar) ----
 local GIZMO_BAR_H = 18
 
-local gizmoBar = windowPanel:NewPanel(0, -TITLE_H, PANEL_W, GIZMO_BAR_H, 1, "DebugDarkGrey")
-gizmoBar:SetAnchor(0.0, 1.0)
-gizmoBar:SetRelativePoint(0.0, 1.0)
-gizmoBar:SetColor(vector.create(0.08, 0.08, 0.10))
+local gizmoBar = windowPanel:NewPanel(vec.New(0, -TITLE_H), vec.New(PANEL_W, GIZMO_BAR_H), 1i, "DebugDarkGrey")
+gizmoBar:SetAnchor(vec.New(0.0, 1.0))
+gizmoBar:SetRelativePoint(vec.New(0.0, 1.0))
+gizmoBar:SetColor(vec.New(0.08, 0.08, 0.10))
 gizmoBar:SetAlpha(WINDOW_BG_ALPHA)
 
-local gizmoOp = 0   -- 0 = translate, 1 = rotate, 2 = scale (matches GizmoOperation in C++)
-local gizmoMode = 1 -- 0 = local, 1 = world (matches GizmoMode in C++)
+local gizmoOp = 0i   -- 0 = translate, 1 = rotate, 2 = scale (matches GizmoOperation in C++)
+local gizmoMode = 1i -- 0 = local, 1 = world (matches GizmoMode in C++)
 local opButtons = {}
 local modeButtons = {}
 
 local function RefreshGizmoButtons()
-    for i, b in opButtons do b:SetHighlighted((i - 1) == gizmoOp) end
-    for i, b in modeButtons do b:SetHighlighted((i - 1) == gizmoMode) end
+    for i, b in opButtons do b:SetHighlighted(integer.create(i - 1) == gizmoOp) end
+    for i, b in modeButtons do b:SetHighlighted(integer.create(i - 1) == gizmoMode) end
 end
 
 local function MakeBarButton(x, w, text)
-    local b = EditorButton.NewEditorButton(gizmoBar, x, 0, w, GIZMO_BAR_H - 2, 1, MakeBtnOpts(text))
-    b:SetAnchor(0.0, 0.5)
-    b:SetRelativePoint(0.0, 0.5)
+    local b = Button.New(gizmoBar, vec.New(x, 0), vec.New(w, GIZMO_BAR_H - 2), 1i, MakeBtnOpts(text))
+    b:SetAnchor(vec.New(0.0, 0.5))
+    b:SetRelativePoint(vec.New(0.0, 0.5))
     return b
 end
 
@@ -111,7 +89,7 @@ local OP_W = 46
 local opLabels = { "Move", "Rotate", "Scale" }
 local barX = SIDE_PAD
 for i = 1, 3 do
-    local index = i - 1
+    local index = integer.create(i - 1)
     local b = MakeBarButton(barX, OP_W, opLabels[i])
     b:SetOnMouseUp(function()
         gizmoOp = index
@@ -126,7 +104,7 @@ barX += 8
 local MODE_W = 42
 local modeLabels = { "Local", "World" }
 for i = 1, 2 do
-    local index = i - 1
+    local index = integer.create(i - 1)
     local b = MakeBarButton(barX, MODE_W, modeLabels[i])
     b:SetOnMouseUp(function()
         gizmoMode = index
@@ -149,9 +127,9 @@ local transformRows = nil
 -- ---- small layout helpers (operate on a cursor { y } and a parent) ----
 
 local function AddText(parent, x, y, text, tint)
-    local t = parent:NewText(text, x, y, 1, BTN_TEXT_TPL)
-    t:SetAnchor(0.0, 1.0)
-    t:SetRelativePoint(0.0, 1.0)
+    local t = parent:NewText(text, vec.New(x, y), 1i, BTN_TEXT_TPL)
+    t:SetAnchor(vec.New(0.0, 1.0))
+    t:SetRelativePoint(vec.New(0.0, 1.0))
     t:SetInteractable(false)
     if tint then t:SetColor(tint) end
     return t
@@ -168,7 +146,7 @@ local function AddNumberRow(parent, cur, label, value, opts, onChanged)
     AddText(parent, SIDE_PAD, cur.y, label, LABEL_TINT)
     local fieldX = SIDE_PAD + LABEL_W
     local fieldW = INNER_W - LABEL_W
-    local field = DragInput.NewDragInput(parent, fieldX, cur.y, fieldW, FIELD_H, 1, {
+    local field = DragInput.New(parent, vec.New(fieldX, cur.y), vec.New(fieldW, FIELD_H), 1i, {
         value = value,
         speed = opts.speed,
         format = opts.format,
@@ -176,8 +154,8 @@ local function AddNumberRow(parent, cur, label, value, opts, onChanged)
         max = opts.max,
         onValueChanged = onChanged,
     })
-    field:SetAnchor(0.0, 1.0)
-    field:SetRelativePoint(0.0, 1.0)
+    field:SetAnchor(vec.New(0.0, 1.0))
+    field:SetRelativePoint(vec.New(0.0, 1.0))
     cur.y -= ROW_H
     return field
 end
@@ -186,7 +164,7 @@ end
 local function AddVec3Row(parent, cur, label, value, opts, onChanged)
     AddText(parent, SIDE_PAD, cur.y, label, LABEL_TINT)
     cur.y -= FIELD_H
-    local row = DragInput.NewVec3Row(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+    local row = DragInput.NewVec3(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, FIELD_H), 1i, {
         value = value,
         speed = opts.speed,
         format = opts.format,
@@ -199,14 +177,14 @@ local function AddVec3Row(parent, cur, label, value, opts, onChanged)
 end
 
 local function AddToggle(parent, cur, label, state, onToggle)
-    local btn = EditorButton.NewEditorButton(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+    local btn = Button.New(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, FIELD_H), 1i, {
         text = label .. ": " .. (state and "ON" or "OFF"),
         textTemplate = BTN_TEXT_TPL,
         textAlign = "left",
         textPadX = 4,
     })
-    btn:SetAnchor(0.0, 1.0)
-    btn:SetRelativePoint(0.0, 1.0)
+    btn:SetAnchor(vec.New(0.0, 1.0))
+    btn:SetRelativePoint(vec.New(0.0, 1.0))
     local current = state
     btn:SetOnMouseUp(function()
         current = not current
@@ -221,13 +199,13 @@ end
 
 local function BuildName(parent, cur, entityID, name)
     AddHeader(parent, cur, "Name")
-    local input = InputBox.NewInputBox(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+    local input = InputBox.New(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, FIELD_H), 1i, {
         panelTemplate = "DebugDarkGrey",
         textTemplate = BTN_TEXT_TPL,
         defaultText = name,
     })
-    input:SetAnchor(0.0, 1.0)
-    input:SetRelativePoint(0.0, 1.0)
+    input:SetAnchor(vec.New(0.0, 1.0))
+    input:SetRelativePoint(vec.New(0.0, 1.0))
     input:SetOnSubmit(function(t)
         Scene.SetName(entityID, t.text)
         return true
@@ -254,7 +232,7 @@ local function BuildSceneNode(parent, cur, sceneNode)
     AddHeader(parent, cur, "Scene Node")
 
     if sceneNode.parent ~= nil then
-        local parentBtn = EditorButton.NewEditorButton(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+        local parentBtn = Button.New(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, FIELD_H), 1i, {
             text = "Parent: " .. sceneNode.parent.name,
             textTemplate = BTN_TEXT_TPL,
             textAlign = "left",
@@ -262,8 +240,8 @@ local function BuildSceneNode(parent, cur, sceneNode)
             borderColor = BORDER_COLOR,
             borderSize = BORDER_SIZE,
         })
-        parentBtn:SetAnchor(0.0, 1.0)
-        parentBtn:SetRelativePoint(0.0, 1.0)
+        parentBtn:SetAnchor(vec.New(0.0, 1.0))
+        parentBtn:SetRelativePoint(vec.New(0.0, 1.0))
         local parentID = sceneNode.parent.id
         parentBtn:SetOnMouseUp(function() Selection.Set(parentID) end)
         cur.y -= ROW_H
@@ -279,7 +257,7 @@ local function BuildSceneNode(parent, cur, sceneNode)
 
     if childCount > 0 then
         local listH = math.min(120, childCount * FIELD_H + 2)
-        local list = ScrollBox.NewScrollBox(parent, SIDE_PAD, cur.y, INNER_W, listH, 1, {
+        local list = ScrollBox.New(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, listH), 1i, {
             panelTemplate = "DebugDarkGrey",
             contentSizeX = INNER_W,
             contentSizeY = listH,
@@ -287,18 +265,18 @@ local function BuildSceneNode(parent, cur, sceneNode)
             scrollBarWidth = 10,
             alpha = 0.0,
         })
-        list:SetAnchor(0.0, 1.0)
-        list:SetRelativePoint(0.0, 1.0)
+        list:SetAnchor(vec.New(0.0, 1.0))
+        list:SetRelativePoint(vec.New(0.0, 1.0))
 
         for i, child in children do
-            local childBtn = EditorButton.NewEditorButton(list.content, 2, -((i - 1) * FIELD_H) - 1, INNER_W - 14, FIELD_H, 1, {
+            local childBtn = Button.New(list.content, vec.New(2, -((i - 1) * FIELD_H) - 1), vec.New(INNER_W - 14, FIELD_H), 1i, {
                 text = child.name,
                 textTemplate = BTN_TEXT_TPL,
                 textAlign = "left",
                 textPadX = 4,
             })
-            childBtn:SetAnchor(0.0, 1.0)
-            childBtn:SetRelativePoint(0.0, 1.0)
+            childBtn:SetAnchor(vec.New(0.0, 1.0))
+            childBtn:SetRelativePoint(vec.New(0.0, 1.0))
             local childID = child.id
             childBtn:SetOnMouseUp(function() Selection.Set(childID) end)
         end
@@ -358,19 +336,21 @@ local function BuildDecal(parent, cur, entityID, decal)
             minV = minV:GetValue(),
             maxU = maxU:GetValue(),
             maxV = maxV:GetValue(),
-            flags = tonumber(flagsInput:GetText()) or decal.flags,
+            flags = integer.create(math.floor(
+                tonumber(flagsInput:GetText()) or integer.tonumber(decal.flags)
+            )),
         })
     end
 
     AddText(parent, SIDE_PAD, cur.y, "Texture Path", LABEL_TINT)
     cur.y -= FIELD_H
-    pathInput = InputBox.NewInputBox(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+    pathInput = InputBox.New(parent, vec.New(SIDE_PAD, cur.y), vec.New(INNER_W, FIELD_H), 1i, {
         panelTemplate = "DebugDarkGrey",
         textTemplate = BTN_TEXT_TPL,
         defaultText = decal.texturePath,
     })
-    pathInput:SetAnchor(0.0, 1.0)
-    pathInput:SetRelativePoint(0.0, 1.0)
+    pathInput:SetAnchor(vec.New(0.0, 1.0))
+    pathInput:SetRelativePoint(vec.New(0.0, 1.0))
     pathInput:SetOnSubmit(function() Apply() return true end)
     cur.y -= ROW_H
 
@@ -385,13 +365,13 @@ local function BuildDecal(parent, cur, entityID, decal)
 
     AddText(parent, SIDE_PAD, cur.y, "Flags", LABEL_TINT)
     local flagsX = SIDE_PAD + LABEL_W
-    flagsInput = InputBox.NewInputBox(parent, flagsX, cur.y, INNER_W - LABEL_W, FIELD_H, 1, {
+    flagsInput = InputBox.New(parent, vec.New(flagsX, cur.y), vec.New(INNER_W - LABEL_W, FIELD_H), 1i, {
         panelTemplate = "DebugDarkGrey",
         textTemplate = BTN_TEXT_TPL,
         defaultText = tostring(decal.flags),
     })
-    flagsInput:SetAnchor(0.0, 1.0)
-    flagsInput:SetRelativePoint(0.0, 1.0)
+    flagsInput:SetAnchor(vec.New(0.0, 1.0))
+    flagsInput:SetRelativePoint(vec.New(0.0, 1.0))
     flagsInput:SetOnSubmit(function() Apply() return true end)
     cur.y -= ROW_H
 end
@@ -415,9 +395,9 @@ local function Rebuild()
     end
     transformRows = nil
 
-    contentRoot = windowPanel:NewPanel(0, -CONTENT_TOP, PANEL_W, 2000, 1, "DebugDarkGrey")
-    contentRoot:SetAnchor(0.0, 1.0)
-    contentRoot:SetRelativePoint(0.0, 1.0)
+    contentRoot = windowPanel:NewPanel(vec.New(0, -CONTENT_TOP), vec.New(PANEL_W, 2000), 1i, "DebugDarkGrey")
+    contentRoot:SetAnchor(vec.New(0.0, 1.0))
+    contentRoot:SetRelativePoint(vec.New(0.0, 1.0))
     contentRoot:SetAlpha(0.0)
 
     local cur = { y = -TOP_PAD }
@@ -459,7 +439,7 @@ local function Rebuild()
     end
 
     local consumed = -cur.y
-    windowPanel:SetSize(PANEL_W, CONTENT_TOP + consumed + BOTTOM_PAD)
+    windowPanel:SetSize(vec.New(PANEL_W, CONTENT_TOP + consumed + BOTTOM_PAD))
 end
 
 Selection.Subscribe(function()

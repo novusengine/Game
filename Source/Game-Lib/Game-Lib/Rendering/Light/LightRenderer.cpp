@@ -128,7 +128,9 @@ void LightRenderer::Update(f32 deltaTime)
         GPUDecal& decal = _decals[decalID];
 
         // Load the texture into the model renderer (bigger chance for texture reuse than having our separate texture array)
-        _modelRenderer->LoadTexture(decalComp.texturePath, *reinterpret_cast<u32*>(&decal.positionAndTextureID.w));
+        size_t arrIndex = 0;
+        _modelRenderer->LoadTexture(decalComp.texturePath, arrIndex);
+        *reinterpret_cast<u32*>(&decal.positionAndTextureID.w) = static_cast<u32>(arrIndex);
 
         u32 colorInt = decalComp.colorMultiplier.ToABGR32();
 
@@ -155,7 +157,7 @@ void LightRenderer::Update(f32 deltaTime)
             ECS::Components::Decal& decalComp = registry->get<ECS::Components::Decal>(request.entity);
 
             // Load the texture into the model renderer (bigger chance for texture reuse than having our separate texture array)
-            u32 textureID;
+            size_t textureID;
             _modelRenderer->LoadTexture(decalComp.texturePath, textureID);
 
             // Add decal

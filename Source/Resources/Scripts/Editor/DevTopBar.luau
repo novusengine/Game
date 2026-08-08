@@ -3,19 +3,19 @@ DevTopBar — dev menu bar drawn below the ImGui main menu during the
 ImGui->Lua migration. Greyed entries are not yet ported.
 ]]
 
-local MenuBar = require("@src/API/UI/MenuBar")
-local EditorRegistry = require("@src/API/UI/EditorRegistry")
+local MenuBar = require("@src/API/Editor/UI/MenuBar")
+local EditorRegistry = require("@src/API/Editor/Registry")
 
 -- TODO: query ImGui::GetFrameHeight() instead of hardcoding 11.
-local IMGUI_MENU_BAR_HEIGHT = 50
-local BAR_LAYER = 1000
+local IMGUI_MENU_BAR_HEIGHT = 25
+local BAR_LAYER = 1000i
 local BAR_HEIGHT = 22
 local CANVAS_W = 1920
 local CANVAS_H = 1080
 
-local canvas = UI.GetCanvas("DevTopBar", 0, 0, CANVAS_W, CANVAS_H, false)
+local canvas = UI.GetCanvas("DevTopBar", vec.New(0, 0), vec.New(CANVAS_W, CANVAS_H), false)
 
-local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_HEIGHT, BAR_LAYER, {
+local bar = MenuBar.New(canvas, vec.New(0, -IMGUI_MENU_BAR_HEIGHT), vec.New(CANVAS_W, BAR_HEIGHT), BAR_LAYER, {
     paddingLeft = 8,
     spacing = 4,
     menus = {
@@ -31,6 +31,8 @@ local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_
             { label = "Inspector", enabled = true, onClick = function() EditorRegistry.Toggle("Inspector") end },
             { label = "Asset Browser", enabled = true, onClick = function() EditorRegistry.Toggle("AssetBrowser") end },
             { label = "Console Variables", enabled = true, onClick = function() EditorRegistry.Toggle("CVarEditor") end },
+            { label = "Spell Editor", enabled = true, onClick = function() EditorRegistry.Toggle("SpellEditor") end },
+            { label = "Terrain Editor", enabled = true, onClick = function() EditorRegistry.Toggle("TerrainEditor") end },
         }},
         { label = "Editor", items = {
             { label = "(none)", enabled = false },
@@ -43,5 +45,5 @@ local bar = MenuBar.NewMenuBar(canvas, 0, -IMGUI_MENU_BAR_HEIGHT, CANVAS_W, BAR_
         }},
     },
 })
-bar:SetAnchor(0.0, 1.0)
-bar:SetRelativePoint(0.0, 1.0)
+bar:SetAnchor(vec.New(0.0, 1.0))
+bar:SetRelativePoint(vec.New(0.0, 1.0))

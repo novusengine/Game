@@ -1,10 +1,10 @@
-local UIStack = require("@src/API/UI/UIStack")
+local Draggable = require("@src/API/UI/Draggable")
+local FrameManager = require("@src/API/Game/FrameManager")
 local UIButton = require("@src/API/UI/Button")
 local UIInputBox = require("@src/API/UI/InputBox")
 local UICheckbox = require("@src/API/UI/Checkbox")
 local UIScrollBox = require("@src/API/UI/ScrollBox")
 local InputAPI = require("@src/API/Input/Input")
-local _ = require("@src/API/UI/WidgetExtensions")
 
 local OPTIONS_WIDTH = 1024;
 local OPTIONS_HEIGHT = 592;
@@ -24,21 +24,21 @@ local DIALOG_BUTTON_HEIGHT = 26;
 local DIALOG_BUTTON_GAP = 16;
 local DIALOG_PADDING = 18;
 
-local COLOR_WINDOW = vector.create(0.035, 0.042, 0.050);
-local COLOR_SIDEBAR = vector.create(0.043, 0.052, 0.064);
-local COLOR_PANEL = vector.create(0.055, 0.064, 0.074);
-local COLOR_CONTROL = vector.create(0.070, 0.080, 0.092);
-local COLOR_CONTROL_HOVER = vector.create(0.105, 0.125, 0.150);
-local COLOR_SELECTED = vector.create(0.130, 0.155, 0.185);
-local COLOR_BORDER = vector.create(0.225, 0.255, 0.290);
-local COLOR_ACTION_WELL = vector.create(0.050, 0.062, 0.078);
-local COLOR_ACTION_SECTION = vector.create(0.062, 0.078, 0.098);
-local COLOR_ACTION_WELL_BORDER = vector.create(0.280, 0.340, 0.410);
-local COLOR_ACCENT = vector.create(0.390, 0.650, 0.960);
-local COLOR_DANGER = vector.create(0.820, 0.240, 0.240);
-local COLOR_DANGER_HOVER = vector.create(1.000, 0.340, 0.340);
-local COLOR_TEXT = vector.create(0.900, 0.915, 0.935);
-local COLOR_MUTED = vector.create(0.570, 0.600, 0.640);
+local COLOR_WINDOW = vec.New(0.035, 0.042, 0.050);
+local COLOR_SIDEBAR = vec.New(0.043, 0.052, 0.064);
+local COLOR_PANEL = vec.New(0.055, 0.064, 0.074);
+local COLOR_CONTROL = vec.New(0.070, 0.080, 0.092);
+local COLOR_CONTROL_HOVER = vec.New(0.105, 0.125, 0.150);
+local COLOR_SELECTED = vec.New(0.130, 0.155, 0.185);
+local COLOR_BORDER = vec.New(0.225, 0.255, 0.290);
+local COLOR_ACTION_WELL = vec.New(0.050, 0.062, 0.078);
+local COLOR_ACTION_SECTION = vec.New(0.062, 0.078, 0.098);
+local COLOR_ACTION_WELL_BORDER = vec.New(0.280, 0.340, 0.410);
+local COLOR_ACCENT = vec.New(0.390, 0.650, 0.960);
+local COLOR_DANGER = vec.New(0.820, 0.240, 0.240);
+local COLOR_DANGER_HOVER = vec.New(1.000, 0.340, 0.340);
+local COLOR_TEXT = vec.New(0.900, 0.915, 0.935);
+local COLOR_MUTED = vec.New(0.570, 0.600, 0.640);
 
 local function BindingChordsEqual(first : InputAPI.InputBinding?, second : InputAPI.InputBinding?) : boolean
     if first == nil or second == nil then
@@ -87,7 +87,7 @@ local OPTIONS_CATEGORIES = {
 };
 
 local function CreateFooterButton(parent : Panel, text : string, width : number, emphasized : boolean)
-    local button = UIButton.NewButton(parent, 0, 0, width, 26, 1, {
+    local button = UIButton.New(parent, vec.New(0, 0), vec.New(width, 26), 1i, {
         text = text,
         panelTemplate = "DebugDarkGrey",
         textTemplate = "DefaultButtonText",
@@ -95,41 +95,41 @@ local function CreateFooterButton(parent : Panel, text : string, width : number,
     button.available = true;
     button.hovered = false;
 
-    button.panel:SetColor(if emphasized then COLOR_SELECTED else COLOR_CONTROL);
-    button.panel:SetAlpha(if emphasized then 0.95 else 0.78);
-    button.panel:SetBorderColor(COLOR_BORDER);
-    button.panel:SetBorderSize(1);
+    button.root:SetColor(if emphasized then COLOR_SELECTED else COLOR_CONTROL);
+    button.root:SetAlpha(if emphasized then 0.95 else 0.78);
+    button.root:SetBorderColor(COLOR_BORDER);
+    button.root:SetBorderSize(1);
     button:SetFontSize(10);
     button.text:SetPosY(TEXT_CENTER_OFFSET);
     button.text:SetColor(COLOR_TEXT);
 
     local function RefreshVisuals()
         if (not button.available) then
-            button.panel:SetColor(COLOR_CONTROL);
-            button.panel:SetAlpha(0.42);
-            button.panel:SetBorderColor(COLOR_BORDER);
+            button.root:SetColor(COLOR_CONTROL);
+            button.root:SetAlpha(0.42);
+            button.root:SetBorderColor(COLOR_BORDER);
             button.text:SetColor(COLOR_MUTED);
             button.text:SetAlpha(0.78);
         elseif (button.hovered) then
-            button.panel:SetColor(COLOR_CONTROL_HOVER);
-            button.panel:SetAlpha(1.0);
-            button.panel:SetBorderColor(COLOR_ACCENT);
+            button.root:SetColor(COLOR_CONTROL_HOVER);
+            button.root:SetAlpha(1.0);
+            button.root:SetBorderColor(COLOR_ACCENT);
             button.text:SetColor(COLOR_TEXT);
             button.text:SetAlpha(1.0);
         else
-            button.panel:SetColor(if emphasized then COLOR_SELECTED else COLOR_CONTROL);
-            button.panel:SetAlpha(if emphasized then 0.95 else 0.78);
-            button.panel:SetBorderColor(COLOR_BORDER);
+            button.root:SetColor(if emphasized then COLOR_SELECTED else COLOR_CONTROL);
+            button.root:SetAlpha(if emphasized then 0.95 else 0.78);
+            button.root:SetBorderColor(COLOR_BORDER);
             button.text:SetColor(COLOR_TEXT);
             button.text:SetAlpha(1.0);
         end
     end
 
-    button.panel:SetOnHoverBegin(function()
+    button.root:SetOnHoverBegin(function()
         button.hovered = true;
         RefreshVisuals();
     end);
-    button.panel:SetOnHoverEnd(function()
+    button.root:SetOnHoverEnd(function()
         button.hovered = false;
         RefreshVisuals();
     end);
@@ -145,7 +145,7 @@ local function CreateFooterButton(parent : Panel, text : string, width : number,
 end
 
 local function CreateCategoryTab(parent : Panel, text : string, y : number)
-    local button = UIButton.NewButton(parent, 0, y, SIDEBAR_WIDTH, CATEGORY_HEIGHT, 1, {
+    local button = UIButton.New(parent, vec.New(0, y), vec.New(SIDEBAR_WIDTH, CATEGORY_HEIGHT), 1i, {
         text = text,
         panelTemplate = "DebugDarkGrey",
         textTemplate = "DefaultButtonText",
@@ -153,44 +153,44 @@ local function CreateCategoryTab(parent : Panel, text : string, y : number)
     button.selected = false;
     button.hovered = false;
 
-    button.panel:SetAnchor(0.0, 1.0);
-    button.panel:SetRelativePoint(0.0, 1.0);
-    button.panel:SetColor(COLOR_SELECTED);
-    button.panel:SetAlpha(0.0);
+    button.root:SetAnchor(vec.New(0.0, 1.0));
+    button.root:SetRelativePoint(vec.New(0.0, 1.0));
+    button.root:SetColor(COLOR_SELECTED);
+    button.root:SetAlpha(0.0);
 
-    button.accent = button.panel:NewPanel(0, 0, 2, CATEGORY_HEIGHT, 2, "DebugDarkGrey");
-    button.accent:SetAnchor(0.0, 1.0);
-    button.accent:SetRelativePoint(0.0, 1.0);
+    button.accent = button.root:NewPanel(vec.New(0, 0), vec.New(2, CATEGORY_HEIGHT), 2i, "DebugDarkGrey");
+    button.accent:SetAnchor(vec.New(0.0, 1.0));
+    button.accent:SetRelativePoint(vec.New(0.0, 1.0));
     button.accent:SetColor(COLOR_ACCENT);
     button.accent:SetAlpha(0.0);
 
-    button.text:SetAnchor(0.0, 0.5);
-    button.text:SetRelativePoint(0.0, 0.5);
-    button.text:SetPos(20, TEXT_CENTER_OFFSET);
+    button.text:SetAnchor(vec.New(0.0, 0.5));
+    button.text:SetRelativePoint(vec.New(0.0, 0.5));
+    button.text:SetPos(vec.New(20, TEXT_CENTER_OFFSET));
     button:SetFontSize(12);
     button.text:SetColor(COLOR_TEXT);
 
     local function RefreshVisuals()
         if (button.selected) then
-            button.panel:SetAlpha(0.80);
+            button.root:SetAlpha(0.80);
             button.accent:SetAlpha(1.0);
             button.text:SetAlpha(1.0);
         elseif (button.hovered) then
-            button.panel:SetAlpha(0.38);
+            button.root:SetAlpha(0.38);
             button.accent:SetAlpha(0.0);
             button.text:SetAlpha(1.0);
         else
-            button.panel:SetAlpha(0.0);
+            button.root:SetAlpha(0.0);
             button.accent:SetAlpha(0.0);
             button.text:SetAlpha(0.82);
         end
     end
 
-    button.panel:SetOnHoverBegin(function()
+    button.root:SetOnHoverBegin(function()
         button.hovered = true;
         RefreshVisuals();
     end);
-    button.panel:SetOnHoverEnd(function()
+    button.root:SetOnHoverEnd(function()
         button.hovered = false;
         RefreshVisuals();
     end);
@@ -204,56 +204,56 @@ local function CreateCategoryTab(parent : Panel, text : string, y : number)
 end
 
 local function CreatePageHeader(page : Panel, titleText : string, descriptionText : string, width : number)
-    local title = page:NewText(titleText, 0, 0, 1, "DefaultButtonText");
-    title:SetAnchor(0.0, 1.0);
-    title:SetRelativePoint(0.0, 1.0);
+    local title = page:NewText(titleText, vec.New(0, 0), 1i, "DefaultButtonText");
+    title:SetAnchor(vec.New(0.0, 1.0));
+    title:SetRelativePoint(vec.New(0.0, 1.0));
     title:SetFontSize(14);
     title:SetColor(COLOR_TEXT);
 
-    local description = page:NewText(descriptionText, 0, -22, 1, "DefaultButtonText");
-    description:SetAnchor(0.0, 1.0);
-    description:SetRelativePoint(0.0, 1.0);
+    local description = page:NewText(descriptionText, vec.New(0, -22), 1i, "DefaultButtonText");
+    description:SetAnchor(vec.New(0.0, 1.0));
+    description:SetRelativePoint(vec.New(0.0, 1.0));
     description:SetFontSize(10);
     description:SetColor(COLOR_MUTED);
 
-    local separator = page:NewPanel(0, -42, width, 1, 1, "DebugDarkGrey");
-    separator:SetAnchor(0.0, 1.0);
-    separator:SetRelativePoint(0.0, 1.0);
+    local separator = page:NewPanel(vec.New(0, -42), vec.New(width, 1), 1i, "DebugDarkGrey");
+    separator:SetAnchor(vec.New(0.0, 1.0));
+    separator:SetRelativePoint(vec.New(0.0, 1.0));
     separator:SetColor(COLOR_BORDER);
     separator:SetAlpha(0.72);
 end
 
 local function CreateEmptyCategoryPage(parent : Panel, category, width : number, height : number)
-    local page = parent:NewPanel(0, 0, width, height, 1, "DebugDarkGrey");
-    page:SetAnchor(0.0, 1.0);
-    page:SetRelativePoint(0.0, 1.0);
+    local page = parent:NewPanel(vec.New(0, 0), vec.New(width, height), 1i, "DebugDarkGrey");
+    page:SetAnchor(vec.New(0.0, 1.0));
+    page:SetRelativePoint(vec.New(0.0, 1.0));
     page:SetAlpha(0.0);
 
     CreatePageHeader(page, category.name, category.description, width);
 
-    local sectionTitle = page:NewText("General", 0, -62, 1, "DefaultButtonText");
-    sectionTitle:SetAnchor(0.0, 1.0);
-    sectionTitle:SetRelativePoint(0.0, 1.0);
+    local sectionTitle = page:NewText("General", vec.New(0, -62), 1i, "DefaultButtonText");
+    sectionTitle:SetAnchor(vec.New(0.0, 1.0));
+    sectionTitle:SetRelativePoint(vec.New(0.0, 1.0));
     sectionTitle:SetFontSize(11);
     sectionTitle:SetColor(COLOR_TEXT);
 
-    local emptyPanel = page:NewPanel(0, -86, width, 120, 1, "DebugDarkGrey");
-    emptyPanel:SetAnchor(0.0, 1.0);
-    emptyPanel:SetRelativePoint(0.0, 1.0);
+    local emptyPanel = page:NewPanel(vec.New(0, -86), vec.New(width, 120), 1i, "DebugDarkGrey");
+    emptyPanel:SetAnchor(vec.New(0.0, 1.0));
+    emptyPanel:SetRelativePoint(vec.New(0.0, 1.0));
     emptyPanel:SetColor(COLOR_PANEL);
     emptyPanel:SetAlpha(0.55);
     emptyPanel:SetBorderColor(COLOR_BORDER);
     emptyPanel:SetBorderSize(1);
 
-    local emptyTitle = emptyPanel:NewText(category.emptyTitle, 0, 10, 1, "DefaultButtonText");
-    emptyTitle:SetAnchor(0.5, 0.5);
-    emptyTitle:SetRelativePoint(0.5, 0.5);
+    local emptyTitle = emptyPanel:NewText(category.emptyTitle, vec.New(0, 10), 1i, "DefaultButtonText");
+    emptyTitle:SetAnchor(vec.New(0.5, 0.5));
+    emptyTitle:SetRelativePoint(vec.New(0.5, 0.5));
     emptyTitle:SetFontSize(11);
     emptyTitle:SetColor(COLOR_TEXT);
 
-    local emptyDescription = emptyPanel:NewText(category.emptyDescription, 0, -10, 1, "DefaultButtonText");
-    emptyDescription:SetAnchor(0.5, 0.5);
-    emptyDescription:SetRelativePoint(0.5, 0.5);
+    local emptyDescription = emptyPanel:NewText(category.emptyDescription, vec.New(0, -10), 1i, "DefaultButtonText");
+    emptyDescription:SetAnchor(vec.New(0.5, 0.5));
+    emptyDescription:SetRelativePoint(vec.New(0.5, 0.5));
     emptyDescription:SetFontSize(9);
     emptyDescription:SetColor(COLOR_MUTED);
 
@@ -261,36 +261,36 @@ local function CreateEmptyCategoryPage(parent : Panel, category, width : number,
 end
 
 local function CreateKeybindingsPage(parent : Panel, category, width : number, height : number)
-    local page = parent:NewPanel(0, 0, width, height, 1, "DebugDarkGrey");
-    page:SetAnchor(0.0, 1.0);
-    page:SetRelativePoint(0.0, 1.0);
+    local page = parent:NewPanel(vec.New(0, 0), vec.New(width, height), 1i, "DebugDarkGrey");
+    page:SetAnchor(vec.New(0.0, 1.0));
+    page:SetRelativePoint(vec.New(0.0, 1.0));
     page:SetAlpha(0.0);
 
     CreatePageHeader(page, category.name, category.description, width);
 
     local tableHeight = height - 106;
-    local bindingsTable = page:NewPanel(0, -94, width, tableHeight, 1, "DebugDarkGrey");
-    bindingsTable:SetAnchor(0.0, 1.0);
-    bindingsTable:SetRelativePoint(0.0, 1.0);
+    local bindingsTable = page:NewPanel(vec.New(0, -94), vec.New(width, tableHeight), 1i, "DebugDarkGrey");
+    bindingsTable:SetAnchor(vec.New(0.0, 1.0));
+    bindingsTable:SetRelativePoint(vec.New(0.0, 1.0));
     bindingsTable:SetColor(COLOR_ACTION_WELL);
     bindingsTable:SetAlpha(1.0);
     bindingsTable:SetBorderColor(COLOR_ACTION_WELL_BORDER);
     bindingsTable:SetBorderSize(1);
 
-    local toolbar = page:NewPanel(0, -58, width, 26, 1, "DebugDarkGrey");
-    toolbar:SetAnchor(0.0, 1.0);
-    toolbar:SetRelativePoint(0.0, 1.0);
+    local toolbar = page:NewPanel(vec.New(0, -58), vec.New(width, 26), 1i, "DebugDarkGrey");
+    toolbar:SetAnchor(vec.New(0.0, 1.0));
+    toolbar:SetRelativePoint(vec.New(0.0, 1.0));
     toolbar:SetAlpha(0.0);
 
-    local searchInput = UIInputBox.NewInputBox(toolbar, 0, 0, 230, 26, 1, {
+    local searchInput = UIInputBox.New(toolbar, vec.New(0, 0), vec.New(230, 26), 1i, {
         panelTemplate = "DebugDarkGrey",
         textTemplate = "DefaultButtonText",
         placeholderText = "Search bindings",
     });
-    searchInput.button.panel:SetColor(COLOR_CONTROL);
-    searchInput.button.panel:SetAlpha(0.65);
-    searchInput.button.panel:SetBorderColor(COLOR_BORDER);
-    searchInput.button.panel:SetBorderSize(1);
+    searchInput.button.root:SetColor(COLOR_CONTROL);
+    searchInput.button.root:SetAlpha(0.65);
+    searchInput.button.root:SetBorderColor(COLOR_BORDER);
+    searchInput.button.root:SetBorderSize(1);
     searchInput.button:SetFontSize(10);
     searchInput.button.text:SetColor(COLOR_MUTED);
     searchInput:SetTextVerticallyCentered();
@@ -300,60 +300,58 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     local searchHovered = false;
     local function RefreshSearchVisuals()
         if searchInput.isFocused then
-            searchInput.button.panel:SetColor(COLOR_SELECTED);
-            searchInput.button.panel:SetAlpha(0.92);
-            searchInput.button.panel:SetBorderColor(COLOR_ACCENT);
+            searchInput.button.root:SetColor(COLOR_SELECTED);
+            searchInput.button.root:SetAlpha(0.92);
+            searchInput.button.root:SetBorderColor(COLOR_ACCENT);
             searchInput.button.text:SetColor(COLOR_TEXT);
         elseif searchHovered then
-            searchInput.button.panel:SetColor(COLOR_CONTROL_HOVER);
-            searchInput.button.panel:SetAlpha(0.88);
-            searchInput.button.panel:SetBorderColor(COLOR_BORDER);
+            searchInput.button.root:SetColor(COLOR_CONTROL_HOVER);
+            searchInput.button.root:SetAlpha(0.88);
+            searchInput.button.root:SetBorderColor(COLOR_BORDER);
             searchInput.button.text:SetColor(COLOR_TEXT);
         else
-            searchInput.button.panel:SetColor(COLOR_CONTROL);
-            searchInput.button.panel:SetAlpha(0.65);
-            searchInput.button.panel:SetBorderColor(COLOR_BORDER);
+            searchInput.button.root:SetColor(COLOR_CONTROL);
+            searchInput.button.root:SetAlpha(0.65);
+            searchInput.button.root:SetBorderColor(COLOR_BORDER);
             searchInput.button.text:SetColor(COLOR_MUTED);
         end
     end
-    searchInput.button.panel:SetOnHoverBegin(function()
+    searchInput.button.root:SetOnHoverBegin(function()
         searchHovered = true;
         RefreshSearchVisuals();
     end);
-    searchInput.button.panel:SetOnHoverEnd(function()
+    searchInput.button.root:SetOnHoverEnd(function()
         searchHovered = false;
         RefreshSearchVisuals();
     end);
     searchInput:SetOnFocusBegin(RefreshSearchVisuals);
     searchInput:SetOnFocusEnd(RefreshSearchVisuals);
 
-    local presetPanel = toolbar:NewPanel(width - 170, 0, 170, 26, 1, "DebugDarkGrey");
+    local presetPanel = toolbar:NewPanel(vec.New(width - 170, 0), vec.New(170, 26), 1i, "DebugDarkGrey");
     presetPanel:SetColor(COLOR_CONTROL);
     presetPanel:SetAlpha(0.65);
     presetPanel:SetBorderColor(COLOR_BORDER);
     presetPanel:SetBorderSize(1);
 
-    local presetText = presetPanel:NewText("Preset: Default", 10, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-    presetText:SetAnchor(0.0, 0.5);
-    presetText:SetRelativePoint(0.0, 0.5);
+    local presetText = presetPanel:NewText("Preset: Default", vec.New(10, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+    presetText:SetAnchor(vec.New(0.0, 0.5));
+    presetText:SetRelativePoint(vec.New(0.0, 0.5));
     presetText:SetFontSize(10);
     presetText:SetColor(COLOR_MUTED);
 
-    local conflictsCheckbox = UICheckbox.NewCheckbox(toolbar, 248, 0, 14, 14, 1, {
+    local conflictsCheckbox = UICheckbox.New(toolbar, vec.New(248, 0), vec.New(14, 14), 1i, {
         backgroundTemplate = "DebugDarkGrey",
         fillTemplate = "DebugDarkGrey",
     });
-    conflictsCheckbox.checkbox:SetAnchor(0.0, 0.5);
-    conflictsCheckbox.checkbox:SetRelativePoint(0.0, 0.5);
-    conflictsCheckbox.background:SetAnchor(0.0, 0.5);
-    conflictsCheckbox.background:SetRelativePoint(0.0, 0.5);
-    conflictsCheckbox.background:SetBackground("texture/ui/adventure/2x/checkbox_grey_empty.png");
-    conflictsCheckbox.fill:SetPos(0, 0);
+    conflictsCheckbox:SetAnchor(vec.New(0.0, 0.5));
+    conflictsCheckbox:SetRelativePoint(vec.New(0.0, 0.5));
+    conflictsCheckbox:SetBackground("texture/ui/adventure/2x/checkbox_grey_empty.png");
+    conflictsCheckbox.fill:SetPos(vec.New(0, 0));
     conflictsCheckbox.fill:SetBackground("texture/ui/adventure/2x/checkbox_grey_checked.png");
 
-    local conflictsText = toolbar:NewText("Show conflicts only", 270, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-    conflictsText:SetAnchor(0.0, 0.5);
-    conflictsText:SetRelativePoint(0.0, 0.5);
+    local conflictsText = toolbar:NewText("Show conflicts only", vec.New(270, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+    conflictsText:SetAnchor(vec.New(0.0, 0.5));
+    conflictsText:SetRelativePoint(vec.New(0.0, 0.5));
     conflictsText:SetFontSize(10);
     conflictsText:SetColor(COLOR_MUTED);
     conflictsText:SetOnMouseUp(function()
@@ -361,16 +359,16 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     end);
 
     local function SetConflictsHover(hovered : boolean)
-        conflictsCheckbox.background:SetColor(if hovered then COLOR_ACCENT else COLOR_TEXT);
-        conflictsCheckbox.background:SetAlpha(if hovered then 1.0 else 0.82);
+        conflictsCheckbox:SetColor(if hovered then COLOR_ACCENT else COLOR_TEXT);
+        conflictsCheckbox:SetAlpha(if hovered then 1.0 else 0.82);
         conflictsCheckbox.fill:SetColor(if hovered then COLOR_ACCENT else COLOR_TEXT);
         conflictsCheckbox.fill:SetAlpha(if hovered then 1.0 else 0.92);
         conflictsText:SetColor(if hovered then COLOR_TEXT else COLOR_MUTED);
     end
-    conflictsCheckbox.background:SetOnHoverBegin(function()
+    conflictsCheckbox:SetOnHoverBegin(function()
         SetConflictsHover(true);
     end);
-    conflictsCheckbox.background:SetOnHoverEnd(function()
+    conflictsCheckbox:SetOnHoverEnd(function()
         SetConflictsHover(false);
     end);
     conflictsCheckbox.fill:SetOnHoverBegin(function()
@@ -387,9 +385,9 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     end);
     SetConflictsHover(false);
 
-    local tableHeader = bindingsTable:NewPanel(0, 0, width, 26, 1, "DebugDarkGrey");
-    tableHeader:SetAnchor(0.0, 1.0);
-    tableHeader:SetRelativePoint(0.0, 1.0);
+    local tableHeader = bindingsTable:NewPanel(vec.New(0, 0), vec.New(width, 26), 1i, "DebugDarkGrey");
+    tableHeader:SetAnchor(vec.New(0.0, 1.0));
+    tableHeader:SetRelativePoint(vec.New(0.0, 1.0));
     tableHeader:SetColor(COLOR_ACTION_SECTION);
     tableHeader:SetAlpha(1.0);
 
@@ -400,47 +398,47 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     local primaryButtonWidth = math.min(primaryColumnWidth - 34, 250);
     local secondaryButtonWidth = math.min(secondaryColumnWidth - 34, 250);
 
-    local actionHeader = tableHeader:NewText("Action", 12, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-    actionHeader:SetAnchor(0.0, 0.5);
-    actionHeader:SetRelativePoint(0.0, 0.5);
+    local actionHeader = tableHeader:NewText("Action", vec.New(12, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+    actionHeader:SetAnchor(vec.New(0.0, 0.5));
+    actionHeader:SetRelativePoint(vec.New(0.0, 0.5));
     actionHeader:SetFontSize(10);
     actionHeader:SetColor(COLOR_TEXT);
 
-    local primaryHeaderCell = tableHeader:NewPanel(primaryX, 0, primaryButtonWidth, 26, 1, "DebugDarkGrey");
-    primaryHeaderCell:SetAnchor(0.0, 1.0);
-    primaryHeaderCell:SetRelativePoint(0.0, 1.0);
+    local primaryHeaderCell = tableHeader:NewPanel(vec.New(primaryX, 0), vec.New(primaryButtonWidth, 26), 1i, "DebugDarkGrey");
+    primaryHeaderCell:SetAnchor(vec.New(0.0, 1.0));
+    primaryHeaderCell:SetRelativePoint(vec.New(0.0, 1.0));
     primaryHeaderCell:SetAlpha(0.0);
 
-    local primaryHeader = primaryHeaderCell:NewText("Primary Binding", 0, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-    primaryHeader:SetAnchor(0.5, 0.5);
-    primaryHeader:SetRelativePoint(0.5, 0.5);
+    local primaryHeader = primaryHeaderCell:NewText("Primary Binding", vec.New(0, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+    primaryHeader:SetAnchor(vec.New(0.5, 0.5));
+    primaryHeader:SetRelativePoint(vec.New(0.5, 0.5));
     primaryHeader:SetFontSize(10);
     primaryHeader:SetColor(COLOR_TEXT);
 
-    local secondaryHeaderCell = tableHeader:NewPanel(secondaryX, 0, secondaryButtonWidth, 26, 1, "DebugDarkGrey");
-    secondaryHeaderCell:SetAnchor(0.0, 1.0);
-    secondaryHeaderCell:SetRelativePoint(0.0, 1.0);
+    local secondaryHeaderCell = tableHeader:NewPanel(vec.New(secondaryX, 0), vec.New(secondaryButtonWidth, 26), 1i, "DebugDarkGrey");
+    secondaryHeaderCell:SetAnchor(vec.New(0.0, 1.0));
+    secondaryHeaderCell:SetRelativePoint(vec.New(0.0, 1.0));
     secondaryHeaderCell:SetAlpha(0.0);
 
-    local secondaryHeader = secondaryHeaderCell:NewText("Secondary Binding", 0, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-    secondaryHeader:SetAnchor(0.5, 0.5);
-    secondaryHeader:SetRelativePoint(0.5, 0.5);
+    local secondaryHeader = secondaryHeaderCell:NewText("Secondary Binding", vec.New(0, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+    secondaryHeader:SetAnchor(vec.New(0.5, 0.5));
+    secondaryHeader:SetRelativePoint(vec.New(0.5, 0.5));
     secondaryHeader:SetFontSize(10);
     secondaryHeader:SetColor(COLOR_TEXT);
 
-    local emptyTitle = bindingsTable:NewText("No bindings loaded", 0, 9, 1, "DefaultButtonText");
-    emptyTitle:SetAnchor(0.5, 0.5);
-    emptyTitle:SetRelativePoint(0.5, 0.5);
+    local emptyTitle = bindingsTable:NewText("No bindings loaded", vec.New(0, 9), 1i, "DefaultButtonText");
+    emptyTitle:SetAnchor(vec.New(0.5, 0.5));
+    emptyTitle:SetRelativePoint(vec.New(0.5, 0.5));
     emptyTitle:SetFontSize(11);
     emptyTitle:SetColor(COLOR_TEXT);
 
-    local emptyDescription = bindingsTable:NewText("Input-system integration will populate this table.", 0, -9, 1, "DefaultButtonText");
-    emptyDescription:SetAnchor(0.5, 0.5);
-    emptyDescription:SetRelativePoint(0.5, 0.5);
+    local emptyDescription = bindingsTable:NewText("Input-system integration will populate this table.", vec.New(0, -9), 1i, "DefaultButtonText");
+    emptyDescription:SetAnchor(vec.New(0.5, 0.5));
+    emptyDescription:SetRelativePoint(vec.New(0.5, 0.5));
     emptyDescription:SetFontSize(9);
     emptyDescription:SetColor(COLOR_MUTED);
 
-    local scrollBox = UIScrollBox.NewScrollBox(bindingsTable, 1, -26, width - 2, tableHeight - 27, 1, {
+    local scrollBox = UIScrollBox.New(bindingsTable, vec.New(1, -26), vec.New(width - 2, tableHeight - 27), 1i, {
         panelTemplate = "DebugDarkGrey",
         contentSizeX = width - 18,
         contentSizeY = tableHeight - 27,
@@ -448,12 +446,12 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         scrollBarWidth = 10,
         alpha = 0.0,
     });
-    scrollBox:SetAnchor(0.0, 1.0);
-    scrollBox:SetRelativePoint(0.0, 1.0);
+    scrollBox:SetAnchor(vec.New(0.0, 1.0));
+    scrollBox:SetRelativePoint(vec.New(0.0, 1.0));
 
-    local dialog = page:NewPanel(0, 0, width, height, 20, "DebugDarkGrey");
-    dialog:SetAnchor(0.0, 1.0);
-    dialog:SetRelativePoint(0.0, 1.0);
+    local dialog = page:NewPanel(vec.New(0, 0), vec.New(width, height), 20i, "DebugDarkGrey");
+    dialog:SetAnchor(vec.New(0.0, 1.0));
+    dialog:SetRelativePoint(vec.New(0.0, 1.0));
     dialog:SetColor(COLOR_WINDOW);
     dialog:SetAlpha(0.92);
     dialog:SetOnMouseDown(ConsumePointerInput);
@@ -465,23 +463,23 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     dialog:SetOnHoverHeld(ConsumePointerInput);
     dialog:SetVisible(false);
 
-    local dialogBox = dialog:NewPanel(0, 0, DIALOG_MIN_WIDTH, 140, 1, "DebugDarkGrey");
-    dialogBox:SetAnchor(0.5, 0.5);
-    dialogBox:SetRelativePoint(0.5, 0.5);
+    local dialogBox = dialog:NewPanel(vec.New(0, 0), vec.New(DIALOG_MIN_WIDTH, 140), 1i, "DebugDarkGrey");
+    dialogBox:SetAnchor(vec.New(0.5, 0.5));
+    dialogBox:SetRelativePoint(vec.New(0.5, 0.5));
     dialogBox:SetColor(COLOR_PANEL);
     dialogBox:SetAlpha(1.0);
     dialogBox:SetBorderColor(COLOR_BORDER);
     dialogBox:SetBorderSize(1);
 
-    local dialogTitle = dialogBox:NewText("Binding conflict", 18, -18, 1, "DefaultButtonText");
-    dialogTitle:SetAnchor(0.0, 1.0);
-    dialogTitle:SetRelativePoint(0.0, 1.0);
+    local dialogTitle = dialogBox:NewText("Binding conflict", vec.New(18, -18), 1i, "DefaultButtonText");
+    dialogTitle:SetAnchor(vec.New(0.0, 1.0));
+    dialogTitle:SetRelativePoint(vec.New(0.0, 1.0));
     dialogTitle:SetFontSize(13);
     dialogTitle:SetColor(COLOR_TEXT);
 
-    local dialogDescription = dialogBox:NewText("", 18, -48, 1, "DefaultButtonText");
-    dialogDescription:SetAnchor(0.0, 1.0);
-    dialogDescription:SetRelativePoint(0.0, 1.0);
+    local dialogDescription = dialogBox:NewText("", vec.New(18, -48), 1i, "DefaultButtonText");
+    dialogDescription:SetAnchor(vec.New(0.0, 1.0));
+    dialogDescription:SetRelativePoint(vec.New(0.0, 1.0));
     dialogDescription:SetFontSize(9);
     dialogDescription:SetColor(COLOR_MUTED);
     dialogDescription:SetWrapWidth(DIALOG_MIN_WIDTH - (DIALOG_PADDING * 2));
@@ -489,9 +487,9 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     local dialogButtons = {};
     for index = 1, 4 do
         local button = CreateFooterButton(dialogBox, "", DIALOG_BUTTON_WIDTH, index == 1);
-        button:SetAnchor(0.0, 0.0);
-        button:SetRelativePoint(0.0, 0.0);
-        button:SetPos(DIALOG_PADDING + ((index - 1) * (DIALOG_BUTTON_WIDTH + DIALOG_BUTTON_GAP)), DIALOG_PADDING);
+        button:SetAnchor(vec.New(0.0, 0.0));
+        button:SetRelativePoint(vec.New(0.0, 0.0));
+        button:SetPos(vec.New(DIALOG_PADDING + ((index - 1) * (DIALOG_BUTTON_WIDTH + DIALOG_BUTTON_GAP)), DIALOG_PADDING));
         button:SetVisible(false);
         dialogButtons[index] = button;
     end
@@ -529,8 +527,8 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         end
     end
 
-    local function ApplyBinding(actionName : string, slot : number, binding : InputAPI.InputBinding, policy : number)
-        local result = InputAPI.SetBinding(actionName, slot, binding, policy);
+    local function ApplyBinding(actionName : string, slot : number, binding : InputAPI.InputBinding, policy : integer)
+        local result = InputAPI.SetBinding(actionName, integer.create(slot), binding, policy);
         if result.succeeded and #result.mutations > 0 then
             SetDirty(true);
         end
@@ -562,7 +560,7 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         dialogBox:SetHeight(math.max(132, dialogHeight));
 
         for index, button in dialogButtons do
-            button:SetPos(buttonStartX + ((index - 1) * (DIALOG_BUTTON_WIDTH + DIALOG_BUTTON_GAP)), DIALOG_PADDING);
+            button:SetPos(vec.New(buttonStartX + ((index - 1) * (DIALOG_BUTTON_WIDTH + DIALOG_BUTTON_GAP)), DIALOG_PADDING));
         end
     end
 
@@ -641,14 +639,14 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
                 return;
             end
 
-            if BindingChordsEqual(InputAPI.GetBinding(action.name, slot), binding) then
+            if BindingChordsEqual(InputAPI.GetBinding(action.name, integer.create(slot)), binding) then
                 if controller.panel:IsVisible() then
                     controller:Refresh();
                 end
                 return;
             end
 
-            local preview = InputAPI.FindBindingConflicts(action.name, slot, binding);
+            local preview = InputAPI.FindBindingConflicts(action.name, integer.create(slot), binding);
             if #preview.conflicts == 0 then
                 ApplyBinding(action.name, slot, binding, InputBindingConflictPolicy.Allow);
             else
@@ -666,7 +664,7 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         for slot = 1, 2 do
             local binding = action.bindings[slot];
             if binding ~= nil then
-                local result = InputAPI.FindBindingConflicts(action.name, slot, binding);
+                local result = InputAPI.FindBindingConflicts(action.name, integer.create(slot), binding);
                 for _, conflict in result.conflicts do
                     if conflict.kind == InputBindingConflictKind.Direct then
                         return true;
@@ -695,40 +693,40 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
 
     local function CreateBindingSlot(row : Panel, action, slot : number, x : number, buttonWidth : number)
         local binding = action.bindings[slot];
-        local button = UIButton.NewButton(row, 0, 0, buttonWidth, BINDING_BUTTON_HEIGHT, 1, {
+        local button = UIButton.New(row, vec.New(0, 0), vec.New(buttonWidth, BINDING_BUTTON_HEIGHT), 1i, {
             text = InputAPI.FormatBinding(action.bindings[slot]),
             panelTemplate = "DebugDarkGrey",
             textTemplate = "DefaultButtonText",
         });
-        button.panel:SetAnchor(0.0, 0.5);
-        button.panel:SetRelativePoint(0.0, 0.5);
-        button.panel:SetPos(x, BINDING_CONTROL_CENTER_OFFSET);
-        button.panel:SetColor(COLOR_CONTROL);
-        button.panel:SetAlpha(0.72);
-        button.panel:SetBorderColor(COLOR_BORDER);
-        button.panel:SetBorderSize(1);
+        button.root:SetAnchor(vec.New(0.0, 0.5));
+        button.root:SetRelativePoint(vec.New(0.0, 0.5));
+        button.root:SetPos(vec.New(x, BINDING_CONTROL_CENTER_OFFSET));
+        button.root:SetColor(COLOR_CONTROL);
+        button.root:SetAlpha(0.72);
+        button.root:SetBorderColor(COLOR_BORDER);
+        button.root:SetBorderSize(1);
         button:SetFontSize(9);
         button.text:SetPosY(TEXT_CENTER_OFFSET);
-        button.panel:SetOnHoverBegin(function()
-            button.panel:SetColor(COLOR_CONTROL_HOVER);
-            button.panel:SetAlpha(1.0);
-            button.panel:SetBorderColor(COLOR_ACCENT);
+        button.root:SetOnHoverBegin(function()
+            button.root:SetColor(COLOR_CONTROL_HOVER);
+            button.root:SetAlpha(1.0);
+            button.root:SetBorderColor(COLOR_ACCENT);
             button.text:SetColor(COLOR_TEXT);
         end);
-        button.panel:SetOnHoverEnd(function()
-            button.panel:SetColor(COLOR_CONTROL);
-            button.panel:SetAlpha(0.72);
-            button.panel:SetBorderColor(COLOR_BORDER);
+        button.root:SetOnHoverEnd(function()
+            button.root:SetColor(COLOR_CONTROL);
+            button.root:SetAlpha(0.72);
+            button.root:SetBorderColor(COLOR_BORDER);
             button.text:SetColor(COLOR_TEXT);
         end);
         button:SetOnMouseUp(function()
             BeginCapture(action, slot, button);
         end);
 
-        local clearIcon = row:NewPanel(0, 0, 14, 14, 1, "DebugDarkGrey");
-        clearIcon:SetAnchor(0.0, 0.5);
-        clearIcon:SetRelativePoint(0.0, 0.5);
-        clearIcon:SetPos(x + buttonWidth + 8, BINDING_CONTROL_CENTER_OFFSET);
+        local clearIcon = row:NewPanel(vec.New(0, 0), vec.New(14, 14), 1i, "DebugDarkGrey");
+        clearIcon:SetAnchor(vec.New(0.0, 0.5));
+        clearIcon:SetRelativePoint(vec.New(0.0, 0.5));
+        clearIcon:SetPos(vec.New(x + buttonWidth + 8, BINDING_CONTROL_CENTER_OFFSET));
         clearIcon:SetBackground("texture/cursor/32x32/plain/disabled.png");
         clearIcon:SetColor(if binding ~= nil then COLOR_DANGER else COLOR_MUTED);
         clearIcon:SetAlpha(if binding ~= nil then 0.88 else 0.42);
@@ -744,7 +742,7 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
                 clearIcon:SetAlpha(0.88);
             end);
             clearIcon:SetOnMouseUp(function()
-                local result = InputAPI.ClearBinding(action.name, slot, InputBindingConflictPolicy.Allow);
+                local result = InputAPI.ClearBinding(action.name, integer.create(slot), InputBindingConflictPolicy.Allow);
                 if result.succeeded and #result.mutations > 0 then
                     SetDirty(true);
                 end
@@ -755,7 +753,7 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
 
     function controller:Refresh()
         CancelCapture();
-        local previousScrollPosY = scrollBox.scrollPosY or 0;
+        local previousScrollPosY = scrollBox:GetOffset().y;
         for _, widget in self.rowWidgets do
             UI.DestroyWidget(widget);
         end
@@ -779,44 +777,44 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
                         y -= 6;
                     end
                     currentCategory = action.category;
-                    local categoryHeader = scrollBox.content:NewPanel(2, y, width - 22, 24, 0, "DebugDarkGrey");
-                    categoryHeader:SetAnchor(0.0, 1.0);
-                    categoryHeader:SetRelativePoint(0.0, 1.0);
+                    local categoryHeader = scrollBox.content:NewPanel(vec.New(2, y), vec.New(width - 22, 24), 0i, "DebugDarkGrey");
+                    categoryHeader:SetAnchor(vec.New(0.0, 1.0));
+                    categoryHeader:SetRelativePoint(vec.New(0.0, 1.0));
                     categoryHeader:SetColor(COLOR_ACTION_SECTION);
                     categoryHeader:SetAlpha(1.0);
                     table.insert(self.rowWidgets, categoryHeader);
 
-                    local categoryText = categoryHeader:NewText(currentCategory, 10, TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-                    categoryText:SetAnchor(0.0, 0.5);
-                    categoryText:SetRelativePoint(0.0, 0.5);
+                    local categoryText = categoryHeader:NewText(currentCategory, vec.New(10, TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+                    categoryText:SetAnchor(vec.New(0.0, 0.5));
+                    categoryText:SetRelativePoint(vec.New(0.0, 0.5));
                     categoryText:SetFontSize(10);
                     categoryText:SetColor(COLOR_ACCENT);
 
-                    local categoryDivider = scrollBox.content:NewPanel(2, y - 23, width - 22, 1, 1, "DebugDarkGrey");
-                    categoryDivider:SetAnchor(0.0, 1.0);
-                    categoryDivider:SetRelativePoint(0.0, 1.0);
+                    local categoryDivider = scrollBox.content:NewPanel(vec.New(2, y - 23), vec.New(width - 22, 1), 1i, "DebugDarkGrey");
+                    categoryDivider:SetAnchor(vec.New(0.0, 1.0));
+                    categoryDivider:SetRelativePoint(vec.New(0.0, 1.0));
                     categoryDivider:SetColor(COLOR_BORDER);
                     categoryDivider:SetAlpha(0.72);
                     table.insert(self.rowWidgets, categoryDivider);
                     y -= 26;
                 end
 
-                local row = scrollBox.content:NewPanel(2, y, width - 22, ACTION_ROW_HEIGHT, 0, "DebugDarkGrey");
-                row:SetAnchor(0.0, 1.0);
-                row:SetRelativePoint(0.0, 1.0);
+                local row = scrollBox.content:NewPanel(vec.New(2, y), vec.New(width - 22, ACTION_ROW_HEIGHT), 0i, "DebugDarkGrey");
+                row:SetAnchor(vec.New(0.0, 1.0));
+                row:SetRelativePoint(vec.New(0.0, 1.0));
                 row:SetColor(COLOR_ACTION_WELL);
                 row:SetAlpha(1.0);
                 table.insert(self.rowWidgets, row);
 
-                local actionText = row:NewText(action.displayName, 24, ACTION_TEXT_CENTER_OFFSET, 1, "DefaultButtonText");
-                actionText:SetAnchor(0.0, 0.5);
-                actionText:SetRelativePoint(0.0, 0.5);
+                local actionText = row:NewText(action.displayName, vec.New(24, ACTION_TEXT_CENTER_OFFSET), 1i, "DefaultButtonText");
+                actionText:SetAnchor(vec.New(0.0, 0.5));
+                actionText:SetRelativePoint(vec.New(0.0, 0.5));
                 actionText:SetFontSize(9);
                 actionText:SetColor(COLOR_TEXT);
 
-                local rowDivider = scrollBox.content:NewPanel(2, y - ACTION_ROW_HEIGHT + 1, width - 22, 1, 1, "DebugDarkGrey");
-                rowDivider:SetAnchor(0.0, 1.0);
-                rowDivider:SetRelativePoint(0.0, 1.0);
+                local rowDivider = scrollBox.content:NewPanel(vec.New(2, y - ACTION_ROW_HEIGHT + 1), vec.New(width - 22, 1), 1i, "DebugDarkGrey");
+                rowDivider:SetAnchor(vec.New(0.0, 1.0));
+                rowDivider:SetRelativePoint(vec.New(0.0, 1.0));
                 rowDivider:SetColor(COLOR_BORDER);
                 rowDivider:SetAlpha(0.64);
                 table.insert(self.rowWidgets, rowDivider);
@@ -841,10 +839,9 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         scrollBox:SetContentHeight(contentHeight);
         scrollBox:SetVerticalScrollBarVisible(contentHeight > tableHeight - 27);
 
-        local maxScrollPosY = math.max(0, scrollBox.content:GetHeight() - scrollBox.scrollBox:GetHeight());
-        scrollBox.scrollPosY = math.clamp(previousScrollPosY, 0, maxScrollPosY);
+        local maxScrollPosY = math.max(0, scrollBox.content:GetHeight() - scrollBox:GetViewportSize().y);
         if maxScrollPosY > 0 then
-            scrollBox:Scroll(nil, 0, 0);
+            scrollBox:SetOffset(vec.New(0, math.clamp(previousScrollPosY, 0, maxScrollPosY)));
         else
             scrollBox:ScrollToStart();
         end
@@ -887,9 +884,9 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
             for actionName, bindings in self.baseline do
                 for slot = 1, 2 do
                     if bindings[slot] == false then
-                        InputAPI.ClearBinding(actionName, slot, InputBindingConflictPolicy.Allow);
+                        InputAPI.ClearBinding(actionName, integer.create(slot), InputBindingConflictPolicy.Allow);
                     else
-                        InputAPI.SetBinding(actionName, slot, bindings[slot], InputBindingConflictPolicy.Allow);
+                        InputAPI.SetBinding(actionName, integer.create(slot), bindings[slot], InputBindingConflictPolicy.Allow);
                     end
                 end
             end
@@ -904,7 +901,7 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
         for _, action in InputAPI.GetActions() do
             if action.rebindable then
                 for slot = 1, 2 do
-                    InputAPI.ResetBinding(action.name, slot, InputBindingConflictPolicy.Allow);
+                    InputAPI.ResetBinding(action.name, integer.create(slot), InputBindingConflictPolicy.Allow);
                 end
             end
         end
@@ -932,27 +929,27 @@ local function CreateKeybindingsPage(parent : Panel, category, width : number, h
     return controller;
 end
 
-local function CreateOptionsMenu(stack)
-    local canvas = UI.GetCanvas("OptionsMenu", 0, 0, 1920, 1080);
-    local panel = canvas:NewPanel(0, 0, OPTIONS_WIDTH, OPTIONS_HEIGHT, 0, "DebugDarkGrey");
+local function CreateOptionsMenu()
+    local canvas = UI.GetCanvas("OptionsMenu", vec.New(0, 0), vec.New(1920, 1080));
+    local panel = canvas:NewPanel(vec.New(0, 0), vec.New(OPTIONS_WIDTH, OPTIONS_HEIGHT), 0i, "DebugDarkGrey");
     panel:SetEnabled(false);
-    panel:SetAnchor(0.5, 0.5);
-    panel:SetRelativePoint(0.5, 0.5);
+    panel:SetAnchor(vec.New(0.5, 0.5));
+    panel:SetRelativePoint(vec.New(0.5, 0.5));
     panel:SetColor(COLOR_WINDOW);
     panel:SetAlpha(1.0);
     panel:SetBorderColor(COLOR_BORDER);
     panel:SetBorderSize(1);
 
-    local dragHandle = panel:NewPanel(SIDEBAR_WIDTH, 0, OPTIONS_WIDTH - SIDEBAR_WIDTH, 50, 3, "DebugDarkGrey");
-    dragHandle:SetAnchor(0.0, 1.0);
-    dragHandle:SetRelativePoint(0.0, 1.0);
+    local dragHandle = panel:NewPanel(vec.New(SIDEBAR_WIDTH, 0), vec.New(OPTIONS_WIDTH - SIDEBAR_WIDTH, 50), 3i, "DebugDarkGrey");
+    dragHandle:SetAnchor(vec.New(0.0, 1.0));
+    dragHandle:SetRelativePoint(vec.New(0.0, 1.0));
     dragHandle:SetAlpha(0.0);
-    panel:MakeDraggable(dragHandle);
+    Draggable.Attach(panel, dragHandle);
 
     local bodyHeight = OPTIONS_HEIGHT - FOOTER_HEIGHT;
-    local sidebar = panel:NewPanel(0, 0, SIDEBAR_WIDTH, OPTIONS_HEIGHT, 1, "DebugDarkGrey");
-    sidebar:SetAnchor(0.0, 1.0);
-    sidebar:SetRelativePoint(0.0, 1.0);
+    local sidebar = panel:NewPanel(vec.New(0, 0), vec.New(SIDEBAR_WIDTH, OPTIONS_HEIGHT), 1i, "DebugDarkGrey");
+    sidebar:SetAnchor(vec.New(0.0, 1.0));
+    sidebar:SetRelativePoint(vec.New(0.0, 1.0));
     sidebar:SetColor(COLOR_SIDEBAR);
     sidebar:SetAlpha(1.0);
     sidebar:SetBorderColor(COLOR_BORDER);
@@ -960,9 +957,9 @@ local function CreateOptionsMenu(stack)
 
     local contentWidth = OPTIONS_WIDTH - SIDEBAR_WIDTH - (CONTENT_PADDING * 2);
     local contentHeight = bodyHeight - CONTENT_PADDING;
-    local content = panel:NewPanel(SIDEBAR_WIDTH + CONTENT_PADDING, -CONTENT_PADDING, contentWidth, contentHeight, 1, "DebugDarkGrey");
-    content:SetAnchor(0.0, 1.0);
-    content:SetRelativePoint(0.0, 1.0);
+    local content = panel:NewPanel(vec.New(SIDEBAR_WIDTH + CONTENT_PADDING, -CONTENT_PADDING), vec.New(contentWidth, contentHeight), 1i, "DebugDarkGrey");
+    content:SetAnchor(vec.New(0.0, 1.0));
+    content:SetRelativePoint(vec.New(0.0, 1.0));
     content:SetAlpha(0.0);
 
     local pages = {};
@@ -1009,32 +1006,32 @@ local function CreateOptionsMenu(stack)
 
     SelectCategory(1);
 
-    local footer = panel:NewPanel(SIDEBAR_WIDTH, 0, OPTIONS_WIDTH - SIDEBAR_WIDTH, FOOTER_HEIGHT, 2, "DebugDarkGrey");
-    footer:SetAnchor(0.0, 0.0);
-    footer:SetRelativePoint(0.0, 0.0);
+    local footer = panel:NewPanel(vec.New(SIDEBAR_WIDTH, 0), vec.New(OPTIONS_WIDTH - SIDEBAR_WIDTH, FOOTER_HEIGHT), 2i, "DebugDarkGrey");
+    footer:SetAnchor(vec.New(0.0, 0.0));
+    footer:SetRelativePoint(vec.New(0.0, 0.0));
     footer:SetAlpha(0.0);
 
     resetAllButton = CreateFooterButton(footer, "Reset to Default", 150, false);
-    resetAllButton:SetAnchor(0.0, 0.5);
-    resetAllButton:SetRelativePoint(0.0, 0.5);
-    resetAllButton:SetPos(CONTENT_PADDING, 0);
+    resetAllButton:SetAnchor(vec.New(0.0, 0.5));
+    resetAllButton:SetRelativePoint(vec.New(0.0, 0.5));
+    resetAllButton:SetPos(vec.New(CONTENT_PADDING, 0));
     resetAllButton:SetAvailable(OPTIONS_CATEGORIES[1].name == "Keybindings");
     resetAllButton:SetOnMouseUp(function()
         keybindingsController:Reset();
     end);
 
     local cancelButton = CreateFooterButton(footer, "Cancel", 100, false);
-    cancelButton:SetAnchor(1.0, 0.5);
-    cancelButton:SetRelativePoint(1.0, 0.5);
-    cancelButton:SetPos(-(CONTENT_PADDING + 108), 0);
+    cancelButton:SetAnchor(vec.New(1.0, 0.5));
+    cancelButton:SetRelativePoint(vec.New(1.0, 0.5));
+    cancelButton:SetPos(vec.New(-(CONTENT_PADDING + 108), 0));
     cancelButton:SetOnMouseUp(function()
-        UIStack.Get("Menu"):Push("GameMenu");
+        FrameManager.Open("GameMenu");
     end);
 
     applyButton = CreateFooterButton(footer, "Apply", 100, true);
-    applyButton:SetAnchor(1.0, 0.5);
-    applyButton:SetRelativePoint(1.0, 0.5);
-    applyButton:SetPos(-CONTENT_PADDING, 0);
+    applyButton:SetAnchor(vec.New(1.0, 0.5));
+    applyButton:SetRelativePoint(vec.New(1.0, 0.5));
+    applyButton:SetPos(vec.New(-CONTENT_PADDING, 0));
     applyButton:SetAvailable(false);
     applyButton:SetOnMouseUp(function()
         keybindingsController:Apply();
@@ -1044,16 +1041,21 @@ local function CreateOptionsMenu(stack)
         applyButton:SetAvailable(dirty);
     end;
 
-    stack:Register("OptionsMenu", panel, 0, function()
-        panel:SetEnabled(true);
-        keybindingsController:Open();
-    end, function()
-        keybindingsController:Cancel();
-        panel:SetEnabled(false);
-    end);
+    FrameManager.Register("OptionsMenu", {
+        root = panel,
+        role = "System",
+        onOpen = function()
+            panel:SetEnabled(true);
+            keybindingsController:Open();
+        end,
+        onClose = function()
+            keybindingsController:Cancel();
+            panel:SetEnabled(false);
+        end,
+    });
 end
 
-local function OnGameLoaded(eventID : number, data : any)
-    CreateOptionsMenu(UIStack.Get("Menu"));
+local function OnGameLoaded(eventID : integer, data : any)
+    CreateOptionsMenu();
 end
-RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded);

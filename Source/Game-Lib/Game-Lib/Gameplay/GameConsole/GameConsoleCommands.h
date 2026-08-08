@@ -61,7 +61,6 @@ public:
     static bool HandleTriggerAdd(GameConsole* gameConsole, MetaGen::Game::Command::TriggerAddCommand& command);
     static bool HandleTriggerRemove(GameConsole* gameConsole, MetaGen::Game::Command::TriggerRemoveCommand& command);
     static bool HandleSpellSync(GameConsole* gameConsole, MetaGen::Game::Command::SpellSyncCommand& command);
-    static bool HandleSpellSyncAll(GameConsole* gameConsole, MetaGen::Game::Command::SpellSyncAllCommand& command);
     static bool HandleCreatureAddScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureAddScriptCommand& command);
     static bool HandleCreatureRemoveScript(GameConsole* gameConsole, MetaGen::Game::Command::CreatureRemoveScriptCommand& command);
     static bool HandleCreatureMove(GameConsole* gameConsole, MetaGen::Game::Command::CreatureMoveCommand& command);

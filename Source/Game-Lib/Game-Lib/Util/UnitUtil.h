@@ -60,6 +60,7 @@ namespace Util::Unit
 
     bool PlayAnimationRaw(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, u32 boneIndex, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
     bool PlayAnimation(const Model::ComplexModel* modelInfo, ::ECS::Components::AnimationData& animationData, ::Animation::Defines::Bone bone, ::Animation::Defines::Type animationID, bool propagateToChildren = false, ::Animation::Defines::Flags flags = ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride blendOverride = ::Animation::Defines::BlendOverride::Auto, f32 speedModifier = 1.0f, ::Animation::Defines::SequenceInterruptCallback callback = nullptr);
+    bool SetAutoAttackVisualState(entt::registry& registry, entt::entity entity, bool enabled);
     bool UpdateAnimationState(entt::registry& registry, entt::entity entity, ::ECS::Components::Model& model, f32 deltaTime);
 
     bool IsHandClosed(entt::registry& registry, entt::entity entity, bool isOffHand);

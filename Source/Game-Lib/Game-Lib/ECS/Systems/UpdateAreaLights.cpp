@@ -327,14 +327,14 @@ namespace ECS::Systems
         vec3 direction = GetLightDirection(dayNightCycle.GetTimeInSecondsF32());
         const vec3& diffuseColor = areaLightInfo.finalColorData.diffuseColor;
         const vec3& ambientColor = areaLightInfo.finalColorData.ambientColor;
-        vec3 groundAmbientColor = ambientColor * 1.0f;
-        vec3 skyAmbientColor = ambientColor * 1.0f;
         const vec3& shadowColor = areaLightInfo.finalColorData.shadowColor; // Per-area authored tint, multiplied onto the shadowed directional term
-        constexpr f32 ambientIntensity = 1.0f;
+
+        constexpr f32 diffuseIntensity = 0.7f;
+        constexpr f32 ambientIntensity = 1.1f;
         
-        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor))
+        if (!materialRenderer->SetDirectionalLight(0, direction, diffuseColor, diffuseIntensity, ambientColor, ambientIntensity, ambientColor, ambientIntensity, shadowColor))
         {
-            materialRenderer->AddDirectionalLight(direction, diffuseColor, 1.0f, groundAmbientColor, ambientIntensity, skyAmbientColor, ambientIntensity, shadowColor);
+            materialRenderer->AddDirectionalLight(direction, diffuseColor, diffuseIntensity, ambientColor, ambientIntensity, ambientColor, ambientIntensity, shadowColor);
         }
         
         SkyboxRenderer* skyboxRenderer = ServiceLocator::GetGameRenderer()->GetSkyboxRenderer();
@@ -351,61 +351,124 @@ namespace ECS::Systems
         *CVarSystem::Get()->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "fogBlendEnd"_h) = areaLightInfo.finalColorData.fogEnd;
     }
 
-    vec3 UpdateAreaLights::GetLightDirection(f32 timeOfDay)
+    struct CurveKey
     {
-        f32 phiValue = 0;
-        const f32 thetaValue = 3.926991f;
-        const f32 phiTable[4] =
-        {
-            2.2165682f,
-            1.9198623f,
-            2.2165682f,
-            1.9198623f
-        };
+    public:
+        f32 time;
+        f32 value;
+    };
 
-        f32 progressDayAndNight = timeOfDay / 86400.0f;
+    template<std::size_t KeyCount>
+    f32 SampleCyclicLinearCurve(const std::array<CurveKey, KeyCount>& keys, const f32 normalizedTime)
+    {
+        static_assert(KeyCount > 0);
 
-        if (CVAR_SunFullRotation.Get())
+        const f32 time = glm::clamp(normalizedTime, 0.0f, 1.0f);
+
+        std::size_t nextKeyIndex = 0;
+        while (nextKeyIndex < KeyCount && time > keys[nextKeyIndex].time)
         {
-            // Full rotation per day, midnight (progress 0) puts the sun straight down, noon straight up
-            phiValue = progressDayAndNight * glm::two_pi<f32>();
+            ++nextKeyIndex;
+        }
+
+        std::size_t previousKeyIndex;
+        if (nextKeyIndex == 0 || nextKeyIndex == KeyCount)
+        {
+            nextKeyIndex = 0;
+            previousKeyIndex = KeyCount - 1;
         }
         else
         {
-            u32 currentPhiIndex = static_cast<u32>(progressDayAndNight / 0.25f);
-            u32 nextPhiIndex = 0;
-
-            if (currentPhiIndex < 3)
-                nextPhiIndex = currentPhiIndex + 1;
-
-            // Lerp between the current value of phi and the next value of phi
-            {
-                f32 currentTimestamp = currentPhiIndex * 0.25f;
-                f32 nextTimestamp = nextPhiIndex * 0.25f;
-
-                f32 transitionTime = 0.25f;
-                f32 transitionProgress = (progressDayAndNight / 0.25f) - currentPhiIndex;
-
-                f32 currentPhiValue = phiTable[currentPhiIndex];
-                f32 nextPhiValue = phiTable[nextPhiIndex];
-
-                phiValue = glm::mix(currentPhiValue, nextPhiValue, transitionProgress);
-            }
+            previousKeyIndex = nextKeyIndex - 1;
         }
 
-        // Convert from Spherical Position to Cartesian coordinates
-        f32 sinPhi = glm::sin(phiValue);
-        f32 cosPhi = glm::cos(phiValue);
+        const CurveKey& previousKey = keys[previousKeyIndex];
+        const CurveKey& nextKey = keys[nextKeyIndex];
 
-        f32 sinTheta = glm::sin(thetaValue);
-        f32 cosTheta = glm::cos(thetaValue);
+        f32 interval = nextKey.time - previousKey.time;
+        if (interval < 0.0f)
+        {
+            interval += 1.0f;
+        }
 
-        f32 lightDirX = sinPhi * cosTheta;
-        f32 lightDirZ = sinPhi * sinTheta;
-        f32 lightDirY = cosPhi;
+        if (glm::abs(interval) < 0.001f)
+        {
+            return previousKey.value;
+        }
 
-        // Points toward the sun (the shading convention); SVSM consumers negate this to get the
-        // direction the light travels
-        return vec3(lightDirX, -lightDirY, -lightDirZ);
+        f32 elapsed = time - previousKey.time;
+        if (elapsed < 0.0f)
+        {
+            elapsed += 1.0f;
+        }
+
+        const f32 a = previousKey.value;
+        const f32 b = nextKey.value;
+        const f32 interpolation = elapsed / interval;
+        return std::lerp(a, b, interpolation);
+    }
+
+    f32 WrapNormalizedTime(const f32 normalizedTime)
+    {
+        return normalizedTime - glm::floor(normalizedTime);
+    }
+
+    glm::vec3 CalculateDirectionToSun(const f32 normalizedTimeOfDay, const bool useFullRotation)
+    {
+
+        f32 theta = 0.0f;
+        f32 phi = 0.0f;
+
+        if (useFullRotation)
+        {
+            const f32 time = WrapNormalizedTime(normalizedTimeOfDay);
+
+            // 00:00 = directly below
+            // 06:00 = horizon
+            // 12:00 = directly above
+            // 18:00 = opposite horizon
+            theta = glm::pi<f32>() - time * glm::two_pi<f32>();
+
+            // Keeps the original 45-degree northeast/southwest orbital plane.
+            phi = glm::quarter_pi<f32>();
+        }
+        else
+        {
+            constexpr std::array<CurveKey, 5> sunThetaCurve =
+            { {
+                { 0.2292f, 1.7453f },
+                { 0.4965f, 0.0873f },
+                { 0.5000f, 0.0873f },
+                { 0.5035f, 0.0873f },
+                { 0.8958f, 1.7453f }
+            } };
+
+            constexpr std::array<CurveKey, 3> sunPhiCurve =
+            { {
+                { 0.2292f, 0.7854f },
+                { 0.5000f, 0.7854f },
+                { 0.8958f, 0.7854f }
+            } };
+
+            theta = SampleCyclicLinearCurve(sunThetaCurve, normalizedTimeOfDay);
+            phi = SampleCyclicLinearCurve(sunPhiCurve, normalizedTimeOfDay);
+        }
+
+        const f32 sinTheta = glm::sin(theta);
+        const f32 cosTheta = glm::cos(theta);
+        const f32 sinPhi = glm::sin(phi);
+        const f32 cosPhi = glm::cos(phi);
+
+        const glm::vec3 directionToSun(-sinPhi * sinTheta, cosTheta, cosPhi * sinTheta);
+        return glm::normalize(directionToSun);
+    }
+
+    vec3 UpdateAreaLights::GetLightDirection(f32 timeOfDay)
+    {
+        f32 progress = timeOfDay / 86400.0f;
+        f32 progressDayAndNight = glm::clamp(progress, 0.0f, 1.0f);
+
+        const glm::vec3 result = CalculateDirectionToSun(progressDayAndNight, CVAR_SunFullRotation.Get());
+        return result;
     }
 }

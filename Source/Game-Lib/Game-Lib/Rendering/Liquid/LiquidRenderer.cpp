@@ -544,7 +544,7 @@ void LiquidRenderer::CreatePermanentResources()
     dataTextureDesc.data = new u8[4]{ 0, 0, 0, 255 }; // Black color, because liquid textures are additive
     dataTextureDesc.debugName = "LiquidDebugTexture";
 
-    u32 arrayIndex = 0;
+    size_t arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
     Renderer::SamplerDesc samplerDesc;
@@ -617,7 +617,7 @@ void LiquidRenderer::CreatePermanentResources()
             textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
             textureDesc.size = fileHandle.GetSize();
 
-            u32 index;
+            size_t index;
             _renderer->LoadDataTextureIntoArray(textureDesc, _textures, index);
 
             if (i == 0)

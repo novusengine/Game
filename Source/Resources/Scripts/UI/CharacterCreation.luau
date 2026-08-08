@@ -1,9 +1,9 @@
-local UIAtlasPanel : AtlasPanelAPI = require("@src/API/UI/AtlasPanel")
+local UIAtlasPanel = require("@src/API/UI/AtlasPanel")
 local UIButton = require("@src/API/UI/Button")
-local UIComboBox = require("@src/API/UI/ComboBox")
+local Dropdown = require("@src/API/UI/Dropdown")
 local UIInputBox = require("@src/API/UI/InputBox")
-local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox")
-local UIStack : StackAPI = require("@src/API/UI/UIStack")
+local UIScrollBox = require("@src/API/UI/ScrollBox")
+local FrameManager = require("@src/API/Game/FrameManager")
 local UIVerticalLayout = require("@src/API/UI/VerticalLayout")
 local UIHorizontalLayout = require("@src/API/UI/HorizontalLayout")
 local UIGridLayout = require("@src/API/UI/GridLayout")
@@ -280,19 +280,19 @@ local function CreateFactionSelectPanel(characterCreationScreen : CharacterCreat
     local s = math.floor(math.min(columnWidth, panelHeight / (maxNumRaces + 1)));
     local spacing = math.floor((panelHeight - maxNumRaces * s - 30) / math.max(1, maxNumRaces));
 
-    local column = UIVerticalLayout.NewVerticalLayout(parent, 0, 0, columnWidth, panelHeight, 0, {
+    local column = UIVerticalLayout.New(parent, vec.New(0, 0), vec.New(columnWidth, panelHeight), 0i, {
         panelTemplate = "DebugRed", alpha = 0.0,
         alignH = "center",
         spacing = spacing,
         paddingTop = 0,
     });
 
-    column:NewText(factionInfo.name, 0, 0, 0, "YellowText");
+    column:NewText(factionInfo.name, vec.New(0, 0), 0i, "YellowText");
 
     for i = 1, #factionInfo.races do
         local race = factionInfo.races[i];
 
-        local raceButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(column, 0, 0, s, s, 0, {
+        local raceButton : UIAtlasPanel.AtlasPanel = UIAtlasPanel.New(column, vec.New(0, 0), vec.New(s, s), 0i, {
             texture = factionInfo.raceAtlasTexture,
             numTexturesX = factionInfo.raceAtlasTextureNumTexturesX,
             numTexturesY = factionInfo.raceAtlasTextureNumTexturesY,
@@ -327,7 +327,7 @@ local function CreateRaceSelectPanel(characterCreationScreen : CharacterCreation
     local factionSelectWidth = math.floor((optionsWidth - (numFactions + 1) * paddingX) / numFactions);
 
     -- Outer H layout splits the row into N equal-width columns with paddingX gutters.
-    local row = UIHorizontalLayout.NewHorizontalLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+    local row = UIHorizontalLayout.New(parent, vec.New(0, 0), vec.New(optionsWidth, panelHeight), 0i, {
         panelTemplate = "DebugRed", alpha = 0.0,
         spacing = paddingX, paddingLeft = paddingX, paddingRight = paddingX,
         defaultChildOpts = { modeY = "flex" },  -- columns fill the row height
@@ -351,12 +351,12 @@ local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreati
     -- centers it horizontally via alignH="center" set by the caller (CreateLeftPanel).
     -- H layout fills the full parent width; alignH="center" packs the icon pair into the
     -- middle of the row instead of starting at the left edge.
-    local row = UIHorizontalLayout.NewHorizontalLayout(parent, 0, 0, parent:GetWidth(), panelHeight, 0, {
+    local row = UIHorizontalLayout.New(parent, vec.New(0, 0), vec.New(parent:GetWidth(), panelHeight), 0i, {
         panelTemplate = "DebugRed", alpha = 0.0,
         spacing = padding, alignV = "center", alignH = "center",
     });
 
-    local maleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
+    local maleButton : UIAtlasPanel.AtlasPanel = UIAtlasPanel.New(row, vec.New(0, 0), vec.New(iconSize, iconSize), 0i, {
         texture = "texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
         numTexturesX = 2, numTexturesY = 1,
     });
@@ -365,7 +365,7 @@ local function CreateGenderSelectPanel(characterCreationScreen : CharacterCreati
     end);
     table.insert(characterCreationScreen.buttons.genderButtons, maleButton);
 
-    local femaleButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(row, 0, 0, iconSize, iconSize, 0, {
+    local femaleButton : UIAtlasPanel.AtlasPanel = UIAtlasPanel.New(row, vec.New(0, 0), vec.New(iconSize, iconSize), 0i, {
         texture = "texture/interface/glues/charactercreate/ui-charactercreate-gender.dds",
         numTexturesX = 2, numTexturesY = 1, atlasIndex = 2,
     });
@@ -391,7 +391,7 @@ local function CreateClassSelectPanel(characterCreationScreen : CharacterCreatio
     local availableHeightPerIcon = (panelHeight - (rows - 1) * padding) / rows;
     local iconSize = math.min(math.floor(math.min(availableWidthPerIcon, availableHeightPerIcon)), maxIconSize);
 
-    local grid = UIGridLayout.NewGridLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+    local grid = UIGridLayout.New(parent, vec.New(0, 0), vec.New(optionsWidth, panelHeight), 0i, {
         panelTemplate = "DebugRed", alpha = 0.0,
         columns = columns,
         cellSizeX = iconSize, cellSizeY = iconSize,
@@ -401,7 +401,7 @@ local function CreateClassSelectPanel(characterCreationScreen : CharacterCreatio
     });
 
     for i, classInfo in classInfos do
-        local classButton : AtlasPanel = UIAtlasPanel.NewAtlasPanel(grid, 0, 0, iconSize, iconSize, 0, {
+        local classButton : UIAtlasPanel.AtlasPanel = UIAtlasPanel.New(grid, vec.New(0, 0), vec.New(iconSize, iconSize), 0i, {
             texture = classInfo.iconAtlasTexture,
             numTexturesX = classInfo.iconAtlasTextureNumTexturesX,
             numTexturesY = classInfo.iconAtlasTextureNumTexturesY,
@@ -423,19 +423,13 @@ local function CreateAppearanceSelectPanel(characterCreationScreen : CharacterCr
     local rowHeight = math.floor((panelHeight / #appearanceOptions) - padding);
     local comboBoxWidth = 200;
 
-    local panel = UIVerticalLayout.NewVerticalLayout(parent, 0, 0, optionsWidth, panelHeight, 0, {
+    local panel = UIVerticalLayout.New(parent, vec.New(0, 0), vec.New(optionsWidth, panelHeight), 0i, {
         panelTemplate = "DebugRed", alpha = 0.0,
         spacing = padding,
     });
 
-    -- World position used to anchor the combobox dropdowns to the right of the options panel.
-    -- Computed up-front because the combobox.selectionPanel positioning is independent of the row layout.
-    local sidePanelPosX, sidePanelPosY = panel:GetWorldPos();
-    sidePanelPosX += optionsWidth;
-    sidePanelPosY += panelHeight;
-
     for i = 1, #appearanceOptions do
-        local row = UIHorizontalLayout.NewHorizontalLayout(panel, 0, 0, optionsWidth, rowHeight, 0, {
+        local row = UIHorizontalLayout.New(panel, vec.New(0, 0), vec.New(optionsWidth, rowHeight), 0i, {
             panelTemplate = "DebugRed", alpha = 0.0,
             alignV = "center",
             paddingLeft = 5, paddingRight = padding,
@@ -443,19 +437,20 @@ local function CreateAppearanceSelectPanel(characterCreationScreen : CharacterCr
         panel:SetChildOpts(row, { sizeY = rowHeight, modeX = "flex" });
 
         -- Order matters: create label, spacer (flex, fills remaining), then combobox at the right.
-        local optionName : Text = row:NewText(appearanceOptions[i].name, 0, 0, 0, "YellowText");
-        local spacer = row:NewWidget(0, 0, 0);
-        local comboBox = UIComboBox.NewComboBox(row, 0, 0, comboBoxWidth, rowHeight, 0, {
-            options = appearanceOptions[i].options,
-            disableButtons = true,
+        local optionName : TextWidget = row:NewText(appearanceOptions[i].name, vec.New(0, 0), 0i, "YellowText");
+        local spacer = row:NewWidget(vec.New(0, 0), 0i);
+        local dropdownOptions = { };
+        for optionIndex, optionLabel in appearanceOptions[i].options do
+            table.insert(dropdownOptions, { label = optionLabel, value = optionIndex });
+        end
+        local comboBox = Dropdown.New(row, characterCreationScreen.canvas, vec.New(0, 0), vec.New(comboBoxWidth, rowHeight), 0i, {
+            options = dropdownOptions,
+            value = 1,
         });
 
         row:SetChildOpts(spacer,   { modeX = "flex", weightX = 1 });
         row:SetChildOpts(comboBox, { sizeX = comboBoxWidth });
 
-        comboBox.selectionPanel:SetWorldPos(sidePanelPosX, sidePanelPosY);
-        comboBox.selectionPanel:SetAnchor(0.0, 0.0);
-        comboBox.selectionPanel:SetRelativePoint(0.0, 1.0);
     end
 
     return panel;
@@ -474,12 +469,13 @@ local function CreateLeftPanel(characterCreationScreen : CharacterCreationScreen
     local appearanceHeight = optionsHeight - raceSelectHeight - genderSelectHeight - classSelectHeight - spacing * 3;
 
     -- optionsPanel is a V layout: subpanels become its children stacked top-down.
-    characterCreationScreen.optionsPanel = UIVerticalLayout.NewVerticalLayout(
-        characterCreationScreen.widget, 20, -80, optionsWidth, optionsHeight, 0,
-        { panelTemplate = "DialogBox", spacing = spacing });
-    characterCreationScreen.optionsPanel:SetAnchor(0.0, 1.0);
-    characterCreationScreen.optionsPanel:SetRelativePoint(0.0, 1.0);
-    characterCreationScreen.optionsPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    characterCreationScreen.optionsPanel = UIVerticalLayout.New( characterCreationScreen.widget, vec.New(20, -80), vec.New(optionsWidth, optionsHeight), 0i, {
+        panelTemplate = "DialogBox",
+        spacing = spacing
+    });
+    characterCreationScreen.optionsPanel:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.optionsPanel:SetRelativePoint(vec.New(0.0, 1.0));
+    characterCreationScreen.optionsPanel:SetBorderColor(vec.New(0.1, 0.1, 0.1));
     characterCreationScreen.optionsPanel:SetBorderSize(2);
 
     local optionsPanel = characterCreationScreen.optionsPanel;
@@ -499,65 +495,66 @@ end
 
 local function CreateMiddlePanel(characterCreationScreen : CharacterCreationScreen)
     -- Name label
-    local nameLabel : Text = characterCreationScreen.widget:NewText("Name", 0, 100, 0, "YellowText");
-    nameLabel:SetAnchor(0.5, 0.0);
-    nameLabel:SetRelativePoint(0.5, 0.0);
+    local nameLabel : TextWidget = characterCreationScreen.widget:NewText("Name", vec.New(0, 100), 0i, "YellowText");
+    nameLabel:SetAnchor(vec.New(0.5, 0.0));
+    nameLabel:SetRelativePoint(vec.New(0.5, 0.0));
 
     -- Name input box
-    characterCreationScreen.nameInputBox = UIInputBox.NewInputBox(characterCreationScreen.widget, 0, 55, 200, 40, 0, {
+    characterCreationScreen.nameInputBox = UIInputBox.New(characterCreationScreen.widget, vec.New(0, 55), vec.New(200, 40), 0i, {
         defaultText = "",
     });
-    characterCreationScreen.nameInputBox.inputBox:SetAnchor(0.5, 0.0);
-    characterCreationScreen.nameInputBox.button:SetRelativePoint(0.5, 0.0);
-    characterCreationScreen.nameInputBox.button.panel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
-    characterCreationScreen.nameInputBox.button.panel:SetBorderSize(2);
+    characterCreationScreen.nameInputBox:SetAnchor(vec.New(0.5, 0.0));
+    characterCreationScreen.nameInputBox:SetRelativePoint(vec.New(0.5, 0.0));
+    characterCreationScreen.nameInputBox.button.root:SetBorderColor(vec.New(0.1, 0.1, 0.1));
+    characterCreationScreen.nameInputBox.button.root:SetBorderSize(2);
 end
 
-local function UpdateScrollBoxBasedOnContent(scrollBox : ScrollBox, description : Text)
+local function UpdateScrollBoxBasedOnContent(scrollBox : UIScrollBox.ScrollBox, description : TextWidget)
     local text = description:GetRawText();
 
-    local wrapWidth = scrollBox.width;
-    local wrappedText, width, height = UI.WrapText(text, "DefaultButtonText", wrapWidth);
+    local viewportSize = scrollBox:GetViewportSize();
+    local wrapWidth = viewportSize.x;
+    local wrappedText, textSize = UI.WrapText(text, "DefaultButtonText", wrapWidth);
 
-    local scrollBoxHeight = scrollBox.height;
+    local scrollBoxHeight = viewportSize.y;
 
-    if (height > scrollBoxHeight) then
-        wrapWidth = scrollBox.widthWithScrollBar;
-        wrappedText, width, height = UI.WrapText(text, "DefaultButtonText", wrapWidth);
+    if (textSize.y > scrollBoxHeight) then
         scrollBox:SetVerticalScrollBarVisible(true);
+        wrapWidth = scrollBox:GetViewportSize().x;
+        wrappedText, textSize = UI.WrapText(text, "DefaultButtonText", wrapWidth);
     else
         scrollBox:SetVerticalScrollBarVisible(false);
     end
 
-    scrollBox:SetContentHeight(height+5); -- 5 because padding looks better
+    scrollBox:SetContentHeight(textSize.y + 5); -- 5 because padding looks better
     description:SetWrapWidth(wrapWidth);
 end
 
 local function CreateFactionInfoPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, characterInfoWidth : number, factionInfoHeight : number)
     local factionInfo = factionInfos[1];
     
-    local factionInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, factionInfoHeight, 0, "DialogBox");
-    factionInfoPanel:SetAnchor(1.0, 1.0);
-    factionInfoPanel:SetRelativePoint(1.0, 1.0);
-    factionInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    local factionInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(vec.New(0, currentY), vec.New(characterInfoWidth, factionInfoHeight), 0i, "DialogBox");
+    factionInfoPanel:SetAnchor(vec.New(1.0, 1.0));
+    factionInfoPanel:SetRelativePoint(vec.New(1.0, 1.0));
+    factionInfoPanel:SetBorderColor(vec.New(0.1, 0.1, 0.1));
     factionInfoPanel:SetBorderSize(2);
 
     -- Faction icon
     local factionIconSize = 50;
 
-    characterCreationScreen.selectedFactionIcon = UIAtlasPanel.NewAtlasPanel(factionInfoPanel, 0, 0, factionIconSize, factionIconSize, 0, {
+    characterCreationScreen.selectedFactionIcon = UIAtlasPanel.New(factionInfoPanel, vec.New(0, 0), vec.New(factionIconSize, factionIconSize), 0i, {
         texture = factionInfo.factionAtlasTexture,
         numTexturesX = factionInfo.factionAtlasTextureNumTexturesX,
         numTexturesY = factionInfo.factionAtlasTextureNumTexturesY,
         atlasIndex = factionInfo.factionAtlasIndex,
     });
-    characterCreationScreen.selectedFactionIcon:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedFactionIcon:SetRelativePoint(0.2, 0.8);
+    characterCreationScreen.selectedFactionIcon:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedFactionIcon:SetRelativePoint(vec.New(0.2, 0.8));
 
     -- Faction title
-    characterCreationScreen.selectedFactionTitle = factionInfoPanel:NewText(factionInfo.name, factionIconSize, 0, 0, "YellowText");
-    characterCreationScreen.selectedFactionTitle:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedFactionTitle:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedFactionTitle = factionInfoPanel:NewText(factionInfo.name, vec.New(factionIconSize, 0), 0i, "YellowText");
+    characterCreationScreen.selectedFactionTitle:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedFactionTitle:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Faction description scrollbox
     local factionDescriptionAreaOffset = factionIconSize * 0.8;
@@ -565,16 +562,16 @@ local function CreateFactionInfoPanel(characterCreationScreen : CharacterCreatio
     local factionDescriptionPaddingX = 10;
     local factionDescriptionAreaWidth = characterInfoWidth - (factionDescriptionPaddingX * 2);
     
-    characterCreationScreen.selectedFactionDescriptionScrollBox = UIScrollBox.NewScrollBox(factionInfoPanel, factionDescriptionPaddingX, -factionDescriptionAreaOffset, factionDescriptionAreaWidth, factionDescriptionAreaHeight, 0, {
+    characterCreationScreen.selectedFactionDescriptionScrollBox = UIScrollBox.New(factionInfoPanel, vec.New(factionDescriptionPaddingX, -factionDescriptionAreaOffset), vec.New(factionDescriptionAreaWidth, factionDescriptionAreaHeight), 0i, {
         verticalScrollBar = true,
     });
-    characterCreationScreen.selectedFactionDescriptionScrollBox:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedFactionDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedFactionDescriptionScrollBox:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedFactionDescriptionScrollBox:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Faction description
-    characterCreationScreen.selectedFactionDescription = characterCreationScreen.selectedFactionDescriptionScrollBox.content:NewText(factionInfo.factionDescription, 0, 0, 0, "DefaultButtonText");
-    characterCreationScreen.selectedFactionDescription:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedFactionDescription:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedFactionDescription = characterCreationScreen.selectedFactionDescriptionScrollBox.content:NewText(factionInfo.factionDescription, vec.New(0, 0), 0i, "DefaultButtonText");
+    characterCreationScreen.selectedFactionDescription:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedFactionDescription:SetRelativePoint(vec.New(0.0, 1.0));
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedFactionDescriptionScrollBox, characterCreationScreen.selectedFactionDescription);
 
@@ -585,43 +582,43 @@ local function CreateRaceInfoPanel(characterCreationScreen : CharacterCreationSc
     local factionInfo = factionInfos[1];
     local race = factionInfo.races[1];
 
-    local raceInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, raceInfoHeight, 0, "DialogBox");
-    raceInfoPanel:SetAnchor(1.0, 1.0);
-    raceInfoPanel:SetRelativePoint(1.0, 1.0);
-    raceInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    local raceInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(vec.New(0, currentY), vec.New(characterInfoWidth, raceInfoHeight), 0i, "DialogBox");
+    raceInfoPanel:SetAnchor(vec.New(1.0, 1.0));
+    raceInfoPanel:SetRelativePoint(vec.New(1.0, 1.0));
+    raceInfoPanel:SetBorderColor(vec.New(0.1, 0.1, 0.1));
     raceInfoPanel:SetBorderSize(2);
 
     -- Race icon
     local raceIconSize = 50;
 
-    characterCreationScreen.selectedRaceIcon = UIAtlasPanel.NewAtlasPanel(raceInfoPanel, 0, 0, raceIconSize, raceIconSize, 0, {
+    characterCreationScreen.selectedRaceIcon = UIAtlasPanel.New(raceInfoPanel, vec.New(0, 0), vec.New(raceIconSize, raceIconSize), 0i, {
         texture = factionInfo.raceAtlasTexture,
         numTexturesX = factionInfo.raceAtlasTextureNumTexturesX,
         numTexturesY = factionInfo.raceAtlasTextureNumTexturesY,
         atlasIndex = race.genderIndexToRaceAtlasIndex[1],
     });
-    characterCreationScreen.selectedRaceIcon:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedRaceIcon:SetRelativePoint(0.2, 0.8);
+    characterCreationScreen.selectedRaceIcon:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedRaceIcon:SetRelativePoint(vec.New(0.2, 0.8));
 
     -- Race Title
-    characterCreationScreen.selectedRaceTitle = raceInfoPanel:NewText(race.name, raceIconSize, 0, 0, "YellowText");
-    characterCreationScreen.selectedRaceTitle:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedRaceTitle:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedRaceTitle = raceInfoPanel:NewText(race.name, vec.New(raceIconSize, 0), 0i, "YellowText");
+    characterCreationScreen.selectedRaceTitle:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedRaceTitle:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Race description scrollbox
     local raceDescriptionAreaOffset = raceIconSize * 0.8;
     local raceDescriptionAreaHeight = raceInfoHeight - raceDescriptionAreaOffset;
     local raceDescriptionAreaWidth = characterInfoWidth-20;
-    characterCreationScreen.selectedRaceDescriptionScrollBox = UIScrollBox.NewScrollBox(raceInfoPanel, 10, -raceDescriptionAreaOffset, raceDescriptionAreaWidth, raceDescriptionAreaHeight, 0, {
+    characterCreationScreen.selectedRaceDescriptionScrollBox = UIScrollBox.New(raceInfoPanel, vec.New(10, -raceDescriptionAreaOffset), vec.New(raceDescriptionAreaWidth, raceDescriptionAreaHeight), 0i, {
         verticalScrollBar = true,
     });
-    characterCreationScreen.selectedRaceDescriptionScrollBox:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedRaceDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedRaceDescriptionScrollBox:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedRaceDescriptionScrollBox:SetRelativePoint(vec.New(0.0, 1.0));
     
     -- Race description
-    characterCreationScreen.selectedRaceDescription = characterCreationScreen.selectedRaceDescriptionScrollBox.content:NewText(race.description, 0, 0, 0, "DefaultButtonText");
-    characterCreationScreen.selectedRaceDescription:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedRaceDescription:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedRaceDescription = characterCreationScreen.selectedRaceDescriptionScrollBox.content:NewText(race.description, vec.New(0, 0), 0i, "DefaultButtonText");
+    characterCreationScreen.selectedRaceDescription:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedRaceDescription:SetRelativePoint(vec.New(0.0, 1.0));
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedRaceDescriptionScrollBox, characterCreationScreen.selectedRaceDescription);
 
@@ -631,43 +628,43 @@ end
 local function CreateClassInfoPanel(characterCreationScreen : CharacterCreationScreen, currentY : number, characterInfoWidth : number, classInfoHeight : number)
     local classInfo = classInfos[1];
     
-    local classInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(0, currentY, characterInfoWidth, classInfoHeight, 0, "DialogBox");
-    classInfoPanel:SetAnchor(1.0, 1.0);
-    classInfoPanel:SetRelativePoint(1.0, 1.0);
-    classInfoPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    local classInfoPanel : Panel = characterCreationScreen.characterInfoPanel:NewPanel(vec.New(0, currentY), vec.New(characterInfoWidth, classInfoHeight), 0i, "DialogBox");
+    classInfoPanel:SetAnchor(vec.New(1.0, 1.0));
+    classInfoPanel:SetRelativePoint(vec.New(1.0, 1.0));
+    classInfoPanel:SetBorderColor(vec.New(0.1, 0.1, 0.1));
     classInfoPanel:SetBorderSize(2);
 
     -- Class icon
     local classIconSize = 50;
 
-    characterCreationScreen.selectedClassIcon = UIAtlasPanel.NewAtlasPanel(classInfoPanel, 0, 0, classIconSize, classIconSize, 0, {
+    characterCreationScreen.selectedClassIcon = UIAtlasPanel.New(classInfoPanel, vec.New(0, 0), vec.New(classIconSize, classIconSize), 0i, {
         texture = classInfo.iconAtlasTexture,
         numTexturesX = classInfo.iconAtlasTextureNumTexturesX,
         numTexturesY = classInfo.iconAtlasTextureNumTexturesY,
         atlasIndex = classInfo.iconAtlasIndex,
     });
-    characterCreationScreen.selectedClassIcon:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedClassIcon:SetRelativePoint(0.2, 0.8);
+    characterCreationScreen.selectedClassIcon:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedClassIcon:SetRelativePoint(vec.New(0.2, 0.8));
 
     -- Class Title
-    characterCreationScreen.selectedClassTitle = classInfoPanel:NewText(classInfo.name, classIconSize, 0, 0, "YellowText");
-    characterCreationScreen.selectedClassTitle:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedClassTitle:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedClassTitle = classInfoPanel:NewText(classInfo.name, vec.New(classIconSize, 0), 0i, "YellowText");
+    characterCreationScreen.selectedClassTitle:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedClassTitle:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Class description area
     local classDescriptionAreaOffset = classIconSize * 0.8;
     local classDescriptionAreaHeight = classInfoHeight - classDescriptionAreaOffset;
     local classDescriptionAreaWidth = characterInfoWidth-20;
-    characterCreationScreen.selectedClassDescriptionScrollBox = UIScrollBox.NewScrollBox(classInfoPanel, 10, -classDescriptionAreaOffset, classDescriptionAreaWidth, classDescriptionAreaHeight, 0, {
+    characterCreationScreen.selectedClassDescriptionScrollBox = UIScrollBox.New(classInfoPanel, vec.New(10, -classDescriptionAreaOffset), vec.New(classDescriptionAreaWidth, classDescriptionAreaHeight), 0i, {
         verticalScrollBar = true,
     });
-    characterCreationScreen.selectedClassDescriptionScrollBox:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedClassDescriptionScrollBox:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedClassDescriptionScrollBox:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedClassDescriptionScrollBox:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Class description
-    characterCreationScreen.selectedClassDescription = characterCreationScreen.selectedClassDescriptionScrollBox.content:NewText(classInfo.description, 0, 0, 0, "DefaultButtonText");
-    characterCreationScreen.selectedClassDescription:SetAnchor(0.0, 1.0);
-    characterCreationScreen.selectedClassDescription:SetRelativePoint(0.0, 1.0);
+    characterCreationScreen.selectedClassDescription = characterCreationScreen.selectedClassDescriptionScrollBox.content:NewText(classInfo.description, vec.New(0, 0), 0i, "DefaultButtonText");
+    characterCreationScreen.selectedClassDescription:SetAnchor(vec.New(0.0, 1.0));
+    characterCreationScreen.selectedClassDescription:SetRelativePoint(vec.New(0.0, 1.0));
 
     UpdateScrollBoxBasedOnContent(characterCreationScreen.selectedClassDescriptionScrollBox, characterCreationScreen.selectedClassDescription);
 
@@ -685,11 +682,13 @@ local function CreateRightPanel(characterCreationScreen : CharacterCreationScree
 
     -- characterInfoPanel becomes a V layout. The three info subpanels stack with `spacing` between them.
     -- alpha=0.2 preserves the dialog tint that the original SetAlpha(0.2) set on the container.
-    characterCreationScreen.characterInfoPanel = UIVerticalLayout.NewVerticalLayout(
-        characterCreationScreen.widget, -20, -40, characterInfoWidth, characterInfoPanelHeight, 0,
-        { panelTemplate = "DialogBox", alpha = 0.2, spacing = spacing });
-    characterCreationScreen.characterInfoPanel:SetAnchor(1.0, 1.0);
-    characterCreationScreen.characterInfoPanel:SetRelativePoint(1.0, 1.0);
+    characterCreationScreen.characterInfoPanel = UIVerticalLayout.New(characterCreationScreen.widget, vec.New(-20, -40), vec.New(characterInfoWidth, characterInfoPanelHeight), 0i, {
+        panelTemplate = "DialogBox",
+        alpha = 0.2,
+        spacing = spacing
+    });
+    characterCreationScreen.characterInfoPanel:SetAnchor(vec.New(1.0, 1.0));
+    characterCreationScreen.characterInfoPanel:SetRelativePoint(vec.New(1.0, 1.0));
 
     local right = characterCreationScreen.characterInfoPanel;
 
@@ -704,30 +703,28 @@ local function CreateRightPanel(characterCreationScreen : CharacterCreationScree
     right:SetChildOpts(classPanel,   { sizeY = classInfoHeight,   modeX = "flex" });
 
     -- Accept button
-    local acceptButton = UIButton.NewButton(characterCreationScreen.widget, -20, 80, 200, 40, 0, {
+    local acceptButton = UIButton.New(characterCreationScreen.widget, vec.New(-20, 80), vec.New(200, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
     });
-    acceptButton:SetAnchor(1.0, 0.0);
-    acceptButton:SetRelativePoint(1.0, 0.0);
+    acceptButton:SetAnchor(vec.New(1.0, 0.0));
+    acceptButton:SetRelativePoint(vec.New(1.0, 0.0));
     acceptButton:SetText("Accept");
     acceptButton:SetOnMouseUp(function(eventID, widget, ...)
-        local stack = UIStack.Get("Menu");
         -- TODO: Create character
-        stack:Pop();
+        FrameManager.Open("CharacterSelect");
     end);
 
     -- Back button
-    local backButton = UIButton.NewButton(characterCreationScreen.widget, -30, 40, 180, 30, 0, {
+    local backButton = UIButton.New(characterCreationScreen.widget, vec.New(-30, 40), vec.New(180, 30), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
     });
-    backButton:SetAnchor(1.0, 0.0);
-    backButton:SetRelativePoint(1.0, 0.0);
+    backButton:SetAnchor(vec.New(1.0, 0.0));
+    backButton:SetRelativePoint(vec.New(1.0, 0.0));
     backButton:SetText("Back");
     backButton:SetOnMouseUp(function(eventID, widget, ...)
-        local stack = UIStack.Get("Menu");
-        stack:Push("CharacterSelect");
+        FrameManager.Open("CharacterSelect");
     end);
 end
 
@@ -738,9 +735,9 @@ local function CreateCharacterCreationScreenMethods(characterCreationScreen : Ch
         -- Set the color of the option buttons
         for i, button in self.buttons.raceButtons do
             if i == raceIndex then
-                button:SetColor(vector.create(1.0, 1.0, 1.0));
+                button:SetColor(vec.New(1.0, 1.0, 1.0));
             else
-                button:SetColor(vector.create(0.4, 0.4, 0.4));
+                button:SetColor(vec.New(0.4, 0.4, 0.4));
             end
         end
 
@@ -754,9 +751,9 @@ local function CreateCharacterCreationScreenMethods(characterCreationScreen : Ch
         -- Set the color of the option buttons
         for i, button in self.buttons.genderButtons do
             if i == genderIndex then
-                button:SetColor(vector.create(1.0, 1.0, 1.0));
+                button:SetColor(vec.New(1.0, 1.0, 1.0));
             else
-                button:SetColor(vector.create(0.4, 0.4, 0.4));
+                button:SetColor(vec.New(0.4, 0.4, 0.4));
             end
         end
 
@@ -769,9 +766,9 @@ local function CreateCharacterCreationScreenMethods(characterCreationScreen : Ch
         -- Set the color of the option buttons
         for i, button in self.buttons.classButtons do
             if i == classIndex then
-                button:SetColor(vector.create(1.0, 1.0, 1.0));
+                button:SetColor(vec.New(1.0, 1.0, 1.0));
             else
-                button:SetColor(vector.create(0.4, 0.4, 0.4));
+                button:SetColor(vec.New(0.4, 0.4, 0.4));
             end
         end
 
@@ -838,17 +835,17 @@ local function CreateCharacterCreationScreenMethods(characterCreationScreen : Ch
     return characterCreationScreen;
 end
 
-local function CreateCharacterCreationScreen(stack : Stack)
+local function CreateCharacterCreationScreen()
     local characterCreationScreen : CharacterCreationScreen = {};
 
     -- Create Canvas
-    characterCreationScreen.canvas = UI.GetCanvas("CharacterCreate", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
+    characterCreationScreen.canvas = UI.GetCanvas("CharacterCreate", vec.New(0, 0), vec.New(1920, 1080)); -- TODO: We don't want to hardcode the reference resolution here
     
     -- Create widget covering whole canvas
-    characterCreationScreen.widget = characterCreationScreen.canvas:NewWidget(0, 0, 0);
+    characterCreationScreen.widget = characterCreationScreen.canvas:NewWidget(vec.New(0, 0), 0i);
     characterCreationScreen.widget:SetEnabled(false);
-    characterCreationScreen.widget:SetAnchor(0.5, 0.5);
-    characterCreationScreen.widget:SetRelativePoint(0.5, 0.5);
+    characterCreationScreen.widget:SetAnchor(vec.New(0.5, 0.5));
+    characterCreationScreen.widget:SetRelativePoint(vec.New(0.5, 0.5));
 
     -- Create panels
     characterCreationScreen.buttons = {};
@@ -880,16 +877,17 @@ local function CreateCharacterCreationScreen(stack : Stack)
     characterCreationScreen:SetGender(1);
     characterCreationScreen:SetClass(1);
 
-    stack:Register("CharacterCreation", characterCreationScreen.widget, 0); -- Name, widget, slot, onPush, onPop
-    --stack:Push("CharacterCreation");
+    FrameManager.Register("CharacterCreation", {
+        root = characterCreationScreen.widget,
+        role = "System",
+        dismissible = false,
+    });
 
     return characterCreationScreen;
 end
 
-local function OnGameLoaded(eventID : number, data : any)
-    local stack = UIStack.Get("Menu")
-
-    characterCreationScreen = CreateCharacterCreationScreen(stack);
+local function OnGameLoaded(eventID : integer, data : any)
+    characterCreationScreen = CreateCharacterCreationScreen();
 end
 
-RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded);

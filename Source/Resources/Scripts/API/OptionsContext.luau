@@ -1,34 +1,44 @@
 -- Category / Group / Section
 
 -- OptionType
-local optionType : OptionType = {
+export type OptionTypes = { InputBox : number, Checkbox : number, Slider : number, ComboBox : number }
+export type OptionCategoryTypes = { Gameplay : string, Keybindings : string, Accessibility : string, System : string }
+
+local optionType : OptionTypes = {
     InputBox = 0,
     Checkbox = 1,
     Slider = 2,
     ComboBox = 3,
 }
-OptionType = optionType;
 
 -- OptionCategory
-local optionCategoryType : OptionCategoryType = {
+local optionCategoryType : OptionCategoryTypes = {
     Gameplay = "Gameplay",
     Keybindings = "Keybindings",
     Accessibility = "Accessibility",
     System = "System",
 }
-OptionCategoryType = optionCategoryType;
 
--- Option
-type Callback =
+export type LookupTable<T> =
 {
-    version : number,
-    callback : { (self : Option, value : any) -> boolean },
+    nameToIndex : { [string]: number },
+    list : { T },
+
+    Get : (self : LookupTable<T>, name : string) -> number,
+    Has : (self : LookupTable<T>, name : string) -> boolean,
 }
 
-type Option = 
+-- Option
+export type Callback =
+{
+    version : number,
+    callback : (self : Option, value : any) -> boolean,
+}
+
+export type Option =
 {
     name : string,
-    type : OptionType,
+    type : number,
 
     defaultValue : any,
     value : any,
@@ -39,41 +49,48 @@ type Option =
     activeCallbacks : { number },
     inactiveCallbacks : { number },
 
-    RegisterOnValueChanged : (self : Option, callback : (self : Option, value : any) -> boolean) -> (),
+    Get : (self : Option) -> any,
+    GetDefault : (self : Option) -> any,
+    Set : (self : Option, value : any) -> (),
+    Reset : (self : Option) -> (),
+    RegisterOnValueChanged : (self : Option, callback : (self : Option, value : any) -> boolean) -> (() -> ()),
     InvokeOnValueChanged : (self : Option, value : any) -> boolean,
 }
 
 -- OptionsSection
-type OptionsSection =
+export type OptionsSection =
 {
     name : string,
     options : LookupTable<Option>,
+    GetOption : (self : OptionsSection, name : string) -> Option,
+    RegisterOption : (self : OptionsSection, name : string, defaultValue : any, optionType : number, settings : table?) -> Option,
 }
 
 -- OptionsGroup
-type OptionsGroup =
+export type OptionsGroup =
 {
     name : string,
     sections : LookupTable<OptionsSection>,
+    Get : (self : OptionsGroup, name : string) -> OptionsSection,
 }
 
 -- OptionsCategory
-type OptionsCategory =
+export type OptionsCategory =
 {
     name : string,
     groups : LookupTable<OptionsGroup>,
+    Get : (self : OptionsCategory, name : string) -> OptionsGroup,
 }
 
 -- Context
-type OptionsContext =
+export type OptionsContext =
 {
+    OptionType : OptionTypes,
+    OptionCategoryType : OptionCategoryTypes,
     categories : LookupTable<OptionsCategory>,
-}
-
--- LookupTable
-type LookupTable<T> = {
-    nameToIndex : { [string]: number },
-    list : { T },
+    GetCategory : (self : OptionsContext, category : string) -> OptionsCategory,
+    GetCategories : (self : OptionsContext) -> { OptionsCategory },
+    Has : (self : OptionsContext, name : string) -> boolean,
 }
 
 -- Metatables
@@ -90,7 +107,7 @@ local OptionMetatable = {
     Reset = function(self : Option) : ()
         self.value = self.defaultValue;
     end,
-    RegisterOnValueChanged = function(self : Option, callback : (self : Option, value : any) -> boolean) : ()
+    RegisterOnValueChanged = function(self : Option, callback : (self : Option, value : any) -> boolean) : (() -> ())
         -- Check if we have an inactiveCallback to reuse
         local index = nil;
         local version = 1;
@@ -130,7 +147,7 @@ local OptionMetatable = {
 
         return cancelFunction;
     end,
-    InvokeOnValueChanged = function(self : Option, value : any) : ()
+    InvokeOnValueChanged = function(self : Option, value : any) : boolean
         local result = true;
         for i, index in self.activeCallbacks do
             local callbackTable = self.onValueChangedCallbacks[index];
@@ -173,7 +190,7 @@ local SectionMetatable = {
         local index = self.options:Get(name);
         return self.options.list[index];
     end,
-    RegisterOption = function(self : OptionsSection, name : string, defaultValue : any, type : OptionType, settings : table) : Option
+    RegisterOption = function(self : OptionsSection, name : string, defaultValue : any, type : number, settings : table?) : Option
         if (self.options:Has(name)) then
             error(`Section {self.name} already has option {name}`, 2);
         end
@@ -201,10 +218,10 @@ local GroupMetatable = {
         if (not self.sections:Has(name)) then
             local index = self.sections:Get(name);
             local object = self.sections.list[index];
-            object.options = {
+            object.options = ({
                 nameToIndex = {},
                 list = {},
-            };
+            } :: any);
 
             setmetatable(object, SectionMetatable);
             setmetatable(object.options, LookupTableMetatable);
@@ -224,10 +241,10 @@ local CategoryMetatable = {
         if (not self.groups:Has(name)) then
             local index = self.groups:Get(name);
             local object = self.groups.list[index];
-            object.sections = {
+            object.sections = ({
                 nameToIndex = {},
                 list = {},
-            };
+            } :: any);
 
             setmetatable(object, GroupMetatable);
             setmetatable(object.sections, LookupTableMetatable);
@@ -243,14 +260,14 @@ CategoryMetatable.__index = CategoryMetatable;
 setmetatable(CategoryMetatable, LookupTableMetatable);
 
 local ContextMetatable = {
-    GetCategory = function(self : OptionsContext, optionCategory : OptionCategoryType) : OptionsCategory
+    GetCategory = function(self : OptionsContext, optionCategory : string) : OptionsCategory
         if (not self:Has(optionCategory)) then
             local index = LookupTableMetatable.Get(self.categories, optionCategory);
             local object = self.categories.list[index];
-            object.groups = {
+            object.groups = ({
                 nameToIndex = {},
                 list = {},
-            };
+            } :: any);
 
             setmetatable(object, CategoryMetatable);
             setmetatable(object.groups, LookupTableMetatable);
@@ -271,22 +288,22 @@ local ContextMetatable = {
 ContextMetatable.__index = ContextMetatable;
 
 local optionsContext : OptionsContext = {
-    categories = {
+    OptionType = optionType,
+    OptionCategoryType = optionCategoryType,
+    categories = ({
         nameToIndex = {},
         list = {},
-    }
+    } :: any)
 };
 
--- This might look ugly but it's needed to make the context global and not as a copy
-__global_optionsContext = optionsContext;
-setmetatable(__global_optionsContext, ContextMetatable);
+setmetatable(optionsContext, ContextMetatable);
 
-__global_optionsContext:GetCategory(OptionCategoryType.Gameplay);
-__global_optionsContext:GetCategory(OptionCategoryType.Keybindings);
-__global_optionsContext:GetCategory(OptionCategoryType.Accessibility);
-__global_optionsContext:GetCategory(OptionCategoryType.System);
+optionsContext:GetCategory(optionCategoryType.Gameplay);
+optionsContext:GetCategory(optionCategoryType.Keybindings);
+optionsContext:GetCategory(optionCategoryType.Accessibility);
+optionsContext:GetCategory(optionCategoryType.System);
 
-return __global_optionsContext;
+return optionsContext;
 
 -- Usage:
 --local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);

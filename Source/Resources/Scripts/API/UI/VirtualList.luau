@@ -12,7 +12,7 @@ Because a pooled row is reused for different items, `bindRow` must set the row's
 every call (text, selected/unselected look), and any handler created in `createRow` must read the
 row's CURRENTLY bound item (stored on the handle by `bindRow`), never a captured index.
 
-    local list = VirtualList.NewVirtualList(parent, x, y, w, h, layer, {
+    local list = VirtualList.New(parent, vec.New(x, y), vec.New(w, h), layer, {
         rowHeight = 16,
         scrollBox = { panelTemplate = "DebugDarkGrey", contentSizeX = w, verticalScrollBar = true,
                       scrollBarWidth = 10, alpha = 0.0 },
@@ -24,12 +24,29 @@ row's CURRENTLY bound item (stored on the handle by `bindRow`), never a captured
 ]]
 
 local ScrollBox = require("@src/API/UI/ScrollBox")
+local RootedWidget = require("@src/API/UI/RootedWidget")
 
 local OFFSCREEN_Y = -100000 -- park unused rows far outside the viewport (clipped)
 
-local virtualListAPI = {}
+export type Options =
+{
+    rowHeight : number?,
+    createRow : (parent : Widget) -> any,
+    bindRow : (row : any, index : number, item : any) -> (),
+    scrollBox : ScrollBox.ScrollBoxTemplate?,
+}
+export type VirtualList =
+{
+    root : Panel,
+    SetItems : (self : VirtualList, items : { any }, preserveScroll : boolean?) -> (),
+    Refresh : (self : VirtualList) -> (),
+    SetAnchor : (self : VirtualList, anchor : vec) -> (),
+    SetRelativePoint : (self : VirtualList, point : vec) -> (),
+}
+export type VirtualListAPI = { New : (parent : Widget, position : vec, size : vec, layer : integer, options : Options) -> VirtualList }
+local virtualListAPI : VirtualListAPI = {}
 
-function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, opts)
+function virtualListAPI.New(parent : Widget, position : vec, size : vec, layer : integer, opts : Options)
     opts = opts or {}
 
     local self = {
@@ -39,13 +56,15 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
         items      = {},
         realized   = {},   -- [index0] = row
         recyclable = {},   -- rows not mapped to an in-window index (a stack)
-        viewportH  = sizeY,
+        viewportH  = size.y,
         lastFirst  = nil,
     }
 
-    self.scrollBox = ScrollBox.NewScrollBox(parent, posX, posY, sizeX, sizeY, layer, opts.scrollBox or {})
+    self.scrollBox = ScrollBox.New(parent, position, size, layer, opts.scrollBox or {})
+    self.root = self.scrollBox.root
+    RootedWidget.Attach(self)
     self.rowParent = self.scrollBox.content -- rows ride the content scroll
-    self.poolSize = math.ceil(sizeY / self.rowHeight) + 2 -- visible rows + a small buffer
+    self.poolSize = math.ceil(size.y / self.rowHeight) + 2 -- visible rows + a small buffer
 
     for _ = 1, self.poolSize do
         local row = self.createRow(self.rowParent)
@@ -56,7 +75,7 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
 
     function self:Rebind()
         local count = #self.items
-        local scrollPosY = self.scrollBox.scrollPosY or 0
+        local scrollPosY = self.scrollBox:GetOffset().y
         local first = math.floor(scrollPosY / self.rowHeight)
         if first < 0 then first = 0 end
 
@@ -84,22 +103,20 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
     end
 
     function self:SetItems(items, preserveScroll)
-        local previousScrollPosY = preserveScroll and (self.scrollBox.scrollPosY or 0) or 0
+        local previousScrollPosY = preserveScroll and self.scrollBox:GetOffset().y or 0
         for index0, row in self.realized do
             self.realized[index0] = nil
             table.insert(self.recyclable, row)
         end
         self.items = items or {}
         self.lastFirst = nil -- force Rebind past the membership guard
-        -- SetContentHeight resets the scroll to the top (autoScrollToStart), so Rebind starts at 0.
         self.scrollBox:SetContentHeight(math.max(self.viewportH, #self.items * self.rowHeight + 2))
 
-        local maxScrollPosY = math.max(0, self.scrollBox.content:GetHeight() - self.scrollBox.scrollBox:GetHeight())
+        local maxScrollPosY = math.max(0, self.scrollBox.content:GetHeight() - self.scrollBox:GetViewportSize().y)
         if preserveScroll and maxScrollPosY > 0 then
-            self.scrollBox.scrollPosY = math.clamp(previousScrollPosY, 0, maxScrollPosY)
-            -- A zero-delta scroll reapplies content/handle positions and invokes Rebind.
-            self.scrollBox:Scroll(nil, 0, 0)
+            self.scrollBox:SetOffset(vec.New(0, math.clamp(previousScrollPosY, 0, maxScrollPosY)))
         else
+            self.scrollBox:ScrollToStart()
             self:Rebind()
         end
         -- Rows left over (list shorter than the pool) hold stale content; park them off-viewport.
@@ -114,8 +131,8 @@ function virtualListAPI.NewVirtualList(parent, posX, posY, sizeX, sizeY, layer, 
         end
     end
 
-    function self:SetAnchor(x, y)        self.scrollBox:SetAnchor(x, y) end
-    function self:SetRelativePoint(x, y) self.scrollBox:SetRelativePoint(x, y) end
+    function self:SetAnchor(anchor)      self.scrollBox:SetAnchor(anchor) end
+    function self:SetRelativePoint(point) self.scrollBox:SetRelativePoint(point) end
     function self:GetScrollBox()         return self.scrollBox end
 
     self.scrollBox:SetOnScroll(function() self:Rebind() end)

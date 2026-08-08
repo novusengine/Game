@@ -1,3 +1,4 @@
+local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
 AssetBrowser — Lua port of the C++ ImGui Asset Browser. Left column is a collapsible
 folder tree (lazily expanded); selecting a folder lists its files in the right column
@@ -11,12 +12,12 @@ Layer 1100 sits above the dev top bar (1000).
 ]]
 
 local ContextMenu = require("@src/API/UI/ContextMenu")
-local EditorButton = require("@src/API/UI/EditorButton")
-local EditorRegistry = require("@src/API/UI/EditorRegistry")
+local Button = require("@src/API/UI/Button")
+local EditorRegistry = require("@src/API/Editor/Registry")
 local InputBox = require("@src/API/UI/InputBox")
 local ScrollBox = require("@src/API/UI/ScrollBox")
+local TextUtil = require("@src/API/UI/TextUtil")
 
-require("@src/API/UI/MenuBar")
 
 local PANEL_W      = 500
 local WINDOW_H     = 440
@@ -27,7 +28,7 @@ local ROW_H        = 16
 local SIDE_PAD     = 6
 local TOP_PAD      = 2
 local FOLDER_W     = 150
-local LAYER        = 1100
+local LAYER        = 1100i
 local BTN_TEXT_TPL = "DevToolsText"
 
 local CELL_W   = 56
@@ -36,17 +37,45 @@ local CELL_GAP = 4
 local MAX_FILES = 400
 local MODEL_EXT = ".complexmodel"
 
-local WINDOW_BG_COLOR = vector.create(0.10, 0.10, 0.12)
+local WINDOW_BG_COLOR = vec.New(0.10, 0.10, 0.12)
 local WINDOW_BG_ALPHA = 0.96
-local BORDER_COLOR    = vector.create(0.30, 0.30, 0.35)
+local BORDER_COLOR    = vec.New(0.30, 0.30, 0.35)
 local BORDER_SIZE     = 1
-local LABEL_TINT      = vector.create(0.82, 0.82, 0.88)
+local LABEL_TINT      = vec.New(0.82, 0.82, 0.88)
+local ROW_COLOR       = vec.New(0.095, 0.105, 0.12)
+local ROW_HOVER_COLOR = vec.New(0.13, 0.20, 0.29)
 
 local FILES_X = SIDE_PAD + FOLDER_W + SIDE_PAD
 local FILES_W = PANEL_W - FILES_X - SIDE_PAD
 local BODY_TOP = TITLE_H + PATH_H + TOP_PAD
 local FOLDER_LIST_H = WINDOW_H - BODY_TOP - SIDE_PAD
 local FILES_LIST_H = WINDOW_H - BODY_TOP - TOOLBAR_H - 4 - SIDE_PAD
+
+UI.RegisterPanelTemplate("AssetBrowserRowPanel",
+{
+    color = ROW_COLOR,
+    alpha = 1.0,
+    cornerRadius = 2.0,
+    borderSize = 0.0,
+    onClickTemplate = "DefaultButtonDownPanel",
+    onHoverTemplate = "DefaultButtonHoveredPanel",
+    onUninteractableTemplate = "DefaultButtonDisabledPanel",
+})
+
+UI.RegisterPanelTemplate("AssetBrowserCellPanel",
+{
+    alpha = 0.0,
+    cornerRadius = 0.0,
+    borderSize = 0.0,
+})
+
+UI.RegisterPanelTemplate("AssetBrowserThumbnailPanel",
+{
+    color = vec.New(1.0, 1.0, 1.0),
+    alpha = 1.0,
+    cornerRadius = 0.0,
+    borderSize = 0.0,
+})
 
 local function MakeBtnOpts(text)
     return {
@@ -57,45 +86,23 @@ local function MakeBtnOpts(text)
     }
 end
 
-local canvas = UI.GetCanvas("AssetBrowserEditor", 0, 0, 1920, 1080, false)
+local canvas = UI.GetCanvas("AssetBrowserEditor", vec.New(0, 0), vec.New(1920, 1080), false)
 
-local windowPanel = canvas:NewPanel(560, -120, PANEL_W, WINDOW_H, LAYER, "DebugDarkGrey")
-windowPanel:SetAnchor(0.0, 1.0)
-windowPanel:SetRelativePoint(0.0, 1.0)
-windowPanel:SetVisible(false)
-windowPanel:SetColor(WINDOW_BG_COLOR)
-windowPanel:SetAlpha(WINDOW_BG_ALPHA)
-windowPanel:SetBorderColor(BORDER_COLOR)
-windowPanel:SetBorderSize(BORDER_SIZE)
-
-local titleBar = windowPanel:NewPanel(0, 0, PANEL_W, TITLE_H, 1, "DebugDarkGrey")
-titleBar:SetAnchor(0.0, 1.0)
-titleBar:SetRelativePoint(0.0, 1.0)
-titleBar:SetColor(vector.create(0.06, 0.06, 0.08))
-titleBar:SetAlpha(WINDOW_BG_ALPHA)
-
-local titleText = titleBar:NewText("Asset Browser", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
-titleText:SetAnchor(0.0, 0.5)
-titleText:SetRelativePoint(0.0, 0.5)
-titleText:SetInteractable(false)
-
-local CLOSE_BTN_SIZE = 12
-local closeBtn = EditorButton.NewEditorButton(titleBar, -2, 0, CLOSE_BTN_SIZE, CLOSE_BTN_SIZE, 1, MakeBtnOpts("X"))
-closeBtn:SetAnchor(1.0, 0.5)
-closeBtn:SetRelativePoint(1.0, 0.5)
-closeBtn.text:SetPosX(1)
-
-windowPanel:MakeDraggable(titleBar)
+local editorWindow = EditorWindow.New(canvas, vec.New(560, -120), vec.New(PANEL_W, WINDOW_H), LAYER, { title = "Asset Browser" })
+local windowPanel = editorWindow.root
+local titleBar = editorWindow.titleBar
+local titleText = editorWindow.title
+local closeBtn = editorWindow.closeButton
 
 -- ---- path bar ----
-local pathText = windowPanel:NewText("Data/", SIDE_PAD, -(TITLE_H + 2), 1, BTN_TEXT_TPL)
-pathText:SetAnchor(0.0, 1.0)
-pathText:SetRelativePoint(0.0, 1.0)
+local pathText = windowPanel:NewText("Data/", vec.New(SIDE_PAD, -(TITLE_H + 2)), 1i, BTN_TEXT_TPL)
+pathText:SetAnchor(vec.New(0.0, 1.0))
+pathText:SetRelativePoint(vec.New(0.0, 1.0))
 pathText:SetColor(LABEL_TINT)
 pathText:SetInteractable(false)
 
 -- ---- folder list (left) ----
-local folderList = ScrollBox.NewScrollBox(windowPanel, SIDE_PAD, -BODY_TOP, FOLDER_W, FOLDER_LIST_H, 1, {
+local folderList = ScrollBox.New(windowPanel, vec.New(SIDE_PAD, -BODY_TOP), vec.New(FOLDER_W, FOLDER_LIST_H), 1i, {
     panelTemplate = "DebugDarkGrey",
     contentSizeX = FOLDER_W,
     contentSizeY = FOLDER_LIST_H,
@@ -103,29 +110,29 @@ local folderList = ScrollBox.NewScrollBox(windowPanel, SIDE_PAD, -BODY_TOP, FOLD
     scrollBarWidth = 10,
     alpha = 0.0,
 })
-folderList:SetAnchor(0.0, 1.0)
-folderList:SetRelativePoint(0.0, 1.0)
+folderList:SetAnchor(vec.New(0.0, 1.0))
+folderList:SetRelativePoint(vec.New(0.0, 1.0))
 
 -- ---- file toolbar (right) ----
-local rowModeBtn = EditorButton.NewEditorButton(windowPanel, FILES_X, -BODY_TOP, 44, TOOLBAR_H, 1, MakeBtnOpts("Row"))
-rowModeBtn:SetAnchor(0.0, 1.0)
-rowModeBtn:SetRelativePoint(0.0, 1.0)
+local rowModeBtn = Button.New(windowPanel, vec.New(FILES_X, -BODY_TOP), vec.New(44, TOOLBAR_H), 1i, MakeBtnOpts("Row"))
+rowModeBtn:SetAnchor(vec.New(0.0, 1.0))
+rowModeBtn:SetRelativePoint(vec.New(0.0, 1.0))
 
-local displayModeBtn = EditorButton.NewEditorButton(windowPanel, FILES_X + 48, -BODY_TOP, 60, TOOLBAR_H, 1, MakeBtnOpts("Display"))
-displayModeBtn:SetAnchor(0.0, 1.0)
-displayModeBtn:SetRelativePoint(0.0, 1.0)
+local displayModeBtn = Button.New(windowPanel, vec.New(FILES_X + 48, -BODY_TOP), vec.New(60, TOOLBAR_H), 1i, MakeBtnOpts("Display"))
+displayModeBtn:SetAnchor(vec.New(0.0, 1.0))
+displayModeBtn:SetRelativePoint(vec.New(0.0, 1.0))
 
 local SEARCH_X = FILES_X + 112
-local searchInput = InputBox.NewInputBox(windowPanel, SEARCH_X, -BODY_TOP, FILES_X + FILES_W - SEARCH_X, TOOLBAR_H, 1, {
+local searchInput = InputBox.New(windowPanel, vec.New(SEARCH_X, -BODY_TOP), vec.New(FILES_X + FILES_W - SEARCH_X, TOOLBAR_H), 1i, {
     panelTemplate = "DebugDarkGrey",
     textTemplate = BTN_TEXT_TPL,
     defaultText = "",
 })
-searchInput:SetAnchor(0.0, 1.0)
-searchInput:SetRelativePoint(0.0, 1.0)
+searchInput:SetAnchor(vec.New(0.0, 1.0))
+searchInput:SetRelativePoint(vec.New(0.0, 1.0))
 
 -- ---- file list (right) ----
-local fileList = ScrollBox.NewScrollBox(windowPanel, FILES_X, -(BODY_TOP + TOOLBAR_H + 4), FILES_W, FILES_LIST_H, 1, {
+local fileList = ScrollBox.New(windowPanel, vec.New(FILES_X, -(BODY_TOP + TOOLBAR_H + 4)), vec.New(FILES_W, FILES_LIST_H), 1i, {
     panelTemplate = "DebugDarkGrey",
     contentSizeX = FILES_W,
     contentSizeY = FILES_LIST_H,
@@ -133,13 +140,15 @@ local fileList = ScrollBox.NewScrollBox(windowPanel, FILES_X, -(BODY_TOP + TOOLB
     scrollBarWidth = 10,
     alpha = 0.0,
 })
-fileList:SetAnchor(0.0, 1.0)
-fileList:SetRelativePoint(0.0, 1.0)
+fileList:SetAnchor(vec.New(0.0, 1.0))
+fileList:SetRelativePoint(vec.New(0.0, 1.0))
 
 -- Right-click context menu for files (built per right-click in OpenFileMenu).
-local fileMenu = ContextMenu.New(canvas, { items = {}, layer = LAYER + 100 })
+local fileMenu = ContextMenu.New(canvas, { items = {}, layer = integer.add(LAYER, 100i) })
 
 local selectedPath = ""
+local pickerCallback : ((string) -> ())? = nil
+local pickerExtension : string? = nil
 local displayMode = "row"
 local listing = nil
 local fileItems = {}
@@ -152,18 +161,7 @@ local treeRows = {}
 local TREE_INDENT = 12
 local CHEVRON_W   = 14
 local BuildTree, SelectFolder, ToggleNode
-
-local function ContainsCI(haystack, needle)
-    if needle == nil or #needle == 0 then return true end
-    return string.find(string.lower(haystack), string.lower(needle), 1, true) ~= nil
-end
-
-local function Truncate(name, maxChars)
-    if utf8.len(name) > maxChars then
-        return name:sub(1, maxChars - 1) .. "."
-    end
-    return name
-end
+local methods = {}
 
 local function ParentPath(path)
     return path:match("^(.*)/[^/]*$") or ""
@@ -188,7 +186,7 @@ local function FilteredFiles()
     if listing == nil then return out end
     local search = searchInput.text
     for _, file in listing.files do
-        if ContainsCI(file.name, search) then
+        if (pickerExtension == nil or file.ext == pickerExtension) and TextUtil.ContainsIgnoreCase(file.name, search) then
             table.insert(out, file)
             if #out >= MAX_FILES then break end
         end
@@ -196,12 +194,24 @@ local function FilteredFiles()
     return out
 end
 
+local function SelectFile(file, button, mouseX, mouseY)
+    if button == 0i and pickerCallback ~= nil then
+        local callback = pickerCallback
+        pickerCallback = nil
+        pickerExtension = nil
+        methods:Hide()
+        callback(file.path)
+    elseif button == 1i then
+        OpenFileMenu(file, mouseX, mouseY)
+    end
+end
+
 local function FilteredFolders()
     local out = {}
     if listing == nil or listing.folders == nil then return out end
     local search = searchInput.text
     for _, folder in listing.folders do
-        if ContainsCI(folder.name, search) then
+        if TextUtil.ContainsIgnoreCase(folder.name, search) then
             table.insert(out, folder)
         end
     end
@@ -216,39 +226,55 @@ local function BuildRows(folders, files)
     for _, folder in folders do
         local target = folder.path
         local text = if folder.name == ".." then ".." else folder.name .. "/"
-        local btn = EditorButton.NewEditorButton(content, 2, -(index * ROW_H) - 1, FILES_W - 14, ROW_H, 1, {
+        local btn = Button.New(content, vec.New(2, -(index * ROW_H) - 1), vec.New(FILES_W - 14, ROW_H), 1i, {
             text = text,
+            panelTemplate = "AssetBrowserRowPanel",
             textTemplate = BTN_TEXT_TPL,
             textAlign = "left",
             textPadX = 4,
+            color = ROW_COLOR,
+            hoverColor = ROW_HOVER_COLOR,
+            highlightColor = ROW_HOVER_COLOR,
+            alpha = 1.0,
+            hoverAlpha = 1.0,
+            highlightAlpha = 1.0,
+            borderSize = 0,
         })
-        btn:SetAnchor(0.0, 1.0)
-        btn:SetRelativePoint(0.0, 1.0)
-        btn.panel:SetOnMouseUp(function(_, _, button)
-            if button == 0 then SelectFolder(target) end
+        btn:SetAnchor(vec.New(0.0, 1.0))
+        btn:SetRelativePoint(vec.New(0.0, 1.0))
+        btn.root:SetOnMouseUp(function(_, _, button)
+            if button == 0i then SelectFolder(target) end
         end)
-        table.insert(fileItems, btn.panel)
+        table.insert(fileItems, btn.root)
         index += 1
     end
 
     for _, file in files do
-        local btn = EditorButton.NewEditorButton(content, 2, -(index * ROW_H) - 1, FILES_W - 14, ROW_H, 1, {
+        local btn = Button.New(content, vec.New(2, -(index * ROW_H) - 1), vec.New(FILES_W - 14, ROW_H), 1i, {
             text = file.name,
+            panelTemplate = "AssetBrowserRowPanel",
             textTemplate = BTN_TEXT_TPL,
             textAlign = "left",
             textPadX = 4,
+            color = ROW_COLOR,
+            hoverColor = ROW_HOVER_COLOR,
+            highlightColor = ROW_HOVER_COLOR,
+            alpha = 1.0,
+            hoverAlpha = 1.0,
+            highlightAlpha = 1.0,
+            borderSize = 0,
         })
-        btn:SetAnchor(0.0, 1.0)
-        btn:SetRelativePoint(0.0, 1.0)
-        btn.panel:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
-            if button == 1 then OpenFileMenu(file, mouseX, mouseY) end
+        btn:SetAnchor(vec.New(0.0, 1.0))
+        btn:SetRelativePoint(vec.New(0.0, 1.0))
+        btn.root:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
+            SelectFile(file, button, mouseX, mouseY)
         end)
         if file.ext == MODEL_EXT then
-            btn.panel:SetOnMouseDown(function(_, _, button)
-                if button == 0 then Asset.BeginDragSpawn(file.path) end
+            btn.root:SetOnMouseDown(function(_, _, button)
+                if button == 0i then Asset.BeginDragSpawn(file.path) end
             end)
         end
-        table.insert(fileItems, btn.panel)
+        table.insert(fileItems, btn.root)
         index += 1
     end
 
@@ -267,24 +293,24 @@ local function BuildDisplay(folders, files)
         local x = 2 + col * (CELL_W + CELL_GAP)
         local y = -(row * (CELL_H + CELL_GAP)) - 1
 
-        local cell = content:NewPanel(x, y, CELL_W, CELL_H, 1, "DebugDarkGrey")
-        cell:SetAnchor(0.0, 1.0)
-        cell:SetRelativePoint(0.0, 1.0)
+        local cell = content:NewPanel(vec.New(x, y), vec.New(CELL_W, CELL_H), 1i, "AssetBrowserCellPanel")
+        cell:SetAnchor(vec.New(0.0, 1.0))
+        cell:SetRelativePoint(vec.New(0.0, 1.0))
         cell:SetAlpha(0.0)
 
-        local thumb = cell:NewPanel(0, 0, CELL_W, CELL_W, 1, "DebugDarkGrey")
-        thumb:SetAnchor(0.5, 1.0)
-        thumb:SetRelativePoint(0.5, 1.0)
-        thumb:SetColor(vector.create(0.40, 0.36, 0.20))
+        local thumb = cell:NewPanel(vec.New(0, 0), vec.New(CELL_W, CELL_W), 1i, "AssetBrowserThumbnailPanel")
+        thumb:SetAnchor(vec.New(0.5, 1.0))
+        thumb:SetRelativePoint(vec.New(0.5, 1.0))
+        thumb:SetColor(vec.New(0.40, 0.36, 0.20))
         thumb:SetAlpha(1.0)
         local target = folder.path
         thumb:SetOnMouseUp(function(_, _, button)
-            if button == 0 then SelectFolder(target) end
+            if button == 0i then SelectFolder(target) end
         end)
 
-        local label = cell:NewText(Truncate(folder.name, 9), 0, -(CELL_W + 1), 1, BTN_TEXT_TPL)
-        label:SetAnchor(0.5, 1.0)
-        label:SetRelativePoint(0.5, 1.0)
+        local label = cell:NewText(TextUtil.Truncate(folder.name, 9), vec.New(0, -(CELL_W + 1)), 1i, BTN_TEXT_TPL)
+        label:SetAnchor(vec.New(0.5, 1.0))
+        label:SetRelativePoint(vec.New(0.5, 1.0))
         label:SetColor(LABEL_TINT)
         label:SetInteractable(false)
 
@@ -298,34 +324,34 @@ local function BuildDisplay(folders, files)
         local x = 2 + col * (CELL_W + CELL_GAP)
         local y = -(row * (CELL_H + CELL_GAP)) - 1
 
-        local cell = content:NewPanel(x, y, CELL_W, CELL_H, 1, "DebugDarkGrey")
-        cell:SetAnchor(0.0, 1.0)
-        cell:SetRelativePoint(0.0, 1.0)
+        local cell = content:NewPanel(vec.New(x, y), vec.New(CELL_W, CELL_H), 1i, "AssetBrowserCellPanel")
+        cell:SetAnchor(vec.New(0.0, 1.0))
+        cell:SetRelativePoint(vec.New(0.0, 1.0))
         cell:SetAlpha(0.0)
 
-        local thumb = cell:NewPanel(0, 0, CELL_W, CELL_W, 1, "DebugDarkGrey")
-        thumb:SetAnchor(0.5, 1.0)
-        thumb:SetRelativePoint(0.5, 1.0)
+        local thumb = cell:NewPanel(vec.New(0, 0), vec.New(CELL_W, CELL_W), 1i, "AssetBrowserThumbnailPanel")
+        thumb:SetAnchor(vec.New(0.5, 1.0))
+        thumb:SetRelativePoint(vec.New(0.5, 1.0))
         if file.ext == ".dds" then
             thumb:SetBackground("Data/" .. file.path)
-            thumb:SetColor(vector.create(1, 1, 1))
+            thumb:SetColor(vec.New(1, 1, 1))
             thumb:SetAlpha(1.0)
         else
-            thumb:SetColor(vector.create(0.25, 0.25, 0.30))
+            thumb:SetColor(vec.New(0.25, 0.25, 0.30))
             thumb:SetAlpha(1.0)
         end
         thumb:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
-            if button == 1 then OpenFileMenu(file, mouseX, mouseY) end
+            SelectFile(file, button, mouseX, mouseY)
         end)
         if file.ext == MODEL_EXT then
             thumb:SetOnMouseDown(function(_, _, button)
-                if button == 0 then Asset.BeginDragSpawn(file.path) end
+                if button == 0i then Asset.BeginDragSpawn(file.path) end
             end)
         end
 
-        local label = cell:NewText(Truncate(file.name, 9), 0, -(CELL_W + 1), 1, BTN_TEXT_TPL)
-        label:SetAnchor(0.5, 1.0)
-        label:SetRelativePoint(0.5, 1.0)
+        local label = cell:NewText(TextUtil.Truncate(file.name, 9), vec.New(0, -(CELL_W + 1)), 1i, BTN_TEXT_TPL)
+        label:SetAnchor(vec.New(0.5, 1.0))
+        label:SetRelativePoint(vec.New(0.5, 1.0))
         label:SetColor(LABEL_TINT)
         label:SetInteractable(false)
 
@@ -360,11 +386,11 @@ local function MakeNode(folder, depth)
     return {
         name = folder.name,
         path = folder.path,
-        fileCount = folder.fileCount,
+        fileCount = integer.tonumber(folder.fileCount),
         depth = depth,
         expanded = false,
         loaded = false,
-        hasChildren = (folder.folderCount or 0) > 0, -- known upfront, so the chevron is accurate
+        hasChildren = folder.folderCount ~= 0i, -- known upfront, so the chevron is accurate
         children = {},
     }
 end
@@ -417,14 +443,22 @@ function BuildTree()
 
         -- Only folders that actually have subfolders get an expand chevron.
         if node.hasChildren then
-            local chevron = EditorButton.NewEditorButton(content, 2 + indent, y, CHEVRON_W, ROW_H, 1, {
+            local chevron = Button.New(content, vec.New(2 + indent, y), vec.New(CHEVRON_W, ROW_H), 1i, {
                 text = node.expanded and "v" or ">",
+                panelTemplate = "AssetBrowserRowPanel",
                 textTemplate = BTN_TEXT_TPL,
+                color = ROW_COLOR,
+                hoverColor = ROW_HOVER_COLOR,
+                highlightColor = ROW_HOVER_COLOR,
+                alpha = 1.0,
+                hoverAlpha = 1.0,
+                highlightAlpha = 1.0,
+                borderSize = 0,
             })
-            chevron:SetAnchor(0.0, 1.0)
-            chevron:SetRelativePoint(0.0, 1.0)
+            chevron:SetAnchor(vec.New(0.0, 1.0))
+            chevron:SetRelativePoint(vec.New(0.0, 1.0))
             chevron:SetOnMouseUp(function() ToggleNode(node) end)
-            table.insert(treeWidgets, chevron.panel)
+            table.insert(treeWidgets, chevron.root)
         end
 
         -- Hide the "(0)" suffix for empty folders; show "(N)" only when there are files.
@@ -435,17 +469,25 @@ function BuildTree()
 
         local nameX = 2 + indent + CHEVRON_W
         local nameW = math.max(24, FOLDER_W - 14 - indent - CHEVRON_W)
-        local nameBtn = EditorButton.NewEditorButton(content, nameX, y, nameW, ROW_H, 1, {
+        local nameBtn = Button.New(content, vec.New(nameX, y), vec.New(nameW, ROW_H), 1i, {
             text = label,
+            panelTemplate = "AssetBrowserRowPanel",
             textTemplate = BTN_TEXT_TPL,
             textAlign = "left",
             textPadX = 4,
+            color = ROW_COLOR,
+            hoverColor = ROW_HOVER_COLOR,
+            highlightColor = ROW_HOVER_COLOR,
+            alpha = 1.0,
+            hoverAlpha = 1.0,
+            highlightAlpha = 1.0,
+            borderSize = 0,
         })
-        nameBtn:SetAnchor(0.0, 1.0)
-        nameBtn:SetRelativePoint(0.0, 1.0)
+        nameBtn:SetAnchor(vec.New(0.0, 1.0))
+        nameBtn:SetRelativePoint(vec.New(0.0, 1.0))
         nameBtn:SetHighlighted(node.path == selectedPath)
         nameBtn:SetOnMouseUp(function() SelectFolder(node.path) end)
-        table.insert(treeWidgets, nameBtn.panel)
+        table.insert(treeWidgets, nameBtn.root)
         table.insert(treeRows, { node = node, nameBtn = nameBtn })
     end
 
@@ -504,15 +546,25 @@ end)
 
 RefreshModeButtons()
 
-local methods = {}
-
 function methods:Show()
+    pickerCallback = nil
+    pickerExtension = nil
     windowPanel:SetVisible(true)
     LoadTree()
     SelectFolder("")
 end
 
+function methods:Pick(startPath : string, extension : string?, callback : (string) -> ())
+    pickerCallback = callback
+    pickerExtension = extension
+    windowPanel:SetVisible(true)
+    LoadTree()
+    SelectFolder(startPath)
+end
+
 function methods:Hide()
+    pickerCallback = nil
+    pickerExtension = nil
     windowPanel:SetVisible(false)
     fileMenu:Close()
 end

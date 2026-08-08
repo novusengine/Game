@@ -16,7 +16,7 @@ namespace Scripting::Editor
         void Clear(Zenith* zenith);
 
         void PostLoad(Zenith* zenith) {}
-        void Update(Zenith* zenith, f32 deltaTime) {}
+        void Update(Zenith* zenith, f32 deltaTime);
 
         static i32 GetSelected(Zenith* zenith);
         static i32 SetSelected(Zenith* zenith);
@@ -38,6 +38,55 @@ namespace Scripting::Editor
         static i32 ResetCVar(Zenith* zenith);
         static i32 ResetAllCVars(Zenith* zenith);
         static i32 ResetAllCVarValues(Zenith* zenith);
+
+        static i32 GetTerrainEditorState(Zenith* zenith);
+        static i32 SetTerrainEditorEnabled(Zenith* zenith);
+        static i32 SetTerrainEditorPreviewRadius(Zenith* zenith);
+        static i32 BeginTerrainEditorStroke(Zenith* zenith);
+        static i32 ApplyTerrainEditorSample(Zenith* zenith);
+        static i32 SetTerrainEditorPaintTexture(Zenith* zenith);
+        static i32 ApplyTerrainEditorPaintSample(Zenith* zenith);
+        static i32 GetTerrainEditorCursorTextureLayers(Zenith* zenith);
+        static i32 CommitTerrainEditorStroke(Zenith* zenith);
+        static i32 CancelTerrainEditorStroke(Zenith* zenith);
+        static i32 UndoTerrainEditor(Zenith* zenith);
+        static i32 RedoTerrainEditor(Zenith* zenith);
+        static i32 SaveTerrainEditor(Zenith* zenith);
+
+        static i32 GetSpellEditorSnapshot(Zenith* zenith);
+        static i32 GetSpellEditorDraft(Zenith* zenith);
+        static i32 GetSpellEditorCatalog(Zenith* zenith);
+        static i32 SearchSpellEditorIcons(Zenith* zenith);
+        static i32 RequestSpellEditorSnapshot(Zenith* zenith);
+        static i32 OpenSpellEditorDraft(Zenith* zenith);
+        static i32 CreateSpellEditorDraft(Zenith* zenith);
+        static i32 DuplicateSpellEditorDraft(Zenith* zenith);
+        static i32 DiscardSpellEditorDraft(Zenith* zenith);
+        static i32 SetSpellEditorField(Zenith* zenith);
+        static i32 SetSpellEditorAuraEnabled(Zenith* zenith);
+        static i32 SetSpellEditorAuraField(Zenith* zenith);
+        static i32 AddSpellEditorEffect(Zenith* zenith);
+        static i32 RemoveSpellEditorEffect(Zenith* zenith);
+        static i32 MoveSpellEditorEffect(Zenith* zenith);
+        static i32 SetSpellEditorEffectField(Zenith* zenith);
+        static i32 SetSpellEditorEffectParameter(Zenith* zenith);
+        static i32 AddSpellEditorConstraint(Zenith* zenith);
+        static i32 RemoveSpellEditorConstraint(Zenith* zenith);
+        static i32 SetSpellEditorConstraintField(Zenith* zenith);
+        static i32 ResetSpellEditorConstraintField(Zenith* zenith);
+        static i32 CreateSpellEditorConstraintGroup(Zenith* zenith);
+        static i32 UpdateSpellEditorConstraintGroup(Zenith* zenith);
+        static i32 DeleteSpellEditorConstraintGroup(Zenith* zenith);
+        static i32 CreateSpellEditorProcData(Zenith* zenith);
+        static i32 UpdateSpellEditorProcData(Zenith* zenith);
+        static i32 DeleteSpellEditorProcData(Zenith* zenith);
+        static i32 AddSpellEditorProcLink(Zenith* zenith);
+        static i32 RemoveSpellEditorProcLink(Zenith* zenith);
+        static i32 SetSpellEditorProcLinkData(Zenith* zenith);
+        static i32 SetSpellEditorProcLinkEffect(Zenith* zenith);
+        static i32 ValidateSpellEditorDraft(Zenith* zenith);
+        static i32 SubmitSpellEditorDraft(Zenith* zenith);
+        static i32 DeleteSpellEditorSpell(Zenith* zenith);
 
         // Fires the registered selection-changed callback. Called from Lua (after SetSelected)
         // and from C++ (after picking updates the selection).
@@ -71,5 +120,60 @@ namespace Scripting::Editor
         { "ResetCVar",              EditorToolHandler::ResetCVar,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "ResetAllCVars",          EditorToolHandler::ResetAllCVars,         Scripting::LuaMethodFlags::DeveloperOnly },
         { "ResetAllCVarValues",     EditorToolHandler::ResetAllCVarValues,    Scripting::LuaMethodFlags::DeveloperOnly },
+    };
+
+    static LuaRegister<> spellEditorGlobalMethods[] =
+    {
+        { "GetSnapshot",            EditorToolHandler::GetSpellEditorSnapshot,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetDraft",               EditorToolHandler::GetSpellEditorDraft,           Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetCatalog",             EditorToolHandler::GetSpellEditorCatalog,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SearchIcons",            EditorToolHandler::SearchSpellEditorIcons,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RequestSnapshot",        EditorToolHandler::RequestSpellEditorSnapshot,    Scripting::LuaMethodFlags::DeveloperOnly },
+        { "OpenDraft",              EditorToolHandler::OpenSpellEditorDraft,           Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateDraft",            EditorToolHandler::CreateSpellEditorDraft,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DuplicateDraft",         EditorToolHandler::DuplicateSpellEditorDraft,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DiscardDraft",           EditorToolHandler::DiscardSpellEditorDraft,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetField",               EditorToolHandler::SetSpellEditorField,            Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetAuraEnabled",         EditorToolHandler::SetSpellEditorAuraEnabled,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetAuraField",           EditorToolHandler::SetSpellEditorAuraField,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AddEffect",              EditorToolHandler::AddSpellEditorEffect,           Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RemoveEffect",           EditorToolHandler::RemoveSpellEditorEffect,        Scripting::LuaMethodFlags::DeveloperOnly },
+        { "MoveEffect",             EditorToolHandler::MoveSpellEditorEffect,          Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetEffectField",         EditorToolHandler::SetSpellEditorEffectField,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetEffectParameter",     EditorToolHandler::SetSpellEditorEffectParameter,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AddConstraint",          EditorToolHandler::AddSpellEditorConstraint,       Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RemoveConstraint",       EditorToolHandler::RemoveSpellEditorConstraint,    Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetConstraintField",     EditorToolHandler::SetSpellEditorConstraintField,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetConstraintField",   EditorToolHandler::ResetSpellEditorConstraintField, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateConstraintGroup",  EditorToolHandler::CreateSpellEditorConstraintGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateConstraintGroup",  EditorToolHandler::UpdateSpellEditorConstraintGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteConstraintGroup",  EditorToolHandler::DeleteSpellEditorConstraintGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CreateProcData",         EditorToolHandler::CreateSpellEditorProcData,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "UpdateProcData",         EditorToolHandler::UpdateSpellEditorProcData,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "DeleteProcData",         EditorToolHandler::DeleteSpellEditorProcData,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "AddProcLink",            EditorToolHandler::AddSpellEditorProcLink,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "RemoveProcLink",         EditorToolHandler::RemoveSpellEditorProcLink,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetProcLinkData",        EditorToolHandler::SetSpellEditorProcLinkData,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetProcLinkEffect",      EditorToolHandler::SetSpellEditorProcLinkEffect,   Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Validate",               EditorToolHandler::ValidateSpellEditorDraft,       Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Submit",                 EditorToolHandler::SubmitSpellEditorDraft,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Delete",                 EditorToolHandler::DeleteSpellEditorSpell,         Scripting::LuaMethodFlags::DeveloperOnly },
+    };
+
+    static LuaRegister<> terrainEditorGlobalMethods[] =
+    {
+        { "GetState",         EditorToolHandler::GetTerrainEditorState,         Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetEnabled",       EditorToolHandler::SetTerrainEditorEnabled,       Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetPreviewRadius", EditorToolHandler::SetTerrainEditorPreviewRadius, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "BeginStroke",      EditorToolHandler::BeginTerrainEditorStroke,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ApplySample",      EditorToolHandler::ApplyTerrainEditorSample,      Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetPaintTexture",  EditorToolHandler::SetTerrainEditorPaintTexture,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ApplyPaintSample", EditorToolHandler::ApplyTerrainEditorPaintSample, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "GetCursorLayers",  EditorToolHandler::GetTerrainEditorCursorTextureLayers, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CommitStroke",     EditorToolHandler::CommitTerrainEditorStroke,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "CancelStroke",     EditorToolHandler::CancelTerrainEditorStroke,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Undo",             EditorToolHandler::UndoTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Redo",             EditorToolHandler::RedoTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
+        { "Save",             EditorToolHandler::SaveTerrainEditor,             Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

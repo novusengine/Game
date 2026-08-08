@@ -6,7 +6,6 @@
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
-#include "Terrain/TerrainManipulator.h"
 #include "Texture/TextureRenderer.h"
 #include "Model/ModelRenderer.h"
 #include "Model/ModelLoader.h"
@@ -23,6 +22,7 @@
 #include "CullUtils.h"
 
 #include "Game-Lib/Editor/EditorHandler.h"
+#include "Game-Lib/Editor/TerrainEditSession.h"
 #include "Game-Lib/Editor/Viewport.h"
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/Gameplay/MapLoader.h"
@@ -226,7 +226,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
     _terrainRenderer = new TerrainRenderer(_renderer, this, _debugRenderer);
     _terrainLoader = new TerrainLoader(_terrainRenderer, _modelLoader, _liquidLoader);
-    _terrainManipulator = new TerrainManipulator(*_terrainRenderer, *_debugRenderer);
+    _terrainEditSession = new Editor::TerrainEditSession(*_terrainLoader, *_terrainRenderer, *_debugRenderer);
     _textureRenderer = new TextureRenderer(_renderer, this, _debugRenderer);
 
     _modelLoader->SetTerrainLoader(_terrainLoader);
@@ -271,7 +271,6 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _mapLoader->Update(deltaTime);
     _terrainLoader->Update(deltaTime);
     _terrainRenderer->Update(deltaTime);
-    _terrainManipulator->Update(deltaTime);
     _modelLoader->Update(deltaTime);
     _modelRenderer->Update(deltaTime);
     _liquidLoader->Update(deltaTime);

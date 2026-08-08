@@ -1,124 +1,135 @@
-declare class Engine
+export type vec = vector
+
+declare vec :
+{
+    New : ((x : number, y : number, z : number?) -> vec),
+}
+
+declare extern type Engine with
     Name : string
-    Version : vector
+    Version : vec
 end
 declare Engine : Engine
 
-declare INVALID_UNIT_ID : number
+-- C++ u64 values preserve their full bit pattern; values with bit 63 set are represented as negative Luau integers.
 
-declare class GameEvent
-    Invalid                 : number
-    Loaded                  : number
-    Updated                 : number
-    CharacterListChanged    : number
-    MapLoading              : number
-    MapLoaded               : number
-    MapLoadFailed           : number
-    ChatMessageReceived     : number
-    LocalMoverChanged       : number
-    Count                   : number
+declare INVALID_UNIT_ID : integer
+
+declare extern type GameEvent with
+    Invalid                 : integer
+    Loaded                  : integer
+    Updated                 : integer
+    CharacterListChanged    : integer
+    MapLoading              : integer
+    MapLoaded               : integer
+    MapLoadFailed           : integer
+    ChatMessageReceived     : integer
+    LocalMoverChanged       : integer
+    CombatLog               : integer
+    Count                   : integer
 end
 declare GameEvent : GameEvent
 
-declare class UnitEvent
-    Invalid             : number
-    Add                 : number
-    Remove              : number
-    TargetChanged       : number
-    PowerUpdate         : number
-    ResistanceUpdate    : number
-    StatUpdate          : number
-    ReactionChanged     : number
-    AuraAdd             : number
-    AuraUpdate          : number
-    AuraRemove          : number
-    Count               : number
+declare extern type UnitEvent with
+    Invalid             : integer
+    Add                 : integer
+    Remove              : integer
+    TargetChanged       : integer
+    PowerUpdate         : integer
+    ResistanceUpdate    : integer
+    StatUpdate          : integer
+    ReactionChanged     : integer
+    AuraAdd             : integer
+    AuraUpdate          : integer
+    AuraRemove          : integer
+    Count               : integer
 end
 declare UnitEvent : UnitEvent
 
-declare class ContainerEvent
-    Invalid         : number
-    Add             : number
-    AddToSlot       : number
-    RemoveFromSlot  : number
-    SwapSlots       : number
-    Count           : number
+declare extern type ContainerEvent with
+    Invalid         : integer
+    Add             : integer
+    AddToSlot       : integer
+    RemoveFromSlot  : integer
+    SwapSlots       : integer
+    Count           : integer
 end
 declare ContainerEvent : ContainerEvent
 
-declare class TriggerEvent
-    Invalid         : number
-    OnEnter         : number
-    OnExit          : number
-    OnStay          : number
-    Count           : number
+declare extern type TriggerEvent with
+    Invalid         : integer
+    OnEnter         : integer
+    OnExit          : integer
+    OnStay          : integer
+    Count           : integer
 end
 declare TriggerEvent : TriggerEvent
 
-declare class PowerTypeEnum
-    Invalid         : number
-    Health          : number
-    Mana            : number
-    Rage            : number
-    Focus           : number
-    Energy          : number
-    Happiness       : number
-    Count           : number
+declare extern type PowerTypeEnum with
+    Invalid         : integer
+    Health          : integer
+    Mana            : integer
+    Rage            : integer
+    Focus           : integer
+    Energy          : integer
+    Happiness       : integer
+    Count           : integer
 end
 declare PowerTypeEnum : PowerTypeEnum
 
-declare class FactionReaction
-    Hostile     : number
-    Unfriendly  : number
-    Neutral     : number
-    Friendly    : number
+declare extern type FactionReaction with
+    Hostile     : integer
+    Unfriendly  : integer
+    Neutral     : integer
+    Friendly    : integer
 end
 declare FactionReaction : FactionReaction
 
-declare class StatTypeEnum
-    Invalid         : number
-    Health          : number
-    Stamina         : number
-    Strength        : number
-    Agility         : number
-    Intellect       : number
-    Spirit          : number
-    Armor           : number
-    AttackPower     : number
-    SpellPower      : number
-    Count           : number
+declare extern type StatTypeEnum with
+    Invalid         : integer
+    Health          : integer
+    Stamina         : integer
+    Strength        : integer
+    Agility         : integer
+    Intellect       : integer
+    Spirit          : integer
+    Armor           : integer
+    AttackPower     : integer
+    SpellPower      : integer
+    Count           : integer
 end
 declare StatTypeEnum : StatTypeEnum
 
-type Event = GameEvent | UnitEvent | ContainerEvent | TriggerEvent
+export type Event = integer
 
-type GameEventDataMapLoaded = {
-    mapID : number,
-    mapInternalName : string,
-    isLoaded : boolean,
-}
-
-type GameEventDataMapLoadFailed = {
-    mapID : number,
-    mapInternalName : string,
-    reason : string,
-}
-
-declare class ContainerItemEventData
-    slotIndex   : number
-    itemID      : number
-    itemCount   : number
+declare extern type GameEventDataMapLoaded with
+    mapID : number
+    mapInternalName : string
+    isLoaded : boolean
 end
 
-declare class CharacterInfo
+declare extern type GameEventDataMapLoadFailed with
+    mapID : number
+    mapInternalName : string
+    reason : string
+end
+
+declare extern type ContainerItemInfo with
+    slot        : integer
+    itemID      : integer
+    count       : integer
+    durability  : integer
+end
+
+declare extern type CharacterInfo with
     name    : string
-    race    : number
-    gender  : number
-    class   : number
-    level   : number
-    mapID   : number
+    race    : integer
+    gender  : integer
+    class   : integer
+    level   : integer
+    mapID   : integer
 end
-declare class CharacterList
+declare extern type CharacterList with
     [number] : CharacterInfo
 end
 
@@ -134,13 +145,13 @@ declare Scheduler : {
 declare function AddCursor(name : string, texture : string) : ()
 declare function SetCursor(name : string) : boolean
 type MapInfo = {
-    id : number,
+    id : integer,
     internalName : string,
     name : string,
-    flags : number,
-    instanceType : number,
-    expansionID : number,
-    maxPlayers : number,
+    flags : integer,
+    instanceType : integer,
+    expansionID : integer,
+    maxPlayers : integer,
 }
 
 declare Map : {
@@ -148,7 +159,7 @@ declare Map : {
     GetLoadingProgress : () -> number,
     GetList : () -> { MapInfo },
     Load : (internalName : string) -> boolean,
-    LoadByID : (id : number) -> boolean,
+    LoadByID : (id : integer) -> boolean,
     Unload : () -> boolean,
     SetOnCurrentMapChanged : (fn : (() -> ())?) -> (),
 }
@@ -163,234 +174,250 @@ declare Tracy : {
     IsConnected : () -> boolean,
     Message : (message : string) -> (),
 }
-declare function EquipItem(itemID : number, slotIndex : number) : boolean
-declare function UnequipItem(slotIndex : number) : boolean
-declare function GetEquippedItem(slotIndex : number) : number
+declare function EquipItem(itemID : integer, slotIndex : integer) : boolean
+declare function UnEquipItem(slotIndex : integer) : boolean
+declare function GetEquippedItem(slotIndex : integer) : integer
 declare function ExecCmd(command : string) : boolean
 declare function SendChatMessage(message : string) : ()
 declare function IsOfflineMode() : boolean
 declare function IsOnline() : boolean
-declare function GetAuthStage() : number
+declare function GetAuthStage() : integer
 declare function IsInWorld() : boolean
 declare function GetAccountName() : string
 declare function Login(accountName : string, password : string, rememberMe : boolean) : boolean
 declare function Logout() : boolean
 declare function Disconnect() : boolean
 declare function GetCharacterList() : CharacterList
-declare function SelectCharacter(index : number) : boolean
-declare function GetMapName(mapID : number) : string
+declare function SelectCharacter(index : integer) : boolean
+declare function GetMapName(mapID : integer) : string
 
-declare class UIInputEvent
-    Invalid        : number
-    MouseDown      : number
-    MouseUp        : number
-    MouseHeld      : number
-    MouseScroll    : number
+declare extern type UIInputEvent with
+    Invalid        : integer
+    MouseDown      : integer
+    MouseUp        : integer
+    MouseHeld      : integer
+    MouseScroll    : integer
 
-    HoverBegin     : number
-    HoverEnd       : number
-    HoverHeld      : number
+    HoverBegin     : integer
+    HoverEnd       : integer
+    HoverHeld      : integer
 
-    FocusBegin     : number
-    FocusEnd       : number
-    FocusHeld      : number
+    FocusBegin     : integer
+    FocusEnd       : integer
+    FocusHeld      : integer
 end
 declare UIInputEvent : UIInputEvent;
 
-declare class UIKeyboardEvent
-    Invalid : number
-    Key     : number
-    Unicode : number
+declare extern type UIKeyboardEvent with
+    Invalid : integer
+    Key     : integer
+    Unicode : integer
 end
 declare UIKeyboardEvent : UIKeyboardEvent;
 
-declare class InputPhase
-    Pressed  : number
-    Repeated : number
-    Released : number
-    Canceled : number
-    Triggered : number
+declare extern type InputPhase with
+    Pressed  : integer
+    Repeated : integer
+    Released : integer
+    Canceled : integer
+    Triggered : integer
 end
 declare InputPhase : InputPhase;
 
-declare class InputReply
-    Ignored  : number
-    Handled  : number
-    Consumed : number
+declare extern type InputReply with
+    Ignored  : integer
+    Handled  : integer
+    Consumed : integer
 end
 declare InputReply : InputReply;
 
-declare class GameInputPriority
-    ImGui    : number
-    Modal    : number
-    UI       : number
-    Editor   : number
-    Camera   : number
-    Global   : number
-    Gameplay : number
-    Debug    : number
+declare extern type GameInputPriority with
+    ImGui    : integer
+    Modal    : integer
+    UI       : integer
+    Editor   : integer
+    Camera   : integer
+    Global   : integer
+    Gameplay : integer
+    Debug    : integer
 end
 declare GameInputPriority : GameInputPriority;
 
-declare class InputModifier
-    None    : number
-    Shift   : number
-    Control : number
-    Alt     : number
-    Super   : number
+declare extern type InputModifier with
+    None    : integer
+    Shift   : integer
+    Control : integer
+    Alt     : integer
+    Super   : integer
 end
 declare InputModifier : InputModifier;
 
-declare class InputDevice
-    Keyboard : number
-    Mouse    : number
-    MouseWheel : number
+declare extern type InputDevice with
+    Keyboard : integer
+    Mouse    : integer
+    MouseWheel : integer
 end
 declare InputDevice : InputDevice;
 
-declare class MouseWheelDirection
-    Up    : number
-    Down  : number
-    Left  : number
-    Right : number
+declare extern type MouseWheelDirection with
+    Up    : integer
+    Down  : integer
+    Left  : integer
+    Right : integer
 end
 declare MouseWheelDirection : MouseWheelDirection;
 
-declare class InputModifierMatch
-    Exact   : number
-    AtLeast : number
-    Any     : number
+declare extern type InputModifierMatch with
+    Exact   : integer
+    AtLeast : integer
+    Any     : integer
 end
 declare InputModifierMatch : InputModifierMatch;
 
-declare class InputBindingConflictPolicy
-    Reject  : number
-    Replace : number
-    Swap    : number
-    Allow   : number
+declare extern type InputBindingConflictPolicy with
+    Reject  : integer
+    Replace : integer
+    Swap    : integer
+    Allow   : integer
 end
 declare InputBindingConflictPolicy : InputBindingConflictPolicy;
 
-declare class InputBindingConflictKind
-    Direct              : number
-    ShadowsRequested    : number
-    ShadowedByRequested : number
+declare extern type InputBindingConflictKind with
+    Direct              : integer
+    ShadowsRequested    : integer
+    ShadowedByRequested : integer
 end
 declare InputBindingConflictKind : InputBindingConflictKind;
 
-declare class InputBindingChangeStatus
-    Applied              : number
-    AppliedWithConflicts : number
-    Queued               : number
-    RejectedConflict     : number
-    InvalidAction        : number
-    InvalidSlot          : number
-    InvalidBinding       : number
-    InvalidPolicy        : number
-    NotRebindable        : number
+declare extern type InputBindingChangeStatus with
+    Applied              : integer
+    AppliedWithConflicts : integer
+    Queued               : integer
+    RejectedConflict     : integer
+    InvalidAction        : integer
+    InvalidSlot          : integer
+    InvalidBinding       : integer
+    InvalidPolicy        : integer
+    NotRebindable        : integer
 end
 declare InputBindingChangeStatus : InputBindingChangeStatus;
 
-type MouseEventCallback = ((event : UIInputEvent, widget : Widget, x : number, y : number) -> ())
-type KeyboardEventCallback = ((widget : Widget, event : UIKeyboardEvent, ...any) -> ())
+type MouseEventCallback = ((event : UIInputEvent, widget : Widget, ...any) -> ())
+type KeyboardEventCallback = ((widget : Widget, event : UIKeyboardEvent, ...any) -> boolean)
 
-declare class WidgetInputEvents
-    function SetOnMouseDown(self, callback : MouseEventCallback) : ()
-    function SetOnMouseUp(self, callback : MouseEventCallback) : ()
-    function SetOnMouseHeld(self, callback : MouseEventCallback) : ()
-    function SetOnMouseScroll(self, callback : MouseEventCallback) : ()
+declare extern type WidgetInputEvents with
+    function SetOnMouseDown(self, callback : MouseEventCallback?) : ()
+    function SetOnMouseUp(self, callback : MouseEventCallback?) : ()
+    function SetOnMouseHeld(self, callback : MouseEventCallback?) : ()
+    function SetOnMouseScroll(self, callback : MouseEventCallback?) : ()
 
-    function SetOnHoverBegin(self, callback : MouseEventCallback) : ()
-    function SetOnHoverEnd(self, callback : MouseEventCallback) : ()
-    function SetOnHoverHeld(self, callback : MouseEventCallback) : ()
+    function SetOnHoverBegin(self, callback : MouseEventCallback?) : ()
+    function SetOnHoverEnd(self, callback : MouseEventCallback?) : ()
+    function SetOnHoverHeld(self, callback : MouseEventCallback?) : ()
 
-    function SetOnFocusBegin(self, callback : MouseEventCallback) : ()
-    function SetOnFocusEnd(self, callback : MouseEventCallback) : ()
-    function SetOnFocusHeld(self, callback : MouseEventCallback) : ()
+    function SetOnFocusBegin(self, callback : MouseEventCallback?) : ()
+    function SetOnFocusEnd(self, callback : MouseEventCallback?) : ()
+    function SetOnFocusHeld(self, callback : MouseEventCallback?) : ()
 
-    function SetOnKeyboard(self, callback : KeyboardEventCallback) : ()
+    function SetOnKeyboard(self, callback : KeyboardEventCallback?) : ()
 end
 
-declare class Widget extends WidgetInputEvents
-    function NewWidget(self, pos : vec2, layer : number) : Widget
-    function NewPanel(self, pos : vec2, size : vec2, layer : number, template : string) : Panel
-    function NewText(self, text : string, pos : vec2, layer : number, template : string) : TextWidget
+declare extern type Widget extends WidgetInputEvents with
+    function NewWidget(self, position : vec, layer : integer) : Widget
+    function NewPanel(self, position : vec, size : vec, layer : integer, template : string?) : Panel
+    function NewText(self, text : string, position : vec, layer : integer, template : string) : TextWidget
 
     function SetEnabled(self, enabled : boolean) : ()
     function SetVisible(self, visible : boolean) : ()
     function SetInteractable(self, interactable : boolean) : ()
     function SetFocusable(self, focusable : boolean) : ()
 
-    function GetAnchor(self) : vec2
-    function GetRelativePoint(self) : vec2
-    function SetAnchor(self, anchor : vec2) : ()
-    function SetRelativePoint(self, point : vec2) : ()
+    function IsEnabled(self) : boolean
+    function IsVisible(self) : boolean
+    function IsInteractable(self) : boolean
+    function IsFocusable(self) : boolean
+
+    function GetParent(self) : Widget?
+    function GetChildren(self) : { Widget }
+    function GetChildrenRecursive(self) : { Widget }
+
+    function GetAnchor(self) : vec
+    function GetRelativePoint(self) : vec
+    function SetAnchor(self, anchor : vec) : ()
+    function SetRelativePoint(self, point : vec) : ()
 
     function IsClipChildren(self) : boolean
     function SetClipChildren(self, clipChildren : boolean) : ()
-    function GetClipRect(self) : (number, number, number, number)
-    function SetClipRect(self, minX : number, minY : number, maxX : number, maxY : number) : ()
-    function GetClipMaskTexture(self) : string
-    function SetClipMaskTexture(self, texturePath : string) : ()
+    function GetClipRect(self) : (vec, vec)
+    function SetClipRect(self, min : vec, max : vec) : ()
+    function GetClipMaskTexture(self) : string?
+    function SetClipMaskTexture(self, texturePath : string?) : ()
 
-    function GetPos(self) : vec2
+    function GetPos(self) : vec
     function GetPosX(self) : number
     function GetPosY(self) : number
-    function SetPos(self, pos : vec2) : ()
+    function SetPos(self, position : vec) : ()
     function SetPosX(self, x : number) : ()
     function SetPosY(self, y : number) : ()
 
-    function GetWorldPos(self) : vec2
+    function GetWorldPos(self) : vec
     function GetWorldPosX(self) : number
     function GetWorldPosY(self) : number
-    function SetWorldPos(self, pos : vec2) : ()
+    function SetWorldPos(self, position : vec) : ()
     function SetWorldPosX(self, x : number) : ()
     function SetWorldPosY(self, y : number) : ()
 
-    function SetPos3D(self, pos : vec3) : ()
+    function SetPos3D(self, pos : vec?) : ()
+    function ForceRefresh(self) : ()
+    function GetLayer(self) : integer
+    function SetLayer(self, layer : integer) : ()
+    function RegisterLayoutRefresh(self, callback : (() -> ())?) : ()
+    function InvalidateLayout(self) : ()
 end
 
-declare class Canvas
-    function NewWidget(self, pos : vec2, layer : number) : Widget
-    function NewPanel(self, pos : vec2, size : vec2, layer : number, template : string) : Panel
-    function NewText(self, text : string, pos : vec2, layer : number, template : string) : TextWidget
+declare extern type Canvas with
+    function NewWidget(self, position : vec, layer : integer) : Widget
+    function NewPanel(self, position : vec, size : vec, layer : integer, template : string?) : Panel
+    function NewText(self, text : string, position : vec, layer : integer, template : string) : TextWidget
 end
 
-declare class Panel extends Widget
-    function GetSize(self) : vec2
+declare extern type Panel extends Widget with
+    function GetSize(self) : vec
     function GetWidth(self) : number
     function GetHeight(self) : number
-    function SetSize(self, size : vec2) : ()
+    function SetSize(self, size : vec) : ()
     function SetWidth(self, width : number) : ()
     function SetHeight(self, height : number) : ()
 
-    function SetBackground(self, background : string) : ()
-    function SetForeground(self, foreground : string) : ()
+    function SetBackground(self, background : (string | Canvas)?) : ()
+    function SetForeground(self, foreground : string?) : ()
 
-    function SetTexCoords(self, minX : number, minY : number, maxX : number, maxY : number) : ()
-    function SetColor(self, color : vec3, alpha : number?) : ()
+    function SetTexCoords(self, min : vec, max : vec) : ()
+    function SetColor(self, color : vec, alpha : number?) : ()
     function SetAlpha(self, alpha : number) : ()
-    function SetBorderColor(self, color : vec3) : ()
+    function SetBorderColor(self, color : vec, alpha : number?) : ()
     function SetBorderSize(self, size : number) : ()
 end
 
-declare class TextWidget extends Widget
+declare extern type TextWidget extends Widget with
     function GetText(self) : string
     function SetText(self, text : string) : ()
     function GetRawText(self) : string
-    function GetSize(self) : vec2
+    function GetSize(self) : vec
     function GetFontSize(self) : number
     function SetFontSize(self, size : number) : ()
     function GetWidth(self) : number
     function GetHeight(self) : number
-    function GetColor(self) : vec3
-    function SetColor(self, color : vec3) : ()
+    function GetColor(self) : vec
+    function SetColor(self, color : vec) : ()
+    function SetAlpha(self, alpha : number) : ()
     function GetWrapWidth(self) : number
-    function GetWrapIndent(self) : number
-    function SetWrapIndent(self, size : number) : ()
+    function SetWrapWidth(self, width : number) : ()
+    function GetWrapIndent(self) : integer
+    function SetWrapIndent(self, size : integer) : ()
 end
 
-declare class EventTemplate
+declare extern type EventTemplate with
     onMouseDown : MouseEventCallback?
     onMouseUp : MouseEventCallback?
     onMouseHeld : MouseEventCallback?
@@ -404,11 +431,14 @@ declare class EventTemplate
     onFocusHeld : MouseEventCallback?
 end
 
-declare class PanelTemplate extends EventTemplate
+declare extern type PanelTemplate extends EventTemplate with
     background : string?
     foreground : string?
-    color : vector?
+    color : vec?
+    alpha : number?
     cornerRadius : number?
+    borderColor : vec?
+    borderSize : number?
     texCoords : Box?
     nineSliceInsets : Box? -- Source pixels ordered left, top, right, bottom.
     onClickTemplate : string?
@@ -418,12 +448,14 @@ declare class PanelTemplate extends EventTemplate
     EventTemplate : EventTemplate?
 end
 
-declare class TextTemplate extends EventTemplate
+declare extern type TextTemplate extends EventTemplate with
     font : string?
     size : number?
-    color : vector?
+    color : vec?
     borderSize : number?
-    borderColor : vector?
+    borderColor : vec?
+    wrapWidth : number?
+    wrapIndent : integer?
 
     EventTemplate : EventTemplate?
 end
@@ -435,242 +467,300 @@ declare UI :
     RegisterPanelTemplate : ((name : string, template : PanelTemplate) -> ()),
     RegisterTextTemplate : ((name : string, template : TextTemplate) -> ()),
 
-    RegisterSendMessageToChatCallback : ((callback : SendMessageToChatCallback) -> ()),
+    RegisterSendMessageToChatCallback : ((callback : SendMessageToChatCallback?) -> ()),
 
-    GetCanvas : ((name : string, pos : vec2, size : vec2, isRenderTexture : boolean?) -> Canvas),
-    GetMousePos : (() -> vec2),
-    GetTextureSize : ((path : string) -> vec2),
+    GetCanvas : ((name : string, position : vec, size : vec, isRenderTexture : boolean?) -> Canvas),
+    GetMousePos : (() -> vec),
+    GetTextureSize : ((path : string) -> vec?),
     IsSmoothUnitFrameBarsEnabled : (() -> boolean),
 
-    PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
-    CalculateTextSize : ((text : string, template : string) -> vec2),
-    WrapText : ((text : string, template : string, wrapWidth : number?) -> (string, vec2)),
+    PixelsToTexCoord : ((position : vec, size : vec) -> vec),
+    CalculateTextSize : ((text : string, template : string) -> vec),
+    WrapText : ((text : string, template : string, wrapWidth : number) -> (string, vec)),
 
     FocusWidget : ((widget : Widget) -> ()),
     UnfocusWidget : ((widget : Widget) -> ()),
     IsFocusedWidget : ((widget : Widget) -> boolean),
     WasJustFocusedWidget : ((widget : Widget) -> boolean),
-    GetFocusedWidget : (() -> Widget),
+    GetFocusedWidget : (() -> Widget?),
 
     IsHoveredWidget : ((widget : Widget) -> boolean),
 
-    DestroyWidget : ((widget : Widget) -> boolean),
+    DestroyWidget : ((widget : Widget) -> ()),
 }
 
 declare Input :
 {
     RegisterAction : ((name : string, displayName : string, category : string, binding : { [string] : any }, options : { [string] : any }?) -> boolean),
-    Connect : ((name : string, callback : (phase : number, device : number, code : number, modifiers : number, value : number) -> number) -> number),
-    Disconnect : ((connection : number) -> boolean),
-    SetBinding : ((name : string, slot : number, binding : { [string] : any }, policy : number?) -> { [any] : any }),
-    ClearBinding : ((name : string, slot : number, policy : number?) -> { [any] : any }),
-    ResetBinding : ((name : string, slot : number, policy : number?) -> { [any] : any }),
-    GetBinding : ((name : string, slot : number) -> { [string] : any }?),
+    Connect : ((name : string, callback : (phase : integer, device : integer, code : integer, modifiers : integer, value : number) -> integer) -> integer),
+    Disconnect : ((connection : integer) -> boolean),
+    SetBinding : ((name : string, slot : integer, binding : { [string] : any }, policy : integer?) -> { [any] : any }),
+    ClearBinding : ((name : string, slot : integer, policy : integer?) -> { [any] : any }),
+    ResetBinding : ((name : string, slot : integer, policy : integer?) -> { [any] : any }),
+    GetBinding : ((name : string, slot : integer) -> { [string] : any }?),
     GetActions : (() -> { any }),
     IsDown : ((name : string) -> boolean),
     WasPressed : ((name : string) -> boolean),
     WasReleased : ((name : string) -> boolean),
-    FindBindingConflicts : ((name : string, slot : number, binding : { [string] : any }) -> { [any] : any }),
+    FindBindingConflicts : ((name : string, slot : integer, binding : { [string] : any }) -> { [any] : any }),
     BeginBindingCapture : ((callback : (binding : { [string] : any }?) -> ()) -> boolean),
     CancelBindingCapture : (() -> boolean),
     IsBindingCaptureActive : (() -> boolean),
     SaveBindings : (() -> boolean),
-    CreateContext : ((name : string, priority : number, sortOrder : number?) -> boolean),
+    CreateContext : ((name : string, priority : integer, sortOrder : integer?) -> boolean),
     SetContextActive : ((name : string, active : boolean) -> boolean),
     IsContextActive : ((name : string) -> boolean),
     GetContexts : (() -> { any }),
+    IsMouseCaptured : (() -> boolean),
     IsSoftwareCursorEnabled : (() -> boolean),
-    GetCursorState : ((knownRevision : number?) -> (number?, string?)),
+    GetCursorState : ((knownRevision : integer?) -> (integer?, string?)),
 }
 
 declare Cursor : Canvas
 
-declare class Box
-    --min : vec2
-    --max : vec2
+declare extern type Box with
+    --min : vec
+    --max : vec
 end
 
 declare Box :
 {
-    new : ((min : vec2, max : vec2) -> Box)
+    new : ((min : vec, max : vec) -> Box)
 }
 
 declare Unit :
 {
-    GetLocal            : (() -> number),
-    GetHovered          : (() -> number),
-    GetName             : ((unitID : number) -> string),
-    GetHealth           : ((unitID : number) -> (number, number)),
-    GetLevel            : ((unitID : number) -> number),
-    GetClass            : ((unitID : number) -> number),
-    GetResourceType     : ((unitID : number) -> PowerTypeEnum),
-    GetResource         : ((unitID : number, resourceType : number?) -> (number, number)),
-    GetStat             : ((unitID : number, statType : number) -> (number, number)),
-    GetAuras            : ((unitID : number) -> { [number] : AuraInfo }),
-    GetFactionID        : ((unitID : number) -> number),
-    GetReaction         : ((unitID : number) -> number),
-    CanAttack           : ((unitID : number) -> boolean),
-    GetLocalReactionToUnit : ((unitID : number) -> number),
-    GetUnitReactionToLocalPlayer : ((unitID : number) -> number),
+    GetLocal            : (() -> integer),
+    GetHovered          : (() -> integer),
+    GetName             : ((unitID : integer) -> string),
+    GetHealth           : ((unitID : integer) -> (number, number)),
+    GetLevel            : ((unitID : integer) -> integer),
+    GetClass            : ((unitID : integer) -> integer),
+    GetResourceType     : ((unitID : integer) -> PowerTypeEnum),
+    GetResource         : ((unitID : integer, resourceType : integer?) -> (number, number)),
+    GetStat             : ((unitID : integer, statType : integer) -> (number, number)),
+    GetAuras            : ((unitID : integer) -> { [number] : AuraInfo }),
+    GetFactionID        : ((unitID : integer) -> integer),
+    GetReaction         : ((unitID : integer) -> integer),
+    CanAttack           : ((unitID : integer) -> boolean),
+    GetLocalReactionToUnit : ((unitID : integer) -> integer),
+    GetUnitReactionToLocalPlayer : ((unitID : integer) -> integer),
     ClearTarget         : (() -> boolean),
+    SetTarget           : ((unitID : integer) -> boolean),
 
-    SetWidgetToNamePos  : ((widget : Widget, unitID : number) -> number),
+    SetWidgetToNamePos  : ((widget : Widget, unitID : integer) -> integer),
 }
 
-declare class AuraInfo
-    auraID : number
-    spellID : number
+declare extern type AuraInfo with
+    auraID : integer
+    spellID : integer
     duration : number
-    stacks : number
+    stacks : integer
+    disposition : integer
+    dispelType : integer
 end
 
-declare class ItemInfo
-    DisplayID : number
-    Bind : number
-    Rarity : number
-    Category : number
-    Type : number
-    VirtualLevel : number
-    RequiredLevel : number
-    Durability : number
-    IconID : number
+declare extern type AuraDispositionEnumType with
+    None : integer
+    Beneficial : integer
+    Harmful : integer
+end
+declare AuraDispositionEnum : AuraDispositionEnumType;
+
+declare extern type ItemInfo with
+    DisplayID : integer
+    Bind : integer
+    Rarity : integer
+    Category : integer
+    Type : integer
+    VirtualLevel : integer
+    RequiredLevel : integer
+    Durability : integer
+    IconID : integer
     Name : string
     Description : string
     RequiredText : string
     SpecialText : string
-    Armor : number
-    StatTemplateID : number
-    ArmorTemplateID : number
-    WeaponTemplateID : number
-    ShieldTemplateID : number
+    Armor : integer
+    StatTemplateID : integer
+    ArmorTemplateID : integer
+    WeaponTemplateID : integer
+    ShieldTemplateID : integer
 end
 
-declare class ItemStatInfo
+declare extern type ItemStatInfo with
     [number] : ItemStat
 end
-declare class ItemStat
-    ID : number
-    Value : number
+declare extern type ItemStat with
+    ID : integer
+    Value : integer
 end
 
-declare class ItemArmorInfo
-    EquipType : number
-    BonusArmor : number
+declare extern type ItemArmorInfo with
+    EquipType : integer
+    BonusArmor : integer
 end
 
-declare class ItemWeaponInfo
-    WeaponStyle : number
-    MinDamage : number
-    MaxDamage : number
+declare extern type ItemWeaponInfo with
+    WeaponStyle : integer
+    MinDamage : integer
+    MaxDamage : integer
     Speed : number
 end
 
-declare class ItemShieldInfo
-    BonusArmor : number
-    Block : number
+declare extern type ItemShieldInfo with
+    BonusArmor : integer
+    Block : integer
 end
 
-declare class ItemDisplayInfo
-    ItemVisual : number
-    ParticleColorID : number
-    ItemRangedDisplayInfoID : number
-    OverrideSwooshSoundKitID : number
-    SheatheTransformMatrixID : number
-    StateSpellVisualKitID : number
-    SheathedSpellVisualKitID : number
-    UnsheathedSpellVisualKitID : number
-    Flags : number
-    ModelResourcesID1 : number
-    ModelResourcesID2 : number
-    MaterialResourcesID1 : number
-    MaterialResourcesID2 : number
-    ModelType1 : number
-    ModelType2 : number
-    GoesetGroup1 : number
-    GoesetGroup2 : number
-    GoesetGroup3 : number
-    GoesetGroup4 : number
-    GoesetGroup5 : number
-    GoesetGroup6 : number
-    GeosetAttachmentGroup1 : number
-    GeosetAttachmentGroup2 : number
-    GeosetAttachmentGroup3 : number
-    GeosetAttachmentGroup4 : number
-    GeosetAttachmentGroup5 : number
-    GeosetAttachmentGroup6 : number
-    GeosetHelmetVis1 : number
-    GeosetHelmetVis2 : number
+declare extern type ItemDisplayInfo with
+    ItemVisual : integer
+    ParticleColorID : integer
+    ItemRangedDisplayInfoID : integer
+    OverrideSwooshSoundKitID : integer
+    SheatheTransformMatrixID : integer
+    StateSpellVisualKitID : integer
+    SheathedSpellVisualKitID : integer
+    UnsheathedSpellVisualKitID : integer
+    Flags : integer
+    ModelResourcesID1 : integer
+    ModelResourcesID2 : integer
+    MaterialResourcesID1 : integer
+    MaterialResourcesID2 : integer
+    ModelType1 : integer
+    ModelType2 : integer
+    GoesetGroup1 : integer
+    GoesetGroup2 : integer
+    GoesetGroup3 : integer
+    GoesetGroup4 : integer
+    GoesetGroup5 : integer
+    GoesetGroup6 : integer
+    GeosetAttachmentGroup1 : integer
+    GeosetAttachmentGroup2 : integer
+    GeosetAttachmentGroup3 : integer
+    GeosetAttachmentGroup4 : integer
+    GeosetAttachmentGroup5 : integer
+    GeosetAttachmentGroup6 : integer
+    GeosetHelmetVis1 : integer
+    GeosetHelmetVis2 : integer
 end
 
-declare class ItemEffectType
-    OnEquip     : number
-    OnUse       : number
-    OnProc      : number
-    OnLooted    : number
-    OnBound     : number
+declare extern type ItemEffectType with
+    OnEquip     : integer
+    OnUse       : integer
+    OnProc      : integer
+    OnLooted    : integer
+    OnBound     : integer
 end
 declare ItemEffectType : ItemEffectType;
 
-declare class ItemEffectInfo
-    ItemID : number
-    Slot : number
+declare extern type ItemEffectInfo with
+    ItemID : integer
+    Slot : integer
     Type : ItemEffectType
-    SpellID : number
+    SpellID : integer
 end
 
-declare class SpellInfo
+declare extern type SpellInfo with
     Name : string
     Description : string
     AuraDescription : string
-    IconID : number
+    IconID : integer
+    IsAura : boolean
+    AuraDisposition : integer
+    AuraDispelType : integer
+    MaximumStacks : integer
+    TargetSelector : integer
+    TargetShape : integer
+    TargetRelation : integer
+    TargetRecipientMask : integer
+    RangePolicy : integer
+    MinimumRange : number
+    MaximumRange : number
+    TargetRadius : number
+    MaximumTargets : integer
 end
 
-declare class Icon
-    Texture : number
+declare extern type Icon with
+    Texture : string
 end
 declare Item :
 {
-    GetItemInfo         : ((itemID : number) -> ItemInfo),
-    GetItemStatInfo     : ((itemStatInfoID : number) -> ItemStatInfo),
-    GetItemArmorInfo    : ((itemArmorInfoID : number) -> ItemArmorInfo),
-    GetItemWeaponInfo   : ((itemWeaponInfoID : number) -> ItemWeaponInfo),
-    GetItemShieldInfo   : ((itemShieldInfoID : number) -> ItemShieldInfo),
-    GetItemDisplayInfo  : ((itemDisplayID : number) -> ItemDisplayInfo),
-    GetItemEffects      : ((itemID : number) -> { ItemEffectInfo } ),
-    GetIconInfo         : ((itemIconID : number) -> Icon)
+    GetItemInfo         : ((itemID : integer) -> ItemInfo),
+    GetItemStatInfo     : ((itemStatInfoID : integer) -> ItemStatInfo),
+    GetItemArmorInfo    : ((itemArmorInfoID : integer) -> ItemArmorInfo),
+    GetItemWeaponInfo   : ((itemWeaponInfoID : integer) -> ItemWeaponInfo),
+    GetItemShieldInfo   : ((itemShieldInfoID : integer) -> ItemShieldInfo),
+    GetItemDisplayInfo  : ((itemDisplayID : integer) -> ItemDisplayInfo),
+    GetItemEffects      : ((itemID : integer) -> { ItemEffectInfo } ),
+    GetIconInfo         : ((itemIconID : integer) -> Icon)
 }
 
 declare Spell :
 {
-    GetSpellInfo    : ((spellID : number) -> SpellInfo),
-    GetIconInfo     : ((spellIconID : number) -> Icon)
+    GetSpellInfo    : ((spellID : integer) -> SpellInfo),
+    GetIconInfo     : ((spellIconID : integer) -> Icon),
+    CastByID        : ((spellID : integer) -> boolean),
+    CastAtPosition  : ((spellID : integer, targetPosition : vector) -> boolean),
+}
+
+declare SpellEditor :
+{
+    GetSnapshot : (() -> { [string] : any }),
+    GetDraft : (() -> { [string] : any }?),
+    GetCatalog : (() -> { [string] : any }),
+    SearchIcons : ((filter : string, offset : integer, limit : integer) -> { [string] : any }),
+    RequestSnapshot : (() -> boolean),
+    OpenDraft : ((spellID : integer) -> boolean),
+    CreateDraft : (() -> boolean),
+    DuplicateDraft : ((spellID : integer) -> boolean),
+    DiscardDraft : (() -> ()),
+    SetField : ((field : string, value : string | number | integer) -> boolean),
+    SetAuraEnabled : ((enabled : boolean) -> boolean),
+    SetAuraField : ((field : string, value : number | integer) -> boolean),
+    AddEffect : ((effectType : integer) -> integer),
+    RemoveEffect : ((effectID : integer) -> boolean),
+    MoveEffect : ((effectID : integer, offset : integer) -> boolean),
+    SetEffectField : ((effectID : integer, field : string, value : integer) -> boolean),
+    SetEffectParameter : ((effectID : integer, parameterIndex : integer, value : integer) -> boolean),
+    AddConstraint : ((groupID : integer) -> integer),
+    RemoveConstraint : ((constraintID : integer) -> boolean),
+    SetConstraintField : ((constraintID : integer, field : string, value : integer) -> boolean),
+    ResetConstraintField : ((constraintID : integer, field : string) -> boolean),
+    CreateConstraintGroup : ((name : string, defaultScope : integer, defaultMaximumApplications : integer, defaultOverflowBehavior : integer) -> integer),
+    UpdateConstraintGroup : ((groupID : integer, name : string, defaultScope : integer, defaultMaximumApplications : integer, defaultOverflowBehavior : integer) -> boolean),
+    DeleteConstraintGroup : ((groupID : integer) -> boolean),
+    CreateProcData : ((ownerSpellID : integer, name : string, phaseMask : integer, typeMask : integer, hitMask : integer, flags : integer, procsPerMinute : number, chanceToProc : number, internalCooldownMS : integer, charges : integer) -> integer),
+    UpdateProcData : ((procDataID : integer, ownerSpellID : integer, name : string, phaseMask : integer, typeMask : integer, hitMask : integer, flags : integer, procsPerMinute : number, chanceToProc : number, internalCooldownMS : integer, charges : integer) -> boolean),
+    DeleteProcData : ((procDataID : integer) -> boolean),
+    AddProcLink : ((procDataID : integer) -> integer),
+    RemoveProcLink : ((procLinkID : integer) -> boolean),
+    SetProcLinkData : ((procLinkID : integer, procDataID : integer) -> boolean),
+    SetProcLinkEffect : ((procLinkID : integer, effectID : integer, selected : boolean) -> boolean),
+    Validate : (() -> { { path : string, message : string } }),
+    Submit : (() -> boolean),
+    Delete : ((spellID : integer) -> boolean),
+}
+
+declare TerrainEditor :
+{
+    GetState : (() -> { [string] : any }?),
+    SetEnabled : ((enabled : boolean) -> boolean),
+    SetPreviewRadius : ((radius : number) -> boolean),
+    BeginStroke : ((name : string) -> boolean),
+    ApplySample : ((operation : integer, position : vector, radius : number, strength : number, hardness : number, deltaTime : number, targetHeight : number) -> boolean),
+    SetPaintTexture : ((virtualPath : string) -> boolean),
+    ApplyPaintSample : ((position : vector, radius : number, pressure : number, hardness : number, deltaTime : number, targetOpacity : number) -> boolean),
+    GetCursorLayers : (() -> { { path : string, textureHash : integer, layerIndex : integer, averageWeight : number } }),
+    CommitStroke : (() -> boolean),
+    CancelStroke : (() -> boolean),
+    Undo : (() -> boolean),
+    Redo : (() -> boolean),
+    Save : (() -> boolean),
 }
 
 declare Container :
 {
-    RequestSwapSlots : ((srcContainerIndex : number, destContainerIndex : number, srcSlotIndex : number, destSlotIndex : number) -> boolean),
-    GetContainerItems : ((containerIndex : number) -> { ContainerItemEventData }),
+    RequestSwapSlots : ((srcContainerIndex : integer, destContainerIndex : integer, srcSlotIndex : integer, destSlotIndex : integer) -> boolean),
+    GetContainerItems : ((containerIndex : integer) -> (integer, { ContainerItemInfo })),
 }
-
-declare class OptionType
-    InputBox    : number
-    Checkbox    : number
-    Slider      : number
-    ComboBox    : number
-end
-declare OptionType : OptionType;
-
-declare class OptionCategoryType
-    Gameplay        : string
-    Keybindings     : string
-    Accessibility   : string
-    System          : string
-end
-declare OptionCategoryType : OptionCategoryType;
-
-declare class NameplateTextDisplayType
-    None            : number
-    Value           : number
-    ValueAndPercent : number
-end
-declare NameplateTextDisplayType : NameplateTextDisplayType;

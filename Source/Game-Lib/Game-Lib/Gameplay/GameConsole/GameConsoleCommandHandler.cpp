@@ -58,7 +58,6 @@ GameConsoleCommandHandler::GameConsoleCommandHandler()
     RegisterCommand(GameConsoleCommands::HandleTriggerAdd);
     RegisterCommand(GameConsoleCommands::HandleTriggerRemove);
     RegisterCommand(GameConsoleCommands::HandleSpellSync);
-    RegisterCommand(GameConsoleCommands::HandleSpellSyncAll);
     RegisterCommand(GameConsoleCommands::HandleCreatureAddScript);
     RegisterCommand(GameConsoleCommands::HandleCreatureRemoveScript);
     RegisterCommand(GameConsoleCommands::HandleCheatPathGenerate);

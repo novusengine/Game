@@ -162,6 +162,55 @@ namespace Jolt
             //NC_LOG_INFO("A body went to sleep");
         }
     };
+
+    enum class PhysicsSurfaceType : u8
+    {
+        Unknown = 0,
+        Terrain,
+        StaticModel,
+        DynamicModel,
+        Transport
+    };
+    DECLARE_GENERIC_BITWISE_OPERATORS(PhysicsSurfaceType);
+
+    enum class PhysicsBodyFlags : u16
+    {
+        None = 0,
+        CanSupport = 1 << 0,
+        CanSnapTo = 1 << 1,
+        CanStepOnto = 1 << 2
+    };
+    DECLARE_GENERIC_BITWISE_OPERATORS(PhysicsBodyFlags);
+
+    struct PhysicsBodyUserData
+    {
+    public:
+        static constexpr u64 EntityMask = 0x00000000FFFFFFFFull;
+        static constexpr u64 SurfaceTypeMask = 0x000000FF00000000ull;
+        static constexpr u64 FlagsMask = 0x00FFFF0000000000ull;
+        static constexpr u32 SurfaceTypeShift = 32;
+        static constexpr u32 FlagsShift = 40;
+
+        static u64 Pack(entt::entity entityID, PhysicsSurfaceType surfaceType, PhysicsBodyFlags flags)
+        {
+            return static_cast<u64>(entityID) | static_cast<u64>(surfaceType) << SurfaceTypeShift | static_cast<u64>(flags) << FlagsShift;
+        }
+
+        static entt::entity GetEntityID(u64 userData)
+        {
+            return static_cast<entt::entity>(userData & EntityMask);
+        }
+
+        static PhysicsSurfaceType GetSurfaceType(u64 userData)
+        {
+            return static_cast<PhysicsSurfaceType>((userData & SurfaceTypeMask)  >> SurfaceTypeShift);
+        }
+
+        static PhysicsBodyFlags GetFlags(u64 userData)
+        {
+            return static_cast<PhysicsBodyFlags>((userData & FlagsMask) >> FlagsShift);
+        }
+    };
 };
 
 namespace ECS::Singletons

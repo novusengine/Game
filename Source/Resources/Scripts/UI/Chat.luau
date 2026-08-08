@@ -1,10 +1,13 @@
 local UIButton = require("@src/API/UI/Button");
 local UIInputBox = require("@src/API/UI/InputBox");
 local InputAPI = require("@src/API/Input/Input");
---local UIScrollBox : ScrollBoxAPI = require("@src/API/UI/ScrollBox");
 local UIVerticalLayout = require("@src/API/UI/VerticalLayout");
 local ChatListener = require("@src/API/Game/ChatListener");
 local OptionsContext = require("@src/API/OptionsContext");
+local EditMode = require("@src/API/Game/EditMode");
+local EditModeDefaults = require("@src/API/Game/EditModeDefaults");
+
+local COMBAT_CHANNEL = "Combat";
 
 export type ChatMessage =
 {
@@ -15,49 +18,70 @@ export type ChatMessage =
     timestamp : number, -- Unix timestamp
 }
 
+export type ChannelScrollState =
+{
+    offset : number,
+    wasAtBottom : boolean,
+}
+
 export type Chat =
 {
     basePanel : Panel,
 
     --scrollBox : ScrollBox,
     clipPanel : Panel, -- The fake "scroll box" that clips the content
-    inputBox : InputBox,
+    inputBox : UIInputBox.InputBox,
+    channelStrip : Panel,
+    channelNames : { string },
+    channelButtons : { UIButton.Button },
+    activeChannel : string,
 
-    chatHistoryQueue : {ChatMessage}, -- Queue of chat messages
-    chatHistoryTexts : {Text}, -- Text objects for displaying chat messages
+    normalHistory : {ChatMessage}, -- Non-combat messages (Say, System, Whisper, etc.)
+    combatHistory : {ChatMessage}, -- Combat log messages
+    chatHistoryTexts : {TextWidget}, -- Text objects for displaying chat messages
     chatScrollOffset : number, -- Pixel offset from the latest chat messages
+    chatVisibleContentHeight : number, -- Visible content height after channel strip adjustment
+    chatActiveContentHeight : number, -- Content height of the active channel's messages
+    channelScrollStates : { [string]: ChannelScrollState }, -- Per-channel scroll state
+    pendingScrollRestore : ChannelScrollState?, -- Scroll state to restore after channel switch
 }
 
 local chatToOpenOnEnter : Chat? = nil;
-local MAX_MESSAGE_HISTORY_SIZE : number = 50; -- Maximum number of messages to keep in history
+local MAX_MESSAGE_HISTORY_SIZE : number = 256;
 local INPUT_LOCATION_BOTTOM : number = 1;
 local INPUT_LOCATION_TOP : number = 2;
 local INPUT_ALPHA_UNFOCUSED : number = 0.55;
 local INPUT_ALPHA_FOCUSED : number = 1.0;
 local CHAT_SCROLL_STEP : number = 20;
+local CHANNEL_BUTTON_WIDTH : number = 70;
+local CHANNEL_BUTTON_HEIGHT : number = 24;
+local CHANNEL_BUTTON_PADDING : number = 4;
+local COMBAT_EVENT_DAMAGE : integer = 0i;
+local COMBAT_EVENT_HEAL : integer = 1i;
+local COMBAT_EVENT_RESURRECT : integer = 2i;
 
 local function RegisterTemplates()
     UI.RegisterPanelTemplate("ChatRootPanel",
     {
-        color = vector.create(0.02, 0.02, 0.02),
+        color = vec.New(0.02, 0.02, 0.02),
         cornerRadius = 0.0,
     });
 
     UI.RegisterPanelTemplate("ChatHistoryPanel",
     {
-        color = vector.create(0.035, 0.035, 0.035),
+        color = vec.New(0.035, 0.035, 0.035),
         cornerRadius = 0.0,
     });
 
     UI.RegisterPanelTemplate("ChatInputPanel",
     {
-        color = vector.create(0.055, 0.055, 0.055),
+        color = vec.New(0.055, 0.055, 0.055),
         cornerRadius = 0.0,
     });
 
     UI.RegisterPanelTemplate("ChatSeparator",
     {
-        color = vector.create(0.45, 0.36, 0.10),
+        color = vec.New(0.45, 0.36, 0.10),
         cornerRadius = 0.0,
     });
 
@@ -65,44 +89,58 @@ local function RegisterTemplates()
     {
         font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 15.0,
-        borderSize = 0.5,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderSize = 0.0,
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("ChatInputText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 16.0,
-        color = vector.create(0.9, 0.9, 0.9),
-        borderSize = 0.5,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        color = vec.New(0.9, 0.9, 0.9),
+        borderSize = 0.0,
+        borderColor = vec.New(0.0, 0.0, 0.0),
+    });
+
+    UI.RegisterPanelTemplate("ChatChannelButton",
+    {
+        color = vec.New(0.055, 0.055, 0.055),
+        cornerRadius = 0.0,
+    });
+
+    UI.RegisterPanelTemplate("ChatChannelStrip",
+    {
+        color = vec.New(0.02, 0.02, 0.02),
+        cornerRadius = 0.0,
+    });
+
+    UI.RegisterPanelTemplate("ChatChannelButtonActive",
+    {
+        color = vec.New(0.15, 0.15, 0.15),
+        cornerRadius = 0.0,
     });
 end
 
-local function GetTextColor(message : ChatMessage) : vector
+local function GetTextColor(message : ChatMessage) : vec
     -- Determine the text color based on the channel and whether the message is outgoing
     if (message.channel == "Whisper") then
-        -- Magenta for whispers
-        return vector.create(1.0, 0.45, 1.0); -- Magenta for whispers
+        return vec.New(1.0, 0.45, 1.0);
     elseif (message.channel == "System") then
-        -- Yellow for system messages
-        return vector.create(1.0, 0.82, 0.15); -- Warm yellow for system messages
+        return vec.New(1.0, 0.82, 0.15);
+    elseif (message.channel == COMBAT_CHANNEL) then
+        return vec.New(1.0, 0.55, 0.55);
     end
 
-    -- Default color for other messages
-    return vector.create(0.92, 0.92, 0.92); -- Soft white for incoming messages
+    return vec.New(0.92, 0.92, 0.92);
 end
 
 local function FormatMessage(message : ChatMessage, showTimestamp : boolean) : string
-    -- Format the message text with timestamp and source
     local formattedText = "";
-
     local timestampText = "";
     if (showTimestamp) then
         timestampText = string.format("%s ", os.date("%H:%M:%S", message.timestamp));
     end
 
-    -- If the channel is Whisper, format it differently
     if (message.channel == "Whisper") then
         if (message.isOutgoing) then
             formattedText = string.format("%sTo %s: %s", timestampText, message.playerName, message.text);
@@ -111,6 +149,8 @@ local function FormatMessage(message : ChatMessage, showTimestamp : boolean) : s
         end
     elseif (message.channel == "Say") then
         formattedText = string.format("%s[%s] says: %s", timestampText, message.playerName, message.text);
+    elseif (message.channel == COMBAT_CHANNEL) then
+        formattedText = string.format("%s%s", timestampText, message.text);
     else
         formattedText = string.format("%s[%s] %s: %s", timestampText, message.channel, message.playerName, message.text);
     end
@@ -119,25 +159,28 @@ local function FormatMessage(message : ChatMessage, showTimestamp : boolean) : s
 end
 
 local function RefreshText(chat : Chat, preserveScrollPosition : boolean?, previousContentHeight : number?)
-    local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
+    local optionCategory = OptionsContext:GetCategory(OptionsContext.OptionCategoryType.Gameplay);
     local optionGroup = optionCategory:Get("Chat");
     local optionSection = optionGroup:Get("General");
 
     local showTimestamp = (optionSection.options:Has("Show Timestamps") and optionSection:GetOption("Show Timestamps"):Get()) or false;
     local textSize = (optionSection.options:Has("Text Size") and optionSection:GetOption("Text Size"):Get()) or 15.0;
 
-    -- Iterate newest-to-oldest. With the layout's reverse=true the first-added child sits
-    -- at the bottom, so the newest message ends up at the bottom (matches original behavior).
-    -- Keep all retained messages in the layout so the history can be scrolled in pixels rather
-    -- than jumping by an entire message (which is especially coarse for wrapped messages).
+    local sourceQueue;
+    if (chat.activeChannel == COMBAT_CHANNEL) then
+        sourceQueue = chat.combatHistory;
+    else
+        sourceQueue = chat.normalHistory;
+    end
+
     local widgetIndex = 1;
-    for i = #chat.chatHistoryQueue, 1, -1 do
-        local message = chat.chatHistoryQueue[i];
+    for i = #sourceQueue, 1, -1 do
+        local message = sourceQueue[i];
 
         if (chat.chatHistoryTexts[widgetIndex] == nil) then
-            local text = chat.layout:NewText("", 0, 0, 0, "ChatText");
+            local text = chat.layout:NewText("", vec.New(0, 0), 0i, "ChatText");
             text:SetWrapWidth(chat.historyContentWidth);
-            text:SetWrapIndent(4);
+            text:SetWrapIndent(4i);
             chat.chatHistoryTexts[widgetIndex] = text;
         end
 
@@ -154,43 +197,94 @@ local function RefreshText(chat : Chat, preserveScrollPosition : boolean?, previ
         chat.chatHistoryTexts[j]:SetEnabled(false);
     end
 
-    local contentHeight = chat.layout:GetMeasuredHeight();
-    if (preserveScrollPosition and previousContentHeight ~= nil) then
+    local contentHeight = 0;
+    for i = 1, widgetIndex - 1 do
+        contentHeight += chat.chatHistoryTexts[i]:GetHeight();
+    end
+    chat.chatActiveContentHeight = contentHeight;
+
+    local maxScrollOffset = math.max(0, contentHeight - chat.chatVisibleContentHeight);
+
+    if (chat.pendingScrollRestore ~= nil) then
+        local restore = chat.pendingScrollRestore;
+        chat.pendingScrollRestore = nil;
+
+        if (restore.wasAtBottom) then
+            chat.chatScrollOffset = maxScrollOffset;
+        else
+            chat.chatScrollOffset = math.max(0, math.min(maxScrollOffset, restore.offset));
+        end
+    elseif (preserveScrollPosition and previousContentHeight ~= nil) then
         chat.chatScrollOffset += math.max(0, contentHeight - previousContentHeight);
     end
 
-    local maxScrollOffset = math.max(0, contentHeight - chat.historyContentHeight);
     chat.chatScrollOffset = math.max(0, math.min(maxScrollOffset, chat.chatScrollOffset));
     chat.layout:SetPosY(chat.historyPaddingY - chat.chatScrollOffset);
 end
 
-local function AddMessageToChat(chat : Chat, message : string, channel : string?, playerName : string?, isOutgoing : boolean?)
-    local playerName = playerName or ""; -- Default source if not provided
-    local channel = channel or "System"; -- Default channel if not provided
-    local isOutgoing = isOutgoing or false; -- Default to incoming if not specified
-    
-    local preserveScrollPosition = chat.chatScrollOffset > 0;
-    local previousContentHeight = chat.layout:GetMeasuredHeight();
-
-    -- Push a new message to the chat history queue
-    local newMessage : ChatMessage = {
-        text = message,
-        channel = channel,
-        playerName = playerName,
-        isOutgoing = isOutgoing,
-        timestamp = os.time(), -- Get the current Unix timestamp
-    };
-    table.insert(chat.chatHistoryQueue, newMessage);
-
-    -- If the chat history exceeds the maximum size, remove the oldest message
-    if (#chat.chatHistoryQueue > MAX_MESSAGE_HISTORY_SIZE) then
-        table.remove(chat.chatHistoryQueue, 1); -- Remove the oldest message
+local function SetActiveChannel(chat : Chat, channelName : string)
+    -- Save current channel's scroll state before switching
+    if (chat.activeChannel ~= nil) then
+        local maxScrollOffset = math.max(0, chat.chatActiveContentHeight - chat.chatVisibleContentHeight);
+        chat.channelScrollStates[chat.activeChannel] = {
+            offset = chat.chatScrollOffset,
+            wasAtBottom = chat.chatScrollOffset >= maxScrollOffset - 1,
+        };
     end
 
-    RefreshText(chat, preserveScrollPosition, previousContentHeight); -- Refresh the chat display
+    for j, otherBtn in chat.channelButtons do
+        otherBtn:SetVisualEnabled(false);
+        otherBtn.root:SetAnchor(vec.New(0.0, 0.0));
+        otherBtn.root:SetRelativePoint(vec.New(0.0, 0.0));
+    end
+
+    chat.activeChannel = channelName;
+    local activeIndex = table.find(chat.channelNames, channelName);
+    if (activeIndex ~= nil) then
+        local button = chat.channelButtons[activeIndex];
+        button:SetVisualEnabled(true);
+        button.root:SetAnchor(vec.New(0.0, 0.0));
+        button.root:SetRelativePoint(vec.New(0.0, 0.0));
+    end
+
+    -- Queue restore for RefreshText
+    chat.pendingScrollRestore = chat.channelScrollStates[channelName];
+    RefreshText(chat);
 end
 
-local function OnSubmit(chat : Chat, inputBox : InputBox)
+local function AddMessageToChat(chat : Chat, message : string, channel : string?, playerName : string?, isOutgoing : boolean?)
+    local resolvedChannel = channel or "System";
+    local resolvedPlayerName = playerName or "";
+    local resolvedOutgoing = isOutgoing or false;
+
+    local preserveScrollPosition = chat.chatScrollOffset > 0;
+    local previousContentHeight = chat.chatActiveContentHeight;
+
+    local newMessage : ChatMessage = {
+        text = message,
+        channel = resolvedChannel,
+        playerName = resolvedPlayerName,
+        isOutgoing = resolvedOutgoing,
+        timestamp = os.time(),
+    };
+
+    local queue;
+    if (resolvedChannel == COMBAT_CHANNEL) then
+        queue = chat.combatHistory;
+    else
+        queue = chat.normalHistory;
+    end
+
+    table.insert(queue, newMessage);
+
+    if (#queue > MAX_MESSAGE_HISTORY_SIZE) then
+        table.remove(queue, 1);
+    end
+
+    RefreshText(chat, preserveScrollPosition, previousContentHeight);
+end
+
+local function OnSubmit(chat : Chat, inputBox : UIInputBox.InputBox)
     local text = inputBox:GetText();
     if (text == nil or text == "") then
         return true; -- Do not submit empty messages
@@ -210,19 +304,19 @@ end
 local function SetInputLocation(chat : Chat, location : number)
     -- Use the same local origin for both regions so the separator and outer history
     -- margin remain consistent, regardless of which one is on top.
-    chat.clipPanel:SetAnchor(0.0, 0.0);
-    chat.clipPanel:SetRelativePoint(0.0, 0.0);
-    chat.inputBox:SetAnchor(0.0, 0.0);
-    chat.inputBox:SetRelativePoint(0.0, 0.0);
+    chat.clipPanel:SetAnchor(vec.New(0.0, 0.0));
+    chat.clipPanel:SetRelativePoint(vec.New(0.0, 0.0));
+    chat.inputBox:SetAnchor(vec.New(0.0, 0.0));
+    chat.inputBox:SetRelativePoint(vec.New(0.0, 0.0));
 
     if (location == INPUT_LOCATION_BOTTOM) then
         chat.inputBox:SetPosY(0);
         chat.separatorPanel:SetPosY(chat.inputBoxHeight);
-        chat.clipPanel:SetPosY(chat.inputBoxHeight + chat.inputHistoryGap);
+        chat.clipPanel:SetPosY(chat.inputBoxHeight + chat.separatorThickness + chat.inputHistoryGap);
     else
-        chat.clipPanel:SetPosY(chat.historyOuterMargin);
-        chat.separatorPanel:SetPosY(chat.height - chat.inputBoxHeight - chat.separatorThickness);
         chat.inputBox:SetPosY(chat.height - chat.inputBoxHeight);
+        chat.separatorPanel:SetPosY(chat.height - chat.inputBoxHeight - chat.separatorThickness);
+        chat.clipPanel:SetPosY(chat.inputHistoryGap);
     end
 
     chat.clipPanel:ForceRefresh();
@@ -232,9 +326,13 @@ end
 
 local function CreateChat(chatCanvas : Canvas)
     local chat = {};
-    chat.chatHistoryQueue = {};
+    chat.normalHistory = {};
+    chat.combatHistory = {};
     chat.chatHistoryTexts = {};
     chat.chatScrollOffset = 0;
+    chat.channelScrollStates = {};
+    chat.pendingScrollRestore = nil;
+    chat.chatActiveContentHeight = 0;
 
     -- Define constants for the chat area
     chat.width = 600;
@@ -242,50 +340,51 @@ local function CreateChat(chatCanvas : Canvas)
     chat.inputBoxHeight = 30;
     chat.inputHistoryGap = 0;
     chat.historyOuterMargin = 5;
-    chat.separatorThickness = 1;
-    chat.historyPaddingX = 8;
-    chat.historyPaddingY = 8;
+    chat.separatorThickness = 2;
+    chat.historyPaddingX = 4;
+    chat.historyPaddingY = 4;
     chat.scrollBoxWidth = chat.width;
-    chat.scrollBoxHeight = chat.height - chat.inputBoxHeight - chat.inputHistoryGap - chat.historyOuterMargin;
+    chat.scrollBoxHeight = chat.height - chat.inputHistoryGap - chat.separatorThickness;
     chat.historyContentWidth = chat.scrollBoxWidth - chat.historyPaddingX * 2;
     chat.historyContentHeight = chat.scrollBoxHeight - chat.historyPaddingY * 2;
 
     -- Create the base panel
-    chat.basePanel = chatCanvas:NewPanel(20, 20, chat.width, chat.height, 0, "ChatRootPanel");
+    local editModeDefault = EditModeDefaults.GetElement(EditModeDefaults.ElementIDs.ChatWindow);
+    if editModeDefault == nil then
+        error("ChatWindow is not defined in EditModeDefaults");
+    end
+    local defaultPosition = vec.New(editModeDefault.defaultPosX, editModeDefault.defaultPosY);
+    chat.basePanel = chatCanvas:NewPanel(defaultPosition, vec.New(chat.width, chat.height), 0i, "ChatRootPanel");
     chat.basePanel:SetAlpha(0.0);
 
-    chat.clipPanel = chat.basePanel:NewPanel(0, 0, chat.scrollBoxWidth, chat.scrollBoxHeight, 0, "ChatHistoryPanel");
+    chat.clipPanel = chat.basePanel:NewPanel(vec.New(0, 0), vec.New(chat.scrollBoxWidth, chat.scrollBoxHeight), 0i, "ChatHistoryPanel");
     chat.clipPanel:SetClipChildren(true); -- Enable clipping for the panel
     chat.clipPanel:SetClipRect(
-        chat.historyPaddingX / chat.scrollBoxWidth,
-        chat.historyPaddingY / chat.scrollBoxHeight,
-        1.0 - chat.historyPaddingX / chat.scrollBoxWidth,
-        1.0 - chat.historyPaddingY / chat.scrollBoxHeight);
+        vec.New(chat.historyPaddingX / chat.scrollBoxWidth, chat.historyPaddingY / chat.scrollBoxHeight),
+        vec.New(1.0 - chat.historyPaddingX / chat.scrollBoxWidth, 1.0 - chat.historyPaddingY / chat.scrollBoxHeight));
     chat.clipPanel:SetAlpha(0.65);
 
     -- VerticalLayout(reverse=true): children stack bottom-up so newest message is at the bottom.
     -- heightMode="shrink" lets the layout grow upward as messages arrive; the clipPanel's clip
     -- mask hides anything that grows past its top edge.
-    chat.layout = UIVerticalLayout.NewVerticalLayout(
+    chat.layout = UIVerticalLayout.New(
         chat.clipPanel,
-        chat.historyPaddingX,
-        chat.historyPaddingY,
-        chat.historyContentWidth,
-        chat.historyContentHeight,
-        0,
+        vec.New(chat.historyPaddingX, chat.historyPaddingY),
+        vec.New(chat.historyContentWidth, chat.historyContentHeight),
+        0i,
         {
             reverse = true,
             heightMode = "shrink",
             panelTemplate = "ChatRootPanel",
             alpha = 0.0,
         });
-    chat.layout:SetAnchor(0.0, 0.0);
-    chat.layout:SetRelativePoint(0.0, 0.0);
+    chat.layout:SetAnchor(vec.New(0.0, 0.0));
+    chat.layout:SetRelativePoint(vec.New(0.0, 0.0));
+    chat.chatVisibleContentHeight = chat.historyContentHeight;
 
     -- Add scroll handlers
-    chat.clipPanel:SetOnMouseScroll(function(eventID : number, widget : Widget, deltaX : number, deltaY : number)
-        local contentHeight = chat.layout:GetMeasuredHeight();
-        local maxScrollOffset = math.max(0, contentHeight - chat.historyContentHeight);
+    chat.clipPanel:SetOnMouseScroll(function(eventID : integer, widget : Widget, deltaX : number, deltaY : number)
+        local maxScrollOffset = math.max(0, chat.chatActiveContentHeight - chat.chatVisibleContentHeight);
         chat.chatScrollOffset = math.max(0, math.min(
             maxScrollOffset,
             chat.chatScrollOffset + deltaY * CHAT_SCROLL_STEP));
@@ -293,59 +392,119 @@ local function CreateChat(chatCanvas : Canvas)
     end);
 
     -- Create the input box for sending messages
-    chat.inputBox = UIInputBox.NewInputBox(chat.basePanel, 0, 0, chat.width, chat.inputBoxHeight, 0, {
+    chat.inputBox = UIInputBox.New(chat.basePanel, vec.New(0, 0), vec.New(chat.width, chat.inputBoxHeight), 0i, {
         panelTemplate = "ChatInputPanel",
         textTemplate = "ChatInputText",
         placeholderText = "Type a message...",
     });
     chat.inputBox:SetTextVerticallyCentered();
     chat.inputBox.button.text:SetPosY(chat.inputBox.button.text:GetPosY() + 2);
-    chat.inputBox.button.panel:SetAlpha(INPUT_ALPHA_UNFOCUSED);
-    chat.inputBox:SetOnFocusBegin(function(inputBox : InputBox)
-        inputBox.button.panel:SetAlpha(INPUT_ALPHA_FOCUSED);
+    chat.inputBox.button.root:SetAlpha(INPUT_ALPHA_UNFOCUSED);
+    chat.inputBox:SetOnFocusBegin(function(inputBox : UIInputBox.InputBox)
+        inputBox.button.root:SetAlpha(INPUT_ALPHA_FOCUSED);
     end);
-    chat.inputBox:SetOnFocusEnd(function(inputBox : InputBox)
-        inputBox.button.panel:SetAlpha(INPUT_ALPHA_UNFOCUSED);
+    chat.inputBox:SetOnFocusEnd(function(inputBox : UIInputBox.InputBox)
+        inputBox.button.root:SetAlpha(INPUT_ALPHA_UNFOCUSED);
     end);
-    chat.inputBox:SetOnSubmit(function(inputBox : InputBox)
+    chat.inputBox:SetOnSubmit(function(inputBox : UIInputBox.InputBox)
         return OnSubmit(chat, inputBox);
     end);
 
-    chat.separatorPanel = chat.basePanel:NewPanel(0, 0, chat.width, chat.separatorThickness, 0, "ChatSeparator");
+    chat.separatorPanel = chat.basePanel:NewPanel(vec.New(0, 0), vec.New(chat.width, chat.separatorThickness), 0i, "ChatSeparator");
+
+    local channelNames = { "Say", "Combat" };
+    local totalChannelWidth = #channelNames * CHANNEL_BUTTON_WIDTH + (#channelNames - 1) * CHANNEL_BUTTON_PADDING;
+    local channelStripHeight = CHANNEL_BUTTON_HEIGHT + CHANNEL_BUTTON_PADDING;
+
+    chat.channelStrip = chat.basePanel:NewPanel(vec.New(0, -24), vec.New(totalChannelWidth, CHANNEL_BUTTON_HEIGHT), 0i, "ChatChannelStrip");
+    chat.channelStrip:SetAlpha(0.0);
+
+    chat.channelNames = channelNames;
+    chat.channelButtons = {};
+    chat.channelStripHeight = channelStripHeight;
+
+    for i, channelName in channelNames do
+        local btnX = (i - 1) * (CHANNEL_BUTTON_WIDTH + CHANNEL_BUTTON_PADDING);
+        local btnY = 0;
+        local button = UIButton.New(chat.channelStrip, vec.New(btnX, btnY), vec.New(CHANNEL_BUTTON_WIDTH, CHANNEL_BUTTON_HEIGHT), 1i, {
+            panelTemplate = "ChatChannelButton",
+            textTemplate = "ChatText",
+            text = channelName,
+            textAlign = "center",
+        });
+        button:SetFontSize(13);
+        chat.channelButtons[i] = button;
+        button.root:SetOnMouseDown(function()
+            SetActiveChannel(chat, channelName);
+        end);
+    end
+
+    SetActiveChannel(chat, channelNames[1]);
+
+    chat.clipPanel:SetPosY(chat.channelStripHeight);
+    chat.clipPanel:SetSize(vec.New(chat.scrollBoxWidth, chat.scrollBoxHeight - chat.channelStripHeight));
+    chat.layout:SetSize(vec.New(chat.historyContentWidth, chat.historyContentHeight - chat.channelStripHeight));
+    chat.chatVisibleContentHeight = chat.historyContentHeight - chat.channelStripHeight;
 
     -- Track the chat that receives keyboard focus when Enter is pressed.
     if (chatToOpenOnEnter == nil) then
         chatToOpenOnEnter = chat;
     end
 
+    EditMode.Register({
+        id = EditModeDefaults.ElementIDs.ChatWindow,
+        size = vec.New(chat.width, chat.height),
+        getPos = function() return chat.basePanel:GetPos() end,
+        setPos = function(pos) chat.basePanel:SetPos(pos) end,
+        isEnabled = function() return chat.basePanel:IsVisible() end,
+        setEnabled = function(enabled) chat.basePanel:SetVisible(enabled) end,
+    });
+
     RegisterEvent(GameEvent.ChatMessageReceived, function(eventID : Event, data : any)
         AddMessageToChat(chat, data.message, data.channel, data.sender, false);
     end);
+
+    RegisterEvent(GameEvent.CombatLog, function(eventID : Event, data : any)
+        local text = "";
+        if data.eventID == COMBAT_EVENT_DAMAGE then
+            if data.value2 > 0.0 then
+                text = string.format("%s dealt %.2f damage to %s (Overkill: %.2f)", data.sourceName, data.value1, data.targetName, data.value2);
+            else
+                text = string.format("%s dealt %.2f damage to %s", data.sourceName, data.value1, data.targetName);
+            end
+        elseif data.eventID == COMBAT_EVENT_HEAL then
+            if data.value2 > 0.0 then
+                text = string.format("%s healed %s for %.2f (Overheal: %.2f)", data.sourceName, data.targetName, data.value1, data.value2);
+            else
+                text = string.format("%s healed %s for %.2f", data.sourceName, data.targetName, data.value1);
+            end
+        elseif data.eventID == COMBAT_EVENT_RESURRECT then
+            text = string.format("%s resurrected %s", data.sourceName, data.targetName);
+        end
+        AddMessageToChat(chat, text, COMBAT_CHANNEL, data.sourceName, false);
+    end);
+
     return chat;
 end
 
 local function RegisterOptions(chat : Chat)
-    local optionCategory = OptionsContext:GetCategory(OptionCategoryType.Gameplay);
+    local optionCategory = OptionsContext:GetCategory(OptionsContext.OptionCategoryType.Gameplay);
     local optionGroup = optionCategory:Get("Chat");
     local optionSection = optionGroup:Get("General");
 
-    local sizeOption = optionSection:RegisterOption("Text Size", 15.0, OptionType.Slider, { Min = 8, Max = 30, Step = 1});
+    local sizeOption = optionSection:RegisterOption("Text Size", 15.0, OptionsContext.OptionType.Slider, { Min = 8, Max = 30, Step = 1});
     local sizeCancelCallback = sizeOption:RegisterOnValueChanged(function(self, value)
-        for _, textWidget in chat.chatHistoryTexts do
-            textWidget:SetFontSize(value);
-        end
-
-        RefreshText(chat); -- Refresh the chat display after changing text size
+        RefreshText(chat);
         return true;
     end);
 
-    local showTimestampOption = optionSection:RegisterOption("Show Timestamps", true, OptionType.Checkbox);
+    local showTimestampOption = optionSection:RegisterOption("Show Timestamps", true, OptionsContext.OptionType.Checkbox);
     local showTimestampCancelCallback = showTimestampOption:RegisterOnValueChanged(function(self, value)
         RefreshText(chat); -- Refresh the chat display after changing timestamp visibility
         return true;
     end);
 
-    local inputLocationOption = optionSection:RegisterOption("Input Location", INPUT_LOCATION_TOP, OptionType.ComboBox, { options = { "Bottom", "Top" }});
+    local inputLocationOption = optionSection:RegisterOption("Input Location", INPUT_LOCATION_TOP, OptionsContext.OptionType.ComboBox, { options = { "Bottom", "Top" }});
     local inputLocationCancelCallback = inputLocationOption:RegisterOnValueChanged(function(self, value)    
         SetInputLocation(chat, value);
         return true;
@@ -353,8 +512,8 @@ local function RegisterOptions(chat : Chat)
     SetInputLocation(chat, inputLocationOption:Get());
 end
 
-local function OnGameLoaded(eventID : number, data : any)
-    local chatCanvas : Canvas = UI.GetCanvas("Chat", 0, 0, 1920, 1080); -- Add layers here, for ordering input munching
+local function OnGameLoaded(eventID : integer, data : any)
+    local chatCanvas : Canvas = UI.GetCanvas("Chat", vec.New(0, 0), vec.New(1920, 1080)); -- Add layers here, for ordering input munching
 
     RegisterTemplates();
 
@@ -371,7 +530,7 @@ local function OnGameLoaded(eventID : number, data : any)
             return InputReply.Ignored;
         end
 
-        if UI.WasJustFocusedWidget(chatToOpenOnEnter.inputBox.button.panel) then
+        if UI.WasJustFocusedWidget(chatToOpenOnEnter.inputBox.button.root) then
             return InputReply.Ignored;
         end
 
@@ -396,4 +555,4 @@ local function OnGameLoaded(eventID : number, data : any)
     --AddMessageToChat(mainChat, "WTS [Linen Cloth]",     "Trade", "Foe", true);
 end
 
-RegisterEvent(GameEvent.Loaded, OnGameLoaded)
+RegisterEvent(GameEvent.Loaded, OnGameLoaded);

@@ -1,83 +1,13 @@
-local CursorInfo = require("@src/API/UI/CursorInfo")
+local DragContext = require("@src/API/Game/UI/DragContext")
 
 local Cursors =
 {
-    { "architect", "texture/interface/cursor/architect.dds" },
-    { "argusteleporter", "texture/interface/cursor/argusteleporter.dds" },
-    { "attack", "texture/interface/cursor/attack.dds" },
-    { "unableattack", "texture/interface/cursor/unableattack.dds" },
-    { "buy", "texture/interface/cursor/buy.dds" },
-    { "unablebuy", "texture/interface/cursor/unablebuy.dds" },
-    { "cast", "texture/interface/cursor/cast.dds" },
-    { "unablecast", "texture/interface/cursor/unablecast.dds" },
-    { "crosshairs", "texture/interface/cursor/crosshairs.dds" },
-    { "unablecrosshairs", "texture/interface/cursor/unablecrosshairs.dds" },
-    { "directions", "texture/interface/cursor/directions.dds" },
-    { "unabledirections", "texture/interface/cursor/unabledirections.dds" },
-    { "driver", "texture/interface/cursor/driver.dds" },
-    { "engineerskin", "texture/interface/cursor/engineerskin.dds" },
-    { "unableengineerskin", "texture/interface/cursor/unableengineerskin.dds" },
-    { "gatherherbs", "texture/interface/cursor/gatherherbs.dds" },
-    { "unablegatherherbs", "texture/interface/cursor/unablegatherherbs.dds" },
-    { "gunner", "texture/interface/cursor/gunner.dds" },
-    { "unablegunner", "texture/interface/cursor/unablegunner.dds" },
-    { "innkeeper", "texture/interface/cursor/innkeeper.dds" },
-    { "unableinnkeeper", "texture/interface/cursor/unableinnkeeper.dds" },
-    { "inspect", "texture/interface/cursor/inspect.dds" },
-    { "unableinspect", "texture/interface/cursor/unableinspect.dds" },
-    { "interact", "texture/interface/cursor/interact.dds" },
-    { "unableinteract", "texture/interface/cursor/unableinteract.dds" },
-    { "lootall", "texture/interface/cursor/lootall.dds" },
-    { "unablelootall", "texture/interface/cursor/unablelootall.dds" },
-    { "mail", "texture/interface/cursor/mail.dds" },
-    { "unablemail", "texture/interface/cursor/unablemail.dds" },
-    { "mine", "texture/interface/cursor/mine.dds" },
-    { "unablemine", "texture/interface/cursor/unablemine.dds" },
-    { "missions", "texture/interface/cursor/missions.dds" },
-    { "unablemissions", "texture/interface/cursor/unablemissions.dds" },
-    { "openhand", "texture/interface/cursor/openhand.dds" },
-    { "unableopenhand", "texture/interface/cursor/unableopenhand.dds" },
-    { "openhandglow", "texture/interface/cursor/openhandglow.dds" },
-    { "unableopenhandglow", "texture/interface/cursor/unableopenhandglow.dds" },
-    { "picklock", "texture/interface/cursor/picklock.dds" },
-    { "unablepicklock", "texture/interface/cursor/unablepicklock.dds" },
-    { "unablepickup", "texture/interface/cursor/unablepickup.dds" },
-    { "point", "texture/interface/cursor/point.dds" },
-    { "unablepoint", "texture/interface/cursor/unablepoint.dds" },
-    { "pvp", "texture/interface/cursor/pvp.dds" },
-    { "unablepvp", "texture/interface/cursor/unablepvp.dds" },
-    { "quest", "texture/interface/cursor/quest.dds" },
-    { "unablequest", "texture/interface/cursor/unablequest.dds" },
-    { "questinteract", "texture/interface/cursor/questinteract.dds" },
-    { "unablequestinteract", "texture/interface/cursor/unablequestinteract.dds" },
-    { "questrepeatable", "texture/interface/cursor/questrepeatable.dds" },
-    { "unablequestrepeatable", "texture/interface/cursor/unablequestrepeatable.dds" },
-    { "questturnin", "texture/interface/cursor/questturnin.dds" },
-    { "unablequestturnin", "texture/interface/cursor/unablequestturnin.dds" },
-    { "reforge", "texture/interface/cursor/reforge.dds" },
-    { "unablereforge", "texture/interface/cursor/unablereforge.dds" },
-    { "repair", "texture/interface/cursor/repair.dds" },
-    { "unablerepair", "texture/interface/cursor/unablerepair.dds" },
-    { "repairnpc", "texture/interface/cursor/repairnpc.dds" },
-    { "unablerepairnpc", "texture/interface/cursor/unablerepairnpc.dds" },
-    { "skin", "texture/interface/cursor/skin.dds" },
-    { "unableskin", "texture/interface/cursor/unableskin.dds" },
-    { "speak", "texture/interface/cursor/speak.dds" },
-    { "unablespeak", "texture/interface/cursor/unablespeak.dds" },
-    { "taxi", "texture/interface/cursor/taxi.dds" },
-    { "unabletaxi", "texture/interface/cursor/unabletaxi.dds" },
-    { "trainer", "texture/interface/cursor/trainer.dds" },
-    { "unabletrainer", "texture/interface/cursor/unabletrainer.dds" },
-    { "transmogrify", "texture/interface/cursor/transmogrify.dds" },
-    { "unabletransmogrify", "texture/interface/cursor/unabletransmogrify.dds" },
-    { "move", "texture/interface/cursor/ui-cursor-move.dds" },
-    { "unablemove", "texture/interface/cursor/unableui-cursor-move.dds" },
-    { "item", "texture/interface/cursor/item.dds" },
-    { "unableitem", "texture/interface/cursor/unableitem.dds" }
+    { "attack", "texture/cursor/32x32/attack.dds" },
+    { "point", "texture/cursor/32x32/pointer.dds" }
 }
 
 local softwareCursor : Panel? = nil
-local cursorRevision = 0
+local cursorRevision = 0i
 local softwareCursorEnabled = false
 
 local function UpdateSoftwareCursor()
@@ -112,23 +42,23 @@ local function RegisterCursors()
     end
 end
 
-local function OnGameLoaded(eventID : number, data : any)
+local function OnGameLoaded(eventID : integer, data : any)
     RegisterCursors()
     SetCursor("point")
 
-    local cursorCanvas = UI.GetCanvas("CursorCanvas", 0, 0, 1920, 1080)
-    softwareCursor = cursorCanvas:NewPanel(0, 0, 48, 48, 0)
+    local cursorCanvas = UI.GetCanvas("CursorCanvas", vec.New(0, 0), vec.New(1920, 1080))
+    softwareCursor = cursorCanvas:NewPanel(vec.New(0, 0), vec.New(48, 48), 0i)
     softwareCursor:SetEnabled(false)
-    softwareCursor:SetAnchor(0.0, 1.0)
-    softwareCursor:SetRelativePoint(0.0, 1.0)
+    softwareCursor:SetAnchor(vec.New(0.0, 1.0))
+    softwareCursor:SetRelativePoint(vec.New(0.0, 1.0))
     UpdateSoftwareCursor()
 end
 
 local currentWorldCursor = "point"
-local function OnGameUpdated(eventID : number, data : any)
+local function OnGameUpdated(eventID : integer, data : any)
     UpdateSoftwareCursor()
 
-    if CursorInfo:HasItemInHand() then
+    if DragContext:HasOperation() then
         currentWorldCursor = ""
         return
     end

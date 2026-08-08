@@ -12,6 +12,7 @@ namespace Scripting::UI
         LuaMetaTable<Canvas>::Register(zenith, "CanvasMetaTable");
 
         LuaMetaTable<Canvas>::Set(zenith, widgetCreationMethods);
+        LuaMetaTable<Canvas>::Set(zenith, widgetLayerMethods);
     }
 
     namespace CanvasMethods

@@ -23,6 +23,8 @@
 
 #include <Filesystem/PactStorage.h>
 
+#include <Input/InputSystem.h>
+
 #include <MetaGen/Game/Lua/Lua.h>
 
 #include <Scripting/LuaManager.h>
@@ -79,7 +81,7 @@ namespace Scripting::UI
             if (!zenith->GetTableField(fieldName, tableIndex))
                 return !required;
 
-            const bool valid = zenith->IsNumber(-1);
+            const bool valid = zenith->IsInteger(-1);
             if (valid)
                 value = zenith->Get<u32>(-1);
 
@@ -92,7 +94,7 @@ namespace Scripting::UI
             if (!zenith->GetTableField(fieldName, tableIndex))
                 return true;
 
-            const bool valid = zenith->IsNumber(-1);
+            const bool valid = zenith->IsInteger(-1);
             if (valid)
                 value = zenith->Get<i32>(-1);
 
@@ -382,6 +384,21 @@ namespace Scripting::UI
             f32 alpha = zenith->CheckVal<f32>(-1);
             panelTemplate.color.a = alpha;
             panelTemplate.setFlags.color = 1;
+            zenith->Pop();
+        }
+
+        if (zenith->GetTableField("borderColor", 2))
+        {
+            vec3 color = zenith->CheckVal<vec3>(-1);
+            panelTemplate.borderColor = Color(color.x, color.y, color.z);
+            panelTemplate.setFlags.border = 1;
+            zenith->Pop();
+        }
+
+        if (zenith->GetTableField("borderSize", 2))
+        {
+            panelTemplate.borderSize = glm::max(zenith->CheckVal<f32>(-1), 0.0f);
+            panelTemplate.setFlags.border = 1;
             zenith->Pop();
         }
 
@@ -723,18 +740,14 @@ namespace Scripting::UI
             return 1;
         }
 
-        i32 posX = zenith->CheckVal<i32>(2);
-        i32 posY = zenith->CheckVal<i32>(3);
-
-        i32 sizeX = zenith->CheckVal<i32>(4);
-        i32 sizeY = zenith->CheckVal<i32>(5);
-
-        bool isRenderTexture = zenith->IsBoolean(6) ? zenith->ToBoolean(6) : false;
+        const vec3 position = zenith->CheckVal<vec3>(2);
+        const vec3 size = zenith->CheckVal<vec3>(3);
+        bool isRenderTexture = zenith->IsBoolean(4) ? zenith->ToBoolean(4) : false;
 
         Widget* widget = nullptr;
 
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
-        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(widget, registry, canvasIdentifier, vec2(posX, posY), ivec2(sizeX, sizeY), isRenderTexture);
+        entt::entity entity = ECS::Util::UI::GetOrEmplaceCanvas(widget, registry, canvasIdentifier, vec2(position.x, position.y), ivec2(size.x, size.y), isRenderTexture);
 
         Widget* pushWidget = zenith->PushUserData<Widget>([](void* x)
         {
@@ -759,10 +772,9 @@ namespace Scripting::UI
         mousePos = mousePos / renderSize;
         mousePos *= vec2(Renderer::Settings::UI_REFERENCE_WIDTH, Renderer::Settings::UI_REFERENCE_HEIGHT);
 
-        zenith->Push(mousePos.x);
-        zenith->Push(mousePos.y);
+        zenith->Push(mousePos);
 
-        return 2;
+        return 1;
     }
 
     i32 UIHandler::GetTextureSize(Zenith* zenith)
@@ -772,7 +784,6 @@ namespace Scripting::UI
         const char* texturePath = zenith->CheckVal<const char*>(1);
         if (texturePath == nullptr)
         {
-            zenith->Push();
             zenith->Push();
         }
         else
@@ -791,18 +802,15 @@ namespace Scripting::UI
                 Renderer::TextureID textureID = renderer->LoadDataTexture(textureDesc);
 
                 Renderer::TextureBaseDesc baseDesc = renderer->GetDesc(textureID);
-                zenith->Push(baseDesc.width);
-                zenith->Push(baseDesc.height);
+                zenith->Push(uvec2(baseDesc.width, baseDesc.height));
             }
             else
             {
                 zenith->Push();
-                zenith->Push();
             }
-
         }
 
-        return 2;
+        return 1;
     }
 
     i32 UIHandler::IsSmoothUnitFrameBarsEnabled(Zenith* zenith)
@@ -813,22 +821,17 @@ namespace Scripting::UI
 
     i32 UIHandler::PixelsToTexCoord(Zenith* zenith)
     {
-        i32 posX = zenith->CheckVal<i32>(1);
-        i32 posY = zenith->CheckVal<i32>(2);
+        const vec3 position = zenith->CheckVal<vec3>(1);
+        const vec3 size = zenith->CheckVal<vec3>(2);
+        const f32 width = Math::Max(size.x - 1.0f, 1.0f);
+        const f32 height = Math::Max(size.y - 1.0f, 1.0f);
+        const vec2 texCoord(position.x / width, position.y / height);
 
-        i32 sizeX = zenith->CheckVal<i32>(3);
-        i32 sizeY = zenith->CheckVal<i32>(4);
+        zenith->Push(texCoord);
 
-        sizeX = Math::Max(sizeX - 1, 1);
-        sizeY = Math::Max(sizeY - 1, 1);
-
-        vec2 texCoord = vec2(static_cast<f32>(posX) / static_cast<f32>(sizeX), static_cast<f32>(posY) / static_cast<f32>(sizeY));
-
-        zenith->Push(texCoord.x);
-        zenith->Push(texCoord.y);
-
-        return 2;
+        return 1;
     }
+
     i32 UIHandler::CalculateTextSize(Zenith* zenith)
     {
         const char* text = zenith->CheckVal<const char*>(1);
@@ -864,10 +867,9 @@ namespace Scripting::UI
 
         vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
 
-        zenith->Push(textSize.x);
-        zenith->Push(textSize.y);
+        zenith->Push(textSize);
 
-        return 2;
+        return 1;
     }
 
     i32 UIHandler::WrapText(Zenith* zenith)
@@ -913,10 +915,9 @@ namespace Scripting::UI
         }
 
         vec2 textSize = font->CalculateTextSize(textStr, textTemplate.size, textTemplate.borderSize);
-        zenith->Push(textSize.x);
-        zenith->Push(textSize.y);
+        zenith->Push(textSize);
 
-        return 3;
+        return 2;
     }
 
     i32 UIHandler::FocusWidget(Zenith* zenith)
@@ -1110,13 +1111,15 @@ namespace Scripting::UI
             return 1;
         }
 
+        lua_State* callbackState = zenith->state;
         const i32 callbackRef = zenith->GetRef(2);
-        InputActionConnection connection = ServiceLocator::GetInputActionSystem()->Connect(action, [zenith, callbackRef](const InputActionEvent& event)
+        InputActionConnection connection = ServiceLocator::GetInputActionSystem()->Connect(action, [callbackState, callbackRef](const InputActionEvent& event)
         {
+            LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            Zenith* zenith = luaManager ? luaManager->GetZenithStateManager().Get(callbackState) : nullptr;
             if (!zenith || !zenith->state)
                 return InputReply::Handled;
 
-            lua_checkstack(zenith->state, 6);
             zenith->GetRawI(LUA_REGISTRYINDEX, callbackRef);
             zenith->Push(static_cast<u32>(event.phase));
             zenith->Push(static_cast<u32>(event.control.device));
@@ -1128,7 +1131,7 @@ namespace Scripting::UI
                 return InputReply::Handled;
 
             InputReply reply = InputReply::Handled;
-            if (zenith->IsNumber(-1))
+            if (zenith->IsInteger(-1))
             {
                 const u32 result = zenith->Get<u32>(-1);
                 if (result <= static_cast<u32>(InputReply::Consumed))
@@ -1326,15 +1329,17 @@ namespace Scripting::UI
             return 1;
         }
 
+        lua_State* callbackState = zenith->state;
         const i32 callbackRef = zenith->GetRef(1);
-        const bool started = ServiceLocator::GetInputActionSystem()->BeginBindingCapture([zenith, callbackRef](std::optional<InputBinding> binding)
+        const bool started = ServiceLocator::GetInputActionSystem()->BeginBindingCapture([callbackState, callbackRef](std::optional<InputBinding> binding)
         {
             UIHandler* currentHandler = GetUIHandler();
+            LuaManager* luaManager = ServiceLocator::GetLuaManager();
+            Zenith* zenith = luaManager ? luaManager->GetZenithStateManager().Get(callbackState) : nullptr;
             if (!currentHandler || currentHandler->_bindingCaptureCallbackRef != callbackRef || !zenith || !zenith->state)
                 return;
 
             currentHandler->_bindingCaptureCallbackRef = -1;
-            lua_checkstack(zenith->state, 2);
             zenith->GetRawI(LUA_REGISTRYINDEX, callbackRef);
             if (binding)
             {
@@ -1443,6 +1448,12 @@ namespace Scripting::UI
         return 1;
     }
 
+    i32 UIHandler::IsMouseCaptured(Zenith* zenith)
+    {
+        zenith->Push(ServiceLocator::GetInputSystem()->IsMouseCaptured());
+        return 1;
+    }
+
     i32 UIHandler::GetCursorState(Zenith* zenith)
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
@@ -1460,7 +1471,6 @@ namespace Scripting::UI
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget)
     {
-        lua_checkstack(zenith->state, 3);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
         zenith->Push(static_cast<u32>(inputEvent));
         zenith->PushLightUserData(widget);
@@ -1473,7 +1483,6 @@ namespace Scripting::UI
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value)
     {
-        lua_checkstack(zenith->state, 4);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
         zenith->Push(static_cast<u32>(inputEvent));
         zenith->PushLightUserData(widget);
@@ -1487,7 +1496,6 @@ namespace Scripting::UI
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, i32 value1, const vec2& value2)
     {
-        lua_checkstack(zenith->state, 6);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
         zenith->Push(static_cast<u32>(inputEvent));
         zenith->PushLightUserData(widget);
@@ -1503,7 +1511,6 @@ namespace Scripting::UI
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, f32 value)
     {
-        lua_checkstack(zenith->state, 4);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
         zenith->Push(static_cast<u32>(inputEvent));
         zenith->PushLightUserData(widget);
@@ -1517,7 +1524,6 @@ namespace Scripting::UI
 
     void UIHandler::CallUIInputEvent(Zenith* zenith, i32 eventRef, UIInputEvent inputEvent, Widget* widget, const vec2& value)
     {
-        lua_checkstack(zenith->state, 5);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
         zenith->Push(static_cast<u32>(inputEvent));
         zenith->PushLightUserData(widget);
@@ -1532,7 +1538,6 @@ namespace Scripting::UI
 
     bool UIHandler::CallKeyboardInputEvent(Zenith* zenith, i32 eventRef, Widget* widget, i32 key, i32 actionMask, i32 modifierMask)
     {
-        lua_checkstack(zenith->state, 7);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
         zenith->PushLightUserData(widget);
@@ -1544,8 +1549,10 @@ namespace Scripting::UI
         zenith->Push(actionMask);
         zenith->Push(modifierMask);
 
-        zenith->PCall(5, 1);
-        bool result = zenith->CheckVal<bool>(-1);
+        if (!zenith->PCall(5, 1))
+            return true;
+
+        const bool result = zenith->IsBoolean(-1) && zenith->ToBoolean(-1);
         zenith->Pop();
 
         return result; // Return if we should consume the event or not
@@ -1553,7 +1560,6 @@ namespace Scripting::UI
 
     bool UIHandler::CallKeyboardInputEvent(Zenith* zenith, i32 eventRef, i32 key, i32 actionMask, i32 modifierMask)
     {
-        lua_checkstack(zenith->state, 6);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
         zenith->Push(static_cast<i32>(UIKeyboardEvent::Key));
@@ -1561,8 +1567,10 @@ namespace Scripting::UI
         zenith->Push(actionMask);
         zenith->Push(modifierMask);
 
-        zenith->PCall(4, 1);
-        bool result = zenith->CheckVal<bool>(-1);
+        if (!zenith->PCall(4, 1))
+            return true;
+
+        const bool result = zenith->IsBoolean(-1) && zenith->ToBoolean(-1);
         zenith->Pop();
 
         return result; // Return if we should consume the event or not
@@ -1570,7 +1578,6 @@ namespace Scripting::UI
 
     bool UIHandler::CallKeyboardUnicodeEvent(Zenith* zenith, i32 eventRef, Widget* widget, u32 unicode)
     {
-        lua_checkstack(zenith->state, 5);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
         zenith->PushLightUserData(widget);
@@ -1580,8 +1587,10 @@ namespace Scripting::UI
         zenith->Push(static_cast<i32>(UIKeyboardEvent::Unicode));
         zenith->Push(unicode);
 
-        zenith->PCall(3, 1);
-        bool result = zenith->CheckVal<bool>(1);
+        if (!zenith->PCall(3, 1))
+            return true;
+
+        const bool result = zenith->IsBoolean(-1) && zenith->ToBoolean(-1);
         zenith->Pop();
 
         return result; // Return if widget should consume the event or not
@@ -1589,7 +1598,6 @@ namespace Scripting::UI
 
     void UIHandler::CallSendMessageToChat(Zenith* zenith, i32 eventRef, const std::string& channel, const std::string& playerName, const std::string& text, bool isOutgoing)
     {
-        lua_checkstack(zenith->state, 5);
         zenith->GetRawI(LUA_REGISTRYINDEX, eventRef);
 
         zenith->Push(channel);

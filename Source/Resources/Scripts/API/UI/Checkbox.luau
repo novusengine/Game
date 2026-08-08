@@ -1,8 +1,34 @@
-local checkboxAPI = { }
+local RootedWidget = require("@src/API/UI/RootedWidget")
+
+export type Options =
+{
+    backgroundTemplate : string,
+    fillTemplate : string,
+    fillInset : number?,
+    isChecked : boolean?,
+}
+
+export type Checkbox =
+{
+    root : Panel,
+    fill : Panel,
+    IsChecked : (self : Checkbox) -> boolean,
+    SetChecked : (self : Checkbox, state : boolean) -> (),
+    SetOnValueChanged : (self : Checkbox, callback : (Checkbox, boolean) -> boolean?) -> (),
+    SetOnMouseDown : (self : Checkbox, callback : (...any) -> ()) -> (),
+    SetOnMouseUp : (self : Checkbox, callback : (...any) -> ()) -> (),
+}
+
+export type CheckboxAPI =
+{
+    New : (parent : Widget, position : vec, size : vec, layer : integer, options : Options) -> Checkbox,
+}
+
+local checkboxAPI : CheckboxAPI = { }
 
 --[[
 usage:
-.NewCheckbox(panel, 0, 0, 200, 25, 0, {
+.New(panel, vec.New(0, 0), vec.New(200, 25), 0, {
     backgroundTemplate = "DefaultCheckboxBackground",
     fillTemplate = "DefaultCheckboxFill",
 })
@@ -31,13 +57,11 @@ local function SetupCheckboxMethods(checkboxTable)
     end
 
     checkboxTable.SetOnMouseDown = function(table, func)
-        table.background:SetOnMouseDown(func)
-        table.fill:SetOnMouseDown(func)
+        table.root:SetOnMouseDown(func)
     end
 
     checkboxTable.SetOnMouseUp = function(table, func)
-        table.background:SetOnMouseUp(func)
-        table.fill:SetOnMouseUp(func)
+        table.root:SetOnMouseUp(func)
     end
 
     checkboxTable.Click = function(...)
@@ -54,20 +78,23 @@ local function SetupCheckboxMethods(checkboxTable)
     return checkboxTable
 end
 
-function checkboxAPI.NewCheckbox(parent, posX, posY, sizeX, sizeY, layer, checkboxTemplateTable)
+function checkboxAPI.New(parent : Widget, position : vec, size : vec, layer : integer, checkboxTemplateTable : Options)
     local checkboxTable = {}
-    
-    checkboxTable.checkbox = parent:NewWidget(posX, posY, layer);
-    checkboxTable.isChecked = false
-    checkboxTable.onValueChanged = nil
 
     local backgroundTemplate = checkboxTemplateTable["backgroundTemplate"];
     local fillTemplate = checkboxTemplateTable["fillTemplate"];
+    local fillInset = checkboxTemplateTable["fillInset"] or 0;
+    local fillWidth = math.max(size.x - (fillInset * 2), 1);
+    local fillHeight = math.max(size.y - (fillInset * 2), 1);
 
-    checkboxTable.background = checkboxTable.checkbox:NewPanel(0, 0, sizeX, sizeY, 0, backgroundTemplate);
-    checkboxTable.fill = checkboxTable.background:NewPanel(0, -2, sizeX, sizeY, 0, fillTemplate);
-    checkboxTable.fill:SetAnchor(0.5, 0.5)
-    checkboxTable.fill:SetRelativePoint(0.5, 0.5)
+    checkboxTable.root = parent:NewPanel(position, size, layer, backgroundTemplate);
+    RootedWidget.Attach(checkboxTable)
+    checkboxTable.isChecked = false
+    checkboxTable.onValueChanged = nil
+
+    checkboxTable.fill = checkboxTable.root:NewPanel(vec.New(0, 0), vec.New(fillWidth, fillHeight), 0i, fillTemplate);
+    checkboxTable.fill:SetAnchor(vec.New(0.5, 0.5))
+    checkboxTable.fill:SetRelativePoint(vec.New(0.5, 0.5))
     checkboxTable.fill:SetVisible(false)
     checkboxTable = SetupCheckboxMethods(checkboxTable);
 

@@ -156,6 +156,13 @@ namespace Scripting::Unit
         return 1;
     }
 
+    i32 UnitHandler::SetTarget(Zenith* zenith)
+    {
+        const u32 unitID = zenith->CheckVal<u32>(1);
+        zenith->Push(ECS::Systems::CharacterControllerInput::SetTarget(static_cast<entt::entity>(unitID)));
+        return 1;
+    }
+
     i32 UnitHandler::GetName(Zenith* zenith)
     {
         u32 unitID = zenith->CheckVal<u32>(1);
@@ -374,16 +381,20 @@ namespace Scripting::Unit
         if (auto* unitAuraInfo = registry->try_get<ECS::Components::UnitAuraInfo>(entityID))
         {
             u32 index = 1;
+            const u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
             for (const auto& auraInfo : unitAuraInfo->auras)
             {
-                u64 currentTime = static_cast<u64>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-                f32 duration = auraInfo.expireTimestamp > currentTime ? static_cast<f32>(auraInfo.expireTimestamp - currentTime) / 1000.0f : 0.0f;
+                const f32 duration = auraInfo.expireTimestamp == 0
+                    ? -1.0f
+                    : (auraInfo.expireTimestamp > currentTime ? static_cast<f32>(auraInfo.expireTimestamp - currentTime) / 1000.0f : 0.0f);
 
                 zenith->CreateTable();
                 zenith->AddTableField("auraID", auraInfo.auraID);
                 zenith->AddTableField("spellID", auraInfo.spellID);
                 zenith->AddTableField("duration", duration);
                 zenith->AddTableField("stacks", auraInfo.stacks);
+                zenith->AddTableField("disposition", auraInfo.disposition);
+                zenith->AddTableField("dispelType", auraInfo.dispelType);
 
                 zenith->SetTableKey(index++);
             }

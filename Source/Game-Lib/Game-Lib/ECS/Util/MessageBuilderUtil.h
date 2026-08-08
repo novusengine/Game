@@ -10,6 +10,7 @@
 #include <MetaGen/PacketList.h>
 #include <MetaGen/Game/Command/Command.h>
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 
 #include <Network/Define.h>
 
@@ -61,7 +62,7 @@ namespace ECS
 
         namespace Spell
         {
-            bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID);
+            bool BuildSpellCast(std::shared_ptr<Bytebuffer>& buffer, u32 spellID, ObjectGUID targetGUID, const vec3& targetPosition);
         }
 
         namespace Chat
@@ -115,10 +116,13 @@ namespace ECS
             bool BuildCheatGotoXYZ(std::shared_ptr<Bytebuffer>& buffer, const MetaGen::Game::Command::GotoXYZCommand& command);
             bool BuildCheatTriggerAdd(std::shared_ptr<Bytebuffer>& buffer, const std::string& name, u16 flags, u16 mapID, const vec3& position, const vec3& extents);
             bool BuildCheatTriggerRemove(std::shared_ptr<Bytebuffer>& buffer, u32 triggerID);
-            bool BuildCheatSpellSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellStorage, u32 spellID, const MetaGen::Shared::ClientDB::SpellRecord& spell);
-            bool BuildCheatSpellEffectSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellEffectsStorage, u32 spellEffectsID, const MetaGen::Shared::ClientDB::SpellEffectsRecord& spellEffect);
-            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcDataStorage, u32 spellProcDataID, const MetaGen::Shared::ClientDB::SpellProcDataRecord& spellProcData);
-            bool BuildCheatSpellProcLinkSet(std::shared_ptr<Bytebuffer>& buffer, ClientDB::Data* spellProcLinkStorage, u32 spellProcLinkID, const MetaGen::Shared::ClientDB::SpellProcLinkRecord& spellProcLink);
+            bool BuildCheatSpellSync(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, const u8* bytes, u32 size);
+            bool BuildCheatSpellDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 spellID);
+            bool BuildCheatSpellEditorSnapshotRequest(std::shared_ptr<Bytebuffer>& buffer, u32 requestID);
+            bool BuildCheatSpellAuraConstraintGroupSet(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, u32 groupID, std::string_view name, u8 defaultScope, u16 defaultMaximumApplications, u8 defaultOverflowBehavior);
+            bool BuildCheatSpellAuraConstraintGroupDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 groupID);
+            bool BuildCheatSpellProcDataSet(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, MetaGen::Shared::Spell::SpellEditorMutationTypeEnum mutationType, const GameDefine::Database::SpellProcData& value, u32 ownerSpellID, std::string_view name);
+            bool BuildCheatSpellProcDataDelete(std::shared_ptr<Bytebuffer>& buffer, u32 requestID, u32 procDataID);
             bool BuildCreatureAddScript(std::shared_ptr<Bytebuffer>& buffer, const std::string& scriptName);
             bool BuildCreatureRemoveScript(std::shared_ptr<Bytebuffer>& buffer);
             bool BuildCreatureMove(std::shared_ptr<Bytebuffer>& buffer);

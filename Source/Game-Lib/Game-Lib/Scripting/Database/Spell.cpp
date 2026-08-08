@@ -9,17 +9,60 @@
 
 #include <MetaGen/Shared/ClientDB/ClientDB.h>
 #include <MetaGen/Shared/Packet/Packet.h>
+#include <MetaGen/Shared/Spell/Spell.h>
 
 #include <Scripting/Zenith.h>
 
 #include <entt/entt.hpp>
 
+#include <cmath>
+
 namespace Scripting::Database
 {
+    namespace
+    {
+        const MetaGen::Shared::ClientDB::SpellRecord* GetSpellRecord(u32 spellID)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+            auto& clientDBSingleton = registry->ctx().get<ECS::Singletons::ClientDBSingleton>();
+            if (!clientDBSingleton.Has(ClientDBHash::Spell))
+                return nullptr;
+
+            auto* spellStorage = clientDBSingleton.Get(ClientDBHash::Spell);
+            return spellStorage->Has(spellID)
+                ? &spellStorage->Get<MetaGen::Shared::ClientDB::SpellRecord>(spellID)
+                : nullptr;
+        }
+
+        ObjectGUID GetSelectedTarget(entt::registry& registry, entt::entity casterEntity)
+        {
+            const auto* caster = registry.try_get<ECS::Components::Unit>(casterEntity);
+            const auto* target = caster ? registry.try_get<ECS::Components::Unit>(caster->targetEntity) : nullptr;
+            return target ? target->networkID : ObjectGUID::Empty;
+        }
+
+        bool SendSpellCast(u32 spellID, ObjectGUID targetGUID, const vec3& targetPosition)
+        {
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+            return ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
+                .spellID = spellID,
+                .targetGUID = targetGUID,
+                .targetPosition = targetPosition
+            });
+        }
+    }
 
     void Spell::Register(Zenith* zenith)
     {
         LuaMethodTable::Set(zenith, spellGlobalFunctions, "Spell");
+
+        zenith->CreateTable(MetaGen::Shared::Spell::AuraDispositionEnumMeta::ENUM_NAME.data());
+        for (const auto& pair : MetaGen::Shared::Spell::AuraDispositionEnumMeta::ENUM_FIELD_LIST)
+        {
+            zenith->AddTableField(pair.first.data(), pair.second);
+        }
+        zenith->Pop();
     }
 
     namespace SpellMethods
@@ -50,6 +93,37 @@ namespace Scripting::Database
             zenith->AddTableField("AuraDescription", auraDescription.c_str());
             zenith->AddTableField("IconID", spellInfo.iconID);
 
+            bool isAura = false;
+            u8 auraDisposition = static_cast<u8>(MetaGen::Shared::Spell::AuraDispositionEnum::None);
+            u8 auraDispelType = static_cast<u8>(MetaGen::Shared::Spell::AuraDispelTypeEnum::None);
+            u16 maximumStacks = 0;
+            if (clientDBSingleton.Has(ClientDBHash::SpellAura))
+            {
+                auto* auraDB = clientDBSingleton.Get(ClientDBHash::SpellAura);
+                if (auraDB->Has(spellID))
+                {
+                    const auto& auraInfo = auraDB->Get<MetaGen::Shared::ClientDB::SpellAuraRecord>(spellID);
+                    isAura = true;
+                    auraDisposition = auraInfo.disposition;
+                    auraDispelType = auraInfo.dispelType;
+                    maximumStacks = auraInfo.maximumStacks;
+                }
+            }
+
+            zenith->AddTableField("IsAura", isAura);
+            zenith->AddTableField("AuraDisposition", auraDisposition);
+            zenith->AddTableField("AuraDispelType", auraDispelType);
+            zenith->AddTableField("MaximumStacks", maximumStacks);
+            zenith->AddTableField("TargetSelector", spellInfo.targetSelector);
+            zenith->AddTableField("TargetShape", spellInfo.targetShape);
+            zenith->AddTableField("TargetRelation", spellInfo.targetRelation);
+            zenith->AddTableField("TargetRecipientMask", spellInfo.targetRecipientMask);
+            zenith->AddTableField("RangePolicy", spellInfo.rangePolicy);
+            zenith->AddTableField("MinimumRange", spellInfo.minimumRange);
+            zenith->AddTableField("MaximumRange", spellInfo.maximumRange);
+            zenith->AddTableField("TargetRadius", spellInfo.targetRadius);
+            zenith->AddTableField("MaximumTargets", spellInfo.maximumTargets);
+
             return 1;
         }
 
@@ -76,20 +150,37 @@ namespace Scripting::Database
 
         i32 CastByID(Zenith* zenith)
         {
-            u32 spellID = zenith->CheckVal<u32>(1);
+            const u32 spellID = zenith->CheckVal<u32>(1);
+            const auto* spell = GetSpellRecord(spellID);
+            if (!spell || static_cast<MetaGen::Shared::Spell::SpellTargetSelectorEnum>(spell->targetSelector) ==
+                              MetaGen::Shared::Spell::SpellTargetSelectorEnum::GroundPosition)
+            {
+                zenith->Push(false);
+                return 1;
+            }
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
             auto& characterSingleton = registry->ctx().get<ECS::Singletons::CharacterSingleton>();
-            auto& networkState = registry->ctx().get<ECS::Singletons::NetworkState>();
+            zenith->Push(SendSpellCast(spellID, GetSelectedTarget(*registry, characterSingleton.moverEntity), vec3(0.0f)));
+            return 1;
+        }
 
-            if (!ECS::Util::Network::IsConnected(networkState))
-                return 0;
+        i32 CastAtPosition(Zenith* zenith)
+        {
+            const u32 spellID = zenith->CheckVal<u32>(1);
+            const vec3 targetPosition = zenith->CheckVal<vec3>(2);
+            const auto* spell = GetSpellRecord(spellID);
+            const bool validPosition = std::isfinite(targetPosition.x) && std::isfinite(targetPosition.y) && std::isfinite(targetPosition.z);
+            if (!spell || !validPosition ||
+                static_cast<MetaGen::Shared::Spell::SpellTargetSelectorEnum>(spell->targetSelector) !=
+                    MetaGen::Shared::Spell::SpellTargetSelectorEnum::GroundPosition)
+            {
+                zenith->Push(false);
+                return 1;
+            }
 
-            ECS::Util::Network::SendPacket(networkState, MetaGen::Shared::Packet::ClientSpellCastPacket{
-                .spellID = spellID
-            });
-
-            return 0;
+            zenith->Push(SendSpellCast(spellID, ObjectGUID::Empty, targetPosition));
+            return 1;
         }
     }
 }

@@ -53,6 +53,39 @@ namespace Util::Unit
         return 4.0f;
     }
 
+    bool SetAutoAttackVisualState(entt::registry& registry, entt::entity entity, bool enabled)
+    {
+        if (!registry.valid(entity))
+            return false;
+
+        auto* unit = registry.try_get<Components::Unit>(entity);
+        if (!unit)
+            return false;
+
+        unit->isAutoAttacking = enabled;
+        if (!enabled)
+        {
+            unit->attackReadyAnimation = ::Animation::Defines::Type::Invalid;
+            return true;
+        }
+
+        u32 mainHandItemID = 0;
+        if (const auto* equipment = registry.try_get<Components::UnitEquipment>(entity))
+        {
+            const u32 slot = static_cast<u32>(MetaGen::Shared::Unit::ItemEquipSlotEnum::MainHand);
+            mainHandItemID = equipment->equipmentSlotToItemID[slot];
+            if (mainHandItemID == 0)
+                mainHandItemID = equipment->equipmentSlotToVisualItemID[slot];
+        }
+
+        entt::registry* dbRegistry = ServiceLocator::GetEnttRegistries()->dbRegistry;
+        auto& clientDBSingleton = dbRegistry->ctx().get<Singletons::ClientDBSingleton>();
+        auto* itemStorage = clientDBSingleton.Get(ClientDBHash::Item);
+        const auto& itemTemplate = itemStorage->Get<MetaGen::Shared::ClientDB::ItemRecord>(mainHandItemID);
+        unit->attackReadyAnimation = GetAttackReadyAnimation(itemTemplate.categoryType);
+        return true;
+    }
+
     bool HasPower(const Components::UnitPowersComponent& unitPowersComponent, MetaGen::Shared::Unit::PowerTypeEnum powerType)
     {
         bool hasPowerType = unitPowersComponent.powerTypeToValue.contains(powerType);
@@ -253,16 +286,30 @@ namespace Util::Unit
             return true;
         }
 
+        const auto playQueuedAttack = [&](::Animation::Defines::Type attackAnimation)
+        {
+            const bool restartFinishedAttack = animationState.currentAnimation == attackAnimation &&
+                                               ::Animation::Defines::HasFlag(animationState.currentFlags, ::Animation::Defines::Flags::Finished);
+            if (restartFinishedAttack)
+            {
+                return Animation::SetBoneSequenceRaw(modelInfo, animationData, boneIndex, attackAnimation, false,
+                    ::Animation::Defines::Flags::HoldAtEnd, ::Animation::Defines::BlendOverride::Auto, 1.0f);
+            }
+
+            return ::Util::Unit::PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, attackAnimation, false,
+                ::Animation::Defines::Flags::HoldAtEnd);
+        };
+
         if (unit.attackMainHandAnimation != ::Animation::Defines::Type::Invalid)
         {
-            bool result = ::Util::Unit::PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackMainHandAnimation, false, ::Animation::Defines::Flags::HoldAtEnd);
+            bool result = playQueuedAttack(unit.attackMainHandAnimation);
 
             unit.attackMainHandAnimation = ::Animation::Defines::Type::Invalid;
             return result;
         }
         else if (unit.attackOffHandAnimation != ::Animation::Defines::Type::Invalid)
         {
-            bool result = ::Util::Unit::PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackOffHandAnimation, false, ::Animation::Defines::Flags::HoldAtEnd);
+            bool result = playQueuedAttack(unit.attackOffHandAnimation);
             unit.attackOffHandAnimation = ::Animation::Defines::Type::Invalid;
 
             return result;
@@ -429,8 +476,10 @@ namespace Util::Unit
                 return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, ::Animation::Defines::Type::JumpEnd, false, ::Animation::Defines::Flags::HoldAtEnd, ::Animation::Defines::BlendOverride::Start);
             }
 
-            // If Auto Attack, play Ready1H
-            if (unit.isAutoAttacking)
+            // Preserve combat readiness while the unit is idle between attacks.
+            const bool hasAttackReadyAnimation = unit.attackReadyAnimation != ::Animation::Defines::Type::Invalid &&
+                                                 Animation::HasAnimationSequence(modelInfo, unit.attackReadyAnimation);
+            if (unit.isAutoAttacking && hasAttackReadyAnimation)
             {
                 return PlayAnimation(modelInfo, animationData, ::Animation::Defines::Bone::Default, unit.attackReadyAnimation, false, ::Animation::Defines::Flags::None, ::Animation::Defines::BlendOverride::Auto);
             }

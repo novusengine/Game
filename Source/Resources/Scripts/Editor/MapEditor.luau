@@ -1,3 +1,4 @@
+local EditorWindow = require("@src/API/Editor/UI/Window")
 --[[
 MapEditor — Lua port of the C++ ImGui Map selector. Two sections (List with
 filter, Actions). Right-click row opens a ContextMenu with Load/Unload.
@@ -5,51 +6,64 @@ filter, Actions). Right-click row opens a ContextMenu with Load/Unload.
 
 local Collapsible = require("@src/API/UI/Collapsible")
 local ContextMenu = require("@src/API/UI/ContextMenu")
-local EditorButton = require("@src/API/UI/EditorButton")
-local EditorRegistry = require("@src/API/UI/EditorRegistry")
+local Button = require("@src/API/UI/Button")
+local EditorRegistry = require("@src/API/Editor/Registry")
 local InputBox = require("@src/API/UI/InputBox")
 local ScrollBox = require("@src/API/UI/ScrollBox")
+local TextUtil = require("@src/API/UI/TextUtil")
 
-require("@src/API/UI/MenuBar")
 
 local PANEL_W       = 320
 local TITLE_H       = 16
 local ROW_H         = 18
-local ICON_SIZE     = 14
+local ICON_SIZE     = 16
 local BUTTON_H      = 20
 local SIDE_PAD      = 6
 local SECTION_PAD   = 2
 local BOTTOM_PAD    = 6
 local LIST_H        = 200
-local LAYER         = 1100
-local CONTEXT_LAYER = LAYER + 50
+local LAYER         = 1100i
+local CONTEXT_LAYER = integer.add(LAYER, 50i)
 local BTN_TEXT_TPL  = "DevToolsText"
 local DOUBLE_CLICK_S = 0.4
 
-local WINDOW_BG_COLOR  = vector.create(0.10, 0.10, 0.12)
+local WINDOW_BG_COLOR  = vec.New(0.10, 0.10, 0.12)
 local WINDOW_BG_ALPHA  = 0.96
-local BORDER_COLOR     = vector.create(0.30, 0.30, 0.35)
+local BORDER_COLOR     = vec.New(0.30, 0.30, 0.35)
 local BORDER_SIZE      = 1
-local SELECTED_COLOR   = vector.create(0.30, 0.55, 0.85)
+local SELECTED_COLOR   = vec.New(0.30, 0.55, 0.85)
 local SELECTED_ALPHA   = 0.55
-local CURRENT_COLOR    = vector.create(0.30, 0.85, 0.55)
+local CURRENT_COLOR    = vec.New(0.30, 0.85, 0.55)
 local CURRENT_ALPHA    = 0.45
+local ROW_COLOR        = vec.New(0.095, 0.105, 0.12)
+local ROW_HOVER_COLOR  = vec.New(0.13, 0.20, 0.29)
 
 -- 0=OpenWorld, 1=Dungeon, 2=Raid, 3=Battleground, 4=Arena. Filled in MapSelector.cpp.
 local ICON_TEMPLATES = {
-    [0] = "MapIcon_OpenWorld",
-    [1] = "MapIcon_Dungeon",
-    [2] = "MapIcon_Raid",
-    [3] = "MapIcon_Battleground",
-    [4] = "MapIcon_Arena",
+    [0i] = "MapIcon_OpenWorld",
+    [1i] = "MapIcon_Dungeon",
+    [2i] = "MapIcon_Raid",
+    [3i] = "MapIcon_Battleground",
+    [4i] = "MapIcon_Arena",
 }
-local DEFAULT_ICON_TEMPLATE = ICON_TEMPLATES[0]
+local DEFAULT_ICON_TEMPLATE = ICON_TEMPLATES[0i]
 
-UI.RegisterPanelTemplate("MapIcon_OpenWorld",    { background = "texture/interface/worldmap/worldmap-icon.dds",          cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Dungeon",      { background = "texture/interface/minimap/dungeon_icon.dds",            cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Raid",         { background = "texture/interface/minimap/raid_icon.dds",               cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Battleground", { background = "texture/interface/battlefieldframe/ui-battlefield-icon.dds", cornerRadius = 0.0 })
-UI.RegisterPanelTemplate("MapIcon_Arena",        { background = "texture/interface/calendar/ui-calendar-event-pvp.dds",  cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_OpenWorld",    { background = "texture/ui/icons/map.png",        cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Dungeon",      { background = "texture/ui/icons/instance.png",   cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Raid",         { background = "texture/ui/icons/raid.png",       cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Battleground", { background = "texture/ui/icons/pvp.png",        cornerRadius = 0.0 })
+UI.RegisterPanelTemplate("MapIcon_Arena",        { background = "texture/ui/icons/pvp.png",        cornerRadius = 0.0 })
+
+UI.RegisterPanelTemplate("MapEditorRowPanel",
+{
+    color = ROW_COLOR,
+    alpha = 1.0,
+    cornerRadius = 2.0,
+    borderSize = 0.0,
+    onClickTemplate = "DefaultButtonDownPanel",
+    onHoverTemplate = "DefaultButtonHoveredPanel",
+    onUninteractableTemplate = "DefaultButtonDisabledPanel",
+})
 
 local function MakeBtnOpts(text)
     return {
@@ -60,37 +74,15 @@ local function MakeBtnOpts(text)
     }
 end
 
-local canvas = UI.GetCanvas("MapEditor", 0, 0, 1920, 1080, false)
+local canvas = UI.GetCanvas("MapEditor", vec.New(0, 0), vec.New(1920, 1080), false)
 
-local windowPanel = canvas:NewPanel(820, -80, PANEL_W, TITLE_H, LAYER, "DebugDarkGrey")
-windowPanel:SetAnchor(0.0, 1.0)
-windowPanel:SetRelativePoint(0.0, 1.0)
-windowPanel:SetVisible(false)
-windowPanel:SetColor(WINDOW_BG_COLOR)
-windowPanel:SetAlpha(WINDOW_BG_ALPHA)
-windowPanel:SetBorderColor(BORDER_COLOR)
-windowPanel:SetBorderSize(BORDER_SIZE)
+local editorWindow = EditorWindow.New(canvas, vec.New(820, -80), vec.New(PANEL_W, TITLE_H), LAYER, { title = "Map" })
+local windowPanel = editorWindow.root
+local titleBar = editorWindow.titleBar
+local titleText = editorWindow.title
+local closeBtn = editorWindow.closeButton
 
-local titleBar = windowPanel:NewPanel(0, 0, PANEL_W, TITLE_H, 1, "DebugDarkGrey")
-titleBar:SetAnchor(0.0, 1.0)
-titleBar:SetRelativePoint(0.0, 1.0)
-titleBar:SetColor(vector.create(0.06, 0.06, 0.08))
-titleBar:SetAlpha(WINDOW_BG_ALPHA)
-
-local titleText = titleBar:NewText("Map", SIDE_PAD, 0, 1, BTN_TEXT_TPL)
-titleText:SetAnchor(0.0, 0.5)
-titleText:SetRelativePoint(0.0, 0.5)
-titleText:SetInteractable(false)
-
-local CLOSE_BTN_SIZE = 12
-local closeBtn = EditorButton.NewEditorButton(titleBar, -2, 0, CLOSE_BTN_SIZE, CLOSE_BTN_SIZE, 1, MakeBtnOpts("X"))
-closeBtn:SetAnchor(1.0, 0.5)
-closeBtn:SetRelativePoint(1.0, 0.5)
-closeBtn.text:SetPosX(1)
-
-windowPanel:MakeDraggable(titleBar)
-
-local listSection = Collapsible.NewCollapsible(windowPanel, 0, -TITLE_H, PANEL_W, 1, {
+local listSection = Collapsible.New(windowPanel, vec.New(0, -TITLE_H), PANEL_W, 1i, {
     title = "List",
     expanded = true,
 })
@@ -99,15 +91,15 @@ local listBody = listSection.body
 local LIST_INNER_W = PANEL_W - SIDE_PAD * 2
 local FILTER_H = 20
 
-local filterInput = InputBox.NewInputBox(listBody, SIDE_PAD, -2, LIST_INNER_W, FILTER_H, 1, {
+local filterInput = InputBox.New(listBody, vec.New(SIDE_PAD, -2), vec.New(LIST_INNER_W, FILTER_H), 1i, {
     panelTemplate = "DebugDarkGrey",
     textTemplate = BTN_TEXT_TPL,
     defaultText = "",
 })
-filterInput:SetAnchor(0.0, 1.0)
-filterInput:SetRelativePoint(0.0, 1.0)
+filterInput:SetAnchor(vec.New(0.0, 1.0))
+filterInput:SetRelativePoint(vec.New(0.0, 1.0))
 
-local scrollBox = ScrollBox.NewScrollBox(listBody, SIDE_PAD, -(2 + FILTER_H + 4), LIST_INNER_W, LIST_H, 1, {
+local scrollBox = ScrollBox.New(listBody, vec.New(SIDE_PAD, -(2 + FILTER_H + 4)), vec.New(LIST_INNER_W, LIST_H), 1i, {
     panelTemplate = "DebugDarkGrey",
     contentSizeX = LIST_INNER_W,
     contentSizeY = LIST_H,
@@ -115,13 +107,13 @@ local scrollBox = ScrollBox.NewScrollBox(listBody, SIDE_PAD, -(2 + FILTER_H + 4)
     scrollBarWidth = 10,
     alpha = 0.0,
 })
-scrollBox:SetAnchor(0.0, 1.0)
-scrollBox:SetRelativePoint(0.0, 1.0)
+scrollBox:SetAnchor(vec.New(0.0, 1.0))
+scrollBox:SetRelativePoint(vec.New(0.0, 1.0))
 
 local LIST_BODY_H = 2 + FILTER_H + 4 + LIST_H + 4
 listSection:SetBodyContentHeight(LIST_BODY_H)
 
-local actionsSection = Collapsible.NewCollapsible(windowPanel, 0, 0, PANEL_W, 1, {
+local actionsSection = Collapsible.New(windowPanel, vec.New(0, 0), PANEL_W, 1i, {
     title = "Actions",
     expanded = true,
 })
@@ -129,13 +121,13 @@ local actionsSection = Collapsible.NewCollapsible(windowPanel, 0, 0, PANEL_W, 1,
 local actionsBody = actionsSection.body
 local ACTION_BTN_W = (LIST_INNER_W - 4) / 2
 
-local loadBtn = EditorButton.NewEditorButton(actionsBody, SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Load Map"))
-loadBtn:SetAnchor(0.0, 1.0)
-loadBtn:SetRelativePoint(0.0, 1.0)
+local loadBtn = Button.New(actionsBody, vec.New(SIDE_PAD, -4), vec.New(ACTION_BTN_W, BUTTON_H), 1i, MakeBtnOpts("Load Map"))
+loadBtn:SetAnchor(vec.New(0.0, 1.0))
+loadBtn:SetRelativePoint(vec.New(0.0, 1.0))
 
-local unloadBtn = EditorButton.NewEditorButton(actionsBody, -SIDE_PAD, -4, ACTION_BTN_W, BUTTON_H, 1, MakeBtnOpts("Unload Map"))
-unloadBtn:SetAnchor(1.0, 1.0)
-unloadBtn:SetRelativePoint(1.0, 1.0)
+local unloadBtn = Button.New(actionsBody, vec.New(-SIDE_PAD, -4), vec.New(ACTION_BTN_W, BUTTON_H), 1i, MakeBtnOpts("Unload Map"))
+unloadBtn:SetAnchor(vec.New(1.0, 1.0))
+unloadBtn:SetRelativePoint(vec.New(1.0, 1.0))
 
 actionsSection:SetBodyContentHeight(4 + BUTTON_H + 4)
 
@@ -145,7 +137,7 @@ local function Restack()
     y -= listSection:GetTotalHeight() + SECTION_PAD
     actionsSection:SetPosY(y)
     y -= actionsSection:GetTotalHeight() + BOTTOM_PAD
-    windowPanel:SetSize(PANEL_W, -y)
+    windowPanel:SetSize(vec.New(PANEL_W, -y))
 end
 
 listSection._onToggle    = function() Restack() end
@@ -161,19 +153,14 @@ local selectedRowID = nil
 local lastClickRowID = nil
 local lastClickTime = 0
 
-local function ContainsCI(haystack, needle)
-    if needle == nil or #needle == 0 then return true end
-    return string.find(string.lower(haystack), string.lower(needle), 1, true) ~= nil
-end
-
 local function PaintRow(row, currentInternalName)
     if row.data.internalName == currentInternalName then
-        row.panel:SetColor(CURRENT_COLOR)
-        row.panel:SetAlpha(CURRENT_ALPHA)
+        row.root:SetColor(CURRENT_COLOR)
+        row.root:SetAlpha(CURRENT_ALPHA)
         row:SetHighlighted(true)
     elseif row.data.id == selectedRowID then
-        row.panel:SetColor(SELECTED_COLOR)
-        row.panel:SetAlpha(SELECTED_ALPHA)
+        row.root:SetColor(SELECTED_COLOR)
+        row.root:SetAlpha(SELECTED_ALPHA)
         row:SetHighlighted(true)
     else
         row:SetHighlighted(false)
@@ -198,7 +185,7 @@ end
 
 local function BuildRows(filterText)
     for _, row in rowBtns do
-        UI.DestroyWidget(row.panel)
+        UI.DestroyWidget(row.root)
     end
     rowBtns = {}
 
@@ -207,25 +194,33 @@ local function BuildRows(filterText)
     local content = scrollBox.content
     local visibleIndex = 0
     for _, mapData in allMaps do
-        if ContainsCI(mapData.name, filterText) or ContainsCI(mapData.internalName, filterText) then
-            local btn = EditorButton.NewEditorButton(content, 2, -(visibleIndex * ROW_H) - 1, LIST_INNER_W - 14, ROW_H, 1, {
+        if TextUtil.ContainsIgnoreCase(mapData.name, filterText) or TextUtil.ContainsIgnoreCase(mapData.internalName, filterText) then
+            local btn = Button.New(content, vec.New(2, -(visibleIndex * ROW_H) - 1), vec.New(LIST_INNER_W - 14, ROW_H), 1i, {
                 text = mapData.name,
+                panelTemplate = "MapEditorRowPanel",
                 textTemplate = BTN_TEXT_TPL,
                 textAlign = "left",
                 textPadX = ICON_SIZE + 8,
+                color = ROW_COLOR,
+                hoverColor = ROW_HOVER_COLOR,
+                highlightColor = ROW_HOVER_COLOR,
+                alpha = 1.0,
+                hoverAlpha = 1.0,
+                highlightAlpha = 1.0,
+                borderSize = 0,
             })
-            btn:SetAnchor(0.0, 1.0)
-            btn:SetRelativePoint(0.0, 1.0)
+            btn:SetAnchor(vec.New(0.0, 1.0))
+            btn:SetRelativePoint(vec.New(0.0, 1.0))
             btn.data = mapData
 
             local iconTemplate = ICON_TEMPLATES[mapData.instanceType] or DEFAULT_ICON_TEMPLATE
-            local icon = btn.panel:NewPanel(4, 0, ICON_SIZE, ICON_SIZE, 1, iconTemplate)
-            icon:SetAnchor(0.0, 0.5)
-            icon:SetRelativePoint(0.0, 0.5)
+            local icon = btn.root:NewPanel(vec.New(4, 0), vec.New(ICON_SIZE, ICON_SIZE), 1i, iconTemplate)
+            icon:SetAnchor(vec.New(0.0, 0.5))
+            icon:SetRelativePoint(vec.New(0.0, 0.5))
             icon:SetInteractable(false)
 
-            btn.panel:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
-                if button == 1 then
+            btn.root:SetOnMouseUp(function(_, _, button, mouseX, mouseY)
+                if button == 1i then
                     selectedRowID = mapData.id
                     RefreshHighlights()
                     OpenRowMenu(mapData, mouseX, mouseY)

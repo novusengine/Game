@@ -105,6 +105,7 @@ namespace Scripting::UI
         static i32 SetInputContextActive(Zenith* zenith);
         static i32 IsInputContextActive(Zenith* zenith);
         static i32 GetInputContexts(Zenith* zenith);
+        static i32 IsMouseCaptured(Zenith* zenith);
         static i32 IsSoftwareCursorEnabled(Zenith* zenith);
         static i32 GetCursorState(Zenith* zenith);
 
@@ -180,6 +181,7 @@ namespace Scripting::UI
         { "SetContextActive", UIHandler::SetInputContextActive },
         { "IsContextActive", UIHandler::IsInputContextActive },
         { "GetContexts", UIHandler::GetInputContexts },
+        { "IsMouseCaptured", UIHandler::IsMouseCaptured },
         { "IsSoftwareCursorEnabled", UIHandler::IsSoftwareCursorEnabled },
         { "GetCursorState", UIHandler::GetCursorState }
     };

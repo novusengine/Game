@@ -10,6 +10,7 @@
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Filesystem/PactStorage.h>
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
 
@@ -18,6 +19,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <map>
+#include <set>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -51,37 +54,71 @@ namespace Scripting::Asset
         return relative;
     }
 
-    // Counts the immediate files and subfolders of `folder` in a single pass.
-    static void CountFolderContents(const fs::path& folder, u32& fileCount, u32& folderCount)
-    {
-        fileCount = 0;
-        folderCount = 0;
-        std::error_code ec;
-        for (const auto& entry : fs::directory_iterator(folder, ec))
-        {
-            if (entry.is_directory())
-                ++folderCount;
-            else
-                ++fileCount;
-        }
-    }
-
     i32 AssetHandler::ListDir(Zenith* zenith)
     {
         const char* relativeRaw = zenith->IsString(1) ? zenith->Get<const char*>(1) : "";
         std::string relative = relativeRaw ? relativeRaw : "";
+        std::replace(relative.begin(), relative.end(), '\\', '/');
+        while (!relative.empty() && relative.front() == '/')
+            relative.erase(relative.begin());
+        while (!relative.empty() && relative.back() == '/')
+            relative.pop_back();
+        if (relative.find("..") != std::string::npos)
+            relative.clear();
 
         fs::path dataRoot = GetDataRoot();
         fs::path target = relative.empty() ? dataRoot : (dataRoot / relative);
 
-        zenith->CreateTable();
+        struct FolderEntry
+        {
+        public:
+            std::string name;
+            std::string path;
+            std::set<std::string> files;
+            std::set<std::string> folders;
+        };
 
-        // folders
-        zenith->CreateTable();
-        i32 folderIndex = 0;
+        struct FileEntry
+        {
+        public:
+            std::string name;
+            std::string path;
+        };
 
-        // files
-        std::vector<fs::path> files;
+        std::map<std::string, FolderEntry> folders;
+        std::map<std::string, FileEntry> files;
+        auto getVirtualName = [](const std::string& virtualPath)
+        {
+            const size_t separator = virtualPath.find_last_of('/');
+            return separator == std::string::npos ? virtualPath : virtualPath.substr(separator + 1);
+        };
+
+        PACT::PactStorage* pactStorage = ServiceLocator::GetPactStorage();
+        if (pactStorage)
+        {
+            std::vector<std::string> virtualDirectories;
+            std::vector<std::string> virtualFiles;
+            pactStorage->GetDirectoryEntries(relative, virtualDirectories, virtualFiles);
+            for (const std::string& virtualFile : virtualFiles)
+            {
+                const std::string name = getVirtualName(virtualFile);
+                files.try_emplace(name, FileEntry{ .name = name, .path = virtualFile });
+            }
+
+            for (const std::string& virtualDirectory : virtualDirectories)
+            {
+                const std::string name = getVirtualName(virtualDirectory);
+                FolderEntry& folder = folders.try_emplace(name, FolderEntry{ .name = name, .path = virtualDirectory }).first->second;
+
+                std::vector<std::string> childDirectories;
+                std::vector<std::string> childFiles;
+                pactStorage->GetDirectoryEntries(virtualDirectory, childDirectories, childFiles);
+                for (const std::string& childDirectory : childDirectories)
+                    folder.folders.emplace(getVirtualName(childDirectory));
+                for (const std::string& childFile : childFiles)
+                    folder.files.emplace(getVirtualName(childFile));
+            }
+        }
 
         std::error_code ec;
         if (fs::is_directory(target, ec))
@@ -91,37 +128,51 @@ namespace Scripting::Asset
                 const fs::path& entryPath = entry.path();
                 if (entry.is_directory())
                 {
-                    u32 fileCount = 0;
-                    u32 folderCount = 0;
-                    CountFolderContents(entryPath, fileCount, folderCount);
-
-                    zenith->CreateTable();
-                    zenith->AddTableField("name", entryPath.filename().string().c_str());
-                    zenith->AddTableField("path", ToDataRelative(entryPath, dataRoot).c_str());
-                    zenith->AddTableField("fileCount", fileCount);
-                    zenith->AddTableField("folderCount", folderCount);
-                    zenith->SetTableKey(++folderIndex);
+                    const std::string name = entryPath.filename().string();
+                    FolderEntry& folder = folders.try_emplace(name, FolderEntry{ .name = name, .path = ToDataRelative(entryPath, dataRoot) }).first->second;
+                    std::error_code childError;
+                    for (const auto& child : fs::directory_iterator(entryPath, childError))
+                    {
+                        if (child.is_directory())
+                            folder.folders.emplace(child.path().filename().string());
+                        else
+                            folder.files.emplace(child.path().filename().string());
+                    }
                 }
                 else
                 {
-                    files.push_back(entryPath);
+                    const std::string name = entryPath.filename().string();
+                    files.try_emplace(name, FileEntry{ .name = name, .path = ToDataRelative(entryPath, dataRoot) });
                 }
             }
+        }
+
+        zenith->CreateTable();
+        zenith->CreateTable();
+        i32 folderIndex = 0;
+        for (const auto& [name, folder] : folders)
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("name", name.c_str());
+            zenith->AddTableField("path", folder.path.c_str());
+            zenith->AddTableField("fileCount", static_cast<u32>(folder.files.size()));
+            zenith->AddTableField("folderCount", static_cast<u32>(folder.folders.size()));
+            zenith->SetTableKey(++folderIndex);
         }
         zenith->SetTableKey("folders");
 
         zenith->CreateTable();
-        for (size_t i = 0; i < files.size(); ++i)
+        i32 fileIndex = 0;
+        for (const auto& [name, file] : files)
         {
-            const fs::path& file = files[i];
-            std::string ext = file.extension().string();
+            std::string ext = fs::path(name).extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(::tolower(c)); });
 
             zenith->CreateTable();
-            zenith->AddTableField("name", file.filename().string().c_str());
-            zenith->AddTableField("path", ToDataRelative(file, dataRoot).c_str());
+            zenith->AddTableField("name", name.c_str());
+            zenith->AddTableField("path", file.path.c_str());
             zenith->AddTableField("ext", ext.c_str());
-            zenith->SetTableKey(static_cast<i32>(i + 1));
+            zenith->SetTableKey(++fileIndex);
         }
         zenith->SetTableKey("files");
 

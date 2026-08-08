@@ -1580,9 +1580,7 @@ void ModelLoader::AddStaticInstance(entt::entity entityID, const LoadRequestInte
             if (body)
             {
                 JPH::BodyID bodyID = body->GetID();
-
-                // Store the entity ID in the body so we can look it up later
-                body->SetUserData(static_cast<JPH::uint64>(entityID));
+                body->SetUserData(Jolt::PhysicsBodyUserData::Pack(entityID, Jolt::PhysicsSurfaceType::StaticModel, Jolt::PhysicsBodyFlags::CanSupport | Jolt::PhysicsBodyFlags::CanSnapTo | Jolt::PhysicsBodyFlags::CanStepOnto));
                 bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
 
                 {
@@ -1644,70 +1642,6 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         std::scoped_lock lock(_instanceIDToModelIDMutex);
         _instanceIDToModelID[instanceID] = modelID;
         _instanceIDToEntityID[instanceID] = entityID;
-    }
-
-    if (discoveredModel.hasShape)
-    {
-        i32 physicsEnabled = *CVarSystem::Get()->GetIntCVar(CVarCategory::Client | CVarCategory::Physics, "enabled"_h);
-
-        if (physicsEnabled && registry->all_of<ECS::Components::Unit>(entityID))
-        {
-            ZoneScopedN("Add Physics Shape");
-
-            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
-            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
-            JPH::BodyInterface& bodyInterface = joltState.physicsSystem.GetBodyInterface();
-            const JPH::BodyLockInterfaceNoLock& bodyLockInterface = joltState.physicsSystem.GetBodyLockInterfaceNoLock();
-
-            auto& unit = registry->get<ECS::Components::Unit>(entityID);
-            if (unit.bodyID != std::numeric_limits<u32>().max())
-            {
-                JPH::BodyID oldBodyID = static_cast<JPH::BodyID>(unit.bodyID);
-                if (JPH::Body* oldBody = bodyLockInterface.TryGetBody(oldBodyID))
-                {
-                    bodyInterface.RemoveBody(oldBodyID);
-                    bodyInterface.DestroyBody(oldBodyID);
-                }
-
-                unit.bodyID = std::numeric_limits<u32>().max();
-                {
-                    std::scoped_lock lock(_physicsSystemMutex);
-                    if (_instanceIDToBodyID.contains(instanceID))
-                        _instanceIDToBodyID.erase(instanceID);
-                }
-            }
-
-            const JPH::ShapeRefC& shape = _modelHashToJoltShape[request.modelHash];
-
-            // TODO: We need to scale the shape
-            vec3 position = transform.GetWorldPosition();
-            const quat& rotation = transform.GetWorldRotation();
-
-            // Create the settings for the body itself. Note that here you can also set other properties like the restitution / friction.
-            JPH::BodyCreationSettings bodySettings(new JPH::ScaledShapeSettings(shape, JPH::Vec3(2.0f, 1.0f, 0.5f)), JPH::RVec3(position.x, position.y, position.z), JPH::Quat(rotation.x, rotation.y, rotation.z, rotation.w), JPH::EMotionType::Kinematic, Jolt::Layers::MOVING);
-            bodySettings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX | JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
-            bodySettings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
-            bodySettings.mMassPropertiesOverride.mMass = 1000.0f;
-            bodySettings.mIsSensor = true;
-
-            // Create the actual rigid body
-            JPH::Body* body = bodyInterface.CreateBody(bodySettings); // Note that if we run out of bodies this can return nullptr
-            joltState.RecordBodyCreate(ECS::Singletons::JoltBodyTelemetrySource::DynamicInstance, body != nullptr);
-            if (body)
-            {
-                JPH::BodyID bodyID = body->GetID();
-                unit.bodyID = bodyID.GetIndexAndSequenceNumber();
-
-                // Store the entity ID in the body so we can look it up later
-                body->SetUserData(static_cast<JPH::uint64>(entityID));
-                bodyInterface.AddBody(bodyID, JPH::EActivation::Activate);
-
-                {
-                    std::scoped_lock lock(_physicsSystemMutex);
-                    _instanceIDToBodyID[instanceID] = bodyID.GetIndexAndSequenceNumber();
-                }
-            }
-        }
     }
 
     {

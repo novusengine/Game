@@ -822,7 +822,7 @@ void CanvasRenderer::CreatePermanentResources()
     dataTextureDesc.data = new u8[4]{ 255, 255, 255, 255 }; // White, because UI color is multiplied with this
     dataTextureDesc.debugName = "UIDebugTexture";
 
-    u32 arrayIndex = 0;
+    size_t arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
     Renderer::DataTextureDesc additiveDataTextureDesc;
@@ -1058,12 +1058,18 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
     const Renderer::FontMetrics& metrics = font->metrics;
 
     f32 fontSize = textTemplate.size;
+    const f32 lineAdvance = fontSize * static_cast<f32>(metrics.lineHeight);
+    const f32 glyphHeight = fontSize * static_cast<f32>(metrics.ascenderY - metrics.descenderY);
+    const f32 lineLeading = std::max(0.0f, lineAdvance - glyphHeight);
+
+    // Center the font's ascender/descender box inside the measured line box. Widget anchors then
+    // position every string consistently while glyph vertices continue to use baseline coordinates.
+    const f32 baselineFromBottom = -fontSize * static_cast<f32>(metrics.descenderY) + lineLeading * 0.5f;
 
     utf8::iterator it(text.text.begin(), text.text.begin(), text.text.end());
     utf8::iterator endIt(text.text.end(), text.text.begin(), text.text.end());
 
-    f32 textLineHeightOffset = (fontSize * static_cast<f32>(metrics.lineHeight)) * text.numCharsNewLine;
-    vec2 penPos = vec2(0.0f, textLineHeightOffset);// fontScale* metrics.ascenderY);
+    vec2 penPos = vec2(0.0f, baselineFromBottom + lineAdvance * text.numCharsNewLine);
 
     u32 vertexIndex = static_cast<u32>(text.gpuVertexIndex);
     for (; it != endIt; it++)
@@ -1080,7 +1086,7 @@ void CanvasRenderer::UpdateTextVertices(ECS::Components::UI::Widget& widget, ECS
         if (c == '\n')
         {
             penPos.x = 0.0f;
-            penPos.y -= fontSize * static_cast<f32>(metrics.lineHeight);
+            penPos.y -= lineAdvance;
             continue;
         }
 
@@ -1178,8 +1184,8 @@ void CanvasRenderer::UpdatePanelData(entt::entity entity, ECS::Components::Trans
     drawData.cornerRadiusAndBorder = vec4(cornerRadius, normalizedBorderSize);
 
     // Update textures
-    u16 textureIndex = 0;
-    u16 additiveTextureIndex = 1;
+    size_t textureIndex = 0;
+    size_t additiveTextureIndex = 1;
 
     if (panelTemplate.setFlags.backgroundRT)
     {
@@ -1332,7 +1338,7 @@ void CanvasRenderer::UpdateTextData(entt::entity entity, Text& text, ECS::Compon
 
     Renderer::TextureID fontTextureID = font->GetTextureID();
 
-    u32 fontTextureIndex;
+    size_t fontTextureIndex;
 
     auto textureIt = _textureIDToFontTexturesIndex.find(static_cast<Renderer::TextureID::type>(fontTextureID));
     if (textureIt != _textureIDToFontTexturesIndex.end())
@@ -1472,7 +1478,7 @@ vec2 CanvasRenderer::PixelSizeToNDC(const vec2& pixelSize, const vec2& screenSiz
     return vec2(2.0 * pixelSize.x / screenSize.x, 2.0 * pixelSize.y / screenSize.y);
 }
 
-u32 CanvasRenderer::AddTexture(Renderer::TextureID textureID)
+size_t CanvasRenderer::AddTexture(Renderer::TextureID textureID)
 {
     Renderer::TextureID::type typedID = static_cast<Renderer::TextureID::type>(textureID);
     if (_textureIDToIndex.contains(typedID))
@@ -1482,18 +1488,18 @@ u32 CanvasRenderer::AddTexture(Renderer::TextureID textureID)
     }
 
     // Add texture
-    u32 textureIndex = _renderer->AddTextureToArray(textureID, _textures);
+    size_t textureIndex = _renderer->AddTextureToArray(textureID, _textures);
 
     _textureIDToIndex[typedID] = textureIndex;
     return textureIndex;
 }
 
-u32 CanvasRenderer::LoadTextureByPath(std::string_view path)
+size_t CanvasRenderer::LoadTextureByPath(std::string_view path)
 {
     return LoadTexture(path);
 }
 
-u32 CanvasRenderer::LoadTexture(std::string_view path)
+size_t CanvasRenderer::LoadTexture(std::string_view path)
 {
     u64 textureNameHash = Util::AssetPath::Hash(path);
 
@@ -1515,7 +1521,7 @@ u32 CanvasRenderer::LoadTexture(std::string_view path)
     textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
     textureDesc.size = fileHandle.GetSize();
 
-    u32 textureIndex;
+    size_t textureIndex;
     _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureIndex);
 
     _textureNameHashToIndex[textureNameHash] = textureIndex;

@@ -31,9 +31,8 @@ namespace Scripting::UI
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             const vec2& size = registry->get<ECS::Components::Transform2D>(panel->entity).GetSize();
 
-            zenith->Push(size.x);
-            zenith->Push(size.y);
-            return 2;
+            zenith->Push(size);
+            return 1;
         }
 
         i32 GetWidth(Zenith* zenith, Panel* panel)
@@ -56,13 +55,12 @@ namespace Scripting::UI
 
         i32 SetSize(Zenith* zenith, Panel* panel)
         {
-            f32 x = zenith->CheckVal<f32>(2);
-            f32 y = zenith->CheckVal<f32>(3);
+            const vec3 size = zenith->CheckVal<vec3>(2);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-            ts.SetSize(panel->entity, vec2(x, y));
+            ts.SetSize(panel->entity, vec2(size.x, size.y));
 
             // Size feeds the rendered quad and the border thickness (borderSize / size), so the widget
             // data + transform must be regenerated or they keep rendering at the stale size.
@@ -200,14 +198,12 @@ namespace Scripting::UI
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(panel->entity);
             registry->get_or_emplace<ECS::Components::UI::DirtyWidgetTransform>(panel->entity);
 
-            f32 minX = zenith->CheckVal<f32>(2);
-            f32 minY = zenith->CheckVal<f32>(3);
-            f32 maxX = zenith->CheckVal<f32>(4);
-            f32 maxY = zenith->CheckVal<f32>(5);
+            const vec3 min = zenith->CheckVal<vec3>(2);
+            const vec3 max = zenith->CheckVal<vec3>(3);
 
             panelTemplate.setFlags.texCoords = true;
-            panelTemplate.texCoords.min = vec2(minX, minY);
-            panelTemplate.texCoords.max = vec2(maxX, maxY);
+            panelTemplate.texCoords.min = vec2(min.x, min.y);
+            panelTemplate.texCoords.max = vec2(max.x, max.y);
 
             registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(panel->canvasEntity);
 

@@ -253,8 +253,5 @@ return D.Definitions
     D.GameCommand("SpellSyncCommand", { "spell sync" },
     {
         D.Field("spellID", Type.U32)
-    }),
-
-    D.GameCommand("SpellSyncAllCommand", { "spell sync all" },
-    {})
+    })
 }

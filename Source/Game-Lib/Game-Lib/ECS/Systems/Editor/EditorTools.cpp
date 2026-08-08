@@ -92,6 +92,14 @@ namespace ECS::Systems::Editor
         InputSystem* inputSystem = ServiceLocator::GetInputSystem();
         s.pointerInputContext = inputSystem->CreateContext("EditorToolsPointer", GameInputPriority::Editor, [](const InputEvent& event)
         {
+            // Gizmo dragging reads the absolute cursor position during EditorTools::Update. Consume
+            // movement here so lower-priority camera contexts cannot interpret the same drag as a
+            // camera gesture. Mouse button events intentionally pass through: the camera may have
+            // seen the initial press before the gizmo hit test ran, and needs the release to clear
+            // that pending gesture without becoming stuck.
+            if (s.dragging && (event.type == InputEventType::CursorMove || event.type == InputEventType::Scroll))
+                return InputReply::Consumed;
+
             if (event.type == InputEventType::Scroll && s.dragSpawnActive && s.dragSpawnEntity != entt::null)
             {
                 s.scrollAccum += event.delta.y;

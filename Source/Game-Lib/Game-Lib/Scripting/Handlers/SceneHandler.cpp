@@ -46,7 +46,7 @@ namespace Scripting::Scene
     // live entity; otherwise returns entt::null.
     static entt::entity GetEntityArg(Zenith* zenith, entt::registry* registry, i32 index)
     {
-        if (!registry || !zenith->IsNumber(index))
+        if (!registry || !zenith->IsInteger(index))
             return entt::null;
 
         entt::entity entity = entt::entity(zenith->CheckVal<u32>(index));

@@ -90,6 +90,7 @@ namespace ECS::Util
 
             entt::entity entity = CreateCanvas(widget, registry, name, pos, size, isRenderTexture);
             widget->entity = entity;
+            widget->canvasEntity = entt::null;
 
             uiSingleton.nameHashToCanvasEntity[nameHash] = entity;
             return entity;
@@ -367,6 +368,10 @@ namespace ECS::Util
             // A move then only re-uploads this slot and the GPU recomposes the subtree (no CPU propagation).
             registry->emplace<ECS::Components::UI::DirtyWidgetTransform>(entity);
 
+            // Clipper
+            auto& widgetClipper = registry->emplace<ECS::Components::UI::Clipper>(entity);
+            widgetClipper.clipRegionOverrideEntity = GetClippingAncestor(registry, entity);
+
             // New widget entering the tree -> owning canvas needs sort-key rebuild.
             MarkCanvasSortDirty(registry, FindOwningCanvas(registry, parent));
 
@@ -600,6 +605,7 @@ namespace ECS::Util
             {
                 vec2 clipMin = (rect->min + size * clipper->clipRegionMin) / refSize;
                 vec2 clipMax = (rect->min + size * clipper->clipRegionMax) / refSize;
+
                 canvasRenderer->UpdateClipRect(clipper->clipRectBufferIndex, vec4(clipMin.x, clipMin.y, clipMax.x, clipMax.y));
             }
 
@@ -607,10 +613,9 @@ namespace ECS::Util
             {
                 vec2 maskMin = rect->min / refSize;
                 vec2 maskMax = rect->max / refSize;
-                u32 textureIndex = clipper->hasClipMaskTexture
-                    ? canvasRenderer->LoadTextureByPath(clipper->clipMaskTexture)
-                    : 0;
-                canvasRenderer->UpdateMaskInfo(clipper->maskBufferIndex, vec4(maskMin.x, maskMin.y, maskMax.x, maskMax.y), textureIndex);
+                size_t textureIndex = clipper->hasClipMaskTexture ? canvasRenderer->LoadTextureByPath(clipper->clipMaskTexture) : 0;
+
+                canvasRenderer->UpdateMaskInfo(clipper->maskBufferIndex, vec4(maskMin.x, maskMin.y, maskMax.x, maskMax.y), static_cast<u32>(textureIndex));
             }
         }
 
@@ -745,6 +750,11 @@ namespace ECS::Util
                 if (panelTemplate.setFlags.nineSliceInsets)
                 {
                     panelTemplateComp.nineSliceInsets = panelTemplate.nineSliceInsets;
+                }
+                if (panelTemplate.setFlags.border)
+                {
+                    panelTemplateComp.borderColor = panelTemplate.borderColor;
+                    panelTemplateComp.borderSize = panelTemplate.borderSize;
                 }
 
                 registry->get_or_emplace<ECS::Components::UI::DirtyWidgetData>(entity);

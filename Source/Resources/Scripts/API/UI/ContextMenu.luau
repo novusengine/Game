@@ -2,6 +2,8 @@
 ContextMenu — right-click context menu. Build a description once with New,
 call Open(x, y) on a right-click handler, and the menu spawns at the cursor
 with a transparent full-screen shield behind it for click-outside dismissal.
+For dropdown controls, call OpenBelow(widget) to anchor the menu to the
+control's lower-left corner instead of the cursor.
 
     local menu = ContextMenu.New(canvas, {
         items = {
@@ -10,11 +12,11 @@ with a transparent full-screen shield behind it for click-outside dismissal.
             { divider = true },
             { label = "Copy",   onClick = function() ... end },
         },
-        layer = 1200,
+        layer = 1200i,
     })
 
     panel:SetOnMouseUp(function(_, _, button, mx, my)
-        if button == 1 then menu:Open(mx, my) end
+        if button == 1i then menu:Open(mx, my) end
     end)
 
 Same shield pattern as MenuBar's dropdown: the shield is a sibling panel
@@ -23,33 +25,61 @@ clicks outside the menu hit it and dismiss without leaking through to the
 widgets behind.
 ]]
 
-local EditorButton = require("@src/API/UI/EditorButton")
+local Button = require("@src/API/UI/Button")
+local PopupLayer = require("@src/API/UI/PopupLayer")
 
-local contextMenuAPI = {}
+export type Item =
+{
+    label : string?,
+    onClick : (() -> ())?,
+    enabled : boolean?,
+    selected : boolean?,
+    divider : boolean?,
+}
+export type Options =
+{
+    items : { Item }?,
+    layer : integer?,
+    minWidth : number?,
+    itemHeight : number?,
+    inputPassthrough : Panel?,
+    closeOnHoverOutside : boolean?,
+    onClose : (() -> ())?,
+}
+export type ContextMenu =
+{
+    Close : (self : ContextMenu) -> (),
+    SetItems : (self : ContextMenu, items : { Item }) -> (),
+    Open : (self : ContextMenu, x : number, y : number) -> (),
+    OpenBelow : (self : ContextMenu, widget : Widget) -> (),
+}
+export type ContextMenuAPI = { New : (parent : Widget, options : Options?) -> ContextMenu }
+local contextMenuAPI : ContextMenuAPI = {}
 
 local ITEM_H            = 18
 local ITEM_PAD_X        = 16
 local ITEM_MIN_W        = 80
 local DIVIDER_H         = 5
 local DIVIDER_LINE_H    = 1
-local SHIELD_SIZE       = 8192
-local DEFAULT_LAYER     = 1200
+local DEFAULT_LAYER     = 1200i
 local TEXT_TEMPLATE     = "DevToolsText"
 
-local BG_COLOR          = vector.create(0.10, 0.10, 0.12)
+local BG_COLOR          = vec.New(0.10, 0.10, 0.12)
 local BG_ALPHA          = 0.96
-local BORDER_COLOR      = vector.create(0.30, 0.30, 0.35)
+local BORDER_COLOR      = vec.New(0.30, 0.30, 0.35)
 local BORDER_SIZE       = 1
-local DIVIDER_COLOR     = vector.create(0.30, 0.30, 0.35)
+local DIVIDER_COLOR     = vec.New(0.30, 0.30, 0.35)
+local DISABLED_TEXT_COLOR = vec.New(0.42, 0.44, 0.48)
 
 local function CanvasSize(canvas)
     if canvas.GetSize then
-        return canvas:GetSize()
+        local size = canvas:GetSize()
+        return size.x, size.y
     end
     return 1920, 1080
 end
 
-function contextMenuAPI.New(parent, opts)
+function contextMenuAPI.New(parent : Widget, opts : Options?)
     opts = opts or {}
 
     local self = {
@@ -57,16 +87,20 @@ function contextMenuAPI.New(parent, opts)
         _items      = opts.items or {},
         _layer      = opts.layer or DEFAULT_LAYER,
         _minWidth   = opts.minWidth or ITEM_MIN_W,
+        _itemHeight = opts.itemHeight or ITEM_H,
+        _inputPassthrough = opts.inputPassthrough,
+        _closeOnHoverOutside = opts.closeOnHoverOutside,
+        _onClose     = opts.onClose,
         _menuPanel  = nil,
-        _shield     = nil,
+        _popup      = nil,
     }
 
     local function CalculateWidth()
         local widest = 0
         for _, it in self._items do
             if not it.divider then
-                local w, _ = UI.CalculateTextSize(it.label or "", TEXT_TEMPLATE)
-                if w > widest then widest = w end
+                local textSize = UI.CalculateTextSize(it.label or "", TEXT_TEMPLATE)
+                if textSize.x > widest then widest = textSize.x end
             end
         end
         return math.max(self._minWidth, math.ceil(widest) + ITEM_PAD_X)
@@ -75,29 +109,24 @@ function contextMenuAPI.New(parent, opts)
     local function CalculateHeight()
         local h = 0
         for _, it in self._items do
-            h += if it.divider then DIVIDER_H else ITEM_H
+            h += if it.divider then DIVIDER_H else self._itemHeight
         end
         return h
     end
 
     function self:Close()
-        if self._menuPanel ~= nil then
-            UI.DestroyWidget(self._menuPanel)
-            self._menuPanel = nil
-        end
-        if self._shield ~= nil then
-            UI.DestroyWidget(self._shield)
-            self._shield = nil
-        end
+        if self._popup ~= nil then self._popup:Close() end
+        self._popup = nil
+        self._menuPanel = nil
     end
 
     function self:SetItems(newItems)
         self._items = newItems or {}
         if self._menuPanel ~= nil then
             -- Currently open — rebuild at the previous position.
-            local x, y = self._menuPanel:GetPos()
+            local position = self._menuPanel:GetPos()
             self:Close()
-            self:Open(x, y)
+            self:Open(position.x, position.y)
         end
     end
 
@@ -113,29 +142,38 @@ function contextMenuAPI.New(parent, opts)
         if x + width > canvasW then x = math.max(0, x - width) end
         if y - height < 0 then y = math.min(canvasH, y + height) end
 
-        self._shield = self._parent:NewPanel(0, 0, SHIELD_SIZE, SHIELD_SIZE, self._layer - 1, "DebugDarkGrey")
-        self._shield:SetAnchor(0.0, 0.0)
-        self._shield:SetRelativePoint(0.0, 0.0)
-        self._shield:SetAlpha(0)
-        self._shield:SetOnMouseUp(function() self:Close() end)
+        self._popup = PopupLayer.Open(self._parent, integer.sub(self._layer, 1i), function()
+            self._popup = nil
+            self._menuPanel = nil
+            if self._onClose ~= nil then self._onClose() end
+        end, self._inputPassthrough, self._closeOnHoverOutside)
 
         -- anchor(0,0)=parent bottom-left, relPoint(0,1)=menu top-left.
         -- With pos=(x,y), the menu's top-left lands at canvas-world (x, y) — cursor position.
-        self._menuPanel = self._parent:NewPanel(x, y, width, height, self._layer, "DebugDarkGrey")
-        self._menuPanel:SetAnchor(0.0, 0.0)
-        self._menuPanel:SetRelativePoint(0.0, 1.0)
+        self._menuPanel = self._parent:NewPanel(vec.New(x, y), vec.New(width, height), self._layer, "DebugDarkGrey")
+        self._menuPanel:SetAnchor(vec.New(0.0, 0.0))
+        self._menuPanel:SetRelativePoint(vec.New(0.0, 1.0))
         self._menuPanel:SetColor(BG_COLOR)
         self._menuPanel:SetAlpha(BG_ALPHA)
         self._menuPanel:SetBorderColor(BORDER_COLOR)
         self._menuPanel:SetBorderSize(BORDER_SIZE)
         self._menuPanel:SetClipChildren(true)
+        self._popup:SetContent(self._menuPanel)
+
+        local function InvokeAndClose(callback)
+            return function(_, _, mouseButton)
+                if mouseButton ~= 0i then return end
+                if callback ~= nil then callback() end
+                self:Close()
+            end
+        end
 
         local cursorY = 0
         for _, it in self._items do
             if it.divider then
-                local divider = self._menuPanel:NewPanel(0, -cursorY - math.floor((DIVIDER_H - DIVIDER_LINE_H) / 2), width, DIVIDER_LINE_H, 1, "DebugDarkGrey")
-                divider:SetAnchor(0.0, 1.0)
-                divider:SetRelativePoint(0.0, 1.0)
+                local divider = self._menuPanel:NewPanel(vec.New(0, -cursorY - math.floor((DIVIDER_H - DIVIDER_LINE_H) / 2)), vec.New(width, DIVIDER_LINE_H), 1i, "DebugDarkGrey")
+                divider:SetAnchor(vec.New(0.0, 1.0))
+                divider:SetRelativePoint(vec.New(0.0, 1.0))
                 divider:SetColor(DIVIDER_COLOR)
                 divider:SetAlpha(0.8)
                 divider:SetInteractable(false)
@@ -144,28 +182,29 @@ function contextMenuAPI.New(parent, opts)
                 local enabled = it.enabled
                 if enabled == nil then enabled = true end
 
-                local item = EditorButton.NewEditorButton(self._menuPanel, 0, -cursorY, width, ITEM_H, 1, {
+                local item = Button.New(self._menuPanel, vec.New(0, -cursorY), vec.New(width, self._itemHeight), 1i, {
                     text = it.label or "",
                     textTemplate = TEXT_TEMPLATE,
                     textAlign = "left",
                 })
-                item:SetAnchor(0.0, 1.0)
-                item:SetRelativePoint(0.0, 1.0)
+                item:SetAnchor(vec.New(0.0, 1.0))
+                item:SetRelativePoint(vec.New(0.0, 1.0))
                 item:SetHighlighted(it.selected == true)
 
                 if not enabled then
-                    item.text:SetAlpha(0.4)
                     item:SetInteractable(false)
+                    item.text:SetColor(DISABLED_TEXT_COLOR)
+                    item.text:SetAlpha(1.0)
                 else
-                    local cb = it.onClick
-                    item:SetOnMouseUp(function()
-                        self:Close()
-                        if cb ~= nil then cb() end
-                    end)
+                    item:SetOnMouseUp(InvokeAndClose(it.onClick))
                 end
-                cursorY += ITEM_H
+                cursorY += self._itemHeight
             end
         end
+    end
+
+    function self:OpenBelow(widget)
+        self:Open(widget:GetWorldPosX(), widget:GetWorldPosY())
     end
 
     return self

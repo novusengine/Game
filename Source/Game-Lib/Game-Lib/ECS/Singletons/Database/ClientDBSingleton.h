@@ -48,9 +48,8 @@ enum class ClientDBHash : u64
     UnitCustomizationMaterial           = XXHash64::hashLiteral("clientdb/unitcustomizationmaterial.cdb"),
     UnitRaceCustomizationChoice         = XXHash64::hashLiteral("clientdb/unitracecustomizationchoice.cdb"),
     Spell                               = XXHash64::hashLiteral("clientdb/spell.cdb"),
+    SpellAura                           = XXHash64::hashLiteral("clientdb/spellaura.cdb"),
     SpellEffects                        = XXHash64::hashLiteral("clientdb/spelleffects.cdb"),
-    SpellProcData                       = XXHash64::hashLiteral("clientdb/spellprocdata.cdb"),
-    SpellProcLink                       = XXHash64::hashLiteral("clientdb/spellproclink.cdb"),
     Light                               = XXHash64::hashLiteral("clientdb/light.cdb"),
     LightData                           = XXHash64::hashLiteral("clientdb/lightdata.cdb"),
     LightParams                         = XXHash64::hashLiteral("clientdb/lightparams.cdb"),
@@ -68,7 +67,7 @@ public:
     std::string_view debugName;
 };
 
-inline constexpr std::array<ClientDBDefinition, 42> ClientDBHashes =
+inline constexpr std::array<ClientDBDefinition, 41> ClientDBHashes =
 {{
     { ClientDBHash::TextureFileData, "TextureFileData" },
     { ClientDBHash::ModelFileData, "ModelFileData" },
@@ -101,9 +100,8 @@ inline constexpr std::array<ClientDBDefinition, 42> ClientDBHashes =
     { ClientDBHash::UnitCustomizationMaterial, "UnitCustomizationMaterial" },
     { ClientDBHash::UnitRaceCustomizationChoice, "UnitRaceCustomizationChoice" },
     { ClientDBHash::Spell, "Spell" },
+    { ClientDBHash::SpellAura, "SpellAura" },
     { ClientDBHash::SpellEffects, "SpellEffects" },
-    { ClientDBHash::SpellProcData, "SpellProcData" },
-    { ClientDBHash::SpellProcLink, "SpellProcLink" },
     { ClientDBHash::Light, "Light" },
     { ClientDBHash::LightData, "LightData" },
     { ClientDBHash::LightParams, "LightParams" },

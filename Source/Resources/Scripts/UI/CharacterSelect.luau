@@ -1,6 +1,6 @@
 local UIButton = require("@src/API/UI/Button")
 local UIScrollBox = require("@src/API/UI/ScrollBox")
-local UIStack = require("@src/API/UI/UIStack")
+local FrameManager = require("@src/API/Game/FrameManager")
 local UIVerticalLayout = require("@src/API/UI/VerticalLayout")
 
 type CharacterSelectScreen =
@@ -12,7 +12,7 @@ type CharacterSelectScreen =
     GetCharacterNameByIndex : (index : number) -> string | nil,
 
     canvas : Canvas,
-    widget : Widget,
+    panel : Panel,
     characters : { Character },
     selectedCharacterName : string | nil,
     selectedCharacterNameText : TextWidget,
@@ -27,8 +27,8 @@ type Character =
     level : number,
     class : string,
     location : string,
-    entryLayout : any,           -- VerticalLayout per-entry; nil until first build
-    panel : Panel | nil,         -- alias of entryLayout.panel kept for SelectCharacterByName
+    entryButton : UIButton.Button | nil,
+    entryTextLayout : any,
     nameText : TextWidget | nil,
     levelAndClassText : TextWidget | nil,
     locationText : TextWidget | nil,
@@ -37,6 +37,11 @@ type Character =
 local sceneData = {
     characterSelectScreen = nil :: CharacterSelectScreen?,
 }
+
+local CHARACTER_ENTRY_HEIGHT = 88
+local CHARACTER_LIST_TOP_PADDING = 8
+local CHARACTER_ENTRY_HOVER_COLOR = vec.New(0.11, 0.15, 0.21)
+local CHARACTER_ENTRY_SELECTED_COLOR = vec.New(0.13, 0.20, 0.29)
 
 local classIDToName = {
     [1] = "Warrior",
@@ -53,43 +58,37 @@ local classIDToName = {
 }
 
 local function RegisterTemplates()
+    UI.RegisterPanelTemplate("CharacterSelectBackgroundPanel",
+    {
+        background = "texture/ui/characterselect.png",
+    });
+
     -- Restore Icon
-    local restoreIconMinX, restoreIconMinY = UI.PixelsToTexCoord(8, 8, 32, 32);
-    local restoreIconMaxX, restoreIconMaxY = UI.PixelsToTexCoord(23, 23, 32, 32);
     UI.RegisterPanelTemplate("RestoreIcon",
     {
-        background = "texture/interface/glues/characterselect/characterundelete.dds",
-        cornerRadius = 0.0,
-
-        texCoords = Box.new(restoreIconMinX, restoreIconMinY, restoreIconMaxX, restoreIconMaxY),
+        background = "texture/ui/icons/50x50/white/return.png",
+        color = vec.New(255.0/255.0, 239.0/255.0, 0.0/255.0),
     });
 
-    -- Rotate Icon
-    local rotateIconMinX, rotateIconMinY = UI.PixelsToTexCoord(15, 15, 64, 64);
-    local rotateIconMaxX, rotateIconMaxY = UI.PixelsToTexCoord(47, 47, 64, 64);
-    UI.RegisterPanelTemplate("RotateIcon",
+    -- Rotate Icons
+    UI.RegisterPanelTemplate("RotateLeftIcon",
     {
-        background = "texture/interface/glues/charactercreate/ui-rotationright-big-up.dds",
-        cornerRadius = 0.0,
-
-        texCoords = Box.new(rotateIconMinX, rotateIconMinY, rotateIconMaxX, rotateIconMaxY),
-
-        -- These get applied additively on this template
-        onClickTemplate = "RotateIconDown",
+        background = "texture/ui/icons/50x50/white/arrow_left.png",
+        color = vec.New(255.0/255.0, 239.0/255.0, 0.0/255.0),
     });
-
-    UI.RegisterPanelTemplate("RotateIconDown",
+    UI.RegisterPanelTemplate("RotateRightIcon",
     {
-        background = "texture/interface/glues/charactercreate/ui-rotationright-big-down.dds",
+        background = "texture/ui/icons/50x50/white/arrow_right.png",
+        color = vec.New(255.0/255.0, 239.0/255.0, 0.0/255.0),
     });
 
     UI.RegisterTextTemplate("GreyText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 24.0,
-        color = vector.create(110.0/255.0, 110.0/255.0, 110.0/255.0),
+        color = vec.New(110.0/255.0, 110.0/255.0, 110.0/255.0),
         borderSize = 2.5,
-        borderColor = vector.create(0.1, 0.1, 0.1),
+        borderColor = vec.New(0.1, 0.1, 0.1),
     });
 
     -- Dialog Box Header Text
@@ -97,99 +96,99 @@ local function RegisterTemplates()
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 22.0,
-        color = vector.create(255.0/255.0, 210.0/255.0, 0.0/255.0),
+        color = vec.New(255.0/255.0, 210.0/255.0, 0.0/255.0),
         borderSize = 2.0,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("LevelText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 20.0,
-        color = vector.create(255.0/255.0, 255.0/255.0, 255.0/255.0),
+        color = vec.New(255.0/255.0, 255.0/255.0, 255.0/255.0),
         borderSize = 2.0,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("LocationText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 19.0,
-        color = vector.create(110.0/255.0, 110.0/255.0, 110.0/255.0),
+        color = vec.New(110.0/255.0, 110.0/255.0, 110.0/255.0),
         borderSize = 2.0,
-        borderColor = vector.create(0.1, 0.1, 0.1),
-    });
-
-    -- Character Entry
-    local entryMinX, entryMinY = UI.PixelsToTexCoord(6, 2, 256, 64);
-    local entryMaxX, entryMaxY = UI.PixelsToTexCoord(249, 59, 256, 64);
-
-    UI.RegisterPanelTemplate("CharacterEntryButtonPanel",
-    {
-        cornerRadius = 0.0,
-        color = vector.create(0.0, 0.0, 0.0),
-        alpha = 0.0,
-
-        texCoords = Box.new(entryMinX, entryMinY, entryMaxX, entryMaxY),
+        borderColor = vec.New(0.1, 0.1, 0.1),
     });
 end
 
 local function CreateOrModifyCharacterEntry(characterSelectScreen : CharacterSelectScreen, character : Character)
-    if (character.entryLayout == nil) then
-        -- Each entry is a VerticalLayout: panel template provides the background, paddings
-        -- frame the texts (top=15, bottom=25, left=25), heightMode="shrink" sizes to content.
-        local entry = UIVerticalLayout.NewVerticalLayout(
-            characterSelectScreen.characterListLayout, 0, 0, 390, 0, 0,
+    local entryButton = character.entryButton;
+    if entryButton == nil then
+        entryButton = UIButton.New(
+            characterSelectScreen.characterListLayout,
+            vec.New(0, 0),
+            vec.New(math.max(characterSelectScreen.characterListLayout:GetWidth() - 10, 1), CHARACTER_ENTRY_HEIGHT),
+            0i,
             {
-                panelTemplate = "CharacterEntryButtonPanel",
-                heightMode = "shrink",
-                paddingTop = 15, paddingBottom = 25, paddingLeft = 25,
-                spacing = 0,
+                hoverColor = CHARACTER_ENTRY_HOVER_COLOR,
+                highlightColor = CHARACTER_ENTRY_SELECTED_COLOR,
             });
-        entry:SetOnMouseUp(function(eventID, widget, ...)
+        entryButton:SetOnMouseUp(function()
             characterSelectScreen:SelectCharacterByName(character.name);
         end);
 
-        character.nameText          = entry:NewText(character.name, 0, 0, 0, "NameText");
-        character.levelAndClassText = entry:NewText(`Level {character.level} {character.class}`, 0, 0, 0, "LevelText");
-        character.locationText      = entry:NewText(character.location, 0, 0, 0, "LocationText");
+        local entryTextLayout = UIVerticalLayout.New(entryButton.root, vec.New(0, 0), vec.New(entryButton.root:GetWidth(), CHARACTER_ENTRY_HEIGHT), 1i, {
+            panelTemplate = "DebugDarkGrey",
+            alpha = 0.0,
+            alignV = "center",
+            paddingLeft = 16,
+            spacing = 0,
+        });
+        entryTextLayout:SetAnchor(vec.New(0.0, 1.0));
+        entryTextLayout:SetRelativePoint(vec.New(0.0, 1.0));
 
-        character.entryLayout = entry;
-        character.panel       = entry.panel;  -- alias kept so SelectCharacterByName's :SetForeground still works
+        character.nameText = entryTextLayout:NewText(character.name, vec.New(0, 0), 1i, "NameText");
+        character.levelAndClassText = entryTextLayout:NewText(`Level {character.level} {character.class}`, vec.New(0, 0), 1i, "LevelText");
+        character.locationText = entryTextLayout:NewText(character.location, vec.New(0, 0), 1i, "LocationText");
+        character.nameText:SetFontSize(17);
+        character.levelAndClassText:SetFontSize(16);
+        character.locationText:SetFontSize(14);
+
+        character.entryButton = entryButton;
+        character.entryTextLayout = entryTextLayout;
     else
-        -- Update path: just swap text on the existing proxies. SetText is size-affecting,
-        -- so the proxy invalidates the entry layout (and the outer list layout) automatically.
         character.nameText:SetText(character.name);
         character.levelAndClassText:SetText(`Level {character.level} {character.class}`);
         character.locationText:SetText(character.location);
     end
+
+    entryButton:SetHighlighted(characterSelectScreen.selectedCharacterName == character.name);
 end
 
 local function CreateLeftPanel(characterSelectScreen : CharacterSelectScreen)
     -- Menu button
-    local menuButton = UIButton.NewButton(characterSelectScreen.widget, 20, 40, 150, 40, 0, {
+    local menuButton = UIButton.New(characterSelectScreen.panel, vec.New(20, 40), vec.New(150, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Menu",
     });
-    menuButton:SetAnchor(0.0, 0.0);
-    menuButton:SetRelativePoint(0.0, 0.0);
+    menuButton:SetAnchor(vec.New(0.0, 0.0));
+    menuButton:SetRelativePoint(vec.New(0.0, 0.0));
 end
 
 local function CreateMiddlePanel(characterSelectScreen : CharacterSelectScreen)
     -- Selected character name
-    characterSelectScreen.selectedCharacterNameText = characterSelectScreen.widget:NewText("Pursche", 0, 140, 0, "NameText");
-    characterSelectScreen.selectedCharacterNameText:SetAnchor(0.5, 0.0);
-    characterSelectScreen.selectedCharacterNameText:SetRelativePoint(0.5, 0.0);
+    characterSelectScreen.selectedCharacterNameText = characterSelectScreen.panel:NewText("Pursche", vec.New(0, 140), 0i, "NameText");
+    characterSelectScreen.selectedCharacterNameText:SetAnchor(vec.New(0.5, 0.0));
+    characterSelectScreen.selectedCharacterNameText:SetRelativePoint(vec.New(0.5, 0.0));
 
     -- Enter World button
-    local enterWorldButton = UIButton.NewButton(characterSelectScreen.widget, 0, 80, 200, 40, 0, {
+    local enterWorldButton = UIButton.New(characterSelectScreen.panel, vec.New(0, 80), vec.New(200, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Enter World",
     });
-    enterWorldButton:SetAnchor(0.5, 0.0);
-    enterWorldButton:SetRelativePoint(0.5, 0.0);
+    enterWorldButton:SetAnchor(vec.New(0.5, 0.0));
+    enterWorldButton:SetRelativePoint(vec.New(0.5, 0.0));
     enterWorldButton:SetOnMouseUp(function(eventID, widget, ...)
         local characterIndex = nil
 
@@ -204,127 +203,147 @@ local function CreateMiddlePanel(characterSelectScreen : CharacterSelectScreen)
         end
 
         if (characterIndex ~= nil) then
-            SelectCharacter(characterIndex);
+            SelectCharacter(integer.create(characterIndex));
         end
     end);
 
     -- Rotate character left button
-    local rotateLeftButton = UIButton.NewButton(characterSelectScreen.widget, -22, 35, 40, 40, 0, {
-        panelTemplate = "RotateIcon",
+    local rotateLeftButton = UIButton.New(characterSelectScreen.panel, vec.New(-22, 35), vec.New(40, 40), 0i, {
+        panelTemplate = "DefaultButtonPanel"
     });
-    rotateLeftButton:SetAnchor(0.5, 0.0);
-    rotateLeftButton:SetRelativePoint(0.5, 0.0);
+    rotateLeftButton:SetAnchor(vec.New(0.5, 0.0));
+    rotateLeftButton:SetRelativePoint(vec.New(0.5, 0.0));
+
+    local rotateLeftIcon = rotateLeftButton:NewPanel(vec.New(0, 0), vec.New(36, 36), 0i, "RotateLeftIcon");
+    rotateLeftIcon:SetAnchor(vec.New(0.5, 0.5));
+    rotateLeftIcon:SetRelativePoint(vec.New(0.5, 0.5));
 
     -- Rotate character right button
-    local rotateRightButton = UIButton.NewButton(characterSelectScreen.widget, 22, 35, 40, 40, 0, {
-        panelTemplate = "RotateIcon",
+    local rotateRightButton = UIButton.New(characterSelectScreen.panel, vec.New(22, 35), vec.New(40, 40), 0i, {
+        panelTemplate = "DefaultButtonPanel"
     });
-    rotateRightButton:SetAnchor(0.5, 0.0);
-    rotateRightButton:SetRelativePoint(0.5, 0.0);
+    rotateRightButton:SetAnchor(vec.New(0.5, 0.0));
+    rotateRightButton:SetRelativePoint(vec.New(0.5, 0.0));
+
+    local rotateRightIcon = rotateRightButton:NewPanel(vec.New(0, 0), vec.New(36, 36), 0i, "RotateRightIcon");
+    rotateRightIcon:SetAnchor(vec.New(0.5, 0.5));
+    rotateRightIcon:SetRelativePoint(vec.New(0.5, 0.5));
 end
 
 local function CreateRightPanel(characterSelectScreen : CharacterSelectScreen)
     -- Right menu
-    local characterSelectPanel = characterSelectScreen.widget:NewPanel(-20, -40, 400, 850, 0, "DialogBox");
-    characterSelectPanel:SetAnchor(1.0, 1.0);
-    characterSelectPanel:SetRelativePoint(1.0, 1.0);
-    characterSelectPanel:SetBorderColor(vector.create(0.1, 0.1, 0.1));
+    local characterSelectPanel = characterSelectScreen.panel:NewPanel(vec.New(-20, -80), vec.New(400, 850), 0i, "DialogBox");
+    characterSelectPanel:SetAnchor(vec.New(1.0, 1.0));
+    characterSelectPanel:SetRelativePoint(vec.New(1.0, 1.0));
+    characterSelectPanel:SetBorderColor(vec.New(0.1, 0.1, 0.1));
     characterSelectPanel:SetBorderSize(2);
 
     local currentY = 0;
 
     -- Realm title
-    local realmTitle = characterSelectPanel:NewText("Novus RPPVP", 0, currentY, 0, "GreyText");
-    realmTitle:SetAnchor(0.5, 1.0);
-    realmTitle:SetRelativePoint(0.5, 1.0);
-    currentY -= select(2, realmTitle:GetSize()) + 5;
+    local realmTitle = characterSelectPanel:NewText("Novus RPPVP", vec.New(0, currentY), 0i, "GreyText");
+    realmTitle:SetAnchor(vec.New(0.5, 1.0));
+    realmTitle:SetRelativePoint(vec.New(0.5, 1.0));
+    currentY -= realmTitle:GetSize().y + 5;
 
     -- Change Realm button
-    local changeRealmButton = UIButton.NewButton(characterSelectPanel, 0, currentY, 180, 40, 0, {
+    local changeRealmButton = UIButton.New(characterSelectPanel, vec.New(0, currentY), vec.New(180, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Change Realm",
     });
-    changeRealmButton:SetAnchor(0.5, 1.0);
-    changeRealmButton:SetRelativePoint(0.5, 1.0);
+    changeRealmButton:SetAnchor(vec.New(0.5, 1.0));
+    changeRealmButton:SetRelativePoint(vec.New(0.5, 1.0));
     currentY -= 40;
 
     -- Character selection scrollbox
-    characterSelectScreen.characterListScrollBox = UIScrollBox.NewScrollBox(characterSelectPanel, 0, currentY, 390, 700, 0, {
+    characterSelectScreen.characterListScrollBox = UIScrollBox.New(characterSelectPanel, vec.New(5, currentY), vec.New(390, 700), 0i, {
+        panelTemplate = "DebugDarkGrey",
+        alpha = 0.0,
         verticalScrollBar = true,
     });
-    characterSelectScreen.characterListScrollBox:SetAnchor(0.0, 1.0);
-    characterSelectScreen.characterListScrollBox:SetRelativePoint(0.0, 1.0);
+    characterSelectScreen.characterListScrollBox:SetAnchor(vec.New(0.0, 1.0));
+    characterSelectScreen.characterListScrollBox:SetRelativePoint(vec.New(0.0, 1.0));
+    characterSelectScreen.characterListScrollBox.content:SetAlpha(0.0);
+    characterSelectScreen.characterListScrollBox.content:SetBorderSize(0.0);
 
     -- Outer list layout: stacks character entries top-down inside the scrollbox content.
     -- heightMode="shrink" makes its measured height match the sum of entry heights, which we
     -- feed back to the scrollbox in RefreshCharacterList.
-    characterSelectScreen.characterListLayout = UIVerticalLayout.NewVerticalLayout(
-        characterSelectScreen.characterListScrollBox.content, 0, 0,
-        characterSelectScreen.characterListScrollBox.width, 0, 0,
-        { heightMode = "shrink", spacing = 0 });
-    characterSelectScreen.characterListLayout:SetAnchor(0.0, 1.0);
-    characterSelectScreen.characterListLayout:SetRelativePoint(0.0, 1.0);
+    local characterListViewportSize = characterSelectScreen.characterListScrollBox:GetViewportSize();
+    characterSelectScreen.characterListLayout = UIVerticalLayout.New(characterSelectScreen.characterListScrollBox.content, vec.New(0, 0), vec.New(characterListViewportSize.x, 0), 0i, {
+        panelTemplate = "DebugDarkGrey",
+        alpha = 0.0,
+        heightMode = "shrink",
+        alignH = "center",
+        paddingTop = CHARACTER_LIST_TOP_PADDING,
+        spacing = 4,
+    });
+    characterSelectScreen.characterListLayout:SetAnchor(vec.New(0.0, 1.0));
+    characterSelectScreen.characterListLayout:SetRelativePoint(vec.New(0.0, 1.0));
 
     -- Create New Character button
-    local loginButton = UIButton.NewButton(characterSelectPanel, -40, 20, 250, 40, 0, {
+    local loginButton = UIButton.New(characterSelectPanel, vec.New(-40, 20), vec.New(250, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Create New Character",
     });
-    loginButton:SetAnchor(0.5, 0.0);
-    loginButton:SetRelativePoint(0.5, 0.0);
+    loginButton:SetAnchor(vec.New(0.5, 0.0));
+    loginButton:SetRelativePoint(vec.New(0.5, 0.0));
     loginButton:SetOnMouseUp(function(eventID, widget, ...)
-        local stack = UIStack.Get("Menu");
-        stack:Push("CharacterCreation");
+        FrameManager.Open("CharacterCreation");
     end);
 
     -- Restore button
-    local restoreButton = UIButton.NewButton(characterSelectPanel, 130, 20, 50, 40, 0, {
+    local restoreButton = UIButton.New(characterSelectPanel, vec.New(130, 20), vec.New(50, 40), 0i, {
         panelTemplate = "DefaultButtonPanel"
     });
-    restoreButton:SetAnchor(0.5, 0.0);
-    restoreButton:SetRelativePoint(0.5, 0.0);
+    restoreButton:SetAnchor(vec.New(0.5, 0.0));
+    restoreButton:SetRelativePoint(vec.New(0.5, 0.0));
 
-    local restoreIcon = restoreButton:NewPanel(0, 0, 24, 24, 0, "RestoreIcon");
-    restoreIcon:SetAnchor(0.5, 0.5);
-    restoreIcon:SetRelativePoint(0.5, 0.5);
+    local restoreIcon = restoreButton:NewPanel(vec.New(0, 0), vec.New(32, 32), 0i, "RestoreIcon");
+    restoreIcon:SetAnchor(vec.New(0.5, 0.5));
+    restoreIcon:SetRelativePoint(vec.New(0.5, 0.5));
 
     -- Back button
-    local backButton = UIButton.NewButton(characterSelectScreen.widget, -20, 40, 150, 40, 0, {
+    local backButton = UIButton.New(characterSelectScreen.panel, vec.New(-20, 40), vec.New(150, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Back",
     });
-    backButton:SetAnchor(1.0, 0.0);
-    backButton:SetRelativePoint(1.0, 0.0);
+    backButton:SetAnchor(vec.New(1.0, 0.0));
+    backButton:SetRelativePoint(vec.New(1.0, 0.0));
     backButton:SetOnMouseUp(function(eventID, widget, ...)
-        --local stack = UIStack.Get("Menu");
-        --stack:Pop();
         Disconnect();
     end);
 
     -- Delete Character button
-    local deleteButton = UIButton.NewButton(backButton, -250, 0, 220, 40, 0, {
+    local deleteButton = UIButton.New(backButton, vec.New(-250, 0), vec.New(220, 40), 0i, {
         panelTemplate = "DefaultButtonPanel",
         textTemplate = "SmallYellowButtonText",
         text = "Delete Character",
     });
-    deleteButton:SetAnchor(0.0, 0.5);
-    deleteButton:SetRelativePoint(0.0, 0.5);
+    deleteButton:SetAnchor(vec.New(0.0, 0.5));
+    deleteButton:SetRelativePoint(vec.New(0.0, 0.5));
 end
 
-local function CreateCharacterSelectScreen(stack : UIStack.Stack)
+local function CreateCharacterSelectScreen()
     local characterSelectScreen : CharacterSelectScreen = {};
 
     -- Create Canvas
-    characterSelectScreen.canvas = UI.GetCanvas("CharacterSelect", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
+    characterSelectScreen.canvas = UI.GetCanvas("CharacterSelect", vec.New(0, 0), vec.New(1920, 1080)); -- TODO: We don't want to hardcode the reference resolution here
     
+    -- Create Panel
+    characterSelectScreen.panel = characterSelectScreen.canvas:NewPanel(vec.New(0, 0), vec.New(1920, 1080), 0i, "CharacterSelectBackgroundPanel");
+    characterSelectScreen.panel:SetEnabled(false);
+    characterSelectScreen.panel:SetAnchor(vec.New(0.5, 0.5));
+    characterSelectScreen.panel:SetRelativePoint(vec.New(0.5, 0.5));
+
     -- Create widget covering whole canvas
-    characterSelectScreen.widget = characterSelectScreen.canvas:NewWidget(0, 0, 0);
-    characterSelectScreen.widget:SetEnabled(false);
-    characterSelectScreen.widget:SetAnchor(0.5, 0.5);
-    characterSelectScreen.widget:SetRelativePoint(0.5, 0.5);
+    --characterSelectScreen.widget = characterSelectScreen.canvas:NewWidget(vec.New(0, 0), 0i);
+    --characterSelectScreen.widget:SetEnabled(false);
+    --characterSelectScreen.widget:SetAnchor(vec.New(0.5, 0.5));
+    --characterSelectScreen.widget:SetRelativePoint(vec.New(0.5, 0.5));
 
     -- Variables
     characterSelectScreen.characters = setmetatable({}, {__index = table});
@@ -335,10 +354,21 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
             CreateOrModifyCharacterEntry(self, character);
         end
 
-        local contentHeight   = self.characterListLayout:GetMeasuredHeight();
+        local contentHeight = self.characterListLayout:GetMeasuredHeight();
         local scrollBoxHeight = self.characterListScrollBox.height;
 
         self.characterListScrollBox:SetVerticalScrollBarVisible(contentHeight > scrollBoxHeight);
+        local viewportWidth = self.characterListScrollBox:GetViewportSize().x;
+        self.characterListLayout:SetWidth(viewportWidth);
+        for _, character in self.characters do
+            if character.entryButton ~= nil then
+                local entryWidth = math.max(viewportWidth - 10, 1);
+                character.entryButton:SetSize(vec.New(entryWidth, CHARACTER_ENTRY_HEIGHT));
+                character.entryTextLayout:SetWidth(entryWidth);
+            end
+        end
+        self.characterListLayout:Refresh();
+        contentHeight = self.characterListLayout:GetMeasuredHeight();
         self.characterListScrollBox:SetContentHeight(contentHeight);
     end
 
@@ -367,7 +397,7 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
         if (self.selectedCharacterName ~= nil) then
             for i, character in self.characters do
                 if (character.name == self.selectedCharacterName) then
-                    self.characters[i].panel:SetForeground(nil);
+                    if character.entryButton ~= nil then character.entryButton:SetHighlighted(false); end
                     break;
                 end
             end
@@ -375,7 +405,7 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
 
         for i, character in self.characters do
             if (character.name == name) then
-                self.characters[i].panel:SetForeground("texture/interface/glues/characterselect/glue-characterselect-highlight.dds");
+                if character.entryButton ~= nil then character.entryButton:SetHighlighted(true); end
                 break;
             end
         end
@@ -417,34 +447,34 @@ local function CreateCharacterSelectScreen(stack : UIStack.Stack)
     --    characterSelectScreen:SelectCharacterByName(firstCharacterName);
     --end
 
-    stack:Register("CharacterSelect", characterSelectScreen.widget, 0); -- Name, widget, slot, onPush, onPop
+    FrameManager.Register("CharacterSelect", {
+        root = characterSelectScreen.panel,
+        role = "System",
+        dismissible = false,
+    });
 
     local authStage = GetAuthStage();
     local isInWorld = IsInWorld();
-    if not isInWorld and authStage == 4 then -- Authenticated, no character selected
-        stack:Push("CharacterSelect");
+    if not isInWorld and authStage == 4i then -- Authenticated, no character selected
+        FrameManager.Open("CharacterSelect");
     end
-    --stack:Push("CharacterSelect");
 
     return characterSelectScreen;
 end
 
-local function OnGameLoaded(eventID : number, data : any)
-    local stack = UIStack.Get("Menu");
+local function OnGameLoaded(eventID : integer, data : any)
     RegisterTemplates();
 
-    local characterSelectScreen : CharacterSelectScreen = CreateCharacterSelectScreen(stack);
+    local characterSelectScreen : CharacterSelectScreen = CreateCharacterSelectScreen();
     sceneData.characterSelectScreen = characterSelectScreen;
 end
 
-local function OnCharacterListChanged(eventID : number, data : any)
+local function OnCharacterListChanged(eventID : integer, data : any)
     if sceneData.characterSelectScreen == nil then
         return;
     end
 
-    local stack = UIStack.Get("Menu");
-    stack:Clear();
-    stack:Push("CharacterSelect");
+    FrameManager.Open("CharacterSelect");
 
     local characterSelectScreen : CharacterSelectScreen = sceneData.characterSelectScreen;
 
@@ -456,8 +486,8 @@ local function OnCharacterListChanged(eventID : number, data : any)
     -- Add all characters
     local characterList = GetCharacterList();
     for k, v in characterList do
-        local level = if v.level == 0 then 1 else v.level;
-        local className = if v.class == 0 then "Unknown" else classIDToName[v.class];
+        local level = if v.level == 0i then 1i else v.level;
+        local className = if v.class == 0i then "Unknown" else classIDToName[integer.tonumber(v.class)];
         local mapName = GetMapName(v.mapID);
         characterSelectScreen:AddCharacter(v.name, level, className, mapName);
     end

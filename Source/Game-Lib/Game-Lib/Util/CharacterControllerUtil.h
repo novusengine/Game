@@ -26,8 +26,24 @@ namespace Util::CharacterController
         f32 pyramidHeight = 0.0f;
     };
 
+    struct CharacterBlockingContact
+    {
+    public:
+        JPH::Vec3 position = JPH::Vec3::sZero();
+        JPH::Vec3 surfaceNormal = JPH::Vec3::sZero();
+        JPH::Vec3 contactVelocity = JPH::Vec3::sZero();
+        JPH::Vec3 movementDirection = JPH::Vec3::sZero();
+
+        f32 height = 0.0f;
+        f32 alignment = 0.0f;
+    };
+
     JPH::Vec3 ToJolt(const vec3& value);
     vec3 FromJolt(const JPH::Vec3Arg& value);
+
+    JPH::Vec3 GetPlanarVelocity(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity);
+    f32 GetVerticalSpeed(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity);
+    JPH::Vec3 ComposeVelocity(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, f32 verticalSpeed);
 
     BoxPyramidShapeDimensions GetBoxPyramidShapeDimensionsFromCollision(f32 collisionWidth, f32 collisionHeight);
     BoxPyramidShapeDimensions GetBoxPyramidShapeDimensions(const ECS::Singletons::CharacterControllerSettings& settings);
@@ -43,10 +59,9 @@ namespace Util::CharacterController
     void ResetGroundProbeDebug(ECS::Singletons::CharacterControllerDebugSingleton& debugState);
     bool IsWalkableGroundNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& groundNormal);
     bool TryGetWalkableGroundProbeNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, ECS::Singletons::JoltState& joltState, const JPH::Vec3Arg& position, f32 startOffset, f32 distance, JPH::Vec3& outGroundNormal, JPH::Vec3* outHitPosition = nullptr, ECS::Singletons::CharacterControllerDebugSingleton* debugState = nullptr);
-    JPH::Vec3 ResolveGroundMovementNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings);
+    JPH::Vec3 GetWalkSupportNormal(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings);
+    bool TryGetBlockingContact(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& desiredVelocity, CharacterBlockingContact& outContact);
     JPH::Vec3 BuildGroundSlopeVelocity(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, const JPH::Vec3Arg& groundNormal);
-    void UpdateGroundSnapGrace(ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, bool isGrounded, f32 fixedDeltaTime);
-    bool ShouldSnapToGround(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& persistentVelocity, bool isFlying, bool justStartedJump);
     bool ShouldPreserveSteepSlopeJumpVelocity(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity, bool isFlying, bool isJumping, bool justStartedJump);
     bool HasRisingHeadContact(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity, bool isFlying, bool isJumping);
 
@@ -54,4 +69,5 @@ namespace Util::CharacterController
     JPH::Vec3 GetGroundSnapStepDown(const ECS::Singletons::CharacterControllerSettings& settings);
 
     bool IsOnGround(const JPH::CharacterVirtual* character);
+    f32 CalculateContinuationDistance(const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& velocity);
 }

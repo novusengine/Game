@@ -305,7 +305,7 @@ public:
 
     void Reserve(const ReserveInfo& reserveInfo);
 
-    Renderer::TextureID LoadTexture(const std::string& path, u32& arrayIndex);
+    Renderer::TextureID LoadTexture(const std::string& path, size_t& arrayIndex);
 
     u32 CommitPreparedModel(const ModelLoading::PreparedRenderModel& preparedModel);
     u32 AddPlacementInstance(entt::entity entityID, u32 modelID, u64 modelHash, Model::ComplexModel* model, const vec3& position, const quat& rotation, f32 scale, u32 doodadSet, bool canUseDoodadSet);

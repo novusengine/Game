@@ -1,4 +1,5 @@
-local templatesAPI = { }
+export type TemplatesAPI = { RegisterTemplates : () -> () }
+local templatesAPI : TemplatesAPI = { }
 
 --[[local function UIInputEventHandler(eventID, widget, ...)
     if (eventID == UIInputEvent.MouseDown) then
@@ -21,53 +22,54 @@ local templatesAPI = { }
   end]]
 
 function templatesAPI.RegisterTemplates()
+    UI.RegisterTextTemplate("DevToolsText",
+    {
+        font = "Data/Fonts/OpenSans-Regular.ttf",
+        size = 8.0,
+        borderSize = 1.0,
+        borderColor = vec.New(0.0, 0.0, 0.0),
+    });
+
     -- Debug panels
     UI.RegisterPanelTemplate("DebugRed",
     {
         cornerRadius = 0.0,
-        color = vector.create(1.0, 0.0, 0.0),
+        color = vec.New(1.0, 0.0, 0.0),
     });
 
     UI.RegisterPanelTemplate("DebugGreen",
     {
         cornerRadius = 0.0,
-        color = vector.create(0.0, 1.0, 0.0),
+        color = vec.New(0.0, 1.0, 0.0),
     });
 
     UI.RegisterPanelTemplate("DebugBlue",
     {
         cornerRadius = 0.0,
-        color = vector.create(0.0, 0.0, 1.0),
+        color = vec.New(0.0, 0.0, 1.0),
     });
 
     UI.RegisterPanelTemplate("DebugDarkGrey",
     {
         cornerRadius = 0.0,
-        color = vector.create(0.15, 0.15, 0.15),
+        color = vec.New(0.15, 0.15, 0.15),
     });
 
     -- Dialog Box
     UI.RegisterPanelTemplate("DialogBox",
     {
-        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
-        cornerRadius = 0.0,
+        color = vec.New(0.055, 0.065, 0.078),
+        alpha = 0.98,
+        cornerRadius = 3.0,
+        borderColor = vec.New(0.20, 0.23, 0.28),
+        borderSize = 1.0,
     });
 
-    UI.RegisterPanelTemplate("DialogBoxRound",
+    UI.RegisterPanelTemplate("TexturePanel",
     {
-        background = "texture/interface/dialogframe/ui-dialogbox-background.dds",
-        cornerRadius = 2.0,
-    });
-
-    -- Dialog Box Header
-    local headerMinX, headerMinY = UI.PixelsToTexCoord(60, 2, 256, 64);
-    local headerMaxX, headerMaxY = UI.PixelsToTexCoord(193, 37, 256, 64);
-
-    UI.RegisterPanelTemplate("DialogBoxHeader",
-    {
-        background = "texture/interface/dialogframe/ui-dialogbox-header.dds",
+        color = vec.New(1.0, 1.0, 1.0),
+        alpha = 1.0,
         cornerRadius = 0.0,
-        texCoords = Box.new(headerMinX, headerMinY, headerMaxX, headerMaxY),
     });
 
     -- Dialog Box Header Text
@@ -75,23 +77,19 @@ function templatesAPI.RegisterTemplates()
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 24.0,
-        color = vector.create(255.0/255.0, 239.0/255.0, 0.0/255.0),
+        color = vec.New(255.0/255.0, 239.0/255.0, 0.0/255.0),
         borderSize = 0.3,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
-
-    local buttonMinX, buttonMinY = UI.PixelsToTexCoord(1, 1, 128, 32);
-    local buttonMaxX, buttonMaxY = UI.PixelsToTexCoord(78, 22, 128, 32);
-
-    local buttonNineSliceInsets = Box.new(4, 4, 4, 4);
 
     -- Button
     UI.RegisterPanelTemplate("DefaultButtonPanel",
     {
-        background = "texture/interface/buttons/ui-panel-button-up.dds",
-        cornerRadius = 0.0,
-        texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
-        nineSliceInsets = buttonNineSliceInsets,
+        color = vec.New(0.095, 0.105, 0.12),
+        alpha = 1.0,
+        cornerRadius = 2.0,
+        borderColor = vec.New(0.22, 0.25, 0.30),
+        borderSize = 1.0,
 
         -- These get applied additively on this template
         onClickTemplate = "DefaultButtonDownPanel",
@@ -101,17 +99,20 @@ function templatesAPI.RegisterTemplates()
 
     UI.RegisterPanelTemplate("DefaultButtonDownPanel",
     {
-        background = "texture/interface/buttons/ui-panel-button-down.dds",
+        color = vec.New(0.09, 0.15, 0.23),
+        alpha = 1.0,
     });
 
     UI.RegisterPanelTemplate("DefaultButtonHoveredPanel",
     {
-        foreground = "texture/interface/buttons/ui-panel-button-highlight.dds",
+        color = vec.New(0.13, 0.20, 0.29),
+        alpha = 1.0,
     });
 
     UI.RegisterPanelTemplate("DefaultButtonDisabledPanel",
     {
-        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
+        color = vec.New(0.30, 0.30, 0.35),
+        alpha = 0.08,
     });
 
     UI.RegisterTextTemplate("DefaultDebugText",
@@ -119,191 +120,70 @@ function templatesAPI.RegisterTemplates()
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
         size = 12.0,
         borderSize = 1.0,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("DefaultButtonText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf", -- Obviously we want a different font
-        size = 22.0,
+        size = 16.0,
         borderSize = 1.0,
-        borderColor = vector.create(0.0, 0.0, 0.0),
+        borderColor = vec.New(0.0, 0.0, 0.0),
     });
 
     UI.RegisterTextTemplate("SmallYellowButtonText",
     {
         font = "Data/Fonts/OpenSans-Regular.ttf",
         size = 18.0,
-        color = vector.create(255.0/255.0, 199.0/255.0, 0.0/255.0),
-        borderSize = 1.0,
-        borderColor = vector.create(0.2, 0.2, 0.2),
+        color = vec.New(255.0/255.0, 199.0/255.0, 0.0/255.0),
+        borderSize = 0.5,
+        borderColor = vec.New(0.2, 0.2, 0.2),
     });
-
-
-    -- Minimize Button
-    
-    local minimizeButtonMinX, minimizeButtonMinY = UI.PixelsToTexCoord(6, 7, 32, 32);
-    local minimizeButtonMaxX, minimizeButtonMaxY = UI.PixelsToTexCoord(24, 24, 32, 32);
-
-    UI.RegisterPanelTemplate("DefaultButtonMinimizePanel",
-    {
-        background = "texture/interface/buttons/ui-panel-minimizebutton-up.dds",
-        cornerRadius = 0.0,
-        texCoords = Box.new(minimizeButtonMinX, minimizeButtonMinY, minimizeButtonMaxX, minimizeButtonMaxY),
-
-        -- These get applied additively on this template
-        onClickTemplate = "DefaultButtonMinimizeDownPanel",
-        onHoverTemplate = "DefaultButtonMinimizeHoveredPanel",
-        onUninteractableTemplate = "DefaultButtonMinimizeDisabledPanel",
-    });
-
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeDownPanel",
-    {
-        background = "texture/interface/buttons/ui-panel-minimizebutton-down.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeHoveredPanel",
-    {
-        foreground = "texture/interface/buttons/ui-panel-minimizebutton-highlight.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultButtonMinimizeDisabledPanel",
-    {
-        background = "texture/interface/buttons/ui-panel-minimizebutton-disabled.dds",
-    });
-
     -- Slider
-    local sliderMinX, sliderMinY = UI.PixelsToTexCoord(11, 11, 64, 64);
-    local sliderMaxX, sliderMaxY = UI.PixelsToTexCoord(51, 51, 64, 64);
-
-    local sliderNineSliceInsets = Box.new(5, 5, 5, 5);
-
     UI.RegisterPanelTemplate("DefaultSliderBackground",
     {
-        background = "texture/interface/buttons/ui-quickslot.dds",
-        texCoords = Box.new(sliderMinX, sliderMinY, sliderMaxX, sliderMaxY),
-        nineSliceInsets = sliderNineSliceInsets,
+        color = vec.New(0.055, 0.065, 0.078),
+        alpha = 1.0,
+        cornerRadius = 2.0,
+        borderColor = vec.New(0.20, 0.23, 0.28),
+        borderSize = 1.0,
     });
 
     UI.RegisterPanelTemplate("DefaultSliderFill",
     {
-        background = "texture/interface/buttons/bluegrad64_faded.dds",
+        color = vec.New(0.20, 0.42, 0.68),
+        alpha = 1.0,
         cornerRadius = 2.0,
     });
 
     -- Checkbox
-    local checkboxMinX, checkboxMinY = UI.PixelsToTexCoord(0, 0, 64, 32);
-    local checkboxMaxX, checkboxMaxY = UI.PixelsToTexCoord(63, 22, 64, 32);
-
-    local checkboxNineSliceInsets = Box.new(3, 2, 2, 3);
-
     UI.RegisterPanelTemplate("DefaultCheckboxBackground",
     {
-        background = "texture/interface/common/common-checkbox-background.dds",
-        texCoords = Box.new(checkboxMinX, checkboxMinY, checkboxMaxX, checkboxMaxY),
-        nineSliceInsets = checkboxNineSliceInsets,
-    });
+        background = "texture/ui/icons/32x32/blue/check_square_grey.png",
+        color = vec.New(0.095, 0.105, 0.12),
 
-    UI.RegisterPanelTemplate("DefaultCheckboxFill",
-    {
-        background = "texture/interface/buttons/ui-checkbox-check.dds",
-        cornerRadius = 2.0,
-
-        onUninteractableTemplate = "DefaultCheckboxDisabledFill",
+        onHoverTemplate = "DefaultCheckboxHoveredPanel",
     });
 
     UI.RegisterPanelTemplate("DefaultCheckboxHoveredPanel",
     {
-        foreground = "texture/interface/buttons/checkbuttonhilight.dds",
+        color = vec.New(0.13, 0.20, 0.29),
+    });
+
+    UI.RegisterPanelTemplate("DefaultCheckboxFill",
+    {
+        background = "texture/ui/icons/50x50/white/checkmark.png",
+        color = vec.New(0.38, 0.56, 0.78),
+        alpha = 0.9,
+
+        onUninteractableTemplate = "DefaultCheckboxDisabledFill",
     });
 
     UI.RegisterPanelTemplate("DefaultCheckboxDisabledFill",
     {
-        background = "texture/interface/buttons/ui-checkbox-check-disabled.dds",
-    });
-
-    -- ComboBox
-    UI.RegisterPanelTemplate("DefaultComboBoxPanel", 
-    {
-        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
-        texCoords = Box.new(buttonMinX, buttonMinY, buttonMaxX, buttonMaxY),
-        nineSliceInsets = buttonNineSliceInsets,
-    
-        onHoverTemplate = "DefaultComboBoxHoveredPanel",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxHoveredPanel", 
-    {
-        background = "texture/interface/buttons/ui-panel-button-disabled.dds",
-    });
-
-    local comboBoxIconMinX, comboBoxIconMinY = UI.PixelsToTexCoord(4, 3, 32, 32);
-    local comboBoxIconMaxX, comboBoxIconMaxY = UI.PixelsToTexCoord(26, 28, 32, 32);
-    
-    UI.RegisterPanelTemplate("DefaultComboBoxPrevPanel", 
-    {
-        background = "texture/interface/glues/common/glue-leftarrow-button-up.dds",
-        texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
-
-        onClickTemplate = "DefaultComboBoxPrevDownPanel",
-        onHoverTemplate = "DefaultComboBoxPrevHoveredPanel",
-        onUninteractableTemplate = "DefaultComboBoxDisabledPanel",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxPrevDownPanel", 
-    {
-        background = "texture/interface/glues/common/glue-leftarrow-button-down.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxPrevHoveredPanel", 
-    {
-        foreground = "texture/interface/glues/common/glue-leftarrow-button-highlight.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxDisabledPanel", 
-    {
-        color = vector.create(0.5, 0.5, 0.5),
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxNextPanel", 
-    {
-        background = "texture/interface/glues/common/glue-rightarrow-button-up.dds",
-        texCoords = Box.new(comboBoxIconMinX, comboBoxIconMinY, comboBoxIconMaxX, comboBoxIconMaxY),
-
-        onClickTemplate = "DefaultComboBoxNextDownPanel",
-        onHoverTemplate = "DefaultComboBoxPrevHoveredPanel",
-        onUninteractableTemplate = "DefaultComboBoxDisabledPanel",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxNextDownPanel", 
-    {
-        background = "texture/interface/glues/common/glue-rightarrow-button-down.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultComboBoxNextHoveredPanel", 
-    {
-        foreground = "texture/interface/glues/common/glue-rightarrow-button-highlight.dds",
-    });
-
-    -- Loading Screen
-    UI.RegisterPanelTemplate("DefaultLoadingScreen",
-    {
-        background = "texture/interface/glues/loading.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultLoadingBarFrame",
-    {
-        background = "texture/interface/glues/loadingbar/loading-barborder-frame-v2.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultLoadingBarBackground",
-    {
-        background = "texture/interface/glues/loadingbar/loading-barborder-background-v2.dds",
-    });
-
-    UI.RegisterPanelTemplate("DefaultLoadingBarFill",
-    {
-        background = "texture/interface/glues/loadingbar/loading-barfill.dds",
+        background = "texture/ui/icons/50x50/white/checkmark.png",
+        color = vec.New(0.38, 0.56, 0.78),
+        alpha = 0.4,
     });
 
     -- Menu Panel

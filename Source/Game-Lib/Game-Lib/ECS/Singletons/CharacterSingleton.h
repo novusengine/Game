@@ -19,8 +19,6 @@ namespace ECS::Singletons
     public:
         entt::entity controllerEntity = entt::null;
         entt::entity moverEntity = entt::null;
-        f32 primaryAttackTimer = 0.0f;
-        f32 secondaryAttackTimer = 0.0f;
 
         JPH::CharacterVirtual* character = nullptr;
         bool canControlInAir = true;

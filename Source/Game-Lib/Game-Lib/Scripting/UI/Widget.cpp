@@ -27,15 +27,10 @@ namespace Scripting::UI
     {
         i32 CreatePanel(Zenith* zenith, Widget* parent)
         {
-            i32 posX = zenith->CheckVal<i32>(2);
-            i32 posY = zenith->CheckVal<i32>(3);
-
-            u32 sizeX = zenith->CheckVal<u32>(4);
-            u32 sizeY = zenith->CheckVal<u32>(5);
-
-            u32 layer = zenith->CheckVal<u32>(6);
-
-            const char* templateName = zenith->IsString(7) ? zenith->Get<const char*>(7) : nullptr;
+            const vec3 position = zenith->CheckVal<vec3>(2);
+            const vec3 size = zenith->CheckVal<vec3>(3);
+            u32 layer = zenith->CheckVal<u32>(4);
+            const char* templateName = zenith->IsString(5) ? zenith->Get<const char*>(5) : nullptr;
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -52,7 +47,7 @@ namespace Scripting::UI
                 }
             }
 
-            entt::entity entity = ECS::Util::UI::CreatePanel(panel, registry, vec2(posX, posY), ivec2(sizeX, sizeY), layer, templateName, parent->entity);
+            entt::entity entity = ECS::Util::UI::CreatePanel(panel, registry, vec2(position.x, position.y), ivec2(size.x, size.y), layer, templateName, parent->entity);
 
             panel->type = WidgetType::Panel;
             panel->entity = entity;
@@ -75,12 +70,9 @@ namespace Scripting::UI
         i32 CreateText(Zenith* zenith, Widget* parent)
         {
             const char* str = zenith->CheckVal<const char*>(2);
-            i32 posX = zenith->CheckVal<i32>(3);
-            i32 posY = zenith->CheckVal<i32>(4);
-
-            u32 layer = zenith->CheckVal<u32>(5);
-
-            const char* templateName = zenith->CheckVal<const char*>(6);
+            const vec3 position = zenith->CheckVal<vec3>(3);
+            u32 layer = zenith->CheckVal<u32>(4);
+            const char* templateName = zenith->CheckVal<const char*>(5);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -94,7 +86,7 @@ namespace Scripting::UI
             Text* text = new Text();
             uiSingleton.scriptWidgets.push_back(text);
 
-            entt::entity entity = ECS::Util::UI::CreateText(text, registry, str, vec2(posX, posY), layer, templateName, parent->entity);
+            entt::entity entity = ECS::Util::UI::CreateText(text, registry, str, vec2(position.x, position.y), layer, templateName, parent->entity);
 
             text->type = WidgetType::Text;
             text->entity = entity;
@@ -116,10 +108,8 @@ namespace Scripting::UI
 
         i32 CreateWidget(Zenith* zenith, Widget* parent)
         {
-            i32 posX = zenith->CheckVal<i32>(2);
-            i32 posY = zenith->CheckVal<i32>(3);
-
-            u32 layer = zenith->CheckVal<u32>(4);
+            const vec3 position = zenith->CheckVal<vec3>(2);
+            u32 layer = zenith->CheckVal<u32>(3);
 
             entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
             ECS::Singletons::UISingleton& uiSingleton = registry->ctx().get<ECS::Singletons::UISingleton>();
@@ -127,7 +117,7 @@ namespace Scripting::UI
             Widget* widget = new Widget();
             uiSingleton.scriptWidgets.push_back(widget);
 
-            entt::entity entity = ECS::Util::UI::CreateWidget(widget, registry, vec2(posX, posY), layer, parent->entity);
+            entt::entity entity = ECS::Util::UI::CreateWidget(widget, registry, vec2(position.x, position.y), layer, parent->entity);
 
             widget->type = WidgetType::Widget;
             widget->entity = entity;
@@ -153,6 +143,7 @@ namespace Scripting::UI
         LuaMetaTable<Widget>::Register(zenith, "WidgetMetaTable");
         LuaMetaTable<Widget>::Set(zenith, widgetMethods);
         LuaMetaTable<Widget>::Set(zenith, widgetCreationMethods);
+        LuaMetaTable<Widget>::Set(zenith, widgetLayerMethods);
     }
 }
 
@@ -328,7 +319,7 @@ i32 Scripting::UI::WidgetMethods::GetParent(Zenith* zenith, Widget* widget)
     {
 
     });
-    memcpy(pushWidget, parentWidget, sizeof(ECS::Components::UI::Widget));
+    memcpy(pushWidget, parentWidget, sizeof(Widget));
     luaL_getmetatable(zenith->state, parentWidget->metaTableName.c_str());
     lua_setmetatable(zenith->state, -2);
 
@@ -400,10 +391,9 @@ i32 Scripting::UI::WidgetMethods::GetAnchor(Zenith* zenith, Widget* widget)
 
     const vec2& anchor = transform.GetAnchor();
 
-    zenith->Push(anchor.x);
-    zenith->Push(anchor.y);
+    zenith->Push(anchor);
 
-    return 2;
+    return 1;
 }
 
 i32 Scripting::UI::WidgetMethods::GetRelativePoint(Zenith* zenith, Widget* widget)
@@ -413,21 +403,19 @@ i32 Scripting::UI::WidgetMethods::GetRelativePoint(Zenith* zenith, Widget* widge
 
     const vec2& relativePoint = transform.GetRelativePoint();
 
-    zenith->Push(relativePoint.x);
-    zenith->Push(relativePoint.y);
+    zenith->Push(relativePoint);
 
-    return 2;
+    return 1;
 }
 
 i32 Scripting::UI::WidgetMethods::SetAnchor(Zenith* zenith, Widget* widget)
 {
-    f32 x = zenith->CheckVal<f32>(2);
-    f32 y = zenith->CheckVal<f32>(3);
+    const vec3 anchor = zenith->CheckVal<vec3>(2);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    ts.SetAnchor(widget->entity, vec2(x, y));
+    ts.SetAnchor(widget->entity, vec2(anchor.x, anchor.y));
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
@@ -436,13 +424,12 @@ i32 Scripting::UI::WidgetMethods::SetAnchor(Zenith* zenith, Widget* widget)
 
 i32 Scripting::UI::WidgetMethods::SetRelativePoint(Zenith* zenith, Widget* widget)
 {
-    f32 x = zenith->CheckVal<f32>(2);
-    f32 y = zenith->CheckVal<f32>(3);
+    const vec3 relativePoint = zenith->CheckVal<vec3>(2);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    ts.SetRelativePoint(widget->entity, vec2(x, y));
+    ts.SetRelativePoint(widget->entity, vec2(relativePoint.x, relativePoint.y));
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
@@ -494,26 +481,22 @@ i32 Scripting::UI::WidgetMethods::GetClipRect(Zenith* zenith, Widget* widget)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
 
-    zenith->Push(clipper.clipRegionMin.x);
-    zenith->Push(clipper.clipRegionMin.y);
-    zenith->Push(clipper.clipRegionMax.x);
-    zenith->Push(clipper.clipRegionMax.y);
+    zenith->Push(clipper.clipRegionMin);
+    zenith->Push(clipper.clipRegionMax);
 
-    return 4;
+    return 2;
 }
 
 i32 Scripting::UI::WidgetMethods::SetClipRect(Zenith* zenith, Widget* widget)
 {
-    f32 minX = zenith->CheckVal<f32>(2);
-    f32 minY = zenith->CheckVal<f32>(3);
-    f32 maxX = zenith->CheckVal<f32>(4);
-    f32 maxY = zenith->CheckVal<f32>(5);
+    const vec3 min = zenith->CheckVal<vec3>(2);
+    const vec3 max = zenith->CheckVal<vec3>(3);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
 
-    clipper.clipRegionMin = vec2(minX, minY);
-    clipper.clipRegionMax = vec2(maxX, maxY);
+    clipper.clipRegionMin = vec2(min.x, min.y);
+    clipper.clipRegionMax = vec2(max.x, max.y);
 
     if (clipper.clipChildren)
     {
@@ -536,7 +519,7 @@ i32 Scripting::UI::WidgetMethods::GetClipMaskTexture(Zenith* zenith, Widget* wid
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     auto& clipper = registry->get<ECS::Components::UI::Clipper>(widget->entity);
 
-    if (clipper.hasClipMaskTexture)
+    if (!clipper.hasClipMaskTexture)
     {
         zenith->Push();
     }
@@ -587,10 +570,9 @@ i32 Scripting::UI::WidgetMethods::GetPos(Zenith* zenith, Widget* widget)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
     const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
-    zenith->Push(pos.x);
-    zenith->Push(pos.y);
+    zenith->Push(pos);
 
-    return 2;
+    return 1;
 }
 
 i32 Scripting::UI::WidgetMethods::GetPosX(Zenith* zenith, Widget* widget)
@@ -615,13 +597,12 @@ i32 Scripting::UI::WidgetMethods::GetPosY(Zenith* zenith, Widget* widget)
 
 i32 Scripting::UI::WidgetMethods::SetPos(Zenith* zenith, Widget* widget)
 {
-    f32 x = zenith->CheckVal<f32>(2);
-    f32 y = zenith->CheckVal<f32>(3);
+    const vec3 pos = zenith->CheckVal<vec3>(2);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    ts.SetLocalPosition(widget->entity, vec2(x, y));
+    ts.SetLocalPosition(widget->entity, vec2(pos.x, pos.y));
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
@@ -665,10 +646,9 @@ i32 Scripting::UI::WidgetMethods::GetWorldPos(Zenith* zenith, Widget* widget)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
 
     const vec2& pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
-    zenith->Push(pos.x);
-    zenith->Push(pos.y);
+    zenith->Push(pos);
 
-    return 2;
+    return 1;
 }
 
 i32 Scripting::UI::WidgetMethods::GetWorldPosX(Zenith* zenith, Widget* widget)
@@ -693,13 +673,12 @@ i32 Scripting::UI::WidgetMethods::GetWorldPosY(Zenith* zenith, Widget* widget)
 
 i32 Scripting::UI::WidgetMethods::SetWorldPos(Zenith* zenith, Widget* widget)
 {
-    f32 x = zenith->CheckVal<f32>(2);
-    f32 y = zenith->CheckVal<f32>(3);
+    const vec3 pos = zenith->CheckVal<vec3>(2);
 
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    ts.SetWorldPosition(widget->entity, vec2(x, y));
+    ts.SetWorldPosition(widget->entity, vec2(pos.x, pos.y));
 
     registry->emplace_or_replace<ECS::Components::UI::DirtyCanvasTag>(widget->canvasEntity);
 
@@ -713,7 +692,7 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosX(Zenith* zenith, Widget* widget)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
     pos.x = x;
     ts.SetWorldPosition(widget->entity, pos);
 
@@ -729,7 +708,7 @@ i32 Scripting::UI::WidgetMethods::SetWorldPosY(Zenith* zenith, Widget* widget)
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
     ECS::Transform2DSystem& ts = ECS::Transform2DSystem::Get(*registry);
 
-    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetLocalPosition();
+    vec2 pos = registry->get<ECS::Components::Transform2D>(widget->entity).GetWorldPosition();
     pos.y = y;
     ts.SetWorldPosition(widget->entity, pos);
 
@@ -762,6 +741,29 @@ i32 Scripting::UI::WidgetMethods::ForceRefresh(Zenith* zenith, Widget* widget)
     registry->get_or_emplace<ECS::Components::UI::DirtyWidgetWorldTransformIndex>(widget->entity);
 
     ECS::Util::UI::RefreshClipper(registry, widget->entity);
+
+    return 0;
+}
+
+i32 Scripting::UI::WidgetMethods::GetLayer(Zenith* zenith, Widget* widget)
+{
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform = registry->get<ECS::Components::Transform2D>(widget->entity);
+
+    zenith->Push(transform.GetLayer());
+    return 1;
+}
+
+i32 Scripting::UI::WidgetMethods::SetLayer(Zenith* zenith, Widget* widget)
+{
+    u32 layer = zenith->CheckVal<u32>(2);
+
+    entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
+    auto& transform2DSystem = ECS::Transform2DSystem::Get(*registry);
+    transform2DSystem.SetLayer(widget->entity, layer);
+
+    entt::entity canvasEntity = widget->type == WidgetType::Canvas ? widget->entity : widget->canvasEntity;
+    ECS::Util::UI::MarkCanvasSortDirty(registry, canvasEntity);
 
     return 0;
 }

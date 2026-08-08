@@ -47,6 +47,15 @@ return D.Definitions
         D.Field("moverID", Type.U32)
     }),
 
+    D.LuaEvent("GameEventDataCombatLog",
+    {
+        D.Field("eventID", Type.U16),
+        D.Field("sourceName", Type.STRING),
+        D.Field("targetName", Type.STRING),
+        D.Field("value1", Type.F64),
+        D.Field("value2", Type.F64)
+    }),
+
     D.LuaEvent("UnitEventDataAdd",
     {
         D.Field("unitID", Type.U32)

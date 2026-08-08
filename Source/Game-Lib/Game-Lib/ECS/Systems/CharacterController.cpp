@@ -59,9 +59,7 @@ AutoCVar_Float CVAR_CharacterControllerShapeHeight(CVarCategory::Client | CVarCa
 AutoCVar_Float CVAR_CharacterControllerShapeConvexRadius(CVarCategory::Client | CVarCategory::Physics, "characterControllerShapeConvexRadius", "character controller hull convex radius; requires controller reinitialization", 0.05f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerGravity(CVarCategory::Client | CVarCategory::Physics, "characterControllerGravity", "character controller gravity acceleration", -19.291105f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerMaxSlopeAngle(CVarCategory::Client | CVarCategory::Physics, "characterControllerMaxSlopeAngle", "character controller max walkable slope in degrees", 50.0f, CVarFlags::EditFloatDrag);
-AutoCVar_Float CVAR_CharacterControllerGroundSnapDistance(CVarCategory::Client | CVarCategory::Physics, "characterControllerGroundSnapDistance", "character controller grounded snap distance", 0.5f, CVarFlags::EditFloatDrag);
-AutoCVar_Float CVAR_CharacterControllerGroundSnapGraceTime(CVarCategory::Client | CVarCategory::Physics, "characterControllerGroundSnapGraceTime", "character controller snap grace time after leaving ground", 0.1f, CVarFlags::EditFloatDrag);
-AutoCVar_Float CVAR_CharacterControllerGroundSnapMaxDownVelocity(CVarCategory::Client | CVarCategory::Physics, "characterControllerGroundSnapMaxDownVelocity", "character controller max downward velocity that can snap to ground", 6.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_CharacterControllerGroundSnapDistance(CVarCategory::Client | CVarCategory::Physics, "characterControllerGroundSnapDistance", "character controller base walk continuation search distance", 0.5f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_CharacterControllerMaxSubsteps(CVarCategory::Client | CVarCategory::Physics, "characterControllerMaxSubsteps", "fixed character controller physics substep count per fixed update", 4, CVarFlags::None);
 AutoCVar_Float CVAR_CharacterControllerPredictiveContactDistance(CVarCategory::Client | CVarCategory::Physics, "characterControllerPredictiveContactDistance", "character controller predictive contact distance; requires controller reinitialization", 0.2f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerFlightGroundProbeStartOffset(CVarCategory::Client | CVarCategory::Physics, "characterControllerFlightGroundProbeStartOffset", "character controller flight landing probe start offset above the foot", 0.25f, CVarFlags::EditFloatDrag);
@@ -69,9 +67,12 @@ AutoCVar_Float CVAR_CharacterControllerFlightGroundProbeDistance(CVarCategory::C
 AutoCVar_Int CVAR_CharacterControllerEnhancedInternalEdgeRemoval(CVarCategory::Client | CVarCategory::Physics, "characterControllerEnhancedInternalEdgeRemoval", "enables Jolt enhanced internal edge removal for character controller", 0, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_CharacterControllerFlyGroundTransitionMinDownVelocity(CVarCategory::Client | CVarCategory::Physics, "characterControllerFlyGroundTransitionMinDownVelocity", "minimum downward velocity for character controller flying to grounded transition", 0.25f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerWalkStairsStepUp(CVarCategory::Client | CVarCategory::Physics, "characterControllerWalkStairsStepUp", "character controller max stair step up distance", 1.1918f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_CharacterControllerWalkStairsStepDownExtra(CVarCategory::Client | CVarCategory::Physics, "characterControllerWalkStairsStepDownExtra", "additional downward stair sweep distance", 0.5f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerWalkStairsMinStepForward(CVarCategory::Client | CVarCategory::Physics, "characterControllerWalkStairsMinStepForward", "character controller minimum stair step forward distance", 0.02f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerWalkStairsStepForwardTest(CVarCategory::Client | CVarCategory::Physics, "characterControllerWalkStairsStepForwardTest", "character controller stair forward floor test distance", 0.1f, CVarFlags::EditFloatDrag);
 AutoCVar_Float CVAR_CharacterControllerWalkStairsForwardContactAngle(CVarCategory::Client | CVarCategory::Physics, "characterControllerWalkStairsForwardContactAngle", "character controller stair forward contact angle in degrees", 50.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_CharacterControllerFallCommitDistance(CVarCategory::Client | CVarCategory::Physics, "characterControllerFallCommitDistance", "character controller unsupported-to-fall vertical distance threshold", 1.0f, CVarFlags::EditFloatDrag);
+AutoCVar_Float CVAR_CharacterControllerFallCommitTime(CVarCategory::Client | CVarCategory::Physics, "characterControllerFallCommitTime", "character controller unsupported-to-fall time threshold", 0.5f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_CharacterControllerDebugDraw(CVarCategory::Client | CVarCategory::Physics, "characterControllerDebugDraw", "draws character controller debug vectors", 0, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_CharacterControllerDebugVelocityScale(CVarCategory::Client | CVarCategory::Physics, "characterControllerDebugVelocityScale", "character controller debug velocity vector scale", 0.25f, CVarFlags::EditFloatDrag);
 
@@ -87,24 +88,36 @@ namespace
         ECS::Components::MovementInfo& movementInfo;
         const quat& characterRotation;
         const JPH::Vec3& currentVelocity;
-        bool isGrounded;
+        ECS::Singletons::CharacterGroundMovementMode groundMovementMode;
         bool hasMovementInput;
     };
 
     struct CharacterMotorUpdateResult
     {
     public:
-        JPH::Vec3 moveDirection;
-        JPH::Vec3 persistentVelocity;
-        JPH::Vec3 solveVelocity;
-        f32 speed;
+        JPH::Vec3 moveDirection = JPH::Vec3::sZero();
+
+        // Persistent velocity orthogonal to the configured up direction.
+        // While grounded, this includes the planar portion of support movement.
+        JPH::Vec3 planarVelocity = JPH::Vec3::sZero();
+
+        // Velocity contributed by the currently supporting body.
+        JPH::Vec3 supportVelocity = JPH::Vec3::sZero();
+
+        // Transient velocity passed to Jolt. This may include slope projection.
+        JPH::Vec3 solveVelocity = JPH::Vec3::sZero();
+
+        // Persistent jump, fall or flight velocity along the configured up direction.
+        f32 verticalSpeed = 0.0f;
+
+        f32 speed = 0.0f;
         bool justStartedJump = false;
     };
 
     struct CharacterMotorSensingResult
     {
     public:
-        bool isGrounded = false;
+        bool hasWalkableSupport = false;
     };
 
     struct CharacterMotorPreUpdateContext
@@ -124,15 +137,53 @@ namespace
         ECS::Components::MovementInfo& movementInfo;
         ECS::TransformSystem& transformSystem;
         CharacterMotorUpdateResult& motorResult;
-        JPH::Vec3& persistentVelocity;
+        JPH::Vec3& commandVelocity;
         f32 flyGroundTransitionMinDownVelocity;
     };
 
+    struct CharacterCollisionQueryContext
+    {
+    public:
+        const JPH::BroadPhaseLayerFilter& broadPhaseLayerFilter;
+        const JPH::ObjectLayerFilter& objectLayerFilter;
+        const JPH::BodyFilter& bodyFilter;
+        const JPH::ShapeFilter& shapeFilter;
+        JPH::TempAllocator& allocator;
+    };
+
+    struct CharacterMovementResolveContext
+    {
+    public:
+        ECS::Singletons::CharacterControllerSingleton& state;
+        const ECS::Singletons::CharacterControllerSettings& settings;
+        ECS::Components::MovementInfo& movementInfo;
+        const CharacterCollisionQueryContext& collisionQuery;
+        f32 deltaTime;
+        u8 substepIndex;
+    };
+
+    struct CharacterMovementResolveState
+    {
+    public:
+        JPH::Vec3& planarVelocity;
+        JPH::Vec3& supportVelocity;
+        JPH::Vec3& commandVelocity;
+        JPH::Vec3& solveVelocity;
+        JPH::Vec3& movementGroundNormal;
+        f32& verticalSpeed;
+
+        JPH::Vec3 groundVelocity = JPH::Vec3::sZero();
+        bool snappedToGround = false;
+    };
+
     static_assert(sizeof(CharacterMotorUpdateContext) <= 64);
-    static_assert(sizeof(CharacterMotorUpdateResult) <= 64);
+    static_assert(sizeof(CharacterMotorUpdateResult) <= 80);
     static_assert(sizeof(CharacterMotorSensingResult) <= 64);
     static_assert(sizeof(CharacterMotorPreUpdateContext) <= 64);
     static_assert(sizeof(CharacterMotorPostUpdateContext) <= 64);
+    static_assert(sizeof(CharacterCollisionQueryContext) <= 64);
+    static_assert(sizeof(CharacterMovementResolveContext) <= 64);
+    static_assert(sizeof(CharacterMovementResolveState) <= 96);
 
     enum class CharacterMotorTransitionPhase : u8
     {
@@ -191,7 +242,7 @@ namespace
             { .defaultReply = InputReply::Handled }, ECS::Systems::CharacterControllerInput::HandleTargetInput);
 
         inputActions->RegisterAction(state.cameraInputContext, "ToggleCameraMode", "Toggle Camera Mode", "Camera",
-            InputBinding::Keyboard(Key::C, InputModifier::None, ModifierMatch::Any),
+            InputBinding::Keyboard(Key::C, InputModifier::None, ModifierMatch::Exact),
             { .defaultReply = InputReply::Handled }, [](const InputActionEvent& event)
         {
             if (event.phase != InputPhase::Pressed)
@@ -328,15 +379,16 @@ namespace
         settings.gravity = CVAR_CharacterControllerGravity.GetFloat();
         settings.maxWalkableSlopeAngleRadians = glm::radians(CVAR_CharacterControllerMaxSlopeAngle.GetFloat());
         settings.groundSnapDistance = glm::max(0.0f, CVAR_CharacterControllerGroundSnapDistance.GetFloat());
-        settings.groundSnapGraceTime = glm::max(0.0f, CVAR_CharacterControllerGroundSnapGraceTime.GetFloat());
-        settings.groundSnapMaxDownVelocity = glm::max(0.0f, CVAR_CharacterControllerGroundSnapMaxDownVelocity.GetFloat());
         settings.maxSubsteps = static_cast<u8>(glm::clamp(CVAR_CharacterControllerMaxSubsteps.Get(), 1, 4));
         settings.flightGroundProbeStartOffset = glm::max(0.0f, CVAR_CharacterControllerFlightGroundProbeStartOffset.GetFloat());
         settings.flightGroundProbeDistance = glm::max(0.0f, CVAR_CharacterControllerFlightGroundProbeDistance.GetFloat());
         settings.walkStairsStepUp = glm::max(0.0f, CVAR_CharacterControllerWalkStairsStepUp.GetFloat());
+        settings.walkStairsStepDownExtra = glm::max(0.0f, CVAR_CharacterControllerWalkStairsStepDownExtra.GetFloat());
         settings.walkStairsMinStepForward = glm::max(0.0f, CVAR_CharacterControllerWalkStairsMinStepForward.GetFloat());
         settings.walkStairsStepForwardTest = glm::max(0.0f, CVAR_CharacterControllerWalkStairsStepForwardTest.GetFloat());
         settings.walkStairsForwardContactAngleRadians = glm::radians(glm::clamp(CVAR_CharacterControllerWalkStairsForwardContactAngle.GetFloat(), 0.0f, 180.0f));
+        settings.fallCommitDistance = glm::max(0.0f, CVAR_CharacterControllerFallCommitDistance.GetFloat());
+        settings.fallCommitTime = glm::max(0.0f, CVAR_CharacterControllerFallCommitTime.GetFloat());
         settings.up = ECS::Components::Transform::WORLD_UP;
         settings.enhancedInternalEdgeRemoval = CVAR_CharacterControllerEnhancedInternalEdgeRemoval.Get() != 0;
     }
@@ -394,25 +446,49 @@ namespace
         return intent;
     }
 
-    CharacterMotorSensingResult SenseCharacterMotor(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Singletons::CharacterControllerSettings& settings, const ECS::Components::MovementInfo& movementInfo, const JPH::Vec3Arg& currentVelocity)
+    CharacterMotorSensingResult SenseCharacterMotor(
+        const ECS::Singletons::CharacterControllerSingleton& state,
+        const ECS::Singletons::CharacterControllerSettings& settings,
+        const ECS::Components::MovementInfo& movementInfo,
+        const JPH::Vec3Arg& currentVelocity)
     {
         CharacterMotorSensingResult result;
+
         const bool isFlying = state.activeMotor == ECS::Singletons::CharacterMotorType::Flight;
         const bool isJumping = movementInfo.movementFlags.jumping || movementInfo.jumpState != ECS::Components::JumpState::None;
-        const JPH::Vec3 up = CharacterControllerUtil::ToJolt(settings.up);
-        const bool isRisingJump = !isFlying && (isJumping || state.preserveSteepSlopeJumpVelocityUntilFalling) && currentVelocity.Dot(up) > 1.0e-3f;
-        result.isGrounded = !isRisingJump && CharacterControllerUtil::IsOnGround(state.character);
+        const f32 verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(settings, currentVelocity);
+        const bool isRisingJump = !isFlying && (isJumping || state.preserveSteepSlopeJumpVelocityUntilFalling) && verticalSpeed > 1.0e-3f;
+
+        result.hasWalkableSupport = !isRisingJump && CharacterControllerUtil::IsOnGround(state.character);
         return result;
+    }
+
+    void ReconcileGroundMovementMode(ECS::Singletons::CharacterControllerSingleton& state, const CharacterMotorSensingResult& sensing)
+    {
+        if (state.activeMotor != ECS::Singletons::CharacterMotorType::Ground)
+            return;
+
+        // Sensing may confirm a landing, but it must not force WALK into FALL or UNSUPPORTED.
+        // WALK owns that transition after its downward continuation search fails.
+        if (state.groundMovementMode != ECS::Singletons::CharacterGroundMovementMode::Fall &&
+            state.groundMovementMode != ECS::Singletons::CharacterGroundMovementMode::Unsupported)
+            return;
+
+        if (!sensing.hasWalkableSupport)
+            return;
+
+        state.groundMovementMode = ECS::Singletons::CharacterGroundMovementMode::Walk;
+        state.unsupportedState = {};
     }
 
     namespace GroundMotor
     {
-        bool CanTransitionToFlight(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Components::MovementInfo& movementInfo, bool isGrounded)
+        bool CanTransitionToFlight(const ECS::Singletons::CharacterControllerSingleton& state, const ECS::Components::MovementInfo& movementInfo, bool hasWalkableSupport)
         {
             if (!movementInfo.movementFlags.flying || !state.controlMask.allowModeTransitions)
                 return false;
 
-            if (!isGrounded)
+            if (!hasWalkableSupport)
                 return true;
 
             return state.intent.jumpOrAscend && state.controlMask.allowAscendDescend;
@@ -420,7 +496,7 @@ namespace
 
         ECS::Singletons::CharacterMotorType PreUpdate(const CharacterMotorPreUpdateContext& context)
         {
-            if (CanTransitionToFlight(context.state, context.movementInfo, context.sensing.isGrounded))
+            if (CanTransitionToFlight(context.state, context.movementInfo, context.sensing.hasWalkableSupport))
                 return ECS::Singletons::CharacterMotorType::Flight;
 
             return ECS::Singletons::CharacterMotorType::Ground;
@@ -428,6 +504,10 @@ namespace
 
         void Enter(ECS::Singletons::CharacterControllerSingleton& state, ECS::Components::MovementInfo& movementInfo, CharacterMotorTransitionPhase transitionPhase)
         {
+            state.groundMovementMode = transitionPhase == CharacterMotorTransitionPhase::PostUpdate
+                ? ECS::Singletons::CharacterGroundMovementMode::Walk
+                : ECS::Singletons::CharacterGroundMovementMode::Fall;
+
             if (transitionPhase != CharacterMotorTransitionPhase::PostUpdate)
                 return;
 
@@ -450,36 +530,49 @@ namespace
             CharacterMotorUpdateResult result;
             result.moveDirection = CharacterControllerUtil::BuildCharacterRelativeMoveDirection(context.state.intent, context.characterRotation);
             result.speed = CharacterControllerUtil::GetPlanarSpeed(context.movementInfo, context.state.intent, ECS::Singletons::CharacterMotorType::Ground);
-            result.persistentVelocity = context.currentVelocity;
-            result.solveVelocity = context.currentVelocity;
+            result.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, context.currentVelocity);
+            result.verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(context.settings, context.currentVelocity);
 
-            if (context.isGrounded)
+            const bool isWalking = context.groundMovementMode == ECS::Singletons::CharacterGroundMovementMode::Walk;
+            if (isWalking)
             {
-                const JPH::Vec3 groundVelocity = context.state.character->GetGroundVelocity();
-                result.persistentVelocity = groundVelocity + result.moveDirection * result.speed;
-                result.solveVelocity = result.persistentVelocity;
+                result.supportVelocity = context.state.character->GetGroundVelocity();
+
+                const JPH::Vec3 inputVelocity = result.moveDirection * result.speed;
+                const JPH::Vec3 commandVelocity = result.supportVelocity + inputVelocity;
+
+                result.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, commandVelocity);
+                result.verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(context.settings, commandVelocity);
             }
-            else
+            else if (context.state.neutralJumpAirControlAvailable
+                && !context.state.neutralJumpAirControlConsumed
+                && context.hasMovementInput
+                && !result.moveDirection.IsNearZero())
             {
-                if (context.state.neutralJumpAirControlAvailable && !context.state.neutralJumpAirControlConsumed && context.hasMovementInput && !result.moveDirection.IsNearZero())
-                {
-                    const f32 airControlSpeed = result.speed * context.settings.neutralJumpAirControlMultiplier;
-                    result.persistentVelocity.SetX(result.moveDirection.GetX() * airControlSpeed);
-                    result.persistentVelocity.SetZ(result.moveDirection.GetZ() * airControlSpeed);
-                    context.state.neutralJumpAirControlConsumed = true;
-                }
+                const f32 airControlSpeed = result.speed * context.settings.neutralJumpAirControlMultiplier;
+                const JPH::Vec3 airControlVelocity = result.moveDirection * airControlSpeed;
+                result.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, airControlVelocity);
 
-                result.solveVelocity = result.persistentVelocity;
+                context.state.neutralJumpAirControlConsumed = true;
             }
 
-            const bool canJump = context.isGrounded && context.state.controlMask.allowJump && !context.movementInfo.movementFlags.jumping && context.movementInfo.jumpState == ECS::Components::JumpState::None;
+            const bool canJump =
+                isWalking
+                && context.state.controlMask.allowJump
+                && !context.movementInfo.movementFlags.jumping
+                && context.movementInfo.jumpState
+                == ECS::Components::JumpState::None;
+
             if (context.state.intent.jumpOrAscend && canJump)
             {
-                const f32 jumpSpeed = context.movementInfo.jumpSpeed * context.movementInfo.gravityModifier;
-                result.persistentVelocity.SetY(jumpSpeed);
-                result.solveVelocity.SetY(jumpSpeed);
+                result.verticalSpeed = context.movementInfo.jumpSpeed * context.movementInfo.gravityModifier;
+                result.supportVelocity = JPH::Vec3::sZero();
+
+                context.state.groundMovementMode = ECS::Singletons::CharacterGroundMovementMode::Fall;
+                context.state.unsupportedState = {};
                 context.movementInfo.movementFlags.jumping = true;
                 context.movementInfo.jumpState = ECS::Components::JumpState::Begin;
+
                 result.justStartedJump = true;
 
                 context.state.neutralJumpAirControlAvailable = !context.hasMovementInput;
@@ -487,6 +580,7 @@ namespace
                 context.state.preserveSteepSlopeJumpVelocityUntilFalling = true;
             }
 
+            result.solveVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, result.planarVelocity, result.verticalSpeed);
             return result;
         }
     }
@@ -513,10 +607,11 @@ namespace
 
         void Enter(ECS::Singletons::CharacterControllerSingleton& state, ECS::Components::MovementInfo& movementInfo)
         {
+            state.groundMovementMode = ECS::Singletons::CharacterGroundMovementMode::Fall;
+            state.unsupportedState = {};
             state.preserveSteepSlopeJumpVelocityUntilFalling = false;
             state.neutralJumpAirControlAvailable = false;
             state.neutralJumpAirControlConsumed = false;
-            state.groundSnapGraceTimer = 0.0f;
 
             movementInfo.movementFlags.jumping = false;
             movementInfo.jumpState = ECS::Components::JumpState::None;
@@ -532,6 +627,7 @@ namespace
         {
             CharacterMotorUpdateResult result;
             result.moveDirection = CharacterControllerUtil::BuildCharacterRelativeMoveDirection(context.state.intent, context.characterRotation);
+
             const bool ascend = context.state.intent.jumpOrAscend && context.state.controlMask.allowAscendDescend;
             const bool descend = context.state.intent.descend && context.state.controlMask.allowAscendDescend;
             if (ascend != descend)
@@ -541,20 +637,34 @@ namespace
             }
 
             result.speed = CharacterControllerUtil::GetPlanarSpeed(context.movementInfo, context.state.intent, ECS::Singletons::CharacterMotorType::Flight);
-            result.persistentVelocity = result.moveDirection * result.speed;
-            result.solveVelocity = result.persistentVelocity;
+
+            const JPH::Vec3 commandVelocity = result.moveDirection * result.speed;
+            result.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, commandVelocity);
+            result.verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(context.settings, commandVelocity);
+            result.solveVelocity = commandVelocity;
 
             return result;
         }
 
         ECS::Singletons::CharacterMotorType PostUpdate(const CharacterMotorPostUpdateContext& context, ECS::Singletons::CharacterControllerDebugSingleton* debugState)
         {
-            if (!CanTransitionToGround(context.state, context.settings, context.persistentVelocity, context.flyGroundTransitionMinDownVelocity))
+            if (!CanTransitionToGround(context.state, context.settings, context.commandVelocity, context.flyGroundTransitionMinDownVelocity))
                 return ECS::Singletons::CharacterMotorType::Flight;
 
             JPH::Vec3 groundNormal;
             JPH::Vec3 groundPosition;
-            const bool foundGroundTransition = CharacterControllerUtil::TryGetWalkableGroundProbeNormal(context.state.character, context.settings, context.joltState, context.state.character->GetPosition(), context.settings.flightGroundProbeStartOffset, context.settings.flightGroundProbeDistance, groundNormal, &groundPosition, debugState);
+
+            const bool foundGroundTransition = CharacterControllerUtil::TryGetWalkableGroundProbeNormal(
+                context.state.character,
+                context.settings,
+                context.joltState,
+                context.state.character->GetPosition(),
+                context.settings.flightGroundProbeStartOffset,
+                context.settings.flightGroundProbeDistance,
+                groundNormal,
+                &groundPosition,
+                debugState);
+
             if (!foundGroundTransition)
                 return ECS::Singletons::CharacterMotorType::Flight;
 
@@ -565,16 +675,17 @@ namespace
             context.state.character->SetRotation(JPH::Quat(groundRotation.x, groundRotation.y, groundRotation.z, groundRotation.w));
             context.state.appliedPitch = 0.0f;
             context.movementInfo.pitch = 0.0f;
-
             context.motorResult.moveDirection = CharacterControllerUtil::BuildCharacterRelativeMoveDirection(context.state.intent, groundRotation);
-            const f32 groundSpeed = CharacterControllerUtil::GetPlanarSpeed(context.movementInfo, context.state.intent, ECS::Singletons::CharacterMotorType::Ground);
-            context.persistentVelocity = context.state.character->GetGroundVelocity() + context.motorResult.moveDirection * groundSpeed;
-            context.state.character->SetLinearVelocity(context.persistentVelocity);
 
+            const f32 groundSpeed = CharacterControllerUtil::GetPlanarSpeed(context.movementInfo, context.state.intent, ECS::Singletons::CharacterMotorType::Ground);
+            context.motorResult.supportVelocity = context.state.character->GetGroundVelocity();
+            context.commandVelocity = context.motorResult.supportVelocity + context.motorResult.moveDirection * groundSpeed;
+            context.motorResult.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, context.commandVelocity);
+            context.motorResult.verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(context.settings, context.commandVelocity);
             context.motorResult.speed = groundSpeed;
-            context.motorResult.persistentVelocity = context.persistentVelocity;
-            context.motorResult.solveVelocity = context.persistentVelocity;
-            context.state.groundSnapGraceTimer = context.settings.groundSnapGraceTime;
+            context.motorResult.solveVelocity = context.commandVelocity;
+
+            context.state.character->SetLinearVelocity(context.commandVelocity);
 
             return ECS::Singletons::CharacterMotorType::Ground;
         }
@@ -655,6 +766,7 @@ namespace
         JPH::CharacterVirtual* character,
         const ECS::Singletons::CharacterControllerSettings& settings,
         const JPH::Vec3Arg& desiredVelocity,
+        const CharacterControllerUtil::CharacterBlockingContact& blockingContact,
         JPH::RVec3Arg substepStartPosition,
         f32 substepDeltaTime,
         const JPH::BroadPhaseLayerFilter& broadPhaseLayerFilter,
@@ -681,33 +793,21 @@ namespace
         if (achievedForwardLength + 1.0e-4f >= desiredHorizontalStepLength || !character->CanWalkStairs(desiredVelocity))
             return;
 
-        JPH::Vec3 walkStairsDirection = stepForwardNormalized;
-        f32 maximumContactDot = glm::cos(settings.walkStairsForwardContactAngleRadians);
-        for (const JPH::CharacterContact& contact : character->GetActiveContacts())
-        {
-            if (!contact.mHadCollision
-                || contact.mWasDiscarded
-                || contact.mSurfaceNormal.Dot(desiredVelocity - contact.mLinearVelocity) >= 0.0f
-                || !character->IsSlopeTooSteep(contact.mSurfaceNormal))
-            {
-                continue;
-            }
+        if (!character->IsSlopeTooSteep(blockingContact.surfaceNormal))
+            return;
 
-            JPH::Vec3 contactDirection = contact.mSurfaceNormal.Dot(up) * up - contact.mSurfaceNormal;
-            const f32 contactDirectionLength = contactDirection.Length();
-            if (contactDirectionLength <= 1.0e-6f)
-                continue;
+        const f32 contactHeightTolerance = character->GetCharacterPadding() + 1.0e-3f;
+        const f32 minimumStepContactHeight = -contactHeightTolerance;
+        const f32 maximumStepContactHeight = settings.walkStairsStepUp + contactHeightTolerance;
+        if (blockingContact.height < minimumStepContactHeight || blockingContact.height > maximumStepContactHeight)
+            return;
 
-            contactDirection /= contactDirectionLength;
-            const f32 contactDot = contactDirection.Dot(stepForwardNormalized);
-            if (contactDot <= maximumContactDot)
-                continue;
-
-            walkStairsDirection = contactDirection;
-            maximumContactDot = contactDot;
-        }
+        const f32 minimumContactAlignment = glm::cos(settings.walkStairsForwardContactAngleRadians);
+        if (blockingContact.alignment <= minimumContactAlignment)
+            return;
 
         const f32 missingForwardDistance = desiredHorizontalStepLength - achievedForwardLength;
+        const JPH::Vec3 walkStairsDirection = blockingContact.movementDirection;
         const JPH::Vec3 stepForward = walkStairsDirection * glm::max(settings.walkStairsMinStepForward, missingForwardDistance);
         const JPH::Vec3 stepForwardTest = walkStairsDirection * settings.walkStairsStepForwardTest;
         character->WalkStairs(
@@ -715,12 +815,232 @@ namespace
             up * settings.walkStairsStepUp,
             stepForward,
             stepForwardTest,
-            JPH::Vec3::sZero(),
+            -up * settings.walkStairsStepDownExtra,
             broadPhaseLayerFilter,
             objectLayerFilter,
             bodyFilter,
             shapeFilter,
             allocator);
+    }
+
+    void UpdateCharacterCollisionSubstep(
+        const CharacterMovementResolveContext& context,
+        CharacterMovementResolveState& motion,
+        bool isFlying,
+        bool isJumpingBeforeSubstep,
+        bool startedJumpThisSubstep)
+    {
+        const bool shouldPreserveSteepSlopeJumpVelocity =
+            CharacterControllerUtil::ShouldPreserveSteepSlopeJumpVelocity(
+                context.state,
+                context.settings,
+                motion.commandVelocity,
+                isFlying,
+                isJumpingBeforeSubstep,
+                startedJumpThisSubstep);
+
+        if (context.substepIndex == 0 && !shouldPreserveSteepSlopeJumpVelocity)
+        {
+            motion.solveVelocity = context.state.character->CancelVelocityTowardsSteepSlopes(motion.solveVelocity);
+        }
+
+        context.state.character->SetLinearVelocity(motion.solveVelocity);
+
+        const JPH::Vec3 gravity = isFlying ? JPH::Vec3::sZero() : CharacterControllerUtil::ToJolt(context.settings.up) * context.settings.gravity;
+        context.state.character->Update(
+            context.deltaTime,
+            gravity,
+            context.collisionQuery.broadPhaseLayerFilter,
+            context.collisionQuery.objectLayerFilter,
+            context.collisionQuery.bodyFilter,
+            context.collisionQuery.shapeFilter,
+            context.collisionQuery.allocator);
+    }
+
+    void FinalizeCharacterCollisionSubstep(
+        const CharacterMovementResolveContext& context,
+        CharacterMovementResolveState& motion,
+        bool isFlying,
+        bool isJumpingBeforeSubstep)
+    {
+        context.state.character->SetLinearVelocity(motion.commandVelocity);
+
+        const bool isJumpingForHeadContact = isJumpingBeforeSubstep || context.state.preserveSteepSlopeJumpVelocityUntilFalling;
+        if (CharacterControllerUtil::HasRisingHeadContact(
+            context.state,
+            context.settings,
+            motion.commandVelocity,
+            isFlying,
+            isJumpingForHeadContact))
+        {
+            motion.verticalSpeed = glm::min(motion.verticalSpeed, 0.0f);
+            motion.commandVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, motion.planarVelocity, motion.verticalSpeed);
+
+            context.state.character->SetLinearVelocity(motion.commandVelocity);
+            context.state.preserveSteepSlopeJumpVelocityUntilFalling = false;
+        }
+
+        if (context.state.preserveSteepSlopeJumpVelocityUntilFalling && (isFlying || motion.verticalSpeed <= 1.0e-3f))
+        {
+            context.state.preserveSteepSlopeJumpVelocityUntilFalling = false;
+        }
+    }
+
+    f32 GetWalkGroundSearchDistance(JPH::CharacterVirtual* character, const ECS::Singletons::CharacterControllerSettings& settings, const JPH::Vec3Arg& planarVelocity, f32 deltaTime)
+    {
+        const f32 horizontalDistance = CharacterControllerUtil::GetPlanarVelocity(settings, planarVelocity).Length() * deltaTime;
+        const f32 expectedSlopeDrop = horizontalDistance * glm::tan(settings.maxWalkableSlopeAngleRadians);
+        const f32 extendedSearchDistance = settings.collisionHeight + expectedSlopeDrop + character->GetCharacterPadding();
+
+        return glm::max(settings.groundSnapDistance, extendedSearchDistance);
+    }
+
+    bool ResolveWalkSubstep(const CharacterMovementResolveContext& context, CharacterMovementResolveState& motion, const JPH::Vec3Arg& moveDirection, f32 speed, bool isJumpingBeforeSubstep)
+    {
+        JPH::CharacterVirtual* character = context.state.character;
+
+        character->StartTrackingContactChanges();
+
+        const JPH::RVec3 substepStartPosition = character->GetPosition();
+        const bool hasWalkableSupportBeforeUpdate = CharacterControllerUtil::IsOnGround(character);
+
+        JPH::Vec3 supportNormal = CharacterControllerUtil::GetWalkSupportNormal(character, context.settings);
+
+        if (!supportNormal.IsNearZero())
+        {
+            motion.movementGroundNormal = supportNormal;
+        }
+        else
+        {
+            supportNormal = motion.movementGroundNormal;
+        }
+
+        if (hasWalkableSupportBeforeUpdate)
+        {
+            motion.groundVelocity = character->GetGroundVelocity();
+        }
+        else
+        {
+            motion.groundVelocity = JPH::Vec3::sZero();
+        }
+
+        motion.supportVelocity = motion.groundVelocity;
+
+        const JPH::Vec3 inputPlanarVelocity = moveDirection * speed;
+        const JPH::Vec3 supportedVelocity = motion.supportVelocity + inputPlanarVelocity;
+        motion.planarVelocity = CharacterControllerUtil::GetPlanarVelocity(context.settings, supportedVelocity);
+        motion.verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(context.settings, supportedVelocity);
+        motion.commandVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, motion.planarVelocity, motion.verticalSpeed);
+
+        const JPH::Vec3 groundSlopeVelocity = hasWalkableSupportBeforeUpdate
+            ? CharacterControllerUtil::BuildGroundSlopeVelocity(
+                character,
+                context.settings,
+                inputPlanarVelocity,
+                supportNormal)
+            : JPH::Vec3::sZero();
+
+        motion.solveVelocity = motion.commandVelocity + groundSlopeVelocity;
+
+        UpdateCharacterCollisionSubstep(
+            context,
+            motion,
+            false,
+            isJumpingBeforeSubstep,
+            false);
+
+        CharacterControllerUtil::CharacterBlockingContact blockingContact;
+        const bool hasBlockingContact = CharacterControllerUtil::TryGetBlockingContact(character, context.settings, inputPlanarVelocity, blockingContact);
+        if (!isJumpingBeforeSubstep && hasBlockingContact)
+        {
+            TryWalkStairs(
+                character,
+                context.settings,
+                motion.commandVelocity,
+                blockingContact,
+                substepStartPosition,
+                context.deltaTime,
+                context.collisionQuery.broadPhaseLayerFilter,
+                context.collisionQuery.objectLayerFilter,
+                context.collisionQuery.bodyFilter,
+                context.collisionQuery.shapeFilter,
+                context.collisionQuery.allocator);
+        }
+
+        bool retainedWalk = CharacterControllerUtil::IsOnGround(character);
+        if (!retainedWalk && context.settings.groundSnapDistance > 0.0f)
+        {
+            const JPH::Vec3 up = CharacterControllerUtil::ToJolt(context.settings.up);
+            const f32 groundSearchDistance = GetWalkGroundSearchDistance(character, context.settings, inputPlanarVelocity, context.deltaTime);
+
+            const bool foundGround =
+                character->StickToFloor(
+                    -up * groundSearchDistance,
+                    context.collisionQuery.broadPhaseLayerFilter,
+                    context.collisionQuery.objectLayerFilter,
+                    context.collisionQuery.bodyFilter,
+                    context.collisionQuery.shapeFilter,
+                    context.collisionQuery.allocator);
+
+            retainedWalk = foundGround && CharacterControllerUtil::IsOnGround(character);
+            motion.snappedToGround |= retainedWalk;
+        }
+
+        FinalizeCharacterCollisionSubstep(context, motion, false, isJumpingBeforeSubstep);
+        character->FinishTrackingContactChanges();
+
+        return retainedWalk;
+    }
+
+    void ResolveUnsupportedSubstep(
+        const CharacterMovementResolveContext& context,
+        CharacterMovementResolveState& motion,
+        bool isJumpingBeforeSubstep)
+    {
+        motion.supportVelocity = JPH::Vec3::sZero();
+
+        if (!isJumpingBeforeSubstep)
+        {
+            const JPH::Vec3 up = CharacterControllerUtil::ToJolt(context.settings.up);
+            motion.verticalSpeed += context.settings.gravity * context.movementInfo.gravityModifier * context.deltaTime;
+            motion.planarVelocity -= up * glm::max(0.0f, motion.verticalSpeed * context.deltaTime);
+        }
+
+        motion.commandVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, motion.planarVelocity, motion.verticalSpeed);
+        motion.solveVelocity = motion.commandVelocity;
+
+        UpdateCharacterCollisionSubstep(context, motion, false, isJumpingBeforeSubstep, false);
+        FinalizeCharacterCollisionSubstep(context, motion, false, isJumpingBeforeSubstep);
+    }
+
+    void ResolveFallSubstep(
+        const CharacterMovementResolveContext& context,
+        CharacterMovementResolveState& motion,
+        bool isJumpingBeforeSubstep,
+        bool startedJumpThisSubstep)
+    {
+        motion.supportVelocity = JPH::Vec3::sZero();
+
+        if (!startedJumpThisSubstep)
+        {
+            motion.verticalSpeed += context.settings.gravity * context.movementInfo.gravityModifier * context.deltaTime;
+        }
+
+        motion.commandVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, motion.planarVelocity, motion.verticalSpeed);
+        motion.solveVelocity = motion.commandVelocity;
+
+        UpdateCharacterCollisionSubstep(context, motion, false, isJumpingBeforeSubstep, startedJumpThisSubstep);
+        FinalizeCharacterCollisionSubstep(context, motion, false, isJumpingBeforeSubstep);
+    }
+
+    void ResolveFlightSubstep(const CharacterMovementResolveContext& context, CharacterMovementResolveState& motion)
+    {
+        motion.supportVelocity = JPH::Vec3::sZero();
+        motion.commandVelocity = CharacterControllerUtil::ComposeVelocity(context.settings, motion.planarVelocity, motion.verticalSpeed);
+        motion.solveVelocity = motion.commandVelocity;
+
+        UpdateCharacterCollisionSubstep(context, motion, true, false, false);
+        FinalizeCharacterCollisionSubstep(context, motion, true, false);
     }
 
     ECS::Singletons::CharacterControllerGroundDebugState GetGroundDebugState(JPH::CharacterVirtual::EGroundState groundState)
@@ -867,8 +1187,9 @@ namespace
         debugState.movementGroundNormal = ::Util::CharacterController::FromJolt(movementGroundNormal);
         debugState.snapStepDown = shouldSnapToGround ? CharacterControllerUtil::FromJolt(CharacterControllerUtil::GetGroundSnapStepDown(settings)) : vec3(0.0f);
         debugState.groundState = isEffectivelyGrounded ? ECS::Singletons::CharacterControllerGroundDebugState::OnGround : GetGroundDebugState(state.character->GetGroundState());
-        debugState.groundSnapGraceTimer = state.groundSnapGraceTimer;
         debugState.supportProbeUsedForGrounding = supportProbeUsedForGrounding;
+        debugState.unsupportedElapsedFallTime = state.unsupportedState.elapsedFallTime;
+        debugState.unsupportedElapsedFallDistance = state.unsupportedState.elapsedFallDistance;
         debugState.valid = true;
     }
 
@@ -919,9 +1240,6 @@ namespace
                 DrawDebugVector(debugRenderer, debugState.supportProbeHitPosition, debugState.supportProbeNormal, supportProbeColor, 0.5f);
             }
         }
-
-        if (debugState.groundSnapGraceTimer > 0.0f && debugState.groundState != ECS::Singletons::CharacterControllerGroundDebugState::OnGround)
-            debugRenderer->DrawLine3D(origin - up * 0.1f, origin + up * 0.1f, Color(0.0f, 1.0f, 1.0f, 1.0f));
     }
 
 } // namespace
@@ -1008,12 +1326,14 @@ namespace ECS::Systems
         if (!isAlive)
             CharacterControllerUtil::ResetMovementInput(state, &movementInfo);
 
-        state.intent = BuildIntent(registry, state, isAlive);
+        if (state.groundMovementMode != Singletons::CharacterGroundMovementMode::Unsupported)
+        {
+            state.intent = BuildIntent(registry, state, isAlive);
+        }
 
         const bool wasFlying = state.activeMotor == Singletons::CharacterMotorType::Flight;
         const bool wasGrounded = movementInfo.movementFlags.grounded;
         const JPH::Vec3 currentVelocity = state.character->GetLinearVelocity();
-        const JPH::Vec3 joltUp = ::Util::CharacterController::ToJolt(settings.up);
 
         CharacterMotorSensingResult sensing = SenseCharacterMotor(state, settings, movementInfo, currentVelocity);
         CharacterMotorPreUpdateContext preUpdateContext =
@@ -1033,16 +1353,31 @@ namespace ECS::Systems
 
             sensing = SenseCharacterMotor(state, settings, movementInfo, currentVelocity);
         }
+        ReconcileGroundMovementMode(state, sensing);
 
         bool isFlying = state.activeMotor == Singletons::CharacterMotorType::Flight;
-        bool isGrounded = sensing.isGrounded;
+        bool isGrounded = !isFlying && (state.groundMovementMode == Singletons::CharacterGroundMovementMode::Walk || state.groundMovementMode == Singletons::CharacterGroundMovementMode::Unsupported);
+
         const bool hasMovementInput = CharacterControllerUtil::HasMovementInput(state.intent);
-        CharacterControllerUtil::UpdateGroundSnapGrace(state, settings, isGrounded, fixedDeltaTime);
 
         if (state.controlMask.allowYaw)
+        {
+            const auto& activeCamera = ctx.get<Singletons::ActiveCamera>();
+            const auto& orbitalCameraSettings = ctx.get<Singletons::OrbitalCameraSettings>();
+            if (orbitalCameraSettings.mouseRightDown
+                && activeCamera.entity == orbitalCameraSettings.entity
+                && registry.valid(activeCamera.entity))
+            {
+                const auto& camera = registry.get<Components::Camera>(activeCamera.entity);
+                movementInfo.yaw = glm::radians(camera.yaw);
+            }
+
             state.appliedYaw = movementInfo.yaw;
+        }
         else
+        {
             movementInfo.yaw = state.appliedYaw;
+        }
 
         if (!isFlying)
         {
@@ -1074,16 +1409,21 @@ namespace ECS::Systems
             .movementInfo = movementInfo,
             .characterRotation = characterRotation,
             .currentVelocity = currentVelocity,
-            .isGrounded = isGrounded,
+            .groundMovementMode = state.groundMovementMode,
             .hasMovementInput = hasMovementInput
         };
 
         CharacterMotorUpdateResult motorResult = UpdateMotor(state.activeMotor, motorContext);
 
         JPH::Vec3& moveDirection = motorResult.moveDirection;
-        JPH::Vec3& persistentVelocity = motorResult.persistentVelocity;
+        JPH::Vec3& planarVelocity = motorResult.planarVelocity;
+        JPH::Vec3& supportVelocity = motorResult.supportVelocity;
         JPH::Vec3& solveVelocity = motorResult.solveVelocity;
+        f32& verticalSpeed = motorResult.verticalSpeed;
         f32& speed = motorResult.speed;
+
+        JPH::Vec3 commandVelocity = CharacterControllerUtil::ComposeVelocity(settings, planarVelocity, verticalSpeed);
+
         const bool justStartedJump = motorResult.justStartedJump;
         JPH::Vec3 movementGroundNormal = state.character->GetGroundNormal();
 
@@ -1091,32 +1431,52 @@ namespace ECS::Systems
         JPH::DefaultObjectLayerFilter objectLayerFilter(joltState.objectVSObjectLayerFilter, Jolt::Layers::MOVING);
         JPH::BodyFilter bodyFilter;
         JPH::ShapeFilter shapeFilter;
-        JPH::Vec3 gravity = isFlying ? JPH::Vec3::sZero() : JPH::Vec3(0.0f, settings.gravity, 0.0f);
+
+        const CharacterCollisionQueryContext collisionQuery =
+        {
+            .broadPhaseLayerFilter = broadPhaseLayerFilter,
+            .objectLayerFilter = objectLayerFilter,
+            .bodyFilter = bodyFilter,
+            .shapeFilter = shapeFilter,
+            .allocator = joltState.allocator
+        };
+
         const JPH::RVec3 positionBeforeUpdate = state.character->GetPosition();
+
         const u8 substepCount = GetPhysicsSubstepCount(settings);
         const f32 substepDeltaTime = fixedDeltaTime / static_cast<f32>(substepCount);
-        bool groundMotorActiveForTick = !isFlying && isGrounded && !justStartedJump;
-        JPH::Vec3 groundVelocityForTick = groundMotorActiveForTick ? state.character->GetGroundVelocity() : JPH::Vec3::sZero();
+
+        bool groundMotorActiveForTick = !isFlying && state.groundMovementMode == Singletons::CharacterGroundMovementMode::Walk && !justStartedJump;
+
+        CharacterMovementResolveState movementResolveState =
+        {
+            .planarVelocity = planarVelocity,
+            .supportVelocity = supportVelocity,
+            .commandVelocity = commandVelocity,
+            .solveVelocity = solveVelocity,
+            .movementGroundNormal = movementGroundNormal,
+            .verticalSpeed = verticalSpeed,
+            .groundVelocity = groundMotorActiveForTick ? state.character->GetGroundVelocity() : JPH::Vec3::sZero(),
+            .snappedToGround = false
+        };
+
         if (groundMotorActiveForTick)
-            movementGroundNormal = CharacterControllerUtil::ResolveGroundMovementNormal(state.character, settings);
+        {
+            movementGroundNormal = CharacterControllerUtil::GetWalkSupportNormal(state.character, settings);
+        }
 
         bool skipMotionUpdate = false;
-        const bool canRefreshIdleContacts = groundMotorActiveForTick
-            && !hasMovementInput
-            && persistentVelocity.IsNearZero()
-            && groundVelocityForTick.IsNearZero();
+        const bool canRefreshIdleContacts = groundMotorActiveForTick && !hasMovementInput && commandVelocity.IsNearZero() && movementResolveState.groundVelocity.IsNearZero();
         if (canRefreshIdleContacts)
         {
             state.character->SetLinearVelocity(JPH::Vec3::sZero());
             state.character->RefreshContacts(broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
 
             bool hasExternalContactVelocity = false;
+
             for (const JPH::CharacterContact& contact : state.character->GetActiveContacts())
             {
-                if (contact.mHadCollision
-                    && !contact.mWasDiscarded
-                    && contact.mCanPushCharacter
-                    && !contact.mLinearVelocity.IsNearZero())
+                if (contact.mHadCollision && !contact.mWasDiscarded && contact.mCanPushCharacter && !contact.mLinearVelocity.IsNearZero())
                 {
                     hasExternalContactVelocity = true;
                     break;
@@ -1124,80 +1484,54 @@ namespace ECS::Systems
             }
 
             skipMotionUpdate = CharacterControllerUtil::IsOnGround(state.character) && !hasExternalContactVelocity;
-            if (!skipMotionUpdate && !CharacterControllerUtil::IsOnGround(state.character))
-                groundMotorActiveForTick = false;
         }
-
-        bool snappedToGround = false;
 
         for (u8 substepIndex = 0; !skipMotionUpdate && substepIndex < substepCount; substepIndex++)
         {
-            const JPH::RVec3 substepStartPosition = state.character->GetPosition();
             const bool startedJumpThisSubstep = justStartedJump && substepIndex == 0;
             const bool isJumpingBeforeSubstep = movementInfo.movementFlags.jumping || movementInfo.jumpState != Components::JumpState::None;
 
+            const CharacterMovementResolveContext resolveContext =
+            {
+                .state = state,
+                .settings = settings,
+                .movementInfo = movementInfo,
+                .collisionQuery = collisionQuery,
+                .deltaTime = substepDeltaTime,
+                .substepIndex = substepIndex
+            };
+
+            if (isFlying)
+            {
+                ResolveFlightSubstep(resolveContext, movementResolveState);
+                continue;
+            }
+
             if (groundMotorActiveForTick)
             {
-                const bool hasGroundContactThisSubstep = CharacterControllerUtil::IsOnGround(state.character);
-                if (hasGroundContactThisSubstep)
+                const bool retainedWalk = ResolveWalkSubstep(resolveContext, movementResolveState, moveDirection, speed, isJumpingBeforeSubstep);
+                if (!retainedWalk)
                 {
-                    groundVelocityForTick = state.character->GetGroundVelocity();
-                    movementGroundNormal = CharacterControllerUtil::ResolveGroundMovementNormal(state.character, settings);
+                    groundMotorActiveForTick = false;
+                    state.groundMovementMode = Singletons::CharacterGroundMovementMode::Unsupported;
+                    state.unsupportedState.elapsedFallTime = 0.0f;
+                    state.unsupportedState.elapsedFallDistance = 0.0f;
                 }
 
-                const JPH::Vec3 planarVelocity = moveDirection * speed;
-                persistentVelocity = groundVelocityForTick + planarVelocity;
-                const JPH::Vec3 groundSlopeVelocity = hasGroundContactThisSubstep
-                    ? CharacterControllerUtil::BuildGroundSlopeVelocity(state.character, settings, planarVelocity, movementGroundNormal)
-                    : JPH::Vec3::sZero();
-                // Stable walkable support does not accelerate the character downward.
-                solveVelocity = persistentVelocity + groundSlopeVelocity;
+                continue;
+            }
+
+            if (state.groundMovementMode == Singletons::CharacterGroundMovementMode::Unsupported)
+            {
+                ResolveUnsupportedSubstep(resolveContext, movementResolveState, isJumpingBeforeSubstep);
             }
             else
             {
-                if (!isFlying && !startedJumpThisSubstep)
-                    persistentVelocity += joltUp * (settings.gravity * movementInfo.gravityModifier * substepDeltaTime);
-
-                solveVelocity = persistentVelocity;
-            }
-
-            const bool shouldPreserveSteepSlopeJumpVelocity = CharacterControllerUtil::ShouldPreserveSteepSlopeJumpVelocity(state, settings, persistentVelocity, isFlying, isJumpingBeforeSubstep, startedJumpThisSubstep);
-            if (substepIndex == 0 && !shouldPreserveSteepSlopeJumpVelocity)
-                solveVelocity = state.character->CancelVelocityTowardsSteepSlopes(solveVelocity);
-
-            state.character->SetLinearVelocity(solveVelocity);
-            state.character->Update(substepDeltaTime, gravity, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
-
-            if (!isFlying && !isJumpingBeforeSubstep)
-                TryWalkStairs(state.character, settings, persistentVelocity, substepStartPosition, substepDeltaTime, broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator);
-
-            state.character->SetLinearVelocity(persistentVelocity);
-
-            const bool isJumpingForHeadContact = isJumpingBeforeSubstep || state.preserveSteepSlopeJumpVelocityUntilFalling;
-            if (CharacterControllerUtil::HasRisingHeadContact(state, settings, persistentVelocity, isFlying, isJumpingForHeadContact))
-            {
-                persistentVelocity = CharacterControllerUtil::RemoveUpwardVelocity(settings, persistentVelocity);
-                state.character->SetLinearVelocity(persistentVelocity);
-                state.preserveSteepSlopeJumpVelocityUntilFalling = false;
-            }
-
-            const f32 verticalSpeedAfterSubstep = persistentVelocity.Dot(joltUp);
-            if (state.preserveSteepSlopeJumpVelocityUntilFalling && (isFlying || verticalSpeedAfterSubstep <= 1.0e-3f))
-                state.preserveSteepSlopeJumpVelocityUntilFalling = false;
-        }
-
-        const bool shouldSnapToGround = CharacterControllerUtil::ShouldSnapToGround(state, settings, persistentVelocity, isFlying, justStartedJump);
-        if (shouldSnapToGround && !CharacterControllerUtil::IsOnGround(state.character))
-        {
-            JPH::Vec3 snapGroundNormal;
-            const f32 pyramidHeight = CharacterControllerUtil::GetBoxPyramidShapeDimensions(settings).pyramidHeight;
-            const bool foundGroundSnapCandidate = CharacterControllerUtil::TryGetWalkableGroundProbeNormal(state.character, settings, joltState, state.character->GetPosition(), pyramidHeight, settings.groundSnapDistance, snapGroundNormal, nullptr, debugState);
-            if (foundGroundSnapCandidate)
-            {
-                snappedToGround = state.character->StickToFloor(CharacterControllerUtil::GetGroundSnapStepDown(settings), broadPhaseLayerFilter, objectLayerFilter, bodyFilter, shapeFilter, joltState.allocator)
-                    && CharacterControllerUtil::IsOnGround(state.character);
+                ResolveFallSubstep(resolveContext, movementResolveState, isJumpingBeforeSubstep, startedJumpThisSubstep);
             }
         }
+
+        const bool snappedToGround = movementResolveState.snappedToGround;
 
         const CharacterMotorPostUpdateContext postUpdateContext =
         {
@@ -1207,28 +1541,58 @@ namespace ECS::Systems
             .movementInfo = movementInfo,
             .transformSystem = transformSystem,
             .motorResult = motorResult,
-            .persistentVelocity = persistentVelocity,
+            .commandVelocity = commandVelocity,
             .flyGroundTransitionMinDownVelocity = flyGroundTransitionMinDownVelocity
         };
 
         const Singletons::CharacterMotorType postUpdateMotor = state.activeMotor;
         nextMotor = PostUpdateMotor(postUpdateMotor, postUpdateContext, debugState);
+
         const bool transitionedFromFlyToGround = postUpdateMotor == Singletons::CharacterMotorType::Flight && nextMotor == Singletons::CharacterMotorType::Ground;
         TransitionMotor(state, movementInfo, nextMotor, CharacterMotorTransitionPhase::PostUpdate);
         isFlying = state.activeMotor == Singletons::CharacterMotorType::Flight;
 
-        const f32 verticalSpeedAfterUpdate = persistentVelocity.Dot(joltUp);
-        if (state.preserveSteepSlopeJumpVelocityUntilFalling && (isFlying || verticalSpeedAfterUpdate <= 1.0e-3f))
-            state.preserveSteepSlopeJumpVelocityUntilFalling = false;
-
-        const bool isRisingJump = !isFlying && (movementInfo.movementFlags.jumping || state.preserveSteepSlopeJumpVelocityUntilFalling) && verticalSpeedAfterUpdate > 1.0e-3f;
-        isGrounded = !isFlying && !isRisingJump && (CharacterControllerUtil::IsOnGround(state.character) || transitionedFromFlyToGround);
-        if (isGrounded)
+        if (state.preserveSteepSlopeJumpVelocityUntilFalling && (isFlying || verticalSpeed <= 1.0e-3f))
         {
-            const f32 groundVerticalSpeed = state.character->GetGroundVelocity().Dot(joltUp);
-            persistentVelocity += joltUp * (groundVerticalSpeed - persistentVelocity.Dot(joltUp));
-            state.character->SetLinearVelocity(persistentVelocity);
-            movementGroundNormal = CharacterControllerUtil::ResolveGroundMovementNormal(state.character, settings);
+            state.preserveSteepSlopeJumpVelocityUntilFalling = false;
+        }
+
+        const bool isRisingJump = !isFlying && (movementInfo.movementFlags.jumping || state.preserveSteepSlopeJumpVelocityUntilFalling) && verticalSpeed > 1.0e-3f;
+        const bool hasWalkableSupportAfterUpdate = !isFlying && !isRisingJump && (CharacterControllerUtil::IsOnGround(state.character) || transitionedFromFlyToGround);
+
+        if (!isFlying && state.groundMovementMode == Singletons::CharacterGroundMovementMode::Unsupported && hasWalkableSupportAfterUpdate)
+        {
+            state.groundMovementMode = Singletons::CharacterGroundMovementMode::Walk;
+            state.unsupportedState.elapsedFallTime = 0.0f;
+            state.unsupportedState.elapsedFallDistance = 0.0f;
+            state.intent = {};
+        }
+        else if (!isFlying && state.groundMovementMode == Singletons::CharacterGroundMovementMode::Unsupported)
+        {
+            const JPH::Vec3 up = CharacterControllerUtil::ToJolt(settings.up);
+            const f32 verticalDelta = glm::max(0.0f, JPH::Vec3(state.character->GetPosition() - positionBeforeUpdate).Dot(up));
+
+            state.unsupportedState.elapsedFallTime += fixedDeltaTime;
+            state.unsupportedState.elapsedFallDistance += verticalDelta;
+
+            if (state.unsupportedState.elapsedFallDistance >= settings.fallCommitDistance || state.unsupportedState.elapsedFallTime >= settings.fallCommitTime)
+            {
+                state.groundMovementMode = Singletons::CharacterGroundMovementMode::Fall;
+                state.unsupportedState.elapsedFallTime = 0.0f;
+                state.unsupportedState.elapsedFallDistance = 0.0f;
+                state.intent = {};
+            }
+        }
+
+        isGrounded = !isFlying && (state.groundMovementMode == Singletons::CharacterGroundMovementMode::Walk || state.groundMovementMode == Singletons::CharacterGroundMovementMode::Unsupported);
+        if (isGrounded && state.groundMovementMode == Singletons::CharacterGroundMovementMode::Walk)
+        {
+            supportVelocity = state.character->GetGroundVelocity();
+            verticalSpeed = CharacterControllerUtil::GetVerticalSpeed(settings, supportVelocity);
+            commandVelocity = CharacterControllerUtil::ComposeVelocity(settings, planarVelocity, verticalSpeed);
+
+            state.character->SetLinearVelocity(commandVelocity);
+            movementGroundNormal = CharacterControllerUtil::GetWalkSupportNormal(state.character, settings);
         }
 
         const JPH::Vec3 position = state.character->GetPosition();
@@ -1239,12 +1603,23 @@ namespace ECS::Systems
         movementInfo.horizontalVelocity = vec2(actualVelocity.GetX(), actualVelocity.GetZ());
         movementInfo.verticalVelocity = actualVelocity.GetY();
 
-        if (isGrounded)
-            state.groundSnapGraceTimer = settings.groundSnapGraceTime;
-
         if (debugState)
         {
-            CaptureDebugMovement(*debugState, state, settings, position, moveDirection, persistentVelocity, solveVelocity, actualVelocity, movementGroundNormal, speed, isGrounded, snappedToGround || transitionedFromFlyToGround, snappedToGround);
+            CaptureDebugMovement(
+                *debugState,
+                state,
+                settings,
+                position,
+                moveDirection,
+                commandVelocity,
+                solveVelocity,
+                actualVelocity,
+                movementGroundNormal,
+                speed,
+                isGrounded,
+                snappedToGround || transitionedFromFlyToGround,
+                snappedToGround);
+
             DrawDebugMovement(*debugState, state, settings);
         }
 
@@ -1403,7 +1778,8 @@ namespace ECS::Systems
 
         state.intent = {};
         state.activeMotor = Singletons::CharacterMotorType::Ground;
-        state.groundSnapGraceTimer = 0.0f;
+        state.groundMovementMode = Singletons::CharacterGroundMovementMode::Fall;
+        state.unsupportedState = {};
         state.appliedPitch = movementInfo.pitch;
         state.appliedYaw = movementInfo.yaw;
         state.neutralJumpAirControlAvailable = false;
@@ -1468,7 +1844,6 @@ namespace ECS::Systems
 
         CharacterControllerUtil::ResetMovementInput(*state, nullptr);
         state->activeMotor = Singletons::CharacterMotorType::Ground;
-        state->groundSnapGraceTimer = 0.0f;
         state->appliedPitch = 0.0f;
         state->appliedYaw = 0.0f;
         state->neutralJumpAirControlAvailable = false;

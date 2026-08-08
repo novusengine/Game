@@ -18,13 +18,17 @@ namespace Novus
     class Window;
 }
 
+namespace Editor
+{
+    class TerrainEditSession;
+}
+
 struct GLFWwindow;
 struct GLFWimage;
 struct GLFWcursor;
 struct ImGuiStyle;
 class TerrainRenderer;
 class TerrainLoader;
-class TerrainManipulator;
 class TextureRenderer;
 class ModelRenderer;
 class ModelLoader;
@@ -89,8 +93,7 @@ public:
     MapLoader* GetMapLoader() { return _mapLoader; }
     ModelLoader* GetModelLoader() { return _modelLoader; }
     TerrainLoader* GetTerrainLoader() { return _terrainLoader; }
-
-    TerrainManipulator* GetTerrainManipulator() { return _terrainManipulator; }
+    Editor::TerrainEditSession* GetTerrainEditSession() { return _terrainEditSession; }
 
     RenderResources& GetRenderResources() { return _resources; }
     PixelQuery* GetPixelQuery() { return _pixelQuery; }
@@ -150,7 +153,7 @@ private:
     // Sub Renderers
     TerrainRenderer* _terrainRenderer = nullptr;
     TerrainLoader* _terrainLoader = nullptr;
-    TerrainManipulator* _terrainManipulator = nullptr;
+    Editor::TerrainEditSession* _terrainEditSession = nullptr;
 
     TextureRenderer* _textureRenderer = nullptr;
 

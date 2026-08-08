@@ -73,7 +73,7 @@ public:
     void UpdateMaskInfo(u32 index, const vec4& region, u32 textureIndex);
 
     // Public for clip-mask consumers; hash-cached so repeat calls are O(1).
-    u32 LoadTextureByPath(std::string_view path);
+    size_t LoadTextureByPath(std::string_view path);
 
     void AddCanvasPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
@@ -91,8 +91,8 @@ private:
     vec2 PixelPosToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
     vec2 PixelSizeToNDC(const vec2& pixelPosition, const vec2& screenSize) const;
 
-    u32 AddTexture(Renderer::TextureID textureID);
-    u32 LoadTexture(std::string_view path);
+    size_t AddTexture(Renderer::TextureID textureID);
+    size_t LoadTexture(std::string_view path);
 
     // --- Sortkey machinery (see CanvasRenderer.cpp for bit layout) -----------------
     // Resolves the effective priority for this widget (0 = normal, >0 = promoted for focus/drag/etc).
@@ -156,11 +156,11 @@ private:
     Renderer::Font* _font;
     Renderer::SamplerID _sampler;
     Renderer::TextureArrayID _textures;
-    robin_hood::unordered_map<u64, u32> _textureNameHashToIndex;
-    robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToIndex;
+    robin_hood::unordered_map<u64, size_t> _textureNameHashToIndex;
+    robin_hood::unordered_map<Renderer::TextureID::type, size_t> _textureIDToIndex;
 
     Renderer::TextureArrayID _fontTextures;
-    robin_hood::unordered_map<Renderer::TextureID::type, u32> _textureIDToFontTexturesIndex;
+    robin_hood::unordered_map<Renderer::TextureID::type, size_t> _textureIDToFontTexturesIndex;
 
     Renderer::GraphicsPipelineID _widgetPipeline;
     Renderer::GraphicsPipelineID _worldWidgetPipeline;

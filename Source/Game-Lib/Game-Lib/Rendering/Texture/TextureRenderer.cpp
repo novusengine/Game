@@ -146,7 +146,7 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                 GetPipelineForFormat(format);
 
                 // Add textures to array
-                _renderTextureToTextureWorkTextureArrayIndex[i] = _renderer->AddTextureToArray(request.src, _sourceTextures);
+                _renderTextureToTextureWorkTextureArrayIndex[i] = static_cast<u32>(_renderer->AddTextureToArray(request.src, _sourceTextures));
             }
             _renderer->FlushTextureArrayDescriptors(_sourceTextures);
 

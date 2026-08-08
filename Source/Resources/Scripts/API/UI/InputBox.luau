@@ -1,15 +1,61 @@
 local UIButton = require("@src/API/UI/Button");
 local KeyValues = require("@src/API/Input/Input").KeyValues;
+local RootedWidget = require("@src/API/UI/RootedWidget");
 
-local inputBoxAPI = { };
+export type Options =
+{
+    panelTemplate : string?,
+    textTemplate : string?,
+    defaultText : string?,
+    defaultTextFontSize : number?,
+    placeholderText : string?,
+    numericOnly : boolean?,
+    secure : boolean?,
+    multiline : boolean?,
+    textInsetX : number?,
+}
+
+export type InputBox =
+{
+    root : Panel,
+    button : UIButton.Button,
+    text : string,
+    GetText : (self : InputBox) -> string,
+    SetText : (self : InputBox, text : string) -> (),
+    Focus : (self : InputBox) -> (),
+    Unfocus : (self : InputBox) -> (),
+    ForceRefresh : (self : InputBox) -> (),
+    SetAnchor : (self : InputBox, anchor : vec) -> (),
+    SetRelativePoint : (self : InputBox, point : vec) -> (),
+    SetPos : (self : InputBox, position : vec) -> (),
+    SetPosX : (self : InputBox, x : number) -> (),
+    SetPosY : (self : InputBox, y : number) -> (),
+    SetTextVerticallyCentered : (self : InputBox) -> (),
+    SetOnSubmit : (self : InputBox, callback : (InputBox) -> boolean?) -> (),
+    SetOnTab : (self : InputBox, callback : (InputBox) -> ()) -> (),
+    SetOnFocusBegin : (self : InputBox, callback : (InputBox) -> ()) -> (),
+    SetOnFocusEnd : (self : InputBox, callback : (InputBox) -> ()) -> (),
+    SetOnTextChanged : (self : InputBox, callback : (InputBox) -> ()) -> (),
+    SetOnMouseDown : (self : InputBox, callback : MouseEventCallback?) -> (),
+    SetOnMouseUp : (self : InputBox, callback : MouseEventCallback?) -> (),
+    SetOnMouseHeld : (self : InputBox, callback : MouseEventCallback?) -> (),
+}
+
+export type InputBoxAPI =
+{
+    New : (parent : Widget, position : vec, size : vec, layer : integer, options : Options?) -> InputBox,
+}
+
+local inputBoxAPI : InputBoxAPI = { };
 --[[
 usage:
-.NewInputBox(panel, 0, -170, 200, 40, 0, {
+.New(panel, vec.New(0, -170), vec.New(200, 40), 0, {
         panelTemplate = "DialogBox",
         textTemplate = "DefaultButtonText",
         defaultText = "Test",
         numericOnly = true,
         secure = true,
+        multiline = false,
     });
 ]]
 
@@ -37,13 +83,24 @@ local function RefreshText(inputBoxTable)
     local cursorCharPos = cursorPos;
 
     -- Calculate the total width of the text
-    local totalTextWidth, _ = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate);
+    local totalTextWidth = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate).x;
 
     -- Initialize variables for text clipping
     local startCharPos = 0;
     local endCharPos = utf8.len(text);
     local textInsetX = inputBoxTable.textInsetX or 0;
     local maxVisibleWidth = inputBoxTable.inputBoxWidth - textInsetX * 2;
+
+    if inputBoxTable.multiline then
+        if inputBoxTable.cursorBlinkState and not isShowingPlaceholder then
+            local cursorBytePos = GetBytePositionFromCharacterPosition(displayText, cursorPos);
+            displayText = displayText:sub(1, cursorBytePos - 1) .. "|" .. displayText:sub(cursorBytePos);
+        end
+        inputBoxTable.button:SetText(displayText);
+        inputBoxTable.button.text:SetWrapWidth(maxVisibleWidth);
+        inputBoxTable.button.text:SetAlpha(isShowingPlaceholder and 0.55 or 1.0);
+        return;
+    end
 
     -- Handle text clipping based on pixel width
     if totalTextWidth > maxVisibleWidth and not isShowingPlaceholder then
@@ -55,7 +112,7 @@ local function RefreshText(inputBoxTable)
             local charBytePosStart = utf8.offset(text, i);
             local charBytePosEnd = (utf8.offset(text, i + 1) or (#text + 1)) - 1;
             local char = text:sub(charBytePosStart, charBytePosEnd);
-            local charWidth, _ = UI.CalculateTextSize(char, inputBoxTable.textTemplate);
+            local charWidth = UI.CalculateTextSize(char, inputBoxTable.textTemplate).x;
             table.insert(inputBoxTable.charWidths, charWidth);
             table.insert(cumulativeWidths, cumulativeWidth);
             cumulativeWidth = cumulativeWidth + charWidth;
@@ -115,10 +172,10 @@ local function RefreshText(inputBoxTable)
     inputBoxTable.endCharPos = endCharPos;
 
     -- Calculate displayTextWidth using UI.CalculateTextSize
-    local displayTextWidth, _ = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate);
+    local displayTextWidth = UI.CalculateTextSize(displayText, inputBoxTable.textTemplate).x;
 
     -- Get text alignment from inputBoxTable
-    local buttonTextRelativePointX = inputBoxTable.buttonTextRelativePointX or 0.5; -- default to center alignment
+    local buttonTextRelativePointX = inputBoxTable.buttonTextRelativePointX or 0.0;
 
     -- Calculate textStartX based on alignment
     local textStartX = textInsetX + (maxVisibleWidth - displayTextWidth) * buttonTextRelativePointX;
@@ -131,7 +188,7 @@ local function RefreshText(inputBoxTable)
         local charBytePosStart = utf8.offset(displayText, i);
         local charBytePosEnd = (utf8.offset(displayText, i + 1) or (#displayText + 1)) - 1;
         local char = displayText:sub(charBytePosStart, charBytePosEnd);
-        local charWidth, _ = UI.CalculateTextSize(char, inputBoxTable.textTemplate);
+        local charWidth = UI.CalculateTextSize(char, inputBoxTable.textTemplate).x;
         table.insert(inputBoxTable.charPositions, cumulativeWidth);
         cumulativeWidth = cumulativeWidth + charWidth;
     end
@@ -180,30 +237,22 @@ local function SetupInputBoxMethods(inputBoxTable)
     end
 
     inputBoxTable.SetTextVerticallyCentered = function(table)
-        local lineHeight = inputBoxTable.button.text:GetHeight();
-        if (lineHeight <= 0) then
-            local _, fallbackLineHeight = UI.CalculateTextSize("Ag", inputBoxTable.textTemplate);
-            lineHeight = fallbackLineHeight;
-        end
-        local y = math.floor((inputBoxTable.button.panel:GetHeight() - lineHeight) * 0.5);
-        inputBoxTable.textInsetX = 5;
-        inputBoxTable.buttonTextRelativePointX = 0.0;
-        inputBoxTable.button.text:SetAnchor(0.0, 0.0);
-        inputBoxTable.button.text:SetRelativePoint(0.0, 0.0);
-        inputBoxTable.button.text:SetPos(5, y);
+        inputBoxTable.button.text:SetAnchor(vec.New(0.0, 0.5));
+        inputBoxTable.button.text:SetRelativePoint(vec.New(0.0, 0.5));
+        inputBoxTable.button.text:SetPosY(0);
         RefreshText(inputBoxTable);
     end
 
     inputBoxTable.Focus = function(table)
-        UI.FocusWidget(table.button.panel);
+        UI.FocusWidget(table.button.root);
     end
 
     inputBoxTable.Unfocus = function(table)
-        if (not UI.IsFocusedWidget(table.button.panel)) then
+        if (not UI.IsFocusedWidget(table.button.root)) then
             return;
         end
 
-        UI.UnfocusWidget(table.button.panel);
+        UI.UnfocusWidget(table.button.root);
     end
 
     local function FireTextChanged(t)
@@ -310,7 +359,7 @@ local function SetupInputBoxMethods(inputBoxTable)
         if inputBoxTable.onSubmit then
             local shouldUnfocus = inputBoxTable.onSubmit(inputBoxTable) or false;
             if (shouldUnfocus) then
-                UI.UnfocusWidget(inputBoxTable.button.panel);
+                UI.UnfocusWidget(inputBoxTable.button.root);
 
                 inputBoxTable.cursorBlinkState = false;
                 RefreshText(inputBoxTable);
@@ -365,11 +414,11 @@ local function SetupInputBoxMethods(inputBoxTable)
         table.onTextChanged = fn;
     end
 
-    inputBoxTable.SetAnchor = function(table, anchorX, anchorY)
-        table.button:SetAnchor(anchorX, anchorY);
+    inputBoxTable.SetAnchor = function(table, anchor)
+        table.button:SetAnchor(anchor);
     end
-    inputBoxTable.SetRelativePoint = function(table, relativeX, relativeY)
-        table.button:SetRelativePoint(relativeX, relativeY);
+    inputBoxTable.SetRelativePoint = function(table, point)
+        table.button:SetRelativePoint(point);
     end
 
     inputBoxTable.GetPos = function(table)
@@ -382,8 +431,8 @@ local function SetupInputBoxMethods(inputBoxTable)
         return table.button:GetPosY();
     end
 
-    inputBoxTable.SetPos = function(table, x, y)
-        table.button:SetPos(x, y);
+    inputBoxTable.SetPos = function(table, position)
+        table.button:SetPos(position);
     end
     inputBoxTable.SetPosX = function(table, x)
         table.button:SetPosX(x);
@@ -399,7 +448,7 @@ local function SetupInputBoxMethods(inputBoxTable)
     return inputBoxTable;
 end
 
-function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputBoxTemplateTable)
+function inputBoxAPI.New(parent : Widget, position : vec, size : vec, layer : integer, inputBoxTemplateTable : Options?)
     local inputBoxTable = {};
 
     inputBoxTemplateTable = inputBoxTemplateTable or {};
@@ -421,33 +470,46 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
     inputBoxTable.onFocusBegin = nil;
     inputBoxTable.onFocusEnd = nil;
 
-    -- Store input box width for alignment calculations
-    inputBoxTable.inputBoxWidth = sizeX;
-
     inputBoxTable.numericOnly = inputBoxTemplateTable["numericOnly"] or false;
     inputBoxTable.secure = inputBoxTemplateTable["secure"] or false;
+    inputBoxTable.multiline = inputBoxTemplateTable["multiline"] or false;
 
-    inputBoxTable.button = UIButton.NewButton(parent, posX, posY, sizeX, sizeY, layer, {
+    -- Store input box dimensions and text layout defaults before the first text refresh.
+    inputBoxTable.inputBoxWidth = size.x;
+    inputBoxTable.textInsetX = inputBoxTemplateTable["textInsetX"] or (inputBoxTable.multiline and 6 or 5);
+    inputBoxTable.buttonTextRelativePointX = 0.0;
+
+    inputBoxTable.button = UIButton.New(parent, position, size, layer, {
         panelTemplate = panelTemplate,
         textTemplate = textTemplate
     });
 
-    -- Aliased so LayoutCommon's proxy walker (which looks for a {_raw,_layout} child) finds the button's panel.
-    inputBoxTable.inputBox = inputBoxTable.button.panel;
+    inputBoxTable.root = inputBoxTable.button.root;
+    RootedWidget.Attach(inputBoxTable);
     inputBoxTable.button:SetText(defaultText);
     if defaultTextFontSize then
         inputBoxTable.button:SetFontSize(defaultTextFontSize);
     end
     inputBoxTable.button:SetFocusable(true);
 
-    local buttonText = inputBoxTable.button.text;
-
-    inputBoxTable.button.text:SetAnchor(0.0, 0.0);
-    inputBoxTable.button.text:SetRelativePoint(0.0, 0.0);
-    inputBoxTable.button.text:SetPos(5, 0);
-    inputBoxTable.buttonTextRelativePointX = buttonText:GetRelativePoint();
+    if inputBoxTable.multiline then
+        inputBoxTable.button.root:SetClipChildren(true);
+        inputBoxTable.button.text:SetAnchor(vec.New(0.0, 1.0));
+        inputBoxTable.button.text:SetRelativePoint(vec.New(0.0, 1.0));
+        inputBoxTable.button.text:SetPos(vec.New(inputBoxTable.textInsetX, -6));
+    else
+        inputBoxTable.button.text:SetAnchor(vec.New(0.0, 0.5));
+        inputBoxTable.button.text:SetRelativePoint(vec.New(0.0, 0.5));
+        inputBoxTable.button.text:SetPos(vec.New(inputBoxTable.textInsetX, 0));
+    end
 
     inputBoxTable.button:SetOnMouseDown(function(eventID, widget, button, mouseX, mouseY)
+        if inputBoxTable.multiline then
+            inputBoxTable.cursorPos = utf8.len(inputBoxTable.text);
+            RefreshText(inputBoxTable);
+            return;
+        end
+
         local buttonWorldPosX = inputBoxTable.button:GetWorldPosX();
         local localX = mouseX - buttonWorldPosX;
 
@@ -517,17 +579,22 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     inputBoxTable.button:SetOnKeyboard(function(widget, eventID, ...)
         if (eventID == UIKeyboardEvent.Key) then
-            local keyID, action = ...;
+            local keyID, action, modifiers = ...;
 
             local isPressed = action == InputPhase.Pressed;
             local isRepeated = action == InputPhase.Repeated;
+            local isShiftPressed = integer.btest(modifiers or InputModifier.None, InputModifier.Shift);
 
             if (isPressed) then
                 if (keyID == KeyValues.ESCAPE) then
                     inputBoxTable:Unfocus();
                     return true;
                 elseif (keyID == KeyValues.ENTER) then
-                    inputBoxTable:Submit();
+                    if inputBoxTable.multiline and not isShiftPressed then
+                        inputBoxTable:AddUnicodeToInput(10);
+                    else
+                        inputBoxTable:Submit();
+                    end
                     return true;
                 elseif (keyID == KeyValues.TAB) then
                     inputBoxTable.Tab();
@@ -558,7 +625,7 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
             end
         elseif (eventID == UIKeyboardEvent.Unicode) then
             local unicode = ...;
-            inputBoxTable:AddUnicodeToInput(unicode);
+            inputBoxTable:AddUnicodeToInput(integer.tonumber(unicode));
             return true;
         end
         
@@ -569,7 +636,6 @@ function inputBoxAPI.NewInputBox(parent, posX, posY, sizeX, sizeY, layer, inputB
 
     -- Call RefreshText to initialize startCharPos and endCharPos
     RefreshText(inputBoxTable);
-    inputBoxTable:SetTextVerticallyCentered();
 
     return inputBoxTable;
 end

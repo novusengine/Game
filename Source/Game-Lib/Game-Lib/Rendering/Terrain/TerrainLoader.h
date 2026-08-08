@@ -4,12 +4,14 @@
 #include <Base/Container/SafeUnorderedMap.h>
 
 #include <Filesystem/Core/File.h>
+#include <FileFormat/Shared.h>
 
 #include <enkiTS/TaskScheduler.h>
 #include <robinhood/robinhood.h>
 #include <type_safe/strong_typedef.hpp>
 
 #include <memory>
+#include <vector>
 
 class ModelLoader;
 class LiquidLoader;
@@ -39,6 +41,15 @@ public:
         uvec2 chunkGridEndPos = uvec2(0, 0);
     };
 
+    struct LoadedChunkView
+    {
+    public:
+        Map::Chunk* chunk = nullptr;
+        u32 chunkID = Terrain::CHUNK_INVALID_ID;
+        u32 rendererChunkIndex = std::numeric_limits<u32>::max();
+        u64 revision = 0;
+    };
+
 private:
     struct LoadRequestInternal
     {
@@ -63,9 +74,13 @@ private:
     struct ChunkInfo
     {
     public:
+        // The PACT-backed chunk remains immutable. Editing uses a copy-on-write working
+        // chunk so explicit save and future recovery can snapshot a stable revision.
         Map::Chunk* chunk = nullptr;
+        std::shared_ptr<Map::Chunk> editableChunk;
         std::shared_ptr<Bytebuffer> buffer;
         std::shared_ptr<PACT::PactFileHandle> fileHandle;
+        u64 revision = 0;
     };
 
 public:
@@ -81,6 +96,12 @@ public:
     f32 GetLoadingProgress() const;
 
     const std::string& GetCurrentMapInternalName() { return _currentMapInternalName; }
+
+    u64 GetContentGeneration() const { return _contentGeneration.load(std::memory_order_relaxed); }
+    void GetLoadedChunks(std::vector<LoadedChunkView>& outChunks) const;
+    bool GetEditableChunk(u32 chunkID, LoadedChunkView& outChunk);
+    bool MarkChunkEdited(u32 chunkID);
+    bool SaveEditableChunks(const std::vector<u32>& chunkIDs, std::vector<u32>& outSavedChunkIDs);
 
 private:
     void LoadPartialMapRequest(const LoadRequestInternal& request);
@@ -105,5 +126,6 @@ private:
     robin_hood::unordered_map<u32, u32> _chunkIDToBodyID;
     robin_hood::unordered_map<u32, ChunkInfo> _chunkIDToChunkInfo;
 
-    std::mutex _chunkLoadingMutex;
+    mutable std::mutex _chunkLoadingMutex;
+    std::atomic<u64> _contentGeneration = 1;
 };

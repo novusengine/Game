@@ -197,10 +197,7 @@ void Application::Cleanup()
         }
 
         i32 clientDBSaveMethod = CVAR_ClientDBSaveMethod.Get();
-        if (clientDBSaveMethod == 2
-            && _assetWriter
-            && enttRegistries->dbRegistry
-            && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
+        if (clientDBSaveMethod == 2 && _assetWriter && enttRegistries->dbRegistry && enttRegistries->dbRegistry->ctx().contains<ECS::Singletons::ClientDBSingleton>())
             SaveCDB();
     }
 

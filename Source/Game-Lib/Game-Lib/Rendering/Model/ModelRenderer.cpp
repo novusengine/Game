@@ -416,6 +416,7 @@ void ModelRenderer::Update(f32 deltaTime)
                     ZoneScopedN("Read Model Texture From PACT");
                     if (pactStorage->ReadFile(textureLoad.textureHash, fileHandle) != PACT::PactReadResult::Success)
                         continue;
+
                     numTexturePactReads++;
                 }
 
@@ -423,10 +424,12 @@ void ModelRenderer::Update(f32 deltaTime)
                 textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
                 textureDesc.size = fileHandle.GetSize();
 
+                size_t textureArrayIndex = 0;
                 Renderer::TextureID textureID;
                 {
                     ZoneScopedN("Upload Model Texture To Array");
-                    textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureUnit.textureIds[textureLoad.textureIndex]);
+                    textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, textureArrayIndex);
+                    textureUnit.textureIds[textureLoad.textureIndex] = static_cast<u32>(textureArrayIndex);
                 }
                 NC_ASSERT(textureUnit.textureIds[textureLoad.textureIndex] < Renderer::Settings::MAX_TEXTURES, "ModelRenderer : LoadModel overflowed the {0} textures we have support for", Renderer::Settings::MAX_TEXTURES);
 
@@ -508,7 +511,7 @@ void ModelRenderer::Update(f32 deltaTime)
                 continue;
 
             DisplayInfoManifest& displayInfoManifest = displayInfoManifests->at(instanceManifest.displayInfoPacked);
-            u32 textureArrayIndex = changeSkinTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeSkinTextureRequest.textureID, _textures);
+            size_t textureArrayIndex = changeSkinTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeSkinTextureRequest.textureID, _textures);
 
             for (u64 textureUnitAddress : displayInfoManifest.skinTextureUnits)
             {
@@ -516,7 +519,7 @@ void ModelRenderer::Update(f32 deltaTime)
                 u32 textureIndex = (textureUnitAddress >> 32) & 0xFFFFFFFF;
 
                 TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
-                textureUnit.textureIds[textureIndex] = textureArrayIndex;
+                textureUnit.textureIds[textureIndex] = static_cast<u32>(textureArrayIndex);
                 
                 _textureUnits.SetDirtyElement(textureUnitOffset);
             }
@@ -539,7 +542,7 @@ void ModelRenderer::Update(f32 deltaTime)
                 continue;
 
             DisplayInfoManifest& displayInfoManifest = displayInfoManifests->at(instanceManifest.displayInfoPacked);
-            u32 textureArrayIndex = changeHairTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeHairTextureRequest.textureID, _textures);
+            size_t textureArrayIndex = changeHairTextureRequest.textureID == Renderer::TextureID::Invalid() ? 0 : _renderer->AddTextureToArray(changeHairTextureRequest.textureID, _textures);
 
             for (u64 textureUnitAddress : displayInfoManifest.hairTextureUnits)
             {
@@ -547,7 +550,7 @@ void ModelRenderer::Update(f32 deltaTime)
                 u32 textureIndex = (textureUnitAddress >> 32) & 0xFFFFFFFF;
 
                 TextureUnit& textureUnit = _textureUnits[textureUnitOffset];
-                textureUnit.textureIds[textureIndex] = textureArrayIndex;
+                textureUnit.textureIds[textureIndex] = static_cast<u32>(textureArrayIndex);
                 
                 _textureUnits.SetDirtyElement(textureUnitOffset);
             }
@@ -1823,20 +1826,27 @@ void ModelRenderer::Reserve(const ReserveInfo& reserveInfo)
     }
 }
 
-Renderer::TextureID ModelRenderer::LoadTexture(const std::string& path, u32& arrayIndex)
+Renderer::TextureID ModelRenderer::LoadTexture(const std::string& path, size_t& arrayIndex)
 {
     ZoneScopedN("ModelRenderer::LoadTexture");
 
     u64 textureHash = Util::AssetPath::Hash(path);
-    PACT::PactFileHandle fileHandle;
-    if (ServiceLocator::GetPactStorage()->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
-        return Renderer::TextureID::Invalid();
 
-    Renderer::DataTextureDesc textureDesc;
-    textureDesc.hash = textureHash;
-    textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
-    textureDesc.size = fileHandle.GetSize();
-    return _renderer->LoadDataTextureIntoArray(textureDesc, _textures, arrayIndex);
+    Renderer::TextureID textureID = Renderer::TextureID::Invalid();
+    if (!_renderer->TryFindExistingTextureInArray(_textures, textureHash, arrayIndex, textureID))
+    {
+        PACT::PactFileHandle fileHandle;
+        if (ServiceLocator::GetPactStorage()->ReadFile(textureHash, fileHandle) != PACT::PactReadResult::Success)
+            return Renderer::TextureID::Invalid();
+
+        Renderer::DataTextureDesc textureDesc;
+        textureDesc.hash = textureHash;
+        textureDesc.data = reinterpret_cast<const u8*>(fileHandle.GetData());
+        textureDesc.size = fileHandle.GetSize();
+        textureID = _renderer->LoadDataTextureIntoArray(textureDesc, _textures, arrayIndex);
+    }
+
+    return textureID;
 }
 
 u32 ModelRenderer::CommitPreparedModel(const ModelLoading::PreparedRenderModel& preparedModel)
@@ -2689,7 +2699,7 @@ void ModelRenderer::ReplaceTextureUnits(entt::entity entityID, u32 modelID, Mode
                                 Renderer::TextureID hairTextureID;
                                 if (ECSUtil::UnitCustomization::GetHairTexture(unitCustomizationSingleton, unitRace, gender, creatureDisplayInfoExtra->hairStyleID, creatureDisplayInfoExtra->hairColorID, hairTextureID))
                                 {
-                                    _textureUnits[textureUnitOffset].textureIds[j] = _renderer->AddTextureToArray(hairTextureID, _textures);
+                                    _textureUnits[textureUnitOffset].textureIds[j] = static_cast<u32>(_renderer->AddTextureToArray(hairTextureID, _textures));
                                 }
                             }
                         }
@@ -3142,7 +3152,7 @@ void ModelRenderer::CreatePermanentResources()
     dataTextureDesc.data = new u8[4]{ 200, 200, 200, 255 };
     dataTextureDesc.debugName = "Model DebugTexture";
 
-    u32 arrayIndex = 0;
+    size_t arrayIndex = 0;
     _renderer->CreateDataTextureIntoArray(dataTextureDesc, _textures, arrayIndex);
 
 
