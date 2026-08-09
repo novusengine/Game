@@ -23,6 +23,7 @@
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
 #include "Game-Lib/Rendering/Model/DisplayResolver.h"
+#include "Game-Lib/Rendering/Model/ModelParameterOverrides.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Terrain/TerrainLoader.h"
 #include "Game-Lib/Util/AssetPath.h"
@@ -56,6 +57,7 @@
 #include <filesystem>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -79,6 +81,11 @@ namespace
             return static_cast<char>(std::tolower(character));
         });
         return Util::AssetPath::Hash(normalized);
+    }
+
+    u64 ModelParameterNameHash(std::string_view name)
+    {
+        return XXHash64::hash(name.data(), name.size(), 0);
     }
 }
 
@@ -1009,6 +1016,8 @@ void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     EnableGroupForModel(modelComponent, groupID);
+    if (ModelRendering::UseMeshletModelRenderer())
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, true);
 }
 
 void ModelLoader::EnableGroupForModel(const ECS::Components::Model& model, u32 groupID)
@@ -1029,6 +1038,8 @@ void ModelLoader::DisableGroupForEntity(entt::entity entity, u32 groupID)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableGroupForModel(modelComponent, groupID);
+    if (ModelRendering::UseMeshletModelRenderer())
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, groupID, false);
 }
 
 void ModelLoader::DisableGroupForModel(const ECS::Components::Model& model, u32 groupID)
@@ -1049,6 +1060,17 @@ void ModelLoader::DisableGroupsForEntity(entt::entity entity, u32 groupIDStart, 
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableGroupsForModel(modelComponent, groupIDStart, groupIDEnd);
+    if (ModelRendering::UseMeshletModelRenderer())
+    {
+        ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
+        const u32 lastGroupID = groupIDEnd == 0 ? groupIDStart : groupIDEnd;
+        for (u32 groupID = groupIDStart;; ++groupID)
+        {
+            bridge->SetGeometryGroupEnabled(entity, groupID, false);
+            if (groupID == lastGroupID)
+                break;
+        }
+    }
 }
 
 void ModelLoader::DisableGroupsForModel(const ECS::Components::Model& model, u32 groupIDStart, u32 groupIDEnd)
@@ -1069,6 +1091,12 @@ void ModelLoader::DisableAllGroupsForEntity(entt::entity entity)
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     DisableAllGroupsForModel(modelComponent);
+    if (ModelRendering::UseMeshletModelRenderer())
+    {
+        ModelScene::ModelSceneBridge* bridge = ServiceLocator::GetGameRenderer()->GetModelSceneBridge();
+        bridge->SetAllGeometryGroups(entity, false);
+        bridge->SetGeometryGroupEnabled(entity, 0, true);
+    }
 }
 
 void ModelLoader::DisableAllGroupsForModel(const ECS::Components::Model& model)
@@ -1088,6 +1116,16 @@ void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::Texture
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetSkinTextureForModel(modelComponent, textureID);
+    if (ModelRendering::UseMeshletModelRenderer())
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
+        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
+        const ModelScene::ModelInstanceGPURecord* record = scene->GetModelInstance(instance);
+        if (record)
+            gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("Skin"), textureID);
+    }
 }
 
 void ModelLoader::SetSkinTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
@@ -1107,6 +1145,16 @@ void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::Texture
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
     SetHairTextureForModel(modelComponent, textureID);
+    if (ModelRendering::UseMeshletModelRenderer())
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
+        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
+        const ModelScene::ModelInstanceGPURecord* record = scene->GetModelInstance(instance);
+        if (record)
+            gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("CharacterHair"), textureID);
+    }
 }
 
 void ModelLoader::SetHairTextureForModel(const ECS::Components::Model& model, Renderer::TextureID textureID)
@@ -1690,6 +1738,8 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
 
         if (request.type == LoadRequestType::DisplayID && scene->IsPending(sceneInstance))
         {
+            scene->SetAllGeometryGroups(sceneInstance, false);
+            scene->SetGeometryGroupEnabled(sceneInstance, 0, true);
             const auto displayInfoType = static_cast<Database::Unit::DisplayInfoType>((request.extraData1 >> 32u) & 0x7u);
             const u32 displayID = static_cast<u32>(request.extraData1);
             const u8 modelVariant = static_cast<u8>((request.extraData1 >> 35u) & 0x3Fu);

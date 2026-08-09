@@ -132,6 +132,16 @@ namespace MaterialLoading
         return arrayIndex;
     }
 
+    u32 MaterialTextureRegistry::Resolve(Renderer::TextureID textureID)
+    {
+        if (textureID == Renderer::TextureID::Invalid())
+            return _fallbackTextureIndex;
+
+        const u32 arrayIndex = _renderer->AddTextureToArray(textureID, _textureArray);
+        _descriptorsDirty = true;
+        return arrayIndex;
+    }
+
     void MaterialTextureRegistry::FlushDescriptors()
     {
         if (!_descriptorsDirty)

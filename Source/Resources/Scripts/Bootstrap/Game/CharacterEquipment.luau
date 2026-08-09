@@ -67,6 +67,8 @@ local UI_CONSTANTS =
     MAIN_PANEL_TEMPLATE = "CharacterEquipmentMainPanel",
     UNIT_INFO_PANEL_TEMPLATE = "CharacterEquipmentUnitInfoPanel",
     STAT_INFO_PANEL_TEMPLATE = "CharacterEquipmentStatInfoPanel",
+    PREVIEW_WIDTH = 152,
+    PREVIEW_HEIGHT = 235,
 
     SLOT_SPACING = 5,
     SIDE_MARGIN = 5,
@@ -472,6 +474,37 @@ local function CreateStatsPanel(mainPanel : Panel, unitID : number)
     RefreshStatsPanel()
 end
 
+local function CreateUnitPreview(mainPanel : Panel, unitID : number)
+    local previewCanvas = UI.GetCanvas("CharacterEquipmentPreview", 0, 0, UI_CONSTANTS.PREVIEW_WIDTH * 2, UI_CONSTANTS.PREVIEW_HEIGHT * 2, true)
+    local previewPanel = mainPanel:NewPanel(74.0, 175.0, UI_CONSTANTS.PREVIEW_WIDTH, UI_CONSTANTS.PREVIEW_HEIGHT, UI_CONSTANTS.PANEL_LAYER)
+    previewPanel:SetBackground(previewCanvas)
+    previewPanel:SetEnabled(true)
+    UI.SetUnitPreview(previewCanvas, unitID)
+
+    local dragging = false
+    local lastX = 0
+    local lastY = 0
+    previewPanel:SetOnMouseDown(function(_, _, button, mouseX, mouseY)
+        if button ~= 0 then
+            return
+        end
+        dragging = true
+        lastX = mouseX
+        lastY = mouseY
+    end)
+    previewPanel:SetOnMouseHeld(function(_, _, mouseX, mouseY)
+        if not dragging then
+            return
+        end
+        UI.OrbitUnitPreview(mouseX - lastX, mouseY - lastY)
+        lastX = mouseX
+        lastY = mouseY
+    end)
+    previewPanel:SetOnMouseUp(function()
+        dragging = false
+    end)
+end
+
 local function CreateEquipmentBag(numSlots : number, containerItems : ContainerItemEventData, isBaseContainer : boolean)
     local canvas = UI.GetCanvas("CharacterEquipment", 0, 0, 1920, 1080); -- TODO: We don't want to hardcode the reference resolution here
 
@@ -493,6 +526,7 @@ local function CreateEquipmentBag(numSlots : number, containerItems : ContainerI
 
         if (isBaseContainer) then
             CreateUnitInfoPanel(mainPanel, unitID)
+            CreateUnitPreview(mainPanel, unitID)
             CreateStatsPanel(mainPanel, unitID)
         end
     end, OnBagEvent)

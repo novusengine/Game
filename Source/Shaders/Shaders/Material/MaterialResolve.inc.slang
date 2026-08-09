@@ -10,6 +10,7 @@ struct Constants
 {
     float4 renderInfo;
     uint resourceIndex;
+    uint viewIndex;
     uint tileCapacity;
     uint tilesX;
     uint debugMode;
@@ -56,7 +57,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 
     ReconstructedModelPixel pixel;
     if (!ReconstructModelPixel(UnpackTypedVisibility(visibility), float2(pixelPos) + 0.5f,
-                               _constants.renderInfo.xy, 0u, _constants.resourceIndex, pixel))
+                               _constants.renderInfo.xy, _constants.viewIndex, _constants.resourceIndex, pixel))
         return;
     MaterialInstanceRecord instance = _materialInstances[pixel.materialInstanceIndex];
     MaterialRecord material = _materials[instance.materialIndex];

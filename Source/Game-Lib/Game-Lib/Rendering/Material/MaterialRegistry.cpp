@@ -180,6 +180,17 @@ namespace MaterialLoading
             _storage->GetFallbackMaterialInstance();
     }
 
+    RenderAssets::MaterialInstanceHandle MaterialRegistry::DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureRuntimeOverride> overrides)
+    {
+        std::vector<MaterialTextureOverride> resolved;
+        resolved.reserve(overrides.size());
+        for (const MaterialTextureRuntimeOverride& overrideValue : overrides)
+            resolved.push_back({.textureSlot = overrideValue.textureSlot, .textureIndex = _textureRegistry->Resolve(overrideValue.textureID)});
+
+        RenderAssets::MaterialInstanceHandle handle;
+        return _storage->DeriveMaterialInstance(base, resolved, handle) ? handle : _storage->GetFallbackMaterialInstance();
+    }
+
     bool MaterialRegistry::AppendDefaultMaterialTable(std::span<const FileFormat::Model::MaterialSlot> materialSlots, u32& outOffset)
     {
         ZoneScopedN("MaterialRegistry::AppendDefaultMaterialTable");

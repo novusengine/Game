@@ -30,7 +30,7 @@ namespace ModelPipeline
                      const RenderScenes::RenderView& view, const ModelView::ModelViewWorkResources& work,
                      const ModelLoading::ModelGeometryStorage& geometry,
                      const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene,
-                     u8 frameIndex);
+                     u8 frameIndex, u8 phase = 0);
 
       private:
         struct FrameBindings
@@ -64,6 +64,7 @@ namespace ModelPipeline
         Renderer::GraphicsPipelineID _twoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _alphaTestOneSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
         Renderer::GraphicsPipelineID _alphaTestTwoSidedPipeline = Renderer::GraphicsPipelineID::Invalid();
+        Renderer::GraphicsPipelineID _cullReasonDebugPipeline = Renderer::GraphicsPipelineID::Invalid();
         Bindings _bindings;
         u32 _queueGeneration = 0;
     };

@@ -68,6 +68,9 @@ namespace Scripting::UI
         static i32 GetMousePos(Zenith* zenith);
         static i32 GetTextureSize(Zenith* zenith);
         static i32 IsSmoothUnitFrameBarsEnabled(Zenith* zenith);
+        static i32 SetUnitPreview(Zenith* zenith);
+        static i32 OrbitUnitPreview(Zenith* zenith);
+        static i32 BeginUnitPreviewDevelopmentGallery(Zenith* zenith);
 
         // Utils
         static i32 PixelsToTexCoord(Zenith* zenith);
@@ -143,6 +146,9 @@ namespace Scripting::UI
         // Utils
         { "GetTextureSize", UIHandler::GetTextureSize },
         { "IsSmoothUnitFrameBarsEnabled", UIHandler::IsSmoothUnitFrameBarsEnabled },
+        { "SetUnitPreview", UIHandler::SetUnitPreview },
+        { "OrbitUnitPreview", UIHandler::OrbitUnitPreview },
+        { "BeginUnitPreviewDevelopmentGallery", UIHandler::BeginUnitPreviewDevelopmentGallery, Scripting::LuaMethodFlags::DeveloperOnly }, // Temporary Phase 11 bring-up helper.
         { "PixelsToTexCoord", UIHandler::PixelsToTexCoord },
         { "CalculateTextSize", UIHandler::CalculateTextSize },
         { "WrapText", UIHandler::WrapText },

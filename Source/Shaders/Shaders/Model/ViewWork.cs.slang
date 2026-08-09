@@ -14,6 +14,7 @@ struct Constants
     float lodHysteresis;
     uint resetHistory;
     uint resourceIndex;
+    uint showCullReasons;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -30,6 +31,8 @@ struct Constants
 [[vk::binding(12, PER_PASS)]] RWStructuredBuffer<uint> _workStats0;
 [[vk::binding(13, PER_PASS)]] RWStructuredBuffer<ModelMeshletChunk> _chunkQueue1;
 [[vk::binding(14, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
+[[vk::binding(15, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility0;
+[[vk::binding(16, PER_PASS)]] RWStructuredBuffer<uint> _instanceVisibility1;
 
 void AddStat(uint index, uint value)
 {
@@ -49,14 +52,27 @@ void StoreChunk(uint index, ModelMeshletChunk chunk)
     else _chunkQueue1[index] = chunk;
 }
 
+void MarkInstanceVisible(uint instanceIndex)
+{
+    uint wordIndex = instanceIndex >> 5u;
+    uint bit = 1u << (instanceIndex & 31u);
+    if (_constants.resourceIndex == 0u) InterlockedOr(_instanceVisibility0[wordIndex], bit);
+    else InterlockedOr(_instanceVisibility1[wordIndex], bit);
+}
+
 uint SelectLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord instance, Camera camera, uint meshIndex,
                uint lodHistoryOffset)
 {
+    uint historyIndex = lodHistoryOffset + meshIndex;
     if (_constants.forcedLOD >= 0)
-        return min(uint(_constants.forcedLOD), mesh.numLODs - 1u);
+    {
+        uint selected = min(uint(_constants.forcedLOD), mesh.numLODs - 1u);
+        _lodHistory[historyIndex] = selected;
+        return selected;
+    }
 
     float4 sphere = TransformSphere(mesh.bounds.center, mesh.bounds.sphereRadius, instance.currentWorld);
-    float distanceToEye = max(length(sphere.xyz - camera.eyePosition.xyz) - sphere.w, 0.001f);
+    float distanceToEye = max(length(sphere.xyz - camera.cullingEyePosition.xyz) - sphere.w, 0.001f);
     float projectionScale = 0.5f * _constants.viewportHeight * abs(camera.viewToClip[1][1]) /
                             distanceToEye * MaxWorldScale(instance.currentWorld);
     uint selected = 0u;
@@ -70,7 +86,6 @@ uint SelectLOD(ModelMesh mesh, ModelRecord model, ModelInstanceRecord instance, 
         }
     }
 
-    uint historyIndex = lodHistoryOffset + meshIndex;
     uint previous = _constants.resetHistory != 0u ? INVALID_LOD_HISTORY : _lodHistory[historyIndex];
     if (previous < mesh.numLODs && previous != selected)
     {
@@ -115,12 +130,13 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
 
     ModelRecord model = _modelRecords[instance.modelIndex];
     Camera camera = _cameras[_constants.viewIndex];
-    if (!ModelSphereInsideFrustum(camera, TransformSphere(model.bounds.center, model.bounds.sphereRadius,
-                                                           instance.currentWorld)))
+    float4 worldBounds = TransformSphere(model.bounds.center, model.bounds.sphereRadius, instance.currentWorld);
+    if (_constants.showCullReasons == 0u && !ModelSphereInsideFrustum(camera, worldBounds))
     {
         AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;
     }
+    MarkInstanceVisible(input.instanceIndex);
 
     for (uint meshIndex = 0u; meshIndex < model.numMeshes; ++meshIndex)
     {
@@ -168,7 +184,7 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
             AddStat(MODEL_WORK_STAT_EXPANDED_CHUNKS, numChunks, chunkBase);
             uint committedChunks = min(numChunks, _constants.queueCapacity - min(chunkBase, _constants.queueCapacity));
             if (committedChunks < numChunks)
-                AddStat(MODEL_WORK_STAT_QUEUE_OVERFLOWS, numChunks - committedChunks);
+                AddStat(MODEL_WORK_STAT_CHUNK_QUEUE_OVERFLOWS, numChunks - committedChunks);
 
             for (uint localChunk = 0u; localChunk < committedChunks; ++localChunk)
             {
@@ -182,10 +198,10 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
                     (rasterClass << MODEL_CHUNK_RASTER_CLASS_SHIFT) |
                     (localLOD << MODEL_CHUNK_LOD_SHIFT) |
                     (submeshIndex << MODEL_CHUNK_SUBMESH_SHIFT);
-                chunk.positionBase = model.positionBase + lod.vertexOffset;
-                chunk.vertexAttributeBase = model.vertexAttributeBase + lod.vertexAttributeOffset;
-                chunk.meshletVertexIndexBase = model.meshletVertexIndexBase;
-                chunk.meshletTriangleBase = model.meshletTriangleBase;
+                chunk.lodHistoryIndex = input.lodHistoryOffset + meshIndex;
+                chunk.reserved0 = 0u;
+                chunk.reserved1 = 0u;
+                chunk.reserved2 = 0u;
                 StoreChunk(chunkBase + localChunk, chunk);
             }
         }

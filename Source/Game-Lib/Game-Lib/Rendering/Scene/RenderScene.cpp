@@ -166,7 +166,11 @@ namespace RenderScenes
             table = privateTable;
         }
 
-        return _materialTables.SetMaterial(table, slot, material);
+        if (!_materialTables.SetMaterial(table, slot, material))
+            return false;
+
+        RequestModelHistoryClear(handle);
+        return true;
     }
 
     bool RenderScene::SetModelMaterials(ModelInstanceHandle handle,
@@ -197,6 +201,7 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        RequestModelHistoryClear(handle);
         return true;
     }
 
@@ -218,19 +223,28 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        RequestModelHistoryClear(handle);
         return true;
     }
 
     bool RenderScene::SetGeometryGroupEnabled(ModelInstanceHandle handle, u32 groupID, bool enabled)
     {
         const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
-        return resources && _geometryGroupMasks.SetEnabled(resources->geometryGroupMask, groupID, enabled);
+        if (!resources || !_geometryGroupMasks.SetEnabled(resources->geometryGroupMask, groupID, enabled))
+            return false;
+
+        RequestModelHistoryClear(handle);
+        return true;
     }
 
     bool RenderScene::SetAllGeometryGroups(ModelInstanceHandle handle, bool enabled)
     {
         const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
-        return resources && _geometryGroupMasks.SetAll(resources->geometryGroupMask, enabled);
+        if (!resources || !_geometryGroupMasks.SetAll(resources->geometryGroupMask, enabled))
+            return false;
+
+        RequestModelHistoryClear(handle);
+        return true;
     }
 
     SceneClearRequests RenderScene::GetPendingClearRequests() const
@@ -275,6 +289,13 @@ namespace RenderScenes
     RenderSceneStats RenderScene::GetStats() const
     {
         return { _instances.GetStats(), _materialTables.GetStats(), _geometryGroupMasks.GetStats(), _meshletHistory.GetStats() };
+    }
+
+    void RenderScene::RequestModelHistoryClear(ModelInstanceHandle handle)
+    {
+        const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+        if (resources)
+            _meshletHistory.RequestClear(resources->meshletHistory);
     }
 
     ModelMaterialTableHandle RenderScene::AcquireDefaultMaterialTable(RenderAssets::ModelHandle model) const

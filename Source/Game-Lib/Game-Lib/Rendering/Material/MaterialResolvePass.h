@@ -24,7 +24,8 @@ namespace MaterialRendering
       public:
         MaterialResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
 
-        bool Upload(const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
+        bool Upload(const RenderScenes::RenderView& view, const ModelView::ModelViewWorkResources& work,
+                    MaterialResolveResources& resources,
                     const ModelLoading::ModelGeometryStorage& geometry,
                     const RenderScenes::RenderScene& scene);
         void AddClassificationPass(Renderer::RenderGraph* renderGraph, RenderResources& renderResources,

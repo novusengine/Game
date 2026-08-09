@@ -12,6 +12,7 @@ struct Constants
     float lodHysteresis;
     uint resetHistory;
     uint resourceIndex;
+    uint showCullReasons;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -19,6 +20,8 @@ struct Constants
 [[vk::binding(15, PER_PASS)]] RWStructuredBuffer<uint> _indirectArguments0;
 [[vk::binding(16, PER_PASS)]] RWStructuredBuffer<uint> _workStats1;
 [[vk::binding(17, PER_PASS)]] RWStructuredBuffer<uint> _indirectArguments1;
+[[vk::binding(18, PER_PASS)]] RWStructuredBuffer<uint> _survivorArguments0;
+[[vk::binding(19, PER_PASS)]] RWStructuredBuffer<uint> _survivorArguments1;
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -38,6 +41,11 @@ void main()
                 (count + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) / MODEL_MESH_DISPATCH_MAX_GROUPS_X;
             _indirectArguments0[offset + MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
         }
+        uint survivorCount = min(_workStats0[MODEL_WORK_STAT_SURVIVOR_COUNT], _constants.queueCapacity);
+        _workStats0[MODEL_WORK_STAT_SURVIVOR_COUNT] = survivorCount;
+        _survivorArguments0[0] = (survivorCount + 63u) / 64u;
+        _survivorArguments0[1] = 1u;
+        _survivorArguments0[2] = 1u;
     }
     else
     {
@@ -53,5 +61,10 @@ void main()
                 (count + MODEL_MESH_DISPATCH_MAX_GROUPS_X - 1u) / MODEL_MESH_DISPATCH_MAX_GROUPS_X;
             _indirectArguments1[offset + MODEL_DISPATCH_ARGUMENT_Z] = count == 0u ? 0u : 1u;
         }
+        uint survivorCount = min(_workStats1[MODEL_WORK_STAT_SURVIVOR_COUNT], _constants.queueCapacity);
+        _workStats1[MODEL_WORK_STAT_SURVIVOR_COUNT] = survivorCount;
+        _survivorArguments1[0] = (survivorCount + 63u) / 64u;
+        _survivorArguments1[1] = 1u;
+        _survivorArguments1[2] = 1u;
     }
 }

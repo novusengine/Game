@@ -2,6 +2,8 @@
 
 #include "Game-Lib/ECS/Singletons/Database/CameraSaveSingleton.h"
 #include "Game-Lib/ECS/Singletons/Database/ClientDBSingleton.h"
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Scripting/Handlers/CameraHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
@@ -251,6 +253,10 @@ namespace ECSUtil::Camera
             camera.dirtyView = true;
             camera.dirtyPerspective = true;
         }
+
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        if (gameRenderer && gameRenderer->GetModelRenderSystem())
+            gameRenderer->GetModelRenderSystem()->RequestMainViewTemporalReset();
 
         // Send LoadMap Request
         {

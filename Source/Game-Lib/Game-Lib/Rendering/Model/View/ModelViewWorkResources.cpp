@@ -3,6 +3,7 @@
 #include <Renderer/Renderer.h>
 
 #include <cstring>
+#include <algorithm>
 #include <bit>
 
 namespace ModelView
@@ -18,6 +19,11 @@ namespace ModelView
             _statsBuffers[frame] = Renderer::BufferID::Invalid();
             _statsReadbacks[frame] = Renderer::BufferID::Invalid();
             _visibilityRecords[frame] = Renderer::BufferID::Invalid();
+            _cullReasons[frame] = Renderer::BufferID::Invalid();
+            _instanceVisibility[frame] = Renderer::BufferID::Invalid();
+            _meshletHistory[frame] = Renderer::BufferID::Invalid();
+            _survivorQueues[frame] = Renderer::BufferID::Invalid();
+            _survivorArguments[frame] = Renderer::BufferID::Invalid();
             for (Renderer::BufferID& queue : _queues[frame])
                 queue = Renderer::BufferID::Invalid();
         }
@@ -37,6 +43,14 @@ namespace ModelView
             desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT;
             _chunkArguments[frame] =
                 _renderer->CreateAndFillBuffer(_chunkArguments[frame], desc, [](void* memory, size_t size) {
+                    std::memset(memory, 0, size);
+                });
+            desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
+
+            desc.name = "Model View Survivor Indirect Arguments " + std::to_string(frame);
+            desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT;
+            _survivorArguments[frame] =
+                _renderer->CreateAndFillBuffer(_survivorArguments[frame], desc, [](void* memory, size_t size) {
                     std::memset(memory, 0, size);
                 });
             desc.size = sizeof(u32) * MODEL_DISPATCH_ARGUMENT_COUNT * MODEL_RASTER_CLASS_COUNT;
@@ -64,6 +78,7 @@ namespace ModelView
             _statsReadbacks[frame] = _renderer->CreateBuffer(_statsReadbacks[frame], desc);
         }
         EnsureQueueCapacity(1);
+        EnsureCullReasonCapacity(1);
     }
 
     ModelViewWorkResources::~ModelViewWorkResources()
@@ -75,9 +90,18 @@ namespace ModelView
                     _renderer->QueueDestroyBuffer(queue);
             if (_visibilityRecords[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_visibilityRecords[frame]);
+            if (_cullReasons[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_cullReasons[frame]);
             if (_chunkQueues[frame] != Renderer::BufferID::Invalid())
                 _renderer->QueueDestroyBuffer(_chunkQueues[frame]);
+            if (_instanceVisibility[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_instanceVisibility[frame]);
+            if (_meshletHistory[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_meshletHistory[frame]);
+            if (_survivorQueues[frame] != Renderer::BufferID::Invalid())
+                _renderer->QueueDestroyBuffer(_survivorQueues[frame]);
             _renderer->QueueDestroyBuffer(_chunkArguments[frame]);
+            _renderer->QueueDestroyBuffer(_survivorArguments[frame]);
             _renderer->QueueDestroyBuffer(_arguments[frame]);
             _renderer->QueueDestroyBuffer(_statsBuffers[frame]);
             _renderer->QueueDestroyBuffer(_statsReadbacks[frame]);
@@ -103,6 +127,10 @@ namespace ModelView
             desc.size = sizeof(VisibilityRecord) * _queueCapacity;
             _visibilityRecords[frame] = _renderer->CreateBuffer(_visibilityRecords[frame], desc);
 
+            desc.name = "Model View Survivor Queue " + std::to_string(frame);
+            desc.size = sizeof(MeshletSurvivor) * _queueCapacity;
+            _survivorQueues[frame] = _renderer->CreateBuffer(_survivorQueues[frame], desc);
+
             desc.size = sizeof(u32) * _queueCapacity;
             for (u32 rasterClass = 0; rasterClass < MODEL_RASTER_CLASS_COUNT; ++rasterClass)
             {
@@ -114,6 +142,51 @@ namespace ModelView
             }
         }
         ++_queueGeneration;
+        return true;
+    }
+
+    bool ModelViewWorkResources::EnsureCullReasonCapacity(u32 meshletCount)
+    {
+        const u32 capacity = std::bit_ceil(std::max(meshletCount, 1u));
+        if (capacity == _cullReasonCapacity)
+            return false;
+
+        _cullReasonCapacity = capacity;
+        Renderer::BufferDesc desc;
+        desc.size = sizeof(u32) * _cullReasonCapacity;
+        desc.usage = Renderer::BufferUsage::STORAGE_BUFFER;
+        for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
+        {
+            desc.name = "Model Cull Reasons " + std::to_string(frame);
+            _cullReasons[frame] = _renderer->CreateBuffer(_cullReasons[frame], desc);
+        }
+        return true;
+    }
+
+    bool ModelViewWorkResources::EnsureHistoryCapacity(u32 instanceCount, u32 meshletHistoryWords)
+    {
+        const u32 instanceWords = std::bit_ceil(std::max((instanceCount + 31u) / 32u, 1u));
+        const u32 historyWords = std::bit_ceil(std::max(meshletHistoryWords, 1u));
+        if (instanceWords <= _instanceVisibilityWords && historyWords <= _meshletHistoryWords)
+            return false;
+
+        _instanceVisibilityWords = std::max(_instanceVisibilityWords, instanceWords);
+        _meshletHistoryWords = std::max(_meshletHistoryWords, historyWords);
+        Renderer::BufferDesc desc;
+        desc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+        for (u32 frame = 0; frame < FRAME_COUNT; ++frame)
+        {
+            desc.name = "Model View Instance Visibility " + std::to_string(frame);
+            desc.size = sizeof(u32) * _instanceVisibilityWords;
+            _instanceVisibility[frame] = _renderer->CreateAndFillBuffer(_instanceVisibility[frame], desc,
+                [](void* memory, size_t size) { std::memset(memory, 0, size); });
+
+            desc.name = "Model View Meshlet History " + std::to_string(frame);
+            desc.size = sizeof(u32) * _meshletHistoryWords;
+            _meshletHistory[frame] = _renderer->CreateAndFillBuffer(_meshletHistory[frame], desc,
+                [](void* memory, size_t size) { std::memset(memory, 0, size); });
+        }
+        ++_historyGeneration;
         return true;
     }
 

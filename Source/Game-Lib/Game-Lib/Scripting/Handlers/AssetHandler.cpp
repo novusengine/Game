@@ -279,7 +279,20 @@ namespace Scripting::Asset
         zenith->AddTableField("modelExpandedChunks", diagnosticStats.expandedChunks);
         zenith->AddTableField("modelTestedChunks", diagnosticStats.testedChunks);
         zenith->AddTableField("modelTestedMeshlets", diagnosticStats.testedMeshlets);
+        zenith->AddTableField("modelFrustumRejectedMeshlets", diagnosticStats.rejectedFrustumMeshlets);
+        zenith->AddTableField("modelConeRejectedMeshlets", diagnosticStats.rejectedConeMeshlets);
+        zenith->AddTableField("modelTestedTriangles", diagnosticStats.testedTriangles);
+        zenith->AddTableField("modelCommittedTriangles", diagnosticStats.committedTriangles);
         zenith->AddTableField("modelQueueOverflows", diagnosticStats.queueOverflows);
+        zenith->AddTableField("modelChunkQueueOverflows", diagnosticStats.chunkQueueOverflows);
+        zenith->AddTableField("modelVisibilityRecordOverflows", diagnosticStats.visibilityRecordOverflows);
+        zenith->AddTableField("modelSurvivorQueueOverflows", diagnosticStats.survivorQueueOverflows);
+        zenith->AddTableField("modelSurvivors", diagnosticStats.survivorCount);
+        zenith->AddTableField("modelPhase1ReplayedMeshlets", diagnosticStats.phase1ReplayedMeshlets);
+        zenith->AddTableField("modelPhase2AddedMeshlets", diagnosticStats.phase2AddedMeshlets);
+        zenith->AddTableField("modelStaleGenerationSkips", diagnosticStats.staleGenerationSkips);
+        zenith->AddTableField("modelLODMismatchSkips", diagnosticStats.lodMismatchSkips);
+        zenith->AddTableField("modelOcclusionRejectedMeshlets", diagnosticStats.rejectedOcclusionMeshlets);
         for (u32 lod = 0; lod < 8; ++lod)
         {
             const std::string field = "modelLOD" + std::to_string(lod);
@@ -327,6 +340,7 @@ namespace Scripting::Asset
         }
 
         RenderScenes::RenderScene* scene = ServiceLocator::GetGameRenderer()->GetWorldRenderScene();
+        const RenderScenes::RenderSceneStats baseline = scene->GetStats();
         std::vector<RenderScenes::ModelInstanceHandle> handles(instanceCount);
         bool succeeded = true;
 
@@ -376,11 +390,11 @@ namespace Scripting::Asset
         }
 
         const RenderScenes::RenderSceneStats stats = scene->GetStats();
-        succeeded &= stats.instances.liveInstances == 0;
-        succeeded &= stats.instances.pendingInstances == 0;
-        succeeded &= stats.meshletHistory.liveWords == 0;
-        succeeded &= stats.meshletHistory.retiredWords == 0;
-        succeeded &= stats.meshletHistory.addressSpaceWords == 0;
+        succeeded &= stats.instances.liveInstances == baseline.instances.liveInstances;
+        succeeded &= stats.instances.pendingInstances == baseline.instances.pendingInstances;
+        succeeded &= stats.meshletHistory.liveWords == baseline.meshletHistory.liveWords;
+        succeeded &= stats.meshletHistory.retiredWords == baseline.meshletHistory.retiredWords;
+        succeeded &= stats.meshletHistory.addressSpaceWords == baseline.meshletHistory.addressSpaceWords;
 
         NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={}",
                     succeeded, instanceCount, iterationCount, stats.instances.slotCapacity,

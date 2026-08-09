@@ -62,6 +62,7 @@ namespace ModelPipeline
         {
             CommonBindings common;
             Renderer::BufferID materialTable = Renderer::BufferID::Invalid();
+            Renderer::BufferID cullReasons[ModelView::MODEL_VIEW_FRAME_COUNT] = {};
         };
 
         void BindCommon(Renderer::DescriptorSet& set, CommonBindings& bindings,

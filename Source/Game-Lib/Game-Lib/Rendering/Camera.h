@@ -25,6 +25,7 @@ public:
     vec4 nearFar;
 
     vec4 frustum[6] = { vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f), vec4(0.0f) };
+    vec4 cullingEyePosition;
 };
 
 namespace CameraUtils

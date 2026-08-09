@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewState.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "Game-Lib/Rendering/Scene/RenderView.h"
 
 #include <catch2/catch2.hpp>
 
@@ -100,4 +101,25 @@ TEST_CASE("Model View prepares every active Scene instance without a diagnostic 
     CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(first));
     CHECK(view.GetInputs()[1].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
     CHECK(view.GetPreparedSceneRevision() == fixture.scene.GetModelInstances().GetMembershipRevision());
+}
+
+TEST_CASE("Retained Render Views render only when dirty", "[Rendering][RenderView]")
+{
+    RenderScenes::RenderViewDesc desc;
+    desc.viewID = 7;
+    desc.debugName = "Retained Test";
+    desc.dimensions = uvec2(320, 480);
+    desc.refresh = RenderScenes::RenderViewRefresh::Retained;
+    RenderScenes::RenderView view(desc);
+
+    CHECK(view.ShouldRender());
+    view.MarkRendered();
+    CHECK_FALSE(view.ShouldRender());
+
+    view.MarkDirty();
+    CHECK(view.ShouldRender());
+    view.MarkRendered();
+    view.RequestTemporalReset();
+    CHECK(view.ShouldRender());
+    CHECK(view.GetTemporalResetGeneration() == 1);
 }

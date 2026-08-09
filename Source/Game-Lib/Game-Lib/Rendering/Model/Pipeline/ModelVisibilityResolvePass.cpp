@@ -82,6 +82,14 @@ namespace ModelPipeline
     {
         BindCommon(_preEffectsSet, _preEffectsBindings, work, geometry, scene);
         BindCommon(_diagnosticSet, _diagnosticBindings.common, work, geometry, scene);
+        for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
+        {
+            const Renderer::BufferID cullReasons = work.GetCullReasons(frame);
+            if (_diagnosticBindings.cullReasons[frame] == cullReasons)
+                continue;
+            _diagnosticSet.Bind(frame == 0 ? "_resolvedModelCullReasons0"_h : "_resolvedModelCullReasons1"_h, cullReasons);
+            _diagnosticBindings.cullReasons[frame] = cullReasons;
+        }
         const Renderer::BufferID materialTable = scene.GetModelMaterialTables().GetEntries().GetBuffer();
         if (_diagnosticBindings.materialTable != materialTable)
         {
@@ -114,7 +122,7 @@ namespace ModelPipeline
     }
 
     void ModelVisibilityResolvePass::AddPreEffectsPass(
-        Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView&,
+        Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view,
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
@@ -127,17 +135,18 @@ namespace ModelPipeline
             Renderer::DescriptorSetResource globalSet;
             Renderer::DescriptorSetResource resolveSet;
         };
-        renderGraph->AddPass<Data>("Model Visibility Pre Effects",
-            [this, &resources, &work, &geometry, &scene](Data& data, Renderer::RenderGraphBuilder& builder) {
-                data.visibility = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
-                data.normals = builder.Write(resources.packedNormals, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+        renderGraph->AddPass<Data>("Model PreEffects: " + view.GetDebugName(),
+            [this, &resources, &view, &work, &geometry, &scene](Data& data, Renderer::RenderGraphBuilder& builder) {
+                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
+                const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
+                data.normals = builder.Write(view.GetNormalTarget(), Renderer::PipelineType::COMPUTE, loadMode);
                 builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 RegisterCommonUsage(builder, work, geometry, scene);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
                 data.resolveSet = builder.Use(_preEffectsSet);
                 return true;
             },
-            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
                                           Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelVisibilityPreEffects);
                 commandList.BeginPipeline(_preEffectsPipeline);
@@ -145,11 +154,12 @@ namespace ModelPipeline
                 data.resolveSet.Bind("_modelPackedNormals"_h, data.normals);
                 commandList.BindDescriptorSet(data.globalSet, frameIndex);
                 commandList.BindDescriptorSet(data.resolveSet, frameIndex);
-                const vec2 size = static_cast<vec2>(_renderer->GetImageDimensions(resources.packedNormals, 0));
-                struct Constants { vec4 renderInfo; u32 resourceIndex; };
+                const vec2 size = static_cast<vec2>(view.GetDimensions());
+                struct Constants { vec4 renderInfo; u32 resourceIndex; u32 viewIndex; };
                 Constants* constants = graphResources.FrameNew<Constants>();
                 constants->renderInfo = vec4(size, 1.0f / size);
                 constants->resourceIndex = frameIndex;
+                constants->viewIndex = view.GetCameraIndex();
                 commandList.PushConstant(constants, 0, sizeof(Constants));
                 commandList.Dispatch((static_cast<u32>(size.x) + 7u) / 8u,
                                      (static_cast<u32>(size.y) + 7u) / 8u, 1);
@@ -158,7 +168,7 @@ namespace ModelPipeline
     }
 
     void ModelVisibilityResolvePass::AddDiagnosticPass(
-        Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView&,
+        Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view,
         const ModelView::ModelViewWorkResources& work, const ModelLoading::ModelGeometryStorage& geometry,
         const MaterialLoading::MaterialStorage& materials, const RenderScenes::RenderScene& scene, u8 frameIndex)
     {
@@ -172,20 +182,22 @@ namespace ModelPipeline
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
-        renderGraph->AddPass<Data>("Model Visibility Resolve",
-            [this, &resources, &work, &geometry, &materials, &scene](Data& data, Renderer::RenderGraphBuilder& builder) {
-                data.visibility = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
-                data.color = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+        renderGraph->AddPass<Data>("Model Diagnostic: " + view.GetDebugName(),
+            [this, &resources, &view, &work, &geometry, &materials, &scene](Data& data, Renderer::RenderGraphBuilder& builder) {
+                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
+                data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
                 builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 RegisterCommonUsage(builder, work, geometry, scene);
                 builder.Read(scene.GetModelMaterialTables().GetEntries().GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+                builder.Read(work.GetCullReasons(0), Renderer::BufferPassUsage::COMPUTE);
+                builder.Read(work.GetCullReasons(1), Renderer::BufferPassUsage::COMPUTE);
                 builder.Read(materials.GetMaterialInstances().GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
                 data.globalSet = builder.Use(resources.globalDescriptorSet);
                 data.materialSet = builder.Use(resources.materialDescriptorSet);
                 data.resolveSet = builder.Use(_diagnosticSet);
                 return true;
             },
-            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
                                           Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelVisibilityDiagnosticResolve);
                 commandList.BeginPipeline(_diagnosticPipeline);
@@ -194,12 +206,13 @@ namespace ModelPipeline
                 commandList.BindDescriptorSet(data.globalSet, frameIndex);
                 commandList.BindDescriptorSet(data.materialSet, frameIndex);
                 commandList.BindDescriptorSet(data.resolveSet, frameIndex);
-                const vec2 size = static_cast<vec2>(_renderer->GetImageDimensions(resources.sceneColor, 0));
-                struct Constants { vec4 renderInfo; u32 resourceIndex; u32 debugMode; };
+                const vec2 size = static_cast<vec2>(view.GetDimensions());
+                struct Constants { vec4 renderInfo; u32 resourceIndex; u32 viewIndex; u32 debugMode; };
                 Constants* constants = graphResources.FrameNew<Constants>();
                 constants->renderInfo = vec4(size, 1.0f / size);
                 constants->resourceIndex = frameIndex;
-                constants->debugMode = static_cast<u32>(glm::clamp(CVAR_ModelVisibilityDebugMode.Get(), 0, 7));
+                constants->viewIndex = view.GetCameraIndex();
+                constants->debugMode = ModelRendering::ShowModelCullReasons() ? 8u : static_cast<u32>(glm::clamp(CVAR_ModelVisibilityDebugMode.Get(), 0, 7));
                 commandList.PushConstant(constants, 0, sizeof(Constants));
                 commandList.Dispatch((static_cast<u32>(size.x) + 7u) / 8u,
                                      (static_cast<u32>(size.y) + 7u) / 8u, 1);

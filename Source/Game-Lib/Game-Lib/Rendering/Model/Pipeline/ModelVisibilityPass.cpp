@@ -57,10 +57,17 @@ namespace ModelPipeline
         desc.states.rasterizerState.cullMode = Renderer::CullMode::NONE;
         _alphaTestTwoSidedPipeline = renderer->CreatePipeline(desc);
 
+        desc.debugName = "Model Cull Reason Debug";
+        desc.states.pixelShader = renderer->LoadShader(solidPixelShader);
+        desc.states.depthStencilState.depthEnable = false;
+        desc.states.depthStencilState.depthWriteEnable = false;
+        _cullReasonDebugPipeline = renderer->CreatePipeline(desc);
+
         _descriptorSet.RegisterPipeline(renderer, _oneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _twoSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestOneSidedPipeline);
         _descriptorSet.RegisterPipeline(renderer, _alphaTestTwoSidedPipeline);
+        _descriptorSet.RegisterPipeline(renderer, _cullReasonDebugPipeline);
         _descriptorSet.Init(renderer);
     }
 
@@ -128,7 +135,7 @@ namespace ModelPipeline
                                       const ModelView::ModelViewWorkResources& work,
                                       const ModelLoading::ModelGeometryStorage& geometry,
                                       const MaterialLoading::MaterialStorage& materials,
-                                      const RenderScenes::RenderScene& scene, u8 frameIndex)
+                                      const RenderScenes::RenderScene& scene, u8 frameIndex, u8 phase)
     {
         if (!ModelRendering::UseMeshletModelRenderer())
             return;
@@ -144,14 +151,16 @@ namespace ModelPipeline
         };
 
         renderGraph->AddPass<Data>(
-            "Model Visibility",
+            "Model Visibility" + (phase == 0 ? std::string() : " Phase " + std::to_string(phase)) + ": " +
+                view.GetDebugName(),
             [this, &resources, &view, &work, &geometry, &materials, &scene,
              frameIndex](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
-                data.visibility = builder.Write(resources.visibilityBuffer, Renderer::PipelineType::GRAPHICS,
-                                                Renderer::LoadMode::LOAD);
+                const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
+                data.visibility = builder.Write(view.GetVisibilityTarget(), Renderer::PipelineType::GRAPHICS,
+                                                loadMode);
                 data.depth =
-                    builder.Write(view.GetDepthTarget(), Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
+                    builder.Write(view.GetDepthTarget(), Renderer::PipelineType::GRAPHICS, loadMode);
                 builder.Read(resources.cameras.GetBuffer(), Usage::GRAPHICS);
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
                 {
@@ -189,6 +198,9 @@ namespace ModelPipeline
                 graphResources.InitializeRenderPassDesc(pass);
                 pass.renderTargets[0] = data.visibility;
                 pass.depthStencil = data.depth;
+                const uvec2 dimensions = view.GetDimensions();
+                commandList.SetViewport(0, 0, static_cast<f32>(dimensions.x), static_cast<f32>(dimensions.y), 0.0f, 1.0f);
+                commandList.SetScissorRect(0, dimensions.x, 0, dimensions.y);
                 commandList.BeginRenderPass(pass);
 
                 struct Constants
@@ -212,10 +224,17 @@ namespace ModelPipeline
                                                                           ModelView::MODEL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(pipeline);
                 };
-                draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
-                draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
-                draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
-                draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
+                if (ModelRendering::ShowModelCullReasons())
+                {
+                    draw(_cullReasonDebugPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                }
+                else
+                {
+                    draw(_oneSidedPipeline, ModelView::MODEL_RASTER_SOLID_ONE_SIDED, false);
+                    draw(_twoSidedPipeline, ModelView::MODEL_RASTER_SOLID_TWO_SIDED, false);
+                    draw(_alphaTestOneSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_ONE_SIDED, true);
+                    draw(_alphaTestTwoSidedPipeline, ModelView::MODEL_RASTER_ALPHA_TEST_TWO_SIDED, true);
+                }
                 commandList.EndRenderPass(pass);
             });
     }

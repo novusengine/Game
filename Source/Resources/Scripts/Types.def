@@ -441,6 +441,9 @@ declare UI :
     GetMousePos : (() -> vec2),
     GetTextureSize : ((path : string) -> vec2),
     IsSmoothUnitFrameBarsEnabled : (() -> boolean),
+    SetUnitPreview : ((canvas : Canvas, unitID : number) -> boolean),
+    OrbitUnitPreview : ((deltaX : number, deltaY : number) -> ()),
+    BeginUnitPreviewDevelopmentGallery : ((canvas : Canvas, unitID : number) -> boolean), -- Temporary Phase 11 bring-up helper.
 
     PixelsToTexCoord : ((pos : vec2, size : vec2) -> vec2),
     CalculateTextSize : ((text : string, template : string) -> vec2),

@@ -25,7 +25,8 @@ Solution.Util.CreateConsoleApp(mod.Name, Solution.Projects.Current.BinDir, mod.D
 
         postbuildcommands
         {
-            '{COPYFILE} "' .. mod.Path .. '/Game-App/Resources/renderdoc.json" "%{cfg.targetdir}/renderdoc.json"'
+            '{COPYFILE} "' .. mod.Path .. '/Game-App/Resources/renderdoc.json" "%{cfg.targetdir}/renderdoc.json"',
+            '{COPYDIR} "' .. Solution.Projects.Current.RootDir .. '/Source/Resources/ClientDB" "' .. Solution.Projects.Current.RootDir .. '/Build/Data/Pact/data/custom/clientdb"'
         }
 
         vpaths 

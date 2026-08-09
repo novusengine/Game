@@ -6,11 +6,14 @@
 #include "Debug/MeshShaderSmoke.h"
 #include "Asset/RenderAssetResources.h"
 #include "Scene/RenderScene.h"
+#include "Scene/RenderView.h"
 #include "Model/Scene/ModelSceneBridge.h"
 #include "Model/ModelRenderSystem.h"
+#include "Preview/UnitPreview.h"
 #include "Model/ModelPlacementLoader.h"
 #include "Model/ModelRendererMode.h"
 #include "Model/DisplayResolver.h"
+#include "Model/ModelParameterOverrides.h"
 #include "Light/LightRenderer.h"
 #include "Terrain/TerrainRenderer.h"
 #include "Terrain/TerrainLoader.h"
@@ -238,11 +241,15 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     NC_ASSERT(_renderAssetResources->Initialize(), "Failed to initialize render asset fallback resources");
     _worldRenderScene = new RenderScenes::RenderScene(1, &_renderAssetResources->GetModelGeometryStorage(), &_renderAssetResources->GetMaterialStorage(), CVAR_RenderAssetValidateTransfers.Get() != 0);
     _displayResolver = new ModelLoading::DisplayResolver(_renderAssetResources);
+    _modelParameterOverrides = new ModelLoading::ModelParameterOverrides(_renderAssetResources);
     auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     if (clientDBSingleton.Has(ClientDBHash::DisplayRegistration) && clientDBSingleton.Has(ClientDBHash::DisplayParameter))
         _displayResolver->Initialize(*clientDBSingleton.Get(ClientDBHash::DisplayRegistration), *clientDBSingleton.Get(ClientDBHash::DisplayParameter));
     _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
     _modelRenderSystem = new ModelRendering::ModelRenderSystem(_renderer, this, _renderAssetResources, _worldRenderScene, _resources, CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _unitPreview = new PreviewRendering::UnitPreview(_renderer, this, _renderAssetResources, _modelSceneBridge,
+                                                     _worldRenderScene, _resources,
+                                                     CVAR_RenderAssetValidateTransfers.Get() != 0);
     _modelPlacementLoader = new ModelRendering::ModelPlacementLoader(ServiceLocator::GetPactStorage(), _renderAssetResources, _worldRenderScene);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
@@ -277,15 +284,71 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
+    delete _unitPreview;
     delete _modelRenderSystem;
     delete _modelPlacementLoader;
     delete _modelSceneBridge;
+    delete _modelParameterOverrides;
     delete _displayResolver;
     delete _worldRenderScene;
     delete _renderAssetResources;
     delete _renderTargetCapture;
     delete _renderer;
     delete _renderDocCapture;
+}
+
+RenderScenes::RenderView* GameRenderer::CreateRenderView(RenderScenes::RenderViewDesc desc)
+{
+    if (!_modelRenderSystem)
+        return nullptr;
+
+    if (desc.viewID == 0)
+    {
+        while (_modelRenderSystem->GetView(_nextRenderViewID))
+            ++_nextRenderViewID;
+        desc.viewID = _nextRenderViewID++;
+    }
+
+    bool allocatedCamera = false;
+    if (desc.cameraIndex == RenderScenes::INVALID_RENDER_VIEW_CAMERA)
+    {
+        for (u32 cameraIndex = Renderer::Settings::FIRST_AUXILIARY_VIEW; cameraIndex < Renderer::Settings::MAX_VIEWS; ++cameraIndex)
+        {
+            if (_allocatedAuxiliaryCameras.insert(cameraIndex).second)
+            {
+                desc.cameraIndex = cameraIndex;
+                allocatedCamera = true;
+                break;
+            }
+        }
+        if (!allocatedCamera)
+            return nullptr;
+    }
+    else if (desc.cameraIndex >= Renderer::Settings::FIRST_AUXILIARY_VIEW)
+    {
+        if (desc.cameraIndex >= Renderer::Settings::MAX_VIEWS || !_allocatedAuxiliaryCameras.insert(desc.cameraIndex).second)
+            return nullptr;
+        allocatedCamera = true;
+    }
+
+    RenderScenes::RenderView* view = _modelRenderSystem->CreateView(desc);
+    if (!view && allocatedCamera)
+        _allocatedAuxiliaryCameras.erase(desc.cameraIndex);
+    return view;
+}
+
+bool GameRenderer::DestroyRenderView(u64 viewID)
+{
+    if (!_modelRenderSystem)
+        return false;
+    RenderScenes::RenderView* view = _modelRenderSystem->GetView(viewID);
+    if (!view)
+        return false;
+    const u32 cameraIndex = view->GetCameraIndex();
+    if (!_modelRenderSystem->DestroyView(viewID))
+        return false;
+    _allocatedAuxiliaryCameras.erase(cameraIndex);
+    return true;
 }
 
 bool GameRenderer::UpdateWindow(f32 deltaTime)
@@ -339,6 +402,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _effectRenderer->Update(deltaTime);
     _shadowRenderer->Update(deltaTime, _resources);
     _modelSceneBridge->SyncTransforms(*ServiceLocator::GetEnttRegistries()->gameRegistry);
+    _unitPreview->Update(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _modelRenderSystem->Update();
 
     // Last: collects debug verts emitted by the other renderer updates.
@@ -350,7 +414,6 @@ void GameRenderer::UploadRenderers()
     ZoneScoped;
 
     _renderAssetResources->SyncToGPU();
-    _worldRenderScene->SyncToGPU(_renderer);
     _modelRenderSystem->Upload();
 
     if (_resources.cameras.SyncToGPU(_renderer))
@@ -490,6 +553,7 @@ f32 GameRenderer::Render()
     _terrainRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddVisibilityPhase1Passes(&renderGraph, _resources, _frameIndex);
 
     // Depth Pyramid Pass
     struct PyramidPassData
@@ -545,7 +609,7 @@ f32 GameRenderer::Render()
     _joltDebugRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
-    _modelRenderSystem->AddVisibilityPasses(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddVisibilityPhase2Passes(&renderGraph, _resources, _frameIndex);
 
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
@@ -577,6 +641,8 @@ f32 GameRenderer::Render()
 
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddMaterialResolvePass(&renderGraph, _resources, _frameIndex);
+    if (ModelRendering::ShowModelCullReasons())
+        _modelRenderSystem->AddDiagnosticResolvePass(&renderGraph, _resources, _frameIndex);
 
     _pixelQuery->AddPixelQueryPass(&renderGraph, _resources, _frameIndex);
 
@@ -626,7 +692,7 @@ f32 GameRenderer::Render()
     _renderer->UnlockUploads();
 
     // Flip the frameIndex between 0 and 1
-    _worldRenderScene->AdvanceFrame();
+    _modelRenderSystem->AdvanceFrame();
     _frameIndex = !_frameIndex;
     return timeWaited;
 }

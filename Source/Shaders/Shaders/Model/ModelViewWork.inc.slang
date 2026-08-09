@@ -36,6 +36,21 @@
 #define MODEL_WORK_STAT_VISIBILITY_RECORD_OVERFLOWS 24u
 #define MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE 25u
 #define MODEL_WORK_STAT_VISIBILITY_RECORD_PACKING_FAILURES 29u
+#define MODEL_WORK_STAT_SURVIVOR_COUNT 30u
+#define MODEL_WORK_STAT_PHASE1_REPLAYED_MESHLETS 31u
+#define MODEL_WORK_STAT_PHASE2_ADDED_MESHLETS 32u
+#define MODEL_WORK_STAT_STALE_GENERATION_SKIPS 33u
+#define MODEL_WORK_STAT_LOD_MISMATCH_SKIPS 34u
+#define MODEL_WORK_STAT_REJECTED_OCCLUSION_MESHLETS 35u
+#define MODEL_WORK_STAT_SURVIVOR_QUEUE_OVERFLOWS 36u
+#define MODEL_WORK_STAT_CHUNK_QUEUE_OVERFLOWS 37u
+#define MODEL_WORK_STAT_TESTED_TRIANGLES 38u
+#define MODEL_WORK_STAT_COMMITTED_TRIANGLES 39u
+
+#define MODEL_CULL_REASON_VISIBLE 0u
+#define MODEL_CULL_REASON_FRUSTUM 1u
+#define MODEL_CULL_REASON_CONE 2u
+#define MODEL_CULL_REASON_OCCLUSION 3u
 
 #define MODEL_CHUNK_MESHLET_COUNT 32u
 #define MODEL_CHUNK_MESHLET_COUNT_BITS 6u
@@ -70,10 +85,22 @@ struct ModelMeshletChunk
     uint meshIndex;
     uint meshletBase;
     uint packedCountRasterAndLOD;
-    uint positionBase;
-    uint vertexAttributeBase;
-    uint meshletVertexIndexBase;
-    uint meshletTriangleBase;
+    uint lodHistoryIndex;
+    uint reserved0;
+    uint reserved1;
+    uint reserved2;
+};
+
+struct ModelMeshletSurvivor
+{
+    uint instanceIndex;
+    uint instanceGeneration;
+    uint lodHistoryIndex;
+    uint meshIndex;
+    uint lodIndex;
+    uint submeshIndex;
+    uint meshletIndex;
+    uint rasterClass;
 };
 
 struct ModelBounds

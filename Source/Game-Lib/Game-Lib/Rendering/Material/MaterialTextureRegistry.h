@@ -3,6 +3,7 @@
 #include <FileFormat/Novus/FileHeader.h>
 
 #include <Renderer/Descriptors/TextureArrayDesc.h>
+#include <Renderer/Descriptors/TextureDesc.h>
 
 #include <robinhood/robinhood.h>
 
@@ -34,6 +35,7 @@ namespace MaterialLoading
 
         bool Initialize();
         u32 Resolve(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID, bool optional);
+        u32 Resolve(Renderer::TextureID textureID);
         void FlushDescriptors();
 
         Renderer::TextureArrayID GetTextureArray() const { return _textureArray; }

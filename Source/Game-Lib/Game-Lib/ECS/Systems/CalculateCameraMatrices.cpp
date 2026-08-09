@@ -112,6 +112,7 @@ namespace ECS::Systems
                     gpuCamera.frustum[(size_t)FrustumPlane::Left] = EncodePlane(position,glm::cross(frontMultFar + Right * halfHSide, Up));
                     gpuCamera.frustum[(size_t)FrustumPlane::Top] = EncodePlane(position,glm::cross(frontMultFar - Up * halfVSide, Right));
                     gpuCamera.frustum[(size_t)FrustumPlane::Bottom] = EncodePlane(position,glm::cross(Right, frontMultFar + Up * halfVSide));
+                    gpuCamera.cullingEyePosition = gpuCamera.eyePosition;
                 }
 
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);

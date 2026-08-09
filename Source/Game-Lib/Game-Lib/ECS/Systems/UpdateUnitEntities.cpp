@@ -26,6 +26,7 @@
 #include "Game-Lib/Gameplay/Database/Unit.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Texture/TextureRenderer.h"
 #include "Game-Lib/Util/AnimationUtil.h"
 #include "Game-Lib/Util/AttachmentUtil.h"
@@ -135,7 +136,7 @@ namespace ECS::Systems
                     }
 
                     auto& discoveredModel = modelLoader->GetDiscoveredModel(model.modelHash);
-                    modelLoader->DisableAllGroupsForModel(model);
+                    modelLoader->DisableAllGroupsForEntity(entity);
 
                     if (auto* unitCustomization = registry.try_get<Components::UnitCustomization>(entity))
                     {
@@ -149,7 +150,6 @@ namespace ECS::Systems
                             {
                                 u64 bakedTextureHash = creatureDisplayInfoExtraStorage->GetStringHash(displayInfoExtraRow->bakedTexture);
                                 unitCustomization->flags.useCustomSkin = bakedTextureHash == 0;
-
                                 displayInfo.race = static_cast<GameDefine::UnitRace>(displayInfoExtraRow->raceID);
                                 displayInfo.gender = static_cast<GameDefine::UnitGender>(displayInfoExtraRow->gender);
 
@@ -172,7 +172,7 @@ namespace ECS::Systems
                             }
                         }
 
-                        if (unitCustomization->flags.useCustomSkin)
+                        if (unitCustomization->flags.useCustomSkin || ModelRendering::UseMeshletModelRenderer())
                         {
                             unitCustomization->flags.forceRefresh = true;
                             registry.emplace_or_replace<ECS::Components::UnitRebuildSkinTexture>(entity);
@@ -183,7 +183,7 @@ namespace ECS::Systems
                     {
                         for (u32 groupID : modelQueuedGeometryGroups->enabledGroupIDs)
                         {
-                            modelLoader->EnableGroupForModel(model, groupID);
+                            modelLoader->EnableGroupForEntity(entity, groupID);
                         }
 
                         registry.erase<Components::ModelQueuedGeometryGroups>(entity);

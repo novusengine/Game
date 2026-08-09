@@ -5,6 +5,7 @@
 
 #include <Game-Lib/Util/ServiceLocator.h>
 #include <Game-Lib/Rendering/GameRenderer.h>
+#include <Game-Lib/Rendering/Model/ModelRenderSystem.h>
 #include <Game-Lib/Rendering/Model/ModelRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
@@ -76,6 +77,25 @@ namespace Editor
             if (IsHorizontal())
                 ImGui::SameLine();
             ImGui::Text("GPU: %s", gpuName.c_str());
+
+            if (ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem())
+            {
+                const ModelRendering::ModelPerformanceStats model = modelRenderSystem->GetPerformanceStats();
+                ImGui::Spacing();
+                ImGui::Text("Model View: %u phase 1 | %u phase 2 | %u survivors | %u HiZ rejects", model.work.phase1ReplayedMeshlets, model.work.phase2AddedMeshlets, model.work.survivorCount, model.work.rejectedOcclusionMeshlets);
+                ImGui::Text("Model History: %u KB allocated | %u KB live | %u KB free | %u KB retired | %u free ranges", model.historyBytes / 1024u, model.liveHistoryBytes / 1024u, model.freeHistoryBytes / 1024u, model.retiredHistoryBytes / 1024u, model.historyFreeRanges);
+                ImGui::Text("Model Temporal Skips: %u stale generation | %u LOD mismatch", model.work.staleGenerationSkips, model.work.lodMismatchSkips);
+
+                const ImVec4 errorColor(1.0f, 0.2f, 0.2f, 1.0f);
+                if (model.work.queueOverflows > 0)
+                    ImGui::TextColored(errorColor, "ERROR: Model raster-work queue overflow (%u dropped)", model.work.queueOverflows);
+                if (model.work.chunkQueueOverflows > 0)
+                    ImGui::TextColored(errorColor, "ERROR: Model expansion queue overflow (%u dropped)", model.work.chunkQueueOverflows);
+                if (model.work.visibilityRecordOverflows > 0)
+                    ImGui::TextColored(errorColor, "ERROR: Model visibility arena overflow (%u dropped)", model.work.visibilityRecordOverflows);
+                if (model.work.survivorQueueOverflows > 0)
+                    ImGui::TextColored(errorColor, "ERROR: Model survivor queue overflow (%u dropped)", model.work.survivorQueueOverflows);
+            }
 
             const std::string rightHeaderText = "Survived / Total (%)";
             static ImGuiTableFlags flags = ImGuiTableFlags_SizingFixedFit /*| ImGuiTableFlags_BordersOuter*/ | ImGuiTableFlags_BordersV | ImGuiTableFlags_BordersH | ImGuiTableFlags_ContextMenuInBody;
@@ -734,6 +754,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
+        ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem();
         LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
         
@@ -811,6 +832,17 @@ namespace Editor
             DrawCullingResourcesDrawCalls("Model (T)", viewID, cullingResources, viewSupportsModelsOcclusionCulling, viewDrawCalls, viewDrawCallsSurvived);
         }
 
+        if (viewID == 0 && modelRenderSystem)
+        {
+            const ModelView::WorkStats& stats = modelRenderSystem->GetPerformanceStats().work;
+            u32 survivingMeshlets = 0;
+            for (u32 count : stats.committedRasterMeshlets)
+                survivingMeshlets += count;
+            DrawCullingStatsEntry("Model V2 Meshlets", stats.testedMeshlets, survivingMeshlets);
+            viewDrawCalls += stats.testedMeshlets;
+            viewDrawCallsSurvived += survivingMeshlets;
+        }
+
         // Liquid
         if (viewRendersLiquidCulling)
         {
@@ -843,6 +875,7 @@ namespace Editor
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         TerrainRenderer* terrainRenderer = gameRenderer->GetTerrainRenderer();
         ModelRenderer* modelRenderer = gameRenderer->GetModelRenderer();
+        ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem();
         LiquidRenderer* liquidRenderer = gameRenderer->GetLiquidRenderer();
         JoltDebugRenderer* joltDebugRenderer = gameRenderer->GetJoltDebugRenderer();
 
@@ -918,6 +951,14 @@ namespace Editor
         {
             CullingResourcesBase& cullingResources = modelRenderer->GetTransparentCullingResources();
             DrawCullingResourcesTriangle("Model (T)", viewID, cullingResources, true, viewSupportsModelsOcclusionCulling, viewTriangles, viewTrianglesSurvived);
+        }
+
+        if (viewID == 0 && modelRenderSystem)
+        {
+            const ModelView::WorkStats& stats = modelRenderSystem->GetPerformanceStats().work;
+            DrawCullingStatsEntry("Model V2", stats.testedTriangles, stats.committedTriangles);
+            viewTriangles += stats.testedTriangles;
+            viewTrianglesSurvived += stats.committedTriangles;
         }
 
         // Liquid

@@ -788,7 +788,7 @@ namespace Util::Unit
         if (model.flags.loaded)
         {
             auto* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->EnableGroupForModel(model, groupID);
+            modelLoader->EnableGroupForEntity(entity, groupID);
         }
         else
         {
@@ -802,7 +802,7 @@ namespace Util::Unit
         if (model.flags.loaded)
         {
             auto* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->DisableGroupsForModel(model, startGroupID, endGroupID);
+            modelLoader->DisableGroupsForEntity(entity, startGroupID, endGroupID);
         }
         else
         {
@@ -835,7 +835,7 @@ namespace Util::Unit
         if (model.flags.loaded)
         {
             auto* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
-            modelLoader->DisableAllGroupsForModel(model);
+            modelLoader->DisableAllGroupsForEntity(entity);
         }
         else
         {
@@ -1145,12 +1145,33 @@ namespace Util::Unit
 
     void RefreshSkinTexture(entt::registry& registry, entt::entity entity, ECS::Singletons::ClientDBSingleton& clientDBSingleton, ECS::Singletons::UnitCustomizationSingleton& unitCustomizationSingleton, const ::ECS::Components::DisplayInfo& displayInfo, ::ECS::Components::UnitCustomization& unitCustomization, const ::ECS::Components::Model& model)
     {
+        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
+        auto refreshHairTexture = [&]() {
+            if (!unitCustomization.flags.hairChanged && !unitCustomization.flags.forceRefresh)
+                return;
+
+            Renderer::TextureID hairTextureID;
+            if (ECSUtil::UnitCustomization::GetHairTexture(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.hairStyleID, unitCustomization.hairColorID, hairTextureID))
+                modelLoader->SetHairTextureForEntity(entity, hairTextureID);
+            else
+                modelLoader->SetHairTextureForEntity(entity, Renderer::TextureID::Invalid());
+            unitCustomization.flags.hairChanged = false;
+        };
+
+        if (!unitCustomization.flags.useCustomSkin)
+        {
+            refreshHairTexture();
+            unitCustomization.flags.forceRefresh = false;
+            return;
+        }
+
         // TODO : Get Customization Info from DisplayID if possible, otherwise use UnitCustomization
         Renderer::TextureID baseSkinTextureID;
         if (!ECSUtil::UnitCustomization::GetBaseSkinTextureID(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.skinID, baseSkinTextureID))
+        {
             return;
+        }
 
-        ModelLoader* modelLoader = ServiceLocator::GetGameRenderer()->GetModelLoader();
         TextureRenderer* textureRenderer = ServiceLocator::GetGameRenderer()->GetTextureRenderer();
 
         bool justCreatedSkinTexture = false;
@@ -1162,7 +1183,7 @@ namespace Util::Unit
 
         if (justCreatedSkinTexture || unitCustomization.flags.forceRefresh)
         {
-            modelLoader->SetSkinTextureForModel(model, unitCustomization.skinTextureID);
+            modelLoader->SetSkinTextureForEntity(entity, unitCustomization.skinTextureID);
         }
 
         if (displayInfo.displayID != 0 && displayInfo.race != GameDefine::UnitRace::None && displayInfo.gender != GameDefine::UnitGender::None)
@@ -1206,20 +1227,7 @@ namespace Util::Unit
                 ECSUtil::UnitCustomization::WriteTextureToSkin(clientDBSingleton, unitCustomizationSingleton, unitCustomization.skinTextureID, skinHairTextureID1, Database::Unit::TextureSectionType::HeadLower);
             }
 
-            if (unitCustomization.flags.hairChanged || unitCustomization.flags.forceRefresh)
-            {
-                Renderer::TextureID hairTextureID;
-                if (ECSUtil::UnitCustomization::GetHairTexture(unitCustomizationSingleton, displayInfo.race, displayInfo.gender, unitCustomization.hairStyleID, unitCustomization.hairColorID, hairTextureID))
-                {
-                    modelLoader->SetHairTextureForModel(model, hairTextureID);
-                }
-                else
-                {
-                    modelLoader->SetHairTextureForModel(model, Renderer::TextureID::Invalid());
-                }
-
-                unitCustomization.flags.hairChanged = false;
-            }
+            refreshHairTexture();
         }
 
         unitCustomization.flags.forceRefresh = false;

@@ -90,6 +90,7 @@ namespace RenderScenes
 
       private:
         ModelMaterialTableHandle AcquireDefaultMaterialTable(RenderAssets::ModelHandle model) const;
+        void RequestModelHistoryClear(ModelInstanceHandle handle);
 
         u64 _sceneID = 0;
         const ModelLoading::ModelGeometryStorage* _geometryStorage = nullptr;

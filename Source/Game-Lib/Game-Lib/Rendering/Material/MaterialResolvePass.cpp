@@ -99,12 +99,13 @@ namespace MaterialRendering
              bindings.materialTable);
     }
 
-    bool MaterialResolvePass::Upload(const ModelView::ModelViewWorkResources& work,
+    bool MaterialResolvePass::Upload(const RenderScenes::RenderView& view,
+                                     const ModelView::ModelViewWorkResources& work,
                                      MaterialResolveResources& resources,
                                      const ModelLoading::ModelGeometryStorage& geometry,
                                      const RenderScenes::RenderScene& scene)
     {
-        const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
+        const uvec2 renderSize = view.GetDimensions();
         const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
         const u32 tilesY = (renderSize.y + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
         resources.EnsureTileCapacity(tilesX * tilesY);
@@ -178,7 +179,7 @@ namespace MaterialRendering
     }
 
     void MaterialResolvePass::AddClassificationPass(
-        Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView&,
+        Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView& view,
         const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
         const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
@@ -197,11 +198,11 @@ namespace MaterialRendering
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource finalizeSet;
         };
-        renderGraph->AddPass<Data>("Material Classification",
-            [this, &renderResources, &work, &resources, &geometry, &materials, &scene, frameIndex](
+        renderGraph->AddPass<Data>("Material Classify: " + view.GetDebugName(),
+            [this, &renderResources, &view, &work, &resources, &geometry, &materials, &scene, frameIndex](
                 Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
-                data.visibility = builder.Read(renderResources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
                 data.materialIDs = builder.Write(resources.GetMaterialIDs(), Renderer::PipelineType::COMPUTE,
                                                  Renderer::LoadMode::CLEAR);
                 RegisterModelUsage(builder, work, geometry, materials, scene);
@@ -227,7 +228,7 @@ namespace MaterialRendering
                 data.finalizeSet = builder.Use(_finalizeSet);
                 return true;
             },
-            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
                                            Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, MaterialClassification);
                 commandList.FillBuffer(data.counters, 0, sizeof(MaterialClassificationStats), 0);
@@ -237,7 +238,7 @@ namespace MaterialRendering
                 commandList.BufferBarrier(data.counters, Renderer::BufferPassUsage::COMPUTE);
                 commandList.BufferBarrier(data.arguments, Renderer::BufferPassUsage::COMPUTE);
 
-                const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
+                const uvec2 renderSize = view.GetDimensions();
                 const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
                 const u32 tilesY = (renderSize.y + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
                 struct Constants
@@ -281,7 +282,7 @@ namespace MaterialRendering
     }
 
     void MaterialResolvePass::AddResolvePass(
-        Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView&,
+        Renderer::RenderGraph* renderGraph, RenderResources& renderResources, const RenderScenes::RenderView& view,
         const ModelView::ModelViewWorkResources& work, MaterialResolveResources& resources,
         const ModelLoading::ModelGeometryStorage& geometry, const MaterialLoading::MaterialStorage& materials,
         const RenderScenes::RenderScene& scene, u8 frameIndex)
@@ -298,14 +299,14 @@ namespace MaterialRendering
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
-        renderGraph->AddPass<Data>("Material Resolve",
-            [this, &renderResources, &work, &resources, &geometry, &materials, &scene, frameIndex](
+        renderGraph->AddPass<Data>("Material Resolve: " + view.GetDebugName(),
+            [this, &renderResources, &view, &work, &resources, &geometry, &materials, &scene, frameIndex](
                 Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
-                data.visibility = builder.Read(renderResources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
+                data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
                 data.materialIDs = builder.Read(resources.GetMaterialIDs(), Renderer::PipelineType::COMPUTE);
-                data.color = builder.Write(renderResources.sceneColor, Renderer::PipelineType::COMPUTE,
-                                           Renderer::LoadMode::LOAD);
+                const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
+                data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, loadMode);
                 builder.Read(renderResources.cameras.GetBuffer(), Usage::COMPUTE);
                 RegisterModelUsage(builder, work, geometry, materials, scene);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
@@ -318,15 +319,16 @@ namespace MaterialRendering
                 data.resolveSet = builder.Use(_resolveSet);
                 return true;
             },
-            [this, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+            [this, &view, &resources, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
                                            Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, MaterialResolve);
-                const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
+                const uvec2 renderSize = view.GetDimensions();
                 const u32 tilesX = (renderSize.x + MATERIAL_TILE_SIZE - 1u) / MATERIAL_TILE_SIZE;
                 struct Constants
                 {
                     vec4 renderInfo;
                     u32 resourceIndex;
+                    u32 viewIndex;
                     u32 tileCapacity;
                     u32 tilesX;
                     u32 debugMode;
@@ -345,6 +347,7 @@ namespace MaterialRendering
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
                     constants->resourceIndex = frameIndex;
+                    constants->viewIndex = view.GetCameraIndex();
                     constants->tileCapacity = resources.GetTileCapacity();
                     constants->tilesX = tilesX;
                     constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
@@ -353,6 +356,8 @@ namespace MaterialRendering
                         data.arguments, group * sizeof(u32) * MATERIAL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(_resolvePipelines[group]);
                 }
+                if (view.GetRetainedOutput() != Renderer::TextureID::Invalid())
+                    commandList.CopyImageToTexture(view.GetRetainedOutput(), view.GetColorTarget(), renderSize);
             });
     }
 } // namespace MaterialRendering

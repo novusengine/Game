@@ -80,12 +80,23 @@ namespace ModelView
         u32 meshIndex = 0;
         u32 meshletBase = 0;
         u32 packedCountRasterAndLOD = 0;
-        u32 positionBase = 0;
-        u32 vertexAttributeBase = 0;
-        u32 meshletVertexIndexBase = 0;
-        u32 meshletTriangleBase = 0;
+        u32 lodHistoryIndex = 0;
+        u32 reserved[3] = {};
     };
     static_assert(sizeof(MeshletChunk) == 32);
+
+    struct MeshletSurvivor
+    {
+        u32 instanceIndex = 0;
+        u32 instanceGeneration = 0;
+        u32 lodHistoryIndex = 0;
+        u32 meshIndex = 0;
+        u32 lodIndex = 0;
+        u32 submeshIndex = 0;
+        u32 meshletIndex = 0;
+        u32 rasterClass = 0;
+    };
+    static_assert(sizeof(MeshletSurvivor) == 32);
 
     struct WorkStats
     {
@@ -109,5 +120,15 @@ namespace ModelView
         u32 visibilityRecordOverflows = 0;
         u32 committedRasterMeshlets[MODEL_RASTER_CLASS_COUNT] = {};
         u32 visibilityRecordPackingFailures = 0;
+        u32 survivorCount = 0;
+        u32 phase1ReplayedMeshlets = 0;
+        u32 phase2AddedMeshlets = 0;
+        u32 staleGenerationSkips = 0;
+        u32 lodMismatchSkips = 0;
+        u32 rejectedOcclusionMeshlets = 0;
+        u32 survivorQueueOverflows = 0;
+        u32 chunkQueueOverflows = 0;
+        u32 testedTriangles = 0;
+        u32 committedTriangles = 0;
     };
 } // namespace ModelView

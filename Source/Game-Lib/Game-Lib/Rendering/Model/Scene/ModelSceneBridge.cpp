@@ -53,6 +53,12 @@ namespace ModelScene
         return _scene && existing != _instances.end() && _scene->SetGeometryGroupEnabled(existing->second, groupID, enabled);
     }
 
+    bool ModelSceneBridge::SetAllGeometryGroups(entt::entity entity, bool enabled)
+    {
+        const auto existing = _instances.find(entity);
+        return _scene && existing != _instances.end() && _scene->SetAllGeometryGroups(existing->second, enabled);
+    }
+
     void ModelSceneBridge::SyncTransforms(entt::registry& registry)
     {
         registry.view<ECS::Components::Transform, ECS::Components::DirtyTransform>().each(

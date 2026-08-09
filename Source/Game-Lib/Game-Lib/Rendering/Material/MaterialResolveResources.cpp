@@ -7,13 +7,14 @@
 
 namespace MaterialRendering
 {
-    MaterialResolveResources::MaterialResolveResources(Renderer::Renderer* renderer)
+    MaterialResolveResources::MaterialResolveResources(Renderer::Renderer* renderer, const uvec2& dimensions,
+                                                       Renderer::ImageDimensionType dimensionType)
         : _renderer(renderer)
     {
         Renderer::ImageDesc image;
         image.debugName = "Material IDs";
-        image.dimensions = vec2(1.0f);
-        image.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
+        image.dimensions = dimensionType == Renderer::ImageDimensionType::DIMENSION_ABSOLUTE ? vec2(dimensions) : vec2(1.0f);
+        image.dimensionType = dimensionType;
         image.format = Renderer::ImageFormat::R16_UINT;
         image.clearUInts = uvec4(0xFFFFu);
         _materialIDs = renderer->CreateImage(image);

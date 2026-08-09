@@ -1,13 +1,11 @@
 #pragma once
 
-#include "Game-Lib/Rendering/Material/MaterialResolvePass.h"
-#include "Game-Lib/Rendering/Material/MaterialResolveResources.h"
-#include "Game-Lib/Rendering/Model/Pipeline/ModelViewWorkPass.h"
-#include "Game-Lib/Rendering/Model/Pipeline/ModelVisibilityPass.h"
-#include "Game-Lib/Rendering/Model/Pipeline/ModelVisibilityResolvePass.h"
-#include "Game-Lib/Rendering/Model/View/ModelViewState.h"
-#include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
+#include "Game-Lib/Rendering/Model/View/ModelRenderView.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
+
+#include <robinhood/robinhood.h>
+
+#include <memory>
 
 struct RenderResources;
 class GameRenderer;
@@ -33,6 +31,16 @@ namespace Renderer
 
 namespace ModelRendering
 {
+    struct ModelPerformanceStats
+    {
+        ModelView::WorkStats work;
+        u32 historyBytes = 0;
+        u32 liveHistoryBytes = 0;
+        u32 freeHistoryBytes = 0;
+        u32 retiredHistoryBytes = 0;
+        u32 historyFreeRanges = 0;
+    };
+
     // Coordinates CPU-side model View work and its composed GPU-side passes for the
     // meshlet renderer. It gives GameRenderer one narrow integration point while
     // specialized components retain their own state.
@@ -45,12 +53,18 @@ namespace ModelRendering
 
         void Update();
         void Upload();
-        void AddVisibilityPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AdvanceFrame();
+        RenderScenes::RenderView* CreateView(const RenderScenes::RenderViewDesc& desc);
+        bool DestroyView(u64 viewID);
+        RenderScenes::RenderView* GetView(u64 viewID);
+        void AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const;
         void BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet);
+        void RequestMainViewTemporalReset();
 
         // TODO: Remove this development-only selection hook after GPU work expansion
         // replaces diagnostic work.
@@ -59,8 +73,9 @@ namespace ModelRendering
                                                              bool geometryGroupsEnabled = true);
         const ModelView::WorkStats& GetDiagnosticStats() const
         {
-            return _mainViewWork.GetStats();
+            return _mainView->GetWork().GetStats();
         }
+        ModelPerformanceStats GetPerformanceStats() const;
 
       private:
         struct PixelQueryBindings
@@ -71,22 +86,14 @@ namespace ModelRendering
         };
 
         Renderer::Renderer* _renderer = nullptr;
+        GameRenderer* _gameRenderer = nullptr;
         RenderAssets::RenderAssetResources* _assets = nullptr;
-        RenderScenes::RenderScene* _scene = nullptr;
-        RenderScenes::RenderView _mainView;
-        ModelView::ModelViewState _mainViewState;
-        ModelView::ModelViewWorkResources _mainViewWork;
-        MaterialRendering::MaterialResolveResources _mainViewMaterialResources;
-        ModelPipeline::ModelViewWorkPass _viewWorkPass;
-        ModelPipeline::ModelVisibilityPass _visibilityPass;
-        MaterialRendering::MaterialResolvePass _materialResolvePass;
-        ModelPipeline::ModelVisibilityResolvePass _visibilityResolvePass;
+        RenderScenes::RenderScene* _mainScene = nullptr;
+        robin_hood::unordered_flat_map<u64, std::unique_ptr<ModelRenderView>> _views;
+        ModelRenderView* _mainView = nullptr;
         RenderScenes::ModelInstanceHandle _diagnosticInstance = RenderScenes::InvalidModelInstanceHandle();
         i32 _lastForcedLOD = -1;
-        u32 _handledTemporalReset = 0;
-        bool _reportedQueueOverflow = false;
-        bool _reportedVisibilityRecordOverflow = false;
-        bool _reportedVisibilityRecordPackingFailure = false;
+        bool _validateTransfers = false;
         PixelQueryBindings _pixelQueryBindings;
     };
 } // namespace ModelRendering

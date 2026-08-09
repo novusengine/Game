@@ -54,6 +54,8 @@ namespace RenderAssets
 namespace RenderScenes
 {
     class RenderScene;
+    class RenderView;
+    struct RenderViewDesc;
 }
 
 namespace ModelScene
@@ -67,9 +69,12 @@ namespace ModelRendering
     class ModelRenderSystem;
 }
 
+namespace PreviewRendering { class UnitPreview; }
+
 namespace ModelLoading
 {
     class DisplayResolver;
+    class ModelParameterOverrides;
 }
 
 namespace Map
@@ -134,10 +139,14 @@ public:
     ModelScene::ModelSceneBridge* GetModelSceneBridge() { return _modelSceneBridge; }
     ModelRendering::ModelPlacementLoader* GetModelPlacementLoader() { return _modelPlacementLoader; }
     ModelRendering::ModelRenderSystem* GetModelRenderSystem() { return _modelRenderSystem; }
+    PreviewRendering::UnitPreview* GetUnitPreview() { return _unitPreview; }
+    RenderScenes::RenderView* CreateRenderView(RenderScenes::RenderViewDesc desc);
+    bool DestroyRenderView(u64 viewID);
     ModelLoading::DisplayResolver* GetDisplayResolver()
     {
         return _displayResolver;
     }
+    ModelLoading::ModelParameterOverrides* GetModelParameterOverrides() { return _modelParameterOverrides; }
     void ReserveModelResources(const Map::ModelAllocationHints& hints);
 
     const Renderer::ShaderEntry* GetShaderEntry(u32 shaderNameHash, const std::string& debugName);
@@ -221,7 +230,12 @@ private:
     ModelScene::ModelSceneBridge* _modelSceneBridge = nullptr;
     ModelRendering::ModelPlacementLoader* _modelPlacementLoader = nullptr;
     ModelRendering::ModelRenderSystem* _modelRenderSystem = nullptr;
+    PreviewRendering::UnitPreview* _unitPreview = nullptr;
     ModelLoading::DisplayResolver* _displayResolver = nullptr;
+    ModelLoading::ModelParameterOverrides* _modelParameterOverrides = nullptr;
+
+    robin_hood::unordered_flat_set<u32> _allocatedAuxiliaryCameras;
+    u64 _nextRenderViewID = 2;
 
     u32 _currentThemeHash = std::numeric_limits<u32>().max();
     std::vector<ImGuiTheme> _imguiThemes;

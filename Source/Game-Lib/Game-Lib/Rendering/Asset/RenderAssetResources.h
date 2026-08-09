@@ -57,6 +57,10 @@ namespace RenderAssets
         {
             return _materialRegistry.DeriveMaterialInstance(base, overrides, ownerAssetID);
         }
+        MaterialInstanceHandle DeriveMaterialInstance(MaterialInstanceHandle base, std::span<const MaterialLoading::MaterialTextureRuntimeOverride> overrides)
+        {
+            return _materialRegistry.DeriveMaterialInstance(base, overrides);
+        }
         ModelLoading::EmbeddedModelLoadStatus LoadEmbeddedModel(FileFormat::AssetID assetID, ModelHandle& outHandle)
         {
             return _modelRegistry.LoadEmbedded(assetID, outHandle);

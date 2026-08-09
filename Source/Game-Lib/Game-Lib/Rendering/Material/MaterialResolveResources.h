@@ -23,7 +23,8 @@ namespace MaterialRendering
     class MaterialResolveResources
     {
       public:
-        explicit MaterialResolveResources(Renderer::Renderer* renderer);
+        MaterialResolveResources(Renderer::Renderer* renderer, const uvec2& dimensions,
+                                 Renderer::ImageDimensionType dimensionType);
         ~MaterialResolveResources();
 
         bool EnsureTileCapacity(u32 tileCount);

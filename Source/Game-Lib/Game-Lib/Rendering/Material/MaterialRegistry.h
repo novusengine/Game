@@ -5,6 +5,8 @@
 #include <FileFormat/Novus/FileHeader.h>
 #include <FileFormat/Novus/Model/Model.h>
 
+#include <Renderer/Descriptors/TextureDesc.h>
+
 #include <robinhood/robinhood.h>
 
 #include <vector>
@@ -24,6 +26,12 @@ namespace MaterialLoading
     {
         u32 textureSlot = 0;
         FileFormat::AssetID textureAssetID = FileFormat::INVALID_ASSET_ID;
+    };
+
+    struct MaterialTextureRuntimeOverride
+    {
+        u32 textureSlot = 0;
+        Renderer::TextureID textureID = Renderer::TextureID::Invalid();
     };
 
     struct MaterialRegistryStats
@@ -47,6 +55,7 @@ namespace MaterialLoading
         RenderAssets::MaterialHandle LoadMaterial(FileFormat::AssetID assetID);
         RenderAssets::MaterialInstanceHandle LoadMaterialInstance(FileFormat::AssetID assetID);
         RenderAssets::MaterialInstanceHandle DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureAssetOverride> overrides, FileFormat::AssetID ownerAssetID);
+        RenderAssets::MaterialInstanceHandle DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureRuntimeOverride> overrides);
         bool AppendDefaultMaterialTable(std::span<const FileFormat::Model::MaterialSlot> materialSlots, u32& outOffset);
 
         MaterialRegistryStats GetStats() const;
