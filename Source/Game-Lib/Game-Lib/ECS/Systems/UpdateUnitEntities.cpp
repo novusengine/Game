@@ -39,7 +39,7 @@
 #include <Jolt/Physics/Body/Body.h>
 #include <Jolt/Physics/Body/BodyFilter.h>
 
-#include <tracy/tracy.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace ECS::Systems
 {
