@@ -422,6 +422,7 @@ bool AuthoredMaterialShaderGenerator::Generate(
          "    LightingModelInput lightingInput;\n"
          "    lightingInput.worldPosition = input.worldPosition;\n"
          "    lightingInput.viewDirection = float3(0.0f, 0.0f, 1.0f);\n"
+         "    lightingInput.lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));\n"
          "    lightingInput.ambientVisibility = 1.0f;\n"
          "    lightingInput.shadowVisibility = 1.0f;\n"
          "    float4 output = float4(EvaluateLightingModel(\n"

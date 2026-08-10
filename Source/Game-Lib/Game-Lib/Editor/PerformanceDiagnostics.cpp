@@ -10,6 +10,7 @@
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
 #include <Game-Lib/Rendering/Shadow/ShadowRenderer.h>
+#include <Game-Lib/Rendering/Shadow/ModelShadowWork.h>
 #include <Game-Lib/Rendering/Debug/JoltDebugRenderer.h>
 #include <Game-Lib/Application/EnttRegistries.h>
 #include <Game-Lib/ECS/Singletons/EngineStats.h>
@@ -195,6 +196,19 @@ namespace Editor
                     shadowRenderer->GetSVSMCasterStats(dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
                     ImGui::Text("SVSM Dynamic: %u / %u pages live%s | %u casters (+%u / -%u total) | %u spilled", dynamicLive, dynamicTotal, dynamicOverflow > 0 ? " (overflowing!)" : "", dynamicCasters, transitionsIn, transitionsOut, droppedAABBs);
 
+                    const ShadowRendering::ModelShadowStats& modelShadow = shadowRenderer->GetModelShadowStats();
+                    u32 modelShadowSurvivors = 0;
+                    for (u32 count : modelShadow.survivingMeshlets)
+                        modelShadowSurvivors += count;
+                    ImGui::Text("SVSM Model: %u / %u meshlets | %u / %u triangles | overflow %u",
+                                modelShadowSurvivors, modelShadow.testedMeshlets,
+                                modelShadow.committedTriangles, modelShadow.testedTriangles,
+                                modelShadow.queueOverflows + modelShadow.recordOverflows + modelShadow.chunkQueueOverflows);
+                    ImGui::Text("  Rejected: %u frustum, %u page, %u cone, %u group, %u material, %u transparent",
+                                modelShadow.rejectedFrustumMeshlets, modelShadow.rejectedPageMeshlets,
+                                modelShadow.rejectedConeMeshlets, modelShadow.rejectedGeometryGroupMeshlets,
+                                modelShadow.rejectedMaterialMeshlets, modelShadow.rejectedTransparentMeshlets);
+
                     // Per-clipmap surviving dynamic instances of the SVSM dynamic fills, one
                     // frame old. A bouncing count here = the fill/cull chain loses casters
                     if (ModelRenderer* svsmModelRenderer = gameRenderer->GetModelRenderer())
@@ -232,6 +246,10 @@ namespace Editor
                             break;
 
                         ImGui::Text("P%u (%.0fm): %u marked, %u resident, %u dirty, %u inv, %u evict, %u dyn, %u defer", i, stats.extent, stats.marked, stats.resident, stats.dirty, stats.invalidated, stats.evicted, stats.dynamicLive, stats.deferred);
+                        const u32* surviving = &modelShadow.survivingMeshlets[i * ShadowRendering::MODEL_SHADOW_QUEUE_COUNT];
+                        ImGui::Text("  Model meshlets: %u/%u solid, %u/%u alpha | dynamic %u/%u solid, %u/%u alpha",
+                                    surviving[0], surviving[1], surviving[2], surviving[3],
+                                    surviving[4], surviving[5], surviving[6], surviving[7]);
                     }
                 }
             }

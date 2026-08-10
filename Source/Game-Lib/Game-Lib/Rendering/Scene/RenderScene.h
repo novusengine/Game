@@ -3,8 +3,10 @@
 #include "Game-Lib/Rendering/Model/Scene/MeshletHistoryAllocator.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelInstanceStore.h"
 #include "Game-Lib/Rendering/Model/Scene/ModelMaterialTableStore.h"
+#include "Game-Lib/Rendering/Shadow/SceneShadowState.h"
 
 #include <span>
+#include <vector>
 
 namespace MaterialLoading
 {
@@ -70,6 +72,14 @@ namespace RenderScenes
         bool ResetModelMaterials(ModelInstanceHandle handle);
         bool SetGeometryGroupEnabled(ModelInstanceHandle handle, u32 groupID, bool enabled);
         bool SetAllGeometryGroups(ModelInstanceHandle handle, bool enabled);
+        bool SetModelShadowDynamic(ModelInstanceHandle handle, bool dynamic) { return _instances.SetShadowDynamic(handle, dynamic); }
+
+        u32 DrainShadowInvalidations(std::vector<vec4>& outMinMaxPairs, u32 maxPairs)
+        {
+            return _shadowState.DrainInvalidations(outMinMaxPairs, maxPairs);
+        }
+        std::span<const vec4> GetDynamicShadowAABBs() const { return _shadowState.GetDynamicAABBs(); }
+        ShadowRendering::SceneShadowStats GetShadowStats() const { return _shadowState.GetStats(); }
 
         SceneClearRequests GetPendingClearRequests() const;
         void AcknowledgeClearsAndPublish();
@@ -99,5 +109,6 @@ namespace RenderScenes
         ModelScene::GeometryGroupMaskStore _geometryGroupMasks;
         ModelScene::MeshletHistoryAllocator _meshletHistory;
         ModelScene::ModelInstanceStore _instances;
+        ShadowRendering::SceneShadowState _shadowState;
     };
 } // namespace RenderScenes

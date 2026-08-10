@@ -206,16 +206,25 @@ namespace ModelRendering
         if (!geometry.HasModel(model) || worldBoundsRadius <= 0.0f)
             return RenderScenes::InvalidModelInstanceHandle();
 
-        if (_mainScene->IsAlive(_diagnosticInstance) || _mainScene->IsPending(_diagnosticInstance))
-        {
-            _mainScene->DestroyModelInstance(_diagnosticInstance, 0);
-            _mainScene->ReleaseRetiredHistory(0);
-        }
-
         const FileFormat::Model::Bounds& bounds = geometry.GetRecord(model).bounds;
         const f32 scale = worldBoundsRadius / std::max(bounds.sphereRadius, 0.000001f);
         mat4x4 transform(scale);
         transform[3] = vec4(worldBoundsCenter - bounds.center * scale, 1.0f);
+
+        if (_mainScene->IsAlive(_diagnosticInstance) || _mainScene->IsPending(_diagnosticInstance))
+        {
+            const ModelScene::ModelInstanceResources* resources =
+                _mainScene->GetModelInstances().GetResources(_diagnosticInstance);
+            if (resources && resources->model == model)
+            {
+                _mainScene->SetModelTransform(_diagnosticInstance, transform);
+                _mainScene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
+                _mainView->GetState().SetDiagnosticSelection(_diagnosticInstance);
+                return _diagnosticInstance;
+            }
+            _mainScene->DestroyModelInstance(_diagnosticInstance, 0);
+            _mainScene->ReleaseRetiredHistory(0);
+        }
 
         RenderScenes::ModelInstanceDesc desc;
         desc.model = model;

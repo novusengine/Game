@@ -4,6 +4,7 @@
 #include "Material/MaterialShared.inc.slang"
 
 #define MODEL_INSTANCE_VISIBLE (1u << 0u)
+#define MODEL_INSTANCE_DYNAMIC_SHADOW_CASTER (1u << 6u)
 #define MODEL_LOD_HAS_SKINNING (1u << 0u)
 #define MODEL_LOD_STATIC_FALLBACK_IS_BIND_POSE (1u << 1u)
 #define INVALID_LOD_HISTORY 0xFFFFFFFFu

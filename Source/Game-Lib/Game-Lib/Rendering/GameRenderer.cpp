@@ -275,7 +275,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _canvasRenderer = new CanvasRenderer(_renderer, this, _debugRenderer);
     _uiRenderer = new UIRenderer(_renderer);
     _effectRenderer = new EffectRenderer(_renderer, this);
-    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _resources);
+    _shadowRenderer = new ShadowRenderer(_renderer, this, _terrainRenderer, _modelRenderer, _worldRenderScene, _resources);
     _pixelQuery = new PixelQuery(_renderer, this);
 
     _nameHashToCursor.reserve(128);
@@ -400,10 +400,10 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _canvasRenderer->Update(deltaTime);
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
-    _shadowRenderer->Update(deltaTime, _resources);
     _modelSceneBridge->SyncTransforms(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _unitPreview->Update(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _modelRenderSystem->Update();
+    _shadowRenderer->Update(deltaTime, _resources);
 
     // Last: collects debug verts emitted by the other renderer updates.
     _debugRenderer->Update(deltaTime);
@@ -415,6 +415,7 @@ void GameRenderer::UploadRenderers()
 
     _renderAssetResources->SyncToGPU();
     _modelRenderSystem->Upload();
+    _shadowRenderer->Upload();
 
     if (_resources.cameras.SyncToGPU(_renderer))
     {
@@ -427,7 +428,7 @@ void GameRenderer::UploadRenderers()
     _terrainRenderer->Upload();
     _modelRenderer->Upload();
     _liquidRenderer->Upload();
-    _materialRenderer->Upload();
+    _materialRenderer->Upload(_resources);
     _joltDebugRenderer->Upload();
     _lightRenderer->Upload();
     _canvasRenderer->Upload();
@@ -631,6 +632,7 @@ f32 GameRenderer::Render()
         _modelRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
         _terrainRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
         _modelRenderer->AddSVSMGeometryPass(&renderGraph, _resources, _frameIndex, _shadowRenderer);
+        _shadowRenderer->AddSVSMModelPasses(&renderGraph, _resources, _frameIndex);
     }
 
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);

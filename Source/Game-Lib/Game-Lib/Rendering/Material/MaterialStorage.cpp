@@ -66,7 +66,8 @@ namespace MaterialLoading
         MaterialInstanceGPURecord instance;
         instance.parameterOffset = parameterOffset;
         instance.materialIndex = static_cast<RenderAssets::MaterialHandle::type>(_fallbackMaterial);
-        instance.flags = FileFormat::Material::MaterialInstanceFlags_TwoSided;
+        instance.flags = FileFormat::Material::MaterialInstanceFlags_TwoSided |
+                         FileFormat::Material::MaterialInstanceFlags_CastsShadows;
         instance.packedClassification = 1u;
         instance.materialHandle = static_cast<RenderAssets::MaterialHandle::type>(_fallbackMaterial);
         const std::array<u32, 1> textures = {checkerboardTextureIndex};

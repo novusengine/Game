@@ -1,0 +1,63 @@
+#ifndef MODEL_SHADOW_INCLUDED
+#define MODEL_SHADOW_INCLUDED
+
+#include "Model/ModelVisibility.inc.slang"
+
+#define MODEL_SHADOW_MAX_CLIPMAPS 8u
+#define MODEL_SHADOW_RASTER_CLASS_COUNT 4u
+#define MODEL_SHADOW_CASTER_CLASS_COUNT 2u
+#define MODEL_SHADOW_QUEUE_COUNT 8u
+#define MODEL_SHADOW_CHUNK_MESHLET_COUNT 32u
+#define MODEL_SHADOW_CHUNK_COUNT_MASK 0x3Fu
+#define MODEL_SHADOW_CHUNK_RASTER_SHIFT 6u
+#define MODEL_SHADOW_CHUNK_LOD_SHIFT 8u
+#define MODEL_SHADOW_CHUNK_CLIPMAP_SHIFT 11u
+#define MODEL_SHADOW_DISPATCH_ARGUMENT_COUNT 3u
+#define MODEL_SHADOW_COMPUTE_DISPATCH_MAX_GROUPS_X 1024u
+#define MODEL_SHADOW_MESH_DISPATCH_MAX_GROUPS_X 1024u
+
+#define MODEL_SHADOW_STAT_TESTED_INSTANCES 0u
+#define MODEL_SHADOW_STAT_REJECTED_INSTANCES 1u
+#define MODEL_SHADOW_STAT_EXPANDED_CHUNKS 2u
+#define MODEL_SHADOW_STAT_TESTED_MESHLETS 3u
+#define MODEL_SHADOW_STAT_REJECTED_FRUSTUM 4u
+#define MODEL_SHADOW_STAT_REJECTED_PAGE 5u
+#define MODEL_SHADOW_STAT_REJECTED_CONE 6u
+#define MODEL_SHADOW_STAT_REJECTED_GEOMETRY_GROUP 7u
+#define MODEL_SHADOW_STAT_REJECTED_MATERIAL 8u
+#define MODEL_SHADOW_STAT_REJECTED_TRANSPARENT 9u
+#define MODEL_SHADOW_STAT_QUEUE_OVERFLOWS 10u
+#define MODEL_SHADOW_STAT_RECORD_OVERFLOWS 11u
+#define MODEL_SHADOW_STAT_CHUNK_OVERFLOWS 12u
+#define MODEL_SHADOW_STAT_TESTED_TRIANGLES 13u
+#define MODEL_SHADOW_STAT_COMMITTED_TRIANGLES 14u
+#define MODEL_SHADOW_STAT_VISIBILITY_RECORDS 15u
+#define MODEL_SHADOW_STAT_QUEUE_COUNTS_BASE 16u
+#define MODEL_SHADOW_STAT_SURVIVING_BASE 24u
+
+struct ModelShadowChunk
+{
+    uint instanceIndex;
+    uint meshIndex;
+    uint meshletBase;
+    uint packedCountRasterLODAndClipmap;
+    uint submeshIndex;
+    uint dynamicCaster;
+    uint reserved0;
+    uint reserved1;
+};
+
+struct ModelShadowRecord
+{
+    uint packedInstanceAndMesh;
+    uint packedLODSubmeshAndMeshlet;
+    uint clipmapIndex;
+    uint reserved;
+};
+
+uint ModelShadowQueueIndex(uint rasterClass, bool dynamicCaster)
+{
+    return rasterClass + (dynamicCaster ? MODEL_SHADOW_RASTER_CLASS_COUNT : 0u);
+}
+
+#endif

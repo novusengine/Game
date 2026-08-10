@@ -96,15 +96,28 @@ namespace RenderScenes
         createInfo.visible = desc.visible;
         {
             ZoneScopedN("Create Instance Record");
-            return _instances.Create(createInfo);
+            const ModelInstanceHandle handle = _instances.Create(createInfo);
+            if (IsPending(handle))
+                _shadowState.ModelCreated(handle, model.bounds, desc.worldTransform, desc.visible);
+            return handle;
         }
     }
 
     bool RenderScene::DestroyModelInstance(ModelInstanceHandle handle, u64 retireValue)
     {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
+        const bool hasShadowState = record && instanceResources && _geometryStorage->HasModel(instanceResources->model);
+        const FileFormat::Model::Bounds bounds = hasShadowState ? _geometryStorage->GetRecord(instanceResources->model).bounds : FileFormat::Model::Bounds{};
+        const mat4x4 transform = hasShadowState ? record->currentWorld : mat4x4(1.0f);
+        const bool visible = hasShadowState && _instances.IsVisible(handle);
+
         ModelScene::ModelInstanceResources resources;
         if (!_instances.Destroy(handle, resources))
             return false;
+
+        if (hasShadowState)
+            _shadowState.ModelDestroyed(handle, bounds, transform, visible);
 
         _materialTables.Release(resources.materialTable);
         _geometryGroupMasks.Release(resources.geometryGroupMask);
@@ -114,9 +127,22 @@ namespace RenderScenes
 
     bool RenderScene::SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported)
     {
+        const ModelScene::ModelInstanceGPURecord* oldRecord = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
+        const bool hasShadowState = oldRecord && instanceResources && _geometryStorage->HasModel(instanceResources->model);
+        const mat4x4 oldTransform = hasShadowState ? oldRecord->currentWorld : transform;
+        const bool visible = hasShadowState && _instances.IsVisible(handle);
+
         bool needsHistoryClear = false;
         if (!_instances.SetTransform(handle, transform, teleported, needsHistoryClear))
             return false;
+
+        if (hasShadowState)
+        {
+            const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(instanceResources->model).bounds;
+            if (_shadowState.ModelTransformChanged(handle, bounds, oldTransform, transform, visible))
+                _instances.SetShadowDynamic(handle, true);
+        }
 
         if (needsHistoryClear)
         {
@@ -128,9 +154,22 @@ namespace RenderScenes
 
     bool RenderScene::SetModelVisible(ModelInstanceHandle handle, bool visible)
     {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
+        const bool hasShadowState = record && instanceResources && _geometryStorage->HasModel(instanceResources->model);
+        const bool oldVisible = hasShadowState && _instances.IsVisible(handle);
+        const mat4x4 transform = hasShadowState ? record->currentWorld : mat4x4(1.0f);
+
         bool needsHistoryClear = false;
         if (!_instances.SetVisible(handle, visible, needsHistoryClear))
             return false;
+
+        if (hasShadowState)
+        {
+            const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(instanceResources->model).bounds;
+            if (_shadowState.ModelVisibilityChanged(handle, bounds, transform, oldVisible, visible))
+                _instances.SetShadowDynamic(handle, false);
+        }
 
         if (needsHistoryClear)
         {
@@ -169,6 +208,10 @@ namespace RenderScenes
         if (!_materialTables.SetMaterial(table, slot, material))
             return false;
 
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
     }
@@ -201,6 +244,10 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
     }
@@ -223,6 +270,10 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
     }
@@ -233,6 +284,10 @@ namespace RenderScenes
         if (!resources || !_geometryGroupMasks.SetEnabled(resources->geometryGroupMask, groupID, enabled))
             return false;
 
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
     }
@@ -243,6 +298,10 @@ namespace RenderScenes
         if (!resources || !_geometryGroupMasks.SetAll(resources->geometryGroupMask, enabled))
             return false;
 
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+        _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
     }
@@ -266,6 +325,7 @@ namespace RenderScenes
 
     void RenderScene::AdvanceFrame()
     {
+        _shadowState.AdvanceFrame(*this);
         _instances.AdvanceFrame();
     }
 

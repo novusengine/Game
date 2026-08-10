@@ -25,7 +25,10 @@ public:
     ~MaterialRenderer();
 
     void Update(f32 deltaTime);
-    void Upload();
+    void Upload(RenderResources& resources);
+
+    Renderer::BufferID GetDirectionalLightBuffer() const { return _directionalLights.GetBuffer(); }
+    u32 GetNumDirectionalLights() const { return static_cast<u32>(_directionalLights.Count()); }
 
     // Resolves normals for the effect passes
     void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);

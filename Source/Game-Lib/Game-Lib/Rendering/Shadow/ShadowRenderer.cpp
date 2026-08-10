@@ -1,4 +1,8 @@
 #include "ShadowRenderer.h"
+
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
+#include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "ModelShadowRenderer.h"
 #include <Game-Lib/Application/EnttRegistries.h>
 #include <Game-Lib/ECS/Components/AABB.h>
 #include <Game-Lib/ECS/Components/Camera.h>
@@ -28,7 +32,7 @@
 
 AutoCVar_Int CVAR_ShadowEnabled(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled", "enable shadows", 1, CVarFlags::EditCheckbox);
 AutoCVar_Float CVAR_ShadowStrength(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength", "directional shadow strength, overwritten each frame from the sun elevation", 1.0f, CVarFlags::EditReadOnly);
-AutoCVar_Float CVAR_ShadowNormalOffsetBias(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias", "receiver offset along the surface normal in shadow texels, fights acne on hard angles", 1.0f);
+AutoCVar_Float CVAR_ShadowNormalOffsetBias(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias", "receiver offset along the surface normal in shadow texels, fights acne on hard angles", 0.5f);
 AutoCVar_Float CVAR_ShadowCasterMargin(CVarCategory::Client | CVarCategory::Rendering, "shadowCasterMargin", "extends clipmap culling toward the sun so far-away casters with long shadows are not culled, depth clamp pancakes them onto the near plane", 2500.0f);
 AutoCVar_Int CVAR_SVSMNumClipmaps(CVarCategory::Client | CVarCategory::Rendering, "svsmNumClipmaps", "number of SVSM clipmap rings, each ring doubles the covered area", 6);
 AutoCVar_Float CVAR_SVSMClipmap0Extent(CVarCategory::Client | CVarCategory::Rendering, "svsmClipmap0Extent", "world extent of the finest SVSM clipmap window in meters, finer rings multiply the near-field page demand", 64.0f);
@@ -48,7 +52,7 @@ AutoCVar_Int CVAR_SVSMValidateDynamic(CVarCategory::Client | CVarCategory::Rende
 AutoCVar_Int CVAR_SVSMDebugClipmap(CVarCategory::Client | CVarCategory::Rendering, "svsmDebugClipmap", "draw this clipmap's page table as an overlay, -1 disables", -1);
 AutoCVar_Int CVAR_SVSMDebugShowPool(CVarCategory::Client | CVarCategory::Rendering, "svsmDebugShowPool", "draw a downsampled view of a physical page pool as an overlay: 1 = static pool, 2 = dynamic pool", 0);
 AutoCVar_Float CVAR_SVSMZHalfRange(CVarCategory::Client | CVarCategory::Rendering, "svsmZHalfRange", "half depth range of the clipmap windows around the camera in light space, changes invalidate all pages", 2048.0f);
-AutoCVar_Float CVAR_SVSMConstantBias(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias", "SVSM compare bias toward the sun in world meters, the software depth path has no hardware bias", 0.15f);
+AutoCVar_Float CVAR_SVSMConstantBias(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias", "SVSM compare bias toward the sun in world meters, the software depth path has no hardware bias", 0.005f);
 AutoCVar_Int CVAR_SVSMProfileGeometry(CVarCategory::Client | CVarCategory::Rendering, "svsmProfileGeometry", "debug: per-view fill/draw GPU time queries in the SVSM geometry passes, shown in the render pass list", 0, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMClipRects(CVarCategory::Client | CVarCategory::Rendering, "svsmClipRects", "clip the static page draws to the classified dirty rects (3 draws per view), 0 reverts to one unclipped draw for A/B", 1, CVarFlags::EditCheckbox);
 AutoCVar_Int CVAR_SVSMNightGate(CVarCategory::Client | CVarCategory::Rendering, "svsmNightGate", "skip all SVSM update/render work while the sun is below the horizon (shadow strength 0), dawn resumes with a full re-bake", 1, CVarFlags::EditCheckbox);
@@ -212,11 +216,12 @@ static SVSMDerivedConfig DeriveSVSMConfig(u32 maxPageTableSize)
     return DeriveSVSMConfig(maxPageTableSize, static_cast<u32>(CVAR_SVSMPoolSize.Get()), static_cast<u32>(CVAR_SVSMDynamicPoolSize.Get()));
 }
 
-ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources)
+ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderScenes::RenderScene* scene, RenderResources& resources)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _terrainRenderer(terrainRenderer)
     , _modelRenderer(modelRenderer)
+    , _scene(scene)
     , _svsmPrepareDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmInvalidateAABBsDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _svsmPageUpdateADescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
@@ -231,16 +236,20 @@ ShadowRenderer::ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameR
     , _svsmPoolDebugDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     ZoneScoped;
+    _modelShadowRenderer = new ShadowRendering::ModelShadowRenderer(renderer, gameRenderer, gameRenderer->GetRenderAssetResources(), scene);
     CreatePermanentResources(resources);
 }
 
 ShadowRenderer::~ShadowRenderer()
 {
+    delete _modelShadowRenderer;
 }
 
 void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
 {
     ZoneScoped;
+    if (ModelRendering::UseMeshletModelRenderer())
+        _modelShadowRenderer->Update(static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1, static_cast<i32>(SVSM_MAX_CLIPMAPS))));
 
     if (SanitizeSVSMConfigCVars(SVSM_MAX_PAGE_TABLE_SIZE))
     {
@@ -450,10 +459,16 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
             _svsmDirtyAABBOverflow = true;
         }
 
-        // The dynamic caster set — moved or bone-pushed within the grace window — is classified
-        // per instance by the ModelRenderer (one classifier feeds both this list and the GPU
-        // instance mask, so they can never disagree). Capped and oversize-spilled at the source,
-        // the copy just has to fit
+        if (ModelRendering::UseMeshletModelRenderer())
+        {
+            const u32 usedPairs = static_cast<u32>(_svsmDirtyAABBs.size() / 2);
+            const u32 remainingPairs = usedPairs < SVSM_MAX_DIRTY_AABBS ? SVSM_MAX_DIRTY_AABBS - usedPairs : 0;
+            if (_scene->DrainShadowInvalidations(_svsmDirtyAABBs, remainingPairs) > remainingPairs)
+                _svsmDirtyAABBOverflow = true;
+        }
+
+        // Dynamic caster classifiers feed both their AABB lists and matching GPU instance flags.
+        // The merged list is capped here before upload into the transient page mark pass.
         const std::vector<vec4>& dynamicAABBs = _modelRenderer->GetDynamicCasterAABBs();
         NC_ASSERT(dynamicAABBs.size() <= SVSM_MAX_DYNAMIC_AABBS * 2, "SVSM: ModelRenderer emitted more dynamic caster AABBs than the buffer holds, the source cap is broken");
         _svsmDynamicAABBs.assign(dynamicAABBs.begin(), dynamicAABBs.end());
@@ -461,6 +476,31 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         _svsmNumDynamicCasters = _modelRenderer->GetNumDynamicCasters();
         _svsmDynamicAABBsDropped = _modelRenderer->GetNumDynamicCastersDropped();
         _modelRenderer->GetDynamicCasterTransitions(_svsmCasterTransitionsIn, _svsmCasterTransitionsOut);
+
+        if (ModelRendering::UseMeshletModelRenderer())
+        {
+            const std::span<const vec4> sceneDynamicAABBs = _scene->GetDynamicShadowAABBs();
+            const size_t available = static_cast<size_t>(SVSM_MAX_DYNAMIC_AABBS) * 2 - _svsmDynamicAABBs.size();
+            const size_t copyCount = std::min(sceneDynamicAABBs.size(), available);
+            _svsmDynamicAABBs.insert(_svsmDynamicAABBs.end(), sceneDynamicAABBs.begin(),
+                                     sceneDynamicAABBs.begin() + copyCount);
+            const ShadowRendering::SceneShadowStats sceneStats = _scene->GetShadowStats();
+            _svsmNumDynamicCasters += sceneStats.dynamicCasters;
+            _svsmCasterTransitionsIn += sceneStats.transitionsIn;
+            _svsmCasterTransitionsOut += sceneStats.transitionsOut;
+            _svsmDynamicAABBsDropped += static_cast<u32>((sceneDynamicAABBs.size() - copyCount) / 2);
+
+            if (CVAR_SVSMDynamicSplit.Get() == 0)
+            {
+                const u32 usedPairs = static_cast<u32>(_svsmDirtyAABBs.size() / 2);
+                const u32 remainingPairs = usedPairs < SVSM_MAX_DIRTY_AABBS ? SVSM_MAX_DIRTY_AABBS - usedPairs : 0;
+                const u32 copyPairs = std::min(static_cast<u32>(sceneDynamicAABBs.size() / 2), remainingPairs);
+                _svsmDirtyAABBs.insert(_svsmDirtyAABBs.end(), sceneDynamicAABBs.begin(),
+                                       sceneDynamicAABBs.begin() + static_cast<size_t>(copyPairs) * 2);
+                if (copyPairs < sceneDynamicAABBs.size() / 2)
+                    _svsmDirtyAABBOverflow = true;
+            }
+        }
 
         // Upload this frame's AABB lists through the frame-synced staging ring, the render graph
         // issues a global upload barrier before any pass executes
@@ -488,7 +528,34 @@ void ShadowRenderer::Update(f32 deltaTime, RenderResources& resources)
         {
             _svsmForceInvalidateAll = true;
         }
+        if (ModelRendering::UseMeshletModelRenderer() &&
+            _scene->DrainShadowInvalidations(_svsmDirtyAABBs, 0) > 0)
+        {
+            _svsmForceInvalidateAll = true;
+        }
     }
+}
+
+void ShadowRenderer::Upload()
+{
+    if (ModelRendering::UseMeshletModelRenderer())
+        _modelShadowRenderer->Upload(_svsmDataBuffer, _svsmPageTableBuffer, _svsmDynamicPageTableBuffer);
+}
+
+void ShadowRenderer::AddSVSMModelPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                        u8 frameIndex)
+{
+    if (!ModelRendering::UseMeshletModelRenderer() || _svsmPagePool == Renderer::ImageID::Invalid())
+        return;
+    const u32 numClipmaps = static_cast<u32>(glm::clamp(CVAR_SVSMNumClipmaps.Get(), 1,
+                                                        static_cast<i32>(SVSM_MAX_CLIPMAPS)));
+    const bool dynamicSplit = CVAR_SVSMDynamicSplit.Get() == 1 &&
+                              _svsmDynamicPagePool != Renderer::ImageID::Invalid() &&
+                              HasSVSMDynamicCasters();
+    _modelShadowRenderer->AddPasses(renderGraph, resources, _svsmDataBuffer, _svsmPageTableBuffer,
+                                    _svsmDynamicPageTableBuffer, _svsmPagePool, _svsmDynamicPagePool,
+                                    numClipmaps, static_cast<u32>(CVAR_SVSMVirtualSize.Get()), dynamicSplit,
+                                    frameIndex);
 }
 
 bool ShadowRenderer::IsSVSMActive() const
@@ -1057,6 +1124,11 @@ void ShadowRenderer::GetSVSMDynamicStats(u32& outLivePages, u32& outTotalPages, 
     outLivePages = _svsmDataReadBack[SVSMDataOffsets::StatsDynamicTotal];
     outTotalPages = _svsmDynamicPoolPages;
     outOverflow = _svsmDataReadBack[SVSMDataOffsets::StatsDynamicOverflow];
+}
+
+const ShadowRendering::ModelShadowStats& ShadowRenderer::GetModelShadowStats() const
+{
+    return _modelShadowRenderer->GetStats();
 }
 
 u32 ShadowRenderer::GetSVSMBudgetUsed() const

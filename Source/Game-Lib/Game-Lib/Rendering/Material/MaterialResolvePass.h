@@ -91,6 +91,7 @@ namespace MaterialRendering
                                 const RenderScenes::RenderScene& scene) const;
 
         Renderer::Renderer* _renderer = nullptr;
+        GameRenderer* _gameRenderer = nullptr;
         Renderer::DescriptorSet _classificationSet;
         Renderer::DescriptorSet _finalizeSet;
         Renderer::DescriptorSet _resolveSet;

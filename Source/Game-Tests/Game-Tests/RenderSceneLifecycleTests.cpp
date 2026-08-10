@@ -176,6 +176,65 @@ TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and "
         scene.GetModelMaterialTables().IsPrivate(scene.GetModelInstances().GetResources(instance)->materialTable));
 }
 
+TEST_CASE("Render scene shadow state tracks caster bounds and lifecycle invalidations",
+          "[Rendering][RenderScene][Shadow]")
+{
+    SceneFixture fixture;
+    RenderScenes::RenderScene scene(22, &fixture.geometry, &fixture.materials);
+    const FileFormat::Model::Bounds& bounds = fixture.geometry.GetRecord(fixture.model).bounds;
+
+    RenderScenes::ModelInstanceDesc desc;
+    desc.model = fixture.model;
+    desc.worldTransform = Translation(4.0f);
+    const RenderScenes::ModelInstanceHandle instance = scene.CreateModelInstance(desc);
+
+    std::vector<vec4> invalidations;
+    REQUIRE(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    REQUIRE(invalidations.size() == 2);
+    CHECK(invalidations[0].x == Catch::Approx(bounds.center.x + 4.0f - bounds.extents.x));
+    CHECK(invalidations[1].x == Catch::Approx(bounds.center.x + 4.0f + bounds.extents.x));
+
+    scene.AcknowledgeClearsAndPublish();
+    invalidations.clear();
+    REQUIRE(scene.SetModelTransform(instance, Translation(9.0f)));
+    REQUIRE(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    CHECK(scene.GetShadowStats().dynamicCasters == 1);
+    CHECK((scene.GetModelInstance(instance)->flags & ModelScene::ModelInstanceFlagDynamicShadowCaster) != 0);
+    const std::span<const vec4> dynamicBounds = scene.GetDynamicShadowAABBs();
+    REQUIRE(dynamicBounds.size() == 2);
+    CHECK(dynamicBounds[0].x == Catch::Approx(bounds.center.x + 9.0f - bounds.extents.x));
+    CHECK(dynamicBounds[1].x == Catch::Approx(bounds.center.x + 9.0f + bounds.extents.x));
+
+    scene.AdvanceFrame();
+    scene.AdvanceFrame();
+    scene.AdvanceFrame();
+    CHECK(scene.GetShadowStats().dynamicCasters == 0);
+    CHECK((scene.GetModelInstance(instance)->flags & ModelScene::ModelInstanceFlagDynamicShadowCaster) == 0);
+    invalidations.clear();
+    REQUIRE(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    CHECK(invalidations[0].x == Catch::Approx(bounds.center.x + 9.0f - bounds.extents.x));
+
+    invalidations.clear();
+    REQUIRE(scene.SetGeometryGroupEnabled(instance, 0, false));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    invalidations.clear();
+    REQUIRE(scene.SetModelVisible(instance, false));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    invalidations.clear();
+    REQUIRE(scene.SetModelVisible(instance, true));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    invalidations.clear();
+    REQUIRE(scene.DestroyModelInstance(instance, 0));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+
+    desc.visible = false;
+    const RenderScenes::ModelInstanceHandle hidden = scene.CreateModelInstance(desc);
+    invalidations.clear();
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
+    REQUIRE(scene.DestroyModelInstance(hidden, 0));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
+}
+
 TEST_CASE("Render scene survives heavy slot churn without publishing uncleared reuse", "[Rendering][RenderScene]")
 {
     SceneFixture fixture;

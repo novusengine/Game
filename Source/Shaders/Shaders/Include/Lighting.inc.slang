@@ -4,16 +4,6 @@
 #include "Include/Shadows.inc.slang"
 #include "Include/VisibilityBuffers.inc.slang"
 
-struct DirectionalLight
-{
-    float4 direction;
-    float4 color; // a = intensity
-    float4 groundAmbientColor; // a = intensity
-    float4 skyAmbientColor; // a = intensity
-    float4 shadowColor;
-};
-[[vk::binding(7, PER_PASS)]] StructuredBuffer<DirectionalLight> _directionalLights;
-
 [[vk::binding(8, PER_PASS)]] Texture2D<float> _ambientOcclusion;
 
 DirectionalLight LoadDirectionalLight(uint index)
@@ -40,7 +30,7 @@ float3 ApplyLighting(float3 materialColor, PixelVertexData pixelVertexData, uint
     float shadowFactor = 1.0f;
     if (shadowSettings.enableShadows && numDirectionalLights > 0)
     {
-        shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, shadowSettings);
+        shadowFactor = GetSVSMShadowFactor(pixelVertexData.worldPos, pixelVertexData.worldNormal, pixelVertexData.faceNormal, shadowSettings);
 
         // Sun elevation strength, fades shadows out around dawn/dusk
         shadowFactor = lerp(1.0f, shadowFactor, shadowSettings.strength);

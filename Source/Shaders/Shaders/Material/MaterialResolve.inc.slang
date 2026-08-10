@@ -1,5 +1,6 @@
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
+#include "DescriptorSet/Light.inc.slang"
 #include "Model/ModelVisibilityReconstruct.inc.slang"
 #include "Material/LightingModels.inc.slang"
 
@@ -14,6 +15,7 @@ struct Constants
     uint tileCapacity;
     uint tilesX;
     uint debugMode;
+    uint numDirectionalLights;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -101,6 +103,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
     LightingModelInput lightingInput;
     lightingInput.worldPosition = pixel.worldPosition;
     lightingInput.viewDirection = 0.0f;
+    lightingInput.lightDirection = _constants.numDirectionalLights > 0u ? normalize(_directionalLights[0].direction.xyz) : float3(0.0f, 1.0f, 0.0f);
     lightingInput.ambientVisibility = 1.0f;
     lightingInput.shadowVisibility = 1.0f;
     float3 color = EvaluateLightingModel(lightingModel, surface, lightingInput);

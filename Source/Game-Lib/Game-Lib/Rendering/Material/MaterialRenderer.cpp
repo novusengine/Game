@@ -410,12 +410,12 @@ void MaterialRenderer::CreateMaterialPipeline()
     _materialPipeline = _renderer->CreatePipeline(pipelineDesc);
 }
 
-void MaterialRenderer::Upload()
+void MaterialRenderer::Upload(RenderResources& resources)
 {
     ZoneScoped;
 
     if (_directionalLights.SyncToGPU(_renderer))
     {
-        _materialPassDescriptorSet.Bind("_directionalLights", _directionalLights.GetBuffer());
+        resources.lightDescriptorSet.Bind("_directionalLights", _directionalLights.GetBuffer());
     }
 }

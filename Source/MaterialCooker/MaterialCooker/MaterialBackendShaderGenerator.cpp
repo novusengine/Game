@@ -133,6 +133,7 @@ namespace MaterialCooking
                   "    LightingModelInput lightingInput;\n"
                   "    lightingInput.worldPosition = input.worldPosition;\n"
                   "    lightingInput.viewDirection = 0.0f;\n"
+                  "    lightingInput.lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));\n"
                   "    lightingInput.ambientVisibility = _constants.ambientVisibility;\n"
                   "    lightingInput.shadowVisibility = _constants.shadowVisibility;\n"
                   "    float3 color = EvaluateLightingModel(\n"

@@ -13,6 +13,8 @@
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
 #include "Game-Lib/Rendering/PixelQuery.h"
+#include "Game-Lib/Rendering/Shadow/ModelShadowWork.h"
+#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 #include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -260,6 +262,26 @@ namespace Scripting::Asset
         zenith->AddTableField("sceneHistoryAddressWords", sceneStats.meshletHistory.addressSpaceWords);
         zenith->AddTableField("sceneHistoryRetiredWords", sceneStats.meshletHistory.retiredWords);
         zenith->AddTableField("sceneHistoryClearRanges", sceneStats.meshletHistory.pendingClearRanges);
+        const ShadowRendering::SceneShadowStats sceneShadowStats = ServiceLocator::GetGameRenderer()->GetWorldRenderScene()->GetShadowStats();
+        zenith->AddTableField("shadowDynamicCasters", sceneShadowStats.dynamicCasters);
+        const ShadowRendering::ModelShadowStats& shadowStats = ServiceLocator::GetGameRenderer()->GetShadowRenderer()->GetModelShadowStats();
+        u32 staticShadowMeshlets = 0;
+        u32 dynamicShadowMeshlets = 0;
+        for (u32 clipmap = 0; clipmap < ShadowRendering::MODEL_SHADOW_MAX_CLIPMAPS; ++clipmap)
+        {
+            const u32 base = clipmap * ShadowRendering::MODEL_SHADOW_QUEUE_COUNT;
+            for (u32 queue = 0; queue < ShadowRendering::MODEL_SHADOW_RASTER_CLASS_COUNT; ++queue)
+            {
+                staticShadowMeshlets += shadowStats.survivingMeshlets[base + queue];
+                dynamicShadowMeshlets += shadowStats.survivingMeshlets[base + ShadowRendering::MODEL_SHADOW_RASTER_CLASS_COUNT + queue];
+            }
+        }
+        zenith->AddTableField("shadowStaticMeshlets", staticShadowMeshlets);
+        zenith->AddTableField("shadowDynamicMeshlets", dynamicShadowMeshlets);
+        zenith->AddTableField("shadowTestedMeshlets", shadowStats.testedMeshlets);
+        zenith->AddTableField("shadowPageRejectedMeshlets", shadowStats.rejectedPageMeshlets);
+        zenith->AddTableField("shadowGeometryGroupRejectedMeshlets", shadowStats.rejectedGeometryGroupMeshlets);
+        zenith->AddTableField("shadowQueueOverflows", shadowStats.queueOverflows + shadowStats.recordOverflows + shadowStats.chunkQueueOverflows);
         zenith->AddTableField("mapPlacements", placementStats.livePlacements);
         zenith->AddTableField("mapPlacementDuplicates", placementStats.duplicatePlacements);
         zenith->AddTableField("mapPlacementResolutionFailures", placementStats.sourceResolutionFailures);

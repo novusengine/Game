@@ -40,6 +40,7 @@ float4 main(ForwardVaryings input, bool frontFacing : SV_IsFrontFace) : SV_Targe
     LightingModelInput lightingInput;
     lightingInput.worldPosition = input.worldPosition;
     lightingInput.viewDirection = 0.0f;
+    lightingInput.lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
     lightingInput.ambientVisibility = _constants.ambientVisibility;
     lightingInput.shadowVisibility = _constants.shadowVisibility;
     float3 color = EvaluateLightingModel(MaterialLightingModel(instance), surface, lightingInput);

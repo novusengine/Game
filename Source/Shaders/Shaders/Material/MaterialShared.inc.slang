@@ -4,6 +4,7 @@
 #include "Material/MaterialABI.inc.slang"
 
 #define MATERIAL_TWO_SIDED (1u << 0u)
+#define MATERIAL_CASTS_SHADOWS (1u << 1u)
 
 struct MaterialInstanceRecord
 {

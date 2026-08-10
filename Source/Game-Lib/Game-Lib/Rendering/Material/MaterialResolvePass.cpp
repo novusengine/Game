@@ -4,6 +4,7 @@
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
+#include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/Model/View/ModelViewWorkResources.h"
@@ -22,7 +23,8 @@ AutoCVar_Int CVAR_MaterialDebugMode(
 namespace MaterialRendering
 {
     MaterialResolvePass::MaterialResolvePass(Renderer::Renderer* renderer, GameRenderer* gameRenderer)
-        : _renderer(renderer), _classificationSet(Renderer::DescriptorSetSlot::PER_PASS),
+        : _renderer(renderer), _gameRenderer(gameRenderer),
+          _classificationSet(Renderer::DescriptorSetSlot::PER_PASS),
           _finalizeSet(Renderer::DescriptorSetSlot::PER_PASS),
           _resolveSet(Renderer::DescriptorSetSlot::PER_PASS)
     {
@@ -296,6 +298,7 @@ namespace MaterialRendering
             Renderer::ImageMutableResource color;
             Renderer::BufferResource arguments;
             Renderer::DescriptorSetResource globalSet;
+            Renderer::DescriptorSetResource lightSet;
             Renderer::DescriptorSetResource materialSet;
             Renderer::DescriptorSetResource resolveSet;
         };
@@ -308,6 +311,7 @@ namespace MaterialRendering
                 const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
                 data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, loadMode);
                 builder.Read(renderResources.cameras.GetBuffer(), Usage::COMPUTE);
+                builder.Read(_gameRenderer->GetMaterialRenderer()->GetDirectionalLightBuffer(), Usage::COMPUTE);
                 RegisterModelUsage(builder, work, geometry, materials, scene);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::COMPUTE);
@@ -315,6 +319,7 @@ namespace MaterialRendering
                     builder.Read(resources.GetTileQueue(frame), Usage::COMPUTE);
                 data.arguments = builder.Read(resources.GetArguments(frameIndex), Usage::COMPUTE);
                 data.globalSet = builder.Use(renderResources.globalDescriptorSet);
+                data.lightSet = builder.Use(renderResources.lightDescriptorSet);
                 data.materialSet = builder.Use(renderResources.materialDescriptorSet);
                 data.resolveSet = builder.Use(_resolveSet);
                 return true;
@@ -332,6 +337,7 @@ namespace MaterialRendering
                     u32 tileCapacity;
                     u32 tilesX;
                     u32 debugMode;
+                    u32 numDirectionalLights;
                 };
                 data.resolveSet.Bind("_visibilityBuffer"_h, data.visibility);
                 data.resolveSet.Bind("_materialIDs"_h, data.materialIDs);
@@ -342,6 +348,7 @@ namespace MaterialRendering
                         continue;
                     commandList.BeginPipeline(_resolvePipelines[group]);
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);
+                    commandList.BindDescriptorSet(data.lightSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     commandList.BindDescriptorSet(data.resolveSet, frameIndex);
                     Constants* constants = graphResources.FrameNew<Constants>();
@@ -351,6 +358,7 @@ namespace MaterialRendering
                     constants->tileCapacity = resources.GetTileCapacity();
                     constants->tilesX = tilesX;
                     constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
+                    constants->numDirectionalLights = _gameRenderer->GetMaterialRenderer()->GetNumDirectionalLights();
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.DispatchIndirect(
                         data.arguments, group * sizeof(u32) * MATERIAL_DISPATCH_ARGUMENT_COUNT);

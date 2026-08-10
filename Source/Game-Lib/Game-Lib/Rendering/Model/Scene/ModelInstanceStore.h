@@ -22,7 +22,8 @@ namespace ModelScene
         ModelInstanceFlagNew = 1u << 2u,
         ModelInstanceFlagTeleported = 1u << 3u,
         ModelInstanceFlagPrivateMaterials = 1u << 4u,
-        ModelInstanceFlagPendingPublication = 1u << 5u
+        ModelInstanceFlagPendingPublication = 1u << 5u,
+        ModelInstanceFlagDynamicShadowCaster = 1u << 6u
     };
 
     struct ModelInstanceGPURecord
@@ -89,6 +90,7 @@ namespace ModelScene
         bool SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported,
                           bool& outNeedsHistoryClear);
         bool SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear);
+        bool SetShadowDynamic(RenderScenes::ModelInstanceHandle handle, bool dynamic);
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
         void AdvanceFrame();
@@ -97,6 +99,7 @@ namespace ModelScene
 
         bool IsAlive(RenderScenes::ModelInstanceHandle handle) const;
         bool IsPending(RenderScenes::ModelInstanceHandle handle) const;
+        bool IsVisible(RenderScenes::ModelInstanceHandle handle) const;
         const ModelInstanceGPURecord* GetRecord(RenderScenes::ModelInstanceHandle handle) const;
         const ModelInstanceResources* GetResources(RenderScenes::ModelInstanceHandle handle) const;
         void CollectActiveHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const;

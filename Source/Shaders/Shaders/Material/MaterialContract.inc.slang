@@ -37,6 +37,7 @@ struct LightingModelInput
 {
     float3 worldPosition;
     float3 viewDirection;
+    float3 lightDirection;
     float ambientVisibility;
     float shadowVisibility;
 };

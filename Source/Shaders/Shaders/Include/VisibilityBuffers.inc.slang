@@ -402,6 +402,7 @@ struct PixelVertexData
     FullBary2 uv1; // Only used for models, for terrain it's a copy of uv0
     float3 color; // Only used for terrain, for models it's hardcoded to white
     float3 worldNormal;
+    float3 faceNormal;
     float3 worldPos;
     float4 viewPos;
     float2 pixelPos;
@@ -442,6 +443,8 @@ PixelVertexData GetPixelVertexDataTerrain(const uint2 pixelPos, const Visibility
     result.color = InterpolateVertexAttribute(bary, vertices[0].color, vertices[1].color, vertices[2].color);
 
     result.worldNormal = normalize(InterpolateVertexAttribute(bary, vertices[0].normal, vertices[1].normal, vertices[2].normal));
+    float3 faceNormal = cross(wP1 - wP0, wP2 - wP0);
+    result.faceNormal = dot(faceNormal, faceNormal) > 1e-12f ? normalize(faceNormal) : result.worldNormal;
     result.worldPos = InterpolateVertexAttribute(bary, vertices[0].position, vertices[1].position, vertices[2].position);
     result.viewPos = mul(float4(result.worldPos, 1.0f), _cameras[cameraIndex].worldToView);
     result.pixelPos = pixelPos;
@@ -494,6 +497,8 @@ PixelVertexData GetPixelVertexDataModel(const uint2 pixelPos, const VisibilityBu
 
     float3 vertexNormal = normalize(InterpolateVertexAttribute(bary, vertices[0].normal, vertices[1].normal, vertices[2].normal));
     result.worldNormal = normalize(mul(vertexNormal, (float3x3)instanceMatrix));
+    float3 faceNormal = cross(wP1 - wP0, wP2 - wP0);
+    result.faceNormal = dot(faceNormal, faceNormal) > 1e-12f ? normalize(faceNormal) : result.worldNormal;
 
     float3 pixelVertexPos = InterpolateVertexAttribute(bary, vertices[0].position, vertices[1].position, vertices[2].position);
     result.worldPos = mul(float4(pixelVertexPos, 1.0f), instanceMatrix).xyz;
@@ -530,6 +535,7 @@ PixelVertexData GetPixelVertexData(const uint2 pixelPos, const VisibilityBuffer 
 
     result.color = float3(1, 1, 1);
     result.worldNormal = float3(0, 1, 0);
+    result.faceNormal = result.worldNormal;
     result.worldPos = float3(0, 0, 0);
     result.viewPos = float4(0, 0, 0, 1);
     result.pixelPos = pixelPos;

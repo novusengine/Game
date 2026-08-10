@@ -83,7 +83,7 @@ bool SVSMIsDynamicPageResident(uint clipmapIndex, int2 virtualTexel, uint pageTa
 // - missingPagesReadLit = true (dynamic pool): non-resident pages read depth 0 = lit — correct,
 //   no dynamic caster covers that texel — and the ring always resolves.
 // The callers' containment margin keeps the whole block inside the window
-bool SVSMFilterRing(uint clipmapIndex, float2 texelPos, float compareDepth, uint pageTableSize, uint pageSize, uint poolPagesPerRow, bool missingPagesReadLit, StructuredBuffer<uint> pageTable, Texture2D<uint> pagePool, out float shadowFactor)
+bool SVSMFilterRing(uint clipmapIndex, float2 texelPos, float compareDepth, float2 receiverDepthGradient, uint pageTableSize, uint pageSize, uint poolPagesPerRow, bool missingPagesReadLit, StructuredBuffer<uint> pageTable, Texture2D<uint> pagePool, out float shadowFactor)
 {
     shadowFactor = 1.0f;
 
@@ -139,7 +139,9 @@ bool SVSMFilterRing(uint clipmapIndex, float2 texelPos, float compareDepth, uint
             int2 pageSel = int2(rel.x >= int(pageSize) ? 1 : 0, rel.y >= int(pageSize) ? 1 : 0);
             uint2 pageTexel = uint2(rel - pageSel * int(pageSize));
             float storedDepth = pageResident[pageSel.y][pageSel.x] ? asfloat(pagePool[pagePhysBase[pageSel.y][pageSel.x] + pageTexel]) : 0.0f;
-            lit[y][x] = compareDepth > storedDepth ? 1.0f : 0.0f;
+            float2 sampleOffset = float2(blockBase + int2(x, y)) + 0.5f - texelPos;
+            float sampleCompareDepth = compareDepth + abs(dot(receiverDepthGradient, sampleOffset));
+            lit[y][x] = sampleCompareDepth > storedDepth ? 1.0f : 0.0f;
         }
     }
 
@@ -165,7 +167,7 @@ bool SVSMFilterRing(uint clipmapIndex, float2 texelPos, float compareDepth, uint
 // over a shared 4x4 texel block (SVSMFilterRing). Returns 1 (lit) when nothing is resident, the
 // marking pass guarantees residency for everything the main view actually sees. Static and
 // dynamic resolve their rings independently (see the dynamic block below) and combine via min
-float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings shadowSettings)
+float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, float3 faceNormal, ShadowSettings shadowSettings)
 {
     uint numClipmaps = _svsmData[0].configNumClipmaps;
     float4 lightDirection = _svsmData[0].prevLightDirection;
@@ -179,6 +181,7 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
     uint poolPagesPerRow = _svsmData[0].configPoolPagesPerRow;
 
     float3x3 lightRotation = BuildLightRotation(lightDirection.xyz);
+    float3 lightSpaceNormal = mul(faceNormal, lightRotation);
     float3 relativePos = worldPos - _cameras[0].eyePosition.xyz; // Camera-relative, world-magnitude wrap math loses texels
     float2 lightSpaceRelCam = mul(relativePos, lightRotation).xy;
 
@@ -223,11 +226,13 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
         // maps absolute light-space Z, camMinusZAnchor reconciles the two with small quantities.
         // Positive bias moves the receiver toward the sun
         float compareDepth = (zHalf - (lightSpacePos.z + camMinusZAnchor)) / zRangeLength + compareBias;
+        float normalZ = abs(lightSpaceNormal.z) < 0.1f ? (lightSpaceNormal.z < 0.0f ? -0.1f : 0.1f) : lightSpaceNormal.z;
+        float2 receiverDepthGradient = lightSpaceNormal.xy * (texelWorld / (normalZ * zRangeLength));
 
         float2 texelPos = windowPos / texelWorld;
 
         float shadowFactor;
-        if (!SVSMFilterRing(k, texelPos, compareDepth, pageTableSize, pageSize, poolPagesPerRow, false, _svsmPageTable, _svsmPagePool, shadowFactor))
+        if (!SVSMFilterRing(k, texelPos, compareDepth, receiverDepthGradient, pageTableSize, pageSize, poolPagesPerRow, false, _svsmPageTable, _svsmPagePool, shadowFactor))
         {
             continue; // Fall back to a coarser clipmap, worst case ends lit
         }
@@ -276,10 +281,12 @@ float GetSVSMShadowFactor(float3 worldPos, float3 worldNormal, ShadowSettings sh
             }
 
             float compareDepth = (zHalf - (lightSpacePos.z + camMinusZAnchor)) / zRangeLength + compareBias;
+            float normalZ = abs(lightSpaceNormal.z) < 0.1f ? (lightSpaceNormal.z < 0.0f ? -0.1f : 0.1f) : lightSpaceNormal.z;
+            float2 receiverDepthGradient = lightSpaceNormal.xy * (texelWorld / (normalZ * zRangeLength));
 
             // Same filter as the static ring against the dynamic table/pool; non-resident pages
             // read lit, so this always resolves
-            SVSMFilterRing(kd, texelPos, compareDepth, pageTableSize, pageSize, _svsmData[0].configDynamicPoolPagesPerRow, true, _svsmDynamicPageTable, _svsmDynamicPagePool, dynamicFactor);
+            SVSMFilterRing(kd, texelPos, compareDepth, receiverDepthGradient, pageTableSize, pageSize, _svsmData[0].configDynamicPoolPagesPerRow, true, _svsmDynamicPageTable, _svsmDynamicPagePool, dynamicFactor);
             break;
         }
     }

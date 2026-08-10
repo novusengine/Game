@@ -9,8 +9,7 @@
 float3 EvaluateStandardLighting(SurfaceDescription surface, LightingModelInput input)
 {
     float3 normal = UnpackSurfaceNormal(surface.packedNormal);
-    float3 lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
-    float diffuse = 0.25f + 0.75f * saturate(dot(normal, lightDirection));
+    float diffuse = 0.25f + 0.75f * saturate(dot(normal, input.lightDirection));
     diffuse *= input.ambientVisibility * input.shadowVisibility;
     return surface.albedo * diffuse + surface.emissive * surface.emissiveIntensity;
 }

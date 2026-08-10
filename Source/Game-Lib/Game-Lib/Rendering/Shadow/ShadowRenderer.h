@@ -24,14 +24,17 @@ struct RenderResources;
 class GameRenderer;
 class ModelRenderer;
 class TerrainRenderer;
+namespace RenderScenes { class RenderScene; }
+namespace ShadowRendering { class ModelShadowRenderer; struct ModelShadowStats; }
 
 class ShadowRenderer
 {
 public:
-    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderResources& resources);
+    ShadowRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, TerrainRenderer* terrainRenderer, ModelRenderer* modelRenderer, RenderScenes::RenderScene* scene, RenderResources& resources);
     ~ShadowRenderer();
 
     void Update(f32 deltaTime, RenderResources& resources);
+    void Upload();
 
     // SVSM: page marking, page table lifecycle and allocation
     void AddSVSMUpdatePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -40,6 +43,7 @@ public:
     // update pass is disabled (svsmFreeze)
     void AddSVSMBindPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
     void AddSVSMDebugOverlayPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddSVSMModelPasses(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     struct SVSMClipmapStats
     {
@@ -58,6 +62,7 @@ public:
     void GetSVSMGlobalStats(u32& outFreePages, u32& outTotalPages, u32& outOverflow, u32& outInvalidationCause) const;
     void GetSVSMDynamicStats(u32& outLivePages, u32& outTotalPages, u32& outOverflow) const;
     u32 GetSVSMBudgetUsed() const; // Defined in the .cpp next to the SVSMData mirror offsets
+    const ShadowRendering::ModelShadowStats& GetModelShadowStats() const;
 
     // Binds the cameras buffer into every SVSM set that reads or writes it. Called at init
     // (buffer binds only reach the canonical descriptor copies at a later FlipFrame, so mid-frame
@@ -133,6 +138,8 @@ private:
     GameRenderer* _gameRenderer = nullptr;
     TerrainRenderer* _terrainRenderer = nullptr;
     ModelRenderer* _modelRenderer = nullptr;
+    RenderScenes::RenderScene* _scene = nullptr;
+    ShadowRendering::ModelShadowRenderer* _modelShadowRenderer = nullptr;
 
     static constexpr u32 SVSM_MAX_PAGE_TABLE_SIZE = 64;   // Pages per row, buffers are sized for this cap
     static constexpr u32 SVSM_MAX_POOL_PAGES = 4096;      // Physical page index is 12 bits in the table entry

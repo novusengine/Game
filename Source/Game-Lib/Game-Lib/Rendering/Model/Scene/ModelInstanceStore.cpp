@@ -184,6 +184,24 @@ namespace ModelScene
         return true;
     }
 
+    bool ModelInstanceStore::SetShadowDynamic(RenderScenes::ModelInstanceHandle handle, bool dynamic)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+            return false;
+
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        const u32 oldFlags = record.flags;
+        if (dynamic)
+            record.flags |= ModelInstanceFlagDynamicShadowCaster;
+        else
+            record.flags &= ~ModelInstanceFlagDynamicShadowCaster;
+        if (record.flags != oldFlags)
+            _records.SetDirtyElement(slotIndex);
+        return true;
+    }
+
     bool ModelInstanceStore::SetMaterialTable(RenderScenes::ModelInstanceHandle handle,
                                               RenderScenes::ModelMaterialTableHandle table, u32 offset, u32 count,
                                               bool isPrivate)
@@ -303,6 +321,12 @@ namespace ModelScene
     {
         const Slot* slot = GetSlot(handle);
         return slot && slot->state == SlotState::Pending;
+    }
+
+    bool ModelInstanceStore::IsVisible(RenderScenes::ModelInstanceHandle handle) const
+    {
+        const Slot* slot = GetSlot(handle);
+        return slot && slot->desiredVisible;
     }
 
     const ModelInstanceGPURecord* ModelInstanceStore::GetRecord(RenderScenes::ModelInstanceHandle handle) const
