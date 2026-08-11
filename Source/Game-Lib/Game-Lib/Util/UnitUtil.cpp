@@ -1354,6 +1354,9 @@ namespace Util::Unit
             case ::Animation::Defines::Type::AttackRifle:
             case ::Animation::Defines::Type::AttackThrown:
                 return true;
+
+            default:
+                break;
         }
 
         return false;
@@ -1369,6 +1372,9 @@ namespace Util::Unit
             case ::Animation::Defines::Type::AttackFist1HOff:
             case ::Animation::Defines::Type::Attack2HL:
                 return true;
+
+            default:
+                break;
         }
 
         return false;

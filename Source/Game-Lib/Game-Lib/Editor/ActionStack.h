@@ -7,6 +7,7 @@ namespace Editor
     struct BaseAction
     {
         BaseAction();
+        virtual ~BaseAction() = default;
 
         virtual char* GetActionName() = 0;
         virtual void Undo() = 0;

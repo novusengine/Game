@@ -296,6 +296,11 @@ namespace Scripting::Unit
                         resourceType = MetaGen::Shared::Unit::PowerTypeEnum::Energy;
                         break;
                     }
+
+                    default:
+                    {
+                        break;
+                    }
                 }
             }
         }

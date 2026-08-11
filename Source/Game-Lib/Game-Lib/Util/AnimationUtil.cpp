@@ -399,7 +399,7 @@ namespace Util::Animation
         u32 numBoneMatrices = static_cast<u32>(animationData.boneTransforms.size());
         u16 boneIndex = GetBoneIndexFromKeyBoneID(modelInfo, bone);
 
-        if (boneIndex == ::Animation::Defines::InvalidBoneID || boneIndex >= numBoneMatrices)
+        if (boneIndex == static_cast<u16>(::Animation::Defines::InvalidBoneID) || boneIndex >= numBoneMatrices)
             return nullptr;
 
         return GetBoneMatrixRaw(animationData, boneIndex);
