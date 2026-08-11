@@ -37,7 +37,11 @@ struct ReconstructedModelPixel
     uint materialIndex;
     uint triangleID;
     float3 worldPosition;
+#ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
+    float3 previousWorldPosition;
+#endif
     float3 worldNormal;
+    float3 faceNormal;
     float2 uv0;
     float2 uv0DDX;
     float2 uv0DDY;
@@ -83,6 +87,9 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
     uint packedTriangle = _resolvedModelTriangles[result.model.meshletTriangleBase + result.meshlet.triangleOffset + payload.triangleID];
     uint3 localVertexIndices = DecodeModelMeshletTriangle(packedTriangle);
     float3 worldPositions[3];
+#ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
+    float3 previousWorldPositions[3];
+#endif
     float3 worldNormals[3];
     float2 uvs[3];
     for (uint i = 0u; i < 3u; ++i)
@@ -93,6 +100,9 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
             result.mesh.positionDecodeOffset, result.mesh.positionDecodeExtent);
         uint4 attributes = _resolvedModelVertexAttributes[result.model.vertexAttributeBase + result.lod.vertexAttributeOffset + vertexIndex];
         worldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.currentWorld).xyz;
+#ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
+        previousWorldPositions[i] = mul(float4(localPosition, 1.0f), result.instance.previousWorld).xyz;
+#endif
         worldNormals[i] = normalize(mul(float4(DecodeOctahedralSnorm(attributes.x), 0.0f), result.instance.currentWorld).xyz);
         uvs[i] = DecodeHalf2(attributes.z);
     }
@@ -100,7 +110,11 @@ bool ReconstructModelPixel(TypedVisibilityPayload payload, float2 samplePosition
     Barycentrics bary = ReconstructBarycentricsAtSample(samplePosition, renderSize, worldPositions[0],
                                                          worldPositions[1], worldPositions[2], cameraIndex);
     result.worldPosition = InterpolateVertexAttribute(bary, worldPositions[0], worldPositions[1], worldPositions[2]);
+#ifdef MODEL_VISIBILITY_RECONSTRUCT_PREVIOUS_POSITION
+    result.previousWorldPosition = InterpolateVertexAttribute(bary, previousWorldPositions[0], previousWorldPositions[1], previousWorldPositions[2]);
+#endif
     result.worldNormal = normalize(InterpolateVertexAttribute(bary, worldNormals[0], worldNormals[1], worldNormals[2]));
+    result.faceNormal = normalize(cross(worldPositions[1] - worldPositions[0], worldPositions[2] - worldPositions[0]));
     FullBary2 fullUV = CalcFullBary2(bary, uvs[0], uvs[1], uvs[2]);
     result.uv0 = fullUV.value;
     result.uv0DDX = fullUV.ddx;

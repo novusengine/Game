@@ -31,6 +31,8 @@ namespace MaterialLoading
         explicit MaterialParameterStorage(bool validateTransfers = false);
 
         bool Append(std::span<const u8> bytes, u32 alignment, u32& outOffset);
+        bool AppendMutable(std::span<const u8> bytes, u32 alignment, u32& outOffset);
+        bool Write(u32 offset, std::span<const u8> bytes);
         void SyncToGPU(Renderer::Renderer* renderer);
 
         u8 GetByte(u32 offset) const { return _bytes[offset]; }

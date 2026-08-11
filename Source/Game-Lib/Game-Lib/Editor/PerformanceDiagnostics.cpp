@@ -9,6 +9,7 @@
 #include <Game-Lib/Rendering/Model/ModelRenderer.h>
 #include <Game-Lib/Rendering/Terrain/TerrainRenderer.h>
 #include <Game-Lib/Rendering/Liquid/LiquidRenderer.h>
+#include <Game-Lib/Rendering/Light/LightRenderer.h>
 #include <Game-Lib/Rendering/Shadow/ShadowRenderer.h>
 #include <Game-Lib/Rendering/Shadow/ModelShadowWork.h>
 #include <Game-Lib/Rendering/Debug/JoltDebugRenderer.h>
@@ -96,6 +97,16 @@ namespace Editor
                     ImGui::TextColored(errorColor, "ERROR: Model visibility arena overflow (%u dropped)", model.work.visibilityRecordOverflows);
                 if (model.work.survivorQueueOverflows > 0)
                     ImGui::TextColored(errorColor, "ERROR: Model survivor queue overflow (%u dropped)", model.work.survivorQueueOverflows);
+            }
+
+            if (LightRenderer* lightRenderer = gameRenderer->GetLightRenderer())
+            {
+                const u32 decalOverflow = lightRenderer->GetDecalTileOverflowCount();
+                if (decalOverflow > 0)
+                {
+                    const ImVec4 errorColor(1.0f, 0.2f, 0.2f, 1.0f);
+                    ImGui::TextColored(errorColor, "ERROR: Decal tile-list overflow (%u candidates dropped)", decalOverflow);
+                }
             }
 
             const std::string rightHeaderText = "Survived / Total (%)";

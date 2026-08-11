@@ -2,7 +2,9 @@
 #include "Include/TypedVisibility.inc.slang"
 #include "DescriptorSet/Light.inc.slang"
 #include "Model/ModelVisibilityReconstruct.inc.slang"
+#include "Material/LightingInput.inc.slang"
 #include "Material/LightingModels.inc.slang"
+#include "Material/Decals.inc.slang"
 
 #include "Material/MaterialEvaluation.inc.slang"
 #include "Generated/MaterialActiveGroup.inc.slang"
@@ -10,12 +12,15 @@
 struct Constants
 {
     float4 renderInfo;
+    float4 shadowSettings;
     uint resourceIndex;
     uint viewIndex;
     uint tileCapacity;
     uint tilesX;
     uint debugMode;
     uint numDirectionalLights;
+    uint shadowsReady;
+    uint sampleAmbientVisibility;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -76,6 +81,7 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
     MaterialInput materialInput;
     materialInput.worldPosition = pixel.worldPosition;
     materialInput.geometricNormal = normal;
+    materialInput.vertexColor = 1.0f;
     materialInput.uv0 = pixel.uv0;
     materialInput.uv0DDX = pixel.uv0DDX;
     materialInput.uv0DDY = pixel.uv0DDY;
@@ -94,18 +100,23 @@ void main(uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
         context.input = materialInput;
         context.instance = instance;
         context.textureOffset = 0u;
+        context.parameterBlockIndex = 0u;
         uint localProgramID =
             MaterialGroupLocalProgramID(material, MaterialRasterClass(instance));
         surface = EvaluateCookedMaterial(localProgramID, context);
         lightingModel = MaterialLightingModel(instance);
     }
 
-    LightingModelInput lightingInput;
-    lightingInput.worldPosition = pixel.worldPosition;
-    lightingInput.viewDirection = 0.0f;
-    lightingInput.lightDirection = _constants.numDirectionalLights > 0u ? normalize(_directionalLights[0].direction.xyz) : float3(0.0f, 1.0f, 0.0f);
-    lightingInput.ambientVisibility = 1.0f;
-    lightingInput.shadowVisibility = 1.0f;
+    uint decalTilesX = (uint(_constants.renderInfo.x) + TILED_CULLING_BLOCKSIZE - 1u) / TILED_CULLING_BLOCKSIZE;
+    uint2 decalTilePosition = pixelPos / TILED_CULLING_BLOCKSIZE;
+    ApplyDecals(decalTilePosition.y * decalTilesX + decalTilePosition.x, pixel.worldPosition, normal, surface);
+
+    ShadowSettings shadowSettings;
+    shadowSettings.enableShadows = _constants.shadowsReady != 0u;
+    shadowSettings.strength = _constants.shadowSettings.x;
+    shadowSettings.normalOffset = _constants.shadowSettings.y;
+    shadowSettings.svsmConstantBias = _constants.shadowSettings.z;
+    LightingModelInput lightingInput = BuildLightingModelInput(pixelPos, _constants.viewIndex, pixel.worldPosition, normal, pixel.faceNormal, _constants.numDirectionalLights, _constants.sampleAmbientVisibility != 0u, shadowSettings);
     float3 color = EvaluateLightingModel(lightingModel, surface, lightingInput);
 
     if (_constants.debugMode == 1u) color = MaterialIDColor(instance.materialIndex);

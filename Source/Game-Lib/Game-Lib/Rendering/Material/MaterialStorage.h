@@ -78,7 +78,9 @@ namespace MaterialLoading
         bool InitializeFallback(u32 checkerboardTextureIndex);
         bool AppendMaterial(const MaterialAssetView& view, const FileFormat::Material::MaterialProgramRecord& program, RenderAssets::MaterialHandle& outHandle);
         bool AppendMaterialInstance(RenderAssets::MaterialHandle material, const FileFormat::Material::MaterialInstanceAsset& configuration, std::span<const u8> parameterData,
-                                    std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle);
+                                    std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle,
+                                    bool mutableParameters = false);
+        bool WriteMaterialParameters(RenderAssets::MaterialInstanceHandle materialInstance, u32 relativeOffset, std::span<const u8> bytes);
         bool DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureOverride> overrides, RenderAssets::MaterialInstanceHandle& outHandle);
         bool AppendMaterialTable(std::span<const RenderAssets::MaterialInstanceHandle> materials, u32& outOffset);
         void SyncToGPU(Renderer::Renderer* renderer);

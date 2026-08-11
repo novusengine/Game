@@ -193,7 +193,7 @@ void TextureRenderer::AddTexturePass(Renderer::RenderGraph* renderGraph, RenderR
                 // DEBUG: Enable this to keep rendering requests every frame for easier capture
                 //_renderTextureToTextureRequests.enqueue_bulk(&_renderTextureToTextureWork[0], data.numRenderTextureToTextureRequests);
             }
-        });
+        }, Renderer::RenderPassFlags::SideEffect);
 }
 
 Renderer::TextureID TextureRenderer::MakeRenderableCopy(Renderer::TextureID texture, u32 width, u32 height)

@@ -63,6 +63,35 @@ namespace MaterialLoading
         return true;
     }
 
+    bool MaterialParameterStorage::AppendMutable(std::span<const u8> bytes, u32 alignment, u32& outOffset)
+    {
+        if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+            return false;
+        const u64 alignedOffset = (static_cast<u64>(_bytes.Count()) + alignment - 1u) & ~(static_cast<u64>(alignment) - 1u);
+        const u64 requiredSize = alignedOffset + bytes.size();
+        if (requiredSize > std::numeric_limits<u32>::max())
+            return false;
+        const u32 appendSize = static_cast<u32>(requiredSize) - _bytes.Count();
+        _bytes.Reserve(appendSize);
+        _bytes.AddCount(appendSize);
+        outOffset = static_cast<u32>(alignedOffset);
+        if (!bytes.empty())
+            std::memcpy(&_bytes[outOffset], bytes.data(), bytes.size());
+        ++_uniqueBlocks;
+        return true;
+    }
+
+    bool MaterialParameterStorage::Write(u32 offset, std::span<const u8> bytes)
+    {
+        if (offset > _bytes.Count() || bytes.size() > _bytes.Count() - offset)
+            return false;
+        if (bytes.empty() || std::memcmp(&_bytes[offset], bytes.data(), bytes.size()) == 0)
+            return true;
+        std::memcpy(&_bytes[offset], bytes.data(), bytes.size());
+        _bytes.SetDirtyElements(offset, bytes.size());
+        return true;
+    }
+
     void MaterialParameterStorage::SyncToGPU(Renderer::Renderer* renderer)
     {
         _bufferGrowths += _bytes.SyncToGPU(renderer) ? 1u : 0u;

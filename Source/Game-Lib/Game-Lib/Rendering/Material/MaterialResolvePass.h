@@ -42,6 +42,8 @@ namespace MaterialRendering
                             const ModelLoading::ModelGeometryStorage& geometry,
                             const MaterialLoading::MaterialStorage& materials,
                             const RenderScenes::RenderScene& scene, u8 frameIndex);
+        void AddRetainedOutputPass(Renderer::RenderGraph* renderGraph,
+                                   const RenderScenes::RenderView& view);
 
       private:
         struct ModelBindings

@@ -27,6 +27,7 @@ SurfaceDescription EvaluateFallbackMaterial(MaterialInstanceRecord instance,
     context.input = input;
     context.instance = instance;
     context.textureOffset = 0u;
+    context.parameterBlockIndex = 0u;
 
     float4 color = parameters.baseColor * SampleMaterialTexture(context, 0u);
     SurfaceDescription surface = MakeDefaultSurface(input);

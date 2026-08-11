@@ -15,8 +15,8 @@ struct ModelInstanceRecord
     uint deformationHandle;
     uint generation;
     uint flags;
-    uint reserved0;
-    uint reserved1;
+    uint packedHighlightColor;
+    float highlightIntensity;
 };
 
 struct ModelMeshlet

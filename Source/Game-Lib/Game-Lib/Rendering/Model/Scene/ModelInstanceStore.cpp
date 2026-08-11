@@ -65,6 +65,8 @@ namespace ModelScene
         record.meshletHistoryWordCount = info.meshletHistory.wordCount;
         record.generation = slot.generation;
         record.flags = ModelInstanceFlagPendingPublication;
+        record.packedHighlightColor = 0xFFFFFFFFu;
+        record.highlightIntensity = 1.0f;
         if (info.privateMaterials)
             record.flags |= ModelInstanceFlagPrivateMaterials;
         if (reusedSlot)
@@ -88,6 +90,8 @@ namespace ModelScene
 
         const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
         outResources = slot->resources;
+        if (_records[slotIndex].highlightIntensity != 1.0f)
+            --_highlightedInstances;
         if (slot->state == SlotState::Live)
             _liveInstances--;
         else
@@ -180,6 +184,28 @@ namespace ModelScene
                 _pendingSlotClears.push_back(RenderScenes::GetModelInstanceSlot(handle));
             }
         }
+        _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    bool ModelInstanceStore::SetHighlight(RenderScenes::ModelInstanceHandle handle, f32 intensity, u32 packedColor)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        ModelInstanceGPURecord& record = _records[RenderScenes::GetModelInstanceSlot(handle)];
+        const bool wasHighlighted = record.highlightIntensity != 1.0f;
+        const bool isHighlighted = intensity != 1.0f;
+        if (!wasHighlighted && isHighlighted)
+            ++_highlightedInstances;
+        else if (wasHighlighted && !isHighlighted)
+            --_highlightedInstances;
+        record.highlightIntensity = intensity;
+        record.packedHighlightColor = packedColor;
         _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
         return true;
     }

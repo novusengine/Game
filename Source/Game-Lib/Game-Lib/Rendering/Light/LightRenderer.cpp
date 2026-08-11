@@ -6,15 +6,17 @@
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Name.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
+#include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Editor/EditorHandler.h"
 #include "Game-Lib/Editor/TerrainTools.h"
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
-#include "Game-Lib/Rendering/Model/ModelRenderer.h"
+#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/RenderUtils.h"
 #include "Game-Lib/Rendering/Terrain/TerrainRenderer.h"
+#include "Game-Lib/Util/AssetPath.h"
 #include "Game-Lib/Util/PhysicsUtil.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
@@ -25,13 +27,16 @@
 
 #include <entt/entt.hpp>
 
-AutoCVar_ShowFlag CVAR_DebugLightTiles(CVarCategory::Client | CVarCategory::Rendering, "debugLightTiles", "Debug draw light tiles", ShowFlag::DISABLED);
+#include <bit>
 
-LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer, ModelRenderer* modelRenderer)
+AutoCVar_ShowFlag CVAR_DebugLightTiles(CVarCategory::Client | CVarCategory::Rendering, "debugLightTiles", "Debug draw light tiles", ShowFlag::DISABLED);
+// TEMPORARY: Remove after the Phase 14 decal visual and overflow validation captures are complete.
+AutoCVar_Int CVAR_DebugDecalTest(CVarCategory::Client | CVarCategory::Rendering, "debugDecalTest", "Spawn camera-relative decal test volumes; 0 disables, values above 8 exercise tile overflow", 0);
+
+LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRenderer, DebugRenderer* debugRenderer)
     : _renderer(renderer)
     , _gameRenderer(gameRenderer)
     , _debugRenderer(debugRenderer)
-    , _modelRenderer(modelRenderer)
     , _classifyPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _debugPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
@@ -42,14 +47,55 @@ LightRenderer::LightRenderer(Renderer::Renderer* renderer, GameRenderer* gameRen
 
 LightRenderer::~LightRenderer()
 {
-
+    for (Renderer::BufferID readback : _decalOverflowReadbacks)
+        _renderer->QueueDestroyBuffer(readback);
 }
 
 void LightRenderer::Update(f32 deltaTime)
 {
     ZoneScoped;
 
+    const u32 frameIndex = _gameRenderer->GetFrameIndex() % DECAL_READBACK_FRAME_COUNT;
+    if (_hasDecalOverflowReadback[frameIndex])
+    {
+        const void* memory = _renderer->MapBuffer(_decalOverflowReadbacks[frameIndex]);
+        if (memory)
+            memcpy(&_decalTileOverflowCount, memory, sizeof(_decalTileOverflowCount));
+        _renderer->UnmapBuffer(_decalOverflowReadbacks[frameIndex]);
+    }
+
     entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+
+    // TEMPORARY: Remove after the Phase 14 decal visual and overflow validation captures are complete.
+    static i32 previousDebugDecalTest = 0;
+    const i32 debugDecalTest = CVAR_DebugDecalTest.Get();
+    if (debugDecalTest > 0 && debugDecalTest != previousDebugDecalTest && registry->ctx().contains<ECS::Singletons::ActiveCamera>())
+    {
+        const entt::entity cameraEntity = registry->ctx().get<ECS::Singletons::ActiveCamera>().entity;
+        if (ECS::Components::Transform* cameraTransform = registry->try_get<ECS::Components::Transform>(cameraEntity))
+        {
+            const i32 decalCount = glm::min(debugDecalTest, 32);
+            for (i32 index = 0; index < decalCount; ++index)
+            {
+                const entt::entity decalEntity = registry->create();
+                registry->emplace<ECS::Components::Name>(decalEntity, "Temporary Decal Test");
+                registry->emplace<ECS::Components::Transform>(decalEntity);
+                ECS::TransformSystem& transformSystem = ECS::TransformSystem::Get(*registry);
+                transformSystem.SetWorldPosition(decalEntity, cameraTransform->GetWorldPosition() + cameraTransform->GetLocalForward() * 100.0f);
+                transformSystem.SetWorldRotation(decalEntity, cameraTransform->GetWorldRotation());
+                registry->emplace<ECS::Components::AABB>(decalEntity, vec3(0.0f), vec3(40.0f, 30.0f, 120.0f));
+
+                ECS::Components::Decal& decal = registry->emplace<ECS::Components::Decal>(decalEntity);
+                decal.texturePath = "texture/interface/spellshadow/spell-shadow-acceptable.dds";
+                decal.colorMultiplier = Color(1.0f, 0.1f + static_cast<f32>(index % 3) * 0.3f, 1.0f, 1.0f);
+                decal.opacity = debugDecalTest == 1 ? 1.0f : 0.35f;
+                decal.priority = index;
+                decal.flags = DECAL_FLAG_TWOSIDED;
+                AddDecal(decalEntity);
+            }
+        }
+    }
+    previousDebugDecalTest = debugDecalTest;
 
     // Handle remove requests
     u32 numDecalRemovals = static_cast<u32>(_decalRemoveRequests.try_dequeue_bulk(_decalRemoveWork.begin(), 64));
@@ -127,8 +173,9 @@ void LightRenderer::Update(f32 deltaTime)
         u32 decalID = it->second;
         GPUDecal& decal = _decals[decalID];
 
-        // Load the texture into the model renderer (bigger chance for texture reuse than having our separate texture array)
-        _modelRenderer->LoadTexture(decalComp.texturePath, *reinterpret_cast<u32*>(&decal.positionAndTextureID.w));
+        const FileFormat::AssetID textureAssetID = Util::AssetPath::Hash(decalComp.texturePath);
+        const u32 textureID = _gameRenderer->GetRenderAssetResources()->ResolveTexture(textureAssetID, textureAssetID);
+        decal.positionAndTextureID.w = std::bit_cast<f32>(textureID);
 
         u32 colorInt = decalComp.colorMultiplier.ToABGR32();
 
@@ -137,6 +184,8 @@ void LightRenderer::Update(f32 deltaTime)
         decal.minUV = decalComp.minUV;
         decal.maxUV = decalComp.maxUV;
         decal.flags = decalComp.flags;
+        decal.opacity = decalComp.opacity;
+        decal.priority = decalComp.priority;
 
         _decals.SetDirtyElement(decalID);
     });
@@ -154,9 +203,8 @@ void LightRenderer::Update(f32 deltaTime)
             ECS::Components::AABB& aabb = registry->get<ECS::Components::AABB>(request.entity);
             ECS::Components::Decal& decalComp = registry->get<ECS::Components::Decal>(request.entity);
 
-            // Load the texture into the model renderer (bigger chance for texture reuse than having our separate texture array)
-            u32 textureID;
-            _modelRenderer->LoadTexture(decalComp.texturePath, textureID);
+            const FileFormat::AssetID textureAssetID = Util::AssetPath::Hash(decalComp.texturePath);
+            const u32 textureID = _gameRenderer->GetRenderAssetResources()->ResolveTexture(textureAssetID, textureAssetID);
 
             // Add decal
             vec3 position = transform.GetWorldPosition() + aabb.centerPos;
@@ -166,13 +214,16 @@ void LightRenderer::Update(f32 deltaTime)
 
             GPUDecal decal
             {
-                .positionAndTextureID = vec4(position, *reinterpret_cast<f32*>(&textureID)),
+                .positionAndTextureID = vec4(position, std::bit_cast<f32>(textureID)),
                 .rotation = rotation,
-                .extentsAndColor = vec4(aabb.extents, *reinterpret_cast<f32*>(&colorInt)),
+                .extentsAndColor = vec4(aabb.extents, std::bit_cast<f32>(colorInt)),
                 .thresholdMinMax = decalComp.thresholdMinMax,
                 .minUV = decalComp.minUV,
                 .maxUV = decalComp.maxUV,
                 .flags = decalComp.flags,
+                .opacity = decalComp.opacity,
+                .priority = decalComp.priority,
+                .stableID = _nextStableDecalID++,
             };
 
             u32 decalID = _decals.Add(decal);
@@ -230,6 +281,8 @@ void LightRenderer::Clear()
     _decals.Clear();
     _decalIDToEntity.clear();
     _entityToDecalID.clear();
+    _decalTileOverflowCount = 0;
+    memset(_hasDecalOverflowReadback, 0, sizeof(_hasDecalOverflowReadback));
 }
 
 void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -237,6 +290,7 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
     struct ClassificationPassData
     {
         Renderer::BufferMutableResource entityTilesBuffer;
+        Renderer::BufferMutableResource overflowReadback;
 
         Renderer::DepthImageResource depth;
 
@@ -248,9 +302,10 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
     };
 
     renderGraph->AddPass<ClassificationPassData>("Light Classification",
-        [this, &resources](ClassificationPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources, frameIndex](ClassificationPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
             data.entityTilesBuffer = builder.Write(_entityTilesBuffer, Renderer::BufferPassUsage::COMPUTE | Renderer::BufferPassUsage::TRANSFER);
+            data.overflowReadback = builder.Write(_decalOverflowReadbacks[frameIndex], Renderer::BufferPassUsage::TRANSFER);
 
             data.depth = builder.Read(resources.depth, Renderer::PipelineType::COMPUTE);
 
@@ -281,19 +336,22 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
 
             struct Constants
             {
-                u32 maxEntitiesPerTile;
+                u32 maxDecalsPerTile;
                 u32 numTotalDecals;
                 uvec2 tileCount;
                 vec2 screenSize;
             };
 
             Constants* constants = graphResources.FrameNew<Constants>();
-            constants->maxEntitiesPerTile = MAX_ENTITIES_PER_TILE;
+            constants->maxDecalsPerTile = MAX_DECALS_PER_TILE;
             constants->numTotalDecals = static_cast<u32>(_decals.Count());
             constants->tileCount = tileCount;
             constants->screenSize = static_cast<vec2>(outputSize);
 
             commandList.PushConstant(constants, 0, sizeof(Constants));
+
+            commandList.FillBuffer(data.entityTilesBuffer, 0, sizeof(u32), 0);
+            commandList.BufferBarrier(data.entityTilesBuffer, Renderer::BufferPassUsage::COMPUTE);
 
             data.classifySet.Bind("_depthRT", data.depth);
             //data.classifySet.Bind("_debugTexture", data.debugColor);
@@ -306,7 +364,10 @@ void LightRenderer::AddClassificationPass(Renderer::RenderGraph* renderGraph, Re
             commandList.Dispatch(numTilesX, numTilesY, 1);
 
             commandList.EndPipeline(pipeline);
+            commandList.BufferBarrier(data.entityTilesBuffer, Renderer::BufferPassUsage::TRANSFER);
+            commandList.CopyBuffer(data.overflowReadback, 0, data.entityTilesBuffer, 0, sizeof(u32));
         });
+    _hasDecalOverflowReadback[frameIndex] = true;
 }
 
 void LightRenderer::AddDebugPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -402,6 +463,16 @@ void LightRenderer::CreatePermanentResources()
     _decalAddWork.resize(64);
     _decalRemoveWork.resize(64);
 
+    for (u32 frame = 0; frame < DECAL_READBACK_FRAME_COUNT; ++frame)
+    {
+        Renderer::BufferDesc readbackDesc;
+        readbackDesc.name = "Decal Tile Overflow Readback " + std::to_string(frame);
+        readbackDesc.size = sizeof(u32);
+        readbackDesc.usage = Renderer::BufferUsage::TRANSFER_DESTINATION;
+        readbackDesc.cpuAccess = Renderer::BufferCPUAccess::ReadOnly;
+        _decalOverflowReadbacks[frame] = _renderer->CreateBuffer(_decalOverflowReadbacks[frame], readbackDesc);
+    }
+
     // Init debug pass descriptor set
     std::string componentTypeName = Renderer::GetTextureTypeName(Renderer::ImageFormat::B8G8R8A8_UNORM_SRGB);
     u32 componentTypeNameHash = StringUtils::fnv1a_32(componentTypeName.c_str(), componentTypeName.size());
@@ -440,8 +511,8 @@ void LightRenderer::RecreateBuffer(const vec2& size)
 
     Renderer::BufferDesc bufferDesc;
     bufferDesc.name = "Entity Tiles";
-    bufferDesc.size = numTiles * sizeof(u32) * MAX_ENTITIES_PER_TILE * 2; // *2: opaque and transparent arrays
-    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_DESTINATION;
+    bufferDesc.size = sizeof(u32) * (1u + numTiles * (1u + MAX_DECALS_PER_TILE));
+    bufferDesc.usage = Renderer::BufferUsage::STORAGE_BUFFER | Renderer::BufferUsage::TRANSFER_SOURCE | Renderer::BufferUsage::TRANSFER_DESTINATION;
     bufferDesc.cpuAccess = Renderer::BufferCPUAccess::AccessNone;
 
     _entityTilesBuffer = _renderer->CreateBuffer(_entityTilesBuffer, bufferDesc);

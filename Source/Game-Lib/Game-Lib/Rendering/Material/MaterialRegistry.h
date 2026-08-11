@@ -19,6 +19,7 @@ namespace PACT
 namespace MaterialLoading
 {
     class MaterialStorage;
+    class MaterialAnimator;
     class MaterialProgramLibrary;
     class MaterialTextureRegistry;
 
@@ -50,7 +51,8 @@ namespace MaterialLoading
     class MaterialRegistry
     {
       public:
-        MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, MaterialProgramLibrary* programLibrary, MaterialTextureRegistry* textureRegistry);
+        MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, MaterialProgramLibrary* programLibrary,
+                         MaterialTextureRegistry* textureRegistry, MaterialAnimator* animator = nullptr);
 
         RenderAssets::MaterialHandle LoadMaterial(FileFormat::AssetID assetID);
         RenderAssets::MaterialInstanceHandle LoadMaterialInstance(FileFormat::AssetID assetID);
@@ -85,6 +87,7 @@ namespace MaterialLoading
         MaterialStorage* _storage = nullptr;
         MaterialProgramLibrary* _programLibrary = nullptr;
         MaterialTextureRegistry* _textureRegistry = nullptr;
+        MaterialAnimator* _animator = nullptr;
         robin_hood::unordered_map<FileFormat::AssetID, MaterialEntry> _materials;
         robin_hood::unordered_map<FileFormat::AssetID, MaterialInstanceEntry> _materialInstances;
         u32 _cacheHits = 0;

@@ -111,7 +111,8 @@ namespace MaterialLoading
     }
 
     bool MaterialStorage::AppendMaterialInstance(RenderAssets::MaterialHandle material, const FileFormat::Material::MaterialInstanceAsset& configuration, std::span<const u8> parameterData,
-                                                 std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle)
+                                                 std::span<const u32> textureIndices, std::span<const u32> samplerIDs, RenderAssets::MaterialInstanceHandle& outHandle,
+                                                 bool mutableParameters)
     {
         const RenderAssets::MaterialHandle::type materialIndex = static_cast<RenderAssets::MaterialHandle::type>(material);
         if (material == RenderAssets::MaterialHandle::Invalid() || materialIndex >= _materials.Count() || materialIndex >= _parameterAlignments.size())
@@ -126,7 +127,8 @@ namespace MaterialLoading
         const MaterialRouting& routing = _materialRouting[materialIndex];
 
         u32 parameterOffset = 0;
-        if (!_parameterStorage.Append(parameterData, _parameterAlignments[materialIndex], parameterOffset))
+        if (!(mutableParameters ? _parameterStorage.AppendMutable(parameterData, _parameterAlignments[materialIndex], parameterOffset)
+                               : _parameterStorage.Append(parameterData, _parameterAlignments[materialIndex], parameterOffset)))
             return false;
 
         MaterialInstanceGPURecord record;
@@ -137,6 +139,17 @@ namespace MaterialLoading
             (static_cast<u32>(routing.baseExecutionGroupID + rasterIndex * 2u) << 16u);
         record.materialHandle = materialIndex;
         return AppendInstanceRecord(record, textureIndices, samplerIDs, outHandle);
+    }
+
+    bool MaterialStorage::WriteMaterialParameters(RenderAssets::MaterialInstanceHandle materialInstance, u32 relativeOffset, std::span<const u8> bytes)
+    {
+        if (!HasMaterialInstance(materialInstance))
+            return false;
+        const MaterialInstanceGPURecord& instance = GetMaterialInstance(materialInstance);
+        if (instance.materialIndex >= _materials.Count() || relativeOffset > _materials[instance.materialIndex].parameterBlockSize ||
+            bytes.size() > _materials[instance.materialIndex].parameterBlockSize - relativeOffset)
+            return false;
+        return _parameterStorage.Write(instance.parameterOffset + relativeOffset, bytes);
     }
 
     bool MaterialStorage::DeriveMaterialInstance(RenderAssets::MaterialInstanceHandle base, std::span<const MaterialTextureOverride> overrides, RenderAssets::MaterialInstanceHandle& outHandle)

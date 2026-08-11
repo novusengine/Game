@@ -1,6 +1,7 @@
 #include "MaterialResolvePass.h"
 
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
@@ -11,6 +12,7 @@
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Scene/RenderView.h"
+#include "Game-Lib/Rendering/Shadow/ShadowRenderer.h"
 
 #include <Base/CVarSystem/CVarSystem.h>
 #include <Renderer/RenderGraph.h>
@@ -295,6 +297,9 @@ namespace MaterialRendering
         {
             Renderer::ImageResource visibility;
             Renderer::ImageResource materialIDs;
+            Renderer::ImageResource ambientVisibility;
+            Renderer::ImageResource svsmPagePool;
+            Renderer::ImageResource svsmDynamicPagePool;
             Renderer::ImageMutableResource color;
             Renderer::BufferResource arguments;
             Renderer::DescriptorSetResource globalSet;
@@ -308,11 +313,19 @@ namespace MaterialRendering
                 using Usage = Renderer::BufferPassUsage;
                 data.visibility = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
                 data.materialIDs = builder.Read(resources.GetMaterialIDs(), Renderer::PipelineType::COMPUTE);
+                data.ambientVisibility = builder.Read(renderResources.ssaoTarget, Renderer::PipelineType::COMPUTE);
                 const Renderer::LoadMode loadMode = view.ShouldClearTargets() ? Renderer::LoadMode::CLEAR : Renderer::LoadMode::LOAD;
                 data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE, loadMode);
                 builder.Read(renderResources.cameras.GetBuffer(), Usage::COMPUTE);
                 builder.Read(_gameRenderer->GetMaterialRenderer()->GetDirectionalLightBuffer(), Usage::COMPUTE);
+                ShadowRenderer* shadowRenderer = _gameRenderer->GetShadowRenderer();
+                data.svsmPagePool = builder.Read(shadowRenderer->GetSVSMPagePoolOrPlaceholder(), Renderer::PipelineType::COMPUTE);
+                data.svsmDynamicPagePool = builder.Read(shadowRenderer->GetSVSMDynamicPagePoolOrPlaceholder(), Renderer::PipelineType::COMPUTE);
+                builder.Read(shadowRenderer->GetSVSMDataBuffer(), Usage::COMPUTE);
+                builder.Read(shadowRenderer->GetSVSMPageTableBuffer(), Usage::COMPUTE);
+                builder.Read(shadowRenderer->GetSVSMDynamicPageTableBuffer(), Usage::COMPUTE);
                 RegisterModelUsage(builder, work, geometry, materials, scene);
+                _gameRenderer->GetLightRenderer()->RegisterMaterialPassBufferUsage(builder);
                 builder.Read(materials.GetMaterials().GetBuffer(), Usage::COMPUTE);
                 builder.Read(materials.GetParameterStorage().GetBuffer().GetBuffer(), Usage::COMPUTE);
                 for (u32 frame = 0; frame < ModelView::MODEL_VIEW_FRAME_COUNT; ++frame)
@@ -332,16 +345,26 @@ namespace MaterialRendering
                 struct Constants
                 {
                     vec4 renderInfo;
+                    vec4 shadowSettings;
                     u32 resourceIndex;
                     u32 viewIndex;
                     u32 tileCapacity;
                     u32 tilesX;
                     u32 debugMode;
                     u32 numDirectionalLights;
+                    u32 shadowsReady;
+                    u32 sampleAmbientVisibility;
                 };
                 data.resolveSet.Bind("_visibilityBuffer"_h, data.visibility);
                 data.resolveSet.Bind("_materialIDs"_h, data.materialIDs);
                 data.resolveSet.Bind("_materialColor"_h, data.color);
+                data.resolveSet.Bind("_ambientVisibility"_h, data.ambientVisibility);
+                CVarSystem* cvarSystem = CVarSystem::Get();
+                const f32 shadowStrength = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowStrength"));
+                ShadowRenderer* shadowRenderer = _gameRenderer->GetShadowRenderer();
+                const bool shadowsReady = view.UsesWorldShadows() && static_cast<u32>(*cvarSystem->GetIntCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowEnabled")) != 0u && shadowStrength > 0.0f && shadowRenderer->GetSVSMPagePool() != Renderer::ImageID::Invalid();
+                const f32 shadowNormalOffsetBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "shadowNormalOffsetBias"));
+                const f32 svsmConstantBias = static_cast<f32>(*cvarSystem->GetFloatCVar(CVarCategory::Client | CVarCategory::Rendering, "svsmConstantBias"));
                 for (u32 group = 0; group < FileFormat::Material::ABI::EXECUTION_GROUP_COUNT; ++group)
                 {
                     if (!_activeResolveGroups[group])
@@ -353,19 +376,38 @@ namespace MaterialRendering
                     commandList.BindDescriptorSet(data.resolveSet, frameIndex);
                     Constants* constants = graphResources.FrameNew<Constants>();
                     constants->renderInfo = vec4(renderSize, 1.0f / vec2(renderSize));
+                    constants->shadowSettings = vec4(shadowStrength, shadowNormalOffsetBias, svsmConstantBias, 0.0f);
                     constants->resourceIndex = frameIndex;
                     constants->viewIndex = view.GetCameraIndex();
                     constants->tileCapacity = resources.GetTileCapacity();
                     constants->tilesX = tilesX;
                     constants->debugMode = static_cast<u32>(glm::clamp(CVAR_MaterialDebugMode.Get(), 0, 5));
                     constants->numDirectionalLights = _gameRenderer->GetMaterialRenderer()->GetNumDirectionalLights();
+                    constants->shadowsReady = shadowsReady ? 1u : 0u;
+                    constants->sampleAmbientVisibility = 0u;
                     commandList.PushConstant(constants, 0, sizeof(Constants));
                     commandList.DispatchIndirect(
                         data.arguments, group * sizeof(u32) * MATERIAL_DISPATCH_ARGUMENT_COUNT);
                     commandList.EndPipeline(_resolvePipelines[group]);
                 }
-                if (view.GetRetainedOutput() != Renderer::TextureID::Invalid())
-                    commandList.CopyImageToTexture(view.GetRetainedOutput(), view.GetColorTarget(), renderSize);
             });
+
+    }
+
+    void MaterialResolvePass::AddRetainedOutputPass(Renderer::RenderGraph* renderGraph,
+                                                     const RenderScenes::RenderView& view)
+    {
+        if (view.GetRetainedOutput() == Renderer::TextureID::Invalid())
+            return;
+        struct CopyData { Renderer::ImageResource color; };
+        renderGraph->AddPass<CopyData>("Retain: " + view.GetDebugName(),
+            [&view](CopyData& data, Renderer::RenderGraphBuilder& builder) {
+                data.color = builder.Read(view.GetColorTarget(), Renderer::PipelineType::COMPUTE);
+                return true;
+            },
+            [&view](CopyData& data, Renderer::RenderGraphResources&, Renderer::CommandList& commandList) {
+                commandList.ImageBarrier(data.color);
+                commandList.CopyImageToTexture(view.GetRetainedOutput(), view.GetColorTarget(), view.GetDimensions());
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 } // namespace MaterialRendering

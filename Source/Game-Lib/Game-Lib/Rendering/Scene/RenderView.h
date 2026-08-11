@@ -42,6 +42,7 @@ namespace RenderScenes
         Renderer::ImageDimensionType dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
         Renderer::ImageID visibilityTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID normalTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID motionTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID colorTarget = Renderer::ImageID::Invalid();
         Renderer::DepthImageID depthTarget = Renderer::DepthImageID::Invalid();
         Renderer::TextureID retainedOutput = Renderer::TextureID::Invalid();
@@ -49,6 +50,7 @@ namespace RenderScenes
         RenderViewLifetime lifetime = RenderViewLifetime::Persistent;
         RenderViewRefresh refresh = RenderViewRefresh::Continuous;
         bool clearTargets = false;
+        bool worldShadows = false;
     };
 
     // Stores the CPU-side camera, targets, scheduling policy, and temporal-reset configuration for one View.
@@ -59,10 +61,10 @@ namespace RenderScenes
         explicit RenderView(const RenderViewDesc& desc)
             : _viewID(desc.viewID), _debugName(desc.debugName), _scene(desc.scene), _cameraIndex(desc.cameraIndex), _dimensions(desc.dimensions),
               _dimensionType(desc.dimensionType),
-              _visibilityTarget(desc.visibilityTarget), _normalTarget(desc.normalTarget),
+              _visibilityTarget(desc.visibilityTarget), _normalTarget(desc.normalTarget), _motionTarget(desc.motionTarget),
               _colorTarget(desc.colorTarget), _depthTarget(desc.depthTarget), _retainedOutput(desc.retainedOutput),
               _passFamilies(desc.passFamilies), _lifetime(desc.lifetime), _refresh(desc.refresh),
-              _clearTargets(desc.clearTargets)
+              _clearTargets(desc.clearTargets), _worldShadows(desc.worldShadows)
         {
         }
 
@@ -73,12 +75,30 @@ namespace RenderScenes
             if (dimensions.x == 0 || dimensions.y == 0 || _dimensions == dimensions)
                 return;
             _dimensions = dimensions;
-            RequestTemporalReset();
+            RequestCameraCut();
         }
         void RequestTemporalReset()
         {
             ++_temporalResetGeneration;
             _dirty = true;
+        }
+        void RequestMotionReset()
+        {
+            ++_motionResetGeneration;
+        }
+        void RequestCameraCut()
+        {
+            RequestTemporalReset();
+            RequestMotionReset();
+        }
+        void PrepareTemporalCamera(const mat4x4& worldToClip)
+        {
+            const bool reset = !_hasTemporalCamera || _preparedMotionResetGeneration != _motionResetGeneration;
+            _previousWorldToClip = reset ? worldToClip : _currentWorldToClip;
+            _currentWorldToClip = worldToClip;
+            _temporalCameraValid = !reset;
+            _hasTemporalCamera = true;
+            _preparedMotionResetGeneration = _motionResetGeneration;
         }
 
         u64 GetID() const { return _viewID; }
@@ -89,6 +109,9 @@ namespace RenderScenes
         Renderer::ImageDimensionType GetDimensionType() const { return _dimensionType; }
         Renderer::ImageID GetVisibilityTarget() const { return _visibilityTarget; }
         Renderer::ImageID GetNormalTarget() const { return _normalTarget; }
+        Renderer::ImageID GetMotionTarget() const { return _motionTarget; }
+        const mat4x4& GetPreviousWorldToClip() const { return _previousWorldToClip; }
+        bool IsTemporalCameraValid() const { return _temporalCameraValid; }
         Renderer::ImageID GetColorTarget() const { return _colorTarget; }
         Renderer::DepthImageID GetDepthTarget() const { return _depthTarget; }
         Renderer::TextureID GetRetainedOutput() const { return _retainedOutput; }
@@ -101,6 +124,7 @@ namespace RenderScenes
         u32 GetTemporalResetGeneration() const { return _temporalResetGeneration; }
         bool ShouldRender() const { return _refresh == RenderViewRefresh::Continuous || _dirty; }
         bool ShouldClearTargets() const { return _clearTargets; }
+        bool UsesWorldShadows() const { return _worldShadows; }
 
       private:
         u64 _viewID = 0;
@@ -111,6 +135,7 @@ namespace RenderScenes
         Renderer::ImageDimensionType _dimensionType = Renderer::ImageDimensionType::DIMENSION_ABSOLUTE;
         Renderer::ImageID _visibilityTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID _normalTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID _motionTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID _colorTarget = Renderer::ImageID::Invalid();
         Renderer::DepthImageID _depthTarget = Renderer::DepthImageID::Invalid();
         Renderer::TextureID _retainedOutput = Renderer::TextureID::Invalid();
@@ -118,7 +143,14 @@ namespace RenderScenes
         RenderViewLifetime _lifetime = RenderViewLifetime::Persistent;
         RenderViewRefresh _refresh = RenderViewRefresh::Continuous;
         u32 _temporalResetGeneration = 0;
+        u32 _motionResetGeneration = 0;
+        u32 _preparedMotionResetGeneration = 0;
+        mat4x4 _currentWorldToClip = mat4x4(1.0f);
+        mat4x4 _previousWorldToClip = mat4x4(1.0f);
+        bool _hasTemporalCamera = false;
+        bool _temporalCameraValid = false;
         bool _dirty = true;
         bool _clearTargets = false;
+        bool _worldShadows = false;
     };
 } // namespace RenderScenes

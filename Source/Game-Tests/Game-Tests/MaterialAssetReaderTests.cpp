@@ -132,3 +132,31 @@ TEST_CASE("Material semantic validation is optional", "[Rendering][MaterialAsset
     CHECK(MaterialLoading::MaterialAssetReader::ReadMaterial(payloads.material, AssetLoading::ValidationMode::Full).diagnostic.code ==
           AssetLoading::DiagnosticCode::UnsupportedFlags);
 }
+
+TEST_CASE("Material animation reader exposes uniform tracks and samples", "[Rendering][MaterialAssetReader]")
+{
+    Material::MaterialAnimationData data;
+    Material::MaterialAnimationTrack track;
+    track.trackNameHash = 7;
+    track.sampleOffset = 0;
+    track.numSamples = 2;
+    track.sampleRateHz = 30;
+    track.componentCount = 4;
+    track.mode = Material::MaterialAnimationMode::UniformSamples;
+    track.flags = Material::MaterialAnimationTrackFlags_Looping;
+    data.tracks.push_back(track);
+    data.samples = {vec4(0.0f), vec4(1.0f)};
+
+    Material::MaterialAnimationAsset animation;
+    animation.durationSeconds = 1.0f;
+    std::shared_ptr<Bytebuffer> buffer = Bytebuffer::BorrowRuntime(animation.GetSerializedSize(data));
+    REQUIRE(animation.Save(buffer, data));
+    const std::span<const u8> payload(buffer->GetDataPointer(), buffer->writtenData);
+
+    const auto result = MaterialLoading::MaterialAssetReader::ReadMaterialAnimation(payload);
+    REQUIRE(result);
+    REQUIRE(result.view.tracks.size() == 1);
+    CHECK(result.view.tracks[0].sampleRateHz == 30);
+    REQUIRE(result.view.samples.size() == 2);
+    CHECK(result.view.samples[1] == vec4(1.0f));
+}

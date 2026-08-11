@@ -1162,7 +1162,7 @@ void ShadowRenderer::AddSVSMBindPass(Renderer::RenderGraph* renderGraph, RenderR
         {
             data.lightDescriptorSet.Bind("_svsmPagePool"_h, data.svsmPagePool);
             data.lightDescriptorSet.Bind("_svsmDynamicPagePool"_h, data.svsmDynamicPagePool);
-        });
+        }, Renderer::RenderPassFlags::SideEffect);
 }
 
 void ShadowRenderer::CreatePermanentResources(RenderResources& resources)

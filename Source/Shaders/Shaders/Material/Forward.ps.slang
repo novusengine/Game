@@ -29,6 +29,7 @@ float4 main(ForwardVaryings input, bool frontFacing : SV_IsFrontFace) : SV_Targe
     MaterialInput materialInput;
     materialInput.worldPosition = input.worldPosition;
     materialInput.geometricNormal = normal;
+    materialInput.vertexColor = 1.0f;
     materialInput.uv0 = input.uv0;
     materialInput.uv0DDX = ddx(input.uv0);
     materialInput.uv0DDY = ddy(input.uv0);
@@ -41,8 +42,12 @@ float4 main(ForwardVaryings input, bool frontFacing : SV_IsFrontFace) : SV_Targe
     lightingInput.worldPosition = input.worldPosition;
     lightingInput.viewDirection = 0.0f;
     lightingInput.lightDirection = normalize(float3(0.35f, 0.8f, 0.45f));
+    lightingInput.ambientColor = 0.25f;
+    lightingInput.lightColor = 0.75f;
+    lightingInput.shadowColor = 0.0f;
     lightingInput.ambientVisibility = _constants.ambientVisibility;
     lightingInput.shadowVisibility = _constants.shadowVisibility;
+    lightingInput.lightStrength = 1.0f;
     float3 color = EvaluateLightingModel(MaterialLightingModel(instance), surface, lightingInput);
     return float4(color, surface.alpha);
 }

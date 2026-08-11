@@ -123,3 +123,30 @@ TEST_CASE("Retained Render Views render only when dirty", "[Rendering][RenderVie
     CHECK(view.ShouldRender());
     CHECK(view.GetTemporalResetGeneration() == 1);
 }
+
+TEST_CASE("Render View resize invalidates temporal camera history", "[Rendering][RenderView]")
+{
+    RenderScenes::RenderViewDesc desc;
+    desc.dimensions = uvec2(320, 480);
+    RenderScenes::RenderView view(desc);
+
+    const mat4x4 worldToClip(1.0f);
+    view.PrepareTemporalCamera(worldToClip);
+    CHECK_FALSE(view.IsTemporalCameraValid());
+    mat4x4 movedWorldToClip(1.0f);
+    movedWorldToClip[3][0] = 0.25f;
+    view.PrepareTemporalCamera(movedWorldToClip);
+    CHECK(view.IsTemporalCameraValid());
+    CHECK(view.GetPreviousWorldToClip()[3][0] == worldToClip[3][0]);
+
+    view.SetDimensions(uvec2(640, 960));
+    CHECK(view.GetTemporalResetGeneration() == 1);
+    view.PrepareTemporalCamera(worldToClip);
+    CHECK_FALSE(view.IsTemporalCameraValid());
+
+    view.PrepareTemporalCamera(worldToClip);
+    CHECK(view.IsTemporalCameraValid());
+    view.SetDimensions(uvec2(640, 960));
+    view.PrepareTemporalCamera(worldToClip);
+    CHECK(view.IsTemporalCameraValid());
+}

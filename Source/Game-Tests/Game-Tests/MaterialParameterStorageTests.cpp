@@ -37,3 +37,19 @@ TEST_CASE("Material parameter storage rejects invalid alignment", "[Rendering][M
     CHECK_FALSE(storage.Append(bytes, 0, offset));
     CHECK_FALSE(storage.Append(bytes, 3, offset));
 }
+
+TEST_CASE("Mutable material parameter blocks remain independent and accept updates", "[Rendering][MaterialParameterStorage]")
+{
+    MaterialLoading::MaterialParameterStorage storage;
+    const std::array<u8, 16> initial = {};
+    u32 firstOffset = 0;
+    u32 secondOffset = 0;
+    REQUIRE(storage.AppendMutable(initial, 16, firstOffset));
+    REQUIRE(storage.AppendMutable(initial, 16, secondOffset));
+    CHECK(firstOffset != secondOffset);
+
+    const std::array<u8, 4> update = {1, 2, 3, 4};
+    REQUIRE(storage.Write(firstOffset + 4, update));
+    CHECK(storage.GetByte(firstOffset + 4) == 1);
+    CHECK(storage.GetByte(secondOffset + 4) == 0);
+}

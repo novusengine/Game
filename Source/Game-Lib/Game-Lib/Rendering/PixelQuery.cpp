@@ -164,7 +164,7 @@ void PixelQuery::AddPixelQueryPass(Renderer::RenderGraph* renderGraph, RenderRes
                     _requests[_frameIndex].clear();
                 }
                 _frameIndex = !_frameIndex;
-            });
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 }
 

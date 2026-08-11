@@ -11,7 +11,7 @@ struct Constants
 };
 [[vk::push_constant]] Constants _constants;
 
-[[vk::binding(3, PER_PASS)]] RWTexture2D<float4> _modelPackedNormals;
+[[vk::binding(3, PER_PASS)]] RWTexture2D<uint> _modelPackedNormals;
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -29,5 +29,6 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
     if (!ReconstructModelPixel(UnpackTypedVisibility(targetValue), float2(pixelPos) + 0.5f,
                                _constants.renderInfo.xy, _constants.viewIndex, _constants.resourceIndex, pixel))
         return;
-    _modelPackedNormals[pixelPos] = float4(pixel.worldNormal * 0.5f + 0.5f, 0.0f);
+    float2 oct = OctNormalEncode(normalize(pixel.worldNormal));
+    _modelPackedNormals[pixelPos] = f32tof16(oct.x) | (f32tof16(oct.y) << 16u);
 }

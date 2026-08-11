@@ -1,6 +1,7 @@
 #include "ModelRenderSystem.h"
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/Model/ModelRendererMode.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
@@ -14,6 +15,10 @@ AutoCVar_Int CVAR_ModelForceLOD(CVarCategory::Client | CVarCategory::Rendering, 
 AutoCVar_Int CVAR_ModelTemporalOcclusion(CVarCategory::Client | CVarCategory::Rendering, "modelTemporalOcclusion",
                                          "Enable two-phase temporal occlusion for the main model View", 1,
                                          CVarFlags::EditCheckbox);
+// TODO: Remove this diagnostic-model highlight control after the Phase 14 visual comparison.
+AutoCVar_Int CVAR_ModelDiagnosticHighlight(CVarCategory::Client | CVarCategory::Rendering,
+                                           "modelDiagnosticHighlight", "Highlight the diagnostic model", 0,
+                                           CVarFlags::EditCheckbox);
 
 namespace ModelRendering
 {
@@ -32,10 +37,12 @@ namespace ModelRendering
         desc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
         desc.visibilityTarget = resources.visibilityBuffer;
         desc.normalTarget = resources.packedNormals;
+        desc.motionTarget = resources.motionVectors;
         desc.colorTarget = resources.sceneColor;
         desc.depthTarget = resources.depth;
         desc.lifetime = RenderScenes::RenderViewLifetime::Persistent;
         desc.refresh = RenderScenes::RenderViewRefresh::Continuous;
+        desc.worldShadows = true;
         CreateView(desc);
         _mainView = _views.at(desc.viewID).get();
     }
@@ -119,6 +126,8 @@ namespace ModelRendering
     void ModelRenderSystem::AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                       u8 frameIndex)
     {
+        if (!UseMeshletModelRenderer())
+            return;
         if (CVAR_ModelTemporalOcclusion.Get() != 0)
             _mainView->AddVisibilityPhase1Passes(renderGraph, resources, frameIndex);
     }
@@ -126,6 +135,8 @@ namespace ModelRendering
     void ModelRenderSystem::AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                       u8 frameIndex)
     {
+        if (!UseMeshletModelRenderer())
+            return;
         for (auto& [viewID, view] : _views)
             view->AddVisibilityPhase2Passes(renderGraph, resources, frameIndex,
                                             view.get() == _mainView && CVAR_ModelTemporalOcclusion.Get() != 0);
@@ -134,13 +145,28 @@ namespace ModelRendering
     void ModelRenderSystem::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                               u8 frameIndex)
     {
+        if (!UseMeshletModelRenderer())
+            return;
         for (auto& [viewID, view] : _views)
             view->AddPreEffectsPass(renderGraph, resources, frameIndex);
+    }
+
+    void ModelRenderSystem::PreparePreEffectsViews(RenderResources& resources)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+        {
+            RenderScenes::RenderView& renderView = view->GetView();
+            renderView.PrepareTemporalCamera(resources.cameras[renderView.GetCameraIndex()].worldToClip);
+        }
     }
 
     void ModelRenderSystem::AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                    u8 frameIndex)
     {
+        if (!UseMeshletModelRenderer())
+            return;
         for (auto& [viewID, view] : _views)
             view->AddMaterialResolvePass(renderGraph, resources, frameIndex);
     }
@@ -148,6 +174,8 @@ namespace ModelRendering
     void ModelRenderSystem::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                      u8 frameIndex)
     {
+        if (!UseMeshletModelRenderer())
+            return;
         for (auto& [viewID, view] : _views)
             view->AddDiagnosticResolvePass(renderGraph, resources, frameIndex);
     }
@@ -178,10 +206,10 @@ namespace ModelRendering
              _pixelQueryBindings.modelInstances);
     }
 
-    void ModelRenderSystem::RequestMainViewTemporalReset()
+    void ModelRenderSystem::RequestMainViewCameraCut()
     {
         if (_mainView)
-            _mainView->GetView().RequestTemporalReset();
+            _mainView->GetView().RequestCameraCut();
     }
 
     ModelPerformanceStats ModelRenderSystem::GetPerformanceStats() const
@@ -200,7 +228,8 @@ namespace ModelRendering
     RenderScenes::ModelInstanceHandle ModelRenderSystem::SetDiagnosticModel(RenderAssets::ModelHandle model,
                                                                             const vec3& worldBoundsCenter,
                                                                             f32 worldBoundsRadius,
-                                                                            bool geometryGroupsEnabled)
+                                                                            bool geometryGroupsEnabled,
+                                                                            bool teleported)
     {
         const ModelLoading::ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
         if (!geometry.HasModel(model) || worldBoundsRadius <= 0.0f)
@@ -217,8 +246,10 @@ namespace ModelRendering
                 _mainScene->GetModelInstances().GetResources(_diagnosticInstance);
             if (resources && resources->model == model)
             {
-                _mainScene->SetModelTransform(_diagnosticInstance, transform);
+                _mainScene->SetModelTransform(_diagnosticInstance, transform, teleported);
                 _mainScene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
+                _mainScene->SetModelHighlight(_diagnosticInstance,
+                                              CVAR_ModelDiagnosticHighlight.Get() != 0 ? 1.35f : 1.0f);
                 _mainView->GetState().SetDiagnosticSelection(_diagnosticInstance);
                 return _diagnosticInstance;
             }
@@ -233,6 +264,8 @@ namespace ModelRendering
         if (!_mainScene->IsPending(_diagnosticInstance))
             return RenderScenes::InvalidModelInstanceHandle();
         _mainScene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
+        _mainScene->SetModelHighlight(_diagnosticInstance,
+                                      CVAR_ModelDiagnosticHighlight.Get() != 0 ? 1.35f : 1.0f);
 
         // No temporal View buffers exist during diagnostic bring-up, so acknowledging
         // these ranges publishes the instance after its complete record is uploaded

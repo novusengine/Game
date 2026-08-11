@@ -27,6 +27,7 @@ uint main(PSInput input, bool frontFacing : SV_IsFrontFace) : SV_Target0
     MaterialInput materialInput;
     materialInput.worldPosition = 0.0f;
     materialInput.geometricNormal = float3(0.0f, 1.0f, 0.0f);
+    materialInput.vertexColor = 1.0f;
     materialInput.uv0 = input.uv0;
     materialInput.uv0DDX = ddx(input.uv0);
     materialInput.uv0DDY = ddy(input.uv0);
@@ -35,6 +36,7 @@ uint main(PSInput input, bool frontFacing : SV_IsFrontFace) : SV_Target0
     context.input = materialInput;
     context.instance = instance;
     context.textureOffset = 0u;
+    context.parameterBlockIndex = 0u;
 
     uint executionGroup = MaterialExecutionGroup(instance);
     uint localProgramID = MaterialGroupLocalProgramID(material, MaterialRasterClass(instance));

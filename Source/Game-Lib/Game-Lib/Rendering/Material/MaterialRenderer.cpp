@@ -1,4 +1,5 @@
 #include "MaterialRenderer.h"
+#include "Game-Lib/Rendering/Scene/RenderView.h"
 
 #include "Game-Lib/Application/EnttRegistries.h"
 #include "Game-Lib/Editor/EditorHandler.h"
@@ -34,6 +35,7 @@ MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* g
     , _modelRenderer(modelRenderer)
     , _lightRenderer(lightRenderer)
     , _preEffectsPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _velocityPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     ZoneScoped;
@@ -53,7 +55,7 @@ void MaterialRenderer::Update(f32 deltaTime)
     Util::Physics::GetMouseWorldPosition(viewport, _mouseWorldPosition);
 }
 
-void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
+void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view, u8 frameIndex)
 {
     struct PreEffectsPassData
     {
@@ -67,10 +69,12 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
     };
 
     renderGraph->AddPass<PreEffectsPassData>("Pre Effects",
-        [this, &resources](PreEffectsPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
+        [this, &resources, &view](PreEffectsPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
         {
-            data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
-            data.packedNormals = builder.Write(resources.packedNormals, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
+            if (view.GetNormalTarget() == Renderer::ImageID::Invalid())
+                return false;
+            data.visibilityBuffer = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
+            data.packedNormals = builder.Write(view.GetNormalTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::CLEAR);
 
             builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
 
@@ -84,7 +88,7 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
 
             return true; // Return true from setup to enable this pass, return false to disable it
         },
-        [this, &resources, frameIndex](PreEffectsPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
+        [this, &view, frameIndex](PreEffectsPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
         {
             GPU_SCOPED_PROFILER_ZONE(commandList, PreEffectsPass);
 
@@ -99,7 +103,7 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             commandList.BindDescriptorSet(data.modelSet, frameIndex);
             commandList.BindDescriptorSet(data.preEffectsSet, frameIndex);
 
-            vec2 outputSize = static_cast<vec2>(_renderer->GetImageDimensions(resources.packedNormals, 0));
+            vec2 outputSize = static_cast<vec2>(view.GetDimensions());
 
             struct Constants
             {
@@ -113,7 +117,54 @@ void MaterialRenderer::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, Ren
             commandList.Dispatch(dispatchSize.x, dispatchSize.y, 1);
 
             commandList.EndPipeline(_preEffectsPipeline);
-        });
+        }, Renderer::RenderPassFlags::None);
+
+    struct VelocityPassData
+    {
+        Renderer::ImageResource visibilityBuffer;
+        Renderer::ImageMutableResource motionVectors;
+        Renderer::DescriptorSetResource globalSet;
+        Renderer::DescriptorSetResource terrainSet;
+        Renderer::DescriptorSetResource modelSet;
+        Renderer::DescriptorSetResource velocitySet;
+    };
+    renderGraph->AddPass<VelocityPassData>("Velocity",
+        [this, &resources, &view](VelocityPassData& data, Renderer::RenderGraphBuilder& builder)
+        {
+            if (view.GetMotionTarget() == Renderer::ImageID::Invalid())
+                return false;
+            data.visibilityBuffer = builder.Read(view.GetVisibilityTarget(), Renderer::PipelineType::COMPUTE);
+            data.motionVectors = builder.Write(view.GetMotionTarget(), Renderer::PipelineType::COMPUTE, Renderer::LoadMode::CLEAR);
+            builder.Read(resources.cameras.GetBuffer(), Renderer::BufferPassUsage::COMPUTE);
+            data.globalSet = builder.Use(resources.globalDescriptorSet);
+            data.terrainSet = builder.Use(resources.terrainDescriptorSet);
+            data.modelSet = builder.Use(resources.modelDescriptorSet);
+            data.velocitySet = builder.Use(_velocityPassDescriptorSet);
+            _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
+            _modelRenderer->RegisterMaterialPassBufferUsage(builder);
+            return true;
+        },
+        [this, &view, frameIndex](VelocityPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList)
+        {
+            GPU_SCOPED_PROFILER_ZONE(commandList, VelocityPass);
+            commandList.BeginPipeline(_velocityPipeline);
+            data.velocitySet.Bind("_visibilityBuffer", data.visibilityBuffer);
+            data.velocitySet.Bind("_motionVectors", data.motionVectors);
+            commandList.BindDescriptorSet(data.globalSet, frameIndex);
+            commandList.BindDescriptorSet(data.terrainSet, frameIndex);
+            commandList.BindDescriptorSet(data.modelSet, frameIndex);
+            commandList.BindDescriptorSet(data.velocitySet, frameIndex);
+            const vec2 size = static_cast<vec2>(view.GetDimensions());
+            struct Constants { vec4 renderInfo; mat4x4 previousWorldToClip; u32 cameraIndex; u32 cameraValid; };
+            Constants* constants = graphResources.FrameNew<Constants>();
+            constants->renderInfo = vec4(size, 1.0f / size);
+            constants->previousWorldToClip = view.GetPreviousWorldToClip();
+            constants->cameraIndex = view.GetCameraIndex();
+            constants->cameraValid = view.IsTemporalCameraValid() ? 1u : 0u;
+            commandList.PushConstant(constants, 0, sizeof(Constants));
+            commandList.Dispatch((static_cast<u32>(size.x) + 7u) / 8u, (static_cast<u32>(size.y) + 7u) / 8u, 1u);
+            commandList.EndPipeline(_velocityPipeline);
+        }, Renderer::RenderPassFlags::None);
 }
 
 void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex)
@@ -136,6 +187,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         Renderer::DescriptorSetResource lightSet;
         Renderer::DescriptorSetResource terrainSet;
         Renderer::DescriptorSetResource modelSet;
+        Renderer::DescriptorSetResource assetMaterialSet;
         Renderer::DescriptorSetResource materialSet;
     };
 
@@ -170,6 +222,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.lightSet = builder.Use(resources.lightDescriptorSet);
             data.terrainSet = builder.Use(resources.terrainDescriptorSet);
             data.modelSet = builder.Use(resources.modelDescriptorSet);
+            data.assetMaterialSet = builder.Use(resources.materialDescriptorSet);
             data.materialSet = builder.Use(_materialPassDescriptorSet);
 
             _terrainRenderer->RegisterMaterialPassBufferUsage(builder);
@@ -191,10 +244,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             data.materialSet.Bind("_transparencyWeights", data.transparencyWeights);
             data.materialSet.Bind("_resolvedColor", data.resolvedColor);
 
-            data.materialSet.Bind("_ambientOcclusion", data.ambientOcclusion);
-
-            data.lightSet.Bind("_svsmPagePool"_h, data.svsmPagePool);
-            data.lightSet.Bind("_svsmDynamicPagePool"_h, data.svsmDynamicPagePool);
+            data.materialSet.Bind("_ambientVisibility", data.ambientOcclusion);
 
             // The debug permutations dead-strip descriptor set usage, so each variant binds
             // exactly what it statically references or the set-usage validation fires
@@ -221,6 +271,7 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
                     commandList.BindDescriptorSet(data.lightSet, frameIndex);
                     commandList.BindDescriptorSet(data.terrainSet, frameIndex);
                     commandList.BindDescriptorSet(data.modelSet, frameIndex);
+                    commandList.BindDescriptorSet(data.assetMaterialSet, frameIndex);
                     commandList.BindDescriptorSet(data.materialSet, frameIndex);
                     break;
             }
@@ -340,6 +391,10 @@ void MaterialRenderer::CreatePermanentResources()
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
     _preEffectsPipeline = _renderer->CreatePipeline(pipelineDesc);
 
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/VelocityPass.cs"_h, "Material/VelocityPass.cs");
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+    _velocityPipeline = _renderer->CreatePipeline(pipelineDesc);
+
     // Create Material Pipeline
     CreateMaterialPipeline();
 
@@ -355,6 +410,8 @@ void MaterialRenderer::CreatePermanentResources()
     // Register pipelines with descriptor sets and init
     _preEffectsPassDescriptorSet.RegisterPipeline(_renderer, _preEffectsPipeline);
     _preEffectsPassDescriptorSet.Init(_renderer);
+    _velocityPassDescriptorSet.RegisterPipeline(_renderer, _velocityPipeline);
+    _velocityPassDescriptorSet.Init(_renderer);
 
     _materialPassDescriptorSet.RegisterPipeline(_renderer, _materialPipeline);
     _materialPassDescriptorSet.Init(_renderer);
@@ -371,6 +428,7 @@ void MaterialRenderer::CreatePermanentResources()
 
     _sampler = _renderer->CreateSampler(samplerDesc);
     _preEffectsPassDescriptorSet.Bind("_sampler"_h, _sampler);
+    _velocityPassDescriptorSet.Bind("_sampler"_h, _sampler);
     _materialPassDescriptorSet.Bind("_sampler"_h, _sampler);
 
     _directionalLights.SetDebugName("Directional Lights");

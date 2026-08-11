@@ -23,6 +23,13 @@ namespace MaterialLoading
         std::span<const FileFormat::Material::MaterialAnimationBinding> animationBindings;
     };
 
+    struct MaterialAnimationAssetView
+    {
+        FileFormat::Material::MaterialAnimationAsset root;
+        std::span<const FileFormat::Material::MaterialAnimationTrack> tracks;
+        std::span<const vec4> samples;
+    };
+
     template <typename T>
     struct MaterialAssetReadResult
     {
@@ -47,5 +54,6 @@ namespace MaterialLoading
         static MaterialAssetReadResult<MaterialInstanceAssetView> DecodeMaterialInstance(std::span<const u8> payload);
         static MaterialAssetReadResult<MaterialInstanceAssetView> ReadMaterialInstance(std::span<const u8> payload, const MaterialAssetView& material,
                                                                                        AssetLoading::ValidationMode validationMode = AssetLoading::ValidationMode::Default);
+        static MaterialAssetReadResult<MaterialAnimationAssetView> ReadMaterialAnimation(std::span<const u8> payload);
     };
 } // namespace MaterialLoading

@@ -13,6 +13,7 @@
 
 namespace Renderer
 {
+    class RenderGraph;
     class Renderer;
 }
 
@@ -25,6 +26,7 @@ public:
         const std::string& debugName,
         const std::filesystem::path& artifactPath,
         std::string& error);
+    void AddReadbackPass(Renderer::RenderGraph& renderGraph);
     void ProcessPending();
 
     static bool ResolveArtifactPath(

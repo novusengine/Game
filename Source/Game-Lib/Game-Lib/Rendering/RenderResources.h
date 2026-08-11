@@ -37,6 +37,7 @@ public:
     Renderer::ImageID visibilityBuffer;
     Renderer::ImageID skyboxColor;
     Renderer::ImageID packedNormals;
+    Renderer::ImageID motionVectors;
 
     Renderer::ImageID sceneColor;
     Renderer::ImageID finalColor;

@@ -30,29 +30,50 @@ struct Constants
 groupshared uint uMinDepth;
 groupshared uint uMaxDepth;
 groupshared uint uDepthMask; // Harada Siggraph 2012 2.5D culling
-groupshared uint tile_opaque[SHADER_ENTITY_TILE_BUCKET_COUNT];
-groupshared uint tile_transparent[SHADER_ENTITY_TILE_BUCKET_COUNT];
+static const uint MAX_DECALS_PER_TILE = 8u;
+groupshared uint tileDecalCount;
+groupshared uint tileDecalIndices[MAX_DECALS_PER_TILE];
+groupshared int tileDecalPriorities[MAX_DECALS_PER_TILE];
+groupshared uint tileDecalStableIDs[MAX_DECALS_PER_TILE];
 #ifdef DEBUG_TILEDLIGHTCULLING
 groupshared uint entityCountDebug;
 [[vk::binding(3, PER_PASS)]] RWTexture2D<unorm float4> _debugTexture;
 #endif // DEBUG_TILEDLIGHTCULLING
 
-void AppendEntity_Opaque(uint entityIndex)
+bool DecalKeyLess(int priorityA, uint stableIDA, int priorityB, uint stableIDB)
 {
-	const uint bucket_index = entityIndex / 32;
-	const uint bucket_place = entityIndex % 32;
-	InterlockedOr(tile_opaque[bucket_index], 1u << bucket_place);
-
-#ifdef DEBUG_TILEDLIGHTCULLING
-	InterlockedAdd(entityCountDebug, 1);
-#endif // DEBUG_TILEDLIGHTCULLING
+    return priorityA < priorityB || (priorityA == priorityB && stableIDA < stableIDB);
 }
 
-void AppendEntity_Transparent(uint entityIndex)
+void InsertDecal(uint decalIndex, int priority, uint stableID)
 {
-	const uint bucket_index = entityIndex / 32;
-	const uint bucket_place = entityIndex % 32;
-	InterlockedOr(tile_transparent[bucket_index], 1u << bucket_place);
+    uint count = tileDecalCount;
+    if (count == MAX_DECALS_PER_TILE)
+    {
+        InterlockedAdd(_entityTiles[0], 1u);
+        if (!DecalKeyLess(tileDecalPriorities[0], tileDecalStableIDs[0], priority, stableID))
+            return;
+        for (uint index = 1u; index < count; ++index)
+        {
+            tileDecalIndices[index - 1u] = tileDecalIndices[index];
+            tileDecalPriorities[index - 1u] = tileDecalPriorities[index];
+            tileDecalStableIDs[index - 1u] = tileDecalStableIDs[index];
+        }
+        count -= 1u;
+    }
+
+    uint insertion = count;
+    while (insertion > 0u && DecalKeyLess(priority, stableID, tileDecalPriorities[insertion - 1u], tileDecalStableIDs[insertion - 1u]))
+    {
+        tileDecalIndices[insertion] = tileDecalIndices[insertion - 1u];
+        tileDecalPriorities[insertion] = tileDecalPriorities[insertion - 1u];
+        tileDecalStableIDs[insertion] = tileDecalStableIDs[insertion - 1u];
+        insertion -= 1u;
+    }
+    tileDecalIndices[insertion] = decalIndex;
+    tileDecalPriorities[insertion] = priority;
+    tileDecalStableIDs[insertion] = stableID;
+    tileDecalCount = count + 1u;
 }
 
 inline uint ConstructEntityMask(in float depthRangeMin, in float depthRangeRecip, in Sphere bounds)
@@ -117,19 +138,13 @@ void main(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid :
 	_depthRT.GetDimensions(dim.x, dim.y);
 	float2 dim_rcp = rcp(dim);
 
-	// Each thread will zero out one bucket in the LDS:
-	for (uint i = groupIndex; i < SHADER_ENTITY_TILE_BUCKET_COUNT; i += TILED_CULLING_THREADSIZE * TILED_CULLING_THREADSIZE)
-	{
-		tile_opaque[i] = 0;
-		tile_transparent[i] = 0;
-	}
-
 	// First thread zeroes out other LDS data:
 	if (groupIndex == 0)
 	{
 		uMinDepth = 0xffffffff;
 		uMaxDepth = 0;
 		uDepthMask = 0;
+		tileDecalCount = 0;
 
 #ifdef DEBUG_TILEDLIGHTCULLING
 		entityCountDebug = 0;
@@ -249,56 +264,55 @@ void main(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid :
 
 	const uint depth_mask = uDepthMask; // take out from groupshared into register
 
-	// Decals:
-	for (uint i = 0 + groupIndex; i < _constants.numTotalDecals; i += TILED_CULLING_THREADSIZE * TILED_CULLING_THREADSIZE)
-	{
-        PackedDecal packedDecal = _packedDecals[i];
-        Decal decal = UnpackDecal(packedDecal);
-
-		float3 positionVS = mul(float4(decal.position, 1), _cameras[0].worldToView).xyz;
-		const float radius = length(decal.extents.xyz);
-		Sphere sphere = { positionVS.xyz, radius };
-		if (SphereInsideFrustum(sphere, GroupFrustum, nearClipVS, maxDepthVS))
+    if (groupIndex == 0)
+    {
+		for (uint i = 0; i < _constants.numTotalDecals; ++i)
 		{
-			AppendEntity_Transparent(i);
+			PackedDecal packedDecal = _packedDecals[i];
+			Decal decal = UnpackDecal(packedDecal);
 
-			// unit AABB: 
-			AABB a;
-			a.c = 0;
-			a.e = decal.extents.xyz;
-
-			// frustum AABB in world space transformed into the space of the probe/decal OBB
-			AABB b = GroupAABB_WS;
-            b = WorldAABB_To_DecalSpace(b, decal.position, decal.rotationQuat);
-
-			// TODO: More accurate culling? We see the decal getting classified into tiles that are outside the AABB, 
-			// probably because we're doing this check in decal space and not viewspace, but this is good enough for now
-
-			if (IntersectAABB(a, b))
+			float3 positionVS = mul(float4(decal.position, 1), _cameras[0].worldToView).xyz;
+			const float radius = length(decal.extents.xyz);
+			Sphere sphere = { positionVS.xyz, radius };
+			if (SphereInsideFrustum(sphere, GroupFrustum, nearClipVS, maxDepthVS))
 			{
-#ifdef ADVANCED_CULLING
-				if (depth_mask & ConstructEntityMask(minDepthVS, __depthRangeRecip, sphere))
-#endif
+				// unit AABB:
+				AABB a;
+				a.c = 0;
+				a.e = decal.extents.xyz;
+
+				// frustum AABB in world space transformed into the space of the probe/decal OBB
+				AABB b = GroupAABB_WS;
+				b = WorldAABB_To_DecalSpace(b, decal.position, decal.rotationQuat);
+
+				// TODO: More accurate culling? We see the decal getting classified into tiles that are outside the AABB,
+				// probably because we're doing this check in decal space and not viewspace, but this is good enough for now
+
+				if (IntersectAABB(a, b))
 				{
-					AppendEntity_Opaque(i);
+#ifdef ADVANCED_CULLING
+					if (depth_mask & ConstructEntityMask(minDepthVS, __depthRangeRecip, sphere))
+#endif
+					{
+						InsertDecal(i, decal.priority, decal.stableID);
+					}
 				}
 			}
 		}
+
+#ifdef DEBUG_TILEDLIGHTCULLING
+		entityCountDebug = tileDecalCount;
+#endif
 	}
 
 	GroupMemoryBarrierWithGroupSync();
 
 	const uint flatTileIndex = Flatten2D(Gid.xy, _constants.tileCount.xy);
-	const uint tileBucketsAddress = flatTileIndex * SHADER_ENTITY_TILE_BUCKET_COUNT;
-
-	const uint entityCullingTileBucketCountFlat = _constants.tileCount.x * _constants.tileCount.y * SHADER_ENTITY_TILE_BUCKET_COUNT;
-
-	// Each thread will export one bucket from LDS to global memory:
-	for (uint i = groupIndex; i < SHADER_ENTITY_TILE_BUCKET_COUNT; i += TILED_CULLING_THREADSIZE * TILED_CULLING_THREADSIZE)
-	{
-		_entityTiles[tileBucketsAddress + i] = tile_opaque[i];
-		_entityTiles[entityCullingTileBucketCountFlat + tileBucketsAddress + i] = tile_transparent[i];
-	}
+	const uint tileAddress = 1u + flatTileIndex * (1u + MAX_DECALS_PER_TILE);
+	if (groupIndex == 0)
+		_entityTiles[tileAddress] = tileDecalCount;
+	for (uint index = groupIndex; index < MAX_DECALS_PER_TILE; index += TILED_CULLING_THREADSIZE * TILED_CULLING_THREADSIZE)
+		_entityTiles[tileAddress + 1u + index] = index < tileDecalCount ? tileDecalIndices[index] : 0u;
 
 #ifdef DEBUG_TILEDLIGHTCULLING
 	for (uint granularity = 0; granularity < TILED_CULLING_GRANULARITY * TILED_CULLING_GRANULARITY; ++granularity)

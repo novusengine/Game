@@ -57,6 +57,8 @@ namespace ModelRendering
         RenderScenes::RenderView* CreateView(const RenderScenes::RenderViewDesc& desc);
         bool DestroyView(u64 viewID);
         RenderScenes::RenderView* GetView(u64 viewID);
+        RenderScenes::RenderView* GetMainView() { return _mainView ? &_mainView->GetView() : nullptr; }
+        void PreparePreEffectsViews(RenderResources& resources);
         void AddVisibilityPhase1Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
@@ -64,13 +66,13 @@ namespace ModelRendering
         void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const;
         void BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet);
-        void RequestMainViewTemporalReset();
+        void RequestMainViewCameraCut();
 
         // TODO: Remove this development-only selection hook after GPU work expansion
         // replaces diagnostic work.
         RenderScenes::ModelInstanceHandle SetDiagnosticModel(RenderAssets::ModelHandle model,
                                                              const vec3& worldBoundsCenter, f32 worldBoundsRadius,
-                                                             bool geometryGroupsEnabled = true);
+                                                             bool geometryGroupsEnabled = true, bool teleported = false);
         const ModelView::WorkStats& GetDiagnosticStats() const
         {
             return _mainView->GetWork().GetStats();

@@ -8,6 +8,7 @@
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/Light/LightRenderer.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
@@ -252,6 +253,7 @@ namespace Scripting::Asset
         zenith->AddTableField("materialFailures", stats.materials.materialFailures + stats.materials.materialInstanceFailures);
         zenith->AddTableField("textureFailures", stats.textures.fallbackTextures);
         zenith->AddTableField("resolvedTextures", stats.textures.resolvedTextures);
+        zenith->AddTableField("decalTileOverflow", ServiceLocator::GetGameRenderer()->GetLightRenderer()->GetDecalTileOverflowCount());
         zenith->AddTableField("sceneInstances", sceneStats.instances.liveInstances);
         zenith->AddTableField("scenePendingInstances", sceneStats.instances.pendingInstances);
         zenith->AddTableField("sceneInstanceSlots", sceneStats.instances.slotCapacity);
@@ -330,9 +332,10 @@ namespace Scripting::Asset
         const f32 worldBoundsRadius = zenith->CheckVal<f32>(3);
         // TODO: Remove this optional geometry-group state with the temporary diagnostic model hook.
         const bool geometryGroupsEnabled = zenith->GetTop() < 4 || zenith->CheckVal<bool>(4);
+        const bool teleported = zenith->GetTop() >= 5 && zenith->CheckVal<bool>(5);
         const RenderScenes::ModelInstanceHandle instance =
             ServiceLocator::GetGameRenderer()->GetModelRenderSystem()->SetDiagnosticModel(
-                model, worldBoundsCenter, worldBoundsRadius, geometryGroupsEnabled);
+                model, worldBoundsCenter, worldBoundsRadius, geometryGroupsEnabled, teleported);
         zenith->Push(static_cast<RenderScenes::ModelInstanceHandle::type>(instance));
         return 1;
     }

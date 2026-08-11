@@ -11,6 +11,8 @@ permutation EDITOR_MODE = [0, 1]; // Off, Terrain
 #include "Include/VisibilityBuffers.inc.slang"
 #include "Include/TypedVisibility.inc.slang"
 #include "Light/LightShared.inc.slang"
+#include "Material/Decals.inc.slang"
+#include "Material/MaterialAuthoring.inc.slang"
 #include "Model/ModelShared.inc.slang"
 #include "Terrain/TerrainShared.inc.slang"
 
@@ -39,51 +41,7 @@ struct Constants
 [[vk::binding(5, PER_PASS)]] Texture2D<float> _transparencyWeights;
 [[vk::binding(6, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
-float3 ProcessDecalBucket(uint buckedIndex, uint mask, float3 pixelWorldPos, float3 pixelWorldNormal)
-{
-    // Walk set bits in mask
-    float3 color = float3(0, 0, 0);
-
-    while (mask)
-    {
-        uint bit = firstbitlow(mask);
-        uint decalIndex = buckedIndex * 32u + bit; // Global index into _decals
-
-        PackedDecal packedDecal = _packedDecals[decalIndex];
-        Decal decal = UnpackDecal(packedDecal);
-
-        Texture2D decalTexture = _modelTextures[NonUniformResourceIndex(decal.textureID)]; // Decals share the same texture array as models
-
-        color += ApplyDecal(pixelWorldPos, pixelWorldNormal, decal, decalTexture, _sampler);
-
-        mask &= (mask - 1); // Clear the least significant bit set
-    }
-
-    return color;
-}
-
-float3 ApplyDecals(uint tileIndex, float3 pixelWorldPos, float3 pixelWorldNormal)
-{
-    // Layout reminder:
-    // [0 .. Tiles*Buckets-1]          : Opaque bitmasks per tile, use these when applied to opaque objects
-    // [Tiles*Buckets .. 2*Tiles*Buckets-1] : Transparent bitmasks per tile, use these whne applied to transparent objects such as fog between camera and opaque (not actually used yet)
-
-    uint numTiles = _constants.tileInfo.x * _constants.tileInfo.y;
-    uint bucketsPerLayer = SHADER_ENTITY_TILE_BUCKET_COUNT;
-
-    uint opaqueBase = tileIndex * bucketsPerLayer;
-    uint transparentBase = numTiles * bucketsPerLayer + opaqueBase; // I don't think I need this but lets keep it so we know what to do in the future
-
-    float3 color = float3(0, 0, 0);
-    for (uint bucketIndex = 0; bucketIndex < bucketsPerLayer; bucketIndex++)
-    {
-        uint mask = _entityTiles[opaqueBase + bucketIndex];
-        if (mask != 0)
-            color += ProcessDecalBucket(bucketIndex, mask, pixelWorldPos, pixelWorldNormal);
-    }
-
-    return saturate(color);
-}
+#include "Generated/MaterialSources/Terrain.inc.slang"
 
 float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const VisibilityBuffer vBuffer, uint tileIndex, out float3 outPixelWorldPos)
 {
@@ -92,50 +50,6 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
 
     InstanceData cellInstance = _instanceDatas[vBuffer.instanceID];
     uint globalCellID = cellInstance.globalCellID;
-    const uint cellID = cellInstance.packedChunkCellID & 0xFFFF;
-
-    // Get CellData and ChunkData
-    const CellData cellData = LoadCellData(globalCellID);
-
-    const uint globalChunkID = globalCellID / NUM_CELLS_PER_CHUNK;
-    const ChunkData chunkData = _chunkData[globalChunkID];
-
-    // We have 4 uints per chunk for our diffuseIDs, this gives us a size and alignment of 16 bytes which is exactly what GPUs want
-    // However, we need a fifth uint for alphaID, so we decided to pack it into the LAST diffuseID, which gets split into two uint16s
-    // This is what it looks like
-    // [1111] diffuseIDs.x
-    // [2222] diffuseIDs.y
-    // [3333] diffuseIDs.z
-    // [AA44] diffuseIDs.w Alpha is read from the most significant bits, the fourth diffuseID read from the least 
-    uint diffuse0ID = cellData.diffuseIDs.x;
-    uint diffuse1ID = cellData.diffuseIDs.y;
-    uint diffuse2ID = cellData.diffuseIDs.z;
-    uint diffuse3ID = cellData.diffuseIDs.w;
-    uint alphaID = chunkData.alphaID;
-
-    FullBary2 pixelUV = pixelVertexData.uv0;
-    float3 pixelAlphaUV = float3(saturate(pixelUV.value / 8.0f), float(cellID)); // The alpha needs to be between 0 and 1, and load from the correct layer
-
-    float3 alpha = _terrainAlphaTextures[NonUniformResourceIndex(alphaID)].SampleGrad(_alphaSampler, pixelAlphaUV, pixelUV.ddx, pixelUV.ddy).rgb;
-    float minusAlphaBlendSum = (1.0 - clamp(alpha.x + alpha.y + alpha.z, 0.0, 1.0));
-    float4 weightsVector = float4(minusAlphaBlendSum, alpha);
-
-    float4 color = float4(0, 0, 0, 1);
-
-    float3 diffuse0 = _terrainColorTextures[NonUniformResourceIndex(diffuse0ID)].SampleGrad(_sampler, pixelUV.value, pixelUV.ddx, pixelUV.ddy).xyz * weightsVector.x;
-    color.rgb += diffuse0;
-
-    float3 diffuse1 = _terrainColorTextures[NonUniformResourceIndex(diffuse1ID)].SampleGrad(_sampler, pixelUV.value, pixelUV.ddx, pixelUV.ddy).xyz * weightsVector.y;
-    color.rgb += diffuse1;
-
-    float3 diffuse2 = _terrainColorTextures[NonUniformResourceIndex(diffuse2ID)].SampleGrad(_sampler, pixelUV.value, pixelUV.ddx, pixelUV.ddy).xyz * weightsVector.z;
-    color.rgb += diffuse2;
-
-    float3 diffuse3 = _terrainColorTextures[NonUniformResourceIndex(diffuse3ID)].SampleGrad(_sampler, pixelUV.value, pixelUV.ddx, pixelUV.ddy).xyz * weightsVector.w;
-    color.rgb += diffuse3;
-
-    // Apply vertex color
-    color.rgb *= pixelVertexData.color;
 
     ShadowSettings shadowSettings;
     shadowSettings.enableShadows = _constants.lightInfo.y == 1;
@@ -143,11 +57,30 @@ float4 ShadeTerrain(const uint2 pixelPos, const float2 screenUV, const Visibilit
     shadowSettings.normalOffset = _constants.shadowSettings.y;
     shadowSettings.svsmConstantBias = _constants.shadowSettings.z;
 
-    // Apply lighting
-    color.rgb = ApplyLighting(color.rgb, pixelVertexData, _constants.lightInfo, shadowSettings);
-
-    // Apply decals
-    color.rgb += ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal);
+    MaterialInput materialInput;
+    materialInput.worldPosition = pixelVertexData.worldPos;
+    materialInput.geometricNormal = pixelVertexData.worldNormal;
+    materialInput.vertexColor = float4(pixelVertexData.color, 1.0f);
+    materialInput.uv0 = pixelVertexData.uv0.value;
+    materialInput.uv0DDX = pixelVertexData.uv0.ddx;
+    materialInput.uv0DDY = pixelVertexData.uv0.ddy;
+    materialInput.frontFacing = true;
+    MaterialEvaluationContext context;
+    context.input = materialInput;
+    context.instance.parameterOffset = 0u;
+    context.instance.materialIndex = 0u;
+    context.instance.textureOffset = 0u;
+    context.instance.textureCount = 0u;
+    context.instance.flags = 0u;
+    context.instance.packedClassification = 0u;
+    context.instance.materialHandle = 0u;
+    context.instance.samplerOffset = 0u;
+    context.textureOffset = 0u;
+    context.parameterBlockIndex = globalCellID;
+    SurfaceDescription surface = EvaluateMaterial_Terrain(context);
+    ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal, surface);
+    LightingModelInput lightingInput = BuildLightingModelInput(pixelPos, 0u, pixelVertexData.worldPos, pixelVertexData.worldNormal, pixelVertexData.faceNormal, _constants.lightInfo.x, true, shadowSettings);
+    float4 color = float4(EvaluateLightingModel(LIGHTING_MODEL_STANDARD, surface, lightingInput), surface.alpha);
 
 /*#if EDITOR_MODE == 1
     // Get settings from push constants
@@ -295,9 +228,6 @@ float4 ShadeModel(const uint2 pixelPos, const float2 screenUV, const VisibilityB
     // Apply highlight
     color.rgb *= pixelVertexData.highlightIntensity;
 
-    // Apply decals
-    color.rgb += ApplyDecals(tileIndex, pixelVertexData.worldPos, pixelVertexData.worldNormal);
-
     outPixelWorldPos = pixelVertexData.worldPos;
     return saturate(color);
 }
@@ -308,7 +238,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     uint2 pixelPos = dispatchThreadId.xy;
 
-    if (any(pixelPos > _constants.renderInfo.xy))
+    if (any(pixelPos >= uint2(_constants.renderInfo.xy)))
     {
         return;
     }

@@ -1,7 +1,7 @@
 local mod = Solution.Util.CreateModuleTable("Shaders", {})
 
 Solution.Util.CreateProject(mod.Name, "Utility", Solution.Projects.Current.BinDir, mod.Dependencies, function()
-    dependson { "ShaderCookerStandalone" }
+    dependson { "Materials" }
 
     if os.target() == "windows" then
         fastuptodate "Off"

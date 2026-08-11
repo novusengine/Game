@@ -47,6 +47,12 @@ namespace ModelScene
         return _scene && existing != _instances.end() && _scene->SetModelVisible(existing->second, visible);
     }
 
+    bool ModelSceneBridge::SetHighlight(entt::entity entity, f32 intensity)
+    {
+        const auto existing = _instances.find(entity);
+        return _scene && existing != _instances.end() && _scene->SetModelHighlight(existing->second, intensity);
+    }
+
     bool ModelSceneBridge::SetGeometryGroupEnabled(entt::entity entity, u32 groupID, bool enabled)
     {
         const auto existing = _instances.find(entity);

@@ -256,7 +256,7 @@ namespace ECSUtil::Camera
 
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         if (gameRenderer && gameRenderer->GetModelRenderSystem())
-            gameRenderer->GetModelRenderSystem()->RequestMainViewTemporalReset();
+            gameRenderer->GetModelRenderSystem()->RequestMainViewCameraCut();
 
         // Send LoadMap Request
         {

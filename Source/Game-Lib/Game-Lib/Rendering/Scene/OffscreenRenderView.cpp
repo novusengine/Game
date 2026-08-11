@@ -43,8 +43,8 @@ namespace RenderScenes
         imageDesc.debugName = _desc.debugName + " Visibility";
         _visibility = _renderer->CreateImage(imageDesc);
 
-        imageDesc.format = Renderer::ImageFormat::R11G11B10_UFLOAT;
-        imageDesc.clearColor = Color::Clear;
+        imageDesc.format = Renderer::ImageFormat::R32_UINT;
+        imageDesc.clearUInts = uvec4(0u);
         imageDesc.debugName = _desc.debugName + " Normals";
         _normals = _renderer->CreateImage(imageDesc);
 

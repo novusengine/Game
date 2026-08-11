@@ -40,7 +40,8 @@ namespace ModelScene
         u32 deformationHandle = RenderScenes::INVALID_SCENE_INDEX;
         u32 generation = 0;
         u32 flags = 0;
-        u32 reserved[2] = {};
+        u32 packedHighlightColor = 0xFFFFFFFFu;
+        f32 highlightIntensity = 1.0f;
     };
 
     struct ModelInstanceCreateInfo
@@ -90,6 +91,7 @@ namespace ModelScene
         bool SetTransform(RenderScenes::ModelInstanceHandle handle, const mat4x4& transform, bool teleported,
                           bool& outNeedsHistoryClear);
         bool SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear);
+        bool SetHighlight(RenderScenes::ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
         bool SetShadowDynamic(RenderScenes::ModelInstanceHandle handle, bool dynamic);
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
@@ -120,6 +122,7 @@ namespace ModelScene
         {
             return _membershipRevision;
         }
+        u32 GetHighlightedInstanceCount() const { return _highlightedInstances; }
 
       private:
         enum class SlotState : u8
@@ -160,6 +163,7 @@ namespace ModelScene
         std::vector<SlotGenerationEntry> _frameAdvanceEntries;
         u32 _liveInstances = 0;
         u32 _pendingInstances = 0;
+        u32 _highlightedInstances = 0;
         mutable u32 _staleHandleRejects = 0;
         u64 _membershipRevision = 0;
     };

@@ -14,14 +14,20 @@ namespace RenderAssets
 {
     RenderAssetResources::RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, Renderer::DescriptorSet* materialDescriptorSet, bool validateTransfers)
         : _renderer(renderer), _textureRegistry(renderer, pactStorage), _materialStorage(validateTransfers),
+          _materialAnimator(pactStorage, &_materialStorage),
           _materialBindings(renderer, materialDescriptorSet),
-          _materialRegistry(pactStorage, &_materialStorage, &_materialProgramLibrary, &_textureRegistry),
+          _materialRegistry(pactStorage, &_materialStorage, &_materialProgramLibrary, &_textureRegistry, &_materialAnimator),
           _geometryStorage(validateTransfers),
           _modelRegistry(pactStorage, &_geometryStorage, &_materialStorage, &_materialRegistry), _captureScratch(validateTransfers)
     {
         _captureScratch.SetDebugName("Render Asset Capture Scratch");
         _captureScratch.SetUsage(Renderer::BufferUsage::STORAGE_BUFFER);
         _captureScratch.AddCount(18 * 16);
+    }
+
+    void RenderAssetResources::Update(f32 deltaTime)
+    {
+        _materialAnimator.Update(deltaTime);
     }
 
     bool RenderAssetResources::Initialize()
@@ -122,7 +128,7 @@ namespace RenderAssets
                 for (u32 index = 0; index < data.numSources; ++index)
                     commandList.CopyBuffer(data.scratch, index * 64u, data.sources[index], 0, data.sizes[index]);
                 commandList.PopMarker();
-            });
+            }, Renderer::RenderPassFlags::SideEffect);
     }
 
     RenderAssetResourceStats RenderAssetResources::GetStats() const

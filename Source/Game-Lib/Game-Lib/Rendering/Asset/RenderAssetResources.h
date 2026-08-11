@@ -1,5 +1,6 @@
 #pragma once
 #include "Game-Lib/Rendering/Material/MaterialRegistry.h"
+#include "Game-Lib/Rendering/Material/MaterialAnimator.h"
 #include "Game-Lib/Rendering/Material/MaterialProgramLibrary.h"
 #include "Game-Lib/Rendering/Material/MaterialResourceBindings.h"
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
@@ -44,6 +45,7 @@ namespace RenderAssets
         RenderAssetResources(Renderer::Renderer* renderer, PACT::PactStorage* pactStorage, Renderer::DescriptorSet* materialDescriptorSet, bool validateTransfers);
 
         bool Initialize();
+        void Update(f32 deltaTime);
         void ReserveModelResources(const Map::ModelResourceAllocationHints& hints);
         void SyncToGPU();
         void AddCapturePass(Renderer::RenderGraph& renderGraph);
@@ -60,6 +62,10 @@ namespace RenderAssets
         MaterialInstanceHandle DeriveMaterialInstance(MaterialInstanceHandle base, std::span<const MaterialLoading::MaterialTextureRuntimeOverride> overrides)
         {
             return _materialRegistry.DeriveMaterialInstance(base, overrides);
+        }
+        u32 ResolveTexture(FileFormat::AssetID textureAssetID, FileFormat::AssetID ownerAssetID)
+        {
+            return _textureRegistry.Resolve(textureAssetID, ownerAssetID, false);
         }
         ModelLoading::EmbeddedModelLoadStatus LoadEmbeddedModel(FileFormat::AssetID assetID, ModelHandle& outHandle)
         {
@@ -82,6 +88,7 @@ namespace RenderAssets
         Renderer::Renderer* _renderer = nullptr;
         MaterialLoading::MaterialTextureRegistry _textureRegistry;
         MaterialLoading::MaterialStorage _materialStorage;
+        MaterialLoading::MaterialAnimator _materialAnimator;
         MaterialLoading::MaterialResourceBindings _materialBindings;
         MaterialLoading::MaterialProgramLibrary _materialProgramLibrary;
         MaterialLoading::MaterialRegistry _materialRegistry;

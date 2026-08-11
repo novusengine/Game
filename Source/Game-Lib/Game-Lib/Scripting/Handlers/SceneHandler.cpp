@@ -306,6 +306,8 @@ namespace Scripting::Scene
         zenith->AddTableField("minV", f32(decal->minUV.y));
         zenith->AddTableField("maxU", f32(decal->maxUV.x));
         zenith->AddTableField("maxV", f32(decal->maxUV.y));
+        zenith->AddTableField("opacity", decal->opacity);
+        zenith->AddTableField("priority", decal->priority);
         zenith->AddTableField("flags", decal->flags);
         return 1;
     }
@@ -359,6 +361,14 @@ namespace Scripting::Scene
             maxUV.y = zenith->Get<f32>(-1);
         zenith->Pop();
         decal->maxUV = hvec2(maxUV);
+
+        if (zenith->GetTableField("opacity", 2))
+            decal->opacity = zenith->Get<f32>(-1);
+        zenith->Pop();
+
+        if (zenith->GetTableField("priority", 2))
+            decal->priority = zenith->Get<i32>(-1);
+        zenith->Pop();
 
         if (zenith->GetTableField("flags", 2))
             decal->flags = zenith->Get<u32>(-1);

@@ -68,6 +68,8 @@
 #include <imgui/ruda.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 
+#include <limits>
+
 #include <gli/gli.hpp>
 #include <GLFW/glfw3.h>
 #include <glm/geometric.hpp>
@@ -253,7 +255,7 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     _modelPlacementLoader = new ModelRendering::ModelPlacementLoader(ServiceLocator::GetPactStorage(), _renderAssetResources, _worldRenderScene);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
-    _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer, _modelRenderer);
+    _lightRenderer = new LightRenderer(_renderer, this, _debugRenderer);
     _modelLoader = new ModelLoader(_modelRenderer, _lightRenderer);
     _modelLoader->Init();
 
@@ -378,6 +380,8 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
 {
     ZoneScoped;
 
+    _renderAssetResources->Update(deltaTime);
+
     // Reset the memory in the frameAllocator
     _frameAllocator[_frameIndex]->Reset();
 
@@ -452,29 +456,14 @@ f32 GameRenderer::Render()
         _renderDocCapture->BeginFrame();
 
     Editor::EditorHandler* editorHandler = ServiceLocator::GetEditorHandler();
-    bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
-
-    vec2 windowSize = _renderer->GetWindowSize();
-
-    if (!isEditorMode)
+    const bool isEditorMode = editorHandler->GetViewport()->IsEditorMode();
+    const vec2 windowSize = _renderer->GetWindowSize();
+    vec2 renderSize = windowSize;
+    if (isEditorMode)
     {
-        if (windowSize.x != _lastWindowSize.x || windowSize.y != _lastWindowSize.y)
-        {
-            _renderer->SetRenderSize(windowSize);
-            _lastWindowSize = windowSize;
-        }
-    }
-    else
-    {
-        vec2 viewportSize = editorHandler->GetViewport()->GetViewportSize();
-        viewportSize.x = glm::clamp(viewportSize.x, 1.0f, windowSize.x);
-        viewportSize.y = glm::clamp(viewportSize.y, 1.0f, windowSize.y);
-
-        if (viewportSize.x != _lastWindowSize.x || viewportSize.y != _lastWindowSize.y)
-        {
-            _renderer->SetRenderSize(viewportSize);
-            _lastWindowSize = viewportSize;
-        }
+        renderSize = editorHandler->GetViewport()->GetViewportSize();
+        renderSize.x = glm::clamp(renderSize.x, 1.0f, windowSize.x);
+        renderSize.y = glm::clamp(renderSize.y, 1.0f, windowSize.y);
     }
 
     // Create rendergraph
@@ -483,6 +472,14 @@ f32 GameRenderer::Render()
     Renderer::RenderGraph& renderGraph = _renderer->CreateRenderGraph(renderGraphDesc);
 
     f32 timeWaited = _renderer->FlipFrame(_frameIndex);
+
+    if (renderSize.x != _lastWindowSize.x || renderSize.y != _lastWindowSize.y)
+    {
+        _renderer->SetRenderSize(renderSize);
+        _lastWindowSize = renderSize;
+        if (RenderScenes::RenderView* mainView = _modelRenderSystem->GetMainView())
+            mainView->SetDimensions(static_cast<uvec2>(renderSize));
+    }
 
     editorHandler->DrawImGui();
     editorHandler->EndEditor();
@@ -517,7 +514,6 @@ f32 GameRenderer::Render()
                 builder.Write(_resources.depth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.depthColorCopy, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.skyboxDepth, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
-                builder.Write(_resources.packedNormals, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
                 builder.Write(_resources.ssaoTarget, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::CLEAR);
 
                 data.debugSet = builder.Use(_resources.debugDescriptorSet);
@@ -637,7 +633,8 @@ f32 GameRenderer::Render()
 
     _lightRenderer->AddClassificationPass(&renderGraph, _resources, _frameIndex);
 
-    _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->PreparePreEffectsViews(_resources);
+    _materialRenderer->AddPreEffectsPass(&renderGraph, _resources, *_modelRenderSystem->GetMainView(), _frameIndex);
     _modelRenderSystem->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
     _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
@@ -660,6 +657,8 @@ f32 GameRenderer::Render()
 
     Renderer::ImageID finalTarget = isEditorMode ? _resources.finalColor : _resources.sceneColor;
     _uiRenderer->AddImguiPass(&renderGraph, _resources, _frameIndex, finalTarget);
+    _renderTargetCapture->AddReadbackPass(renderGraph);
+    renderGraph.Export(finalTarget);
 
     renderGraph.AddSignalSemaphore(_resources.sceneRenderedSemaphore); // Signal that we are ready to present
     renderGraph.AddSignalSemaphore(_resources.frameSyncSemaphores.Get(_frameIndex)); // Signal that this frame has finished, for next frames sake
@@ -916,11 +915,16 @@ void GameRenderer::CreateRenderTargets()
     packedNormalsDesc.debugName = "PackedNormals";
     packedNormalsDesc.dimensions = vec2(1.0f, 1.0f);
     packedNormalsDesc.dimensionType = Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE;
-    packedNormalsDesc.format = Renderer::ImageFormat::R11G11B10_UFLOAT;
+    packedNormalsDesc.format = Renderer::ImageFormat::R32_UINT;
     packedNormalsDesc.sampleCount = Renderer::SampleCount::SAMPLE_COUNT_1;
-    packedNormalsDesc.clearColor = Color(0.0f, 0.0f, 0.0f, 0.0f);
+    packedNormalsDesc.clearUInts = uvec4(0u);
 
     _resources.packedNormals = _renderer->CreateImage(packedNormalsDesc);
+
+    Renderer::ImageDesc motionDesc = packedNormalsDesc;
+    motionDesc.debugName = "MotionVectors";
+    motionDesc.clearUInts = uvec4(std::numeric_limits<u32>::max());
+    _resources.motionVectors = _renderer->CreateImage(motionDesc);
 
     // Scene color rendertarget
     Renderer::ImageDesc sceneColorDesc;

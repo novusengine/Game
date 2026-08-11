@@ -17,6 +17,7 @@ class LightRenderer;
 class ModelRenderer;
 class TerrainRenderer;
 struct RenderResources;
+namespace RenderScenes { class RenderView; }
 
 class MaterialRenderer
 {
@@ -31,7 +32,7 @@ public:
     u32 GetNumDirectionalLights() const { return static_cast<u32>(_directionalLights.Count()); }
 
     // Resolves normals for the effect passes
-    void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view, u8 frameIndex);
     void AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
 
     void AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor);
@@ -56,9 +57,11 @@ private:
     GameRenderer* _gameRenderer;
 
     Renderer::ComputePipelineID _preEffectsPipeline;
+    Renderer::ComputePipelineID _velocityPipeline;
     Renderer::ComputePipelineID _materialPipeline;
 
     Renderer::DescriptorSet _preEffectsPassDescriptorSet;
+    Renderer::DescriptorSet _velocityPassDescriptorSet;
     Renderer::DescriptorSet _materialPassDescriptorSet;
 
     Renderer::GPUVector<DirectionalLight> _directionalLights;

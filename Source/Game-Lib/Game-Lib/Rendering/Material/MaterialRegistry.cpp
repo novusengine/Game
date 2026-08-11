@@ -3,6 +3,7 @@
 #include "Game-Lib/Rendering/Asset/AssetDiagnostic.h"
 #include "Game-Lib/Rendering/Asset/AssetValidation.h"
 #include "MaterialInstancePatcher.h"
+#include "MaterialAnimator.h"
 #include "MaterialProgramLibrary.h"
 #include "MaterialStorage.h"
 #include "MaterialTextureRegistry.h"
@@ -31,8 +32,9 @@ namespace
 
 namespace MaterialLoading
 {
-    MaterialRegistry::MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, MaterialProgramLibrary* programLibrary, MaterialTextureRegistry* textureRegistry)
-        : _pactStorage(pactStorage), _storage(storage), _programLibrary(programLibrary), _textureRegistry(textureRegistry)
+    MaterialRegistry::MaterialRegistry(PACT::PactStorage* pactStorage, MaterialStorage* storage, MaterialProgramLibrary* programLibrary,
+                                       MaterialTextureRegistry* textureRegistry, MaterialAnimator* animator)
+        : _pactStorage(pactStorage), _storage(storage), _programLibrary(programLibrary), _textureRegistry(textureRegistry), _animator(animator)
     {
     }
 
@@ -160,8 +162,11 @@ namespace MaterialLoading
             return RecordMaterialInstanceFailure(assetID, materialAssetID, "resource_patch_failed");
 
         RenderAssets::MaterialInstanceHandle handle;
-        if (!_storage->AppendMaterialInstance(material, result.view.root, parameters, textureIndices, samplerIDs, handle))
+        if (!_storage->AppendMaterialInstance(material, result.view.root, parameters, textureIndices, samplerIDs, handle, !result.view.animationBindings.empty()))
             return RecordMaterialInstanceFailure(assetID, materialAssetID, "storage_append_failed");
+
+        if (_animator != nullptr)
+            _animator->Register(handle, result.view.animationBindings);
 
         _materialInstances.emplace(assetID, MaterialInstanceEntry{handle, 1, false});
         return handle;

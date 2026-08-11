@@ -37,6 +37,7 @@ namespace ModelRendering
             _forcedLOD = forcedLOD;
             _state.ResetLODHistory();
             _view.RequestTemporalReset();
+            _view.RequestMotionReset();
         }
     }
 
@@ -198,6 +199,8 @@ namespace ModelRendering
         _materialResolvePass.AddResolvePass(renderGraph, resources, _view, _work, _materialResources,
                                             _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                             frameIndex);
+        _visibilityResolvePass.AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
+        _materialResolvePass.AddRetainedOutputPass(renderGraph, _view);
         _view.MarkRendered();
     }
 

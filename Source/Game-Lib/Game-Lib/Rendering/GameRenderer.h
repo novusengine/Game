@@ -117,11 +117,13 @@ public:
     JoltDebugRenderer* GetJoltDebugRenderer() { return _joltDebugRenderer; }
     LiquidRenderer* GetLiquidRenderer() { return _liquidRenderer; }
     MaterialRenderer* GetMaterialRenderer() { return _materialRenderer; }
+    LightRenderer* GetLightRenderer() { return _lightRenderer; }
     ModelRenderer* GetModelRenderer() { return _modelRenderer; }
     ShadowRenderer* GetShadowRenderer() { return _shadowRenderer; }
     TerrainRenderer* GetTerrainRenderer() { return _terrainRenderer; }
     TextureRenderer* GetTextureRenderer() { return _textureRenderer; }
     SkyboxRenderer* GetSkyboxRenderer() { return _skyboxRenderer; }
+    u8 GetFrameIndex() const { return _frameIndex; }
 
     LiquidLoader* GetLiquidLoader() { return _liquidLoader; }
     MapLoader* GetMapLoader() { return _mapLoader; }

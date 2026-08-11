@@ -86,11 +86,13 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             public:
                 f32 fadeStart;
                 f32 fadeEnd;
+                vec2 renderSize;
             };
 
             Constants* constants = graphResources.FrameNew<Constants>();
             constants->fadeStart = CVAR_WorldGridFadeStart.GetFloat();
             constants->fadeEnd = CVAR_WorldGridFadeEnd.GetFloat();
+            constants->renderSize = _renderer->GetRenderSize();
 
             commandList.PushConstant(constants, 0, sizeof(Constants));
 

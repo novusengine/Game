@@ -5,6 +5,7 @@
 #include <Base/Util/DebugHandler.h>
 
 #include <Renderer/Renderer.h>
+#include <Renderer/RenderGraph.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../../../../Submodules/Engine/Dependencies/glfw/deps/stb_image_write.h"
@@ -633,6 +634,32 @@ bool RenderTargetCapture::Queue(
 
     _pending.push_back(std::move(request));
     return true;
+}
+
+void RenderTargetCapture::AddReadbackPass(Renderer::RenderGraph& renderGraph)
+{
+    if (_pending.empty())
+        return;
+
+    struct Data
+    {
+        Renderer::ImageResource image;
+        Renderer::DepthImageResource depthImage;
+    };
+    const TargetKind kind = _pending.front().kind;
+    const Renderer::ImageID image = _pending.front().image;
+    const Renderer::DepthImageID depthImage = _pending.front().depthImage;
+    renderGraph.AddPass<Data>("Render Target Readback",
+        [kind, image, depthImage](Data& data, Renderer::RenderGraphBuilder& builder)
+        {
+            if (kind == TargetKind::Color)
+                data.image = builder.Read(image, Renderer::PipelineType::BOTH);
+            else
+                data.depthImage = builder.Read(depthImage, Renderer::PipelineType::BOTH);
+            return true;
+        },
+        [](Data&, Renderer::RenderGraphResources&, Renderer::CommandList&) {},
+        Renderer::RenderPassFlags::SideEffect);
 }
 
 bool RenderTargetCapture::ConvertColorToRGBA8(

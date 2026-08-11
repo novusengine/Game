@@ -115,4 +115,40 @@ namespace MaterialLoading
 
         return MaterialAssetValidator::ValidateMaterialInstance(result, material);
     }
+
+    MaterialAssetReadResult<MaterialAnimationAssetView> MaterialAssetReader::ReadMaterialAnimation(std::span<const u8> payload)
+    {
+        if (payload.size() < sizeof(Material::MaterialAnimationAsset))
+            return Fail<MaterialAnimationAssetView>(DiagnosticCode::PayloadTooSmall, "MaterialAnimationAsset", Diagnostic::NO_INDEX, payload.size(), sizeof(Material::MaterialAnimationAsset));
+
+        Material::MaterialAnimationAsset root;
+        std::memcpy(&root, payload.data(), sizeof(root));
+        if (root.header.type != Material::MATERIAL_ANIMATION_FILE_TYPE || root.header.version != Material::VERSION)
+            return Fail<MaterialAnimationAssetView>(DiagnosticCode::InvalidHeader, "MaterialAnimationAsset.header");
+        if (!IsRootSectionValid<Material::MaterialAnimationTrack>(payload, root.tracksOffset, root.numTracks, sizeof(root)))
+            return Fail<MaterialAnimationAssetView>(DiagnosticCode::InvalidRootSection, "tracks", Diagnostic::NO_INDEX, root.tracksOffset, root.numTracks);
+        if (!IsRootSectionValid<vec4>(payload, root.samplesOffset, root.numSamples, sizeof(root)))
+            return Fail<MaterialAnimationAssetView>(DiagnosticCode::InvalidRootSection, "samples", Diagnostic::NO_INDEX, root.samplesOffset, root.numSamples);
+
+        std::shared_ptr<Bytebuffer> buffer = std::make_shared<Bytebuffer>(const_cast<u8*>(payload.data()), payload.size());
+        buffer->writtenData = payload.size();
+        Material::MaterialAnimationAsset parsedRoot;
+        if (!Material::MaterialAnimationAsset::Read(buffer, parsedRoot))
+            return Fail<MaterialAnimationAssetView>(DiagnosticCode::InvalidRootSection, "MaterialAnimationAsset");
+
+        MaterialAssetReadResult<MaterialAnimationAssetView> result;
+        result.view.root = parsedRoot;
+        result.view.tracks = GetRootSection<Material::MaterialAnimationTrack>(payload, root.tracksOffset, root.numTracks);
+        result.view.samples = GetRootSection<vec4>(payload, root.samplesOffset, root.numSamples);
+        for (u32 trackIndex = 0; trackIndex < result.view.tracks.size(); ++trackIndex)
+        {
+            const Material::MaterialAnimationTrack& track = result.view.tracks[trackIndex];
+            if (track.componentCount == 0 || track.componentCount > 4 || track.mode > Material::MaterialAnimationMode::UniformSamples)
+                return Fail<MaterialAnimationAssetView>(DiagnosticCode::UnsupportedEnum, "tracks", trackIndex);
+            if (track.mode == Material::MaterialAnimationMode::UniformSamples &&
+                (track.sampleRateHz == 0 || track.sampleOffset > result.view.samples.size() || track.numSamples > result.view.samples.size() - track.sampleOffset))
+                return Fail<MaterialAnimationAssetView>(DiagnosticCode::InvalidRange, "tracks.samples", trackIndex, track.sampleOffset, track.numSamples);
+        }
+        return result;
+    }
 } // namespace MaterialLoading

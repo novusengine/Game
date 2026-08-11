@@ -13,7 +13,7 @@ namespace
     constexpr u32 MATERIAL_FLAGS = Material::MaterialFlags_HasCoverageFunction;
     constexpr u32 MATERIAL_INSTANCE_FLAGS = Material::MaterialInstanceFlags_TwoSided |
         Material::MaterialInstanceFlags_CastsShadows | Material::MaterialInstanceFlags_ReceivesDecals |
-        Material::MaterialInstanceFlags_ReceivesFog;
+        Material::MaterialInstanceFlags_ReceivesFog | Material::MaterialInstanceFlags_HasTextureTransforms;
     constexpr u8 RESOURCE_FLAGS = Material::ResourceBindingFlags_Optional;
     constexpr u8 ANIMATION_FLAGS = Material::MaterialAnimationBindingFlags_Looping;
 

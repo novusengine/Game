@@ -66,6 +66,7 @@ namespace RenderScenes
         bool DestroyModelInstance(ModelInstanceHandle handle, u64 retireValue);
         bool SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported = false);
         bool SetModelVisible(ModelInstanceHandle handle, bool visible);
+        bool SetModelHighlight(ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu) { return _instances.SetHighlight(handle, intensity, packedColor); }
         bool SetModelMaterial(ModelInstanceHandle handle, u32 slot, RenderAssets::MaterialInstanceHandle material);
         bool SetModelMaterials(ModelInstanceHandle handle,
                                std::span<const RenderAssets::MaterialInstanceHandle> materials);
@@ -94,6 +95,7 @@ namespace RenderScenes
         RenderSceneStats GetStats() const;
 
         const ModelScene::ModelInstanceStore& GetModelInstances() const { return _instances; }
+        bool HasModelHighlights() const { return _instances.GetHighlightedInstanceCount() != 0; }
         const ModelScene::ModelMaterialTableStore& GetModelMaterialTables() const { return _materialTables; }
         const ModelScene::GeometryGroupMaskStore& GetGeometryGroupMasks() const { return _geometryGroupMasks; }
         const ModelScene::MeshletHistoryAllocator& GetMeshletHistory() const { return _meshletHistory; }

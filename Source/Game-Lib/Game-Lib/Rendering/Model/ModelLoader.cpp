@@ -1006,6 +1006,10 @@ void ModelLoader::SetModelHighlight(const ECS::Components::Model& model, f32 hig
         return;
 
     _modelRenderer->RequestChangeHighlight(model.instanceID, highlightIntensity);
+
+    entt::entity entity = entt::null;
+    if (GetEntityIDFromInstanceID(model.instanceID, entity))
+        ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetHighlight(entity, highlightIntensity);
 }
 
 void ModelLoader::EnableGroupForEntity(entt::entity entity, u32 groupID)

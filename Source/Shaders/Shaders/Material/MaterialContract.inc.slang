@@ -11,6 +11,7 @@ struct MaterialInput
 {
     float3 worldPosition;
     float3 geometricNormal;
+    float4 vertexColor;
     float2 uv0;
     float2 uv0DDX;
     float2 uv0DDY;
@@ -38,8 +39,12 @@ struct LightingModelInput
     float3 worldPosition;
     float3 viewDirection;
     float3 lightDirection;
+    float3 ambientColor;
+    float3 lightColor;
+    float3 shadowColor;
     float ambientVisibility;
     float shadowVisibility;
+    float lightStrength;
 };
 
 uint PackSurfaceNormal(float3 normal)
