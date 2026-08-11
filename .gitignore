@@ -48,6 +48,7 @@ CMakeSettings.json
 images/
 /Source/Resources/Automation/Artifacts/
 /Source/Resources/Automation/Reports/
+/Source/Shaders/Shaders/Generated/
 
 # Local validation findings
 /ISSUES.md

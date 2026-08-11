@@ -5,7 +5,6 @@ struct Constants
 {
     float fadeStart;
     float fadeEnd;
-    float2 renderSize;
 };
 
 [[vk::push_constant]] Constants _constants;
@@ -13,6 +12,8 @@ struct Constants
 struct VertexOutput
 {
     float4 position : SV_POSITION;
+    float3 nearPoint : TEXCOORD0;
+    float3 farPoint : TEXCOORD1;
 };
 
 struct PSOutput
@@ -47,23 +48,14 @@ float4 Grid(float3 pos, float scale, bool drawAxis)
     return color;
 }
 
-float3 UnprojectPoint(float2 ndc, float depth)
-{
-    float4 worldPoint = mul(float4(ndc, depth, 1.0f), _cameras[0].clipToWorld);
-    return worldPoint.xyz / worldPoint.w;
-}
-
 [shader("fragment")]
 PSOutput main(VertexOutput input) : SV_Target
 {
-    float2 uv = input.position.xy / _constants.renderSize;
-    float2 ndc = float2(uv.x, 1.0f - uv.y) * 2.0f - 1.0f;
-    float3 nearPoint = UnprojectPoint(ndc, 1.0f);
-    float3 farPoint = UnprojectPoint(ndc, 0.0f);
-    float t = -nearPoint.y / (farPoint.y - nearPoint.y);
+    float t = -input.nearPoint.y / (input.farPoint.y - input.nearPoint.y);
+
     clip(t);
 
-    float3 worldPos = nearPoint + t * (farPoint - nearPoint);
+    float3 worldPos = input.nearPoint + t * (input.farPoint - input.nearPoint);
 
     const float fadeStart = _constants.fadeStart;
     const float fadeEnd = _constants.fadeEnd;

@@ -75,6 +75,10 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             renderPassDesc.depthStencil = data.depth;
             commandList.BeginRenderPass(renderPassDesc);
 
+            const vec2& renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+
             // Set pipeline
             Renderer::GraphicsPipelineID pipeline = _worldGridPipeline;
             commandList.BeginPipeline(pipeline);
@@ -86,13 +90,11 @@ void EditorRenderer::AddWorldGridPass(Renderer::RenderGraph* renderGraph, Render
             public:
                 f32 fadeStart;
                 f32 fadeEnd;
-                vec2 renderSize;
             };
 
             Constants* constants = graphResources.FrameNew<Constants>();
             constants->fadeStart = CVAR_WorldGridFadeStart.GetFloat();
             constants->fadeEnd = CVAR_WorldGridFadeEnd.GetFloat();
-            constants->renderSize = _renderer->GetRenderSize();
 
             commandList.PushConstant(constants, 0, sizeof(Constants));
 

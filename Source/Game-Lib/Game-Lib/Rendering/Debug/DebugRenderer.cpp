@@ -333,6 +333,10 @@ void DebugRenderer::Add2DPass(Renderer::RenderGraph* renderGraph, RenderResource
             renderPassDesc.renderTargets[0] = data.color;
             commandList.BeginRenderPass(renderPassDesc);
 
+            const vec2& renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
+
             // Solid
             {
                 Renderer::GraphicsPipelineID pipeline = _debugSolid2DPipeline;
@@ -443,6 +447,10 @@ void DebugRenderer::Add3DPass(Renderer::RenderGraph* renderGraph, RenderResource
             renderPassDesc.renderTargets[0] = data.color;
             renderPassDesc.depthStencil = data.depth;
             commandList.BeginRenderPass(renderPassDesc);
+
+            const vec2& renderSize = _renderer->GetRenderSize();
+            commandList.SetViewport(0, 0, renderSize.x, renderSize.y, 0.0f, 1.0f);
+            commandList.SetScissorRect(0, static_cast<u32>(renderSize.x), 0, static_cast<u32>(renderSize.y));
 
             // Solid
             {
