@@ -375,7 +375,7 @@ void CulledRenderer::RunInstancedCullingDispatch(CullingPassParams& params, bool
     cullConstants->numTotalInstances = numInstances;
     cullConstants->occlusionCull = params.occlusionCull;
 
-    u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, Renderer::IndexedIndirectDraw::instanceCount) : offsetof(Renderer::IndirectDraw, Renderer::IndirectDraw::instanceCount);
+    u32 instanceCountOffset = params.cullingResources->IsIndexed() ? offsetof(Renderer::IndexedIndirectDraw, instanceCount) : offsetof(Renderer::IndirectDraw, instanceCount);
     cullConstants->instanceCountOffset = instanceCountOffset;
     cullConstants->drawCallSize = params.cullingResources->IsIndexed() ? sizeof(Renderer::IndexedIndirectDraw) : sizeof(Renderer::IndirectDraw);
 

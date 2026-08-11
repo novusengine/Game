@@ -834,7 +834,7 @@ void ModelRenderer::AddOccluderPass(Renderer::RenderGraph* renderGraph, RenderRe
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
-            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.drawCallDataSize = sizeof(DrawCallData);
 
             params.enableDrawing = CVAR_ModelDrawOccluders.Get();
@@ -1050,7 +1050,7 @@ void ModelRenderer::AddGeometryPass(Renderer::RenderGraph* renderGraph, RenderRe
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
-            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.drawCallDataSize = sizeof(DrawCallData);
 
             params.numShadowViews = numShadowViews;
@@ -1308,7 +1308,7 @@ void ModelRenderer::AddSVSMGeometryPass(Renderer::RenderGraph* renderGraph, Rend
                 Draw(resources, frameIndex, graphResources, commandList, drawParams);
             };
 
-            params.baseInstanceLookupOffset = offsetof(DrawCallData, DrawCallData::baseInstanceLookupOffset);
+            params.baseInstanceLookupOffset = offsetof(DrawCallData, baseInstanceLookupOffset);
             params.drawCallDataSize = sizeof(DrawCallData);
 
             params.firstViewIndex = 1;

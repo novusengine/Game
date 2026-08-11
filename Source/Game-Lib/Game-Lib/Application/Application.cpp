@@ -337,7 +337,7 @@ bool Application::Init(bool enableRenderDoc)
     ServiceLocator::SetEnttRegistries(&_registries);
 
     std::filesystem::path currentPath = std::filesystem::current_path();
-    std::filesystem::path pactPath = currentPath / "data/pact";
+    std::filesystem::path pactPath = currentPath / "Data/Pact";
     std::filesystem::path customOverlayPath = pactPath / "data/custom";
     std::filesystem::path stagingOverlayPath = pactPath / "data/staging";
 
