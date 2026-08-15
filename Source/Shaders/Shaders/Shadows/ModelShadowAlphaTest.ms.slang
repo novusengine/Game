@@ -9,6 +9,7 @@ struct MeshVertex
     nointerpolation uint clipmapIndex : TEXCOORD0;
     nointerpolation uint materialInstanceIndex : TEXCOORD1;
     float2 uv0 : TEXCOORD2;
+    nointerpolation float opacity : TEXCOORD3;
 };
 
 [shader("mesh")]
@@ -44,6 +45,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         vertices[threadID.x].materialInstanceIndex = materialInstanceIndex;
         vertices[threadID.x].uv0 = DecodeHalf2(
             _shadowRasterVertexAttributes[model.vertexAttributeBase + lod.vertexAttributeOffset + vertexIndex].z);
+        vertices[threadID.x].opacity = instance.opacity;
     }
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)
     {

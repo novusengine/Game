@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Util/ServiceLocator.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Scene/OrbitCamera.h"
 #include "Game-Lib/ECS/Singletons/ActiveCamera.h"
 #include "Game-Lib/ECS/Singletons/FreeflyingCameraSettings.h"
 #include "Game-Lib/ECS/Singletons/OrbitalCameraSettings.h"
@@ -18,7 +19,6 @@
 #include <entt/entt.hpp>
 #include <GLFW/glfw3.h>
 
-#include <glm/gtx/euler_angles.hpp>
 
 AutoCVar_Float CVAR_CameraMouseSensitivity(CVarCategory::Client, "cameraMouseSensitivity", "Mouse sensitivity multiplier used by captured camera rotation", 1.0f, CVarFlags::EditFloatDrag);
 AutoCVar_Int CVAR_SoftwareCursor(CVarCategory::Client, "softwareCursor", "Render the game cursor through the UI instead of the platform cursor", 0, CVarFlags::EditCheckbox);
@@ -168,21 +168,8 @@ namespace ECS::Util
 
         void CalculatePosRotForMatrix(const mat4x4& targetMatrix, const vec3& cameraEulerAngles, f32 cameraHeightOffset, f32 cameraZoomDistance, vec3& resultPosition, quat& resultRotation)
         {
-            // Height offset matrix to move the rotation point up by the specified height
-            mat4x4 heightOffsetMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, cameraHeightOffset, 0.0f));
-
-            // Create rotation matrix from Euler angles
-            mat4x4 rotationMatrix = glm::eulerAngleYXZ(cameraEulerAngles.y, cameraEulerAngles.x, cameraEulerAngles.z);
-
-            // Translation matrix to move the camera back to the correct offset
-            mat4x4 translationMatrix = glm::translate(mat4x4(1.0f), vec3(0.0f, 0.0f, cameraZoomDistance));
-
-            // Combine transformations: first rotate, then translate
-            mat4x4 cameraMatrix = targetMatrix * heightOffsetMatrix * rotationMatrix * translationMatrix;
-
-            // Extract position and rotation from the transformation matrix
-            resultPosition = vec3(cameraMatrix[3]);
-            resultRotation = normalize(quat_cast(cameraMatrix));
+            RenderScenes::CalculateOrbitCameraPose(targetMatrix, cameraEulerAngles, cameraHeightOffset,
+                                                   cameraZoomDistance, resultPosition, resultRotation);
         }
     }
 }

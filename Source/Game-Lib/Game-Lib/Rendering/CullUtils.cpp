@@ -7,6 +7,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 
 #include <Renderer/Renderer.h>
+#include <Renderer/RenderGraph.h>
 #include <Renderer/RenderGraphResources.h>
 #include <Renderer/CommandList.h>
 
@@ -124,7 +125,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
         params.commandList->PushConstant(copyData, 0, sizeof(CopyParams));
 
-        params.commandList->BindDescriptorSet(params.copyDescriptorSet, params.frameIndex);
+        params.commandList->BindTempDescriptorSet(params.copyDescriptorSet, params.frameIndex);
         params.commandList->Dispatch(GetGroupCount(params.pyramidSize.x, 32), GetGroupCount(params.pyramidSize.y, 32), 1);
 
         params.commandList->EndPipeline(pipeline);
@@ -165,7 +166,7 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
 
         params.commandList->PushConstant(constants, 0, sizeof(Constants));
 
-        params.commandList->BindDescriptorSet(params.pyramidDescriptorSet, params.frameIndex);
+        params.commandList->BindTempDescriptorSet(params.pyramidDescriptorSet, params.frameIndex);
 
         params.commandList->Dispatch(dispatchThreadGroupCountXY[0], dispatchThreadGroupCountXY[1], 1);
 
@@ -173,4 +174,40 @@ void DepthPyramidUtils::BuildPyramid(BuildPyramidParams& params)
     }
 
     params.commandList->PopMarker();
+}
+
+void DepthPyramidUtils::AddBuildPass(Renderer::RenderGraph* renderGraph, const std::string& name,
+                                     Renderer::DepthImageID depth, Renderer::ImageID depthPyramid, u8 frameIndex)
+{
+    struct Data
+    {
+        Renderer::DepthImageResource depth;
+        Renderer::ImageMutableResource depthPyramid;
+        Renderer::DescriptorSetResource copyDescriptorSet;
+        Renderer::DescriptorSetResource pyramidDescriptorSet;
+    };
+    renderGraph->AddPass<Data>(name,
+        [depth, depthPyramid](Data& data, Renderer::RenderGraphBuilder& builder) {
+            data.depth = builder.Read(depth, Renderer::PipelineType::GRAPHICS);
+            data.depthPyramid = builder.Write(depthPyramid, Renderer::PipelineType::GRAPHICS,
+                                              Renderer::LoadMode::LOAD);
+            builder.Write(_atomicBuffer, Renderer::BufferPassUsage::COMPUTE);
+            data.copyDescriptorSet = builder.Use(_copyDescriptorSet);
+            data.pyramidDescriptorSet = builder.Use(_pyramidDescriptorSet);
+            return true;
+        },
+        [frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+                     Renderer::CommandList& commandList) {
+            GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
+            BuildPyramidParams params;
+            params.graphResources = &graphResources;
+            params.commandList = &commandList;
+            params.frameIndex = frameIndex;
+            params.pyramidSize = graphResources.GetImageDimensions(data.depthPyramid, 0);
+            params.depth = data.depth;
+            params.depthPyramid = data.depthPyramid;
+            params.copyDescriptorSet = data.copyDescriptorSet;
+            params.pyramidDescriptorSet = data.pyramidDescriptorSet;
+            BuildPyramid(params);
+        });
 }

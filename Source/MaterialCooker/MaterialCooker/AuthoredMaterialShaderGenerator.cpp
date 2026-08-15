@@ -66,6 +66,17 @@ std::string GenerateActiveGroupSource(const std::set<u16> &groups) {
     first = false;
   }
   source << "#endif\n}\n\n";
+  source << "float EvaluateCookedMaterialOpacity(\n"
+            "    uint groupLocalProgramID, float materialAlpha, float instanceOpacity, float3 color)\n"
+            "{\n";
+  first = true;
+  for (u16 group : groups) {
+    source << (first ? "#if" : "#elif") << " MATERIAL_COOK_GROUP == " << group
+           << "\n    return EvaluateCookedMaterialOpacityGroup" << group
+           << "(groupLocalProgramID, materialAlpha, instanceOpacity, color);\n";
+    first = false;
+  }
+  source << "#endif\n}\n\n";
   first = true;
   for (u16 group : groups) {
     if (!IsAlphaTestGroup(group))
@@ -266,6 +277,7 @@ std::string AuthoredMaterialShaderGenerator::GenerateGroupSource(
            "    SurfaceDescription surface = EvaluateMaterialFunction"
         << suffix
         << "(unit.x, context);\n"
+           "    surface = BlendCompatibilityMaterialFirstLayer(surface, unit.w);\n"
            "    if (range.y == 1u) return surface;\n"
            "    for (uint index = 1u; index < range.y; ++index)\n"
            "    {\n"
@@ -279,6 +291,20 @@ std::string AuthoredMaterialShaderGenerator::GenerateGroupSource(
         << "(unit.x, context), unit.w);\n"
            "    }\n"
            "    return surface;\n"
+           "}\n\n"
+           "float EvaluateCookedMaterialOpacityGroup"
+        << suffix
+        << "(uint groupLocalProgramID, float materialAlpha, float instanceOpacity, float3 color)\n"
+           "{\n"
+           "    uint2 range = MATERIAL_PROGRAMS"
+        << suffix
+        << "[groupLocalProgramID];\n"
+           "    uint blendMode = MATERIAL_UNITS"
+        << suffix
+        << "[range.x].w;\n"
+           "    if (blendMode == 4u)\n"
+           "        return saturate(max(color.r, max(color.g, color.b)) * instanceOpacity);\n"
+           "    return saturate(materialAlpha * instanceOpacity);\n"
            "}\n";
     if (hasCoverage) {
       source << "\nfloat EvaluateCookedMaterialCoverageGroup" << suffix
@@ -320,6 +346,12 @@ std::string AuthoredMaterialShaderGenerator::GenerateGroupSource(
               "MakeDefaultSurface(context.input);\n"
               "    surface.albedo = float3(1.0f, 0.0f, 1.0f);\n"
               "    return surface;\n"
+              "}\n\n"
+              "float EvaluateCookedMaterialOpacityGroup"
+           << suffix
+           << "(uint, float materialAlpha, float instanceOpacity, float3)\n"
+              "{\n"
+              "    return saturate(materialAlpha * instanceOpacity);\n"
               "}\n";
     if (hasCoverage) {
       source << "\nfloat EvaluateCookedMaterialCoverageGroup" << suffix

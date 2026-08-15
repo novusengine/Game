@@ -163,11 +163,12 @@ TEST_CASE("Render scene tracks transforms, teleports, visibility, groups, and "
 
     const auto sharedTable = scene.GetModelInstances().GetResources(instance)->materialTable;
     REQUIRE_FALSE(scene.GetModelMaterialTables().IsPrivate(sharedTable));
-    const RenderAssets::MaterialInstanceHandle overrideMaterial(123);
+    const RenderAssets::MaterialInstanceHandle overrideMaterial = fixture.materials.GetFallbackMaterialInstance();
     REQUIRE(scene.SetModelMaterial(instance, 0, overrideMaterial));
     const auto privateTable = scene.GetModelInstances().GetResources(instance)->materialTable;
     CHECK(scene.GetModelMaterialTables().IsPrivate(privateTable));
-    CHECK(scene.GetModelMaterialTables().GetMaterial(privateTable, 0) == 123);
+    CHECK(scene.GetModelMaterialTables().GetMaterial(privateTable, 0) ==
+          static_cast<RenderAssets::MaterialInstanceHandle::type>(overrideMaterial));
     CHECK(scene.GetModelMaterialTables().GetMaterial(sharedTable, 0) ==
           static_cast<RenderAssets::MaterialInstanceHandle::type>(fixture.materials.GetFallbackMaterialInstance()));
 
@@ -214,6 +215,16 @@ TEST_CASE("Render scene shadow state tracks caster bounds and lifecycle invalida
     REQUIRE(scene.DrainShadowInvalidations(invalidations, 16) == 1);
     CHECK(invalidations[0].x == Catch::Approx(bounds.center.x + 9.0f - bounds.extents.x));
 
+    invalidations.clear();
+    REQUIRE(scene.SetModelCastsShadows(instance, false));
+    CHECK((scene.GetModelInstance(instance)->flags & ModelScene::ModelInstanceFlagCastsShadows) == 0);
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
+    invalidations.clear();
+    REQUIRE(scene.SetModelTransform(instance, Translation(10.0f)));
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 0);
+    REQUIRE(scene.SetModelCastsShadows(instance, true));
+    CHECK((scene.GetModelInstance(instance)->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0);
+    CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);
     invalidations.clear();
     REQUIRE(scene.SetGeometryGroupEnabled(instance, 0, false));
     CHECK(scene.DrainShadowInvalidations(invalidations, 16) == 1);

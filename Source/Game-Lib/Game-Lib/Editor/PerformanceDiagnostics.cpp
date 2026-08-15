@@ -80,6 +80,15 @@ namespace Editor
                 ImGui::SameLine();
             ImGui::Text("GPU: %s", gpuName.c_str());
 
+            const Renderer::DescriptorPoolStats descriptorPool = renderer->GetDescriptorPoolStats();
+            ImGui::Text("Descriptor Pool Sets: %u live | %u peak | %u capacity", descriptorPool.liveSets, descriptorPool.peakSets, descriptorPool.setCapacity);
+            ImGui::Text("Descriptor Pool Entries: UB %u/%u/%u | sampled %u/%u/%u | SB %u/%u/%u | storage image %u/%u/%u | sampler %u/%u/%u",
+                descriptorPool.liveUniformBuffers, descriptorPool.peakUniformBuffers, descriptorPool.uniformBufferCapacity,
+                descriptorPool.liveSampledImages, descriptorPool.peakSampledImages, descriptorPool.sampledImageCapacity,
+                descriptorPool.liveStorageBuffers, descriptorPool.peakStorageBuffers, descriptorPool.storageBufferCapacity,
+                descriptorPool.liveStorageImages, descriptorPool.peakStorageImages, descriptorPool.storageImageCapacity,
+                descriptorPool.liveSamplers, descriptorPool.peakSamplers, descriptorPool.samplerCapacity);
+
             if (ModelRendering::ModelRenderSystem* modelRenderSystem = gameRenderer->GetModelRenderSystem())
             {
                 const ModelRendering::ModelPerformanceStats model = modelRenderSystem->GetPerformanceStats();
@@ -863,13 +872,17 @@ namespace Editor
 
         if (viewID == 0 && modelRenderSystem)
         {
-            const ModelView::WorkStats& stats = modelRenderSystem->GetPerformanceStats().work;
-            u32 survivingMeshlets = 0;
-            for (u32 count : stats.committedRasterMeshlets)
-                survivingMeshlets += count;
-            DrawCullingStatsEntry("Model V2 Meshlets", stats.testedMeshlets, survivingMeshlets);
-            viewDrawCalls += stats.testedMeshlets;
-            viewDrawCallsSurvived += survivingMeshlets;
+            const ModelRendering::ModelPerformanceStats stats = modelRenderSystem->GetPerformanceStats();
+            DrawCullingStatsEntry("Model Meshlets Occluders", stats.loadedLOD0Meshlets, stats.work.phase1ReplayedMeshlets);
+            DrawCullingStatsEntry("Model Meshlets Geometry", stats.loadedLOD0Meshlets, stats.work.phase2AddedMeshlets);
+            u32 transparentMeshlets = 0;
+            for (u32 count : stats.transparentWork.queueCounts)
+                transparentMeshlets += count;
+            DrawCullingStatsEntry("Model Meshlets Transparent", stats.loadedLOD0TransparentMeshlets, transparentMeshlets);
+            viewDrawCalls += stats.loadedLOD0Meshlets * 2u;
+            viewDrawCallsSurvived += stats.work.phase1ReplayedMeshlets + stats.work.phase2AddedMeshlets;
+            viewDrawCalls += stats.loadedLOD0TransparentMeshlets;
+            viewDrawCallsSurvived += transparentMeshlets;
         }
 
         // Liquid
@@ -984,10 +997,12 @@ namespace Editor
 
         if (viewID == 0 && modelRenderSystem)
         {
-            const ModelView::WorkStats& stats = modelRenderSystem->GetPerformanceStats().work;
-            DrawCullingStatsEntry("Model V2", stats.testedTriangles, stats.committedTriangles);
-            viewTriangles += stats.testedTriangles;
-            viewTrianglesSurvived += stats.committedTriangles;
+            const ModelRendering::ModelPerformanceStats stats = modelRenderSystem->GetPerformanceStats();
+            DrawCullingStatsEntry("Model Triangles Occluders", stats.loadedLOD0Triangles, stats.work.phase1ReplayedTriangles);
+            DrawCullingStatsEntry("Model Triangles Geometry", stats.loadedLOD0Triangles, stats.work.phase2AddedTriangles);
+            DrawCullingStatsEntry("Model Triangles Transparent", stats.loadedLOD0TransparentTriangles, stats.transparentWork.committedTriangles);
+            viewTriangles += stats.loadedLOD0Triangles * 2u + stats.loadedLOD0TransparentTriangles;
+            viewTrianglesSurvived += stats.work.phase1ReplayedTriangles + stats.work.phase2AddedTriangles + stats.transparentWork.committedTriangles;
         }
 
         // Liquid

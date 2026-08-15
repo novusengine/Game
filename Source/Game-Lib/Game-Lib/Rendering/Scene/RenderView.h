@@ -17,7 +17,8 @@ namespace RenderScenes
     enum class RenderViewPassFamily : u32
     {
         None = 0,
-        Models = 1u << 0u
+        Models = 1u << 0u,
+        ForwardModels = 1u << 1u
     };
 
     enum class RenderViewLifetime : u8
@@ -44,6 +45,9 @@ namespace RenderScenes
         Renderer::ImageID normalTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID motionTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID colorTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID transparencyAccumulationTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID transparencyRevealageTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID depthPyramidTarget = Renderer::ImageID::Invalid();
         Renderer::DepthImageID depthTarget = Renderer::DepthImageID::Invalid();
         Renderer::TextureID retainedOutput = Renderer::TextureID::Invalid();
         RenderViewPassFamily passFamilies = RenderViewPassFamily::Models;
@@ -62,7 +66,10 @@ namespace RenderScenes
             : _viewID(desc.viewID), _debugName(desc.debugName), _scene(desc.scene), _cameraIndex(desc.cameraIndex), _dimensions(desc.dimensions),
               _dimensionType(desc.dimensionType),
               _visibilityTarget(desc.visibilityTarget), _normalTarget(desc.normalTarget), _motionTarget(desc.motionTarget),
-              _colorTarget(desc.colorTarget), _depthTarget(desc.depthTarget), _retainedOutput(desc.retainedOutput),
+              _colorTarget(desc.colorTarget), _transparencyAccumulationTarget(desc.transparencyAccumulationTarget),
+              _transparencyRevealageTarget(desc.transparencyRevealageTarget),
+              _depthPyramidTarget(desc.depthPyramidTarget), _depthTarget(desc.depthTarget),
+              _retainedOutput(desc.retainedOutput),
               _passFamilies(desc.passFamilies), _lifetime(desc.lifetime), _refresh(desc.refresh),
               _clearTargets(desc.clearTargets), _worldShadows(desc.worldShadows)
         {
@@ -113,6 +120,9 @@ namespace RenderScenes
         const mat4x4& GetPreviousWorldToClip() const { return _previousWorldToClip; }
         bool IsTemporalCameraValid() const { return _temporalCameraValid; }
         Renderer::ImageID GetColorTarget() const { return _colorTarget; }
+        Renderer::ImageID GetTransparencyAccumulationTarget() const { return _transparencyAccumulationTarget; }
+        Renderer::ImageID GetTransparencyRevealageTarget() const { return _transparencyRevealageTarget; }
+        Renderer::ImageID GetDepthPyramidTarget() const { return _depthPyramidTarget; }
         Renderer::DepthImageID GetDepthTarget() const { return _depthTarget; }
         Renderer::TextureID GetRetainedOutput() const { return _retainedOutput; }
         bool HasPassFamily(RenderViewPassFamily family) const
@@ -137,6 +147,9 @@ namespace RenderScenes
         Renderer::ImageID _normalTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID _motionTarget = Renderer::ImageID::Invalid();
         Renderer::ImageID _colorTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID _transparencyAccumulationTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID _transparencyRevealageTarget = Renderer::ImageID::Invalid();
+        Renderer::ImageID _depthPyramidTarget = Renderer::ImageID::Invalid();
         Renderer::DepthImageID _depthTarget = Renderer::DepthImageID::Invalid();
         Renderer::TextureID _retainedOutput = Renderer::TextureID::Invalid();
         RenderViewPassFamily _passFamilies = RenderViewPassFamily::None;

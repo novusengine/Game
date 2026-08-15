@@ -8,9 +8,15 @@
 #include "Game-Lib/ECS/Util/CameraUtil.h"
 #include "Game-Lib/ECS/Util/Transforms.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
+#include "Game-Lib/Rendering/Model/Scene/ModelSceneBridge.h"
+#include "Game-Lib/Rendering/Scene/SceneRenderDescription.h"
 #include "Game-Lib/Util/ServiceLocator.h"
 
+#include <Base/Math/Color.h>
+#include <FileFormat/Novus/Model/Material.h>
+#include <FileFormat/Novus/Model/MaterialABI.h>
 #include <Scripting/LuaManager.h>
 #include <Scripting/Zenith.h>
 
@@ -40,6 +46,27 @@ namespace Scripting::Scene
     {
         EnttRegistries* registries = ServiceLocator::GetEnttRegistries();
         return registries ? registries->gameRegistry : nullptr;
+    }
+
+    static const char* GetRasterClassName(u32 executionGroupClass)
+    {
+        switch (executionGroupClass / 2u)
+        {
+            case static_cast<u32>(FileFormat::Material::RasterClass::Opaque): return "Opaque";
+            case static_cast<u32>(FileFormat::Material::RasterClass::AlphaTest): return "Alpha Test";
+            case static_cast<u32>(FileFormat::Material::RasterClass::Transparent): return "Transparent";
+            default: return "Unknown";
+        }
+    }
+
+    static const char* GetLightingModelName(u32 lightingModel)
+    {
+        switch (static_cast<FileFormat::Material::ABI::LightingModel>(lightingModel))
+        {
+            case FileFormat::Material::ABI::LightingModel::Standard: return "Standard";
+            case FileFormat::Material::ABI::LightingModel::Unlit: return "Unlit";
+            default: return "Unknown";
+        }
     }
 
     // Reads a u32 entity id at the given stack index and returns it only if it maps to a
@@ -253,6 +280,77 @@ namespace Scripting::Scene
         zenith->AddTableField("visible", static_cast<bool>(model->flags.visible));
         zenith->AddTableField("forcedTransparency", static_cast<bool>(model->flags.forcedTransparency));
         zenith->AddTableField("opacity", model->opacity);
+
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        ModelScene::ModelSceneBridge* bridge = renderer ? renderer->GetModelSceneBridge() : nullptr;
+        RenderAssets::RenderAssetResources* assets = renderer ? renderer->GetRenderAssetResources() : nullptr;
+        RenderScenes::ModelRenderDescription description;
+        if (!bridge || !assets || !bridge->Describe(entity, description))
+        {
+            zenith->AddTableField("runtimeAvailable", false);
+            return 1;
+        }
+
+        const ModelLoading::ModelGeometryStorage& geometry = assets->GetModelGeometryStorage();
+        if (!geometry.HasModel(description.model))
+        {
+            zenith->AddTableField("runtimeAvailable", false);
+            return 1;
+        }
+
+        const ModelLoading::ModelGPURecord& record = geometry.GetRecord(description.model);
+        const Color highlightColor = Color::FromRGBA32(description.packedHighlightColor);
+        zenith->AddTableField("runtimeAvailable", true);
+        zenith->AddTableField("runtimeHandle", static_cast<RenderAssets::ModelHandle::type>(description.model));
+        zenith->AddTableField("fallback", description.model == assets->GetFallbackModel());
+        zenith->AddTableField("castsShadows", description.castsShadows);
+        zenith->AddTableField("highlightIntensity", description.highlightIntensity);
+        zenith->AddTableField("highlightColor", vec3(highlightColor.r, highlightColor.g, highlightColor.b));
+        zenith->AddTableField("numMeshes", record.numMeshes);
+        zenith->AddTableField("numLODs", record.numMeshLODs);
+        zenith->AddTableField("numSubmeshes", record.numSubmeshes);
+        zenith->AddTableField("numMeshlets", record.numMeshlets);
+        zenith->AddTableField("boundsCenter", record.bounds.center);
+        zenith->AddTableField("boundsExtents", record.bounds.extents);
+        zenith->AddTableField("boundsRadius", record.bounds.sphereRadius);
+
+        zenith->CreateTable();
+        for (u32 groupID = 0; groupID < record.geometryGroupCount; ++groupID)
+        {
+            zenith->CreateTable();
+            zenith->AddTableField("id", groupID);
+            zenith->AddTableField("enabled", std::ranges::find(description.enabledGeometryGroups, groupID) != description.enabledGeometryGroups.end());
+            zenith->SetTableKey(static_cast<i32>(groupID + 1));
+        }
+        zenith->SetTableKey("geometryGroups");
+
+        const MaterialLoading::MaterialStorage& materials = assets->GetMaterialStorage();
+        zenith->CreateTable();
+        for (u32 slot = 0; slot < record.numMaterialSlots && slot < description.materials.size(); ++slot)
+        {
+            const RenderAssets::MaterialInstanceHandle instanceHandle = description.materials[slot];
+            zenith->CreateTable();
+            zenith->AddTableField("slot", slot);
+            zenith->AddTableField("stableID", geometry.GetMaterialSlots()[record.materialSlotBase + slot].stableID);
+            zenith->AddTableField("materialInstance", static_cast<RenderAssets::MaterialInstanceHandle::type>(instanceHandle));
+            zenith->AddTableField("fallback", instanceHandle == assets->GetFallbackMaterialInstance());
+
+            if (materials.HasMaterialInstance(instanceHandle))
+            {
+                const MaterialLoading::MaterialInstanceGPURecord& instance = materials.GetMaterialInstance(instanceHandle);
+                const RenderAssets::MaterialHandle materialHandle(instance.materialHandle);
+                const u32 executionGroupClass = (instance.packedClassification >> 16u) % FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+                zenith->AddTableField("material", instance.materialHandle);
+                zenith->AddTableField("rasterClass", GetRasterClassName(executionGroupClass));
+                zenith->AddTableField("lightingModel", GetLightingModelName(instance.packedClassification & 0xFFFFu));
+                zenith->AddTableField("twoSided", (instance.flags & FileFormat::Material::MaterialInstanceFlags_TwoSided) != 0);
+                zenith->AddTableField("materialCastsShadows", (instance.flags & FileFormat::Material::MaterialInstanceFlags_CastsShadows) != 0);
+                if (materials.HasMaterial(materialHandle))
+                    zenith->AddTableField("programID", materials.GetMaterial(materialHandle).programID);
+            }
+            zenith->SetTableKey(static_cast<i32>(slot + 1));
+        }
+        zenith->SetTableKey("materialSlots");
         return 1;
     }
 
@@ -282,7 +380,61 @@ namespace Scripting::Scene
         f32 opacity = zenith->CheckVal<f32>(3);
         model->flags.forcedTransparency = forcedTransparency;
         model->opacity = opacity;
-        ServiceLocator::GetGameRenderer()->GetModelLoader()->SetModelTransparent(*model, forcedTransparency, opacity);
+        ServiceLocator::GetGameRenderer()->GetModelLoader()->SetEntityTransparent(entity, forcedTransparency, opacity);
+        return 0;
+    }
+
+    i32 SceneHandler::SetModelCastsShadows(Zenith* zenith)
+    {
+        entt::registry* registry = GetGameRegistry();
+        entt::entity entity = GetEntityArg(zenith, registry, 1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        if (entity != entt::null && renderer && renderer->GetModelSceneBridge())
+            renderer->GetModelSceneBridge()->SetCastsShadows(entity, zenith->CheckVal<bool>(2));
+        return 0;
+    }
+
+    i32 SceneHandler::SetModelHighlight(Zenith* zenith)
+    {
+        entt::registry* registry = GetGameRegistry();
+        entt::entity entity = GetEntityArg(zenith, registry, 1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        if (entity != entt::null && renderer && renderer->GetModelSceneBridge())
+        {
+            const f32 intensity = zenith->CheckVal<f32>(2);
+            const vec3 color = zenith->CheckVal<vec3>(3);
+            renderer->GetModelSceneBridge()->SetHighlight(entity, intensity, Color(color.r, color.g, color.b).ToRGBA32());
+        }
+        return 0;
+    }
+
+    i32 SceneHandler::SetModelGeometryGroup(Zenith* zenith)
+    {
+        entt::registry* registry = GetGameRegistry();
+        entt::entity entity = GetEntityArg(zenith, registry, 1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        if (entity != entt::null && renderer && renderer->GetModelSceneBridge())
+            renderer->GetModelSceneBridge()->SetGeometryGroupEnabled(entity, zenith->CheckVal<u32>(2), zenith->CheckVal<bool>(3));
+        return 0;
+    }
+
+    i32 SceneHandler::SetModelMaterial(Zenith* zenith)
+    {
+        entt::registry* registry = GetGameRegistry();
+        entt::entity entity = GetEntityArg(zenith, registry, 1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        if (entity != entt::null && renderer && renderer->GetModelSceneBridge())
+            renderer->GetModelSceneBridge()->SetMaterial(entity, zenith->CheckVal<u32>(2), RenderAssets::MaterialInstanceHandle(zenith->CheckVal<u32>(3)));
+        return 0;
+    }
+
+    i32 SceneHandler::ResetModelMaterials(Zenith* zenith)
+    {
+        entt::registry* registry = GetGameRegistry();
+        entt::entity entity = GetEntityArg(zenith, registry, 1);
+        GameRenderer* renderer = ServiceLocator::GetGameRenderer();
+        if (entity != entt::null && renderer && renderer->GetModelSceneBridge())
+            renderer->GetModelSceneBridge()->ResetMaterials(entity);
         return 0;
     }
 

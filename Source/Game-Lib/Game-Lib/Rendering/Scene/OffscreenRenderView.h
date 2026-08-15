@@ -34,6 +34,9 @@ namespace RenderScenes
         Renderer::ImageID _visibility = Renderer::ImageID::Invalid();
         Renderer::ImageID _normals = Renderer::ImageID::Invalid();
         Renderer::ImageID _color = Renderer::ImageID::Invalid();
+        Renderer::ImageID _transparencyAccumulation = Renderer::ImageID::Invalid();
+        Renderer::ImageID _transparencyRevealage = Renderer::ImageID::Invalid();
+        Renderer::ImageID _depthPyramid = Renderer::ImageID::Invalid();
         Renderer::DepthImageID _depth = Renderer::DepthImageID::Invalid();
     };
 } // namespace RenderScenes

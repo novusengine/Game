@@ -37,6 +37,7 @@ MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* g
     , _preEffectsPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _velocityPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
     , _materialPassDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
+    , _transparencyCompositeDescriptorSet(Renderer::DescriptorSetSlot::PER_PASS)
 {
     ZoneScoped;
     CreatePermanentResources();
@@ -45,6 +46,17 @@ MaterialRenderer::MaterialRenderer(Renderer::Renderer* renderer, GameRenderer* g
 MaterialRenderer::~MaterialRenderer()
 {
 
+}
+
+vec4 MaterialRenderer::GetFogColor() const
+{
+    return CVAR_FogColor.Get();
+}
+
+vec4 MaterialRenderer::GetFogSettings() const
+{
+    return vec4(CVAR_EnableFog.Get() == ShowFlag::ENABLED ? 1.0f : 0.0f, CVAR_FogBeginDist.GetFloat(),
+                CVAR_FogEndDist.GetFloat(), 0.0f);
 }
 
 void MaterialRenderer::Update(f32 deltaTime)
@@ -173,8 +185,6 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
     {
         Renderer::ImageResource visibilityBuffer;
         Renderer::ImageResource skyboxColor;
-        Renderer::ImageResource transparency;
-        Renderer::ImageResource transparencyWeights;
         Renderer::ImageMutableResource resolvedColor;
 
         Renderer::ImageResource ambientOcclusion;
@@ -198,8 +208,6 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         {
             data.visibilityBuffer = builder.Read(resources.visibilityBuffer, Renderer::PipelineType::COMPUTE);
             data.skyboxColor = builder.Read(resources.skyboxColor, Renderer::PipelineType::COMPUTE);
-            data.transparency = builder.Read(resources.transparency, Renderer::PipelineType::COMPUTE);
-            data.transparencyWeights = builder.Read(resources.transparencyWeights, Renderer::PipelineType::COMPUTE);
             data.resolvedColor = builder.Write(resources.sceneColor, Renderer::PipelineType::COMPUTE, Renderer::LoadMode::LOAD);
 
             data.ambientOcclusion = builder.Read(resources.ssaoTarget, Renderer::PipelineType::COMPUTE);
@@ -240,8 +248,6 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
             // For some reason, this works when we're binding to modelSet despite the GPU side being bound as PER_PASS???
             data.materialSet.Bind("_visibilityBuffer", data.visibilityBuffer);
             data.materialSet.Bind("_skyboxColor", data.skyboxColor);
-            data.materialSet.Bind("_transparency", data.transparency);
-            data.materialSet.Bind("_transparencyWeights", data.transparencyWeights);
             data.materialSet.Bind("_resolvedColor", data.resolvedColor);
 
             data.materialSet.Bind("_ambientVisibility", data.ambientOcclusion);
@@ -346,6 +352,42 @@ void MaterialRenderer::AddMaterialPass(Renderer::RenderGraph* renderGraph, Rende
         });
 }
 
+void MaterialRenderer::AddTransparencyCompositePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                     const RenderScenes::RenderView& view, u8 frameIndex)
+{
+    struct Data
+    {
+        Renderer::ImageResource accumulation;
+        Renderer::ImageResource revealage;
+        Renderer::ImageMutableResource color;
+        Renderer::DescriptorSetResource set;
+    };
+    renderGraph->AddPass<Data>("Transparency Composite: " + view.GetDebugName(),
+        [this, &resources, &view](Data& data, Renderer::RenderGraphBuilder& builder) {
+            data.accumulation = builder.Read(view.GetTransparencyAccumulationTarget(), Renderer::PipelineType::COMPUTE);
+            data.revealage = builder.Read(view.GetTransparencyRevealageTarget(), Renderer::PipelineType::COMPUTE);
+            data.color = builder.Write(view.GetColorTarget(), Renderer::PipelineType::COMPUTE,
+                                       Renderer::LoadMode::LOAD);
+            data.set = builder.Use(_transparencyCompositeDescriptorSet);
+            return true;
+        },
+        [this, &view, frameIndex](Data& data, Renderer::RenderGraphResources& graphResources,
+                                  Renderer::CommandList& commandList) {
+            GPU_SCOPED_PROFILER_ZONE(commandList, TransparencyComposite);
+            data.set.Bind("_transparencyAccumulation"_h, data.accumulation);
+            data.set.Bind("_transparencyRevealage"_h, data.revealage);
+            data.set.Bind("_transparencySceneColor"_h, data.color);
+            commandList.BeginPipeline(_transparencyCompositePipeline);
+            commandList.BindTempDescriptorSet(data.set, frameIndex);
+            struct Constants { uvec2 renderSize; };
+            Constants* constants = graphResources.FrameNew<Constants>();
+            constants->renderSize = view.GetDimensions();
+            commandList.PushConstant(constants, 0, sizeof(*constants));
+            commandList.Dispatch((constants->renderSize.x + 7u) / 8u, (constants->renderSize.y + 7u) / 8u, 1u);
+            commandList.EndPipeline(_transparencyCompositePipeline);
+        });
+}
+
 void MaterialRenderer::AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor)
 {
     DirectionalLight light
@@ -395,6 +437,12 @@ void MaterialRenderer::CreatePermanentResources()
     pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
     _velocityPipeline = _renderer->CreatePipeline(pipelineDesc);
 
+    shaderDesc.shaderEntry = _gameRenderer->GetShaderEntry("Material/TransparencyComposite.cs"_h,
+                                                           "Material/TransparencyComposite.cs");
+    pipelineDesc.computeShader = _renderer->LoadShader(shaderDesc);
+    pipelineDesc.debugName = "Transparency Composite";
+    _transparencyCompositePipeline = _renderer->CreatePipeline(pipelineDesc);
+
     // Create Material Pipeline
     CreateMaterialPipeline();
 
@@ -415,6 +463,8 @@ void MaterialRenderer::CreatePermanentResources()
 
     _materialPassDescriptorSet.RegisterPipeline(_renderer, _materialPipeline);
     _materialPassDescriptorSet.Init(_renderer);
+    _transparencyCompositeDescriptorSet.RegisterPipeline(_renderer, _transparencyCompositePipeline);
+    _transparencyCompositeDescriptorSet.Init(_renderer);
 
     Renderer::SamplerDesc samplerDesc;
     samplerDesc.enabled = true;

@@ -6,11 +6,28 @@
 #include "Game-Lib/Rendering/Scene/RenderView.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 #include <algorithm>
 
 namespace RenderScenes
 {
+    namespace
+    {
+        constexpr f32 ORBIT_CAMERA_VERTICAL_FOV = glm::radians(45.0f);
+    }
+
+    void CalculateOrbitCameraPose(const mat4x4& targetMatrix, const vec3& eulerAngles, f32 heightOffset,
+                                  f32 distance, vec3& position, quat& rotation)
+    {
+        const mat4x4 height = glm::translate(mat4x4(1.0f), vec3(0.0f, heightOffset, 0.0f));
+        const mat4x4 orbit = glm::eulerAngleYXZ(eulerAngles.y, eulerAngles.x, eulerAngles.z);
+        const mat4x4 distanceOffset = glm::translate(mat4x4(1.0f), vec3(0.0f, 0.0f, distance));
+        const mat4x4 camera = targetMatrix * height * orbit * distanceOffset;
+        position = vec3(camera[3]);
+        rotation = glm::normalize(glm::quat_cast(camera));
+    }
+
     namespace
     {
         vec4 EncodePlane(const vec3& position, const vec3& normal)
@@ -32,6 +49,17 @@ namespace RenderScenes
         Update();
     }
 
+    void OrbitCamera::FrameSphere(const vec3& center, f32 radius, f32 margin)
+    {
+        const vec2 dimensions = vec2(_view->GetDimensions());
+        const f32 aspect = dimensions.x / dimensions.y;
+        const f32 verticalHalfFov = ORBIT_CAMERA_VERTICAL_FOV * 0.5f;
+        const f32 horizontalHalfFov = glm::atan(glm::tan(verticalHalfFov) * aspect);
+        _target = center;
+        _distance = std::max(radius * margin / glm::sin(std::min(verticalHalfFov, horizontalHalfFov)), 0.01f);
+        Update();
+    }
+
     void OrbitCamera::SetDistance(f32 distance)
     {
         _distance = std::max(distance, 0.01f);
@@ -46,9 +74,11 @@ namespace RenderScenes
 
     void OrbitCamera::Update()
     {
-        const f32 cosPitch = glm::cos(_pitch);
-        const vec3 forward = glm::normalize(vec3(glm::sin(_yaw) * cosPitch, glm::sin(_pitch), glm::cos(_yaw) * cosPitch));
-        const vec3 position = _target - forward * _distance;
+        vec3 position;
+        quat ignoredRotation;
+        CalculateOrbitCameraPose(glm::translate(mat4x4(1.0f), _target), vec3(_pitch, _yaw + glm::pi<f32>(), 0.0f),
+                                 0.0f, _distance, position, ignoredRotation);
+        const vec3 forward = glm::normalize(_target - position);
         const vec3 right = glm::normalize(glm::cross(vec3(0.0f, 1.0f, 0.0f), forward));
         const vec3 up = glm::normalize(glm::cross(forward, right));
 
@@ -61,7 +91,7 @@ namespace RenderScenes
         Camera& camera = _resources->cameras[_view->GetCameraIndex()];
         const f32 nearClip = 0.01f;
         const f32 farClip = 100.0f;
-        const f32 fov = glm::radians(45.0f);
+        const f32 fov = ORBIT_CAMERA_VERTICAL_FOV;
         camera.viewToWorld = viewToWorld;
         camera.worldToView = glm::inverse(viewToWorld);
         camera.viewToClip = glm::perspective(fov, static_cast<f32>(_view->GetDimensions().x) / _view->GetDimensions().y, farClip, nearClip);

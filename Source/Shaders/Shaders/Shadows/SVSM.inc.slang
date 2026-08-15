@@ -3,6 +3,21 @@
 
 #include "Shadows/LightBasis.inc.slang"
 
+float SVSMOpacityNoise(float2 shadowPosition, uint clipmapIndex)
+{
+    uint2 pixel = uint2(shadowPosition);
+    uint hash = pixel.x * 0x9E3779B9u ^ pixel.y * 0x85EBCA6Bu ^ clipmapIndex * 0xC2B2AE35u;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    return float(hash & 0x00FFFFFFu) / 16777216.0f;
+}
+
+bool SVSMOpacityDiscard(float opacity, float2 shadowPosition, uint clipmapIndex)
+{
+    return opacity < 1.0f && SVSMOpacityNoise(shadowPosition, clipmapIndex) >= saturate(opacity);
+}
+
 // Shared types and helpers for the Sparse Virtual Shadow Map chain:
 // SVSMPrepare.cs -> SVSMInvalidateAABBs.cs -> SVSMPageUpdateA.cs -> SVSMPageMark.cs -> SVSMPageUpdateB.cs
 //

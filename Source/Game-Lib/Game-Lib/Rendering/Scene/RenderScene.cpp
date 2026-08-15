@@ -1,4 +1,5 @@
 #include "RenderScene.h"
+#include "SceneRenderDescription.h"
 
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
@@ -14,6 +15,37 @@
 
 namespace RenderScenes
 {
+    bool RenderScene::DescribeModelInstance(ModelInstanceHandle handle, ModelRenderDescription& description) const
+    {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
+        if (!record || !instanceResources)
+            return false;
+
+        description = {};
+        description.model = instanceResources->model;
+        description.transform = record->currentWorld;
+        description.visible = (record->flags & ModelScene::ModelInstanceFlagVisible) != 0;
+        description.opacity = record->opacity;
+        description.highlightIntensity = record->highlightIntensity;
+        description.packedHighlightColor = record->packedHighlightColor;
+        description.castsShadows = (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
+
+        const u32 materialCount = _materialTables.GetCount(instanceResources->materialTable);
+        description.materials.reserve(materialCount);
+        for (u32 slot = 0; slot < materialCount; ++slot)
+            description.materials.emplace_back(_materialTables.GetMaterial(instanceResources->materialTable, slot));
+
+        const ModelLoading::ModelGPURecord& model = _geometryStorage->GetRecord(instanceResources->model);
+        description.enabledGeometryGroups.reserve(model.geometryGroupCount);
+        for (u32 group = 0; group < model.geometryGroupCount; ++group)
+        {
+            if (_geometryGroupMasks.IsEnabled(instanceResources->geometryGroupMask, group))
+                description.enabledGeometryGroups.push_back(group);
+        }
+        return true;
+    }
+
     namespace
     {
         bool ToSceneCount(u64 value, const char* name, u32& out)
@@ -110,7 +142,7 @@ namespace RenderScenes
         const bool hasShadowState = record && instanceResources && _geometryStorage->HasModel(instanceResources->model);
         const FileFormat::Model::Bounds bounds = hasShadowState ? _geometryStorage->GetRecord(instanceResources->model).bounds : FileFormat::Model::Bounds{};
         const mat4x4 transform = hasShadowState ? record->currentWorld : mat4x4(1.0f);
-        const bool visible = hasShadowState && _instances.IsVisible(handle);
+        const bool visible = hasShadowState && _instances.IsVisible(handle) && (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
 
         ModelScene::ModelInstanceResources resources;
         if (!_instances.Destroy(handle, resources))
@@ -131,7 +163,7 @@ namespace RenderScenes
         const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
         const bool hasShadowState = oldRecord && instanceResources && _geometryStorage->HasModel(instanceResources->model);
         const mat4x4 oldTransform = hasShadowState ? oldRecord->currentWorld : transform;
-        const bool visible = hasShadowState && _instances.IsVisible(handle);
+        const bool visible = hasShadowState && _instances.IsVisible(handle) && (oldRecord->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
 
         bool needsHistoryClear = false;
         if (!_instances.SetTransform(handle, transform, teleported, needsHistoryClear))
@@ -157,7 +189,8 @@ namespace RenderScenes
         const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
         const ModelScene::ModelInstanceResources* instanceResources = _instances.GetResources(handle);
         const bool hasShadowState = record && instanceResources && _geometryStorage->HasModel(instanceResources->model);
-        const bool oldVisible = hasShadowState && _instances.IsVisible(handle);
+        const bool castsShadows = hasShadowState && (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
+        const bool oldVisible = hasShadowState && _instances.IsVisible(handle) && castsShadows;
         const mat4x4 transform = hasShadowState ? record->currentWorld : mat4x4(1.0f);
 
         bool needsHistoryClear = false;
@@ -167,7 +200,7 @@ namespace RenderScenes
         if (hasShadowState)
         {
             const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(instanceResources->model).bounds;
-            if (_shadowState.ModelVisibilityChanged(handle, bounds, transform, oldVisible, visible))
+            if (_shadowState.ModelVisibilityChanged(handle, bounds, transform, oldVisible, visible && castsShadows))
                 _instances.SetShadowDynamic(handle, false);
         }
 
@@ -179,10 +212,46 @@ namespace RenderScenes
         return true;
     }
 
+    bool RenderScene::SetModelOpacity(ModelInstanceHandle handle, f32 opacity, bool forceTransparent)
+    {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+        if (!record || !resources)
+            return false;
+
+        const bool visible = (record->flags & ModelScene::ModelInstanceFlagVisible) != 0;
+        const bool castsShadows = (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
+        const f32 oldOpacity = record->opacity;
+        const bool oldForceTransparent = (record->flags & ModelScene::ModelInstanceFlagForceTransparent) != 0;
+        const bool oldShadowVisible = visible && castsShadows && record->opacity > 0.0f;
+        const mat4x4 transform = record->currentWorld;
+        if (!_instances.SetOpacity(handle, opacity, forceTransparent))
+            return false;
+
+        record = _instances.GetRecord(handle);
+        if (oldForceTransparent != ((record->flags & ModelScene::ModelInstanceFlagForceTransparent) != 0))
+            ++_transparentRoutingRevision;
+        const bool newShadowVisible = visible && castsShadows && record->opacity > 0.0f;
+        if (oldOpacity != record->opacity && _geometryStorage->HasModel(resources->model))
+        {
+            const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+            if (oldShadowVisible != newShadowVisible)
+            {
+                if (_shadowState.ModelVisibilityChanged(handle, bounds, transform, oldShadowVisible, newShadowVisible))
+                    _instances.SetShadowDynamic(handle, false);
+            }
+            else
+            {
+                _shadowState.ModelAppearanceChanged(bounds, transform, newShadowVisible);
+            }
+        }
+        return true;
+    }
+
     bool RenderScene::SetModelMaterial(ModelInstanceHandle handle, u32 slot, RenderAssets::MaterialInstanceHandle material)
     {
         const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
-        if (!resources)
+        if (!resources || !_materialStorage->HasMaterialInstance(material))
             return false;
 
         ModelMaterialTableHandle table = resources->materialTable;
@@ -208,11 +277,38 @@ namespace RenderScenes
         if (!_materialTables.SetMaterial(table, slot, material))
             return false;
 
+        ++_transparentRoutingRevision;
+
         const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
         const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
         _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
-                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
+                                            (record->flags & ModelScene::ModelInstanceFlagVisible) != 0 &&
+                                            (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0);
         RequestModelHistoryClear(handle);
+        return true;
+    }
+
+    bool RenderScene::SetModelCastsShadows(ModelInstanceHandle handle, bool castsShadows)
+    {
+        const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+        const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+        if (!record || !resources)
+            return false;
+
+        const bool oldCastsShadows = (record->flags & ModelScene::ModelInstanceFlagCastsShadows) != 0;
+        if (oldCastsShadows == castsShadows)
+            return true;
+        const bool visible = (record->flags & ModelScene::ModelInstanceFlagVisible) != 0 && record->opacity > 0.0f;
+        const mat4x4 transform = record->currentWorld;
+        if (!_instances.SetCastsShadows(handle, castsShadows))
+            return false;
+
+        if (_geometryStorage->HasModel(resources->model))
+        {
+            const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
+            _shadowState.ModelVisibilityChanged(handle, bounds, transform,
+                                                visible && oldCastsShadows, visible && castsShadows);
+        }
         return true;
     }
 
@@ -244,6 +340,7 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        ++_transparentRoutingRevision;
         const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
         const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
         _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
@@ -270,12 +367,47 @@ namespace RenderScenes
             return false;
         }
         _materialTables.Release(oldTable);
+        ++_transparentRoutingRevision;
         const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
         const FileFormat::Model::Bounds& bounds = _geometryStorage->GetRecord(resources->model).bounds;
         _shadowState.ModelAppearanceChanged(bounds, record->currentWorld,
                                             (record->flags & ModelScene::ModelInstanceFlagVisible) != 0);
         RequestModelHistoryClear(handle);
         return true;
+    }
+
+    bool RenderScene::HasTransparentModelHighlights() const
+    {
+        if (!HasModelHighlights())
+            return false;
+
+        _instances.CollectHighlightedHandles(_highlightedModelScratch);
+        for (const ModelInstanceHandle handle : _highlightedModelScratch)
+        {
+            const ModelScene::ModelInstanceGPURecord* record = _instances.GetRecord(handle);
+            const ModelScene::ModelInstanceResources* resources = _instances.GetResources(handle);
+            if (!record || !resources || record->highlightIntensity == 1.0f)
+                continue;
+            if (record->opacity > 0.0f && record->opacity < 1.0f)
+                return true;
+
+            const u32 materialCount = _materialTables.GetCount(resources->materialTable);
+            for (u32 slot = 0; slot < materialCount; ++slot)
+            {
+                const RenderAssets::MaterialInstanceHandle material(
+                    static_cast<RenderAssets::MaterialInstanceHandle::type>(
+                        _materialTables.GetMaterial(resources->materialTable, slot)));
+                if (!_materialStorage->HasMaterialInstance(material))
+                    continue;
+                const MaterialLoading::MaterialInstanceGPURecord& instance =
+                    _materialStorage->GetMaterialInstance(material);
+                const u32 executionGroupClass = (instance.packedClassification >> 16u) %
+                    FileFormat::Material::ABI::EXECUTION_GROUP_CLASS_COUNT;
+                if (executionGroupClass / 2u == static_cast<u32>(FileFormat::Material::RasterClass::Transparent))
+                    return true;
+            }
+        }
+        return false;
     }
 
     bool RenderScene::SetGeometryGroupEnabled(ModelInstanceHandle handle, u32 groupID, bool enabled)

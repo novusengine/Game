@@ -9,6 +9,7 @@
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Light/LightRenderer.h"
+#include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 #include "Game-Lib/Rendering/Model/ModelRenderSystem.h"
 #include "Game-Lib/Rendering/Model/ModelPlacementLoader.h"
@@ -29,6 +30,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -340,6 +342,23 @@ namespace Scripting::Asset
         return 1;
     }
 
+    i32 AssetHandler::LoadDiagnosticSkybox(Zenith* zenith)
+    {
+        const std::string path = zenith->CheckVal<const char*>(1);
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        RenderAssets::RenderAssetResources* assets = gameRenderer->GetRenderAssetResources();
+        const RenderAssets::ModelHandle model = assets->LoadModel(Util::AssetPath::Hash(path));
+        RenderScenes::ModelInstanceDesc desc;
+        desc.model = model;
+        entt::registry& registry = *ServiceLocator::GetEnttRegistries()->gameRegistry;
+        const auto& activeCamera = registry.ctx().get<ECS::Singletons::ActiveCamera>();
+        const auto& cameraTransform = registry.get<ECS::Components::Transform>(activeCamera.entity);
+        desc.worldTransform[3] = vec4(cameraTransform.GetWorldPosition(), 1.0f);
+        const RenderScenes::ModelInstanceHandle instance = gameRenderer->GetSkyboxModelScene()->CreateModelInstance(desc);
+        zenith->Push(model != assets->GetFallbackModel() && instance != RenderScenes::ModelInstanceHandle::Invalid());
+        return 1;
+    }
+
     i32 AssetHandler::QueryRenderModelPixel(Zenith* zenith)
     {
         const u32 x = zenith->CheckVal<u32>(1);
@@ -424,6 +443,33 @@ namespace Scripting::Asset
         NC_LOG_INFO("RENDER_SCENE lifecycle_stress_complete success={} instances={} iterations={} slots={} staleRejects={} historyHighWater={}",
                     succeeded, instanceCount, iterationCount, stats.instances.slotCapacity,
                     stats.instances.staleHandleRejects, stats.meshletHistory.highWaterWords);
+        zenith->Push(succeeded);
+        return 1;
+    }
+
+    i32 AssetHandler::StressRenderViewLifecycle(Zenith* zenith)
+    {
+        GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
+        RenderScenes::RenderView* mainView = gameRenderer->GetModelRenderSystem()->GetView(1);
+        RenderScenes::RenderViewDesc desc;
+        desc.debugName = "Descriptor Reclamation Probe";
+        desc.scene = mainView->GetScene();
+        desc.cameraIndex = mainView->GetCameraIndex();
+        desc.dimensions = mainView->GetDimensions();
+        desc.dimensionType = mainView->GetDimensionType();
+        desc.visibilityTarget = mainView->GetVisibilityTarget();
+        desc.normalTarget = mainView->GetNormalTarget();
+        desc.motionTarget = mainView->GetMotionTarget();
+        desc.colorTarget = mainView->GetColorTarget();
+        desc.transparencyAccumulationTarget = mainView->GetTransparencyAccumulationTarget();
+        desc.transparencyRevealageTarget = mainView->GetTransparencyRevealageTarget();
+        desc.depthPyramidTarget = mainView->GetDepthPyramidTarget();
+        desc.depthTarget = mainView->GetDepthTarget();
+        desc.lifetime = RenderScenes::RenderViewLifetime::Transient;
+        desc.refresh = RenderScenes::RenderViewRefresh::Retained;
+        RenderScenes::RenderView* probe = gameRenderer->CreateRenderView(std::move(desc));
+        const bool succeeded = probe && gameRenderer->DestroyRenderView(probe->GetID());
+        NC_LOG_INFO("RENDER_VIEW lifecycle_stress_complete success={}", succeeded);
         zenith->Push(succeeded);
         return 1;
     }

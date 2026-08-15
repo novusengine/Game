@@ -211,7 +211,9 @@ void main(uint3 GroupID : SV_GroupID, uint3 GroupThreadID : SV_GroupThreadID)
     if (waveIndex >= committedCount)
         return;
 
-    AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, ModelMeshletTriangleCount(meshlet));
+    uint triangleCount = ModelMeshletTriangleCount(meshlet);
+    AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, triangleCount);
+    AddStat(MODEL_WORK_STAT_PHASE2_ADDED_TRIANGLES, triangleCount);
 
     uint localLOD = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_LOD_SHIFT) & MODEL_CHUNK_LOD_MASK;
     uint submeshIndex = (chunk.packedCountRasterAndLOD >> MODEL_CHUNK_SUBMESH_SHIFT) & MODEL_CHUNK_SUBMESH_MASK;

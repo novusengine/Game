@@ -9,6 +9,7 @@
 
 struct RenderResources;
 class GameRenderer;
+class MaterialRenderer;
 
 namespace RenderAssets
 {
@@ -34,6 +35,11 @@ namespace ModelRendering
     struct ModelPerformanceStats
     {
         ModelView::WorkStats work;
+        ModelView::TransparentWorkStats transparentWork;
+        u32 loadedLOD0Meshlets = 0;
+        u32 loadedLOD0Triangles = 0;
+        u32 loadedLOD0TransparentMeshlets = 0;
+        u32 loadedLOD0TransparentTriangles = 0;
         u32 historyBytes = 0;
         u32 liveHistoryBytes = 0;
         u32 freeHistoryBytes = 0;
@@ -63,6 +69,15 @@ namespace ModelRendering
         void AddVisibilityPhase2Passes(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+        void AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                      RenderScenes::RenderViewPassFamily passFamily, u8 frameIndex);
+        void AddTransparencyCompositePasses(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                            MaterialRenderer& materialRenderer,
+                                            RenderScenes::RenderViewPassFamily passFamily, u8 frameIndex);
+        void AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                u8 frameIndex);
+        void AddRetainedOutputPasses(Renderer::RenderGraph* renderGraph);
         void AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
         void RegisterPixelQueryResources(Renderer::RenderGraphBuilder& builder) const;
         void BindPixelQueryResources(Renderer::DescriptorSet& descriptorSet);

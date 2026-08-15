@@ -8,6 +8,7 @@ struct Constants
     uint queueIndex;
     uint frameIndex;
     uint dynamicCaster;
+    uint opacityDither;
 };
 [[vk::push_constant]] Constants _constants;
 
@@ -21,6 +22,7 @@ struct PSInput
     nointerpolation uint clipmapIndex : TEXCOORD0;
     nointerpolation uint materialInstanceIndex : TEXCOORD1;
     float2 uv0 : TEXCOORD2;
+    nointerpolation float opacity : TEXCOORD3;
 };
 
 [shader("fragment")]
@@ -57,6 +59,8 @@ void main(PSInput input, bool frontFacing : SV_IsFrontFace)
     coverage = saturate(coverage);
     float alphaCutoff = asfloat(_materialParameters.Load(instance.parameterOffset + MATERIAL_ALPHA_CUTOFF_OFFSET));
     if (coverage < alphaCutoff)
+        discard;
+    if (_constants.opacityDither != 0u && SVSMOpacityDiscard(input.opacity, input.position.xy, input.clipmapIndex))
         discard;
 
     uint poolPagesPerRow = _constants.dynamicCaster != 0u ?

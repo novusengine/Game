@@ -158,6 +158,8 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     MarkCurrentMeshletHistory(historyBit);
     AddStat(MODEL_WORK_STAT_COMMITTED_RASTER_MESHLETS_BASE + survivor.rasterClass, 1u);
     ModelRecord model = _modelRecords[instance.modelIndex];
-    AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, ModelMeshletTriangleCount(_modelMeshlets[model.meshletBase + survivor.meshletIndex]));
+    uint triangleCount = ModelMeshletTriangleCount(_modelMeshlets[model.meshletBase + survivor.meshletIndex]);
+    AddStat(MODEL_WORK_STAT_COMMITTED_TRIANGLES, triangleCount);
+    AddStat(MODEL_WORK_STAT_PHASE1_REPLAYED_TRIANGLES, triangleCount);
     AddStat(MODEL_WORK_STAT_PHASE1_REPLAYED_MESHLETS, 1u);
 }

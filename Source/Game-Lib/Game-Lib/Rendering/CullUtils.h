@@ -11,6 +11,7 @@
 namespace Renderer
 {
     class Renderer;
+    class RenderGraph;
     class RenderGraphResources;
     class CommandList;
 }
@@ -20,13 +21,14 @@ class DepthPyramidUtils
 {
 public:
     static void Init(Renderer::Renderer* renderer, GameRenderer* gameRenderer);
+    static void AddBuildPass(Renderer::RenderGraph* renderGraph, const std::string& name,
+                             Renderer::DepthImageID depth, Renderer::ImageID depthPyramid, u8 frameIndex);
 
     struct BuildPyramidParams
     {
     public:
         Renderer::RenderGraphResources* graphResources;
         Renderer::CommandList* commandList;
-        RenderResources* resources;
         u32 frameIndex;
 
         uvec2 pyramidSize;

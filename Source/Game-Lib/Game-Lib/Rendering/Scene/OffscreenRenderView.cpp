@@ -4,6 +4,8 @@
 
 #include <Renderer/Renderer.h>
 
+#include <algorithm>
+#include <bit>
 #include <utility>
 
 namespace RenderScenes
@@ -18,6 +20,20 @@ namespace RenderScenes
     {
         if (_view)
             _gameRenderer->DestroyRenderView(_view->GetID());
+        if (_visibility != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_visibility);
+        if (_normals != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_normals);
+        if (_color != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_color);
+        if (_transparencyAccumulation != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_transparencyAccumulation);
+        if (_transparencyRevealage != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_transparencyRevealage);
+        if (_depthPyramid != Renderer::ImageID::Invalid())
+            _renderer->DestroyImage(_depthPyramid);
+        if (_depth != Renderer::DepthImageID::Invalid())
+            _renderer->DestroyDepthImage(_depth);
     }
 
     bool OffscreenRenderView::SetTarget(Renderer::TextureID target)
@@ -53,6 +69,23 @@ namespace RenderScenes
         imageDesc.debugName = _desc.debugName + " Color";
         _color = _renderer->CreateImage(imageDesc);
 
+        imageDesc.format = Renderer::ImageFormat::R16G16B16A16_FLOAT;
+        imageDesc.clearColor = Color::Clear;
+        imageDesc.debugName = _desc.debugName + " Transparency";
+        _transparencyAccumulation = _renderer->CreateImage(imageDesc);
+
+        imageDesc.format = Renderer::ImageFormat::R16_FLOAT;
+        imageDesc.clearColor = Color::Red;
+        imageDesc.debugName = _desc.debugName + " Transparency Revealage";
+        _transparencyRevealage = _renderer->CreateImage(imageDesc);
+
+        const uvec2 pyramidDimensions(std::bit_floor(_desc.dimensions.x), std::bit_floor(_desc.dimensions.y));
+        imageDesc.dimensions = pyramidDimensions;
+        imageDesc.mipLevels = std::bit_width(std::max(pyramidDimensions.x, pyramidDimensions.y));
+        imageDesc.format = Renderer::ImageFormat::R32_FLOAT;
+        imageDesc.debugName = _desc.debugName + " Depth Pyramid";
+        _depthPyramid = _renderer->CreateImage(imageDesc);
+
         Renderer::DepthImageDesc depthDesc;
         depthDesc.debugName = _desc.debugName + " Depth";
         depthDesc.dimensions = _desc.dimensions;
@@ -63,6 +96,9 @@ namespace RenderScenes
         _desc.visibilityTarget = _visibility;
         _desc.normalTarget = _normals;
         _desc.colorTarget = _color;
+        _desc.transparencyAccumulationTarget = _transparencyAccumulation;
+        _desc.transparencyRevealageTarget = _transparencyRevealage;
+        _desc.depthPyramidTarget = _depthPyramid;
         _desc.depthTarget = _depth;
         _desc.retainedOutput = _target;
         _view = _gameRenderer->CreateRenderView(_desc);

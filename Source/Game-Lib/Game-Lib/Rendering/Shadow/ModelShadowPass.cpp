@@ -369,7 +369,7 @@ namespace ShadowRendering
                                         const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData,
                                         Renderer::BufferID staticPageTable, Renderer::BufferID dynamicPageTable,
                                         Renderer::ImageID staticPagePool, Renderer::ImageID dynamicPagePool,
-                                        u32 virtualSize, bool dynamicSplit, u8 frameIndex)
+                                        u32 virtualSize, bool dynamicSplit, bool opacityDither, u8 frameIndex)
     {
         struct Data
         {
@@ -432,7 +432,7 @@ namespace ShadowRendering
                 }
                 return true;
             },
-            [this, &work, virtualSize, dynamicSplit, frameIndex](Data& data,
+            [this, &work, virtualSize, dynamicSplit, opacityDither, frameIndex](Data& data,
                 Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) {
                 GPU_SCOPED_PROFILER_ZONE(commandList, ModelShadowRaster);
                 data.staticSolidSet.Bind("_shadowRasterPagePool"_h, data.staticPool);
@@ -449,11 +449,12 @@ namespace ShadowRendering
                 commandList.SetScissorRect(0, virtualSize, 0, virtualSize);
                 commandList.BeginRenderPass(pass);
 
-                struct Constants { u32 queueIndex; u32 frameIndex; u32 dynamicCaster; };
+                struct Constants { u32 queueIndex; u32 frameIndex; u32 dynamicCaster; u32 opacityDither; };
                 auto draw = [&](Renderer::GraphicsPipelineID pipeline, u32 queueIndex, bool alphaTest,
                                 Renderer::DescriptorSetResource& set) {
                     Constants* constants = graphResources.FrameNew<Constants>();
-                    *constants = {queueIndex, frameIndex, queueIndex >= MODEL_SHADOW_RASTER_CLASS_COUNT ? 1u : 0u};
+                    *constants = {queueIndex, frameIndex, queueIndex >= MODEL_SHADOW_RASTER_CLASS_COUNT ? 1u : 0u,
+                                  opacityDither ? 1u : 0u};
                     commandList.BeginPipeline(pipeline);
                     commandList.PushConstant(constants, 0, sizeof(*constants));
                     commandList.BindDescriptorSet(data.globalSet, frameIndex);

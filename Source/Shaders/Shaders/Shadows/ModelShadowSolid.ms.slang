@@ -4,6 +4,7 @@ struct MeshVertex
 {
     float4 position : SV_Position;
     nointerpolation uint clipmapIndex : TEXCOORD0;
+    nointerpolation float opacity : TEXCOORD1;
 };
 
 [shader("mesh")]
@@ -33,6 +34,7 @@ void main(uint3 groupID : SV_GroupID, uint3 threadID : SV_GroupThreadID,
         float4 worldPosition = mul(float4(localPosition, 1.0f), instance.currentWorld);
         vertices[threadID.x].position = mul(worldPosition, _cameras[shadowRecord.clipmapIndex + 1u].worldToClip);
         vertices[threadID.x].clipmapIndex = shadowRecord.clipmapIndex;
+        vertices[threadID.x].opacity = instance.opacity;
     }
     for (uint triangleIndex = threadID.x; triangleIndex < triangleCount; triangleIndex += 64u)
     {

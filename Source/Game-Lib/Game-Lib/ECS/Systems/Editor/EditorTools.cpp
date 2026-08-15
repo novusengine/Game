@@ -12,7 +12,6 @@
 #include "Game-Lib/Rendering/Debug/DebugRenderer.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Model/ModelLoader.h"
-#include "Game-Lib/Rendering/PixelQuery.h"
 #include "Game-Lib/Scripting/Handlers/AssetHandler.h"
 #include "Game-Lib/Scripting/Handlers/EditorToolHandler.h"
 #include "Game-Lib/Scripting/Util/ZenithUtil.h"
@@ -39,15 +38,6 @@
 
 namespace ECS::Systems::Editor
 {
-    // Mirrors Editor::QueryObjectType (kept local so we don't pull in the ImGui Inspector header).
-    enum PickType : u32
-    {
-        PickNone = 0,
-        PickTerrain = 1,
-        PickModelOpaque = 2,
-        PickModelTransparent = 3,
-    };
-
     // The gizmo is drawn on top at a constant screen size (like ImGuizmo): its world length is a
     // fraction of the camera->pivot distance, which keeps it the same apparent size regardless of
     // distance and independent of the object's (collider-inflated) bounds.
@@ -56,10 +46,6 @@ namespace ECS::Systems::Editor
     struct EditorToolsState
     {
         bool prevMouseDown = false;
-
-        // PixelQuery picking (async, token based).
-        u32 queriedToken = 0;
-        u32 activeToken = 0;
 
         // Gizmo drag. The drag is solved in world space against the mouse ray (see Update), so we
         // only need the transform + the picked axis captured at press time, plus the ray's starting
@@ -490,54 +476,6 @@ namespace ECS::Systems::Editor
             }
         }
 
-        // ---- Resolve any outstanding pixel query (entity picking) ----
-        PixelQuery* pixelQuery = gameRenderer->GetPixelQuery();
-        if (pixelQuery && !dragSpawnHandledThisFrame)
-        {
-            bool hasNewSelection = false;
-            if (s.queriedToken != 0)
-            {
-                PixelQuery::PixelData pixelData;
-                if (pixelQuery->GetQueryResult(s.queriedToken, pixelData))
-                {
-                    if (s.activeToken != 0)
-                    {
-                        pixelQuery->FreeToken(s.activeToken);
-                        s.activeToken = 0;
-                    }
-
-                    if (pixelData.type == PickNone)
-                    {
-                        pixelQuery->FreeToken(s.queriedToken);
-                        s.queriedToken = 0;
-                    }
-                    else
-                    {
-                        s.activeToken = s.queriedToken;
-                        s.queriedToken = 0;
-                        hasNewSelection = true;
-                    }
-                }
-            }
-
-            if (s.activeToken != 0 && hasNewSelection)
-            {
-                PixelQuery::PixelData pixelData;
-                if (pixelQuery->GetQueryResult(s.activeToken, pixelData))
-                {
-                    if (pixelData.type == PickModelOpaque || pixelData.type == PickModelTransparent)
-                    {
-                        entt::entity picked;
-                        if (gameRenderer->GetModelLoader()->GetEntityIDFromInstanceID(pixelData.value, picked))
-                        {
-                            SetSelectedEntity(registry, picked);
-                        }
-                    }
-                    // Terrain has no entity, so it doesn't change the selection.
-                }
-            }
-        }
-
         // ---- Gizmo ----
         bool startedGizmoDrag = false;
         ECS::Components::Transform* selectedTransform = hasSelection ? registry.try_get<ECS::Components::Transform>(selected) : nullptr;
@@ -749,14 +687,14 @@ namespace ECS::Systems::Editor
             s.dragging = false;
 
         // ---- Initiate a pick (only if the click wasn't consumed by the gizmo or a drag-spawn) ----
-        if (pixelQuery && selection.pickingEnabled && mousePressed && !overUI && !startedGizmoDrag && !dragSpawnHandledThisFrame)
+        if (selection.pickingEnabled && mousePressed && !overUI && !startedGizmoDrag && !dragSpawnHandledThisFrame)
         {
-            if (s.queriedToken != 0)
-            {
-                pixelQuery->FreeToken(s.queriedToken);
-                s.queriedToken = 0;
-            }
-            s.queriedToken = pixelQuery->PerformQuery(uvec2(mouse));
+            vec3 rayOrigin;
+            vec3 rayDirection;
+            ScreenPointToRay(invViewProj, renderSize, mouse, rayOrigin, rayDirection);
+            entt::entity picked = entt::null;
+            if (Util::Physics::CastRayEntity(cameraPos, glm::normalize(rayOrigin - cameraPos), picked))
+                SetSelectedEntity(registry, picked);
         }
 
         s.prevMouseDown = mouseDown;

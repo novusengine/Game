@@ -11,6 +11,7 @@
 #include "Game-Lib/ECS/Components/Events.h"
 #include "Game-Lib/ECS/Components/Model.h"
 #include "Game-Lib/ECS/Components/Name.h"
+#include "Game-Lib/ECS/Components/Tags.h"
 #include "Game-Lib/ECS/Components/Unit.h"
 #include "Game-Lib/ECS/Singletons/Skybox.h"
 #include "Game-Lib/ECS/Util/EventUtil.h"
@@ -940,8 +941,7 @@ void ModelLoader::UnloadModelForEntity(entt::entity entity, ECS::Components::Mod
     _unloadRequests.enqueue(unloadRequest);
 
     GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
-    if (gameRenderer->GetModelSceneBridge()->Remove(entity, 0))
-        gameRenderer->GetWorldRenderScene()->ReleaseRetiredHistory(0);
+    gameRenderer->GetModelSceneBridge()->Remove(entity, 0);
 }
 
 void ModelLoader::SetEntityVisible(entt::entity entity, bool visible)
@@ -976,6 +976,7 @@ void ModelLoader::SetEntityTransparent(entt::entity entity, bool transparent, f3
     auto& modelComponent = registry->get<ECS::Components::Model>(entity);
 
     SetModelTransparent(modelComponent, transparent, opacity);
+    ServiceLocator::GetGameRenderer()->GetModelSceneBridge()->SetOpacity(entity, opacity, transparent);
 }
 
 void ModelLoader::SetModelTransparent(const ECS::Components::Model& model, bool transparent, f32 opacity)
@@ -1124,9 +1125,9 @@ void ModelLoader::SetSkinTextureForEntity(entt::entity entity, Renderer::Texture
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
-        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        RenderScenes::RenderScene* scene = bridge->GetScene(entity);
         const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
-        const ModelScene::ModelInstanceGPURecord* record = scene->GetModelInstance(instance);
+        const ModelScene::ModelInstanceGPURecord* record = scene ? scene->GetModelInstance(instance) : nullptr;
         if (record)
             gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("Skin"), textureID);
     }
@@ -1153,9 +1154,9 @@ void ModelLoader::SetHairTextureForEntity(entt::entity entity, Renderer::Texture
     {
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         ModelScene::ModelSceneBridge* bridge = gameRenderer->GetModelSceneBridge();
-        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        RenderScenes::RenderScene* scene = bridge->GetScene(entity);
         const RenderScenes::ModelInstanceHandle instance = bridge->Get(entity);
-        const ModelScene::ModelInstanceGPURecord* record = scene->GetModelInstance(instance);
+        const ModelScene::ModelInstanceGPURecord* record = scene ? scene->GetModelInstance(instance) : nullptr;
         if (record)
             gameRenderer->GetModelParameterOverrides()->SetTexture(*scene, instance, RenderAssets::ModelHandle(record->modelIndex), ModelParameterNameHash("CharacterHair"), textureID);
     }
@@ -1731,14 +1732,15 @@ void ModelLoader::AddDynamicInstance(entt::entity entityID, const LoadRequestInt
         GameRenderer* gameRenderer = ServiceLocator::GetGameRenderer();
         RenderAssets::RenderAssetResources* assets = gameRenderer->GetRenderAssetResources();
         ModelScene::ModelSceneBridge* sceneBridge = gameRenderer->GetModelSceneBridge();
-        RenderScenes::RenderScene* scene = gameRenderer->GetWorldRenderScene();
+        RenderScenes::RenderScene* scene = registry->all_of<ECS::Components::SkyboxModelTag>(entityID)
+            ? gameRenderer->GetSkyboxModelScene()
+            : gameRenderer->GetWorldRenderScene();
         const FileFormat::AssetID modelAssetID = ResolveModelV2AssetID(request.modelHash);
         const RenderAssets::ModelHandle modelHandle = assets->LoadModel(modelAssetID);
 
-        if (sceneBridge->Remove(entityID, 0))
-            scene->ReleaseRetiredHistory(0);
+        sceneBridge->Remove(entityID, 0);
         const RenderScenes::ModelInstanceHandle sceneInstance =
-            sceneBridge->Add(entityID, modelHandle, transform.GetMatrix());
+            sceneBridge->AddToScene(entityID, scene, modelHandle, transform.GetMatrix());
 
         if (request.type == LoadRequestType::DisplayID && scene->IsPending(sceneInstance))
         {

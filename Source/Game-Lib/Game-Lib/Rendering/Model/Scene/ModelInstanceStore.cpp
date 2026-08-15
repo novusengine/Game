@@ -64,9 +64,10 @@ namespace ModelScene
         record.meshletHistoryWordOffset = info.meshletHistory.wordOffset;
         record.meshletHistoryWordCount = info.meshletHistory.wordCount;
         record.generation = slot.generation;
-        record.flags = ModelInstanceFlagPendingPublication;
+        record.flags = ModelInstanceFlagPendingPublication | ModelInstanceFlagCastsShadows;
         record.packedHighlightColor = 0xFFFFFFFFu;
         record.highlightIntensity = 1.0f;
+        record.opacity = 1.0f;
         if (info.privateMaterials)
             record.flags |= ModelInstanceFlagPrivateMaterials;
         if (reusedSlot)
@@ -91,7 +92,10 @@ namespace ModelScene
         const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
         outResources = slot->resources;
         if (_records[slotIndex].highlightIntensity != 1.0f)
+        {
             --_highlightedInstances;
+            std::erase(_highlightedSlots, slotIndex);
+        }
         if (slot->state == SlotState::Live)
             _liveInstances--;
         else
@@ -201,12 +205,38 @@ namespace ModelScene
         const bool wasHighlighted = record.highlightIntensity != 1.0f;
         const bool isHighlighted = intensity != 1.0f;
         if (!wasHighlighted && isHighlighted)
+        {
             ++_highlightedInstances;
+            _highlightedSlots.push_back(RenderScenes::GetModelInstanceSlot(handle));
+        }
         else if (wasHighlighted && !isHighlighted)
+        {
             --_highlightedInstances;
+            std::erase(_highlightedSlots, RenderScenes::GetModelInstanceSlot(handle));
+        }
         record.highlightIntensity = intensity;
         record.packedHighlightColor = packedColor;
         _records.SetDirtyElement(RenderScenes::GetModelInstanceSlot(handle));
+        return true;
+    }
+
+    bool ModelInstanceStore::SetOpacity(RenderScenes::ModelInstanceHandle handle, f32 opacity, bool forceTransparent)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        record.opacity = std::clamp(opacity, 0.0f, 1.0f);
+        if (forceTransparent || record.opacity < 1.0f)
+            record.flags |= ModelInstanceFlagForceTransparent;
+        else
+            record.flags &= ~ModelInstanceFlagForceTransparent;
+        _records.SetDirtyElement(slotIndex);
         return true;
     }
 
@@ -225,6 +255,25 @@ namespace ModelScene
             record.flags &= ~ModelInstanceFlagDynamicShadowCaster;
         if (record.flags != oldFlags)
             _records.SetDirtyElement(slotIndex);
+        return true;
+    }
+
+    bool ModelInstanceStore::SetCastsShadows(RenderScenes::ModelInstanceHandle handle, bool castsShadows)
+    {
+        Slot* slot = GetSlot(handle);
+        if (!slot)
+        {
+            RecordStaleHandle();
+            return false;
+        }
+
+        const u32 slotIndex = RenderScenes::GetModelInstanceSlot(handle);
+        ModelInstanceGPURecord& record = _records[slotIndex];
+        if (castsShadows)
+            record.flags |= ModelInstanceFlagCastsShadows;
+        else
+            record.flags &= ~ModelInstanceFlagCastsShadows;
+        _records.SetDirtyElement(slotIndex);
         return true;
     }
 
@@ -372,6 +421,18 @@ namespace ModelScene
         outHandles.clear();
         outHandles.reserve(_liveInstances + _pendingInstances);
         for (u32 slotIndex = 0; slotIndex < _slots.size(); ++slotIndex)
+        {
+            const Slot& slot = _slots[slotIndex];
+            if (slot.state != SlotState::Free)
+                outHandles.push_back(RenderScenes::MakeModelInstanceHandle(slotIndex, slot.generation));
+        }
+    }
+
+    void ModelInstanceStore::CollectHighlightedHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const
+    {
+        outHandles.clear();
+        outHandles.reserve(_highlightedSlots.size());
+        for (const u32 slotIndex : _highlightedSlots)
         {
             const Slot& slot = _slots[slotIndex];
             if (slot.state != SlotState::Free)

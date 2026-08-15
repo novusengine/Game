@@ -4,12 +4,49 @@
 #include "Game-Lib/Rendering/Material/MaterialStorage.h"
 #include "Game-Lib/Rendering/Model/Asset/ModelGeometryStorage.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
+#include "Game-Lib/Rendering/Scene/SceneRenderDescription.h"
 
 #include <algorithm>
 #include <vector>
 
 namespace ModelLoading
 {
+    bool ModelParameterOverrides::SetTexture(RenderScenes::ModelRenderDescription& description,
+                                             u64 parameterNameHash, Renderer::TextureID textureID)
+    {
+        if (!_assets)
+            return false;
+
+        const ModelGeometryStorage& geometry = _assets->GetModelGeometryStorage();
+        const auto parameters = geometry.GetParameters(description.model);
+        const auto parameter = std::find_if(parameters.begin(), parameters.end(), [parameterNameHash](const FileFormat::Model::Parameter& candidate) {
+            return candidate.nameHash == parameterNameHash && candidate.type == FileFormat::Model::ParameterType::Texture2D;
+        });
+        if (parameter == parameters.end())
+            return false;
+
+        std::vector<std::vector<MaterialLoading::MaterialTextureRuntimeOverride>> slotOverrides(description.materials.size());
+        for (const FileFormat::Model::ParameterBinding& binding : geometry.GetParameterBindings(description.model))
+        {
+            if (binding.parameterStableID != parameter->stableID || binding.target != FileFormat::Model::ParameterBindingTarget::TextureSlot)
+                continue;
+            u32 materialSlot = 0;
+            if (!geometry.FindMaterialSlot(description.model, binding.materialSlotStableID, materialSlot) || materialSlot >= description.materials.size())
+                return false;
+            slotOverrides[materialSlot].push_back({.textureSlot = binding.targetIndex, .textureID = textureID});
+        }
+
+        bool applied = false;
+        for (u32 slot = 0; slot < description.materials.size(); ++slot)
+        {
+            if (slotOverrides[slot].empty())
+                continue;
+            description.materials[slot] = _assets->DeriveMaterialInstance(description.materials[slot], slotOverrides[slot]);
+            applied = true;
+        }
+        return applied;
+    }
+
     bool ModelParameterOverrides::SetTexture(RenderScenes::RenderScene& scene,
                                              RenderScenes::ModelInstanceHandle instance,
                                              RenderAssets::ModelHandle model, u64 parameterNameHash,

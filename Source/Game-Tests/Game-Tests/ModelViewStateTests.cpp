@@ -54,6 +54,8 @@ TEST_CASE("Model View inputs retain stable Scene slots and LOD history", "[Rende
     REQUIRE(view.GetLODHistory().Count() == 1);
     CHECK(view.GetLODHistory()[0] == ModelView::INVALID_LOD_HISTORY);
     CHECK(view.GetQueueCapacity() == 2);
+    CHECK(view.GetLoadedLOD0Meshlets() == 1);
+    CHECK(view.GetLoadedLOD0Triangles() > 0);
     CHECK_FALSE(view.IsWorkDirty());
 }
 
@@ -71,6 +73,8 @@ TEST_CASE("Model View input preparation skips retired Scene instances", "[Render
     CHECK(view.GetInputs().IsEmpty());
     CHECK(view.GetLODHistory().IsEmpty());
     CHECK(view.GetQueueCapacity() == 1);
+    CHECK(view.GetLoadedLOD0Meshlets() == 0);
+    CHECK(view.GetLoadedLOD0Triangles() == 0);
 }
 
 TEST_CASE("Model View diagnostic selection replaces the previous instance", "[Rendering][ModelView]")
@@ -100,7 +104,32 @@ TEST_CASE("Model View prepares every active Scene instance without a diagnostic 
     REQUIRE(view.GetInputs().Count() == 2);
     CHECK(view.GetInputs()[0].instanceIndex == RenderScenes::GetModelInstanceSlot(first));
     CHECK(view.GetInputs()[1].instanceIndex == RenderScenes::GetModelInstanceSlot(second));
+    CHECK(view.GetLoadedLOD0Meshlets() == 2);
+    CHECK(view.GetLoadedLOD0Triangles() > 0);
     CHECK(view.GetPreparedSceneRevision() == fixture.scene.GetModelInstances().GetMembershipRevision());
+}
+
+TEST_CASE("Model View counts loaded transparent LOD 0 meshlets", "[Rendering][ModelView]")
+{
+    ViewFixture fixture;
+    const RenderScenes::ModelInstanceHandle opaque = fixture.AddInstance();
+    const RenderScenes::ModelInstanceHandle faded = fixture.AddInstance();
+    REQUIRE(fixture.scene.SetModelOpacity(faded, 0.5f));
+
+    ModelView::ModelViewState view;
+    view.PrepareInputs(fixture.scene, fixture.geometry);
+    view.PrepareTransparentStats(fixture.scene, fixture.geometry, fixture.materials);
+
+    CHECK(view.GetLoadedLOD0TransparentMeshlets() == 1);
+    CHECK(view.GetLoadedLOD0TransparentTriangles() == view.GetLoadedLOD0Triangles() / 2u);
+    CHECK(view.GetPreparedTransparentRoutingRevision() == fixture.scene.GetTransparentRoutingRevision());
+
+    REQUIRE(fixture.scene.SetModelOpacity(faded, 1.0f));
+    CHECK(view.GetPreparedTransparentRoutingRevision() != fixture.scene.GetTransparentRoutingRevision());
+    view.PrepareTransparentStats(fixture.scene, fixture.geometry, fixture.materials);
+    CHECK(view.GetLoadedLOD0TransparentMeshlets() == 0);
+    CHECK(view.GetLoadedLOD0TransparentTriangles() == 0);
+    CHECK(fixture.scene.IsAlive(opaque));
 }
 
 TEST_CASE("Retained Render Views render only when dirty", "[Rendering][RenderView]")

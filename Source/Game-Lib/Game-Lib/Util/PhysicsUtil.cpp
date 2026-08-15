@@ -12,6 +12,7 @@
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
 #include <Jolt/Jolt.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -113,6 +114,39 @@ namespace Util
 
             JPH::Vec3 hitPos = ray.GetPointOnRay(hit.mFraction);
             outHitPos = vec3(hitPos.GetX(), hitPos.GetY(), hitPos.GetZ());
+            return true;
+        }
+
+        bool CastRayEntity(const vec3& start, const vec3& dir, entt::entity& outEntity)
+        {
+            ZoneScoped;
+
+            entt::registry* registry = ServiceLocator::GetEnttRegistries()->gameRegistry;
+            auto& joltState = registry->ctx().get<ECS::Singletons::JoltState>();
+            constexpr f32 RAY_LENGTH = 10000.0f;
+            if (glm::dot(dir, dir) <= std::numeric_limits<f32>::epsilon())
+                return false;
+
+            const vec3 displacement = glm::normalize(dir) * RAY_LENGTH;
+            const JPH::RRayCast ray(JPH::Vec3(start.x, start.y, start.z),
+                                    JPH::Vec3(displacement.x, displacement.y, displacement.z));
+            JPH::RayCastResult hit;
+            if (!joltState.physicsSystem.GetNarrowPhaseQuery().CastRay(ray, hit))
+                return false;
+
+            JPH::BodyLockRead lock(joltState.physicsSystem.GetBodyLockInterface(), hit.mBodyID);
+            if (!lock.SucceededAndIsInBroadPhase())
+                return false;
+
+            const JPH::uint64 userData = lock.GetBody().GetUserData();
+            if (userData == std::numeric_limits<JPH::uint64>::max())
+                return false;
+
+            const entt::entity entity = static_cast<entt::entity>(static_cast<entt::id_type>(userData));
+            if (!registry->valid(entity))
+                return false;
+
+            outEntity = entity;
             return true;
         }
     }

@@ -40,7 +40,7 @@ namespace ShadowRendering
                            const RenderScenes::RenderScene& scene, Renderer::BufferID svsmData,
                            Renderer::BufferID staticPageTable, Renderer::BufferID dynamicPageTable,
                            Renderer::ImageID staticPagePool, Renderer::ImageID dynamicPagePool,
-                           u32 virtualSize, bool dynamicSplit, u8 frameIndex);
+                           u32 virtualSize, bool dynamicSplit, bool opacityDither, u8 frameIndex);
 
       private:
         bool Bind(Renderer::DescriptorSet& set, StringUtils::StringHash name, Renderer::BufferID buffer,

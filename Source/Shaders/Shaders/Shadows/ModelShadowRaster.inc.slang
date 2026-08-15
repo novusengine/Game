@@ -9,6 +9,7 @@ struct Constants
     uint queueIndex;
     uint frameIndex;
     uint dynamicCaster;
+    uint opacityDither;
 };
 [[vk::push_constant]] Constants _constants;
 

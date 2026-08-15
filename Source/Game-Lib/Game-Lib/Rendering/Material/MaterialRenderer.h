@@ -30,10 +30,14 @@ public:
 
     Renderer::BufferID GetDirectionalLightBuffer() const { return _directionalLights.GetBuffer(); }
     u32 GetNumDirectionalLights() const { return static_cast<u32>(_directionalLights.Count()); }
+    vec4 GetFogColor() const;
+    vec4 GetFogSettings() const;
 
     // Resolves normals for the effect passes
     void AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, const RenderScenes::RenderView& view, u8 frameIndex);
     void AddMaterialPass(Renderer::RenderGraph* renderGraph, RenderResources& resources, u8 frameIndex);
+    void AddTransparencyCompositePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                      const RenderScenes::RenderView& view, u8 frameIndex);
 
     void AddDirectionalLight(const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor);
     bool SetDirectionalLight(u32 index, const vec3& direction, const vec3& color, f32 intensity, const vec3& groundAmbientColor, f32 groundAmbientIntensity, const vec3& skyAmbientColor, f32 skyAmbientIntensity, const vec3& shadowColor);
@@ -59,10 +63,12 @@ private:
     Renderer::ComputePipelineID _preEffectsPipeline;
     Renderer::ComputePipelineID _velocityPipeline;
     Renderer::ComputePipelineID _materialPipeline;
+    Renderer::ComputePipelineID _transparencyCompositePipeline;
 
     Renderer::DescriptorSet _preEffectsPassDescriptorSet;
     Renderer::DescriptorSet _velocityPassDescriptorSet;
     Renderer::DescriptorSet _materialPassDescriptorSet;
+    Renderer::DescriptorSet _transparencyCompositeDescriptorSet;
 
     Renderer::GPUVector<DirectionalLight> _directionalLights;
 

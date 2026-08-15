@@ -187,6 +187,7 @@ TEST_CASE(
       MaterialCooking::AuthoredMaterialShaderGenerator::GenerateGroupSource(
           result.plan, group);
   CHECK(source.find("EvaluateMaterial_Test(context)") != std::string::npos);
+  CHECK(source.find("BlendCompatibilityMaterialFirstLayer(surface, unit.w)") != std::string::npos);
   CHECK(source.find("EvaluateCoverage_Test(context)") != std::string::npos);
   CHECK(source.find("float coverage = EvaluateCoverageFunction") !=
         std::string::npos);

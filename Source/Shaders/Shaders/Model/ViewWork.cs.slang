@@ -122,7 +122,8 @@ void main(uint3 DispatchThreadID : SV_DispatchThreadID)
     ViewInstanceInput input = _viewInputs[DispatchThreadID.x];
     ModelInstanceRecord instance = _modelInstances[input.instanceIndex];
     AddStat(MODEL_WORK_STAT_TESTED_INSTANCES, 1u);
-    if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u)
+    if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u ||
+        (instance.flags & MODEL_INSTANCE_FORCE_TRANSPARENT) != 0u)
     {
         AddStat(MODEL_WORK_STAT_REJECTED_INSTANCES, 1u);
         return;

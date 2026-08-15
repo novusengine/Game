@@ -9,7 +9,7 @@
 #include "Game-Lib/ECS/Util/UIUtil.h"
 #include "Game-Lib/Rendering/GameRenderer.h"
 #include "Game-Lib/Rendering/Canvas/CanvasRenderer.h"
-#include "Game-Lib/Rendering/Preview/UnitPreview.h"
+#include "Game-Lib/Rendering/Preview/UnitInspectionController.h"
 #include "Game-Lib/Scripting/UI/Box.h"
 #include "Game-Lib/Scripting/UI/Canvas.h"
 #include "Game-Lib/Scripting/UI/Panel.h"
@@ -754,7 +754,7 @@ namespace Scripting::UI
         const entt::entity unit = static_cast<entt::entity>(zenith->CheckVal<u32>(2));
         entt::registry* registry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         const auto* canvas = widget ? registry->try_get<ECS::Components::UI::Canvas>(widget->entity) : nullptr;
-        PreviewRendering::UnitPreview* preview = ServiceLocator::GetGameRenderer()->GetUnitPreview();
+        PreviewRendering::UnitInspectionController* preview = ServiceLocator::GetGameRenderer()->GetUnitInspection();
         const bool configured = canvas && preview->SetTarget(canvas->renderTexture);
         if (configured)
             preview->SetUnit(unit);
@@ -766,7 +766,7 @@ namespace Scripting::UI
     {
         const f32 deltaX = zenith->CheckVal<f32>(1);
         const f32 deltaY = zenith->CheckVal<f32>(2);
-        ServiceLocator::GetGameRenderer()->GetUnitPreview()->Orbit(deltaX * 0.01f, deltaY * 0.01f);
+        ServiceLocator::GetGameRenderer()->GetUnitInspection()->Orbit(deltaX * 0.01f, deltaY * 0.01f);
         return 0;
     }
 
@@ -776,7 +776,7 @@ namespace Scripting::UI
         const entt::entity unit = static_cast<entt::entity>(zenith->CheckVal<u32>(2));
         entt::registry* uiRegistry = ServiceLocator::GetEnttRegistries()->uiRegistry;
         const auto* canvas = widget ? uiRegistry->try_get<ECS::Components::UI::Canvas>(widget->entity) : nullptr;
-        PreviewRendering::UnitPreview* preview = ServiceLocator::GetGameRenderer()->GetUnitPreview();
+        PreviewRendering::UnitInspectionController* preview = ServiceLocator::GetGameRenderer()->GetUnitInspection();
         entt::registry* gameRegistry = ServiceLocator::GetEnttRegistries()->gameRegistry;
         const bool configured = canvas && preview->SetTarget(canvas->renderTexture) && preview->BeginDevelopmentGallery(*gameRegistry, unit);
         zenith->Push(configured);

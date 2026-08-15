@@ -34,6 +34,11 @@ namespace Scripting::Scene
         static i32 GetModel(Zenith* zenith);
         static i32 SetModelVisible(Zenith* zenith);
         static i32 SetModelTransparent(Zenith* zenith);
+        static i32 SetModelCastsShadows(Zenith* zenith);
+        static i32 SetModelHighlight(Zenith* zenith);
+        static i32 SetModelGeometryGroup(Zenith* zenith);
+        static i32 SetModelMaterial(Zenith* zenith);
+        static i32 ResetModelMaterials(Zenith* zenith);
 
         static i32 GetDecal(Zenith* zenith);
         static i32 SetDecal(Zenith* zenith);
@@ -55,6 +60,11 @@ namespace Scripting::Scene
         { "GetModel",             SceneHandler::GetModel,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetModelVisible",      SceneHandler::SetModelVisible,      Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetModelTransparent",  SceneHandler::SetModelTransparent,  Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetModelCastsShadows", SceneHandler::SetModelCastsShadows, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetModelHighlight",    SceneHandler::SetModelHighlight,    Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetModelGeometryGroup", SceneHandler::SetModelGeometryGroup, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "SetModelMaterial",     SceneHandler::SetModelMaterial,     Scripting::LuaMethodFlags::DeveloperOnly },
+        { "ResetModelMaterials",  SceneHandler::ResetModelMaterials,  Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetDecal",             SceneHandler::GetDecal,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "SetDecal",             SceneHandler::SetDecal,             Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetUnit",              SceneHandler::GetUnit,              Scripting::LuaMethodFlags::DeveloperOnly },

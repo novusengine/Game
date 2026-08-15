@@ -9,7 +9,7 @@
 #include "Scene/RenderView.h"
 #include "Model/Scene/ModelSceneBridge.h"
 #include "Model/ModelRenderSystem.h"
-#include "Preview/UnitPreview.h"
+#include "Preview/UnitInspectionController.h"
 #include "Model/ModelPlacementLoader.h"
 #include "Model/ModelRendererMode.h"
 #include "Model/DisplayResolver.h"
@@ -25,6 +25,7 @@
 #include "Liquid/LiquidLoader.h"
 #include "Material/MaterialRenderer.h"
 #include "Skybox/SkyboxRenderer.h"
+#include "Skybox/SkyboxModelScene.h"
 #include "Editor/EditorRenderer.h"
 #include "Effect/EffectRenderer.h"
 #include "Shadow/ShadowRenderer.h"
@@ -247,11 +248,13 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
     auto& clientDBSingleton = ServiceLocator::GetEnttRegistries()->dbRegistry->ctx().get<ECS::Singletons::ClientDBSingleton>();
     if (clientDBSingleton.Has(ClientDBHash::DisplayRegistration) && clientDBSingleton.Has(ClientDBHash::DisplayParameter))
         _displayResolver->Initialize(*clientDBSingleton.Get(ClientDBHash::DisplayRegistration), *clientDBSingleton.Get(ClientDBHash::DisplayParameter));
-    _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
     _modelRenderSystem = new ModelRendering::ModelRenderSystem(_renderer, this, _renderAssetResources, _worldRenderScene, _resources, CVAR_RenderAssetValidateTransfers.Get() != 0);
-    _unitPreview = new PreviewRendering::UnitPreview(_renderer, this, _renderAssetResources, _modelSceneBridge,
-                                                     _worldRenderScene, _resources,
-                                                     CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _skyboxModelScene = new SkyboxRendering::SkyboxModelScene(_renderer, this, _renderAssetResources, _resources,
+                                                              CVAR_RenderAssetValidateTransfers.Get() != 0);
+    _modelSceneBridge = new ModelScene::ModelSceneBridge(_worldRenderScene);
+    _unitInspection = new PreviewRendering::UnitInspectionController(_renderer, this, _renderAssetResources,
+                                                                     _modelSceneBridge, _resources,
+                                                                     CVAR_RenderAssetValidateTransfers.Get() != 0);
     _modelPlacementLoader = new ModelRendering::ModelPlacementLoader(ServiceLocator::GetPactStorage(), _renderAssetResources, _worldRenderScene);
 
     _modelRenderer = new ModelRenderer(_renderer, this, _debugRenderer);
@@ -286,7 +289,8 @@ GameRenderer::GameRenderer(bool enableRenderDoc)
 
 GameRenderer::~GameRenderer()
 {
-    delete _unitPreview;
+    delete _unitInspection;
+    delete _skyboxModelScene;
     delete _modelRenderSystem;
     delete _modelPlacementLoader;
     delete _modelSceneBridge;
@@ -297,6 +301,11 @@ GameRenderer::~GameRenderer()
     delete _renderTargetCapture;
     delete _renderer;
     delete _renderDocCapture;
+}
+
+RenderScenes::RenderScene* GameRenderer::GetSkyboxModelScene()
+{
+    return _skyboxModelScene ? _skyboxModelScene->GetScene() : nullptr;
 }
 
 RenderScenes::RenderView* GameRenderer::CreateRenderView(RenderScenes::RenderViewDesc desc)
@@ -405,7 +414,7 @@ void GameRenderer::UpdateRenderers(f32 deltaTime)
     _uiRenderer->Update(deltaTime);
     _effectRenderer->Update(deltaTime);
     _modelSceneBridge->SyncTransforms(*ServiceLocator::GetEnttRegistries()->gameRegistry);
-    _unitPreview->Update(*ServiceLocator::GetEnttRegistries()->gameRegistry);
+    _unitInspection->Update(*ServiceLocator::GetEnttRegistries()->gameRegistry);
     _modelRenderSystem->Update();
     _shadowRenderer->Update(deltaTime, _resources);
 
@@ -537,6 +546,8 @@ f32 GameRenderer::Render()
             });
     }
     _debugRenderer->AddStartFramePass(&renderGraph, _resources, _frameIndex);
+    _skyboxModelScene->AddStartFramePass(&renderGraph);
+    _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
 
     if (CVAR_RenderAssetCaptureBuffers.Get() != 0)
         _renderAssetResources->AddCapturePass(renderGraph);
@@ -552,50 +563,8 @@ f32 GameRenderer::Render()
     _joltDebugRenderer->AddOccluderPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddVisibilityPhase1Passes(&renderGraph, _resources, _frameIndex);
 
-    // Depth Pyramid Pass
-    struct PyramidPassData
-    {
-        Renderer::DepthImageResource depth;
-        Renderer::ImageMutableResource depthPyramid;
-
-        Renderer::DescriptorSetResource copyDescriptorSet;
-        Renderer::DescriptorSetResource pyramidDescriptorSet;
-    };
-
-    renderGraph.AddPass<PyramidPassData>("PyramidPass",
-        [this](PyramidPassData& data, Renderer::RenderGraphBuilder& builder) // Setup
-        {
-            using BufferUsage = Renderer::BufferPassUsage;
-
-            data.depth = builder.Read(_resources.depth, Renderer::PipelineType::GRAPHICS);
-            data.depthPyramid = builder.Write(_resources.depthPyramid, Renderer::PipelineType::GRAPHICS, Renderer::LoadMode::LOAD);
-
-            builder.Write(DepthPyramidUtils::_atomicBuffer, BufferUsage::COMPUTE);
-
-            data.copyDescriptorSet = builder.Use(DepthPyramidUtils::_copyDescriptorSet);
-            data.pyramidDescriptorSet = builder.Use(DepthPyramidUtils::_pyramidDescriptorSet);
-
-            return true; // Return true from setup to enable this pass, return false to disable it
-        },
-        [this](PyramidPassData& data, Renderer::RenderGraphResources& graphResources, Renderer::CommandList& commandList) // Execute
-        {
-            GPU_SCOPED_PROFILER_ZONE(commandList, BuildPyramid);
-
-            DepthPyramidUtils::BuildPyramidParams params;
-            params.graphResources = &graphResources;
-            params.commandList = &commandList;
-            params.resources = &_resources;
-            params.frameIndex = _frameIndex;
-
-            params.pyramidSize = graphResources.GetImageDimensions(data.depthPyramid, 0);
-            params.depth = data.depth;
-            params.depthPyramid = data.depthPyramid;
-
-            params.copyDescriptorSet = data.copyDescriptorSet;
-            params.pyramidDescriptorSet = data.pyramidDescriptorSet;
-
-            DepthPyramidUtils::BuildPyramid(params);
-        });
+    DepthPyramidUtils::AddBuildPass(&renderGraph, "Occluder Depth Pyramid", _resources.depth,
+                                    _resources.depthPyramid, _frameIndex);
 
     _terrainRenderer->AddCullingPass(&renderGraph, _resources, _frameIndex);
     _terrainRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
@@ -607,6 +576,10 @@ f32 GameRenderer::Render()
     _joltDebugRenderer->AddGeometryPass(&renderGraph, _resources, _frameIndex);
 
     _modelRenderSystem->AddVisibilityPhase2Passes(&renderGraph, _resources, _frameIndex);
+
+    DepthPyramidUtils::AddBuildPass(&renderGraph, "Opaque Depth Pyramid", _resources.depth,
+                                    _resources.depthPyramid, _frameIndex);
+    _modelRenderSystem->AddTransparentCullPass(&renderGraph, _resources, _frameIndex);
 
     _modelRenderer->AddTransparencyCullingPass(&renderGraph, _resources, _frameIndex);
     _modelRenderer->AddTransparencyGeometryPass(&renderGraph, _resources, _frameIndex);
@@ -621,7 +594,6 @@ f32 GameRenderer::Render()
     // material pass already samples nothing at strength 0); the bind pass stays, bindings must
     // remain valid
     _shadowRenderer->AddSVSMUpdatePass(&renderGraph, _resources, _frameIndex);
-    _shadowRenderer->AddSVSMBindPass(&renderGraph, _resources, _frameIndex);
     if (_shadowRenderer->IsSVSMActive())
     {
         _terrainRenderer->AddClipmapCullingPass(&renderGraph, _resources, _frameIndex);
@@ -638,8 +610,19 @@ f32 GameRenderer::Render()
     _modelRenderSystem->AddPreEffectsPass(&renderGraph, _resources, _frameIndex);
     _effectRenderer->AddSSAOPass(&renderGraph, _resources, _frameIndex);
 
+    _modelRenderSystem->AddTransparentRasterPass(&renderGraph, _resources,
+        RenderScenes::RenderViewPassFamily::ForwardModels, _frameIndex);
+    _modelRenderSystem->AddTransparencyCompositePasses(&renderGraph, _resources, *_materialRenderer,
+        RenderScenes::RenderViewPassFamily::ForwardModels, _frameIndex);
+
     _materialRenderer->AddMaterialPass(&renderGraph, _resources, _frameIndex);
     _modelRenderSystem->AddMaterialResolvePass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddTransparentRasterPass(&renderGraph, _resources,
+        RenderScenes::RenderViewPassFamily::Models, _frameIndex);
+    _modelRenderSystem->AddTransparencyCompositePasses(&renderGraph, _resources, *_materialRenderer,
+        RenderScenes::RenderViewPassFamily::Models, _frameIndex);
+    _modelRenderSystem->AddTransparentSelectionOutlinePass(&renderGraph, _resources, _frameIndex);
+    _modelRenderSystem->AddRetainedOutputPasses(&renderGraph);
     if (ModelRendering::ShowModelCullReasons())
         _modelRenderSystem->AddDiagnosticResolvePass(&renderGraph, _resources, _frameIndex);
 

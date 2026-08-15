@@ -23,7 +23,9 @@ namespace ModelScene
         ModelInstanceFlagTeleported = 1u << 3u,
         ModelInstanceFlagPrivateMaterials = 1u << 4u,
         ModelInstanceFlagPendingPublication = 1u << 5u,
-        ModelInstanceFlagDynamicShadowCaster = 1u << 6u
+        ModelInstanceFlagDynamicShadowCaster = 1u << 6u,
+        ModelInstanceFlagForceTransparent = 1u << 7u,
+        ModelInstanceFlagCastsShadows = 1u << 8u
     };
 
     struct ModelInstanceGPURecord
@@ -42,6 +44,8 @@ namespace ModelScene
         u32 flags = 0;
         u32 packedHighlightColor = 0xFFFFFFFFu;
         f32 highlightIntensity = 1.0f;
+        f32 opacity = 1.0f;
+        u32 reserved[3] = {};
     };
 
     struct ModelInstanceCreateInfo
@@ -92,6 +96,8 @@ namespace ModelScene
                           bool& outNeedsHistoryClear);
         bool SetVisible(RenderScenes::ModelInstanceHandle handle, bool visible, bool& outNeedsHistoryClear);
         bool SetHighlight(RenderScenes::ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu);
+        bool SetOpacity(RenderScenes::ModelInstanceHandle handle, f32 opacity, bool forceTransparent = false);
+        bool SetCastsShadows(RenderScenes::ModelInstanceHandle handle, bool castsShadows);
         bool SetShadowDynamic(RenderScenes::ModelInstanceHandle handle, bool dynamic);
         bool SetMaterialTable(RenderScenes::ModelInstanceHandle handle, RenderScenes::ModelMaterialTableHandle table,
                               u32 offset, u32 count, bool isPrivate);
@@ -105,6 +111,7 @@ namespace ModelScene
         const ModelInstanceGPURecord* GetRecord(RenderScenes::ModelInstanceHandle handle) const;
         const ModelInstanceResources* GetResources(RenderScenes::ModelInstanceHandle handle) const;
         void CollectActiveHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const;
+        void CollectHighlightedHandles(std::vector<RenderScenes::ModelInstanceHandle>& outHandles) const;
         std::span<const u32> GetPendingSlotClears() const
         {
             return _pendingSlotClears;
@@ -161,6 +168,7 @@ namespace ModelScene
         std::vector<u32> _pendingSlotClears;
         std::vector<SlotGenerationEntry> _pendingPublications;
         std::vector<SlotGenerationEntry> _frameAdvanceEntries;
+        std::vector<u32> _highlightedSlots;
         u32 _liveInstances = 0;
         u32 _pendingInstances = 0;
         u32 _highlightedInstances = 0;

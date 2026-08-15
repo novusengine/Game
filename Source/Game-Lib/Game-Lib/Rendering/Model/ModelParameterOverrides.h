@@ -7,6 +7,7 @@
 
 namespace RenderAssets { class RenderAssetResources; }
 namespace RenderScenes { class RenderScene; }
+namespace RenderScenes { struct ModelRenderDescription; }
 
 namespace ModelLoading
 {
@@ -19,6 +20,8 @@ namespace ModelLoading
 
         bool SetTexture(RenderScenes::RenderScene& scene, RenderScenes::ModelInstanceHandle instance,
                         RenderAssets::ModelHandle model, u64 parameterNameHash, Renderer::TextureID textureID);
+        bool SetTexture(RenderScenes::ModelRenderDescription& description, u64 parameterNameHash,
+                        Renderer::TextureID textureID);
 
       private:
         RenderAssets::RenderAssetResources* _assets = nullptr;

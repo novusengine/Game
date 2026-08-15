@@ -37,8 +37,6 @@ struct Constants
 
 [[vk::binding(0, PER_PASS)]] SamplerState _sampler;
 [[vk::binding(3, PER_PASS)]] Texture2D<float4> _skyboxColor;
-[[vk::binding(4, PER_PASS)]] Texture2D<float4> _transparency;
-[[vk::binding(5, PER_PASS)]] Texture2D<float> _transparencyWeights;
 [[vk::binding(6, PER_PASS)]] RWTexture2D<float4> _resolvedColor;
 
 #include "Generated/MaterialSources/Terrain.inc.slang"
@@ -306,15 +304,6 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         color.rg = float2(1, 1);
     }
-
-    // Composite Transparency
-    float4 transparency = _transparency.Load(uint3(pixelPos, 0));
-    float transparencyWeight = _transparencyWeights.Load(uint3(pixelPos, 0));
-
-    float3 transparencyColor = transparency.rgb / max(transparency.a, 1e-5);
-
-    // Src: ONE_MINUS_SRC_ALPHA, Dst: SRC_ALPHA
-    color.rgb = (transparencyColor.rgb * (1.0f - transparencyWeight)) + (color.rgb * transparencyWeight);
 
     float3 cameraWorldPos = _cameras[0].eyePosition.xyz;
     float distToPixel = distance(cameraWorldPos, pixelWorldPos);

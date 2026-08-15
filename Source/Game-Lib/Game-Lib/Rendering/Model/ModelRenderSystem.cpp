@@ -2,6 +2,7 @@
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
 #include "Game-Lib/Rendering/Model/ModelRendererMode.h"
+#include "Game-Lib/Rendering/Material/MaterialRenderer.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
@@ -11,7 +12,7 @@
 #include <algorithm>
 
 AutoCVar_Int CVAR_ModelForceLOD(CVarCategory::Client | CVarCategory::Rendering, "modelForceLOD",
-                                "Force model LOD (-1 automatic, values clamp to each Mesh)", -1);
+                                "Force model LOD (-1 automatic, values clamp to each Mesh)", 0);
 AutoCVar_Int CVAR_ModelTemporalOcclusion(CVarCategory::Client | CVarCategory::Rendering, "modelTemporalOcclusion",
                                          "Enable two-phase temporal occlusion for the main model View", 1,
                                          CVarFlags::EditCheckbox);
@@ -19,6 +20,9 @@ AutoCVar_Int CVAR_ModelTemporalOcclusion(CVarCategory::Client | CVarCategory::Re
 AutoCVar_Int CVAR_ModelDiagnosticHighlight(CVarCategory::Client | CVarCategory::Rendering,
                                            "modelDiagnosticHighlight", "Highlight the diagnostic model", 0,
                                            CVarFlags::EditCheckbox);
+// TODO: Remove this diagnostic-model opacity control after the Phase 15 fade comparison.
+AutoCVar_Float CVAR_ModelDiagnosticOpacity(CVarCategory::Client | CVarCategory::Rendering,
+                                           "modelDiagnosticOpacity", "Opacity of the diagnostic model", 1.0);
 
 namespace ModelRendering
 {
@@ -39,6 +43,9 @@ namespace ModelRendering
         desc.normalTarget = resources.packedNormals;
         desc.motionTarget = resources.motionVectors;
         desc.colorTarget = resources.sceneColor;
+        desc.transparencyAccumulationTarget = resources.transparency;
+        desc.transparencyRevealageTarget = resources.transparencyWeights;
+        desc.depthPyramidTarget = resources.depthPyramid;
         desc.depthTarget = resources.depth;
         desc.lifetime = RenderScenes::RenderViewLifetime::Persistent;
         desc.refresh = RenderScenes::RenderViewRefresh::Continuous;
@@ -49,9 +56,15 @@ namespace ModelRendering
 
     RenderScenes::RenderView* ModelRenderSystem::CreateView(const RenderScenes::RenderViewDesc& desc)
     {
+        const bool visibilityModels = (static_cast<u32>(desc.passFamilies) & static_cast<u32>(RenderScenes::RenderViewPassFamily::Models)) != 0;
+        const bool forwardModels = (static_cast<u32>(desc.passFamilies) & static_cast<u32>(RenderScenes::RenderViewPassFamily::ForwardModels)) != 0;
         if (desc.viewID == 0 || desc.debugName.empty() || !desc.scene || desc.dimensions.x == 0 || desc.dimensions.y == 0 ||
-            desc.visibilityTarget == Renderer::ImageID::Invalid() ||
-            desc.normalTarget == Renderer::ImageID::Invalid() || desc.colorTarget == Renderer::ImageID::Invalid() ||
+            (!visibilityModels && !forwardModels) ||
+            (visibilityModels && (desc.visibilityTarget == Renderer::ImageID::Invalid() || desc.normalTarget == Renderer::ImageID::Invalid())) ||
+            desc.colorTarget == Renderer::ImageID::Invalid() ||
+            desc.transparencyAccumulationTarget == Renderer::ImageID::Invalid() ||
+            desc.transparencyRevealageTarget == Renderer::ImageID::Invalid() ||
+            desc.depthPyramidTarget == Renderer::ImageID::Invalid() ||
             desc.depthTarget == Renderer::DepthImageID::Invalid() || _views.contains(desc.viewID))
         {
             return nullptr;
@@ -79,7 +92,12 @@ namespace ModelRendering
 
     void ModelRenderSystem::Update()
     {
-        _mainView->GetView().SetDimensions(static_cast<uvec2>(_renderer->GetRenderSize()));
+        const uvec2 renderSize = static_cast<uvec2>(_renderer->GetRenderSize());
+        for (auto& [viewID, view] : _views)
+        {
+            if (view->GetView().GetDimensionType() == Renderer::ImageDimensionType::DIMENSION_SCALE_RENDERSIZE)
+                view->GetView().SetDimensions(renderSize);
+        }
 
         robin_hood::unordered_flat_set<RenderScenes::RenderScene*> scenes;
         for (auto& [viewID, view] : _views)
@@ -171,6 +189,58 @@ namespace ModelRendering
             view->AddMaterialResolvePass(renderGraph, resources, frameIndex);
     }
 
+    void ModelRenderSystem::AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                    u8 frameIndex)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+            view->AddTransparentCullPass(renderGraph, resources, frameIndex);
+    }
+
+    void ModelRenderSystem::AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                      RenderScenes::RenderViewPassFamily passFamily, u8 frameIndex)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+        {
+            if (view->GetView().HasPassFamily(passFamily))
+                view->AddTransparentRasterPass(renderGraph, resources, frameIndex);
+        }
+    }
+
+    void ModelRenderSystem::AddTransparencyCompositePasses(Renderer::RenderGraph* renderGraph,
+                                                            RenderResources& resources,
+                                                            MaterialRenderer& materialRenderer,
+                                                            RenderScenes::RenderViewPassFamily passFamily, u8 frameIndex)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+        {
+            if (view->IsReadyThisFrame() && view->GetView().HasPassFamily(passFamily))
+                materialRenderer.AddTransparencyCompositePass(renderGraph, resources, view->GetView(), frameIndex);
+        }
+    }
+
+    void ModelRenderSystem::AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph,
+                                                                RenderResources& resources, u8 frameIndex)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+            view->AddTransparentSelectionOutlinePass(renderGraph, resources, frameIndex);
+    }
+
+    void ModelRenderSystem::AddRetainedOutputPasses(Renderer::RenderGraph* renderGraph)
+    {
+        if (!UseMeshletModelRenderer())
+            return;
+        for (auto& [viewID, view] : _views)
+            view->AddRetainedOutputPass(renderGraph);
+    }
+
     void ModelRenderSystem::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                      u8 frameIndex)
     {
@@ -216,6 +286,11 @@ namespace ModelRendering
     {
         ModelPerformanceStats result;
         result.work = _mainView->GetWork().GetStats();
+        result.transparentWork = _mainView->GetTransparentWork().GetStats();
+        result.loadedLOD0Meshlets = _mainView->GetState().GetLoadedLOD0Meshlets();
+        result.loadedLOD0Triangles = _mainView->GetState().GetLoadedLOD0Triangles();
+        result.loadedLOD0TransparentMeshlets = _mainView->GetState().GetLoadedLOD0TransparentMeshlets();
+        result.loadedLOD0TransparentTriangles = _mainView->GetState().GetLoadedLOD0TransparentTriangles();
         result.historyBytes = _mainView->GetWork().GetMeshletHistoryWords() * sizeof(u32) * ModelView::MODEL_VIEW_FRAME_COUNT;
         const ModelScene::MeshletHistoryAllocatorStats history = _mainScene->GetStats().meshletHistory;
         result.liveHistoryBytes = history.liveWords * sizeof(u32) * ModelView::MODEL_VIEW_FRAME_COUNT;
@@ -250,6 +325,8 @@ namespace ModelRendering
                 _mainScene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
                 _mainScene->SetModelHighlight(_diagnosticInstance,
                                               CVAR_ModelDiagnosticHighlight.Get() != 0 ? 1.35f : 1.0f);
+                _mainScene->SetModelOpacity(_diagnosticInstance,
+                                            static_cast<f32>(CVAR_ModelDiagnosticOpacity.Get()));
                 _mainView->GetState().SetDiagnosticSelection(_diagnosticInstance);
                 return _diagnosticInstance;
             }
@@ -266,6 +343,7 @@ namespace ModelRendering
         _mainScene->SetAllGeometryGroups(_diagnosticInstance, geometryGroupsEnabled);
         _mainScene->SetModelHighlight(_diagnosticInstance,
                                       CVAR_ModelDiagnosticHighlight.Get() != 0 ? 1.35f : 1.0f);
+        _mainScene->SetModelOpacity(_diagnosticInstance, static_cast<f32>(CVAR_ModelDiagnosticOpacity.Get()));
 
         // No temporal View buffers exist during diagnostic bring-up, so acknowledging
         // these ranges publishes the instance after its complete record is uploaded

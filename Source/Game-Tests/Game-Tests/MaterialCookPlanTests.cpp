@@ -93,6 +93,22 @@ TEST_CASE("Material cook plan shares identical behavior and separates distinct b
     CHECK(result.programs[2].rasterRoutes[0].groupLocalProgramID == 1);
 }
 
+TEST_CASE("Material cook plan separates first-unit blend behavior",
+          "[Rendering][MaterialCooker]")
+{
+    std::array sourceData = {TestSource(10), TestSource(20)};
+    sourceData[0].units[0].blendMode = 2;
+    sourceData[1].units[0].blendMode = 4;
+    const std::array sources = {sourceData[0].View("program-a"), sourceData[1].View("program-b")};
+    const std::array assignments = {
+        Assignment("program-a", "Common", "Generated/A.inc.slang", "EvaluateMaterial_A"),
+        Assignment("program-b", "Common", "Generated/A.inc.slang", "EvaluateMaterial_A")};
+
+    const auto result = MaterialCooking::MaterialCookPlanBuilder::Build(sources, assignments);
+    REQUIRE(result);
+    CHECK(result.programs[0].rasterRoutes[2].groupLocalProgramID != result.programs[1].rasterRoutes[2].groupLocalProgramID);
+}
+
 TEST_CASE("Material cook plan routes each program family to its own six group classes",
           "[Rendering][MaterialCooker]")
 {

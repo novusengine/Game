@@ -145,6 +145,7 @@ local contentRoot = nil
 
 -- The current Transform panel's x/y/z rows, so a gizmo drag can refresh them without a full rebuild.
 local transformRows = nil
+local Rebuild
 
 -- ---- small layout helpers (operate on a cursor { y } and a parent) ----
 
@@ -213,6 +214,20 @@ local function AddToggle(parent, cur, label, state, onToggle)
         btn:SetText(label .. ": " .. (current and "ON" or "OFF"))
         onToggle(current)
     end)
+    cur.y -= ROW_H
+    return btn
+end
+
+local function AddButton(parent, cur, text, onClick)
+    local btn = EditorButton.NewEditorButton(parent, SIDE_PAD, cur.y, INNER_W, FIELD_H, 1, {
+        text = text,
+        textTemplate = BTN_TEXT_TPL,
+        textAlign = "left",
+        textPadX = 4,
+    })
+    btn:SetAnchor(0.0, 1.0)
+    btn:SetRelativePoint(0.0, 1.0)
+    btn:SetOnMouseUp(onClick)
     cur.y -= ROW_H
     return btn
 end
@@ -341,6 +356,124 @@ local function BuildModel(parent, cur, entityID, model)
     opacityField = AddNumberRow(parent, cur, "Opacity", model.opacity, { speed = 0.01, format = "%.2f", min = 0.0, max = 1.0 }, function(v)
         Scene.SetModelTransparent(entityID, forcedTransparency, v)
     end)
+
+    if not model.runtimeAvailable then
+        AddText(parent, SIDE_PAD, cur.y, "Runtime model is not available yet.", LABEL_TINT)
+        cur.y -= ROW_H
+        return
+    end
+
+    AddToggle(parent, cur, "Cast Shadows", model.castsShadows, function(state)
+        Scene.SetModelCastsShadows(entityID, state)
+    end)
+
+    AddHeader(parent, cur, "Runtime")
+    local fallbackText = model.fallback and "  FALLBACK" or ""
+    AddText(parent, SIDE_PAD, cur.y, string.format("Handle: %d%s", model.runtimeHandle, fallbackText), LABEL_TINT)
+    cur.y -= FIELD_H
+    AddText(parent, SIDE_PAD, cur.y, string.format("Meshes: %d  LODs: %d  Submeshes: %d", model.numMeshes, model.numLODs, model.numSubmeshes), LABEL_TINT)
+    cur.y -= FIELD_H
+    AddText(parent, SIDE_PAD, cur.y, string.format("Meshlets: %d  Radius: %.2f", model.numMeshlets, model.boundsRadius), LABEL_TINT)
+    cur.y -= FIELD_H
+    AddText(parent, SIDE_PAD, cur.y, string.format("Bounds center: %.2f, %.2f, %.2f", model.boundsCenter.x, model.boundsCenter.y, model.boundsCenter.z), LABEL_TINT)
+    cur.y -= FIELD_H
+    AddText(parent, SIDE_PAD, cur.y, string.format("Bounds extents: %.2f, %.2f, %.2f", model.boundsExtents.x, model.boundsExtents.y, model.boundsExtents.z), LABEL_TINT)
+    cur.y -= ROW_H
+
+    AddHeader(parent, cur, "Highlight")
+    AddText(parent, SIDE_PAD, cur.y, "Intensity 1.0 leaves the model unchanged.", LABEL_TINT)
+    cur.y -= FIELD_H
+    local highlightIntensity, highlightColor
+    local function ApplyHighlight()
+        Scene.SetModelHighlight(entityID, highlightIntensity:GetValue(), highlightColor:GetValue())
+    end
+    highlightIntensity = AddNumberRow(parent, cur, "Intensity", model.highlightIntensity, { speed = 0.01, format = "%.2f", min = 0.0, max = 4.0 }, ApplyHighlight)
+    highlightColor = AddVec3Row(parent, cur, "Color", model.highlightColor, { speed = 0.01, format = "%.2f", min = 0.0, max = 1.0 }, ApplyHighlight)
+
+    local groups = model.geometryGroups
+    if #groups > 0 then
+        AddHeader(parent, cur, "Geometry Groups")
+        local listH = math.min(100, #groups * ROW_H + 2)
+        local list = ScrollBox.NewScrollBox(parent, SIDE_PAD, cur.y, INNER_W, listH, 1, {
+            panelTemplate = "DebugDarkGrey",
+            contentSizeX = INNER_W,
+            contentSizeY = listH,
+            verticalScrollBar = true,
+            scrollBarWidth = 10,
+            alpha = 0.0,
+        })
+        list:SetAnchor(0.0, 1.0)
+        list:SetRelativePoint(0.0, 1.0)
+        for i, group in groups do
+            local groupID = group.id
+            local enabled = group.enabled
+            local btn = EditorButton.NewEditorButton(list.content, 2, -((i - 1) * ROW_H) - 1, INNER_W - 14, FIELD_H, 1, {
+                text = string.format("Group %d: %s", groupID, enabled and "ON" or "OFF"),
+                textTemplate = BTN_TEXT_TPL,
+                textAlign = "left",
+                textPadX = 4,
+            })
+            btn:SetAnchor(0.0, 1.0)
+            btn:SetRelativePoint(0.0, 1.0)
+            btn:SetOnMouseUp(function()
+                enabled = not enabled
+                btn:SetText(string.format("Group %d: %s", groupID, enabled and "ON" or "OFF"))
+                Scene.SetModelGeometryGroup(entityID, groupID, enabled)
+            end)
+        end
+        list:SetContentHeight(math.max(listH, #groups * ROW_H + 2))
+        cur.y -= listH + 4
+    end
+
+    local slots = model.materialSlots
+    if #slots > 0 then
+        AddHeader(parent, cur, "Material Slots")
+        AddButton(parent, cur, "Reset Material Overrides", function()
+            Scene.ResetModelMaterials(entityID)
+            Rebuild()
+        end)
+
+        local entryH = 66
+        local listH = math.min(150, #slots * entryH + 2)
+        local list = ScrollBox.NewScrollBox(parent, SIDE_PAD, cur.y, INNER_W, listH, 1, {
+            panelTemplate = "DebugDarkGrey",
+            contentSizeX = INNER_W,
+            contentSizeY = listH,
+            verticalScrollBar = true,
+            scrollBarWidth = 10,
+            alpha = 0.0,
+        })
+        list:SetAnchor(0.0, 1.0)
+        list:SetRelativePoint(0.0, 1.0)
+        for i, slot in slots do
+            local y = -((i - 1) * entryH) - 2
+            local fallback = slot.fallback and "  FALLBACK" or ""
+            AddText(list.content, 4, y, string.format("Slot %d  Stable %d%s", slot.slot, slot.stableID, fallback), LABEL_TINT)
+            y -= FIELD_H
+            AddText(list.content, 4, y, string.format("Material %d  Program %d", slot.material or 0, slot.programID or 0), LABEL_TINT)
+            y -= FIELD_H
+            local flags = slot.twoSided and "  Two-sided" or ""
+            AddText(list.content, 4, y, string.format("%s / %s%s", slot.rasterClass or "Unknown", slot.lightingModel or "Unknown", flags), LABEL_TINT)
+            y -= FIELD_H
+            local slotIndex = slot.slot
+            local input = InputBox.NewInputBox(list.content, 4, y, INNER_W - 18, FIELD_H, 1, {
+                panelTemplate = "DebugDarkGrey",
+                textTemplate = BTN_TEXT_TPL,
+                defaultText = tostring(slot.materialInstance),
+            })
+            input:SetAnchor(0.0, 1.0)
+            input:SetRelativePoint(0.0, 1.0)
+            input:SetOnSubmit(function(t)
+                local handle = tonumber(t.text)
+                if handle == nil then return false end
+                Scene.SetModelMaterial(entityID, slotIndex, handle)
+                Rebuild()
+                return true
+            end)
+        end
+        list:SetContentHeight(math.max(listH, #slots * entryH + 2))
+        cur.y -= listH + 4
+    end
 end
 
 local function BuildDecal(parent, cur, entityID, decal)
@@ -408,7 +541,7 @@ local function BuildDebug(parent, cur, entityID)
     AddToggle(parent, cur, "Draw World AABB", false, function(state) Editor.SetDrawWorldAABB(state) end)
 end
 
-local function Rebuild()
+Rebuild = function()
     if contentRoot ~= nil then
         UI.DestroyWidget(contentRoot)
         contentRoot = nil

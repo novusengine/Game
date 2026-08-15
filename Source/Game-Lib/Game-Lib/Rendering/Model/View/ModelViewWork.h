@@ -130,5 +130,7 @@ namespace ModelView
         u32 chunkQueueOverflows = 0;
         u32 testedTriangles = 0;
         u32 committedTriangles = 0;
+        u32 phase1ReplayedTriangles = 0;
+        u32 phase2AddedTriangles = 0;
     };
 } // namespace ModelView

@@ -17,6 +17,10 @@ struct ModelInstanceRecord
     uint flags;
     uint packedHighlightColor;
     float highlightIntensity;
+    float opacity;
+    uint reserved0;
+    uint reserved1;
+    uint reserved2;
 };
 
 struct ModelMeshlet

@@ -31,6 +31,14 @@ float4 BlendCompatibilityMaterialLayerColor(float4 previous, float4 current, uin
     return float4(1.0f, 0.0f, 1.0f, 1.0f);
 }
 
+SurfaceDescription BlendCompatibilityMaterialFirstLayer(SurfaceDescription current, uint blendMode)
+{
+    float4 color = BlendCompatibilityMaterialLayerColor(0.0f, float4(current.albedo, current.alpha), blendMode);
+    current.albedo = color.rgb;
+    current.alpha = color.a;
+    return current;
+}
+
 SurfaceDescription BlendCompatibilityMaterialLayers(
     SurfaceDescription previous, SurfaceDescription current, uint blendMode)
 {

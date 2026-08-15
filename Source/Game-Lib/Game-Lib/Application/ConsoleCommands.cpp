@@ -3,7 +3,11 @@
 #include "Application.h"
 #include "Message.h"
 
+#include "Game-Lib/Rendering/GameRenderer.h"
+#include "Game-Lib/Util/ServiceLocator.h"
+
 #include <Base/Util/DebugHandler.h>
+#include <Renderer/Renderer.h>
 
 void ConsoleCommands::CommandPrint(Application& app, std::vector<std::string>& subCommands)
 {
@@ -79,4 +83,16 @@ void ConsoleCommands::CommandRefreshDB(Application& app, std::vector<std::string
 {
     MessageInbound message(MessageInbound::Type::RefreshDB);
     app.PassMessage(message);
+}
+
+void ConsoleCommands::CommandDescriptorPoolStats(Application&, std::vector<std::string>&)
+{
+    const Renderer::DescriptorPoolStats stats = ServiceLocator::GetGameRenderer()->GetRenderer()->GetDescriptorPoolStats();
+    NC_LOG_INFO("DESCRIPTOR_POOL sets={}/{}/{} uniform={}/{}/{} sampled={}/{}/{} storage_buffers={}/{}/{} storage_images={}/{}/{} samplers={}/{}/{}",
+        stats.liveSets, stats.peakSets, stats.setCapacity,
+        stats.liveUniformBuffers, stats.peakUniformBuffers, stats.uniformBufferCapacity,
+        stats.liveSampledImages, stats.peakSampledImages, stats.sampledImageCapacity,
+        stats.liveStorageBuffers, stats.peakStorageBuffers, stats.storageBufferCapacity,
+        stats.liveStorageImages, stats.peakStorageImages, stats.storageImageCapacity,
+        stats.liveSamplers, stats.peakSamplers, stats.samplerCapacity);
 }

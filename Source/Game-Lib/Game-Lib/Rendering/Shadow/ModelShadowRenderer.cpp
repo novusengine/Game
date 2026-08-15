@@ -17,7 +17,7 @@ AutoCVar_Int CVAR_ModelShadowMeshletQueueCapacity(
     CVarCategory::Client | CVarCategory::Rendering, "modelShadowMeshletQueueCapacity",
     "Maximum allocated model meshlet entries shared by all SVSM clipmaps", DEFAULT_MODEL_SHADOW_QUEUE_CAPACITY);
 AutoCVar_Int CVAR_ModelShadowForceLOD(CVarCategory::Client | CVarCategory::Rendering, "modelShadowForceLOD",
-                                     "Force model shadow LOD (-1 automatic, values clamp to each Mesh)", -1);
+                                     "Force model shadow LOD (-1 automatic, values clamp to each Mesh)", 0);
 AutoCVar_Float CVAR_ModelShadowLODTargetTexels(
     CVarCategory::Client | CVarCategory::Rendering, "modelShadowLODTargetTexels",
     "Maximum projected geometric error in SVSM texels before selecting a finer model LOD", 1.0f);
@@ -25,6 +25,10 @@ AutoCVar_Int CVAR_ModelShadowConeCulling(
     CVarCategory::Client | CVarCategory::Rendering, "modelShadowConeCulling",
     "Cull one-sided model meshlets whose normal cones face away from the shadow camera", 1,
     CVarFlags::EditCheckbox);
+// TODO: Remove this comparison control after the Phase 15 opacity-shadow verification.
+AutoCVar_Int CVAR_ModelShadowOpacityDither(
+    CVarCategory::Client | CVarCategory::Rendering, "modelShadowOpacityDither",
+    "Fade model shadows using stable shadow-texel dithering", 1, CVarFlags::EditCheckbox);
 
 namespace ShadowRendering
 {
@@ -84,6 +88,7 @@ namespace ShadowRendering
                           std::max(CVAR_ModelShadowLODTargetTexels.GetFloat(), 0.01f),
                           CVAR_ModelShadowConeCulling.Get() != 0);
         _pass.AddRasterPass(renderGraph, resources, _work, geometry, materials, *_scene, svsmData, staticPageTable,
-                            dynamicPageTable, staticPagePool, dynamicPagePool, virtualSize, dynamicSplit, frameIndex);
+                            dynamicPageTable, staticPagePool, dynamicPagePool, virtualSize, dynamicSplit,
+                            CVAR_ModelShadowOpacityDither.Get() != 0, frameIndex);
     }
 } // namespace ShadowRendering

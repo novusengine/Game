@@ -31,6 +31,7 @@ struct MaterialRecord
 uint MaterialLightingModel(MaterialInstanceRecord instance) { return instance.packedClassification & 0xFFFFu; }
 uint MaterialExecutionGroup(MaterialInstanceRecord instance) { return instance.packedClassification >> 16u; }
 uint MaterialHandle(MaterialInstanceRecord instance) { return instance.materialHandle; }
+uint MaterialBaseExecutionGroup(MaterialRecord material) { return material.packedProgramRouting2AndBaseGroup >> 16u; }
 uint MaterialRasterClass(MaterialInstanceRecord instance)
 {
     return (MaterialExecutionGroup(instance) % MATERIAL_EXECUTION_GROUP_CLASS_COUNT) / 2u;

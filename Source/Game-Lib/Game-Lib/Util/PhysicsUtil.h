@@ -27,5 +27,6 @@ namespace Util
         // optionally ignoring one body. Pass std::numeric_limits<u32>::max() as ignoreBodyID for none.
         // Returns the hit world position in outHitPos. Fetches the JoltState itself.
         bool CastRayWorld(const vec3& start, const vec3& dir, u32 ignoreBodyID, vec3& outHitPos);
+        bool CastRayEntity(const vec3& start, const vec3& dir, entt::entity& outEntity);
     }
 }

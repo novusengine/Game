@@ -28,10 +28,14 @@ namespace Scripting::Asset
         static i32 GetRenderAssetStats(Zenith* zenith);
         // TODO: Remove this development-only diagnostic placement hook after the renderer refactor bring-up is complete.
         static i32 ShowRenderModel(Zenith* zenith);
+        // TODO: Remove this one-run Phase 15 skybox validation hook after capturing the model-skybox View.
+        static i32 LoadDiagnosticSkybox(Zenith* zenith);
         // TODO: Remove this development-only query hook after RenderScene model picking is integrated with editor selection.
         static i32 QueryRenderModelPixel(Zenith* zenith);
         // TODO: Remove this development-only lifecycle stress hook after the renderer refactor bring-up is complete.
         static i32 StressRenderSceneLifecycle(Zenith* zenith);
+        // TODO: Remove this development-only View reclamation hook after the renderer refactor bring-up is complete.
+        static i32 StressRenderViewLifecycle(Zenith* zenith);
 
         // Creates an entity for the model at `dataRelativePath` (path relative to Data/) at the
         // given world position and kicks off its load. Shared by SpawnModel and the drag-spawn
@@ -47,7 +51,9 @@ namespace Scripting::Asset
         { "LoadRenderModel", AssetHandler::LoadRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "GetRenderAssetStats", AssetHandler::GetRenderAssetStats, Scripting::LuaMethodFlags::DeveloperOnly },
         { "ShowRenderModel", AssetHandler::ShowRenderModel, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "LoadDiagnosticSkybox", AssetHandler::LoadDiagnosticSkybox, Scripting::LuaMethodFlags::DeveloperOnly },
         { "QueryRenderModelPixel", AssetHandler::QueryRenderModelPixel, Scripting::LuaMethodFlags::DeveloperOnly },
         { "StressRenderSceneLifecycle", AssetHandler::StressRenderSceneLifecycle, Scripting::LuaMethodFlags::DeveloperOnly },
+        { "StressRenderViewLifecycle", AssetHandler::StressRenderViewLifecycle, Scripting::LuaMethodFlags::DeveloperOnly },
     };
 }

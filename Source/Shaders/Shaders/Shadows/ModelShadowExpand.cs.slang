@@ -86,7 +86,8 @@ void main(uint3 dispatchThreadID : SV_DispatchThreadID)
 
     ModelInstanceRecord instance = _shadowModelInstances[instanceIndex];
     AddStat(frameIndex, MODEL_SHADOW_STAT_TESTED_INSTANCES, 1u);
-    if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u)
+    if ((instance.flags & MODEL_INSTANCE_VISIBLE) == 0u ||
+        (instance.flags & MODEL_INSTANCE_CASTS_SHADOWS) == 0u || instance.opacity <= 0.0f)
     {
         AddStat(frameIndex, MODEL_SHADOW_STAT_REJECTED_INSTANCES, 1u);
         return;

@@ -130,17 +130,18 @@ namespace
             left.materialFunction != right.materialFunction ||
             (includeCoverage && left.materialCoverageFunction != right.materialCoverageFunction) ||
             left.program.parameterLayoutHash != right.program.parameterLayoutHash ||
+            left.program.unitCount != right.program.unitCount ||
             left.authoredUnitCount != right.authoredUnitCount)
             return false;
 
-        for (u32 unit = 0; unit < left.authoredUnitCount; ++unit)
+        for (u32 unit = 0; unit < left.program.unitCount; ++unit)
         {
-            if (left.unitMaterialSources[unit] != right.unitMaterialSources[unit] ||
-                left.unitMaterialFunctions[unit] != right.unitMaterialFunctions[unit] ||
-                (includeCoverage && left.unitCoverageFunctions[unit] !=
-                                        right.unitCoverageFunctions[unit]) ||
+            if ((unit < left.authoredUnitCount &&
+                 (left.unitMaterialSources[unit] != right.unitMaterialSources[unit] ||
+                  left.unitMaterialFunctions[unit] != right.unitMaterialFunctions[unit] ||
+                  (includeCoverage && left.unitCoverageFunctions[unit] != right.unitCoverageFunctions[unit]))) ||
                 left.program.units[unit].textureOffset != right.program.units[unit].textureOffset ||
-                (unit > 0 && left.program.units[unit].blendMode != right.program.units[unit].blendMode))
+                left.program.units[unit].blendMode != right.program.units[unit].blendMode)
                 return false;
         }
         return true;

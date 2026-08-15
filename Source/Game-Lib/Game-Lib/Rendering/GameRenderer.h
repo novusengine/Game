@@ -69,7 +69,8 @@ namespace ModelRendering
     class ModelRenderSystem;
 }
 
-namespace PreviewRendering { class UnitPreview; }
+namespace PreviewRendering { class UnitInspectionController; }
+namespace SkyboxRendering { class SkyboxModelScene; }
 
 namespace ModelLoading
 {
@@ -138,10 +139,11 @@ public:
     RenderDocCapture* GetRenderDocCapture() { return _renderDocCapture; }
     RenderAssets::RenderAssetResources* GetRenderAssetResources() { return _renderAssetResources; }
     RenderScenes::RenderScene* GetWorldRenderScene() { return _worldRenderScene; }
+    RenderScenes::RenderScene* GetSkyboxModelScene();
     ModelScene::ModelSceneBridge* GetModelSceneBridge() { return _modelSceneBridge; }
     ModelRendering::ModelPlacementLoader* GetModelPlacementLoader() { return _modelPlacementLoader; }
     ModelRendering::ModelRenderSystem* GetModelRenderSystem() { return _modelRenderSystem; }
-    PreviewRendering::UnitPreview* GetUnitPreview() { return _unitPreview; }
+    PreviewRendering::UnitInspectionController* GetUnitInspection() { return _unitInspection; }
     RenderScenes::RenderView* CreateRenderView(RenderScenes::RenderViewDesc desc);
     bool DestroyRenderView(u64 viewID);
     ModelLoading::DisplayResolver* GetDisplayResolver()
@@ -232,7 +234,8 @@ private:
     ModelScene::ModelSceneBridge* _modelSceneBridge = nullptr;
     ModelRendering::ModelPlacementLoader* _modelPlacementLoader = nullptr;
     ModelRendering::ModelRenderSystem* _modelRenderSystem = nullptr;
-    PreviewRendering::UnitPreview* _unitPreview = nullptr;
+    PreviewRendering::UnitInspectionController* _unitInspection = nullptr;
+    SkyboxRendering::SkyboxModelScene* _skyboxModelScene = nullptr;
     ModelLoading::DisplayResolver* _displayResolver = nullptr;
     ModelLoading::ModelParameterOverrides* _modelParameterOverrides = nullptr;
 

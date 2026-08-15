@@ -1,10 +1,12 @@
 #include "ModelRenderView.h"
 
 #include "Game-Lib/Rendering/Asset/RenderAssetResources.h"
+#include "Game-Lib/Rendering/CullUtils.h"
 #include "Game-Lib/Rendering/RenderResources.h"
 #include "Game-Lib/Rendering/Scene/RenderScene.h"
 
 #include <Renderer/RenderGraph.h>
+#include <Renderer/Renderer.h>
 
 namespace ModelRendering
 {
@@ -12,9 +14,44 @@ namespace ModelRendering
                                      RenderAssets::RenderAssetResources* assets,
                                      const RenderScenes::RenderViewDesc& desc, bool validateTransfers)
         : _renderer(renderer), _assets(assets), _view(desc), _state(validateTransfers), _work(renderer),
+          _transparentWork(renderer),
           _materialResources(renderer, desc.dimensions, desc.dimensionType), _viewWorkPass(renderer, gameRenderer), _visibilityPass(renderer, gameRenderer),
-          _materialResolvePass(renderer, gameRenderer), _visibilityResolvePass(renderer, gameRenderer)
+          _forwardPass(renderer, gameRenderer),
+          _transparentPass(renderer, gameRenderer), _transparentSelectionPass(renderer, gameRenderer),
+          _materialResolvePass(renderer, gameRenderer),
+          _visibilityResolvePass(renderer, gameRenderer)
     {
+    }
+
+    ModelRenderView::~ModelRenderView()
+    {
+        if (_transparentSelectionDepth != Renderer::DepthImageID::Invalid())
+            _renderer->DestroyDepthImage(_transparentSelectionDepth);
+    }
+
+    void ModelRenderView::UpdateSelectionTarget()
+    {
+        RenderScenes::RenderScene* scene = _view.GetScene();
+        const bool active = scene && scene->HasTransparentModelHighlights();
+        const bool dimensionsChanged = _view.GetDimensionType() == Renderer::ImageDimensionType::DIMENSION_ABSOLUTE &&
+            _transparentSelectionDimensions != _view.GetDimensions();
+        if ((!active || dimensionsChanged) && _transparentSelectionDepth != Renderer::DepthImageID::Invalid())
+        {
+            _renderer->DestroyDepthImage(_transparentSelectionDepth);
+            _transparentSelectionDepth = Renderer::DepthImageID::Invalid();
+            _transparentSelectionDescriptorsReady = false;
+        }
+        if (!active || _transparentSelectionDepth != Renderer::DepthImageID::Invalid())
+            return;
+
+        Renderer::DepthImageDesc desc;
+        desc.debugName = _view.GetDebugName() + " Transparent Selection Depth";
+        desc.dimensions = _view.GetDimensionType() == Renderer::ImageDimensionType::DIMENSION_ABSOLUTE ? vec2(_view.GetDimensions()) : vec2(1.0f);
+        desc.dimensionType = _view.GetDimensionType();
+        desc.format = Renderer::DepthImageFormat::D32_FLOAT;
+        desc.depthClearValue = 0.0f;
+        _transparentSelectionDepth = _renderer->CreateDepthImage(desc);
+        _transparentSelectionDimensions = _view.GetDimensions();
     }
 
     void ModelRenderView::Update(i32 forcedLOD)
@@ -23,14 +60,20 @@ namespace ModelRendering
         if (!scene)
             return;
 
+        UpdateSelectionTarget();
+
         if (_state.IsWorkDirty() ||
             _state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision())
         {
             if (_state.GetPreparedSceneRevision() != scene->GetModelInstances().GetMembershipRevision())
                 _view.RequestTemporalReset();
             _state.PrepareInputs(*scene, _assets->GetModelGeometryStorage());
+            _state.PrepareTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage());
             _view.MarkDirty();
         }
+
+        if (_state.GetPreparedTransparentRoutingRevision() != scene->GetTransparentRoutingRevision())
+            _state.PrepareTransparentStats(*scene, _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage());
 
         if (_forcedLOD != forcedLOD)
         {
@@ -45,7 +88,17 @@ namespace ModelRendering
     {
         _state.SyncToGPU(_renderer);
         if (RenderScenes::RenderScene* scene = _view.GetScene())
+        {
             _viewWorkPass.PrepareResources(_state, _work, *scene);
+            _transparentWork.EnsureCapacity(_state.GetQueueCapacity());
+            _transparentDescriptorsReady = _transparentPass.Upload(_state, _transparentWork,
+                _assets->GetModelGeometryStorage(), *scene);
+            if (_transparentSelectionDepth != Renderer::DepthImageID::Invalid())
+            {
+                _transparentSelectionDescriptorsReady = _transparentSelectionPass.Upload(
+                    _transparentWork, _assets->GetModelGeometryStorage(), *scene);
+            }
+        }
     }
 
     void ModelRenderView::ReportErrors()
@@ -111,6 +164,7 @@ namespace ModelRendering
             return;
 
         _work.ReadbackStats(frameIndex);
+        _transparentWork.ReadbackStats(frameIndex);
         _materialResources.ReadbackStats(frameIndex);
         ReportErrors();
 
@@ -149,20 +203,32 @@ namespace ModelRendering
         else
         {
             _readyThisFrame = false;
-            if (!_view.ShouldRender() || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
+            const bool visibilityModels = _view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models);
+            const bool forwardModels = _view.HasPassFamily(RenderScenes::RenderViewPassFamily::ForwardModels);
+            if (!_view.ShouldRender() || (!visibilityModels && !forwardModels))
                 return;
             RenderScenes::RenderScene* scene = _view.GetScene();
             if (!scene)
                 return;
             _work.ReadbackStats(frameIndex);
-            _materialResources.ReadbackStats(frameIndex);
+            _transparentWork.ReadbackStats(frameIndex);
+            ReportErrors();
             const bool descriptorsReady =
                 _viewWorkPass.Upload(_state, _work, _assets->GetModelGeometryStorage(), *scene);
-            _visibilityPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-            _visibilityResolvePass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
-            const bool materialDescriptorsReady = _materialResolvePass.Upload(
-                _view, _work, _materialResources, _assets->GetModelGeometryStorage(), *scene);
-            if (!descriptorsReady || !materialDescriptorsReady)
+            bool rasterDescriptorsReady = false;
+            if (visibilityModels)
+            {
+                _materialResources.ReadbackStats(frameIndex);
+                _visibilityPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+                _visibilityResolvePass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+                rasterDescriptorsReady = _materialResolvePass.Upload(
+                    _view, _work, _materialResources, _assets->GetModelGeometryStorage(), *scene);
+            }
+            else
+            {
+                rasterDescriptorsReady = _forwardPass.Upload(_work, _assets->GetModelGeometryStorage(), *scene);
+            }
+            if (!descriptorsReady || !rasterDescriptorsReady)
                 return;
             const u32 temporalReset = _view.GetTemporalResetGeneration();
             _viewWorkPass.AddPass(renderGraph, resources, _view, _state, _work, _assets->GetModelGeometryStorage(),
@@ -170,8 +236,21 @@ namespace ModelRendering
                                   temporalReset != _handledTemporalReset, _forcedLOD);
             _work.MarkSubmitted(frameIndex);
             _handledTemporalReset = temporalReset;
-            _visibilityPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
-                                    _assets->GetMaterialStorage(), *scene, frameIndex);
+            if (visibilityModels)
+            {
+                _visibilityPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+                                        _assets->GetMaterialStorage(), *scene, frameIndex);
+            }
+            else
+            {
+                _forwardPass.AddPass(renderGraph, resources, _view, _work, _assets->GetModelGeometryStorage(),
+                                     _assets->GetMaterialStorage(), *scene, frameIndex);
+            }
+        }
+        if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::ForwardModels))
+        {
+            _readyThisFrame = true;
+            return;
         }
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _materialResolvePass.AddClassificationPass(renderGraph, resources, _view, _work, _materialResources,
@@ -183,7 +262,7 @@ namespace ModelRendering
     void ModelRenderView::AddPreEffectsPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                              u8 frameIndex)
     {
-        if (!_readyThisFrame)
+        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _visibilityResolvePass.AddPreEffectsPass(renderGraph, resources, _view, _work,
@@ -193,21 +272,74 @@ namespace ModelRendering
     void ModelRenderView::AddMaterialResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                   u8 frameIndex)
     {
-        if (!_readyThisFrame)
+        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _materialResolvePass.AddResolvePass(renderGraph, resources, _view, _work, _materialResources,
                                             _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
                                             frameIndex);
         _visibilityResolvePass.AddOpaqueHighlightPass(renderGraph, _view, _work, scene, frameIndex);
+    }
+
+    void ModelRenderView::AddRetainedOutputPass(Renderer::RenderGraph* renderGraph)
+    {
+        if (!_readyThisFrame)
+            return;
+        if (_view.HasPassFamily(RenderScenes::RenderViewPassFamily::ForwardModels))
+        {
+            _view.MarkRendered();
+            return;
+        }
         _materialResolvePass.AddRetainedOutputPass(renderGraph, _view);
         _view.MarkRendered();
+    }
+
+    void ModelRenderView::AddTransparentCullPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                  u8 frameIndex)
+    {
+        if (!_readyThisFrame || !_transparentDescriptorsReady)
+            return;
+        if (_view.GetDepthPyramidTarget() != resources.depthPyramid)
+            DepthPyramidUtils::AddBuildPass(renderGraph, "Opaque Depth Pyramid: " + _view.GetDebugName(),
+                                            _view.GetDepthTarget(), _view.GetDepthPyramidTarget(), frameIndex);
+        RenderScenes::RenderScene& scene = *_view.GetScene();
+        _transparentPass.AddCullPass(renderGraph, resources, _view, _state, _transparentWork,
+                                     _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
+                                     frameIndex);
+    }
+
+    void ModelRenderView::AddTransparentRasterPass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
+                                                    u8 frameIndex)
+    {
+        if (!_readyThisFrame || !_transparentDescriptorsReady)
+            return;
+        RenderScenes::RenderScene& scene = *_view.GetScene();
+        _transparentPass.AddRasterPass(renderGraph, resources, _view, _transparentWork,
+                                       _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
+                                       frameIndex);
+        if (_transparentSelectionDepth != Renderer::DepthImageID::Invalid() &&
+            _transparentSelectionDescriptorsReady)
+        {
+            _transparentSelectionPass.AddDepthPass(renderGraph, resources, _view, _transparentWork,
+                _assets->GetModelGeometryStorage(), _assets->GetMaterialStorage(), scene,
+                _transparentSelectionDepth, frameIndex);
+        }
+    }
+
+    void ModelRenderView::AddTransparentSelectionOutlinePass(Renderer::RenderGraph* renderGraph,
+                                                              RenderResources& resources, u8 frameIndex)
+    {
+        if (!_readyThisFrame || _transparentSelectionDepth == Renderer::DepthImageID::Invalid() ||
+            !_transparentSelectionDescriptorsReady)
+            return;
+        _transparentSelectionPass.AddOutlinePass(renderGraph, _view, _view.GetTransparencyRevealageTarget(),
+                                                 _transparentSelectionDepth, frameIndex);
     }
 
     void ModelRenderView::AddDiagnosticResolvePass(Renderer::RenderGraph* renderGraph, RenderResources& resources,
                                                     u8 frameIndex)
     {
-        if (!_readyThisFrame)
+        if (!_readyThisFrame || !_view.HasPassFamily(RenderScenes::RenderViewPassFamily::Models))
             return;
         RenderScenes::RenderScene& scene = *_view.GetScene();
         _visibilityResolvePass.AddDiagnosticPass(renderGraph, resources, _view, _work,

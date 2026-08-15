@@ -326,10 +326,10 @@ namespace ModelPipeline
         };
 
         renderGraph->AddPass<Data>("Model Work: " + view.GetDebugName(),
-            [&resources, &viewState, &work, &geometry, &materials, &scene, frameIndex, inputCount, this](Data& data, Renderer::RenderGraphBuilder& builder) {
+            [&resources, &view, &viewState, &work, &geometry, &materials, &scene, frameIndex, inputCount, this](Data& data, Renderer::RenderGraphBuilder& builder) {
                 using Usage = Renderer::BufferPassUsage;
                 const u8 inactiveFrameIndex = (frameIndex + 1u) % ModelView::MODEL_VIEW_FRAME_COUNT;
-                data.depthPyramid = builder.Read(resources.depthPyramid, Renderer::PipelineType::COMPUTE);
+                data.depthPyramid = builder.Read(view.GetDepthPyramidTarget(), Renderer::PipelineType::COMPUTE);
                 if (inputCount > 0)
                 {
                     builder.Read(resources.cameras.GetBuffer(), Usage::COMPUTE);

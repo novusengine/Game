@@ -30,6 +30,8 @@ namespace Map
 
 namespace RenderScenes
 {
+    struct ModelRenderDescription;
+
     struct ModelInstanceDesc
     {
         RenderAssets::ModelHandle model;
@@ -67,6 +69,8 @@ namespace RenderScenes
         bool SetModelTransform(ModelInstanceHandle handle, const mat4x4& transform, bool teleported = false);
         bool SetModelVisible(ModelInstanceHandle handle, bool visible);
         bool SetModelHighlight(ModelInstanceHandle handle, f32 intensity, u32 packedColor = 0xFFFFFFFFu) { return _instances.SetHighlight(handle, intensity, packedColor); }
+        bool SetModelOpacity(ModelInstanceHandle handle, f32 opacity, bool forceTransparent = false);
+        bool SetModelCastsShadows(ModelInstanceHandle handle, bool castsShadows);
         bool SetModelMaterial(ModelInstanceHandle handle, u32 slot, RenderAssets::MaterialInstanceHandle material);
         bool SetModelMaterials(ModelInstanceHandle handle,
                                std::span<const RenderAssets::MaterialInstanceHandle> materials);
@@ -92,10 +96,13 @@ namespace RenderScenes
         bool IsAlive(ModelInstanceHandle handle) const { return _instances.IsAlive(handle); }
         bool IsPending(ModelInstanceHandle handle) const { return _instances.IsPending(handle); }
         const ModelScene::ModelInstanceGPURecord* GetModelInstance(ModelInstanceHandle handle) const { return _instances.GetRecord(handle); }
+        bool DescribeModelInstance(ModelInstanceHandle handle, ModelRenderDescription& description) const;
         RenderSceneStats GetStats() const;
+        u64 GetTransparentRoutingRevision() const { return _transparentRoutingRevision; }
 
         const ModelScene::ModelInstanceStore& GetModelInstances() const { return _instances; }
         bool HasModelHighlights() const { return _instances.GetHighlightedInstanceCount() != 0; }
+        bool HasTransparentModelHighlights() const;
         const ModelScene::ModelMaterialTableStore& GetModelMaterialTables() const { return _materialTables; }
         const ModelScene::GeometryGroupMaskStore& GetGeometryGroupMasks() const { return _geometryGroupMasks; }
         const ModelScene::MeshletHistoryAllocator& GetMeshletHistory() const { return _meshletHistory; }
@@ -112,5 +119,7 @@ namespace RenderScenes
         ModelScene::MeshletHistoryAllocator _meshletHistory;
         ModelScene::ModelInstanceStore _instances;
         ShadowRendering::SceneShadowState _shadowState;
+        mutable std::vector<ModelInstanceHandle> _highlightedModelScratch;
+        u64 _transparentRoutingRevision = 0;
     };
 } // namespace RenderScenes
