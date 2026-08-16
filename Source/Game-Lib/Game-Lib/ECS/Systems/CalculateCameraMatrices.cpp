@@ -88,7 +88,7 @@ namespace ECS::Systems
 
                 gpuCamera.nearFar = vec4(camera.nearClip, camera.farClip, 0.0f, 0.0f);
 
-                if (CVAR_CameraLockCullingFrustum.Get() == 0)
+                if (CVAR_CameraLockCullingFrustum.Get() == 0 || !camera.cullingFrustumInitialized)
                 {
                     glm::vec3 Front = glm::vec3(0, 0, 1);
                     glm::vec3 Right = glm::vec3(1, 0, 0);
@@ -113,6 +113,7 @@ namespace ECS::Systems
                     gpuCamera.frustum[(size_t)FrustumPlane::Top] = EncodePlane(position,glm::cross(frontMultFar - Up * halfVSide, Right));
                     gpuCamera.frustum[(size_t)FrustumPlane::Bottom] = EncodePlane(position,glm::cross(Right, frontMultFar + Up * halfVSide));
                     gpuCamera.cullingEyePosition = gpuCamera.eyePosition;
+                    camera.cullingFrustumInitialized = true;
                 }
 
                 renderResources.cameras.SetDirtyElement(camera.cameraBindSlot);

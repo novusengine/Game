@@ -198,9 +198,9 @@ bool ModelConeBackfacing(uint packedCone, float3 center, float radius, float4x4 
         return false;
 
     float3 worldCenter = mul(float4(center, 1.0f), transform).xyz;
-    // Vulkan's negative-height viewport makes framebuffer-space CCW fronts correspond to the
-    // opposite side of meshoptimizer's object-space triangle winding.
-    float3 worldAxis = -normalize(mul(float4(localAxis, 0.0f), transform).xyz);
+    // Match the cone winding to the instance transform and the negative-height Vulkan viewport.
+    float windingSign = determinant((float3x3)transform) < 0.0f ? 1.0f : -1.0f;
+    float3 worldAxis = windingSign * normalize(mul(float4(localAxis, 0.0f), transform).xyz);
     float3 view = worldCenter - eye;
     return dot(view, worldAxis) >= cutoff * length(view) + radius * MaxWorldScale(transform);
 }
